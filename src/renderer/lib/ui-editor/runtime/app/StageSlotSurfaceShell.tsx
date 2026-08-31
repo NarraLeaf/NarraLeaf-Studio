@@ -24,8 +24,14 @@ import {
     type BlueprintGameNotification,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
+    type BlueprintLayerShowRequest,
+    type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { SoundTransport } from "./soundTransport";
@@ -115,6 +121,47 @@ export type GameUiSlotHostOptions = {
     isCurrentTextReadInGame?: () => boolean;
     /** Optional: hosts without a text-read tracker fall back to wiping the persistence key directly. */
     clearTextReadInGame?: () => Promise<void>;
+    /**
+     * The rest of the game host, forwarded verbatim.
+     *
+     * A slot surface builds its own host API, and every callback left off this build is a node
+     * that answers with the bridge's default - `false`, `{found:false}`, an empty list - without
+     * throwing and without a diagnostic. That has now happened four times (sound, progress,
+     * saved variables, and this batch), so the guard is no longer a list somebody remembers to
+     * extend: `stageSlotHostForwarding.test.ts` compares this file with the page path and fails
+     * naming whatever is missing.
+     *
+     * Several of these are the ones most likely to be reached for from a stage slot in the first
+     * place: a replay button on the dialogue box (`onPlayVoice`), an already-read mark on the
+     * choice list (`onIsTextRead` / `onIsOptionPicked`), a confirm layer from the quick menu
+     * (`onShowLayer` / `onWaitLayer`), an endings counter on an on-stage strip.
+     */
+    clearPages?: () => void | Promise<void>;
+    clearGameOverlay?: () => void | Promise<void>;
+    showLayer?: (request: BlueprintLayerShowRequest) => string;
+    hideLayer?: (handle: string) => Promise<void> | void;
+    hideLayerGroup?: (group: string) => Promise<void> | void;
+    waitLayer?: (handle: string) => Promise<unknown>;
+    closeOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
+    isLayerMounted?: (handle: string) => boolean;
+    captureRun?: () => unknown | null;
+    readSaveGame?: (id: string) => Promise<unknown | null> | unknown | null;
+    hasReadTextInGame?: (textId: string) => boolean;
+    isSceneVisitedInGame?: (sceneId: string) => boolean;
+    isOptionPickedInGame?: (optionId: string) => boolean;
+    clearVisitedInGame?: () => void;
+    isEndingReachedInGame?: (endingId: string) => boolean;
+    isDlcInstalledInGame?: (dlcId: string) => boolean;
+    listEndingsInGame?: (storyId: string) => BlueprintStoryEnding[];
+    clearEndingStateInGame?: (endingId: string) => Promise<void> | void;
+    clearEndingsInGame?: () => Promise<void> | void;
+    networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    movePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
+    openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    storageDurability?: () => Promise<GameStorageDurability>;
+    playVoiceUnit?: (unitId: string) => Promise<boolean>;
+    playChoiceVoiceUnit?: (unitId: string, options: { interruptOthers: boolean }) => Promise<boolean>;
+
     /**
      * The running playthrough's saved variables.
      *
@@ -287,6 +334,31 @@ export function useStageSlotSurfaceRuntime(input: {
             onClearTextRead: options.clearTextReadInGame,
             onGetSavedVariable: options.getSavedVariableInGame,
             onSetSavedVariable: options.setSavedVariableInGame,
+            onClearPages: options.clearPages,
+            onClearGameOverlay: options.clearGameOverlay,
+            onShowLayer: options.showLayer,
+            onHideLayer: options.hideLayer,
+            onHideLayerGroup: options.hideLayerGroup,
+            onWaitLayer: options.waitLayer,
+            onCloseOwnLayer: options.closeOwnLayer,
+            onIsLayerMounted: options.isLayerMounted,
+            onCaptureRun: options.captureRun,
+            onReadSaveGame: options.readSaveGame,
+            onIsTextRead: options.hasReadTextInGame,
+            onIsSceneVisited: options.isSceneVisitedInGame,
+            onIsOptionPicked: options.isOptionPickedInGame,
+            onClearVisited: options.clearVisitedInGame,
+            onIsEndingReached: options.isEndingReachedInGame,
+            onIsDlcInstalled: options.isDlcInstalledInGame,
+            onListEndings: options.listEndingsInGame,
+            onClearEndingState: options.clearEndingStateInGame,
+            onClearEndings: options.clearEndingsInGame,
+            onNetworkFetch: options.networkFetch,
+            onMovePointer: options.movePointer,
+            onOpenExternal: options.openExternal,
+            onStorageDurability: options.storageDurability,
+            onPlayVoice: options.playVoiceUnit,
+            onPlayChoiceVoice: options.playChoiceVoiceUnit,
             onSelectChoice: options.selectChoiceInGame,
             onIsInGame: options.isInGame,
             onIsGameOverlay: () => true,
