@@ -4,6 +4,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
 import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
+import { fileExtensionFromBytes, MEDIA_SNIFF_PREFIX_BYTES } from "@shared/utils/mediaSniff";
 import { fetchRemoteAsset } from "../../remoteAssetFetcher";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
@@ -64,6 +65,40 @@ function resolveExportTarget(exportDir: string, relativePath: string): string | 
     const root = path.resolve(exportDir);
     const withSeparator = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
     return target.startsWith(withSeparator) ? target : null;
+}
+
+/**
+ * The name to write `source` under, given the name the library holds for it.
+ *
+ * An asset's bytes live at an id-sharded path with no extension, and the record's `ext` is where the
+ * one it came in with is kept - except that the field is optional and a shipped template's records
+ * do not carry it, so the name arriving here can be a bare `classroom`. A file written under that
+ * name is one the author's system cannot open, which is the whole point of exporting it.
+ *
+ * So when the name has no extension, the bytes are asked: the same sniffer the runtime serves a
+ * protected pack with. A format it does not recognise leaves the name alone - a wrong suffix tells
+ * the OS something untrue, which is worse than none.
+ *
+ * Directories are left alone: a model bundle is a folder, and folders have no extension.
+ */
+async function nameWithExtension(source: string, name: string, isDirectory: boolean): Promise<string> {
+    if (isDirectory || path.extname(name) !== "") {
+        return name;
+    }
+    let handle: fs.FileHandle | undefined;
+    try {
+        handle = await fs.open(source, "r");
+        const head = Buffer.alloc(MEDIA_SNIFF_PREFIX_BYTES);
+        const { bytesRead } = await handle.read(head, 0, MEDIA_SNIFF_PREFIX_BYTES, 0);
+        const extension = fileExtensionFromBytes(head.subarray(0, bytesRead));
+        return extension ? `${name}.${extension}` : name;
+    } catch {
+        // The copy itself is about to fail on the same file and will say so with its own path in
+        // hand; naming is not the place to report that.
+        return name;
+    } finally {
+        await handle?.close();
+    }
 }
 
 /** A free path next to `target`, suffixing the stem rather than overwriting what is already there. */
@@ -150,7 +185,10 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                         throw new Error("This file is outside the project and was not exported.");
                     }
 
-                    const target = resolveExportTarget(exportDir, relativePath);
+                    const target = resolveExportTarget(
+                        exportDir,
+                        await nameWithExtension(source, relativePath, entry.isDirectory === true),
+                    );
                     if (!target) {
                         throw new Error("That name does not point anywhere inside the chosen folder.");
                     }
@@ -212,7 +250,11 @@ export class AssetExportToFileHandler extends IPCHandler<IPCEventType.assetExpor
                 return this.failed("This file is outside the project and was not exported.");
             }
 
-            const fileName = sanitizeExportSegment(typeof entry.fileName === "string" ? entry.fileName : "");
+            const fileName = await nameWithExtension(
+                source,
+                sanitizeExportSegment(typeof entry.fileName === "string" ? entry.fileName : ""),
+                false,
+            );
             const extension = path.extname(fileName).replace(/^\./, "");
 
             const { t } = dialogTranslator(window);

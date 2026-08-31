@@ -81,6 +81,17 @@ afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
 });
 
+/** A shard holding a real PNG header, which is what the export has to read a name out of. */
+async function pngShard(id: string): Promise<string> {
+    const target = path.join(project, "assets", "content", id);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.alloc(64),
+    ]));
+    return target;
+}
+
 async function shard(id: string, contents: string): Promise<string> {
     const target = path.join(project, "assets", "content", id);
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -106,6 +117,39 @@ describe("AssetExportToFolderHandler", () => {
         await expect(fs.readFile(path.join(exportDir, "room.png"), "utf8")).resolves.toBe("room-bytes");
         await expect(fs.readFile(path.join(exportDir, "backdrops", "night", "alley.png"), "utf8"))
             .resolves.toBe("alley-bytes");
+    });
+
+    it("names a file from its bytes when the library holds no extension", async () => {
+        // An asset record's `ext` is optional, and a shipped template's records do not carry it, so
+        // the name arriving here can be a bare `classroom` - which would land as a file the author's
+        // system cannot open.
+        const result = await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: await pngShard("a1"), relativePath: "backdrops/classroom" }],
+        });
+
+        expect(result).toMatchObject({ success: true, data: { exportedCount: 1 } });
+        await expect(fs.access(path.join(exportDir, "backdrops", "classroom.png"))).resolves.toBeUndefined();
+    });
+
+    it("leaves a name that already carries an extension alone", async () => {
+        await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: await pngShard("a1"), relativePath: "room.png" }],
+        });
+
+        await expect(fs.access(path.join(exportDir, "room.png"))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(exportDir, "room.png.png"))).rejects.toThrow();
+    });
+
+    it("leaves a bundle unnamed: a folder has no extension", async () => {
+        const bundle = path.join(project, "assets", "content", "m1");
+        await fs.mkdir(bundle, { recursive: true });
+        await fs.writeFile(path.join(bundle, "model.json"), "{}", "utf8");
+
+        await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: bundle, relativePath: "hero", isDirectory: true }],
+        });
+
+        await expect(fs.access(path.join(exportDir, "hero", "model.json"))).resolves.toBeUndefined();
     });
 
     it("opens the security scope without granting the renderer the chosen folder", async () => {
@@ -238,6 +282,19 @@ describe("AssetExportToFileHandler", () => {
         });
 
         expect(showSaveDialog.mock.calls[0][1]).toMatchObject({ defaultPath: "room.png" });
+    });
+
+    it("fills the dialog with a name the bytes can be saved under", async () => {
+        // The name has to be right BEFORE the dialog opens: it fills the field and picks the filter,
+        // and an author who accepts what is offered must not end up with an extensionless file.
+        await handler.handle(makeWindow(), {
+            entry: { sourcePath: await pngShard("a1"), fileName: "classroom" },
+        });
+
+        expect(showSaveDialog.mock.calls[0][1]).toMatchObject({
+            defaultPath: "classroom.png",
+            filters: [{ name: "PNG", extensions: ["png"] }, { name: "All files", extensions: ["*"] }],
+        });
     });
 
     it("overwrites what the dialog already asked about", async () => {
