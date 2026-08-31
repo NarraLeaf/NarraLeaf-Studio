@@ -197,7 +197,7 @@ describe("patched runtime resources", () => {
             },
             marker: "base",
             bundle: {
-                storyHash: "base",
+                storyHashes: { "story-1": "base" },
                 storyLibrary: {
                     documents: {
                         "story-1": { id: "story-1", scenes: { "sc-1": { id: "sc-1", text: "one" }, "sc-2": { id: "sc-2", text: "two" } } },
@@ -428,8 +428,10 @@ describe("patched runtime resources", () => {
             expect(scenesOf(composed)["sc-3"].text).toBe("new scene");
             expect(Object.keys(scenesOf(composed)).sort()).toEqual(["sc-1", "sc-2", "sc-3"]);
             // The stories in hand are not the stories either patch was built from, so the
-            // fingerprint saves are matched against has to be taken again.
-            expect((composed.bundle as { storyHash: string }).storyHash).not.toBe("base");
+            // fingerprints saves are matched against have to be taken again - per story, which is
+            // how a patch to one route leaves the saves of players on another alone.
+            expect((composed.bundle as { storyHashes: Record<string, string> }).storyHashes["story-1"])
+                .not.toBe("base");
         } finally {
             await resources.dispose();
         }
