@@ -26,6 +26,7 @@ import type { VariableRegistryService } from "../variables/VariableRegistryServi
 import type { AudioTrackService } from "../audio/AudioTrackService";
 import type { AppTagService } from "../appTag/AppTagService";
 import type { DictionaryService } from "../dictionary/DictionaryService";
+import type { TransformPresetService } from "../transformPreset/TransformPresetService";
 import { EventEmitter } from "../ui/EventEmitter";
 
 /**
@@ -183,6 +184,16 @@ const RELOAD_PARTICIPANTS: readonly ReloadParticipant[] = [
         id: "voice",
         labelKey: "workspace.shell.save.stores.voice",
         reload: ctx => ctx.services.get<VoiceService>(Services.Voice).reloadFromDisk(),
+    },
+    {
+        id: "transformPresets",
+        labelKey: "workspace.shell.save.stores.transformPresets",
+        // Same shape as the palette and the word list: `load()` clears the corrupt latch at its
+        // start, so a preset list that is unreadable at reload time lands in the same "not loaded,
+        // refuses to save" state as at project open rather than throwing through the reload.
+        reload: async ctx => {
+            await ctx.services.get<TransformPresetService>(Services.TransformPreset).load();
+        },
     },
     {
         id: "dictionary",

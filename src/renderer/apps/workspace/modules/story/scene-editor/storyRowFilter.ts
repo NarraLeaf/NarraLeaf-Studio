@@ -103,6 +103,9 @@ const STORY_ROW_FACET_BY_BADGE: Record<StoryBlockBadgeId, StoryRowFacetId> = {
     goto: "flow",
     break: "flow",
     cut: "flow",
+    // Under scene rather than flow, beside `jump`: both are rows that leave the scene for
+    // somewhere else. Where a jump goes to another scene, this one goes to a page.
+    quit: "scene",
     ending: "flow",
     variable: "data",
     declaration: "data",

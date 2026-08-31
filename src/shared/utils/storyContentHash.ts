@@ -71,21 +71,25 @@ function fnv1a64(input: string): string {
 }
 
 /**
- * The fingerprint of one build's story content.
+ * The fingerprint of each story this build ships, one per story.
  *
- * Takes the story documents as this build ships them - after any variant fold and scene drop - so
- * two editions of a title that ship different chapters hash differently, which is what their saves
- * have to reflect. Nothing else in the bundle contributes: an author editing a page, a colour or a
- * translation has not moved anything a save points into, and invalidating saves for that would
- * make the setting useless in practice.
+ * Per story rather than one number for the library, because a save belongs to one story and the
+ * question it has to answer is whether *that* story changed. A single fingerprint answered a
+ * different question - did anything anywhere change - so patching the third route retired the saves
+ * of players on the first, and a project that keeps its routes as separate stories got the worst of
+ * that exactly in proportion to how much it used them.
+ *
+ * Each document is hashed as this build ships it - after any variant fold and scene drop - so two
+ * editions of a title that ship different content hash differently. Nothing else in the bundle
+ * contributes: an author editing a page, a colour or a translation has not moved anything a save
+ * points into, and invalidating saves for that would make the setting useless in practice.
  */
-export function computeStoryContentHash(documents: Record<string, unknown> | null | undefined): string {
-    if (!documents) {
-        return "";
+export function computeStoryContentHashes(
+    documents: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+    const hashes: Record<string, string> = {};
+    for (const id of Object.keys(documents ?? {}).sort()) {
+        hashes[id] = fnv1a64(canonicalize(documents![id]));
     }
-    const ids = Object.keys(documents).sort();
-    if (ids.length === 0) {
-        return "";
-    }
-    return fnv1a64(canonicalize(Object.fromEntries(ids.map(id => [id, documents[id]]))));
+    return hashes;
 }

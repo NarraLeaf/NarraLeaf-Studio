@@ -223,6 +223,20 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "editor.storyRowHighlight": "none" | "script" | "command";
     /**
+     * How tall, in CSS pixels, the story inspector draws the preview of a character's appearance.
+     *
+     * Remembered state rather than a settings row: it is set by looking at the picture and deciding
+     * it is too small, which is a thing to do in the inspector and nowhere else. Global rather than
+     * per-project because it describes the screen the author works on - the same rail is the same
+     * width whichever project is open.
+     *
+     * Deliberately absent from GLOBAL_STATE_DEFAULTS (like the `ui.background*` keys): a stored
+     * height is snapped to a rung of the ladder by `resolveAppearancePreviewHeight`, which
+     * necessarily carries the fallback, and repeating the number here would be a second source of
+     * truth that can only drift.
+     */
+    "editor.appearancePreviewHeight": number;
+    /**
      * Which language the story script is spellchecked in: `"project"` follows the project's source
      * language, `"off"` checks nothing, anything else is a Chromium dictionary name (`"en-GB"`).
      *

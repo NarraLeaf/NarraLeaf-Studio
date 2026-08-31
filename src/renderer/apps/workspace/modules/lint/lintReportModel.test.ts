@@ -13,6 +13,7 @@ import {
     lintRuleDescriptionKey,
     lintRuleTitleKey,
     lintSeverityLabelKey,
+    unfoldGroupsWithHits,
     type LintGroupLabels,
 } from "./lintReportModel";
 
@@ -284,5 +285,34 @@ describe("freeze exemption", () => {
         // Ruling R3: a read-only sweep is exactly what an author wants on a frozen revision.
         expect(isFreezeExemptCommand(LINT_PROJECT_COMMAND_ID)).toBe(true);
         expect(isFreezeExemptCommand("some-plugin:lint:project")).toBe(false);
+    });
+});
+
+describe("unfoldGroupsWithHits", () => {
+    const groups = groupLintEntries(
+        [
+            entry("story/empty-scene", "warning", storyLocation("a")),
+            entry("localization/missing", "error", storyLocation("b")),
+        ],
+        "rule",
+        labels,
+    );
+
+    it("opens a folded group that holds a hit", () => {
+        const folded = new Set(groups.map(group => group.key));
+
+        const opened = unfoldGroupsWithHits(groups, folded, item => item.ruleId === "localization/missing");
+
+        expect(opened.has("localization/missing")).toBe(false);
+        // Everything the query does not reach stays exactly as the reader left it: this is a view
+        // over their folds while a find runs, not a change to them.
+        expect(opened.has("story/empty-scene")).toBe(true);
+    });
+
+    it("hands back the same set when nothing opens, so the row list is not rebuilt", () => {
+        const folded: ReadonlySet<string> = new Set(groups.map(group => group.key));
+
+        expect(unfoldGroupsWithHits(groups, folded, () => false)).toBe(folded);
+        expect(unfoldGroupsWithHits(groups, new Set(), () => true)).not.toBe(folded);
     });
 });

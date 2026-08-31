@@ -161,6 +161,7 @@ function resolutionReason(issue: StoryCommandResolutionIssue, token: string): St
         case "unknownAudioTrack":
         case "unknownLabel":
         case "unknownAppTag":
+        case "unknownSurface":
         case "unknownVariable":
         case "duplicateVariable":
         case "reservedVariableName":

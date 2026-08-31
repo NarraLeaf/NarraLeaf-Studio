@@ -537,6 +537,8 @@ export const story = {
         appearance: "Appearance",
         default: "Default",
         preview: "Preview",
+        previewLarger: "Larger preview",
+        previewSmaller: "Smaller preview",
     },
     pause: {
         title: "Pause",
@@ -680,6 +682,7 @@ export const story = {
         lineText: "Text",
         labelName: "Label",
         endingName: "Ending",
+        quitPage: "Page",
         scene: "Scene",
         track: "Audio Track",
         appTag: "Build Variant",
@@ -974,6 +977,7 @@ export const story = {
             audioTrack: "Audio track",
             label: "Label in this scene",
             appTag: "Build variant",
+            surface: "Page",
             variable: "Variable",
             content: "New content, typed by the target",
             color: "Color",
@@ -1222,7 +1226,7 @@ export const story = {
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
-        face: { label: "Face", detail: "Change a character's expression" },
+        face: { label: "Appearance", detail: "Change which of a character's looks is showing" },
         motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
         param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },
@@ -1275,6 +1279,9 @@ export const story = {
         // the second one is the reason to write it rather than simply stopping: the ending is recorded,
         // which is what a gallery screen and a walkthrough test read.
         ending: { label: "Ending", detail: "End the story at this line and record which ending the player reached" },
+        // Named for what the player sees, not for the act: "Quit" alone reads as leaving the game.
+        // The detail carries the half the name cannot - the run ends without an ending being recorded.
+        quit: { label: "Quit to page", detail: "End this playthrough at this line and show a page. No ending is recorded" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
@@ -1330,6 +1337,7 @@ export const story = {
         break: "Break",
         cut: "Cut point",
         ending: "Ending",
+        quit: "Quit to page",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
@@ -1406,6 +1414,8 @@ export const story = {
         // list, is where a deleted variant is named as deleted.
         cutUnknown: "Cut point",
         ending: "Ending {name}",
+        quit: "Quit to {page}",
+        quitUnset: "Quit to page",
         jump: "Jump {scene}",
         note: "Note",
         invalid: "Invalid command",

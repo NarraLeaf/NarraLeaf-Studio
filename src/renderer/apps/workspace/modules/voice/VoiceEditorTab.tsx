@@ -20,6 +20,10 @@ import { Select, type SelectOption } from "@/lib/components/elements";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
+import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
+import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
@@ -55,7 +59,7 @@ const VOICE_ROW_HEIGHT_PX = 37;
 
 type TableRow = VoiceTableRow & { speaker: string; indexInScene: number };
 
-export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
+export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<VoiceEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const { t } = useTranslation();
     // The rows guard themselves (see `VoiceRows`); the cast name in the group header is the one
@@ -513,6 +517,66 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         getItemKey: index => flatItems[index]?.key ?? index,
     });
 
+    /**
+     * Everything a row shows, as one string for Mod+F.
+     *
+     * The clip name and the direction note are in here beside the line, because a director looking
+     * for a take is as likely to know its filename or what they wrote about it as the words in it.
+     */
+    const rowHaystack = useCallback((row: TableRow): string => {
+        const unit = voiceDoc?.units[row.unitId];
+        return [
+            row.speaker,
+            row.sourceText,
+            row.authoredText ?? "",
+            unit?.note ?? "",
+            resolveAsset(unit?.assetId)?.name ?? "",
+        ].join("\n");
+    }, [voiceDoc, resolveAsset]);
+
+    /**
+     * Mod+F over the table, stepping the hits and scrolling each one into view.
+     *
+     * The searched set is the list on screen, because that is the list the hits are navigated in;
+     * what the filter is holding back is reported as a count instead (see `TableFindOverlay`).
+     */
+    const findItemText = useCallback((index: number): string | null => {
+        const entry = flatItems[index];
+        return entry?.kind === "row" ? rowHaystack(entry.row) : null;
+    }, [flatItems, rowHaystack]);
+
+    const findUnfilteredTexts = useCallback(() => rows.map(rowHaystack), [rows, rowHaystack]);
+
+    const find = useTableFind({
+        itemCount: flatItems.length,
+        getItemText: findItemText,
+        getUnfilteredTexts: findUnfilteredTexts,
+    });
+
+    useKeybinding({
+        id: `voice-find-${tabId}`,
+        catalogId: "voice.find",
+        key: "mod+f",
+        // The cast name and the direction note are both fields, and both are where a director is
+        // when they reach for Find. It types nothing that could be lost.
+        allowInEditable: true,
+        when: whenEditorFocused(tabId),
+        handler: find.openFind,
+    });
+
+    /**
+     * A hit is an arrival even though nobody scrolled.
+     *
+     * Next can throw the cursor a hundred rows down the table, and a hit placed for reading is the
+     * difference between finding a line and finding a line whose surroundings have to be worked out.
+     */
+    const findActiveIndex = find.activeIndex;
+    useEffect(() => {
+        if (findActiveIndex !== null) {
+            virtualizer.scrollToIndex(findActiveIndex, { align: "center" });
+        }
+    }, [findActiveIndex, virtualizer]);
+
     const rowStrings = useMemo(() => ({
         assign: t("workspace.voice.table.assign"),
         replace: t("workspace.voice.table.replace"),
@@ -644,6 +708,10 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                     </div>
                 </div>
             </div>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+            {find.open ? (
+                <TableFindOverlay find={find} placeholder={t("workspace.voice.table.findPlaceholder")} />
+            ) : null}
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
                 {stories.length === 0 ? (
                     <EmptyMessage icon={<Mic className="h-5 w-5" />} text={t("workspace.voice.table.noStories")} />
@@ -667,7 +735,12 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                             key={item.key}
                             ref={virtualizer.measureElement}
                             data-index={item.index}
-                            className="absolute left-0 top-0 w-full"
+                            className={cn(
+                                "absolute left-0 top-0 w-full",
+                                // The row the find bar is on. Inset, because a ring drawn outside a
+                                // windowed item overlaps the one above it.
+                                find.activeIndex === item.index && "ring-1 ring-inset ring-primary/60",
+                            )}
                             style={{ transform: `translateY(${item.start}px)` }}
                         >
                         {group ? (
@@ -717,6 +790,8 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                     speaker={row.speaker}
                                     state={state}
                                     asset={asset}
+                                    matcher={find.matcher}
+                                    matchActive={find.activeIndex === item.index}
                                     duration={formatVoiceDuration(unit?.duration)}
                                     note={unit?.note ?? ""}
                                     onNoteChange={note => setNote(row.unitId, row.sourceText, note)}
@@ -746,6 +821,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                         })}
                     </div>
                 )}
+            </div>
             </div>
             <AssetSelector
                 visible={selector !== null}

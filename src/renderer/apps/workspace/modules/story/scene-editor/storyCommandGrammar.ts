@@ -161,6 +161,7 @@ export type StoryCommandParamType =
      * what the tests here hold.
      */
     | { kind: "appTag" }
+    | { kind: "surface" }
     | { kind: "variable" }
     /**
      * The subject of a generic verb (`/show poster`, `/hide Alice`, `/vol piano`): a character or a
@@ -459,6 +460,9 @@ export function allowsFreeValue(type: StoryCommandParamType): boolean {
         case "label":
         // A variant that is not in the project is not a variant anything could be built as, and the
         // release one is always there - so there is no name here that free text could stand for.
+        // A page that is not in the project is not a page anything can be shown, so there is no
+        // name here that free text could stand for either.
+        case "surface":
         case "appTag":
         case "characterForm":
         // Content is typed by its target: an image target's content is an asset that must resolve.

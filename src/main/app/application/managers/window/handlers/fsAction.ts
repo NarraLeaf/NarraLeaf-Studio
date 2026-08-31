@@ -1,6 +1,6 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import { showOpenDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Fs } from "@shared/utils/fs";
@@ -490,9 +490,10 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
         }
 
         try {
+            const { t } = dialogTranslator(window);
             const dialogOptions: Electron.OpenDialogOptions = {
-                title: "Select File",
-                buttonLabel: "Select",
+                title: t("dialogs.file.title.selectFile"),
+                buttonLabel: t("dialogs.file.button.select"),
                 properties: multiple ? ["openFile", "multiSelections"] : ["openFile"],
                 securityScopedBookmarks: true,
             };
@@ -501,11 +502,11 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
             if (filters && filters.length > 0) {
                 dialogOptions.filters = [
                     {
-                        name: "Filtered Files",
+                        name: t("dialogs.file.filter.supported"),
                         extensions: filters
                     },
                     {
-                        name: "All Files",
+                        name: t("dialogs.file.filter.all"),
                         extensions: ["*"]
                     }
                 ];
@@ -551,9 +552,10 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
         }
 
         try {
+            const { t } = dialogTranslator(window);
             const dialogOptions: Electron.OpenDialogOptions = {
-                title: "Select Directory",
-                buttonLabel: "Select",
+                title: t("dialogs.file.title.selectFolder"),
+                buttonLabel: t("dialogs.file.button.select"),
                 properties: multiple ? ["openDirectory", "multiSelections", "createDirectory"] : ["openDirectory", "createDirectory"],
                 securityScopedBookmarks: true,
             };

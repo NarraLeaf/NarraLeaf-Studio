@@ -41,6 +41,7 @@ import { DlcService } from "./dlc/DlcService";
 import { AssetSetService } from "./assets/AssetSetService";
 import { BrandService } from "./brand/BrandService";
 import { DictionaryService } from "./dictionary/DictionaryService";
+import { TransformPresetService } from "./transformPreset/TransformPresetService";
 import { SaveSchemaService } from "./saves/SaveSchemaService";
 import { SaveStatusService } from "./autosave/SaveStatusService";
 import { VersionControlService } from "./core/VersionControlService";
@@ -98,6 +99,7 @@ export class ServiceRegistry {
         [Services.AssetSets]: AssetSetService.getInstance(),
         [Services.Brand]: BrandService.getInstance(),
         [Services.Dictionary]: DictionaryService.getInstance(),
+        [Services.TransformPreset]: TransformPresetService.getInstance(),
         [Services.SaveSchema]: SaveSchemaService.getInstance(),
         [Services.SaveStatus]: SaveStatusService.getInstance(),
         [Services.VersionControl]: VersionControlService.getInstance(),

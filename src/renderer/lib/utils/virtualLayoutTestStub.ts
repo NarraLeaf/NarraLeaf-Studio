@@ -38,6 +38,9 @@ export function installVirtualLayoutStub({
     const originalHeight = Object.getOwnPropertyDescriptor(proto, "offsetHeight");
     const originalWidth = Object.getOwnPropertyDescriptor(proto, "offsetWidth");
     const originalScrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop");
+    const originalScrollTo = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTo");
+    const originalClientHeight = Object.getOwnPropertyDescriptor(Element.prototype, "clientHeight");
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight");
 
     // jsdom's `scrollTop` is a getter that always answers 0, because scrolling needs a layout box.
     // A windowed list reads it on every scroll event, so a test that wants to scroll has to be able
@@ -50,6 +53,39 @@ export function installVirtualLayoutStub({
         },
         set(this: Element, value: number) {
             offsets.set(this, value);
+        },
+    });
+
+    // jsdom's `scrollTo` is a no-op for the same reason, and a virtualiser asked to reveal an item
+    // scrolls through exactly that call - so without this, "scroll to the hit" is a test that can
+    // only ever assert that nothing moved. This does what a scroller does: move, then say so.
+    Object.defineProperty(Element.prototype, "scrollTo", {
+        configurable: true,
+        writable: true,
+        value(this: Element, options?: number | ScrollToOptions) {
+            const top = typeof options === "number" ? options : options?.top;
+            if (top === undefined) {
+                return;
+            }
+            offsets.set(this, top);
+            this.dispatchEvent(new Event("scroll"));
+        },
+    });
+
+    // How far a scroller may be scrolled, which is the one number a virtualiser clamps a
+    // `scrollToIndex` against - a jsdom `scrollHeight` of 0 clamps every reveal to the top, so a
+    // list that scrolls perfectly well in the app looks inert here. The windowed list states its
+    // own content height on the element it absolutely positions items inside, so read that.
+    Object.defineProperty(Element.prototype, "clientHeight", {
+        configurable: true,
+        get: () => viewport,
+    });
+    Object.defineProperty(Element.prototype, "scrollHeight", {
+        configurable: true,
+        get(this: Element) {
+            const content = this.firstElementChild as HTMLElement | null;
+            const declared = Number.parseFloat(content?.style.height ?? "");
+            return Number.isFinite(declared) ? Math.max(declared, viewport) : viewport;
         },
     });
 
@@ -86,6 +122,15 @@ export function installVirtualLayoutStub({
         }
         if (originalScrollTop) {
             Object.defineProperty(Element.prototype, "scrollTop", originalScrollTop);
+        }
+        if (originalScrollTo) {
+            Object.defineProperty(Element.prototype, "scrollTo", originalScrollTo);
+        }
+        if (originalClientHeight) {
+            Object.defineProperty(Element.prototype, "clientHeight", originalClientHeight);
+        }
+        if (originalScrollHeight) {
+            Object.defineProperty(Element.prototype, "scrollHeight", originalScrollHeight);
         }
         if (originalHeight) {
             Object.defineProperty(proto, "offsetHeight", originalHeight);

@@ -19,6 +19,7 @@ export const WorkspaceMenuAction = {
     NewWorkspace: "narraleaf-studio:file-new",
     OpenWorkspace: "narraleaf-studio:file-open",
     ExportProject: "narraleaf-studio:file-export-project",
+    RevealProjectFolder: "narraleaf-studio:file-reveal-project",
     CloseWorkspace: "narraleaf-studio:file-close-workspace",
     ReturnToLauncher: "narraleaf-studio:file-return-to-launcher",
     OpenWelcome: "narraleaf-studio:open-welcome",

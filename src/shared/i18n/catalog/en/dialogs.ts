@@ -80,4 +80,54 @@ export const dialogs = {
         media: "Media",
         data: "Data",
     },
+    /**
+     * The system file and folder pickers, opened by the main process.
+     *
+     * Every one of them used to carry a hardcoded English title into a translated interface. The
+     * title says what is being chosen, the button says what happens when it is - "Select" alone
+     * leaves both questions to the folder tree behind the dialog.
+     */
+    file: {
+        button: {
+            select: "Select",
+            open: "Open",
+            save: "Save",
+            export: "Export",
+            exportHere: "Export here",
+            import: "Import",
+            install: "Install",
+        },
+        title: {
+            selectFile: "Select a file",
+            selectFolder: "Select a folder",
+            saveFile: "Save the file",
+            selectIcon: "Select an icon",
+            chooseBackgroundImage: "Select a background image",
+            exportLogs: "Save the Studio logs",
+            exportSettings: "Save the Studio settings",
+            importSettings: "Select a settings file",
+            exportAssets: "Select a folder for the exported files",
+            exportAsset: "Save the file",
+            selectProjectFolder: "Select the project folder",
+            selectProjectLocation: "Select where the project is created",
+            exportProjectPackage: "Select a folder for the project package",
+            selectProjectPackage: "Select a project package",
+            importPsd: "Select a PSD file",
+            installPlugin: "Select a plugin package",
+            selectBuildOutput: "Select the build output folder",
+            savePatch: "Save the patch",
+            selectPatchBaseline: "Select the build this patch updates",
+        },
+        filter: {
+            all: "All files",
+            supported: "Supported files",
+            images: "Images",
+            log: "Log",
+            text: "Text",
+            json: "JSON",
+            patch: "Patch",
+            projectPackage: "NarraLeaf Studio project package",
+            photoshop: "Photoshop document",
+        },
+    },
 } as const;

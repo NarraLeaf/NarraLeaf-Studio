@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mediaTypeOf, sniffMediaType } from "./mediaSniff";
+import { fileExtensionFromBytes, mediaTypeOf, sniffMediaType } from "./mediaSniff";
 
 /** A header with `signature` at the front, padded so length checks behave like a real file. */
 function file(signature: number[] | string, ...rest: (number[] | string)[]): Buffer {
@@ -64,5 +64,30 @@ describe("sniffMediaType", () => {
     it("falls back to octet-stream only where a caller must name something", () => {
         expect(mediaTypeOf(Buffer.from([0x4d, 0x4f, 0x43, 0x33]))).toBe("application/octet-stream");
         expect(mediaTypeOf(file("GIF87a"))).toBe("image/gif");
+    });
+});
+
+describe("fileExtensionFromBytes", () => {
+    it("names a file the way a person would, not the way the standard would", () => {
+        // `mime-types` answers `oga`, `mpga` and `adts` for these three. Nobody calls a file that.
+        expect(fileExtensionFromBytes(file("OggS"))).toBe("ogg");
+        expect(fileExtensionFromBytes(file("ID3"))).toBe("mp3");
+        expect(fileExtensionFromBytes(file([0xff, 0xf1]))).toBe("aac");
+    });
+
+    it("covers the formats a library holds", () => {
+        expect(fileExtensionFromBytes(file([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe("png");
+        expect(fileExtensionFromBytes(file([0xff, 0xd8, 0xff, 0xe0]))).toBe("jpg");
+        expect(fileExtensionFromBytes(file("RIFF", [0, 0, 0, 0], "WEBP"))).toBe("webp");
+        expect(fileExtensionFromBytes(file("RIFF", [0, 0, 0, 0], "WAVE"))).toBe("wav");
+        expect(fileExtensionFromBytes(file([0x00, 0x00, 0x00, 0x18], "ftypisom"))).toBe("mp4");
+        expect(fileExtensionFromBytes(file("wOF2"))).toBe("woff2");
+    });
+
+    it("names nothing for bytes it does not recognise", () => {
+        // A model bundle's `.moc3`, a plugin's payload: a wrong suffix would tell the OS something
+        // untrue about the file, which is worse than handing over a file with no suffix at all.
+        expect(fileExtensionFromBytes(Buffer.from([0x4d, 0x4f, 0x43, 0x33]))).toBeNull();
+        expect(fileExtensionFromBytes(Buffer.alloc(0))).toBeNull();
     });
 });

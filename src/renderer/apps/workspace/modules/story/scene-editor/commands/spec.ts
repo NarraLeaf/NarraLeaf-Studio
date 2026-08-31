@@ -233,6 +233,16 @@ export function asAppTagId(value: StoryCommandValue | undefined): string | undef
     return value?.kind === "appTag" ? value.appTagId : undefined;
 }
 
+/**
+ * A resolved page's id, or undefined while the slot is unfilled.
+ *
+ * The id and never the name, for the reason {@link asAppTagId} gives: renaming a page must not reach
+ * the rows that name it.
+ */
+export function asSurfaceId(value: StoryCommandValue | undefined): string | undefined {
+    return value?.kind === "surface" ? value.surfaceId : undefined;
+}
+
 /** The resolved target of a generic verb (`/show poster`), or undefined while unresolved. */
 export function asTarget(value: StoryCommandValue | undefined): Extract<StoryCommandValue, { kind: "target" }>["target"] | undefined {
     return value?.kind === "target" ? value.target : undefined;

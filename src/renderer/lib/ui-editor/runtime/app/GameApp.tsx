@@ -15,7 +15,9 @@ import {
     readWrappedStorableValue,
 } from "@shared/utils/storableValue";
 import {
+    buildSaveBuildStamp,
     buildSaveCompatibilityStamp,
+    type SaveCompatibilityStamp,
     normalizeSaveCompatibilityConfiguration,
     planSaveResume,
     readSaveCompatibilityStamp,
@@ -99,9 +101,15 @@ import {
     getOrCreateDomEventPropagationControl,
 } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
+    compiledStoryCacheKey,
+    reuseCompiledStory,
+    type CompiledStoryCacheEntry,
+} from "@/lib/ui-editor/runtime/app/compiledStoryCache";
+import {
     compileStudioStoryToNlr,
     createEmptyCompiledNlrStory,
     type CompiledNlrStory,
+    type NlrStoryCompileDiagnostic,
     type StoryEndingReach,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
@@ -159,6 +167,7 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { translate } from "@/lib/i18n";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import {
     applyLocaleChange,
@@ -589,6 +598,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameStageVisibleRef.current = visible;
         setGameStageVisibleState(visible);
     }, []);
+    /**
+     * The last frame of a run that has ended, kept on screen until the page taking over is painted.
+     *
+     * Entering a game already waits for its destination: `enterMountedGame` holds until the first
+     * scene is on a painted frame and only then hides the pages. Leaving one did the opposite - the
+     * stage went first and the page then played its enter animation over an empty screen - so every
+     * quit, and every `/ending` and `/quit` row, flashed the background between the two.
+     *
+     * Deliberately separate from {@link gameStageVisible} rather than a delay on it: that flag is
+     * what `Is In Game`, the advance hold and stage interactivity all read, and the run really is
+     * over the moment this begins. So the flag drops immediately and this keeps only the pixels.
+     */
+    const [stageRetainedForQuit, setStageRetainedForQuit] = useState(false);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
@@ -1382,6 +1404,86 @@ export function GameApp(props: GameAppProps): ReactNode {
         return readVisited(STORY_VISITED_OPTIONS_KEY, optionId);
     }, [readVisited]);
 
+    /**
+     * One saved variable of the running playthrough, for a Game UI screen.
+     *
+     * Read off the live `Storable` for the same reason the visited record is: the values change
+     * while the story runs and a mirror would need a write beat on every `/set`. The id is resolved
+     * through the CURRENT compile's own table rather than through the bundle's registry, because
+     * that table is the merge the story itself writes against - registry entries plus whatever
+     * `/save` rows a legacy document still carries - so a screen and a row always mean the same
+     * variable by the same id.
+     *
+     * `found` distinguishes the three ways this can come back empty (no game, an id this story does
+     * not declare, a namespace the compile never built) from a variable that genuinely holds null.
+     * A variable that exists but has never been written reads as `found` with its declared default,
+     * which is what the story would see too.
+     */
+    const getSavedVariableInGame = useCallback((variableId: string): { value: unknown; found: boolean } => {
+        const id = String(variableId ?? "").trim();
+        const compiled = nlrCompiledRef.current;
+        const liveGame = nlrLiveGameRef.current;
+        const definition = id ? compiled?.savedVariables?.[id] : undefined;
+        if (!liveGame || !compiled?.savedNamespaceName || !definition) {
+            return { value: null, found: false };
+        }
+        try {
+            const storable = liveGame.getStorable();
+            if (!storable.hasNamespace(compiled.savedNamespaceName)) {
+                return { value: null, found: false };
+            }
+            const namespace = storable.getNamespace(compiled.savedNamespaceName);
+            // `has` rather than a nullish check on the read: a variable holding null, false or 0 is
+            // set, and falling back to the default for those would report the opposite of the truth.
+            const stored = namespace.has(definition.storageKey)
+                ? namespace.get(definition.storageKey)
+                : definition.defaultValue ?? null;
+            return { value: stored ?? null, found: true };
+        } catch {
+            return { value: null, found: false };
+        }
+    }, []);
+
+    /**
+     * Write one saved variable of the running playthrough, for a Game UI screen.
+     *
+     * The mirror of {@link getSavedVariableInGame}, resolved through the same table for the same
+     * reason - the screen and the row have to mean one variable by one id - and refusing where that
+     * one reports. A read has to answer while a screen lays out; a write is a button doing what the
+     * player asked, so every way it can fail is said out loud rather than dropped:
+     *
+     * - no playthrough to write into,
+     * - an id this build's story does not declare (a variable deleted since the screen was drawn),
+     * - a value that cannot go into a save file.
+     *
+     * The value goes straight into the live `Storable`, which is what the save serializes, so it is
+     * in the next save and gone on the next `newGame()`. Nothing is told about it: the story does
+     * not re-run on the strength of it, and the undo stack does not know it happened.
+     */
+    const setSavedVariableInGame = useCallback((variableId: string, value: unknown): void => {
+        const id = String(variableId ?? "").trim();
+        const compiled = nlrCompiledRef.current;
+        const liveGame = nlrLiveGameRef.current;
+        if (!liveGame || !compiled?.savedNamespaceName) {
+            throw new Error("Set Saved Var: game runtime is not available");
+        }
+        const definition = id ? compiled.savedVariables?.[id] : undefined;
+        if (!definition) {
+            throw new Error("Set Saved Var: this story declares no such saved variable");
+        }
+        // The same guard the story's own writes take (`assertSerializable`). A function or a symbol
+        // in a namespace does not fail here - it fails when the save is written, on a screen the
+        // player is looking at, with nothing to say which write put it there.
+        if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+            throw new Error("Set Saved Var: saved variables must hold serializable values");
+        }
+        const storable = liveGame.getStorable();
+        if (!storable.hasNamespace(compiled.savedNamespaceName)) {
+            throw new Error("Set Saved Var: game runtime is not available");
+        }
+        storable.getNamespace(compiled.savedNamespaceName).set(definition.storageKey, value);
+    }, []);
+
     const clearVisitedInGame = useCallback((): void => {
         const liveGame = nlrLiveGameRef.current;
         const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
@@ -1736,6 +1838,22 @@ export function GameApp(props: GameAppProps): ReactNode {
         [],
     );
 
+    /**
+     * The text language in force: the player's stored choice, else the language the story was written in.
+     *
+     * One definition, read by the compile's own `getLocale` and by the key that decides whether a
+     * compiled story may be reused - a scene's background resolves through this, so two languages
+     * are two different compiles.
+     */
+    const readTextLocale = useCallback((): string => {
+        const localization = bundle.localization;
+        if (!localization || !core) {
+            return "";
+        }
+        const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
+        return typeof stored === "string" && stored ? stored : localization.sourceLocale;
+    }, [bundle.localization, core]);
+
     /** The dub language in force: the player's stored choice when the game ships that language, else the first. */
     const readVoiceLocale = useCallback((): string => {
         const voice = bundle.voice;
@@ -2045,6 +2163,19 @@ export function GameApp(props: GameAppProps): ReactNode {
             throw new Error("Quit Game: surfaceId is required");
         }
         rejectPendingGameStarts(new NlrSessionSupersededError("Quit Game"));
+        // The run ends here, and the screen changes hands in two steps.
+        //
+        // First everything that answers "is a game being played" says no: the stage stops taking
+        // clicks, `Is In Game` reports false, and the advance hold lets go of a line nobody will
+        // read. Only the pixels are kept (`stageRetainedForQuit`), so the page opening over them
+        // has something to arrive on instead of the background.
+        //
+        // The session itself, and every piece of state the run left behind, is torn down *after*
+        // the page is up. Doing it before would empty the dialogue box and drop the on-stage
+        // widgets while the frame they belong to is still on screen - a worse artefact than the
+        // blank one this replaces.
+        setGameStageVisible(false);
+        setStageRetainedForQuit(true);
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
         gameEnteredRef.current = false;
@@ -2057,7 +2188,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
-        clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogClickTargets.clear();
@@ -2065,22 +2195,32 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         stageWarmupRef.current = null;
-        choiceMenus.clear();
-        clearCurrentDialogState();
-        setGameStageVisible(false);
-        await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
-        // Everything under the page just opened belonged to the run that has ended: the screens the
-        // player had open over the stage, and the title screen the playthrough started from. They
-        // were hidden while the game held the screen and `clearGameHiddenStudioPages` below is
-        // about to un-hide them, so leaving them there means Back from a fresh title screen walks
-        // into a playthrough that is gone - and each quit stacks another set.
-        navigation.collapseToActive();
-        // A layer belongs to the surface that showed it, and every surface that could still own one
-        // has just been dropped. A confirm left standing over the title screen would be asking
-        // about a game that no longer exists.
-        layerStack.clear();
-        setNlrSession(null);
-        clearGameHiddenStudioPages();
+        try {
+            await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
+        } finally {
+            // Held back until the page is up because each of these three changes what the retained
+            // frame looks like: the dialogue box would empty, the menu would vanish and the speaker
+            // would lose their portrait, all while that frame is still the thing on screen.
+            clearCharacterAvatarAssets();
+            choiceMenus.clear();
+            clearCurrentDialogState();
+            // Everything under the page just opened belonged to the run that has ended: the screens
+            // the player had open over the stage, and the title screen the playthrough started
+            // from. They were hidden while the game held the screen and `clearGameHiddenStudioPages`
+            // below is about to un-hide them, so leaving them there means Back from a fresh title
+            // screen walks into a playthrough that is gone - and each quit stacks another set.
+            navigation.collapseToActive();
+            // A layer belongs to the surface that showed it, and every surface that could still own
+            // one has just been dropped. A confirm left standing over the title screen would be
+            // asking about a game that no longer exists.
+            layerStack.clear();
+            setNlrSession(null);
+            clearGameHiddenStudioPages();
+            // Last, and in the same commit as the unmount above: the frame is only worth keeping
+            // while something is still arriving over it. In `finally` because a page that failed to
+            // open must not leave a dead stage painted over whatever the player is looking at.
+            setStageRetainedForQuit(false);
+        }
     }, [
         clearCurrentDialogState,
         clearGameHiddenStudioPages,
@@ -2091,6 +2231,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         openSurface,
         playHead,
         rejectPendingGameStarts,
+        setGameStageVisible,
+        setNlrSession,
     ]);
 
     /**
@@ -2162,19 +2304,74 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
 
     /**
-     * What this build stamps into the saves it writes, and compares the saves it is asked to load
-     * against. One value for both halves: a stamp written by one rule and read by another would
-     * make a build disagree with its own saves.
+     * A `/quit` row ran: the playthrough is over and this page takes the screen.
      *
-     * Null when the bundle carries no story hash - a bundle assembled before hashes existed - which
+     * Routed through `quitGame` for the reason the ending page is, and it is the whole of what this
+     * row does. Nothing is recorded: a quit is not an ending, no plugin is told one was reached, and
+     * the endings record is left exactly as the run found it - which is the entire difference
+     * between the two rows and the reason this one exists.
+     *
+     * A page that will not open is reported rather than thrown, like the ending page next door: the
+     * run is over either way, and taking the window down with it helps nobody.
+     */
+    /**
+     * The two row hooks a compiled story closes over, held at one identity for the app's whole life.
+     *
+     * A compiled story is kept and replayed (see `compileStoryRequest`), so the callbacks baked into
+     * its statements outlive the render that built them - and both of these are rebuilt whenever
+     * `quitGame` is, which is whenever the surface stack changes. Baking them directly would make an
+     * `/ending` row reached in the second playthrough call the first playthrough's teardown.
+     *
+     * So the compile is handed these two, and they read the current implementation at call time.
+     */
+    const endingReachedRef = useRef<(ending: StoryEndingReach) => void>(() => undefined);
+    const quitToPageRef = useRef<(surfaceId: string) => void>(() => undefined);
+    const stableEndingReached = useCallback((ending: StoryEndingReach) => endingReachedRef.current(ending), []);
+    const stableQuitToPage = useCallback((surfaceId: string) => quitToPageRef.current(surfaceId), []);
+
+    const handleQuitToPage = useCallback((surfaceId: string) => {
+        void quitGame(surfaceId).catch(error => {
+            host.log("error", `[${host.id}] the quit page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [host, quitGame]);
+
+    // The mirrors the compile's stable hooks read. Written on every render that rebuilds either
+    // callback, which is the point: a story compiled three playthroughs ago still reaches the
+    // teardown of the one that is running.
+    endingReachedRef.current = handleEndingReached;
+    quitToPageRef.current = handleQuitToPage;
+
+    /**
+     * What this build is, for comparing every save it is asked to list or load against.
+     *
+     * The whole hash table rather than one number, because the save side names one story and this
+     * side has to answer for all of them: a save screen lists slots from every route the player has
+     * been on, with no story mounted.
+     *
+     * Null when the bundle carries no hashes at all - one assembled before they existed - which
      * turns every comparison into "cannot be compared" and leaves loading exactly as it was.
      */
-    const saveStamp = useMemo(
-        () => (bundle.storyHash
-            ? buildSaveCompatibilityStamp({ storyHash: bundle.storyHash, gameVersion: bundle.gameVersion })
+    const saveBuild = useMemo(
+        () => (bundle.storyHashes && Object.keys(bundle.storyHashes).length > 0
+            ? buildSaveBuildStamp({ storyHashes: bundle.storyHashes, gameVersion: bundle.gameVersion })
             : null),
-        [bundle.gameVersion, bundle.storyHash],
+        [bundle.gameVersion, bundle.storyHashes],
     );
+    /**
+     * The stamp for a save taken right now, which is a fact about the story on the stage.
+     *
+     * A ref read rather than a memo: the mounted story changes without the bundle changing, and a
+     * stamp captured when the bundle last did would name whichever route the player started on for
+     * every save they take afterwards.
+     */
+    const currentSaveStamp = useCallback((): SaveCompatibilityStamp | null => {
+        const storyId = activeStoryRequestRef.current?.storyId ?? "";
+        const hash = storyId ? bundle.storyHashes?.[storyId] : undefined;
+        if (!hash) {
+            return null;
+        }
+        return buildSaveCompatibilityStamp({ storyId, storyHash: hash, gameVersion: bundle.gameVersion });
+    }, [bundle.gameVersion, bundle.storyHashes]);
     const saveCompatibilityConfig = useMemo(
         () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
         [bundle.saveCompatibility],
@@ -2208,20 +2405,47 @@ export function GameApp(props: GameAppProps): ReactNode {
             liveGame.serialize(),
             capture,
             metadata,
-            saveStamp ?? undefined,
+            currentSaveStamp() ?? undefined,
             playtime.getRunSeconds(),
         );
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
     }, [
+        currentSaveStamp,
         host.saveStore,
         playtime,
         pluginHost,
         reportSaveCaptureFailure,
         requireActiveLiveGame,
-        saveStamp,
     ]);
+
+    /**
+     * The running playthrough as bytes, for a slot that names it.
+     *
+     * Null rather than a throw when nothing is running: `Current Game` is the node that decides
+     * what an empty answer means, and it has a clearer sentence for the author than anything this
+     * could raise. Guarded on the game having been entered, not merely mounted - a warmed
+     * environment nobody has started has no playthrough to capture, and serializing one would hand
+     * back a game at row zero as though the player had been there.
+     */
+    const captureRun = useCallback((): unknown | null => {
+        const liveGame = nlrLiveGameRef.current;
+        if (!liveGame || !gameEnteredRef.current) {
+            return null;
+        }
+        try {
+            return liveGame.serialize();
+        } catch {
+            return null;
+        }
+    }, []);
+
+    /** The serialized game in a slot, for a launch that inherits from it. */
+    const readSaveGame = useCallback(async (id: string): Promise<unknown | null> => {
+        const record = await host.saveStore.read(id);
+        return record?.savedGame ?? null;
+    }, [host.saveStore]);
 
     /**
      * The scene a save's position names, as this build ships it.
@@ -2264,6 +2488,25 @@ export function GameApp(props: GameAppProps): ReactNode {
         const liveGame = requireActiveLiveGame("Load Save");
 
         /**
+         * The live game every step below talks to, read fresh rather than captured.
+         *
+         * `prepareStory` can replace the session mid-load - that is what putting the save's own
+         * story on the stage means - and a closure holding the game from before it would check its
+         * ids against a story nobody is running any more, then deserialize into it. The assertion
+         * above still runs once, because "there is no game runtime at all" is a caller mistake.
+         */
+        const activeLiveGame = (): LiveGame => nlrLiveGameRef.current ?? liveGame;
+
+        /**
+         * The story that was mounted when the load began, so a failed switch can put it back.
+         *
+         * Null when nothing had been launched yet, which is the ordinary state of a title screen:
+         * there is nothing to go back to and nothing that needs restoring.
+         */
+        const storyBeforeLoad = activeStoryRequestRef.current;
+        let switchedStory = false;
+
+        /**
          * The engine's page router, told to report the next time it has finished emptying itself -
          * registered BEFORE the load rather than after it.
          *
@@ -2290,7 +2533,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 storedPlaytimeSeconds = readSavePlaytimeSeconds(record?.metadata.playtimeSeconds);
                 return record;
             },
-            currentStamp: saveStamp,
+            build: saveBuild,
             compatibilityConfig: saveCompatibilityConfig,
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
@@ -2301,13 +2544,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // and refuse every save. Anything unexpected leaves the snapshot as the only
                 // protection instead.
                 resolveStoryMaps: () => {
-                    const construct = (liveGame as unknown as {
+                    const game = activeLiveGame();
+                    const construct = (game as unknown as {
                         constructMaps?: () => unknown;
                     }).constructMaps;
                     if (typeof construct !== "function") {
                         return null;
                     }
-                    const tables = construct.call(liveGame);
+                    const tables = construct.call(game);
                     if (!Array.isArray(tables) || tables.length < 2) {
                         return null;
                     }
@@ -2320,18 +2564,86 @@ export function GameApp(props: GameAppProps): ReactNode {
                         hasElement: elementId => elements.has(elementId),
                     };
                 },
-                readStoryHash: () => liveGame.story?.hash() ?? null,
-                snapshot: () => liveGame.serialize(),
+                readStoryHash: () => activeLiveGame().story?.hash() ?? null,
+                snapshot: () => activeLiveGame().serialize(),
                 apply: savedGame => {
-                    liveGame.game.router.clear().cleanHistory();
-                    liveGame.newGame().deserialize(savedGame);
+                    const game = activeLiveGame();
+                    game.game.router.clear().cleanHistory();
+                    game.newGame().deserialize(savedGame);
                 },
-                restore: snapshot => liveGame.deserialize(snapshot),
+                /**
+                 * Put the run back - and, when this load switched stories, put the story back too.
+                 *
+                 * The snapshot names ids that belong to the story that was mounted when the load
+                 * began. Handing it to the story the switch mounted instead would refuse every one
+                 * of them, so the mount is undone first and only then is the snapshot applied.
+                 * `forceReinit` for the same reason the relaunch below passes it: the fast path
+                 * would see a matching request and skip the recompile the put-back depends on.
+                 */
+                restore: async snapshot => {
+                    if (switchedStory && storyBeforeLoad) {
+                        const start = startStoryInGameRef.current;
+                        if (!start) {
+                            throw new Error("the story that was running cannot be started again");
+                        }
+                        await start({
+                            storyId: storyBeforeLoad.storyId,
+                            sceneId: storyBeforeLoad.sceneId,
+                        }, { forceReinit: true });
+                        switchedStory = false;
+                    }
+                    activeLiveGame().deserialize(snapshot);
+                },
                 // `deserialize` takes this lock on the way in and gives it back from a render it
                 // schedules on the way out, so a throw in between keeps it. It is a flag, not a
                 // count, which is why one balanced load afterwards cannot clear it and every later
                 // load in the session would sit there locked.
-                releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+                releaseLoadLock: () => activeLiveGame().getGameState()?.rollLock.unlock(),
+                /**
+                 * Which of the project's stories this save belongs to.
+                 *
+                 * The scene is resolved against the whole library - by the id the anchor carries,
+                 * then by search, exactly as `relaunch` does - so a save survives its scene being
+                 * moved to another document between builds.
+                 *
+                 * Whether the mounted story has been *entered* is deliberately not part of this. A
+                 * title screen warms its story without entering it and a load from there has always
+                 * applied straight into that session; remounting it would put a recompile and a
+                 * remount on the most common load there is.
+                 */
+                resolveStoryMount: target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    if (!found) {
+                        return "nowhere";
+                    }
+                    const mounted = activeStoryRequestRef.current;
+                    return mounted && mounted.storyId === found.storyId ? "same" : "switch";
+                },
+                /**
+                 * Put that story on the stage, so `apply` has somewhere to deserialize into.
+                 *
+                 * A story launch rather than a bare mount, because a launch is what reveals the
+                 * stage - the save is applied over what it puts up, and `apply` opens with
+                 * `newGame()` anyway, so nothing it plays survives into the loaded state. The
+                 * launch is aimed at the save's own scene so the assets it warms are the ones the
+                 * save is about to need.
+                 *
+                 * The flag goes up BEFORE the launch, not after: a launch that throws halfway has
+                 * already replaced the session, and `restore` has to know to bring the previous
+                 * story back before it can put the run back.
+                 */
+                switchStory: async target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    if (!found) {
+                        throw new Error(`the story holding scene ${target.sceneId} is not in this build`);
+                    }
+                    const start = startStoryInGameRef.current;
+                    if (!start) {
+                        throw new Error("the story cannot be started here");
+                    }
+                    switchedStory = true;
+                    await start({ storyId: found.storyId, sceneId: target.sceneId }, { forceReinit: true });
+                },
                 /**
                  * The `Return to where it stopped` policy: a story launch, not a load.
                  *
@@ -2380,7 +2692,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // stage is hidden is therefore queued into a hidden layer and times out unseen. That is
             // every load that fails before the stage has ever been shown; a load from an in-game
             // menu drawn over a visible stage is seen.
-            notifyPlayer: message => liveGame.notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
+            notifyPlayer: message => activeLiveGame().notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
             report: (level, message) => {
                 host.log(level, message);
                 host.reportIssue?.({ level, message, origin: "session" });
@@ -2395,7 +2707,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         // A relaunch has already entered and revealed its own session (that is what `Start Game`
         // does); the live game this closure captured is the one it replaced. Waiting on it here
-        // would wait on a session nobody is driving any more.
+        // would wait on a session nobody is driving any more. A load that switched stories is in
+        // exactly the same position - it launched the save's own story to receive the save - except
+        // that it IS a load, so it still inherits the save's stopwatch reading below.
         if (outcome.applied !== "save") {
             routerExit.cancel();
             return outcome;
@@ -2403,9 +2717,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Only here: a load that was refused or rolled back leaves the player on the run they were
         // already having, and that run's stopwatch has to keep its own reading. A record with no
         // reading (written before playtime was tracked) starts the inherited run from zero, which
-        // is the only honest answer when nobody was counting.
+        // is the only honest answer when nobody was counting. One seeding point for both endings
+        // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        if (outcome.storyChanged) {
+            // The launch that put the save's own story up has already entered and revealed its
+            // session, so there is no reveal left to wait for - and the router being waited on
+            // belongs to the session that launch replaced.
+            routerExit.cancel();
+            host.log("info", translate("game.saveLoad.storyStarted", { id }));
+            return outcome;
+        }
         /**
          * Let the engine's router finish emptying before the stage is revealed.
          *
@@ -2432,8 +2755,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         requireActiveLiveGame,
         resolveSavedScene,
+        saveBuild,
         saveCompatibilityConfig,
-        saveStamp,
     ]);
 
     /**
@@ -2698,11 +3021,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             // project would refuse is a slot a save screen must not draw a Load button on.
             .filter(header => planSaveResume(
                 readSaveCompatibilityStamp(header.compatibility),
-                saveStamp,
+                saveBuild,
                 saveCompatibilityConfig,
             ).plan.action !== "discard")
             .map(header => header.id);
-    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
+    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -2742,7 +3065,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // same stamp - they are ordinary records under reserved ids.
             const resume = planSaveResume(
                 readSaveCompatibilityStamp(record.metadata.compatibility),
-                saveStamp,
+                saveBuild,
                 saveCompatibilityConfig,
             );
             if (resume.plan.action === "discard") {
@@ -2760,7 +3083,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
+    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
@@ -2866,6 +3189,44 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
     }, [host.saveStore]);
+
+    /**
+     * The last compiled story, kept so a second launch of the same one does not rebuild it.
+     *
+     * ## Why this is worth keeping at all
+     *
+     * A compile walks the WHOLE document - every scene, every row - and `sceneId` decides only which
+     * scene the story opens on (`Story.entry`). So a hub-shaped game, where a page launches a scene
+     * and the scene hands the screen back to the page, rebuilt the entire story on every hop.
+     * MEASURED, on a 10,000-line script with 30,000 takes: 450-600ms of pure compute per launch,
+     * before any of the mounting and painting that follows it.
+     *
+     * ## Why re-pointing the entry is sound rather than a shortcut
+     *
+     * `Story.entry(scene)` is a plain assignment, and the work that depends on it happens later:
+     * the player calls `LiveGame.loadStory`, which runs `constructStory()` - scene roots, action
+     * ids, element ids, the static check and the element baseline, all walked from whatever the
+     * entry is at that moment. A reused story with a new entry is therefore stamped exactly as a
+     * fresh compile of that entry would have been.
+     *
+     * `newGame()` then clears the storable, re-seeds every persistent the story declares, and resets
+     * every element reachable from the entry - which is a superset of what the run can reach, since
+     * a scene the run cannot walk to is a scene it cannot show.
+     *
+     * ## What is deliberately NOT cached
+     *
+     * A row-precise launch (`startBlockId` / `snapshotId`) fabricates a synthetic entry scene posed
+     * at the target row, so its output depends on the row and not only on the document. Those always
+     * compile fresh.
+     *
+     * ## One entry, not a map
+     *
+     * A compiled story is a large object graph and holding several is a memory decision nobody
+     * asked for. One slot serves the case this exists for - a hub and the scenes it launches, all in
+     * one story - and a project that alternates between two stories simply recompiles, which is what
+     * it did before.
+     */
+    const compiledStoryCacheRef = useRef<CompiledStoryCacheEntry | null>(null);
 
     const compileStoryRequest = useCallback(async (
         request: DevModeStartStoryRequest,
@@ -2982,7 +3343,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             // — Dev Mode and the packaged game — so leaving it out meant a project-level saved variable
             // existed in the editor and nowhere else.
             savedVariables: bundle.ui.savedVariables,
-            onEndingReached: handleEndingReached,
+            onEndingReached: stableEndingReached,
+            onQuitToPage: stableQuitToPage,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
@@ -2990,15 +3352,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                   }
                 : undefined,
             localization: bundle.localization && core
-                ? {
-                      ...bundle.localization,
-                      getLocale: () => {
-                          const stored = core.scopeBridge.persistenceGet(LOCALE_STORAGE_KEY);
-                          return typeof stored === "string" && stored
-                              ? stored
-                              : bundle.localization!.sourceLocale;
-                      },
-                  }
+                ? { ...bundle.localization, getLocale: readTextLocale }
                 : undefined,
             voice: bundle.voice && core
                 ? { ...bundle.voice, getVoiceLocale: readVoiceLocale }
@@ -3010,24 +3364,26 @@ export function GameApp(props: GameAppProps): ReactNode {
             audioClips: bundle.audio?.clips,
             audioTracks: bundle.audio?.tracks,
         };
-        // Before the walk, not during it: the compiler resolves an asset the moment it reaches one,
-        // and a host that has to ask another window for each answer spends the whole compile waiting
-        // one round trip at a time. Failures inside it are the host's to swallow - it answers by
-        // asset again, which is what every compile did before this existed.
-        await host.prewarmStoryAssetUrls?.();
-        const compiled = await compileStudioStoryToNlr(compileInput);
-        // Only the compile that is still the current one gets to complain. A hot reload can land
-        // while this one is waiting on something slow, and what it found then is about a document
-        // the author has already replaced.
-        //
-        // Which stopped being merely untidy once a bake could be interrupted: a weather clip dropped
-        // because the caller that wanted it moved on comes back here as "could not be produced", so
-        // every digit typed into a density would leave a warning about a number the author has
-        // already typed over, on a stage that is showing the new one perfectly.
-        const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
-            || currentBundleRef.current.revision !== bundle.revision;
-        if (!superseded && compiled.diagnostics.length > 0) {
-            for (const diagnostic of compiled.diagnostics) {
+        /**
+         * Only the compile that is still the current one gets to complain. A hot reload can land
+         * while one is waiting on something slow, and what it found then is about a document the
+         * author has already replaced.
+         *
+         * Which stopped being merely untidy once a bake could be interrupted: a weather clip dropped
+         * because the caller that wanted it moved on comes back here as "could not be produced", so
+         * every digit typed into a density would leave a warning about a number the author has
+         * already typed over, on a stage that is showing the new one perfectly.
+         *
+         * Reported again on every launch, cache hit included: what an author sees about the story
+         * they are about to play must not depend on whether it happened to be compiled already.
+         */
+        const reportDiagnostics = (diagnostics: readonly NlrStoryCompileDiagnostic[]): void => {
+            const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
+                || currentBundleRef.current.revision !== bundle.revision;
+            if (superseded) {
+                return;
+            }
+            for (const diagnostic of diagnostics) {
                 const level = diagnostic.level === "error" ? "error" : "warning";
                 host.log(level, diagnostic.message);
                 // The compiler already knows which block it was translating when it complained. That
@@ -3040,9 +3396,40 @@ export function GameApp(props: GameAppProps): ReactNode {
                     ...(diagnostic.blockId ? { blockId: diagnostic.blockId } : {}),
                 });
             }
+        };
+
+        const cacheKey = compiledStoryCacheKey({
+            bundleId: bundle.bundleId,
+            revision: bundle.revision,
+            storyId,
+            textLocale: readTextLocale(),
+            voiceLocale: readVoiceLocale(),
+            hasCore: Boolean(core),
+            rowPrecise: Boolean(launch),
+        });
+        const reused = reuseCompiledStory(compiledStoryCacheRef.current, cacheKey, sceneId);
+        if (reused) {
+            reportDiagnostics(reused.diagnostics);
+            return reused;
+        }
+
+        // Before the walk, not during it: the compiler resolves an asset the moment it reaches one,
+        // and a host that has to ask another window for each answer spends the whole compile waiting
+        // one round trip at a time. Failures inside it are the host's to swallow - it answers by
+        // asset again, which is what every compile did before this existed.
+        await host.prewarmStoryAssetUrls?.();
+        const compiled = await compileStudioStoryToNlr(compileInput);
+        reportDiagnostics(compiled.diagnostics);
+        const superseded = currentBundleRef.current.bundleId !== bundle.bundleId
+            || currentBundleRef.current.revision !== bundle.revision;
+        // Kept only when it can be reused as-is. A superseded compile is not stored: the bundle it
+        // was built from is no longer the one a launch would ask for, so the entry would be dead
+        // weight until the next reload evicted it.
+        if (cacheKey && !superseded) {
+            compiledStoryCacheRef.current = { key: cacheKey, compiled };
         }
         return compiled;
-    }, [bundle, core, host, readVoiceLocale]);
+    }, [bundle, core, host, readTextLocale, readVoiceLocale]);
 
     // Mount the NLR environment (Game/LiveGame + Player via NlrStageLayer) for the given compiled
     // story and initialise it: gameReady fires (via onLiveGameReady) and assets preheat, but the
@@ -3109,6 +3496,36 @@ export function GameApp(props: GameAppProps): ReactNode {
             isNvlModeInGame,
             isCurrentTextReadInGame,
             clearTextReadInGame,
+            // The screens that show a saved variable while the story plays are the on-stage
+            // ones. Left out, both nodes answered as though no game were running - on a stage
+            // with a game plainly running on it.
+            getSavedVariableInGame,
+            setSavedVariableInGame,
+            clearPages,
+            clearGameOverlay,
+            showLayer,
+            hideLayer,
+            hideLayerGroup,
+            waitLayer,
+            closeOwnLayer,
+            isLayerMounted,
+            captureRun,
+            readSaveGame,
+            hasReadTextInGame,
+            isSceneVisitedInGame,
+            isOptionPickedInGame,
+            clearVisitedInGame,
+            isEndingReachedInGame,
+            isDlcInstalledInGame,
+            listEndingsInGame,
+            clearEndingStateInGame,
+            clearEndingsInGame,
+            networkFetch: host.networkFetch,
+            movePointer: host.movePointer,
+            openExternal: host.openExternal,
+            storageDurability: host.storageDurability,
+            playVoiceUnit,
+            playChoiceVoiceUnit,
             selectChoiceInGame,
             isInGame,
             quitGame,
@@ -3366,7 +3783,7 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
-        options?: { forceReinit?: boolean },
+        options?: { forceReinit?: boolean; inheritSavedGame?: unknown },
     ): Promise<void> => {
         if (!activeSurface || !core) {
             throw new Error("Start Game: active surface is not available");
@@ -3375,6 +3792,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         const sceneId = String(request.sceneId ?? "").trim();
         const startBlockId = request.startBlockId?.trim() || undefined;
         const snapshotId = request.snapshotId?.trim() || undefined;
+
+        // Queued rather than written, for the reason the ref exists: entering calls `newGame()`,
+        // which clears every namespace, so values written now would be the ones it wipes. Set here
+        // rather than beside the mount because the fast path below enters without mounting at all.
+        //
+        // Only when this launch was given one. A relaunch fills the same ref before it calls in,
+        // and overwriting it with nothing would drop what that load was carrying.
+        if (options?.inheritSavedGame !== undefined && options.inheritSavedGame !== null) {
+            pendingCarriedSaveRef.current = options.inheritSavedGame as SavedGame;
+        }
 
         // Fast path: the environment is already mounted with this story from the boot preload and
         // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
@@ -3475,6 +3902,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onCloseOwnLayer: closeOwnLayer,
             onIsLayerMounted: isLayerMounted,
             onStartStory: startStoryInGame,
+            onCaptureRun: captureRun,
+            onReadSaveGame: readSaveGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
@@ -3505,6 +3934,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsTextRead: hasReadTextInGame,
             onClearTextRead: clearTextReadInGame,
             onIsSceneVisited: isSceneVisitedInGame,
+            onGetSavedVariable: getSavedVariableInGame,
+            onSetSavedVariable: setSavedVariableInGame,
             onIsOptionPicked: isOptionPickedInGame,
             onClearVisited: clearVisitedInGame,
             onIsEndingReached: isEndingReachedInGame,
@@ -3555,6 +3986,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     payload,
                 );
             },
+            // Same reason the slot surfaces seed theirs: a host API rebuilt for a scope that is
+            // already drawn has to start from what is on screen, or every write back to an
+            // authored value is dropped as a no-op. See `initialWidgetPatches`.
+            initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
             voiceConfig: bundle.voice ?? null,
@@ -3909,6 +4344,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onCloseOwnLayer: closeOwnLayer,
                     onIsLayerMounted: isLayerMounted,
                     onStartStory: startStoryInGame,
+                    onCaptureRun: captureRun,
+                    onReadSaveGame: readSaveGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
@@ -3940,6 +4377,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsTextRead: hasReadTextInGame,
                     onClearTextRead: clearTextReadInGame,
                     onIsSceneVisited: isSceneVisitedInGame,
+                    onGetSavedVariable: getSavedVariableInGame,
+                    onSetSavedVariable: setSavedVariableInGame,
                     onIsOptionPicked: isOptionPickedInGame,
                     onClearVisited: clearVisitedInGame,
                     onIsEndingReached: isEndingReachedInGame,
@@ -3990,6 +4429,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                             payload,
                         );
                     },
+                    // As above: a frame's page keeps its drawing when its host API is rebuilt.
+                    initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
                     widgetRuntimeStore,
                     localizationConfig: bundle.localization ?? null,
                     voiceConfig: bundle.voice ?? null,
@@ -4122,6 +4563,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         lifecycleRef.current.sessionReset();
         appBootFiredRef.current = null;
         gameReadyFiredRef.current = null;
+        // A compiled story is keyed by the bundle it came from, so this one could never be reused
+        // again. Dropped here rather than left to be replaced by the next compile, because a hot
+        // reload the author does not launch after would otherwise hold the whole graph of a document
+        // that no longer exists.
+        compiledStoryCacheRef.current = null;
     }, [bundle.bundleId, bundle.revision]);
 
     useEffect(() => {
@@ -4715,12 +5161,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrStageLayer = (
         <NlrStageLayer
             session={nlrSession}
+            // Never during the quit hand-off: the run is over, and a last frame that answers
+            // clicks would advance a story nobody is playing any more.
             interactive={gameStageVisible}
             // The stage mounts (hidden) as soon as a session exists so the Player can preload,
             // which is before the surface system starts; painting it that early would flash its
-            // black backdrop over the first frame. It only becomes visible on reveal.
-            visible={gameStageVisible}
-            renderOnStage={gameStageVisible}
+            // black backdrop over the first frame. It only becomes visible on reveal - and stays
+            // painted through a quit until the page taking over is up (see stageRetainedForQuit).
+            visible={gameStageVisible || stageRetainedForQuit}
+            renderOnStage={gameStageVisible || stageRetainedForQuit}
             onFirstSceneReady={sessionId => {
                 const pending = pendingGameStartsRef.current.get(sessionId);
                 if (!pending) {

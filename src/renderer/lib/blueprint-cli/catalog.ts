@@ -1,7 +1,7 @@
 /**
  * Questions about the node catalogue, answered from the registry instead of from a grep.
  *
- * The catalogue is 600-odd nodes spread over fifty files under `blueprint-nodes/built-in`, and
+ * The catalogue is 600-odd nodes spread over sixty-odd files under `blueprint-nodes/built-in`, and
  * every fact worth knowing about one - which pins it has, which of them carry execution, what its
  * inspector fields are called, where it is allowed to appear - is a field on its definition. This
  * module only selects and formats; it never restates.
@@ -116,23 +116,88 @@ function paletteTypesFor(query: NodeQuery): Set<string> {
     return new Set(blueprintNodeRegistry.listPaletteEntries(context).map(entry => entry.type));
 }
 
+/**
+ * One placeholder owner of every kind there is.
+ *
+ * A record rather than a switch with a default, so that a kind added to `BlueprintOwnerRef` fails
+ * to compile here instead of quietly arriving as `globalMain` - which is what `--owner` was doing
+ * with every value it did not recognise, answering confidently about the wrong owner.
+ */
+const SYNTHETIC_OWNERS: Record<BlueprintOwnerRef["kind"], BlueprintOwnerRef> = {
+    globalMain: { kind: "globalMain" },
+    surfaceMain: { kind: "surfaceMain", surfaceId: "surface" },
+    widgetMain: { kind: "widgetMain", surfaceId: "surface", elementId: "element" },
+    widgetValue: { kind: "widgetValue", surfaceId: "surface", elementId: "element", propPath: "value" },
+    componentWidgetMain: { kind: "componentWidgetMain", componentId: "component", elementId: "element" },
+    sharedAsset: { kind: "sharedAsset", assetId: "asset" },
+    storyAction: { kind: "storyAction", blueprintId: "blueprint" },
+};
+
+/** Every owner kind a blueprint can belong to, in the order `--owner` offers them. */
+export const BLUEPRINT_OWNER_KINDS = Object.keys(SYNTHETIC_OWNERS) as BlueprintOwnerRef["kind"][];
+
+/** Every graph kind a node can declare. */
+export const BLUEPRINT_GRAPH_KINDS: BlueprintGraphKind[] = ["event", "function", "macro"];
+
 export function syntheticOwner(kind: BlueprintOwnerRef["kind"]): BlueprintOwnerRef {
-    switch (kind) {
-        case "surfaceMain":
-            return { kind, surfaceId: "surface" };
-        case "widgetMain":
-            return { kind, surfaceId: "surface", elementId: "element" };
-        case "widgetValue":
-            return { kind, surfaceId: "surface", elementId: "element", propPath: "value" };
-        case "componentWidgetMain":
-            return { kind, componentId: "component", elementId: "element" };
-        case "sharedAsset":
-            return { kind, assetId: "asset" };
-        case "storyAction":
-            return { kind, blueprintId: "blueprint" };
-        default:
-            return { kind: "globalMain" };
+    return SYNTHETIC_OWNERS[kind] ?? SYNTHETIC_OWNERS.globalMain;
+}
+
+/**
+ * Widget element types the catalogue knows about, gathered from the scopes nodes declare.
+ *
+ * There is no list of these to import - an element type is a string on a widget module - but a
+ * `--widget` value only changes an answer by matching a scope, so the set of types that appear in
+ * one is exactly the set worth accepting.
+ */
+export function knownWidgetElementTypes(): string[] {
+    const out = new Set<string>();
+    for (const def of blueprintNodeRegistry.list()) {
+        for (const clause of scopeClauses(def.scope)) {
+            for (const type of clause.widgetElementTypes ?? []) {
+                out.add(type);
+            }
+        }
     }
+    return [...out].sort();
+}
+
+type ScopeClause = { widgetElementTypes?: readonly string[] };
+
+function scopeClauses(scope: unknown): ScopeClause[] {
+    if (!scope || typeof scope !== "object") {
+        return [];
+    }
+    const record = scope as { anyOf?: ScopeClause[] } & ScopeClause;
+    return record.anyOf ? [...record.anyOf, record] : [record];
+}
+
+/**
+ * The node type a person meant.
+ *
+ * Exact first. Then the display name, because that is what the palette shows and what a blueprint
+ * gets described by - `blueprint node "Play Sound"` used to fail while printing the answer in its
+ * own near-miss list. A search that leaves exactly one node standing is that node.
+ */
+export function resolveNodeType(input: string): string | null {
+    const wanted = input.trim();
+    if (!wanted) {
+        return null;
+    }
+    if (blueprintNodeRegistry.get(wanted)) {
+        return wanted;
+    }
+    const lower = wanted.toLowerCase();
+    const byType = blueprintNodeRegistry.list().find(def => def.type.toLowerCase() === lower);
+    if (byType) {
+        return byType.type;
+    }
+    const byName = blueprintNodeRegistry.list().filter(def => def.displayName.toLowerCase() === lower);
+    if (byName.length === 1) {
+        return byName[0].type;
+    }
+    const searched = queryNodes({ search: wanted, includeHidden: true });
+    return searched.length === 1 ? searched[0].type : null;
 }
 
 export type NodeDetail = {
@@ -172,6 +237,27 @@ export type NodeDetail = {
         fixedDataInputIds: readonly string[];
         addButtonLabel?: string;
         generatesOutputs: boolean;
+        /**
+         * The pins one add writes, spelled with the first index so they can be copied.
+         *
+         * A node with grouped pins writes several at once - `Show Confirm` writes a label input and
+         * a pressed output together - and the ids carry the suffix, not just the prefix. Saying
+         * "generated ids look like button_1" would be wrong for every node in this shape, which is
+         * every node that has templates.
+         */
+        generatedPins: {
+            id: string;
+            kind: "input" | "output";
+            semantic: "exec" | "data";
+            valueType?: string;
+            label: string;
+            acceptsLiteral: boolean;
+        }[];
+        /** Param holding the author-visible label of each generated pin, when the node has one. */
+        labelParamKey?: string;
+        /** Param holding a per-pin value type, and what may be written in it. */
+        valueTypeParamKey?: string;
+        valueTypeOptions?: readonly string[];
     };
     saveSchemaPins?: { kind: "input" | "output" };
     magicElementTarget?: unknown;
@@ -213,24 +299,60 @@ export function describeNode(type: string, params?: Record<string, unknown>): No
             optionsFrom: param.dynamicOptionsSource,
             jsonSchema: param.jsonSchema,
         })),
-        dynamicPins: def.dynamicInputPins
-            ? {
-                  storageKey: def.dynamicInputPins.storageKey,
-                  generatedIdPrefix: def.dynamicInputPins.generatedIdPrefix,
-                  valueType: def.dynamicInputPins.valueType,
-                  fixedDataInputIds: def.dynamicInputPins.fixedDataInputIds,
-                  addButtonLabel: def.dynamicInputPins.addButtonLabel,
-                  generatesOutputs: (def.dynamicInputPins.generatedPinTemplates ?? []).some(
-                      template => template.kind === "output",
-                  ),
-              }
-            : undefined,
+        dynamicPins: def.dynamicInputPins ? describeDynamicPins(def.dynamicInputPins) : undefined,
         saveSchemaPins: def.saveSchemaPins,
         magicElementTarget: def.magicElementTarget,
     };
 }
 
-export function formatNodeList(nodes: readonly NodeSummary[]): string {
+/**
+ * What one add on a variadic node writes, spelled out.
+ *
+ * The editor generates these ids from the templates rather than from the prefix alone, so the
+ * prefix on its own does not say what to write in a file. Rendered at index 1 because that is the
+ * first one an author would add, and because a concrete id can be copied.
+ */
+function describeDynamicPins(
+    config: NonNullable<BlueprintNodeDef["dynamicInputPins"]>,
+): NonNullable<NodeDetail["dynamicPins"]> {
+    const templates = config.generatedPinTemplates ?? [];
+    const generatedPins = templates.length
+        ? templates.map(template => ({
+              id: `${config.generatedIdPrefix}_1_${template.idSuffix}`,
+              kind: template.kind ?? ("input" as const),
+              semantic: template.semantic ?? ("data" as const),
+              valueType: template.semantic === "exec" ? undefined : (template.valueType ?? config.valueType),
+              label: template.label,
+              acceptsLiteral: template.allowInlineLiteral ?? false,
+          }))
+        : [
+              {
+                  id: `${config.generatedIdPrefix}_1`,
+                  kind: "input" as const,
+                  semantic: "data" as const,
+                  valueType: config.valueType,
+                  label: config.labelPrefix ?? "Input",
+                  acceptsLiteral: config.allowInlineLiteral,
+              },
+          ];
+    return {
+        storageKey: config.storageKey,
+        generatedIdPrefix: config.generatedIdPrefix,
+        valueType: config.valueType,
+        fixedDataInputIds: config.fixedDataInputIds,
+        addButtonLabel: config.addButtonLabel,
+        generatesOutputs: generatedPins.some(pin => pin.kind === "output"),
+        generatedPins,
+        labelParamKey: config.pinLabelParamKey,
+        valueTypeParamKey: config.pinValueTypeParamKey,
+        valueTypeOptions: config.pinValueTypeOptions,
+    };
+}
+
+export function formatNodeList(
+    nodes: readonly NodeSummary[],
+    options: { total?: number } = {},
+): string {
     if (nodes.length === 0) {
         return "No node matches.";
     }
@@ -252,7 +374,13 @@ export function formatNodeList(nodes: readonly NodeSummary[]): string {
             `  ${node.type.padEnd(width)}  ${node.displayName}${flags.length > 0 ? `  [${flags.join(" ")}]` : ""}`,
         );
     }
-    lines.push("", `${nodes.length} node${nodes.length === 1 ? "" : "s"}.`);
+    const total = options.total ?? nodes.length;
+    lines.push(
+        "",
+        total > nodes.length
+            ? `${nodes.length} of ${total} nodes. Narrow the search, or --limit 0 for all of them.`
+            : `${nodes.length} node${nodes.length === 1 ? "" : "s"}.`,
+    );
     return lines.join("\n").trimStart();
 }
 
@@ -309,12 +437,29 @@ export function formatNodeDetail(detail: NodeDetail): string {
     }
 
     if (detail.dynamicPins) {
-        lines.push(
-            "",
-            "  extra pins",
-            `    Add pins by listing their ids in the "${detail.dynamicPins.storageKey}" param `
-                + `(generated ids look like ${detail.dynamicPins.generatedIdPrefix}_1).`,
-        );
+        const dynamic = detail.dynamicPins;
+        lines.push("", "  extra pins");
+        lines.push(`    List the ids you want in the "${dynamic.storageKey}" param. One add writes:`);
+        for (const pin of dynamic.generatedPins) {
+            const bits = [
+                pin.kind,
+                pin.semantic === "exec" ? "exec" : `data:${pin.valueType ?? "any"}`,
+                pin.acceptsLiteral ? "takes a literal" : null,
+            ].filter(Boolean);
+            lines.push(`      ${pin.id}  ${bits.join(", ")}  - ${pin.label}`);
+        }
+        if (dynamic.generatedPins.length > 1) {
+            lines.push("    Every id of a group goes in that list, and the number is what pairs them up.");
+        }
+        if (dynamic.labelParamKey) {
+            lines.push(`    Labels by pin id go in "${dynamic.labelParamKey}".`);
+        }
+        if (dynamic.valueTypeParamKey) {
+            const options = dynamic.valueTypeOptions?.length
+                ? ` (one of: ${dynamic.valueTypeOptions.join(", ")})`
+                : "";
+            lines.push(`    Value types by pin id go in "${dynamic.valueTypeParamKey}"${options}.`);
+        }
     }
     if (detail.saveSchemaPins) {
         lines.push(

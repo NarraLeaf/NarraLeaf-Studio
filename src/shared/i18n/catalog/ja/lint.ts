@@ -150,6 +150,12 @@ export const lint = {
             description: "同じ並びの /ending 行より後に書かれ、決して再生されない行",
             message: "この行はエンディングより後にあり、決して再生されない。エンディングより前に移すか、削除する",
         },
+        storyQuitPageMissing: {
+            title: "ページのない終了行",
+            description: "ページを指定していない、またはプロジェクトに無いページを指す /quit 行",
+            message: "この行はページを指定していないため、プレイ終了後に画面には何も残らない",
+            deleted: "このプロジェクトに「{page}」というページはないため、プレイ終了後に画面には何も残らない",
+        },
         storyEndingNameDuplicate: {
             title: "同じ名前の 2 つのエンディング",
             description: "表示名を共有しているエンディングが複数ある",
@@ -280,6 +286,11 @@ export const lint = {
             title: "未入力のセーブ項目",
             description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",
             message: "{field} が未入力のため、このセーブには既定値が書き込まれる",
+        },
+        blueprintStartSceneForeign: {
+            title: "別のストーリーのシーン",
+            description: "Start Game ノードのシーンが、指定したストーリーに入っていない",
+            message: "このシーンは「{owner}」にあり「{story}」にはないため、ここからゲームを始めると止まる",
         },
         variablesUndeclared: {
             title: "宣言のない変数",
@@ -426,6 +437,7 @@ export const lint = {
         // 行番号の読み上げ。列そのものは数字だけにしてある。シーンエディタの行番号がそう出ていて、
         // 読み手はその 2 つを見比べるため。
         lineAria: "{line} 行目",
+        findPlaceholder: "問題を検索",
     },
     command: {
         runProject: "プロジェクトを検査",

@@ -43,8 +43,8 @@ describe("save schema pins", () => {
         // raw `metadata` pin is still the whole author-side channel.
         const write = resolveEffectiveBlueprintNodePins(def(BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE), {});
         const read = resolveEffectiveBlueprintNodePins(def(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA), {});
-        expect(write.map(pin => pin.id)).toEqual(["in", "next", "id", "metadata", "screenshot"]);
-        expect(read.map(pin => pin.id)).toEqual(["in", "next", "id", "metadata"]);
+        expect(write.map(pin => pin.id)).toEqual(["in", "next", "id", "slot", "metadata", "screenshot"]);
+        expect(read.map(pin => pin.id)).toEqual(["in", "next", "id", "slot", "metadata"]);
     });
 
     it("grows one input pin per field on Save Game, in schema order", () => {

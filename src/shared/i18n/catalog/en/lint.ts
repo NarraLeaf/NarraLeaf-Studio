@@ -152,6 +152,13 @@ export const lint = {
             // an author reading this needs to know that before they know why.
             message: "This row comes after an ending and is never played. Move it before the ending, or delete it",
         },
+        storyQuitPageMissing: {
+            title: "Quit with no page",
+            description: "A /quit row that names no page, or one the project no longer has",
+            // Two sentences, both states: what the row does now, and what the player is left with.
+            message: "This row names no page, so the playthrough ends with nothing on screen",
+            deleted: "This project has no page \"{page}\", so the playthrough ends with nothing on screen",
+        },
         storyEndingNameDuplicate: {
             title: "Two endings with one name",
             description: "More than one ending sharing a display name",
@@ -287,6 +294,11 @@ export const lint = {
             title: "Empty save field",
             description: "A Save Game node that will run with a declared save field left empty",
             message: "{field} is empty, so this save is written with its default instead",
+        },
+        blueprintStartSceneForeign: {
+            title: "Scene from another story",
+            description: "A Start Game node whose scene is not in the story it names",
+            message: "This scene is in {owner}, not in {story}, so starting the game here stops it",
         },
         variablesUndeclared: {
             title: "Undeclared variable",
@@ -445,6 +457,7 @@ export const lint = {
         // bare digits, because that is what the scene editor's own gutter shows and the reader is
         // matching one against the other.
         lineAria: "Line {line}",
+        findPlaceholder: "Find in problems",
     },
     command: {
         runProject: "Check project",

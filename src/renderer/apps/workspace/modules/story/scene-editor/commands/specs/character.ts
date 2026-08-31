@@ -24,7 +24,7 @@ import { actionableTargetRef, displayableTargetRef, vfxOperationBlock, withPlace
 import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
- * The generic verbs and the character commands: `/show`, `/hide`, `/face`, `/motion`, `/skin`,
+ * The generic verbs and the character commands: `/show`, `/hide`, `/char`, `/motion`, `/skin`,
  * `/param`, `/say`.
  *
  * `/move` is gone (M2). It was "object type × operation" wearing a friendly word: a move is a
@@ -45,7 +45,7 @@ import { supportedTransitionWords, transformEffectFor, transitionOptions } from 
  *
  * The channels are not a new object type, so they get no token of their own:
  *
- *  - **expression already had a verb.** `/face <character> <name>` is the "which of this character's
+ *  - **expression already had a verb.** `/char <character> <name>` is the "which of this character's
  *    looks is showing" verb, and its slot already means a different stored thing per appearance kind
  *    (a pose id for `preset`, a tag id for `layered`). A puppet's expression is the third answer to
  *    the same question, so it is the same slot and the same verb - a union branch, not a command.
@@ -282,7 +282,7 @@ export const show = defineStoryCommand({
         // `in=`, not `t=`. What this slot writes is a TRANSFORM preset - a bag of props the entrance
         // interpolates - and it always was: the engine ignores a character's `StoryTransitionRef` on
         // the way in, and a stage object has none at all. Calling it "transition" made it look like
-        // the `t=` on `/bg` and `/face`, which really do name an engine transition, so the one word
+        // the `t=` on `/bg` and `/char`, which really do name an engine transition, so the one word
         // covered two different things and the row could not say which. The direction is in the name
         // because the direction is what the verb already decided.
         in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
@@ -355,10 +355,10 @@ export const hide = defineStoryCommand({
 });
 
 /**
- * `t=` / `d=` on a `/face` whose subject is a puppet - the one target that cannot honour them.
+ * `t=` / `d=` on a `/char` whose subject is a puppet - the one target that cannot honour them.
  *
  * A puppet's expression compiles to `puppet.setExpression(name)`: the backend owns the inside of the
- * box and there is no second frame for the engine to blend, so the transition ref a `/face` writes
+ * box and there is no second frame for the engine to blend, so the transition ref a `/char` writes
  * would be read by nothing. The mirror image of {@link validatePuppetCharacter} - that one refuses a
  * character Studio draws, this one refuses the character it draws itself - and it names the KEY
  * rather than the character, because the character is not the mistake here.
@@ -381,13 +381,28 @@ function validateFaceTransition(
     return issues;
 }
 
+/**
+ * The verb that says which of a character's looks is showing.
+ *
+ * Spelled `/char` rather than `/face`, and labelled "Appearance" rather than "Expression", because
+ * neither of the old words was true of what it does. Only one of the three appearance kinds has
+ * anything to do with a face: `preset` stores a pose id, `layered` a tag per axis - the axes are
+ * whatever the character was built with, so the row that changes a mood is the row that changes a
+ * costume, a hairstyle or which arm is raised - and a puppet stores a name the model owns. "Face"
+ * named the commonest use of the command as though it were the command.
+ *
+ * `face`, `expr` and `expression` stay as aliases, so a script exported before this and an author
+ * with the old word in their fingers both still parse. The spec id stays `face` too: it is the
+ * anchor for `story.command.face.*`, and moving it would rewrite three catalogues to say the same
+ * thing. The token is what authors type; the id is what the code files it under.
+ */
 export const face = defineStoryCommand({
     id: "face",
-    token: "face",
-    aliases: ["expr", "expression"],
+    token: "char",
+    aliases: ["face", "expr", "expression"],
     category: "character",
     icon: Smile,
-    examples: ["/face Alice smile", "/face Alice angry t=dissolve d=0.3"],
+    examples: ["/char Alice smile", "/char Alice angry t=dissolve d=0.3"],
     // Inline quick-edit: how long the swap takes. The transition's own duration, not the transform's -
     // `char(src, transition)` is the call, and the transform is the entrance this row is not.
     quickParams: ["d"],

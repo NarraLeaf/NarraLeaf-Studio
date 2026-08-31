@@ -144,6 +144,12 @@ export const lint = {
             // 说的是结果而不是错误：这些行已经不在构建里了，作者要先知道这一点。
             message: "该行位于结局之后，永远不会播放。可移到结局之前，或删除",
         },
+        storyQuitPageMissing: {
+            title: "没有页面的退出行",
+            description: "未指定页面，或指定的页面已不在项目中的 /quit 行",
+            message: "该行未指定页面，本次游玩结束后画面上不会有任何内容",
+            deleted: "项目中没有页面「{page}」，本次游玩结束后画面上不会有任何内容",
+        },
         storyEndingNameDuplicate: {
             title: "同名的两个结局",
             description: "多个结局使用了同一个显示名称",
@@ -276,6 +282,11 @@ export const lint = {
             title: "未填写的存档字段",
             description: "会执行的 Save Game 节点上，声明过的存档字段未填写",
             message: "{field} 未填写，本次存档将写入其默认值",
+        },
+        blueprintStartSceneForeign: {
+            title: "来自另一个故事的场景",
+            description: "Start Game 节点选中的场景不在它指定的故事里",
+            message: "该场景在《{owner}》里，不在《{story}》里，从这里开始游戏会中断",
         },
         variablesUndeclared: {
             title: "未声明的变量",
@@ -422,6 +433,7 @@ export const lint = {
         // 行号那一列念出来的样子。列里只写数字——故事编辑器的行号槽就是这么写的，
         // 读者是拿这一列去对那一列。
         lineAria: "第 {line} 行",
+        findPlaceholder: "在问题中查找",
     },
     command: {
         runProject: "检查项目",

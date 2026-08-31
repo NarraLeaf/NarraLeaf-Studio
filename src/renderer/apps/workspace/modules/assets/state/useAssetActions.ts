@@ -1247,10 +1247,14 @@ export function useAssetActions({
     }, [resolveTargets, assets, groups, onActionComplete, withAssetsService, notifyLoading, context, t, tn]);
 
     /**
-     * Copy the marked rows out to a folder the author picks.
+     * Copy the marked rows out to a place the author picks.
+     *
+     * One file exports through a save dialog, so it is named where it is saved; anything else - a
+     * multiple selection, a folder, a model bundle - asks for a folder and lands under the names the
+     * library holds.
      *
      * A read, so it is offered on a frozen library and asks for no confirmation. The picker and the
-     * copying both live in main: a folder chosen from the renderer is granted read access only, and
+     * copying both live in main: a path chosen from the renderer is granted read access only, and
      * the shard paths handed over are checked against the window's grants there before anything is
      * read. Nothing here touches the project, so `onActionComplete` is deliberately not called.
      */
@@ -1271,6 +1275,26 @@ export function useAssetActions({
         try {
             const assetsService = ctx.services.get<AssetsService>(Services.Assets);
             const localAssets = assetsService.getLocalAssetsManager();
+
+            // A single file is the case where the folder picker asks the wrong question: the author
+            // wants that file somewhere, under a name of their choosing. A bundle asset is a
+            // directory and cannot be saved as a file, so it stays on the folder path.
+            const single = plan.length === 1 && !isBundleAssetType(plan[0].asset.type) ? plan[0] : null;
+            if (single) {
+                const saved = await getInterface().assets.exportToFile({
+                    sourcePath: localAssets.getLocalAssetPath(single.asset.id),
+                    fileName: single.relativePath.split("/").pop() ?? single.relativePath,
+                });
+                if (!saved.success) {
+                    uiService.showNotification(t("assets.export.failed", { error: saved.error ?? t("assets.unknownError") }), "error");
+                    return;
+                }
+                if (!saved.data.canceled) {
+                    uiService.showNotification(tn("assets.export.success", 1), "success");
+                }
+                return;
+            }
+
             const result = await getInterface().assets.exportToFolder(plan.map(entry => ({
                 sourcePath: localAssets.getLocalAssetPath(entry.asset.id),
                 relativePath: entry.relativePath,

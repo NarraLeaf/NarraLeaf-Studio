@@ -482,6 +482,9 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         // The name only. The page the row lands on is picked in the inspector and has no spelling
         // here; a row that overrides it says so as an issue rather than dropping it in silence.
         ending: { keyword: "ending", slots: [{ slot: "ending", value: "name" }] },
+        // The page by name, the way a cut names its variant: the row stores an id, and a script
+        // that carried one would break the moment the page was renamed.
+        quit: { keyword: "quit", slots: [{ slot: "page", value: "name" }] },
     },
 };
 

@@ -350,6 +350,11 @@ export const settings = {
         cacheInventory: {
             label: "Cached files",
         },
+        openLogsFolder: {
+            label: "Studio's log files",
+            description: "The record Studio writes as it runs. Opens the folder in the file manager.",
+            action: "Open folder",
+        },
         servers: {
             label: "Servers",
         },

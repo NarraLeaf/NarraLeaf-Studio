@@ -4,7 +4,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { shell } from "electron";
 import { WindowAppType } from "@shared/types/window";
-import { showOpenDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -148,10 +148,11 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ path: string | null }>> {
+        const { t } = dialogTranslator(window);
         const result = await showOpenDialog(window, {
-            title: "Select Project Folder",
+            title: t("dialogs.file.title.selectProjectFolder"),
             properties: ["openDirectory", "createDirectory"],
-            buttonLabel: "Open Folder",
+            buttonLabel: t("dialogs.file.button.open"),
             securityScopedBookmarks: true,
         });
 
@@ -326,9 +327,10 @@ export class WorkspaceExportConsoleLogsHandler extends IPCHandler<IPCEventType.w
         { defaultFileName, content }: IPCEvents[IPCEventType.workspaceExportConsoleLogs]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceExportConsoleLogs]["response"]>> {
         try {
+            const { t } = dialogTranslator(window);
             const selection = await showOpenDialog(window, {
-                title: "Select Export Folder",
-                buttonLabel: "Export Here",
+                title: t("dialogs.file.title.exportAssets"),
+                buttonLabel: t("dialogs.file.button.exportHere"),
                 properties: ["openDirectory", "createDirectory"],
                 securityScopedBookmarks: true,
             });

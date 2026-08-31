@@ -164,7 +164,7 @@ export const swap = defineStoryCommand({
     examples: ["/swap hero night", "/swap title A new title", "/swap hero t=fade d=0.4 night"],
     params: {
         target: targetParam(["image", "text"], { core: true }),
-        // The same three slots `/face` carries, for the same reason: an image swap compiles to
+        // The same three slots `/char` carries, for the same reason: an image swap compiles to
         // `char(src, transition)`, so this row plays a `StoryTransitionRef` too. Without them the
         // transition an author set in the inspector was a setting no line could say - the row printed
         // as a bare `/swap`, so the line and the row disagreed about what the row does.

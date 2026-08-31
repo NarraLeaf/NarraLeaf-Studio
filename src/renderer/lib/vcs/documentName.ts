@@ -135,6 +135,7 @@ export const DOCUMENT_KIND_NAME_KEY: Record<DocumentKind, TranslationKey> = {
     "app-tags": "documentDiff.name.appTags",
     dlc: "documentDiff.name.dlc",
     dictionary: "documentDiff.name.dictionary",
+    "transform-presets": "documentDiff.name.transformPresets",
     "save-schema": "documentDiff.name.saveSchema",
     "asset-sets": "documentDiff.name.assetSets",
     localization: "documentDiff.name.localization",

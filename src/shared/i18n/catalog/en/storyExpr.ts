@@ -55,6 +55,7 @@ export const storyExpr = {
         unknownAudioTrack: "No audio track named \"{value}\".",
         unknownLabel: "No label named \"{value}\" in this scene.",
         unknownAppTag: "No build variant named \"{value}\".",
+        unknownSurface: "No page named \"{value}\".",
         unknownVariable: "No variable named \"{value}\".",
         unknownForm: "{characterName} has no \"{value}\" expression.",
         notPuppetCharacter: "{value} is not drawn by a runtime, so it has no motion or skin to set.",

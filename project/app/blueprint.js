@@ -111,6 +111,9 @@ async function build(stamp) {
 }
 
 (async () => {
+    // Where the scratch directory lives. The working directory is not it: these commands are often
+    // run from a project directory, and the file they leave behind belongs to the checkout.
+    process.env.NLS_BLUEPRINT_REPO_ROOT = rootDir;
     const stamp = newestSourceMtime();
     if (!isFresh(stamp)) {
         try {

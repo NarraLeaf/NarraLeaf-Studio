@@ -2,7 +2,7 @@ import { memo, useCallback } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { MoreVertical } from "lucide-react";
-import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 
@@ -35,7 +35,10 @@ export type SurfaceListGlobalBlueprintCard = {
 
 const getSurfaceTypeLabel = (surface: UISurface, t: UseTranslation["t"]): string => {
     if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
+        // Its own kind, not `DEFAULT_APP_SURFACE_NAME`: that constant is the name a new
+        // project's entry page is created with, and using it here printed English into a
+        // translated column - and printed the page's name again where its kind belongs.
+        return t("uiEditor.surfaceKind.mainPage");
     }
     return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
 };

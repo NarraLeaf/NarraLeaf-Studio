@@ -302,7 +302,7 @@ export function CommandPalette() {
                             <span className="truncate">{renderHighlightedText(hit.entry.text, hit.titleRanges)}</span>
                             {hit.entry.detail && (
                                 <span className="min-w-0 shrink truncate text-xs text-fg-subtle">
-                                    {hit.entry.detail}
+                                    {renderHighlightedText(hit.entry.detail, hit.detailRanges)}
                                 </span>
                             )}
                         </span>

@@ -260,6 +260,23 @@ function buildVariant(locale) {
         emit(path, document.value, document.trailingNewline);
     }
 
+    // --- The asset library: the folders an author files things into.
+    //
+    // Group names only. An asset's own name is what a story line names it by (`@background
+    // classroom`), and the line is copied from the English tree unchanged - translating the name
+    // would leave every line that uses it pointing at an asset that is not there.
+    for (const name of readdirSync(join(contentDir, "assets"))) {
+        if (!name.startsWith("assets.groups.") || !name.endsWith(".json")) {
+            continue;
+        }
+        const groupsPath = `assets/${name}`;
+        const groups = readJson(join(contentDir, groupsPath));
+        for (const group of Object.values(groups.value ?? {})) {
+            group.name = say(group.name);
+        }
+        emit(groupsPath, groups.value, groups.trailingNewline);
+    }
+
     // --- Named keys: their source text is the language the project is written in.
     const keysPath = "editor/localization/keys.json";
     const keys = readJson(join(contentDir, keysPath));

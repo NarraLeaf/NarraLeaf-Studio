@@ -85,6 +85,7 @@ const APPEARANCES: Record<string, { name: string; ref: { kind: "pose"; id: strin
 const MOTIONS: Record<string, string> = { "anim-shake": "handheld shake" };
 const APP_TAGS: Record<string, string> = { "tag-demo": "Demo" };
 const SCENES: Record<string, string> = { "scene-2": "天台 · 夜", "scene-3": "Storeroom", "scene-4": "return" };
+const SURFACES: Record<string, string> = { "surface-map": "地图" };
 
 const lookups: NarralangLookups = {
     character: (id) => (CHARACTERS[id] ? { name: CHARACTERS[id] } : null),
@@ -92,6 +93,7 @@ const lookups: NarralangLookups = {
     appearanceName: (_characterId, refId) => APPEARANCES[refId]?.name ?? null,
     motionName: (id) => MOTIONS[id] ?? null,
     appTagName: (id) => APP_TAGS[id] ?? null,
+    surfaceName: (id) => SURFACES[id] ?? null,
 };
 
 const byName = <T,>(table: Record<string, T>, pick: (entry: T) => string) => (name: string): string | null =>
@@ -103,6 +105,7 @@ const parseLookups: NarralangParseLookups = {
     motionId: byName(MOTIONS, (value) => value),
     appTagId: byName(APP_TAGS, (value) => value),
     sceneId: byName(SCENES, (value) => value),
+    surfaceId: byName(SURFACES, (value) => value),
     appearanceRef: (_characterId, name) => {
         // A puppet's state name is owned by the model, so anything the project cannot name is one.
         const found = Object.values(APPEARANCES).find((entry) => entry.name === name);
@@ -443,6 +446,9 @@ const corpus: Record<string, StoryScene> = {
         { id: "f15", kind: "control", payload: { control: "label", name: "after refusal" } },
         { id: "f16", kind: "control", payload: { control: "goto", targetLabel: "after refusal" } },
         { id: "f17", kind: "control", payload: { control: "cut", appTagId: "tag-demo" } },
+        // The page is spelled by name in the script and stored as an id, so this row only
+        // survives the trip if both directions have a table - the printer had one first.
+        { id: "f18", kind: "control", payload: { control: "quit", surfaceId: "surface-map" } },
     ] as never),
 
     "declarations and data": scene([

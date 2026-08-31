@@ -1,14 +1,18 @@
 /**
- * What a packaged asset is, decided by reading its bytes.
+ * What a file is, decided by reading its bytes.
  *
- * A protected game ships no asset manifest (see `GameRuntimePackV1.assets`), so nothing tells the
- * protocol handler that one entry is a JPEG and the next is an Ogg stream. That turns out to be the
- * right shape rather than a gap to paper over: an item's media type is a property of its bytes, and
- * every consumer downstream - `<img>`, `<video>`, Howler, `FontFace` - would sniff for itself if we
- * handed it nothing. Deciding here keeps that one decision in one place, and keeps it out of the
- * build, where it would have to be written down and could then be read.
+ * Two callers, one question. A protected game ships no asset manifest (see
+ * `GameRuntimePackV1.assets`), so nothing tells the runtime's protocol handler that one entry is a
+ * JPEG and the next is an Ogg stream; and an asset in the library is stored under an id with no
+ * extension, so an export has to answer the same question before it can name the file it writes.
  *
- * Only the formats this runtime actually serves are recognised. Anything else answers
+ * That turns out to be the right shape rather than a gap to paper over: an item's media type is a
+ * property of its bytes, and every consumer downstream - `<img>`, `<video>`, Howler, `FontFace` -
+ * would sniff for itself if we handed it nothing. Deciding here keeps that one decision in one
+ * place, and keeps it out of the build, where it would have to be written down and could then be
+ * read.
+ *
+ * Only the formats Studio actually deals in are recognised. Anything else answers
  * `application/octet-stream`, which is also the honest answer for a model bundle's `.moc3` or a
  * plugin's private payload - the renderer fetches those as raw buffers and never consults the type.
  */
@@ -144,4 +148,45 @@ export function sniffMediaType(data: Buffer): string | null {
 /** {@link sniffMediaType} with the fallback applied, for callers that must name something. */
 export function mediaTypeOf(data: Buffer): string {
     return sniffMediaType(data) ?? DEFAULT_MEDIA_TYPE;
+}
+
+/**
+ * What a person would call a file of this type.
+ *
+ * Written out rather than taken from `mime-types`, whose reverse lookup answers `oga` for Ogg audio,
+ * `mpga` for MP3 and `adts` for AAC - true of the standard, and not what anybody names a file. The
+ * table is the sniffer's own list read backwards, so a format recognised above always has a name
+ * here; anything else has none, and a caller that cannot name a file leaves it unnamed rather than
+ * inventing a suffix that would tell the OS the wrong thing.
+ */
+const EXTENSION_FOR_MEDIA_TYPE: Readonly<Record<string, string>> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/bmp": "bmp",
+    "image/x-icon": "ico",
+    "image/svg+xml": "svg",
+    "audio/wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/aac": "aac",
+    "audio/flac": "flac",
+    "audio/mp4": "m4a",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/ogg": "ogv",
+    "video/x-matroska": "mkv",
+    "font/woff": "woff",
+    "font/woff2": "woff2",
+    "font/otf": "otf",
+    "font/ttf": "ttf",
+    "application/json": "json",
+    "application/xml": "xml",
+};
+
+/** The file extension for `data`, without a dot, or null when nothing here recognises the bytes. */
+export function fileExtensionFromBytes(data: Buffer): string | null {
+    const mediaType = sniffMediaType(data);
+    return mediaType === null ? null : EXTENSION_FOR_MEDIA_TYPE[mediaType] ?? null;
 }

@@ -77,6 +77,7 @@ export const documentDiff = {
         characterGroups: "キャラクターグループ",
         characters: "キャラクター",
         dictionaryTerms: "辞書の項目",
+        transformPresets: "変換プリセット",
         localizationKeys: "ローカライズのキー",
         projectLanguages: "言語",
         projectPlugins: "プラグイン",
@@ -447,6 +448,12 @@ export const documentDiff = {
      * 辞書がいま何をするかを言う。プロジェクトのすべての台本で、ストーリーエディターが何に印を
      * 付けるかが変わるから。
      */
+    transformPresets: {
+        added: "プリセットを追加",
+        removed: "プリセットを削除",
+        renamed: "プリセット名を変更",
+        transform: "プリセットの変換を変更",
+    },
     dictionary: {
         added: "用語を追加",
         removed: "用語を削除",
@@ -673,6 +680,7 @@ export const documentDiff = {
         appTags: "ビルドバリアント",
         dlc: "追加コンテンツ",
         dictionary: "辞書",
+        transformPresets: "変換プリセット",
         saveSchema: "セーブ項目",
         assetSets: "アセットセット",
         localization: "翻訳",

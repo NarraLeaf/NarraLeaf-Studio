@@ -1,69 +1,28 @@
 /**
- * User-facing labels for blueprint owner kinds.
- * Simplifies the internal globalMain/surfaceMain/widgetMain/sharedAsset taxonomy
- * into terms that intermediate creators can understand.
+ * What a blueprint belongs to, in the words an author navigates by.
+ *
+ * Simplifies the internal globalMain/surfaceMain/widgetMain/sharedAsset taxonomy into terms an
+ * intermediate creator can read. Keys rather than words: these land in a panel row, a tab title and
+ * the section beside a control, all of which are translated, and a literal here printed English
+ * into every one of them.
  */
 
+import type { TranslationKey } from "@shared/i18n";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 
-export type OwnerLabelSet = {
-    /** Short noun: "App Logic", "Page Logic", "Component Logic" */
-    label: string;
-    /** Prefix for the blueprint editor tab title */
-    titlePrefix: string;
-    /** Informal description for tooltips / empty states */
-    description: string;
+const LABEL_KEYS: Record<BlueprintOwnerRef["kind"], TranslationKey> = {
+    globalMain: "uiEditor.ownerLabel.globalMain",
+    surfaceMain: "uiEditor.ownerLabel.surfaceMain",
+    widgetMain: "uiEditor.ownerLabel.widgetMain",
+    widgetValue: "uiEditor.ownerLabel.widgetValue",
+    // A component definition's logic is the same thing to an author as a control's own, and saying
+    // it differently would only ask them to tell two words apart that mean one thing.
+    componentWidgetMain: "uiEditor.ownerLabel.widgetMain",
+    sharedAsset: "uiEditor.ownerLabel.sharedAsset",
+    storyAction: "uiEditor.ownerLabel.storyAction",
 };
 
-const LABELS: Record<BlueprintOwnerRef["kind"], OwnerLabelSet> = {
-    globalMain: {
-        label: "App Logic",
-        titlePrefix: "App Logic",
-        description: "App-wide logic.",
-    },
-    surfaceMain: {
-        label: "Page Logic",
-        titlePrefix: "Page Logic",
-        description: "Logic for this page.",
-    },
-    widgetMain: {
-        label: "Component Logic",
-        titlePrefix: "Component Logic",
-        description: "Logic for this control.",
-    },
-    widgetValue: {
-        label: "Component Value",
-        titlePrefix: "Component Value",
-        description: "Logic for this control value.",
-    },
-    componentWidgetMain: {
-        label: "Component Logic",
-        titlePrefix: "Component Logic",
-        description: "Logic inside a reusable component definition.",
-    },
-    sharedAsset: {
-        label: "Shared Blueprint",
-        titlePrefix: "Shared",
-        description: "Shared asset.",
-    },
-    storyAction: {
-        label: "Story Action",
-        titlePrefix: "Story Action",
-        description: "Logic for a single story action.",
-    },
-};
-
-export function getOwnerLabel(kind: BlueprintOwnerRef["kind"]): OwnerLabelSet {
-    return LABELS[kind];
+/** The translation key naming `kind`. Pass it through the caller's own `t`. */
+export function ownerLabelKey(kind: BlueprintOwnerRef["kind"]): TranslationKey {
+    return LABEL_KEYS[kind];
 }
-
-export function getOwnerLabelString(kind: BlueprintOwnerRef["kind"]): string {
-    return LABELS[kind].label;
-}
-
-/** User-facing scope labels for state binding. */
-export const STATE_SCOPE_LABELS = {
-    surface: "Page data",
-    global: "App data",
-    persistence: "Saved data",
-} as const;

@@ -277,6 +277,12 @@ export function useStoryPreviewGameUi(input: {
             listAutoSaves: async () => [],
             isInGame: () => true,
             quitGame: notAvailable("Quit Game"),
+            // The preview settles one scene's stage; there is no playthrough behind it, so a
+            // saved variable has no value to report and nowhere to be written.
+            getSavedVariableInGame: () => ({ value: null, found: false }),
+            setSavedVariableInGame: () => {
+                throw new Error("Set Saved Var: game runtime is not available");
+            },
             ...liveGameCallbacks,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,

@@ -3,19 +3,35 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { showOpenDialog } = vi.hoisted(() => ({ showOpenDialog: vi.fn() }));
+const { showOpenDialog, showSaveDialog } = vi.hoisted(() => ({
+    showOpenDialog: vi.fn(),
+    showSaveDialog: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
-    dialog: { showOpenDialog },
+    dialog: { showOpenDialog, showSaveDialog },
     net: { request: vi.fn() },
 }));
 
-const { AssetExportToFolderHandler } = await import("./assetAction");
+const { AssetExportToFileHandler, AssetExportToFolderHandler } = await import("./assetAction");
 type AppWindowLike = Parameters<InstanceType<typeof AssetExportToFolderHandler>["handle"]>[0];
 
 let root: string;
 let project: string;
 let exportDir: string;
+
+/**
+ * The app as a picker reads it: whether this launch answers dialogs from a page rather than opening
+ * them, and the language its title and button are written in. A stored language keeps the resolver
+ * off `electron/main`, which is not resolvable under the test runner.
+ */
+function appDouble() {
+    return {
+        hasExperimentalCondition: () => false,
+        getCommandLineBuild: () => false,
+        globalState: { get: (key: string) => (key === "app.language" ? "en" : undefined) },
+    };
+}
 
 /**
  * A window as this handler uses one: a storage manager that grants the project and nothing else,
@@ -27,7 +43,7 @@ let exportDir: string;
 function makeWindow(overrides: { protectedPath?: boolean } = {}) {
     return {
         win: {},
-        getApp: () => ({ hasExperimentalCondition: () => false }),
+        getApp: () => appDouble(),
         app: {
             storageManager: {
                 isPathProtected: vi.fn(async () => overrides.protectedPath ?? false),
@@ -56,12 +72,25 @@ beforeEach(async () => {
     await fs.mkdir(project, { recursive: true });
     await fs.mkdir(exportDir, { recursive: true });
     showOpenDialog.mockReset();
+    showSaveDialog.mockReset();
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: path.join(exportDir, "chosen.png") });
     showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [exportDir], bookmarks: [] });
 });
 
 afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
 });
+
+/** A shard holding a real PNG header, which is what the export has to read a name out of. */
+async function pngShard(id: string): Promise<string> {
+    const target = path.join(project, "assets", "content", id);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.alloc(64),
+    ]));
+    return target;
+}
 
 async function shard(id: string, contents: string): Promise<string> {
     const target = path.join(project, "assets", "content", id);
@@ -88,6 +117,39 @@ describe("AssetExportToFolderHandler", () => {
         await expect(fs.readFile(path.join(exportDir, "room.png"), "utf8")).resolves.toBe("room-bytes");
         await expect(fs.readFile(path.join(exportDir, "backdrops", "night", "alley.png"), "utf8"))
             .resolves.toBe("alley-bytes");
+    });
+
+    it("names a file from its bytes when the library holds no extension", async () => {
+        // An asset record's `ext` is optional, and a shipped template's records do not carry it, so
+        // the name arriving here can be a bare `classroom` - which would land as a file the author's
+        // system cannot open.
+        const result = await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: await pngShard("a1"), relativePath: "backdrops/classroom" }],
+        });
+
+        expect(result).toMatchObject({ success: true, data: { exportedCount: 1 } });
+        await expect(fs.access(path.join(exportDir, "backdrops", "classroom.png"))).resolves.toBeUndefined();
+    });
+
+    it("leaves a name that already carries an extension alone", async () => {
+        await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: await pngShard("a1"), relativePath: "room.png" }],
+        });
+
+        await expect(fs.access(path.join(exportDir, "room.png"))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(exportDir, "room.png.png"))).rejects.toThrow();
+    });
+
+    it("leaves a bundle unnamed: a folder has no extension", async () => {
+        const bundle = path.join(project, "assets", "content", "m1");
+        await fs.mkdir(bundle, { recursive: true });
+        await fs.writeFile(path.join(bundle, "model.json"), "{}", "utf8");
+
+        await handler.handle(makeWindow(), {
+            entries: [{ sourcePath: bundle, relativePath: "hero", isDirectory: true }],
+        });
+
+        await expect(fs.access(path.join(exportDir, "hero", "model.json"))).resolves.toBeUndefined();
     });
 
     it("opens the security scope without granting the renderer the chosen folder", async () => {
@@ -194,5 +256,100 @@ describe("AssetExportToFolderHandler", () => {
         expect(result).toMatchObject({ success: true, data: { exportedCount: 1 } });
         expect(result.success && result.data.failures?.[0].relativePath).toBe("gone.png");
         await expect(fs.readFile(path.join(exportDir, "room.png"), "utf8")).resolves.toBe("room-bytes");
+    });
+});
+
+describe("AssetExportToFileHandler", () => {
+    const handler = new AssetExportToFileHandler();
+
+    it("writes the file where the author named it", async () => {
+        const room = await shard("a1", "room-bytes");
+
+        const result = await handler.handle(makeWindow(), {
+            entry: { sourcePath: room, fileName: "room.png" },
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            data: { canceled: false, filePath: path.join(exportDir, "chosen.png") },
+        });
+        await expect(fs.readFile(path.join(exportDir, "chosen.png"), "utf8")).resolves.toBe("room-bytes");
+    });
+
+    it("opens the dialog on the library's own name for the file", async () => {
+        await handler.handle(makeWindow(), {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        });
+
+        expect(showSaveDialog.mock.calls[0][1]).toMatchObject({ defaultPath: "room.png" });
+    });
+
+    it("fills the dialog with a name the bytes can be saved under", async () => {
+        // The name has to be right BEFORE the dialog opens: it fills the field and picks the filter,
+        // and an author who accepts what is offered must not end up with an extensionless file.
+        await handler.handle(makeWindow(), {
+            entry: { sourcePath: await pngShard("a1"), fileName: "classroom" },
+        });
+
+        expect(showSaveDialog.mock.calls[0][1]).toMatchObject({
+            defaultPath: "classroom.png",
+            filters: [{ name: "PNG", extensions: ["png"] }, { name: "All files", extensions: ["*"] }],
+        });
+    });
+
+    it("overwrites what the dialog already asked about", async () => {
+        // The save dialog confirms the replacement itself, so a second name-and-save has to land on
+        // the file the author pointed at rather than beside it as the folder export would.
+        await fs.writeFile(path.join(exportDir, "chosen.png"), "already-here", "utf8");
+
+        await handler.handle(makeWindow(), {
+            entry: { sourcePath: await shard("a1", "room-bytes"), fileName: "room.png" },
+        });
+
+        await expect(fs.readFile(path.join(exportDir, "chosen.png"), "utf8")).resolves.toBe("room-bytes");
+    });
+
+    it("opens the security scope without granting the renderer the chosen location", async () => {
+        const window = makeWindow();
+        await handler.handle(window, {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        });
+
+        expect(storageOf(window).grantFileSystemAccess).not.toHaveBeenCalled();
+        expect(storageOf(window).startSecurityScopedAccess).toHaveBeenCalledWith(
+            window,
+            path.join(exportDir, "chosen.png"),
+            undefined,
+            "session",
+        );
+    });
+
+    it("reports the dismissed dialog as a cancel rather than a failure", async () => {
+        showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined });
+
+        await expect(handler.handle(makeWindow(), {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        })).resolves.toEqual({ success: true, data: { canceled: true } });
+    });
+
+    it("refuses a source the window has no read grant for, without opening a dialog", async () => {
+        const outside = path.join(root, "secret.txt");
+        await fs.writeFile(outside, "not-yours", "utf8");
+
+        const result = await handler.handle(makeWindow(), {
+            entry: { sourcePath: outside, fileName: "secret.txt" },
+        });
+
+        expect(result).toMatchObject({ success: false });
+        expect(showSaveDialog).not.toHaveBeenCalled();
+    });
+
+    it("refuses a location inside protected Studio storage", async () => {
+        const result = await handler.handle(makeWindow({ protectedPath: true }), {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        });
+
+        expect(result).toMatchObject({ success: false });
+        await expect(fs.access(path.join(exportDir, "chosen.png"))).rejects.toThrow();
     });
 });

@@ -4,8 +4,19 @@ export const uiEditor = {
     surfaceKind: {
         page: "ページ",
         gameUi: "ゲーム UI",
+        mainPage: "入口ページ",
         pageDescription: "ページはタイトル、設定、セーブ、履歴、ギャラリーのような 1 画面全体を占めるもの",
         gameUiDescription: "ゲーム UI はプレイ中に働くもの。ダイアログ、選択肢、HUD、ショートカット、通知など",
+    },
+    // ブループリントの持ち主。ブループリントパネル、タブ名、コントロール脇の読み取り専用欄は
+    // 同じ 6 つを指すので、名前はここで 1 度だけ決める。
+    ownerLabel: {
+        globalMain: "アプリロジック",
+        surfaceMain: "ページロジック",
+        widgetMain: "コンポーネントロジック",
+        widgetValue: "コンポーネントの値",
+        sharedAsset: "共有ブループリント",
+        storyAction: "ストーリーアクション",
     },
     // ゲーム UI が取れる 5 つの舞台スロット。作成ダイアログ、サーフェス一覧、プロパティパネル、
     // テンプレートストアで作者は同じ 5 つに出会うので、名前はここで 1 度だけ決める。

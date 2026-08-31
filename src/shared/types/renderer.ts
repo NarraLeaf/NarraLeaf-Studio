@@ -1,6 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
+import type { LibraryExchangeKind } from "../story/libraryExchange";
 import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
@@ -65,7 +66,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
-import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetExportEntry, AssetExportFileEntry, AssetExportFileResult, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
 import type { StudioClipboardKind } from "./studioClipboard";
 import type {
@@ -496,6 +497,12 @@ export interface RendererPreloadedInterface {
             byteLength?: number;
         }>>;
         /**
+         * Show the log folder itself, for reading rather than for handing over. Takes no path: the
+         * folder is the one main knows, which is what keeps this from being a general "open a
+         * directory" call.
+         */
+        openLogsFolder(): Promise<RequestStatus<void>>;
+        /**
          * Whether a download mirror answers. In the host because the renderer never opens a
          * network connection of its own, a URL the user just typed included.
          */
@@ -515,6 +522,17 @@ export interface RendererPreloadedInterface {
         }>>;
         /** Read a settings document the user picks; parsing happens in the renderer. */
         importSettings(): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            content?: string;
+        }>>;
+        /** Write an exported library - transform presets, Story Motions - to a file the user picks. */
+        exportLibraryItems(kind: LibraryExchangeKind, defaultFileName: string, content: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+        }>>;
+        /** Read an exported library the user picks; parsing happens in the renderer. */
+        importLibraryItems(kind: LibraryExchangeKind): Promise<RequestStatus<{
             canceled: boolean;
             filePath?: string;
             content?: string;
@@ -1274,6 +1292,16 @@ export interface RendererPreloadedInterface {
          * the dialog is a success carrying `canceled: true`, not a failure.
          */
         exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
+
+        /**
+         * Ask where to save one library file, and write it there.
+         *
+         * The single-file half of {@link exportToFolder}: the author names the file in the dialog
+         * instead of taking the name the library holds. Main writes the copy for the same reason,
+         * and cancelling is a success carrying `canceled: true`. Bundle assets are directories and
+         * belong on `exportToFolder`.
+         */
+        exportToFile(entry: AssetExportFileEntry): Promise<RequestStatus<AssetExportFileResult>>;
 
         /**
          * Moving an asset's bytes between two workspace windows of one Studio process.

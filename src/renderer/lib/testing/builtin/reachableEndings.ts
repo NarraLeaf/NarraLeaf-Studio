@@ -285,7 +285,8 @@ function walkStory(
         const scene = story.document.scenes[sceneId];
         const exits = continuations.get(sceneId) ?? [];
         // A call is not a way out - the run comes back and carries on here - so a scene whose only
-        // continuations are calls has nowhere to go once they have returned.
+        // continuations are calls has nowhere to go once they have returned. A quit IS a way out:
+        // it is the author saying this is where the run stops.
         const leaves = exits.some(exit => exit.kind !== "call");
         if (!leaves && !calledSceneIds.has(sceneId)) {
             // Nothing leaves and nothing ends it. A scene with no way out has no arms either - an
@@ -302,6 +303,13 @@ function walkStory(
             }
             if (exit.kind === "ending") {
                 reachedEndingIds.add(exit.endingId);
+                continue;
+            }
+            if (exit.kind === "quit") {
+                // The run ends here on purpose, and no ending was reached. Neither counted nor
+                // reported: this path did not run out - it arrived at a row that says the
+                // playthrough is over - and the page it hands the player is where the next run
+                // starts from, which this walk has no way to follow and no business guessing at.
                 continue;
             }
             if (exit.kind === "stop") {
