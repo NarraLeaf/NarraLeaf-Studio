@@ -10,7 +10,7 @@ import { WRITE_BATCH_MAX_ENTRIES } from "@shared/utils/writeBatchFrame";
  * `selectFile` is the one picker every workspace import goes through - story scripts, localization
  * CSVs, voice takes - and it hardcoded "Select Icon File", which was true of exactly one caller. The
  * title is the only sentence a native dialog gives the author about why it opened, so it has to be
- * the caller's; the default stays as it was so no existing caller changes.
+ * the caller's; a caller that says nothing gets the generic one, translated like the rest.
  */
 
 const showOpenDialog = vi.fn(async (_window: unknown, _options: Electron.OpenDialogOptions) => ({
@@ -41,6 +41,19 @@ vi.mock("@shared/utils/fs", async (importOriginal) => {
 const { PrivilegedFsCallHandler } = await import("./privilegedAction");
 
 /**
+ * The app as a picker reads it: whether this launch answers dialogs from a page rather than opening
+ * them, and the language its title and button are written in. A stored language keeps the resolver
+ * off `electron/main`, which is not resolvable under the test runner.
+ */
+function appDouble() {
+    return {
+        hasExperimentalCondition: () => false,
+        getCommandLineBuild: () => false,
+        globalState: { get: (key: string) => (key === "app.language" ? "en" : undefined) },
+    };
+}
+
+/**
  * Only what the `selectFile` arm reads: the window's type (for its grant policy), its native window,
  * and the app it belongs to - the picker asks that whether this launch is answering dialogs from a
  * page instead of opening them (`fileDialog.ts`).
@@ -49,7 +62,7 @@ function workspaceWindow(): AppWindow {
     return {
         win: {},
         getWindowType: () => WindowAppType.Workspace,
-        getApp: () => ({ hasExperimentalCondition: () => false }),
+        getApp: () => appDouble(),
     } as unknown as AppWindow;
 }
 
@@ -73,8 +86,10 @@ describe("privileged selectFile dialog", () => {
         expect((await openPicker("Import Script")).title).toBe("Import Script");
     });
 
-    it("keeps the old title when the caller names none, so no existing caller changes", async () => {
-        expect((await openPicker()).title).toBe("Select Icon File");
+    it("names what it is choosing when the caller says nothing", async () => {
+        // Not "Select Icon File": that was true of one caller and a lie to every other, and
+        // it printed English into a translated interface.
+        expect((await openPicker()).title).toBe("Select a file");
     });
 });
 

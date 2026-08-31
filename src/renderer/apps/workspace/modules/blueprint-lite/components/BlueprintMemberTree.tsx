@@ -744,7 +744,9 @@ export function BlueprintMemberTree({
                     if (!id || !inputDialog) {
                         return;
                     }
-                    const cur = events[id]?.name ?? id;
+                    // Empty rather than the id when a layer has no name: the field is what the
+                    // rename starts from, and starting it from a UUID invites naming it that.
+                    const cur = events[id]?.name ?? "";
                     void inputDialog
                         .show({
                             title: t("blueprint.memberTree.renameLayerTitle"),

@@ -165,6 +165,7 @@ function createHostApi(options?: {
     onOpenSurface?: (surfaceId: string, props?: Record<string, unknown>) => Promise<void> | void;
     onQuitApplication?: () => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
     onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<boolean> | boolean;
     onDeleteSave?: (id: string) => Promise<void> | void;
@@ -239,6 +240,7 @@ function createHostApi(options?: {
         onPageBack: options?.onPageBack ?? (() => undefined),
         onQuitApplication: options?.onQuitApplication,
         onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
+        initialWidgetPatches: options?.initialWidgetPatches,
         widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
     });
 }
@@ -645,6 +647,46 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(resolvedImageAssetId(document, patches)).toBe("legacy-image");
         // Nothing of any of that reached the authored record.
         expect(document.elements.image!.props!.imageFill).toEqual(authoredFill);
+    });
+
+    it("a rebuilt drawing sees what the previous one painted", async () => {
+        // The dialog box is torn down and rebuilt whenever the gap between two lines outlives the
+        // engine's replacement grace, and the surface builds a fresh host API for the new box while
+        // the writes the old one made are still on screen. Every setter checks the value it is given
+        // against what the drawing currently shows and writes nothing when they agree, so a host API
+        // that started from the authored record instead of from the screen skipped exactly the
+        // writes that put an element *back* to its authored value. The shipped defect was the
+        // previous speaker's avatar sitting on a narration line: narration asks for no avatar, no
+        // avatar is what the widget was authored with, and the write that would have cleared the
+        // face was dropped as a no-op.
+        const imageProps = { fillType: "image", imageFill: { mode: "cover" as const, assetId: null } };
+        const document = createDocument();
+        document.elements.image = {
+            ...document.elements.image!,
+            props: { ...imageProps, appearance: createInitialImageAppearanceFromProps(imageProps) },
+        };
+        const patches: Record<string, DevModeWidgetRuntimePatch> = {};
+        const onWidgetPatch = (elementId: string, patch: DevModeWidgetRuntimePatch) => {
+            patches[elementId] = {
+                ...(patches[elementId] ?? {}),
+                ...patch,
+                props: { ...(patches[elementId]?.props ?? {}), ...(patch.props ?? {}) },
+            };
+        };
+
+        const speaking = createHostApi({ document, onWidgetPatch });
+        await speaking.widget.setImageProperties("image", {
+            asset: { kind: "imageAsset", assetId: "avatar-a" },
+        });
+        expect(resolvedImageAssetId(document, patches)).toBe("avatar-a");
+
+        const rebuilt = createHostApi({ document, onWidgetPatch, initialWidgetPatches: patches });
+        expect(rebuilt.widget.getImageProperties("image").asset).toEqual({
+            kind: "imageAsset",
+            assetId: "avatar-a",
+        });
+        await rebuilt.widget.setImageProperties("image", { asset: null });
+        expect(resolvedImageAssetId(document, patches)).toBeNull();
     });
 
     it("supports Image appearance variant overrides", async () => {

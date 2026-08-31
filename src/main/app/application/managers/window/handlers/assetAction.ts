@@ -5,7 +5,7 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
 import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
 import { fetchRemoteAsset } from "../../remoteAssetFetcher";
-import { showOpenDialog, showSaveDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -110,9 +110,10 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 return this.failed("Nothing was handed to the export.");
             }
 
+            const { t } = dialogTranslator(window);
             const selection = await showOpenDialog(window, {
-                title: "Select Export Folder",
-                buttonLabel: "Export Here",
+                title: t("dialogs.file.title.exportAssets"),
+                buttonLabel: t("dialogs.file.button.exportHere"),
                 properties: ["openDirectory", "createDirectory"],
                 securityScopedBookmarks: true,
             });
@@ -214,13 +215,14 @@ export class AssetExportToFileHandler extends IPCHandler<IPCEventType.assetExpor
             const fileName = sanitizeExportSegment(typeof entry.fileName === "string" ? entry.fileName : "");
             const extension = path.extname(fileName).replace(/^\./, "");
 
+            const { t } = dialogTranslator(window);
             const selection = await showSaveDialog(window, {
-                title: "Export File",
-                buttonLabel: "Export",
+                title: t("dialogs.file.title.exportAsset"),
+                buttonLabel: t("dialogs.file.button.export"),
                 ...(fileName ? { defaultPath: fileName } : {}),
                 filters: extension
-                    ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: "All Files", extensions: ["*"] }]
-                    : [{ name: "All Files", extensions: ["*"] }],
+                    ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: t("dialogs.file.filter.all"), extensions: ["*"] }]
+                    : [{ name: t("dialogs.file.filter.all"), extensions: ["*"] }],
                 securityScopedBookmarks: true,
             });
 

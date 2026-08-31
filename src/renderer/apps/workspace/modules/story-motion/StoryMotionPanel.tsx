@@ -440,14 +440,32 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         setSelectedAsset(next);
     }, [selectedAsset, storyService]);
 
+    /**
+     * What the bound action's motion is called.
+     *
+     * By name, never by id: this line sits under the action's own label, and a UUID there named
+     * something the author has no way to look up. An id the library cannot answer for is a reference
+     * to a deleted motion, which the line says in words instead.
+     */
+    const actionMotionLabel = useMemo(() => {
+        if (!actionAnimationId) {
+            return t("motion.panel.actionNoMotion");
+        }
+        const bound = assets.find(asset => asset.id === actionAnimationId);
+        return bound
+            ? t("motion.panel.actionUses", { name: bound.name })
+            : t("motion.panel.actionUsesMissing");
+    }, [actionAnimationId, assets, t]);
+
     const imageAssetName = useCallback((assetId: string | undefined) => {
         if (!assetId) {
             return null;
         }
-        return assetsService?.getAssets()[AssetType.Image]?.[assetId]?.name ?? assetId;
+        // Never the id: a slot labelled with a UUID says nothing about which picture is missing.
+        return assetsService?.getAssets()[AssetType.Image]?.[assetId]?.name ?? t("motion.panel.previewAssetMissing");
         // `assetLibraryRevision`: the lookup itself is live, but nothing would re-run it - asset
         // records are mutated in place, so a rename changes no other input this panel holds.
-    }, [assetLibraryRevision, assetsService]);
+    }, [assetLibraryRevision, assetsService, t]);
 
     const openFullEditor = useCallback(() => {
         if (!selectedAsset) {
@@ -663,7 +681,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                         <div className="min-w-0">
                                             <div className="truncate text-xs font-medium text-primary">{descriptor.label}</div>
                                             <div className="mt-1 truncate text-2xs text-fg-muted">
-                                                {actionAnimationId ? t("motion.panel.actionUses", { id: actionAnimationId }) : t("motion.panel.actionNoMotion")}
+                                                {actionMotionLabel}
                                             </div>
                                         </div>
                                         <Button

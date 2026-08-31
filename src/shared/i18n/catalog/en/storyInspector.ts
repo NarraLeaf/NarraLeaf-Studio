@@ -49,6 +49,7 @@ export const storyInspector = {
         feather: "Feather %",
         orientation: "Orientation",
         slats: "Slats",
+        slatDelay: "Slat delay",
         axis: "Axis",
         blades: "Blades",
         fromAngle: "From angle °",

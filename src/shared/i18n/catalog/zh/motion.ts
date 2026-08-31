@@ -115,7 +115,9 @@ export const motion = {
         motionActions: "动画操作",
         repeat: "重复次数",
         repeatDelaySeconds: "重复延迟（秒）",
-        actionUses: "当前动作使用 {id}",
+        actionUses: "当前动作使用 {name}",
+        actionUsesMissing: "当前动作使用的动效已不在本工程中",
+        previewAssetMissing: "图片缺失",
         actionNoMotion: "当前动作未绑定动画资产",
         bindToAction: "绑定到动作",
         target: "目标",
@@ -160,7 +162,6 @@ export const motion = {
     picker: {
         change: "更换",
         choose: "选择",
-        assetFallback: "资产 {id}",
         noMotionBound: "此动作未绑定动画",
         noMatches: "没有匹配的故事动画",
         previewKind: "预览：{kind}",

@@ -6,7 +6,7 @@ import type {
     UIStageSurface,
     UISurface,
 } from "@shared/types/ui-editor/document";
-import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DEFAULT_UI_STAGE_SLOT_ID } from "@shared/types/ui-editor/stageSlots";
 import { getStageSlotLabel, getStageSlotOptions } from "@/lib/ui-editor/stageSlotLabel";
 import { parseColorValue, serializeColorValue } from "../framework/utils/colorUtils";
@@ -40,7 +40,7 @@ const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind
 
 const getInterfaceTypeLabel = (surface: UISurface, t: TranslateFn): string => {
     if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
+        return t("uiEditor.surfaceKind.mainPage");
     }
     return isGameUi(surface) ? t("properties.scene.typeGameUi") : t("properties.scene.typePage");
 };

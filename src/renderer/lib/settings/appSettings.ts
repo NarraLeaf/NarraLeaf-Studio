@@ -978,6 +978,32 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: null,
     },
     {
+        // The folder itself, not a bundle to hand over - that is the crash screen's export. Nothing
+        // is stored under this key; it is only the identity of the button, and main names the folder
+        // so this cannot become a way to open an arbitrary directory.
+        key: "data.openLogsFolder",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Action,
+        label: "Studio's log files",
+        labelKey: "settings.items.openLogsFolder.label",
+        description: "The record Studio writes as it runs. Opens the folder in the file manager.",
+        descriptionKey: "settings.items.openLogsFolder.description",
+        defaultValue: null,
+        actionLabel: "Open folder",
+        actionLabelKey: "settings.items.openLogsFolder.action",
+        // Nothing is changed or deleted by looking at a folder, so the row does not ask
+        // twice - every other Action here resets or clears something, which is why the
+        // confirm step is the default rather than the exception.
+        skipConfirm: true,
+        onInvoke: async () => {
+            // Imported here rather than at the top of the file, the way the other bridge callers in
+            // this table do: the settings catalogue is read in contexts that have no bridge.
+            const { getInterface } = await import("@/lib/app/bridge");
+            await getInterface().app.openLogsFolder();
+        },
+    },
+    {
         // Rendered by `SETTING_PANELS.settingsTransfer`: export with its two opt-ins, and import
         // with the preview that has to come before anything is written.
         key: "data.transfer",

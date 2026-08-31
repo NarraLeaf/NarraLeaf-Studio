@@ -66,6 +66,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "ui/list-item-field-missing",
     "ui/gesture-answered-twice",
     "blueprint/save-field-empty",
+    "blueprint/start-scene-foreign",
     "variables/undeclared",
     "variables/unused",
     "variables/name-collision",

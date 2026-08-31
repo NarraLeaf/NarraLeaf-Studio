@@ -395,6 +395,38 @@ describe("projectStoryCommandLine", () => {
         expect(projectStoryCommandLine(setSaved, LOOKUPS)!.source).toBe("/set variable 5");
     });
 
+    /**
+     * A stored scene reference reads as the scene.
+     *
+     * `scene:<id>` is a reference the runtime resolves wherever the value is later displayed - the
+     * skeleton stores one so a save slot can say where the player was. Printed raw it put a bare
+     * UUID on the second line of every new project.
+     */
+    it("prints a stored scene reference as the scene it names", () => {
+        const setPlace: StoryBlock = {
+            id: "b3", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "key_seen" }, value: "scene:s1" },
+        };
+        const withRegistry: StoryCommandLineLookups = {
+            ...LOOKUPS,
+            projectVariableName: () => "Place",
+        };
+        // Unquoted because the value slot is greedy: it takes the rest of the line as written.
+        expect(projectStoryCommandLine(setPlace, withRegistry)!.source).toBe("/set Place Chapter 2");
+    });
+
+    it("keeps a scene reference that answers to nothing as it is stored", () => {
+        const setPlace: StoryBlock = {
+            id: "b4", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "key_seen" }, value: "scene:deleted" },
+        };
+        const withRegistry: StoryCommandLineLookups = {
+            ...LOOKUPS,
+            projectVariableName: () => "Place",
+        };
+        expect(projectStoryCommandLine(setPlace, withRegistry)!.source).toBe("/set Place scene:deleted");
+    });
+
     it("says an empty default rather than dropping it", () => {
         // An absent default and an empty one are different variables — the first is never seeded — and
         // `""` is what a retype to `string` leaves behind, so it has to be sayable.

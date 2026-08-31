@@ -22,6 +22,7 @@ import {
     storyVariableRefKey,
 } from "@shared/types/story";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import { parseSceneTranslationUnitId, sceneTranslationUnitId } from "@shared/types/localization";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import { translate } from "@/lib/i18n";
 
@@ -336,6 +337,38 @@ function arg(param: string, value: string | undefined | null, extra: Omit<Arg, "
 
 function positional(param: string, value: string | undefined | null, extra: Omit<Arg, "param" | "value" | "positional"> = {}): Arg | null {
     return arg(param, value, { ...extra, positional: true });
+}
+
+/**
+ * The right-hand side of an assignment.
+ *
+ * Almost always the literal or the expression as written. The exception is a stored SCENE REFERENCE
+ * (`scene:<id>`): the runtime resolves one to the scene's name wherever it is later displayed - a
+ * save slot's "place" field is what the skeleton uses it for - so the row prints the same name the
+ * player will read, and links to that scene, rather than an id nobody can recognize.
+ *
+ * A reference whose scene is gone keeps its stored spelling: there is no name to print, and a row
+ * that quietly said nothing would hide the dangling reference instead of showing it.
+ */
+function assignedValueArg(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    lookups: StoryCommandLineLookups,
+): Arg | null {
+    const source = payload.expression?.source ?? String(payload.value);
+    const sceneId = payload.expression ? null : parseSceneTranslationUnitId(source);
+    const sceneName = sceneId ? resolveStorySceneName(lookups.scenes, sceneId) : null;
+    if (!sceneId || sceneName === null) {
+        return positional("value", source);
+    }
+    return positional("value", sceneName, {
+        editValue: source,
+        choices: Object.values(lookups.scenes ?? {}).map(scene => ({
+            value: sceneTranslationUnitId(scene.id),
+            label: scene.name || scene.id,
+        })),
+        apply: next => ({ ...payload, value: next, expression: undefined }),
+        link: { kind: "scene" as const, sceneId },
+    });
 }
 
 /** Milliseconds as the seconds number the line is typed in — `1200` → `1.2`. */
@@ -1612,7 +1645,7 @@ function actionSentence(
                             ? { link: { kind: "variable" as const, target: payload.target } }
                             : {}),
                     }),
-                    positional("value", payload.expression?.source ?? String(payload.value)),
+                    assignedValueArg(payload, lookups),
                 ],
             };
         }

@@ -121,6 +121,8 @@ const CATEGORY = {
     blueprint: "workspace.shell.keybindings.categories.blueprint" as TranslationKey,
     storyMotion: "workspace.shell.keybindings.categories.storyMotion" as TranslationKey,
     assets: "workspace.shell.keybindings.categories.assets" as TranslationKey,
+    localization: "workspace.shell.keybindings.categories.localization" as TranslationKey,
+    voice: "workspace.shell.keybindings.categories.voice" as TranslationKey,
 } as const;
 
 function entry(
@@ -315,6 +317,13 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.audio.zoom-in", "=", "assets.audio.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
     entry("assets.audio.zoom-out", "-", "assets.audio.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
     entry("assets.audio.zoom-fit", "0", "assets.audio.keybindings.zoomFit", CATEGORY.assets, Maximize2),
+
+    // --- Translation and voice tables ---------------------------------------
+    // Two tables, one command, one chord. They are separate entries rather than one shared id
+    // because the chord is scoped to whichever table holds editor focus, and an author rebinding
+    // "find in the voice table" should not be told they have also rebound the translation one.
+    entry("localization.find", "mod+f", "workspace.shell.keybindings.catalog.localizationFind", CATEGORY.localization, Search),
+    entry("voice.find", "mod+f", "workspace.shell.keybindings.catalog.voiceFind", CATEGORY.voice, Search),
 ];
 
 const CATALOG_BY_ID = new Map(KEYBINDING_CATALOG.map(item => [item.id, item]));

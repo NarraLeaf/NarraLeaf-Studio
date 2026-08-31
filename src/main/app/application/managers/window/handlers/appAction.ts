@@ -1,6 +1,6 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import { showOpenDialog, showSaveDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
@@ -468,10 +468,11 @@ export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPi
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ file: string | null }>> {
+        const { t } = dialogTranslator(window);
         const result = await showOpenDialog(window, {
-            title: "Choose Background Image",
+            title: t("dialogs.file.title.chooseBackgroundImage"),
             properties: ["openFile"],
-            filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+            filters: [{ name: t("dialogs.file.filter.images"), extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
         });
         const source = result.filePaths[0];
         if (result.canceled || !source) {
@@ -578,12 +579,13 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
             };
             const content = composeDiagnosticsBundle(environment, report, await readMainLogTail(logsDir));
 
+            const { t } = dialogTranslator(window);
             const selection = await showSaveDialog(window, {
-                title: "Export Studio Logs",
+                title: t("dialogs.file.title.exportLogs"),
                 defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-diagnostics.log"),
                 filters: [
-                    { name: "Log", extensions: ["log"] },
-                    { name: "Text", extensions: ["txt"] },
+                    { name: t("dialogs.file.filter.log"), extensions: ["log"] },
+                    { name: t("dialogs.file.filter.text"), extensions: ["txt"] },
                 ],
             });
             if (selection.canceled || !selection.filePath) {
@@ -596,6 +598,39 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
                 filePath: selection.filePath,
                 byteLength: Buffer.byteLength(content, "utf8"),
             });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Show Studio's own log folder in the OS file manager.
+ *
+ * The counterpart to the export above, and the one an author reaches for first: a support bundle is
+ * for handing over, this is for looking. It takes no path - `<userData>/logs` is Studio storage no
+ * renderer is granted, and main naming the folder itself is what keeps the call from being a way to
+ * open an arbitrary directory.
+ *
+ * On the base surface, like the export, so the window whose workspace failed to start can still use
+ * it. Reachable from any window: it opens the same folder whichever one asks.
+ */
+export class AppOpenLogsFolderHandler extends IPCHandler<IPCEventType.appOpenLogsFolder> {
+    readonly name = IPCEventType.appOpenLogsFolder;
+    readonly type = IPCMessageType.request;
+
+    public async handle(): Promise<RequestStatus<void>> {
+        try {
+            const logsDir = electronApp.getPath("logs");
+            // The folder is created lazily by the log sink, so a Studio that has not written a line
+            // yet has nothing to open. Make it rather than report a failure the author cannot act on.
+            await fs.mkdir(logsDir, { recursive: true });
+            // openPath answers with a message rather than throwing, and an empty string means it worked.
+            const failure = await shell.openPath(logsDir);
+            if (failure) {
+                return this.failed(new Error(failure));
+            }
+            return this.success(void 0);
         } catch (error) {
             return this.failed(error);
         }
@@ -728,8 +763,9 @@ export class AppExportSettingsHandler extends IPCHandler<IPCEventType.appExportS
         { defaultFileName, content }: IPCEvents[IPCEventType.appExportSettings]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportSettings]["response"]>> {
         try {
+            const { t } = dialogTranslator(window);
             const selection = await showSaveDialog(window, {
-                title: "Export Studio Settings",
+                title: t("dialogs.file.title.exportSettings"),
                 defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-settings.json", [".json"]),
                 filters: [{ name: "JSON", extensions: ["json"] }],
             });
@@ -763,8 +799,9 @@ export class AppImportSettingsHandler extends IPCHandler<IPCEventType.appImportS
         window: AppWindow,
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appImportSettings]["response"]>> {
         try {
+            const { t } = dialogTranslator(window);
             const selection = await showOpenDialog(window, {
-                title: "Import Studio Settings",
+                title: t("dialogs.file.title.importSettings"),
                 properties: ["openFile"],
                 filters: [{ name: "JSON", extensions: ["json"] }],
             });

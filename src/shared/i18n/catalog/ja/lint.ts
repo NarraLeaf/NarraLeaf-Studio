@@ -287,6 +287,11 @@ export const lint = {
             description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",
             message: "{field} が未入力のため、このセーブには既定値が書き込まれる",
         },
+        blueprintStartSceneForeign: {
+            title: "別のストーリーのシーン",
+            description: "Start Game ノードのシーンが、指定したストーリーに入っていない",
+            message: "このシーンは「{owner}」にあり「{story}」にはないため、ここからゲームを始めると止まる",
+        },
         variablesUndeclared: {
             title: "宣言のない変数",
             description: "宣言されないまま使われている変数",

@@ -36,7 +36,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
         <div className="space-y-2 text-2xs text-fg-muted">
             <p className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.revisions.title")}</p>
             <ul className="space-y-1">
-                {ids.map(id => {
+                {ids.map((id, index) => {
                     const b = doc.blueprints[id];
                     const active = rec?.activeBlueprintId === id;
                     return (
@@ -52,7 +52,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                                     }
                                 }}
                             >
-                                {b?.name ?? id} {active ? t("blueprint.revisions.active") : ""}
+                                {b?.name || t("blueprint.revisions.unnamed", { index: index + 1 })} {active ? t("blueprint.revisions.active") : ""}
                             </button>
                         </li>
                     );

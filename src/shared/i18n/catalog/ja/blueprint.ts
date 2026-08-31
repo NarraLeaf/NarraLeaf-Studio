@@ -230,6 +230,7 @@ export const blueprint = {
         sharedAssetSingle: "共有アセットにつきリビジョンは 1 つ",
         title: "リビジョン",
         active: "· 使用中",
+        unnamed: "リビジョン {index}",
         newTypeScript: "新規 TypeScript リビジョン",
         newVisual: "新規ビジュアルリビジョン",
     },
@@ -394,9 +395,9 @@ export const blueprint = {
         unnamedCharacter: "名前のないキャラクター",
         // プロジェクトにもう無いキャラクターが選ばれていたときに出す。宙に浮いた id を画面に
         // 残し、選択欄が黙って空の項目に落ちるのを防ぐ。
-        missingCharacter: "キャラクターが見つからない（{id}）",
+        missingCharacter: "キャラクターが見つからない",
         unnamedInputAction: "名前のないアクション",
-        missingInputAction: "アクションが見つからない（{id}）",
+        missingInputAction: "アクションが見つからない",
     },
     tsPane: {
         importHint: "読み込めるのは \"narraleaf-studio\" だけ",

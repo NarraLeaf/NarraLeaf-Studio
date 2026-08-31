@@ -47,7 +47,7 @@ import {
     BlueprintLayerPreview,
     resolveFirstBlueprintLayerPreview,
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
-import { getOwnerLabel } from "@shared/types/ui-editor/ownerLabels";
+import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
@@ -64,7 +64,6 @@ import { interfaceDocumentFreezeScope } from "./uiLiveSession";
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
 const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
-const globalOwnerLabel = getOwnerLabel("globalMain");
 
 function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
     if ("tabs" in layout) {
@@ -234,9 +233,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             blueprintId: globalBlueprintId,
             ownerKind: "globalMain",
             surfaceId: GLOBAL_MAIN_OWNER_KEY,
-            title: globalOwnerLabel.titlePrefix,
+            title: t(ownerLabelKey("globalMain")),
         }, options);
-    }, [globalBlueprintId, openBlueprintTarget]);
+    }, [globalBlueprintId, openBlueprintTarget, t]);
 
     /**
      * Make `subjectId` the properties panel's subject and bring the panel forward.
@@ -619,7 +618,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return undefined;
         }
         return {
-            title: globalOwnerLabel.label,
+            title: t(ownerLabelKey("globalMain")),
             subtitle: t("uiEditor.panel.globalSubtitle"),
             typeLabel: t("uiEditor.panel.blueprintType"),
             preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-24" />,

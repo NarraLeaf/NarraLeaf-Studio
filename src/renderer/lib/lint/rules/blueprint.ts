@@ -657,6 +657,80 @@ function runSaveFieldEmpty(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+// ---------------------------------------------------------------------------
+// blueprint/start-scene-foreign
+// ---------------------------------------------------------------------------
+
+/**
+ * A `Start Game` whose scene belongs to a story other than the one it names.
+ *
+ * The two dropdowns are filled from different lists - every story, and every scene in the project -
+ * so a pair that does not go together is one click away and looks exactly like a pair that does.
+ * Scene names repeat across stories by design ("Prologue", "The corridor"), which is precisely when
+ * the wrong one gets picked.
+ *
+ * Nothing catches it anywhere else. Both ids exist, so `blueprint/reference-missing` is satisfied;
+ * the graph validator only sees two strings. What happens instead is at run time, in the shipped
+ * game, when the player presses the button: the launch cannot find that scene in that story and
+ * throws, and the game stops on a crash screen. An error, therefore - it is a control that is
+ * guaranteed to break the game, and a build must refuse it.
+ *
+ * A wired pin is not judged: a story id computed at run time can legitimately name any scene, and a
+ * rule that argued with that would fire on a working title screen. Nor is a pair where either id
+ * names nothing at all - that is `blueprint/reference-missing`'s finding, and saying it twice sends
+ * the author to the same node with two different explanations.
+ */
+function runStartSceneForeign(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    if (!ctx.storiesComplete) {
+        return [];
+    }
+    /** Which story holds each scene, so "in another story" can be said as a name. */
+    const storyBySceneId = new Map<string, { id: string; name: string }>();
+    const storyById = new Map<string, { id: string; name: string }>();
+    for (const entry of ctx.stories) {
+        const story = { id: entry.id, name: entry.name || entry.id };
+        storyById.set(entry.id, story);
+        for (const scene of Object.values(entry.document.scenes)) {
+            if (scene) {
+                storyBySceneId.set(scene.id, story);
+            }
+        }
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const wired = collectWiredInputPorts(site.ir);
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
+                continue;
+            }
+            const ports = wired.get(node.id);
+            if (ports?.has("storyId") || ports?.has("sceneId")) {
+                continue;
+            }
+            const storyId = String(node.params?.storyId ?? "").trim();
+            const sceneId = String(node.params?.sceneId ?? "").trim();
+            if (!storyId || !sceneId) {
+                continue;
+            }
+            const named = storyById.get(storyId);
+            const owner = storyBySceneId.get(sceneId);
+            // Either id naming nothing is a dangling reference, which has its own rule.
+            if (!named || !owner || owner.id === storyId) {
+                continue;
+            }
+            findings.push({
+                ruleId: "blueprint/start-scene-foreign",
+                messageKey: "lint.rule.blueprintStartSceneForeign.message" as TranslationKey,
+                messageParams: { story: named.name, owner: owner.name },
+                location: blueprintLocation(site, node.id),
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
 export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
     {
         id: "blueprint/reference-missing",
@@ -719,5 +793,14 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "blueprintSaveFieldEmpty",
         run: ctx => runSaveFieldEmpty(ctx),
+    },
+    {
+        id: "blueprint/start-scene-foreign",
+        category: "blueprint",
+        // The standing of every other dangling route: the control runs, the launch throws, and the
+        // player gets the crash screen. An error is what keeps it out of a build.
+        defaultSeverity: "error",
+        slug: "blueprintStartSceneForeign",
+        run: ctx => runStartSceneForeign(ctx),
     },
 ];

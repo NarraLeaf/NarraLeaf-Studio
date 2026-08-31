@@ -20,7 +20,7 @@ import { satisfiesRange } from "@shared/utils/semver";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
-import { showOpenDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -56,10 +56,11 @@ export class PluginInstallLocalHandler extends IPCHandler<IPCEventType.pluginIns
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
 
+        const { t } = dialogTranslator(window);
         const result = await showOpenDialog(window, {
-            title: "Install Plugin",
+            title: t("dialogs.file.title.installPlugin"),
             properties: ["openDirectory"],
-            buttonLabel: "Install Plugin",
+            buttonLabel: t("dialogs.file.button.install"),
         });
         if (result.canceled || result.filePaths.length === 0) {
             return this.success({ canceled: true });

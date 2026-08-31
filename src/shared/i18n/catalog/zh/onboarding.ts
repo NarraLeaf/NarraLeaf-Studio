@@ -25,7 +25,7 @@ export const onboarding = {
     },
     welcome: {
         title: "欢迎",
-        expectation: "界面与故事编辑器的设置，共六屏。每一项选中即刻生效，均可在设置中修改",
+        expectation: "界面与故事编辑器的六项设置。每一项选中即刻生效，均可在设置中修改",
         haveSettings: "来自其他安装的设置",
     },
     language: {

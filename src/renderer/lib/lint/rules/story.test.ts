@@ -90,6 +90,12 @@ const call = (id: string, targetSceneId: string): BlockSpec => ({
 });
 const ending = (id: string, name: string): BlockSpec => ({ id, kind: "control", payload: { control: "ending", name } });
 const invalid = (id: string, source: string): BlockSpec => ({ id, kind: "invalid", payload: { source } });
+/** A `/blueprint` row, which is how a story reaches anything a story action cannot say itself. */
+const blueprintRow = (id: string, blueprintId: string): BlockSpec => ({
+    id,
+    kind: "action",
+    payload: { action: "blueprint", blueprintId },
+});
 const choice = (id: string, children: BlockSpec[]): BlockSpec => ({
     id,
     kind: "nodeAction",
@@ -501,6 +507,38 @@ describe("story/dead-end", () => {
             ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [narration("b1"), jump("b2", "sc1")])])),
         );
         expect(findings).toEqual([]);
+    });
+
+    /**
+     * A project whose routes are separate stories hands off with a blueprint, because a `/jump`
+     * cannot leave the document it is written in. Read as a path that runs out, every such scene
+     * was reported - on exactly the projects the feature exists for.
+     */
+    it("says nothing about a scene ending in a blueprint that starts another story", () => {
+        const entry = story("s1", "Main", [
+            scene("sc1", "Prologue", [narration("b1"), blueprintRow("b2", "bp-1"), ending("e1", "True End")]),
+            scene("sc2", "Handoff", [narration("b3"), blueprintRow("b4", "bp-1")]),
+        ]);
+        const findings = run("story/dead-end", createTestLintContext({
+            stories: [entry],
+            blueprintDocument: blueprintWithStartStory({ storyId: "s2", sceneId: "sc9" }),
+        }));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("still reports a scene ending in a blueprint that does no such thing", () => {
+        const entry = story("s1", "Main", [
+            scene("sc1", "Prologue", [narration("b1"), ending("e1", "True End")]),
+            scene("sc2", "Handoff", [narration("b3"), blueprintRow("b4", "bp-other")]),
+        ]);
+        const findings = run("story/dead-end", createTestLintContext({
+            stories: [entry],
+            blueprintDocument: blueprintWithStartStory({ storyId: "s2", sceneId: "sc9" }),
+        }));
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "b4" });
     });
 
     it("says nothing about a scene ending in a goto", () => {

@@ -11,7 +11,7 @@ import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import { Fs } from "@shared/utils/fs";
 import { WRITE_BATCH_MAX_ENTRIES } from "@shared/utils/writeBatchFrame";
 import { splitFileEntry } from "@shared/utils/fileEntry";
-import { showOpenDialog, showSaveDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import {
     authorizeActorCapabilityRequest,
@@ -85,19 +85,20 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 }
 
                 try {
+                    const { t } = dialogTranslator(window);
                     const dialogOptions: Electron.OpenDialogOptions = {
-                        // The caller's own sentence when it has one. The default is the string this
-                        // generic picker has always used, so callers that say nothing are unaffected.
-                        title: data.title ?? "Select Icon File",
-                        buttonLabel: "Select",
+                        // The caller's own sentence when it has one. Without it the picker says what
+                        // it is choosing rather than what one caller happens to choose with it.
+                        title: data.title ?? t("dialogs.file.title.selectFile"),
+                        buttonLabel: t("dialogs.file.button.select"),
                         properties: data.multiple ? ["openFile", "multiSelections"] : ["openFile"],
                         securityScopedBookmarks: true,
                     };
 
                     if (data.filters.length > 0) {
                         dialogOptions.filters = [
-                            { name: "Icon Files", extensions: data.filters },
-                            { name: "All Files", extensions: ["*"] },
+                            { name: t("dialogs.file.filter.supported"), extensions: data.filters },
+                            { name: t("dialogs.file.filter.all"), extensions: ["*"] },
                         ];
                     }
 
@@ -131,15 +132,16 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 }
 
                 try {
+                    const { t } = dialogTranslator(window);
                     const dialogOptions: Electron.SaveDialogOptions = {
-                        title: "Save File",
+                        title: t("dialogs.file.title.saveFile"),
                         defaultPath: data.defaultFileName,
                         securityScopedBookmarks: true,
                     };
                     if (data.filters.length > 0) {
                         dialogOptions.filters = [
-                            { name: "Files", extensions: data.filters },
-                            { name: "All Files", extensions: ["*"] },
+                            { name: t("dialogs.file.filter.supported"), extensions: data.filters },
+                            { name: t("dialogs.file.filter.all"), extensions: ["*"] },
                         ];
                     }
 

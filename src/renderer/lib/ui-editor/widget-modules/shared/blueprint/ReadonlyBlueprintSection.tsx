@@ -9,13 +9,11 @@ import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import { getOwnerLabel } from "@shared/types/ui-editor/ownerLabels";
+import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { BlueprintLayerPreview, resolveFirstBlueprintLayerPreview } from "./BlueprintLayerPreview";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
 import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import { useTranslation } from "@/lib/i18n";
-
-const widgetOwnerLabel = getOwnerLabel("widgetMain");
 
 /**
  * Shared properties-panel block: single widget blueprint preview + entry to the Blueprint editor.
@@ -56,7 +54,7 @@ export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintS
             surfaceId,
             componentId: componentId ?? undefined,
             elementId: element.id,
-            title: `${widgetOwnerLabel.titlePrefix} - ${element.name ?? element.type}`,
+            title: `${t(ownerLabelKey("widgetMain"))} - ${element.name ?? element.type}`,
         }, options);
     };
 

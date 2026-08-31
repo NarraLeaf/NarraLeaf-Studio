@@ -1013,6 +1013,19 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onCloseOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
     onIsLayerMounted?: (handle: string) => boolean;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    /**
+     * What the host has already written over the authored record for this runtime scope.
+     *
+     * A drawing outlives the host API that paints it: the Game UI dialog box is rebuilt whenever the
+     * gap between two lines outlives the engine's replacement grace, and the patches it painted are
+     * kept by the host so the box comes back looking as it did. Every setter below compares the
+     * value it is given against what the drawing currently shows and writes nothing when they agree,
+     * so a host API that started from the authored record alone skipped exactly the writes that put
+     * an element *back* to what the author wrote - the previous speaker's avatar stayed on a
+     * narration line, because narration asks for no avatar and no avatar is what the widget was
+     * authored with.
+     */
+    initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
@@ -2417,12 +2430,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
+        initialWidgetPatches,
     } =
         options;
     const stateScopeId = runtimeScopeId ?? activeSurfaceId;
     const currentPageProps = normalizeJsonRecord(pageProps);
     const pendingFlushElementIds = new Set<string>();
-    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
+    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>(
+        Object.entries(initialWidgetPatches ?? {}),
+    );
     type DisplayableAnimationWaitReason = "completed" | "stopped";
 
     const displayableAnimationWaiters = new Map<

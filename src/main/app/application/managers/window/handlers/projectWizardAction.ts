@@ -2,8 +2,10 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { app } from "electron";
+import fs from "fs";
 import path from "path";
-import { showOpenDialog } from "../fileDialog";
+import { resolveDefaultProjectDirectory } from "../../../defaultProjectDirectory";
+import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -67,9 +69,10 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
+        const { t } = dialogTranslator(window);
         const result = await showOpenDialog(window, {
             properties: ['openDirectory', 'createDirectory'],
-            title: 'Select Project Directory',
+            title: t("dialogs.file.title.selectProjectLocation"),
             securityScopedBookmarks: true,
         });
 
@@ -95,29 +98,23 @@ export class ProjectWizardGetDefaultDirectoryHandler extends IPCHandler<IPCEvent
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ dir: string }>> {
-        // Get platform-specific default directory using Electron's app.getPath()
-        const platform = process.platform;
-        let defaultDir: string;
-
-        switch (platform) {
-            case 'win32':
-                // Windows: Use Documents/Projects instead of hard-coded C:\Projects
-                // This puts projects in the user's personal Documents folder
-                defaultDir = path.join(app.getPath('documents'), 'Projects');
-                break;
-            case 'darwin':
-                // macOS: Use ~/Projects (user's home directory)
-                defaultDir = path.join(app.getPath('home'), 'Projects');
-                break;
-            case 'linux':
-                // Linux: Use ~/Projects (user's home directory)
-                defaultDir = path.join(app.getPath('home'), 'Projects');
-                break;
-            default:
-                // Fallback to home directory for unknown platforms
-                defaultDir = path.join(app.getPath('home'), 'Projects');
-                break;
-        }
+        // The whole decision lives in `resolveDefaultProjectDirectory`, which is pure so the
+        // Windows case - a Documents folder OneDrive has moved into its sync root - can be tested
+        // without a machine set up that way.
+        const defaultDir = resolveDefaultProjectDirectory({
+            platform: process.platform,
+            documents: app.getPath("documents"),
+            downloads: app.getPath("downloads"),
+            home: app.getPath("home"),
+            env: process.env,
+            directoryExists: candidate => {
+                try {
+                    return fs.statSync(candidate).isDirectory();
+                } catch {
+                    return false;
+                }
+            },
+        });
 
         window.app.storageManager.grantFileSystemAccess(window, defaultDir);
 

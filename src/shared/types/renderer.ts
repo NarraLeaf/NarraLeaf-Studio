@@ -497,6 +497,12 @@ export interface RendererPreloadedInterface {
             byteLength?: number;
         }>>;
         /**
+         * Show the log folder itself, for reading rather than for handing over. Takes no path: the
+         * folder is the one main knows, which is what keeps this from being a general "open a
+         * directory" call.
+         */
+        openLogsFolder(): Promise<RequestStatus<void>>;
+        /**
          * Whether a download mirror answers. In the host because the renderer never opens a
          * network connection of its own, a URL the user just typed included.
          */
