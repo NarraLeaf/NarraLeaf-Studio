@@ -3,8 +3,25 @@ export const uiEditor = {
     surfaceKind: {
         page: "Page",
         gameUi: "Game UI",
+        // The entry page's row says what it IS, the way every other row does. Its own name sits
+        // beside it, so repeating that name here would leave the column blank of information.
+        mainPage: "Entry page",
         pageDescription: "Pages are complete screens such as title, settings, save, history, or gallery.",
         gameUiDescription: "Game UI belongs to active gameplay, such as dialog, choices, HUD, shortcuts, and notifications.",
+    },
+    /**
+     * What a blueprint belongs to, in the words the author navigates by.
+     *
+     * The blueprint panel, the tab title and the read-only section beside a control all name the
+     * same six owners, so they are named once here.
+     */
+    ownerLabel: {
+        globalMain: "App logic",
+        surfaceMain: "Page logic",
+        widgetMain: "Component logic",
+        widgetValue: "Component value",
+        sharedAsset: "Shared blueprint",
+        storyAction: "Story action",
     },
     // The five stage slots a Game UI can take. Named once here because the author meets the same
     // five in the create dialog, the surface list, the properties panel and the template store.

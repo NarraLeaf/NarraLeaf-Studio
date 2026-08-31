@@ -61,7 +61,7 @@ export const onboarding = {
      */
     welcome: {
         title: "Welcome",
-        expectation: "Interface and story-editor settings, in six screens. Each one takes effect immediately and remains available in Settings.",
+        expectation: "Six interface and story-editor settings. Each one takes effect immediately and remains available in Settings.",
         /** Above the import row, naming what the row is for rather than asking after the reader. */
         haveSettings: "Settings from another installation",
     },

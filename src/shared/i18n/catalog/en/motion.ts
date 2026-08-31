@@ -123,7 +123,11 @@ export const motion = {
         motionActions: "Motion actions",
         repeat: "Repeat",
         repeatDelaySeconds: "Repeat delay (s)",
-        actionUses: "Current action uses {id}",
+        // The motion by name. An id here told the author nothing they could act on, and it was a
+        // raw UUID in a panel where every other line reads as words.
+        actionUses: "Current action uses {name}",
+        actionUsesMissing: "Current action uses a motion this project no longer has",
+        previewAssetMissing: "Missing image",
         actionNoMotion: "Current action has no motion asset",
         bindToAction: "Bind to action",
         target: "Target",
@@ -171,7 +175,6 @@ export const motion = {
     picker: {
         change: "Change",
         choose: "Choose",
-        assetFallback: "Asset {id}",
         noMotionBound: "No motion is bound to this action.",
         noMatches: "No matching story motions.",
         previewKind: "Preview: {kind}",

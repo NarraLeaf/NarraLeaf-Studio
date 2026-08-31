@@ -124,7 +124,9 @@ export const motion = {
         motionActions: "モーションの操作",
         repeat: "繰り返し",
         repeatDelaySeconds: "繰り返しの間隔（秒）",
-        actionUses: "現在のアクションは {id} を使っている",
+        actionUses: "現在のアクションは {name} を使っている",
+        actionUsesMissing: "現在のアクションが使う動きはこのプロジェクトにない",
+        previewAssetMissing: "画像が見つからない",
         actionNoMotion: "現在のアクションにモーションアセットがない",
         bindToAction: "アクションに結びつける",
         target: "対象",
@@ -172,7 +174,6 @@ export const motion = {
     picker: {
         change: "変更",
         choose: "選ぶ",
-        assetFallback: "アセット {id}",
         noMotionBound: "このアクションにはモーションが結びついていない",
         noMatches: "一致するストーリーモーションがない",
         previewKind: "プレビュー：{kind}",

@@ -27,7 +27,20 @@
 import fs from "fs";
 import path from "path";
 import { dialog } from "electron";
+import type { Translator } from "@shared/i18n";
+import { getMainTranslator } from "../../i18n";
 import type { AppWindow } from "./appWindow";
+
+/**
+ * The translator a picker's own text is produced with.
+ *
+ * A dialog is raised by main, so its title and button are the one part of the interface the
+ * renderer's translator never reaches. Read fresh per call: the language can change while the app
+ * is open, and the next dialog is expected to follow it.
+ */
+export function dialogTranslator(window: AppWindow): Translator {
+    return getMainTranslator(window.getApp());
+}
 
 /** The page-side object a driving session talks to. */
 const BRIDGE_GLOBAL = "__NLS_STUDIO_DIALOG__";

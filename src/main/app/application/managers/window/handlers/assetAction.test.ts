@@ -21,6 +21,19 @@ let project: string;
 let exportDir: string;
 
 /**
+ * The app as a picker reads it: whether this launch answers dialogs from a page rather than opening
+ * them, and the language its title and button are written in. A stored language keeps the resolver
+ * off `electron/main`, which is not resolvable under the test runner.
+ */
+function appDouble() {
+    return {
+        hasExperimentalCondition: () => false,
+        getCommandLineBuild: () => false,
+        globalState: { get: (key: string) => (key === "app.language" ? "en" : undefined) },
+    };
+}
+
+/**
  * A window as this handler uses one: a storage manager that grants the project and nothing else,
  * which is the shape the real one has for a workspace window.
  *
@@ -30,7 +43,7 @@ let exportDir: string;
 function makeWindow(overrides: { protectedPath?: boolean } = {}) {
     return {
         win: {},
-        getApp: () => ({ hasExperimentalCondition: () => false }),
+        getApp: () => appDouble(),
         app: {
             storageManager: {
                 isPathProtected: vi.fn(async () => overrides.protectedPath ?? false),

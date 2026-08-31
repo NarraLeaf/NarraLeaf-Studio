@@ -29,7 +29,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Button } from "@/lib/components/elements/Button";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
-import { useTranslation } from "@/lib/i18n";
+import { translate, useTranslation } from "@/lib/i18n";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -93,7 +93,7 @@ type StoryMotionEditorPanelState = {
 export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): EditorTabDefinition<StoryMotionEditorPayload> {
     return {
         id: `story-motion:${payload.animationId}`,
-        title: "Story Motion",
+        title: translate("motion.storyMotion"),
         icon: <Spline className="h-4 w-4" />,
         component: StoryMotionEditorTab,
         payload,

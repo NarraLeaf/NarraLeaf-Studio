@@ -107,7 +107,7 @@ function AssetRow({
      * would hide the very thing `resourceDiagnostics` is warning about.
      */
     const valueLabel = assetId
-        ? assetName ?? t("widgets.video.assetMissing", { id: assetId })
+        ? assetName ?? t("widgets.video.assetMissing")
         : emptyLabel;
 
     const handleConfirm = useCallback((assets: Asset[]) => {

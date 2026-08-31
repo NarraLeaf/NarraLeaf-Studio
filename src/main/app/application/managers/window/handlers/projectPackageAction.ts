@@ -9,7 +9,7 @@ import {
 } from "@shared/utils/nlproj";
 import { readProjectPackageInto, writeProjectPackage } from "../../../utils/projectPackageFile";
 import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
-import { showOpenDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -33,9 +33,10 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
             }
 
             const project = await readProjectMetadata(projectRoot);
+            const { t } = dialogTranslator(window);
             const selection = await showOpenDialog(window, {
-                title: "Select Export Folder",
-                buttonLabel: "Export Here",
+                title: t("dialogs.file.title.exportProjectPackage"),
+                buttonLabel: t("dialogs.file.button.exportHere"),
                 properties: ["openDirectory", "createDirectory"],
                 securityScopedBookmarks: true,
             });
@@ -141,13 +142,14 @@ export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.p
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
+        const { t } = dialogTranslator(window);
         const selection = await showOpenDialog(window, {
-            title: "Select Project Package",
-            buttonLabel: "Select Package",
+            title: t("dialogs.file.title.selectProjectPackage"),
+            buttonLabel: t("dialogs.file.button.select"),
             properties: ["openFile"],
             filters: [
-                { name: "NarraLeaf Studio Project Package", extensions: [PROJECT_PACKAGE_EXTENSION.slice(1)] },
-                { name: "All Files", extensions: ["*"] },
+                { name: t("dialogs.file.filter.projectPackage"), extensions: [PROJECT_PACKAGE_EXTENSION.slice(1)] },
+                { name: t("dialogs.file.filter.all"), extensions: ["*"] },
             ],
             securityScopedBookmarks: true,
         });

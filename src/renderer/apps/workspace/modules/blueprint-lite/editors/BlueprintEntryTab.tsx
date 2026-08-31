@@ -1657,7 +1657,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         document: currentDocument,
                         pickedId: String(node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? ""),
                         unnamedLabel: t("blueprint.options.unnamedInputAction"),
-                        missingLabel: id => t("blueprint.options.missingInputAction", { id }),
+                        missingLabel: () => t("blueprint.options.missingInputAction"),
                     }),
                 };
                 continue;
@@ -1692,7 +1692,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 out[node.id] = {
                     characters: [
                         ...characterOptions,
-                        { value: pickedId, label: t("blueprint.options.missingCharacter", { id: pickedId }) },
+                        { value: pickedId, label: t("blueprint.options.missingCharacter") },
                     ],
                 };
                 continue;
