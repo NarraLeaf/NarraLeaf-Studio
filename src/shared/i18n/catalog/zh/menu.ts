@@ -27,6 +27,7 @@ export const menu = {
         openRecent: "最近打开的工作区",
         noRecent: "无最近工作区",
         export: "导出项目",
+        revealProject: "打开项目所在位置",
         close: "关闭工作区",
         returnToLauncher: "返回启动器",
     },

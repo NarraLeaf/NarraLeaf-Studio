@@ -38,6 +38,11 @@ export const actions = {
             label: "プロジェクトを書き出す",
             tooltip: "現在のプロジェクトをパッケージとして書き出す",
         },
+        revealProject: {
+            label: "プロジェクトの場所を開く",
+            tooltip: "このプロジェクトのフォルダーをファイルマネージャーで表示する",
+            failed: "プロジェクトフォルダーを開けない",
+        },
         returnToLauncher: {
             label: "ランチャーに戻る",
             tooltip: "このプロジェクトを離れてランチャーに戻る",

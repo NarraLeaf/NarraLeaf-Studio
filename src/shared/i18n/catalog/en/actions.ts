@@ -47,6 +47,11 @@ export const actions = {
             label: "Export Project",
             tooltip: "Export the current project as a package",
         },
+        revealProject: {
+            label: "Show Project Folder",
+            tooltip: "Show this project's folder in the file manager",
+            failed: "The project folder could not be opened.",
+        },
         returnToLauncher: {
             label: "Back to Launcher",
             tooltip: "Leave this project and go back to the launcher",
