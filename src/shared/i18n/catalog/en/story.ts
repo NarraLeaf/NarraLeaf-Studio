@@ -537,6 +537,8 @@ export const story = {
         appearance: "Appearance",
         default: "Default",
         preview: "Preview",
+        previewLarger: "Larger preview",
+        previewSmaller: "Smaller preview",
     },
     pause: {
         title: "Pause",
@@ -1222,7 +1224,7 @@ export const story = {
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
-        face: { label: "Face", detail: "Change a character's expression" },
+        face: { label: "Appearance", detail: "Change which of a character's looks is showing" },
         motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
         param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },

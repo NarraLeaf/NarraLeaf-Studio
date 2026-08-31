@@ -79,8 +79,11 @@ export function ExpressionPopover(props: {
     return createPortal(
         <div
             ref={panelRef}
-            className="fixed z-[70] w-[26rem] rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
-            style={{ top, left: Math.max(8, left) }}
+            // The appearance preview inside is as tall as the author asked for, while the panel is
+            // placed from its anchor rather than sized to fit - so it is told what is left of the
+            // window below it and scrolls instead of running off the bottom.
+            className="fixed z-[70] w-[26rem] overflow-y-auto rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
+            style={{ top, left: Math.max(8, left), maxHeight: Math.max(240, window.innerHeight - top - 8) }}
             onMouseDown={event => event.stopPropagation()}
         >
             <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.inlineEvent.title")}</div>

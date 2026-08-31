@@ -122,7 +122,9 @@ function ChannelRow(props: { label: string; removeLabel: string; onRemove: () =>
                 // the control above rather than with a measured padding.
                 <div className="mt-1 flex items-start gap-2">
                     <span className={cn(CHANNEL_LABEL_CLASS, "block")} aria-hidden="true" />
-                    <div className="min-w-0 flex-1 pr-7">{props.below}</div>
+                    {/* The right padding is the remove button plus the gap before it (`h-7` +
+                        `gap-2`), so the second line ends where the control above it ends. */}
+                    <div className="min-w-0 flex-1 pr-9">{props.below}</div>
                 </div>
             ) : null}
         </div>
@@ -139,7 +141,7 @@ function ChannelNumber(props: { value: number | undefined; onChange: (value: num
             inputMode="decimal"
             aria-label={props.label}
             popoverWhenNarrow={false}
-            className={cn(CONTROL_HEIGHT_CLASS.sm, "text-xs")}
+            size="sm"
             inputClassName="px-2"
         />
     );
@@ -151,7 +153,7 @@ function ChannelText(props: { value: string; onChange: (value: string) => void; 
             value={props.value}
             placeholder={props.placeholder}
             onChange={props.onChange}
-            className={cn(CONTROL_HEIGHT_CLASS.sm, "text-xs")}
+            size="sm"
         />
     );
 }
