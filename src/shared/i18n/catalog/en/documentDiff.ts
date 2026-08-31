@@ -548,6 +548,7 @@ export const documentDiff = {
         voiceChoices: "Voiced choices",
         dialogue: "Dialogue",
         dialogueAutoForwardPause: "Pause length under auto forward",
+        dialogueTextReveal: "Fade length of newly typed text",
         preferences: "Player defaults",
         prefTextSpeed: "Text speed",
         prefGameSpeed: "Game speed",

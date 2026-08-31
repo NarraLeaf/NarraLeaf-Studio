@@ -184,6 +184,7 @@ const LABEL = {
 
     dialogue: "documentDiff.project.dialogue",
     dialogueAutoForwardPause: "documentDiff.project.dialogueAutoForwardPause",
+    dialogueTextReveal: "documentDiff.project.dialogueTextReveal",
 
     distribution: "documentDiff.project.distribution",
     signing: "documentDiff.project.signing",
@@ -262,7 +263,10 @@ const APP_GROUPS: ReadonlyMap<string, ConfigGroup> = new Map<string, ConfigGroup
     }],
     ["dialogue", {
         label: LABEL.dialogue,
-        fields: {autoForwardDefaultPause: LABEL.dialogueAutoForwardPause},
+        fields: {
+            autoForwardDefaultPause: LABEL.dialogueAutoForwardPause,
+            textRevealDuration: LABEL.dialogueTextReveal,
+        },
     }],
     ["preferences", {
         label: LABEL.preferences,

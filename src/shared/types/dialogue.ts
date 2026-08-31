@@ -32,17 +32,44 @@ export type DialogueConfiguration = {
      * `Game.DefaultConfig.autoForwardDefaultPause` in the engine.
      */
     autoForwardDefaultPause: number;
+    /**
+     * Milliseconds a newly typed character takes to fade in. `0` types text at full strength.
+     *
+     * `Game.DefaultConfig.textRevealDuration` in the engine. The same kind of value as the pause
+     * above and here for the same reason: how a line arrives on screen is part of how it was
+     * written, not something a player picks off a settings screen.
+     */
+    textRevealDuration: number;
 };
 
 /** The engine's own value, so a project that has never opened the page ships what it always did. */
 export const DEFAULT_DIALOGUE_CONFIGURATION: DialogueConfiguration = {
     autoForwardDefaultPause: 1000,
+    textRevealDuration: 0,
 };
 
 /** Zero is a real answer: it makes a pause pass straight through while auto-forward is on. */
 export const AUTO_FORWARD_DEFAULT_PAUSE_MIN = 0;
 /** The ceiling `autoForwardDelay` uses, so the two pacing fields refuse the same values. */
 export const AUTO_FORWARD_DEFAULT_PAUSE_MAX = 30000;
+
+/** No fade at all: text is typed at full strength, which is what it did before this existed. */
+export const TEXT_REVEAL_DURATION_MIN = 0;
+/**
+ * Long enough for the softest edge worth having. The engine caps a fade at what fits between two
+ * characters anyway, so a larger number here would only ever be shortened.
+ */
+export const TEXT_REVEAL_DURATION_MAX = 500;
+
+/**
+ * The fade a project is created with.
+ *
+ * Not the default above, which is what a project that has never carried the setting reads as: a
+ * game already written was written against text arriving at full strength, and a value it never
+ * chose must not change how its lines land. A new project has nothing to be consistent with, and
+ * a soft edge is the better starting point.
+ */
+export const NEW_PROJECT_TEXT_REVEAL_DURATION = 120;
 
 /**
  * Coerce a persisted value into a complete dialogue configuration.
@@ -51,18 +78,32 @@ export const AUTO_FORWARD_DEFAULT_PAUSE_MAX = 30000;
  * existed carries nothing, and every reader is entitled to a number without repeating the fallback.
  */
 export function normalizeDialogueConfiguration(value: unknown): DialogueConfiguration {
-    if (!value || typeof value !== "object") {
-        return { ...DEFAULT_DIALOGUE_CONFIGURATION };
-    }
-    const record = value as Record<string, unknown>;
-    const pause = record.autoForwardDefaultPause;
-    if (typeof pause !== "number" || !Number.isFinite(pause)) {
-        return { ...DEFAULT_DIALOGUE_CONFIGURATION };
-    }
+    const record = (value && typeof value === "object") ? value as Record<string, unknown> : {};
     return {
-        autoForwardDefaultPause: Math.min(
+        autoForwardDefaultPause: clamp(
+            record.autoForwardDefaultPause,
+            DEFAULT_DIALOGUE_CONFIGURATION.autoForwardDefaultPause,
+            AUTO_FORWARD_DEFAULT_PAUSE_MIN,
             AUTO_FORWARD_DEFAULT_PAUSE_MAX,
-            Math.max(AUTO_FORWARD_DEFAULT_PAUSE_MIN, Math.round(pause)),
+        ),
+        textRevealDuration: clamp(
+            record.textRevealDuration,
+            DEFAULT_DIALOGUE_CONFIGURATION.textRevealDuration,
+            TEXT_REVEAL_DURATION_MIN,
+            TEXT_REVEAL_DURATION_MAX,
         ),
     };
+}
+
+/**
+ * One stored field as a whole number in range, or the default where there is nothing usable.
+ *
+ * Per field rather than per configuration: a project written when this held one setting carries
+ * only that one, and reading it must not cost the others their defaults.
+ */
+function clamp(value: unknown, fallback: number, min: number, max: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return fallback;
+    }
+    return Math.min(max, Math.max(min, Math.round(value)));
 }

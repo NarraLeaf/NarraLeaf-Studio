@@ -102,7 +102,10 @@ export {
     AUTO_FORWARD_DEFAULT_PAUSE_MAX,
     AUTO_FORWARD_DEFAULT_PAUSE_MIN,
     DEFAULT_DIALOGUE_CONFIGURATION,
+    NEW_PROJECT_TEXT_REVEAL_DURATION,
     normalizeDialogueConfiguration,
+    TEXT_REVEAL_DURATION_MAX,
+    TEXT_REVEAL_DURATION_MIN,
 } from "@shared/types/dialogue";
 export type { DialogueConfiguration } from "@shared/types/dialogue";
 export {

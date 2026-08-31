@@ -457,6 +457,7 @@ export const documentDiff = {
         voiceChoices: "选项语音",
         dialogue: "对白",
         dialogueAutoForwardPause: "自动前进时的停顿时长",
+        dialogueTextReveal: "新文字的渐入时长",
         preferences: "玩家默认设置",
         prefTextSpeed: "文字速度",
         prefGameSpeed: "游戏速度",

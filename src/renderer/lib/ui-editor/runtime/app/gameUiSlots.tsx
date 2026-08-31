@@ -111,6 +111,11 @@ export function createNlrGameWithGameUi(input: {
      */
     autoForwardDefaultPause?: number;
     /**
+     * How long a newly typed character takes to fade in, in ms, from `.nlproj` `app.dialogue`.
+     * Omitted (a bundle written before the section) leaves the engine's own 0, which is no fade.
+     */
+    textRevealDuration?: number;
+    /**
      * How much of the opening scene has to be warm before the game is shown, from `.nlproj`
      * `app.preload` (see @shared/types/preload). Omitted leaves the engine's own default, which is
      * the first frame.
@@ -126,6 +131,7 @@ export function createNlrGameWithGameUi(input: {
         audioBuses,
         hostOwnsSkipKey,
         autoForwardDefaultPause,
+        textRevealDuration,
         preloadGate,
     } = input;
     const game = new Game({
@@ -137,6 +143,7 @@ export function createNlrGameWithGameUi(input: {
         ratioUpdateInterval: 0,
         contentContainerId,
         ...(typeof autoForwardDefaultPause === "number" ? { autoForwardDefaultPause } : {}),
+        ...(typeof textRevealDuration === "number" ? { textRevealDuration } : {}),
         // NLR paces its preloader (default: 5 at a time, 100ms between batches) for games served
         // over a network. Every asset here comes off the local disk — through `nlgame://` in a
         // packaged game, the dev server in Dev Mode — so the pacing buys nothing and its idle time

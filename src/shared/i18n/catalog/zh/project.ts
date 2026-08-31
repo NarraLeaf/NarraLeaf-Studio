@@ -257,6 +257,9 @@ export const project = {
         autoForwardPauseTitle: "自动前进时的停顿时长",
         autoForwardPauseDescription: "玩家开启自动前进时，等待点击的停顿改为持续这段时间，受游戏速度影响",
         autoForwardPauseUnit: "毫秒",
+        textRevealTitle: "新文字的渐入时长",
+        textRevealDescription: "逐字打出的文字从透明到完全显示所用的时间。设为 0 则不渐入。打字速度较快时会自动缩短",
+        textRevealUnit: "毫秒",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
