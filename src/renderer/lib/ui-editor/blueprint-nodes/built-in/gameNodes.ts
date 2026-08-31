@@ -141,6 +141,23 @@ const startStoryTargetPins: BlueprintNodePinDef[] = [
     { id: "startBlockId", kind: "input", semantic: "data", valueType: "string", label: "From Row", optional: true },
 ];
 
+/**
+ * Quit Game's landing page, as a pin as well as a picker.
+ *
+ * The same argument `startStoryTargetPins` makes, for the other end of the trip: a screen that
+ * launches scenes from data has to be able to send the player back to a page chosen from data too -
+ * a map that quits to the district the player came from cannot name it at author time. The picker
+ * stays for the hand-authored case, and a wired pin wins over it.
+ */
+const quitTargetPin: BlueprintNodePinDef = {
+    id: "surfaceId",
+    kind: "input",
+    semantic: "data",
+    valueType: "string",
+    label: "Page Id",
+    optional: true,
+};
+
 const sentenceCpsIn: BlueprintNodePinDef = {
     id: "cps",
     kind: "input",
@@ -412,7 +429,7 @@ function createPreferenceDataPin(meta: GamePreferenceNodeMeta, kind: "input" | "
 /** Wired pin wins over the inspector picker; see startStoryTargetPins. */
 function resolveStartStoryTarget(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
-    key: "storyId" | "sceneId" | "startBlockId",
+    key: "storyId" | "sceneId" | "startBlockId" | "surfaceId",
 ): string {
     const wired = resolveDataPinValue(ctx.graph, ctx.node.id, key, ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
@@ -1520,7 +1537,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn],
+        pins: [execIn, quitTargetPin],
         inspectorParams: [
             {
                 key: "surfaceId",
@@ -1530,9 +1547,9 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         async execute(ctx) {
-            const surfaceId = String(ctx.params.surfaceId ?? "").trim();
+            const surfaceId = resolveStartStoryTarget(ctx, "surfaceId");
             if (!surfaceId) {
-                throw new BlueprintGraphExecutionError("Pick a Page", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick a Page, or wire a Page Id", ctx.node.id);
             }
             await requireHostApi(ctx).game.quit(surfaceId);
             return { nextPort: undefined };

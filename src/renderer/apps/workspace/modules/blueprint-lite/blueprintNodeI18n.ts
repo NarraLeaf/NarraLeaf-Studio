@@ -690,6 +690,7 @@ const PORT_LABEL_KEYS: Record<string, TranslationKey> = {
     "Replacement": "blueprint.port.replacement",
     "Saved variable": "blueprint.port.savedVariable",
     "Option Id": "blueprint.port.optionId",
+    "Page Id": "blueprint.port.pageId",
     "Scene Id": "blueprint.port.sceneId",
     "Scene variable": "blueprint.port.sceneVariable",
     "Search": "blueprint.port.search",

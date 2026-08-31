@@ -222,7 +222,17 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // reason is what a v23 Studio would *play*: every operator switch in the compiler, the preview and
 // the script projections ends in a `default` that evaluates false, so a threshold branch would
 // silently never be taken. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 24 as const;
+// v25 adds the `quit` control payload: the row that ends the playthrough and hands the player a
+// page, without claiming the story reached an ending. It is what a hub-shaped game is built out of
+// - a scene plays, the run stops, a map or a chapter select takes the screen, and `Start Game` on
+// that page opens the next scene - and until now the only row that could leave a scene for a page
+// was `/ending`, which also names itself, records itself into the endings the player has collected,
+// and is what the endings test walks towards. A hub passed through twenty times is none of that.
+// No migration. A v24 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and the reason is the same one `ending` gives: a v24 Studio reads an unknown control
+// payload as an ordinary group and compiles it to nothing, so the story would run straight past the
+// row into whatever follows it and never leave the scene. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 25 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1233,6 +1243,36 @@ export type StoryControlPayload =
            * what a bad end that just stops wants.
            */
           page?: StoryEndingPage;
+      }
+    | {
+          /**
+           * Leave the playthrough and hand the player a page (schema v25).
+           *
+           * The row an author writes when a scene is *over* without the story being over: the run
+           * ends, the stage goes, and a page takes the screen - a map, a chapter select, a hub the
+           * next scene is chosen from. `Start Game` on that page begins the next run, and its scene
+           * pin is what makes the page a launcher rather than a menu.
+           *
+           * Deliberately not an `/ending` with the recording switched off. An ending is a thing a
+           * player collects: it has a name, it goes into the endings record a gallery reads, it is
+           * what `reachable-endings` walks towards and what `story/ending-name-duplicate` compares.
+           * A hub the story passes through twenty times is none of those, and spelling it as an
+           * unnamed unrecorded ending would put twenty entries into every one of those readers.
+           *
+           * Control flow, and single-instruction like `ending` above it: playback stops here, and
+           * rows written after it in the same list are dropped at compile time.
+           */
+          control: "quit";
+          /**
+           * The page the player lands on, by UI surface id.
+           *
+           * Required, unlike an ending's - which is three-state because "the build's own ending
+           * page" and "no page at all" are both answers an ending can want. Neither is an answer
+           * here: quitting to nothing would leave the last frame on screen with no story behind it
+           * and nothing to touch, which is not a state a player can leave. Blank is an unfinished
+           * row, reported by `story/quit-page-missing`, not a decision.
+           */
+          surfaceId: string;
       };
 
 /**

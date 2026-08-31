@@ -210,6 +210,7 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
         case "variable":
         case "label":
         case "appTag":
+        case "surface":
         case "target":
         case "content":
         case "literal":

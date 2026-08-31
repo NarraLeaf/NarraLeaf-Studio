@@ -63,10 +63,12 @@ export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
             const line = resolved.some(value => value !== undefined)
                 ? resolved.map(value => (value === undefined ? "" : stringifyForLog(value))).join("")
                 : "Log node reached";
-            const api = ctx.hostAdapter.blueprintRuntime?.hostApi;
-            if (api) {
-                api.devtools.log("info", line);
-            }
+            // Every member is optional because a host may carry only part of the API: a Story
+            // Action Blueprint's adapter has `persistence` and nothing else, so the object is
+            // present while `devtools` is not. `Log` is one of the few nodes that belongs in a
+            // story action, and it must not be the node that throws there - the console line
+            // below is the half that always works.
+            ctx.hostAdapter.blueprintRuntime?.hostApi?.devtools?.log("info", line);
             // eslint-disable-next-line no-console -- blueprint.log
             console.log("[Blueprint]", line);
             return { nextPort: "next" };

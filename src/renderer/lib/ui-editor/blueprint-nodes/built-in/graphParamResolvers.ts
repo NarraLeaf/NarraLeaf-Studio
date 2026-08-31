@@ -3355,6 +3355,11 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Kept separate for the reason the block below is: `found` is not a pin name any of the
+    // nodes above publishes, and folding it into that list would answer it for all of them.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_SAVED_GET && portId === "found") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Kept separate from the list above rather than folded into it: `id` is an
     // *input* pin name on the save nodes there, and only these two publish it as
     // an output.

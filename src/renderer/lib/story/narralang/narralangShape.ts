@@ -143,7 +143,8 @@ export type NarralangVerb =
     | "goto"
     | "break"
     | "cut"
-    | "ending";
+    | "ending"
+    | "quit";
 
 // --- Slots ----------------------------------------------------------------------------------------
 
@@ -173,6 +174,8 @@ export type NarralangSlot =
     | "returns"
     | "label"
     | "ending"
+    /** The page a `quit` hands the player. */
+    | "page"
     | "variant"
     | "motion"
     | "mask"

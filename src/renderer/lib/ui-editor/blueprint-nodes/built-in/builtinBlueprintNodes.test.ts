@@ -255,6 +255,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
+import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
+import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import {
@@ -462,6 +464,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     isTextRead: () => false,
                     clearTextRead: async () => undefined,
                     isSceneVisited: () => false,
+                    getSavedVariable: () => ({ value: null, found: false }),
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
@@ -635,6 +638,7 @@ function createPageNavigationHostAdapter(
                     isTextRead: () => false,
                     clearTextRead: async () => undefined,
                     isSceneVisited: () => false,
+                    getSavedVariable: () => ({ value: null, found: false }),
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
@@ -715,6 +719,8 @@ function createGameSaveHostAdapter(options: {
     sentenceCpsValues?: number[];
     preferenceReads?: Partial<Record<string, unknown>>;
     preferenceWrites?: Array<{ key: string; value: unknown }>;
+    /** What the running playthrough answers for a saved variable, by the id a node names. */
+    savedVariables?: Record<string, { value: unknown; found: boolean }>;
 }): UIHostAdapter {
     return {
         host: "player",
@@ -826,6 +832,8 @@ function createGameSaveHostAdapter(options: {
                         options.clearTextReadCalls?.push(true);
                     },
                     isSceneVisited: () => false,
+                    getSavedVariable: (variableId: string) =>
+                        options.savedVariables?.[variableId] ?? { value: null, found: false },
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
@@ -3101,8 +3109,11 @@ describe("built-in blueprint nodes", () => {
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.pins.map(pin => pin.id)).toEqual([
             "isGameOverlay",
         ]);
+        // The page is a pin as well as a picker, so a screen can send the player somewhere it only
+        // knows at run time - the same shape `Start Game` takes for its scene.
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_QUIT)?.pins.map(pin => pin.id)).toEqual([
             "in",
+            "surfaceId",
         ]);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_QUIT)?.inspectorParams).toEqual([
             expect.objectContaining({
@@ -7966,5 +7977,57 @@ describe("character data nodes", () => {
         expect(character.inspectorParams).toEqual([
             { key: "characterId", label: "Character", kind: "select", dynamicOptionsSource: "characters" },
         ]);
+    });
+});
+
+describe("Get Saved Var outside a story", () => {
+    it("is offered to a page and a widget, and to a value graph", () => {
+        registerCoreBlueprintNodes();
+        const savedGet = storyVariableBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_SAVED_GET)!;
+        // No owner scope at all: this is the one story variable node a screen may read, so it is
+        // available wherever a blueprint is edited rather than in the story alone.
+        expect(savedGet.scope).toBeUndefined();
+        expect(savedGet.pins.map(pin => pin.id)).toEqual(["in", "next", "value", "found"]);
+
+        // The three siblings stay where they were: writing story state from a screen would race the
+        // row that owns the variable, and a scene variable only exists while its scene is running.
+        for (const type of [BLUEPRINT_NODE_TYPE_SAVED_SET, BLUEPRINT_NODE_TYPE_SCENE_GET, BLUEPRINT_NODE_TYPE_SCENE_SET]) {
+            expect(storyVariableBlueprintNodes.find(def => def.type === type)?.scope)
+                .toEqual({ ownerKinds: ["storyAction"] });
+        }
+    });
+
+    it("reads the running playthrough through the host, and reports when there is none", async () => {
+        registerCoreBlueprintNodes();
+        const graph = {
+            id: "savedRead",
+            entries: { main: { start: { nodeId: "get", port: "in" } } },
+            nodes: {
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_SAVED_GET, params: { savedVariableId: "affection" } },
+            },
+            edges: [],
+        } as never;
+
+        const withGame: Record<string, unknown> = {};
+        await executeGraph({
+            graph,
+            entry: { start: { nodeId: "get", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ savedVariables: { affection: { value: 52, found: true } } }),
+            blueprintLocals: withGame,
+        });
+        expect(readBlueprintNodeOutputValue(withGame, "get", "value")).toBe(52);
+        expect(readBlueprintNodeOutputValue(withGame, "get", "found")).toBe(true);
+
+        // A title screen: nothing is running, so the value is not a lie in either direction and
+        // `found` is what the screen branches on.
+        const noGame: Record<string, unknown> = {};
+        await executeGraph({
+            graph,
+            entry: { start: { nodeId: "get", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({}),
+            blueprintLocals: noGame,
+        });
+        expect(readBlueprintNodeOutputValue(noGame, "get", "value")).toBeNull();
+        expect(readBlueprintNodeOutputValue(noGame, "get", "found")).toBe(false);
     });
 });

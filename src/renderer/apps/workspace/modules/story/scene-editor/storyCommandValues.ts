@@ -227,6 +227,13 @@ export type StoryCommandContext = {
      * has something to offer and can never be a dropdown with nothing in it.
      */
     appTags: readonly StoryCommandNamedRef[];
+    /**
+     * The project's UI pages, by the name the author gave them - what `/quit` may address.
+     *
+     * Page rather than surface in every author-facing word, because that is what the rest of the
+     * product calls them (`Go Page`, the Page picker, `Open Page`); `surface` is the document word.
+     */
+    surfaces: readonly StoryCommandNamedRef[];
     variables: readonly StoryCommandVariableEntry[];
     /** Per character: its poses (preset) or every tag across its axes (layered). */
     appearanceByCharacterId: Readonly<Record<string, readonly StoryCommandAppearanceRef[]>>;
@@ -314,7 +321,7 @@ export type StoryPuppetParamSpec = {
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
     images: [], audio: [], videos: [], assetSets: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
-    audioTracks: [], labels: [], appTags: [], variables: [], appearanceByCharacterId: {},
+    audioTracks: [], labels: [], appTags: [], surfaces: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},
     stageObjects: EMPTY_STORY_COMMAND_STAGE_OBJECTS,
@@ -419,6 +426,13 @@ export type StoryCommandValue =
      * than to nothing.
      */
     | { kind: "appTag"; appTagId: string }
+    /**
+     * A UI page, resolved from its name to the id the payload stores - the same bargain the variant
+     * arm above makes, and for the same reason: renaming a page must not reach the rows that name
+     * it, and a row pointing at a deleted page has to keep saying so rather than turning into
+     * something that resolves.
+     */
+    | { kind: "surface"; surfaceId: string }
     /** `name` is the author-facing name as declared - the compound-assignment sugar re-emits it into the desugared source. */
     | { kind: "variable"; ref: StoryVariableRef; valueType: StoryVariableValueType; name: string; defaultValue?: StoryLiteralValue }
     | { kind: "enum"; value: string }
@@ -453,6 +467,7 @@ export type StoryCommandResolutionIssue =
     | { code: "unknownLabel"; span: StoryCommandSpan; value: string }
     /** A build variant the project does not have. Naming one would decide nothing at build time. */
     | { code: "unknownAppTag"; span: StoryCommandSpan; value: string }
+    | { code: "unknownSurface"; span: StoryCommandSpan; value: string }
     | { code: "unknownVariable"; span: StoryCommandSpan; value: string }
     | { code: "unknownForm"; span: StoryCommandSpan; value: string; characterName: string }
     /** `/motion Alice run` - Alice is drawn by Studio, so she has no runtime state to request. */

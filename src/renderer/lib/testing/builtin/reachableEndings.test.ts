@@ -33,6 +33,10 @@ function endingBlock(id: string, name: string, parentId: string | null = null): 
     return { id, kind: "control", parentId, childrenIds: [], payload: { control: "ending", name } } as StoryBlock;
 }
 
+function quitBlock(id: string, surfaceId: string, parentId: string | null = null): StoryBlock {
+    return { id, kind: "control", parentId, childrenIds: [], payload: { control: "quit", surfaceId } } as StoryBlock;
+}
+
 function emptyBlock(id: string, parentId: string | null = null): StoryBlock {
     return { id, kind: "empty", parentId, childrenIds: [], payload: {} } as StoryBlock;
 }
@@ -284,6 +288,26 @@ describe("narraleaf-studio:reachable-endings", () => {
         expect(findings).toHaveLength(1);
         expect(findings[0].message).toEqual({ key: "test.builtin.reachableEndings.finding.pathRunsOut" });
         expect(findings[0].target).toMatchObject({ kind: "storyBlock", sceneId: "c", blockId: "blank-2" });
+    });
+
+    it("takes a scene that ends on a quit as somewhere the run stops, not as a path running out", async () => {
+        // The hub shape: a scene plays, the run ends, a page takes the screen. The walk cannot
+        // follow where the next run starts from and must not report the author for it.
+        const { verdict, findings } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Fork", [
+                    choiceBlock("c1", ["o0", "o1"]),
+                    choiceOptionBlock("o0", ["j0"], "Left", "c1"),
+                    jumpBlock("j0", "b", "o0"),
+                    choiceOptionBlock("o1", ["q1"], "Back to the map", "c1"),
+                    quitBlock("q1", "map", "o1"),
+                ]),
+                scene("b", "Left", [endingBlock("end-left", "Left End")]),
+            ], "a")),
+        }));
+
+        expect(verdict.status).toBe("passed");
+        expect(findings).toEqual([]);
     });
 
     it("passes but says so when nothing reaches a declared ending", async () => {
