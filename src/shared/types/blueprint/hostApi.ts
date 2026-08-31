@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 38 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 39 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -829,6 +829,40 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: { variableId: "" },
             output: { value: null, found: false },
+        },
+        /**
+         * Write one saved variable of the running playthrough.
+         *
+         * The other half of {@link getSavedVariable}, and it carries two consequences the read does
+         * not, both of which are the price of the screen being outside the story rather than a
+         * defect to fix here:
+         *
+         * - **Undo does not take it back.** The story's undo restores a per-row snapshot of the
+         *   playthrough; a write made from a screen happened between rows, so undoing to the row
+         *   before it rewinds everything except this.
+         * - **The story is not told.** A row that reads the variable afterwards sees the new value,
+         *   but nothing re-runs on the strength of it - the line already on screen stays as it is.
+         *
+         * So this is for state a SCREEN owns and the story reads (which destination the player
+         * picked on a map, which loadout they chose), not for reaching in and correcting the story's
+         * own bookkeeping.
+         *
+         * Refuses rather than reports when there is no playthrough, which is the opposite of the
+         * read next door and for the opposite reason: a read has to answer while a title screen
+         * lays out, whereas a write is an act a player asked for, and one that silently does
+         * nothing is the worst outcome a button can have.
+         */
+        setSavedVariable: {
+            capabilityId: "game.setSavedVariable",
+            purity: "effectful",
+            // A binding re-evaluates whenever anything it reads changes; a write inside one would
+            // feed itself.
+            callableFromBinding: false,
+            // Synchronous for the reason `clearVisited` is: the value lands in the live `Storable`,
+            // not in host persistence, so there is nothing to await.
+            async: false,
+            input: { variableId: "", value: null },
+            output: null,
         },
         isSceneVisited: {
             capabilityId: "game.isSceneVisited",
