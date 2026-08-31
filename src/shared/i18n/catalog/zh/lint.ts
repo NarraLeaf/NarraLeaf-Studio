@@ -144,6 +144,12 @@ export const lint = {
             // 说的是结果而不是错误：这些行已经不在构建里了，作者要先知道这一点。
             message: "该行位于结局之后，永远不会播放。可移到结局之前，或删除",
         },
+        storyQuitPageMissing: {
+            title: "没有页面的退出行",
+            description: "未指定页面，或指定的页面已不在项目中的 /quit 行",
+            message: "该行未指定页面，本次游玩结束后画面上不会有任何内容",
+            deleted: "项目中没有页面「{page}」，本次游玩结束后画面上不会有任何内容",
+        },
         storyEndingNameDuplicate: {
             title: "同名的两个结局",
             description: "多个结局使用了同一个显示名称",

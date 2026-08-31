@@ -583,6 +583,15 @@ export type BlueprintHostApiRuntime = {
          */
         isSceneVisited: (sceneId: string) => boolean;
         /**
+         * One saved variable of the running playthrough, by the id a `savedVariableRef` names.
+         *
+         * `found` is false with no game running, and with an id this build's story does not
+         * declare. The two are worth telling apart from a value: `null` and the declared default
+         * are both real values a variable can hold, so neither can double as "there was nothing to
+         * read". See the capability's own note for why this is read-only.
+         */
+        getSavedVariable: (variableId: string) => { value: unknown; found: boolean };
+        /**
          * Has the player ever PICKED this choice option, by the option row's Studio block id. The
          * one thing the text-read record structurally cannot answer - a menu that merely appeared
          * marks every option of it read.
@@ -892,6 +901,12 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsSceneVisited?: (sceneId: string) => boolean;
     onIsOptionPicked?: (optionId: string) => boolean;
     onClearVisited?: () => void;
+    /**
+     * One saved variable of the running playthrough. Absent wherever there is no playthrough to
+     * read - a title screen, a page previewed in the editor - and the bridge answers `found: false`
+     * there rather than inventing a value.
+     */
+    onGetSavedVariable?: (variableId: string) => { value: unknown; found: boolean };
     /**
      * The endings record, in project persistence. Absent only where there is no runtime store at
      * all (a Page previewed inside the editor), where every ending reads as not reached and the two
@@ -2347,6 +2362,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsSceneVisited,
         onIsOptionPicked,
         onClearVisited,
+        onGetSavedVariable,
         onIsEndingReached,
         onIsDlcInstalled,
         onListEndings,
@@ -4242,6 +4258,21 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     return onIsOptionPicked ? onIsOptionPicked(optionId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSavedVariable: (variableId: string) => {
+                const cap = "game.getSavedVariable";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Same bargain as `isSceneVisited`: no running story is an answer, not an
+                    // error, because the screens that ask this have to lay out before any game
+                    // exists. Unlike that one the answer cannot be folded into the value, so the
+                    // caller is handed `found` and decides.
+                    return onGetSavedVariable
+                        ? onGetSavedVariable(variableId)
+                        : { value: null, found: false };
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

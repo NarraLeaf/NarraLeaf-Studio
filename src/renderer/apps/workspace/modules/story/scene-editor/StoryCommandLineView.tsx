@@ -87,6 +87,8 @@ export type StoryCommandLineContextValue = {
      * the same reason as the two tables above it.
      */
     appTagName?: StoryRowLookups["appTagName"];
+    /** The name of a UI page, for the `/quit` row that names one. Same derivation. */
+    surfaceName?: StoryRowLookups["surfaceName"];
     /** What a name on a line could refer to — the picker lists for every subject a row names. */
     commandContext?: StoryCommandContext;
 };
@@ -152,6 +154,8 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         // the line would have been typed with. `null` for a deleted one, which is what the row then
         // says instead.
         appTagName: appTagId => commandContext?.appTags.find(tag => tag.id === appTagId)?.name ?? null,
+        // The same reading, for the page a `/quit` row lands on.
+        surfaceName: surfaceId => commandContext?.surfaces.find(page => page.id === surfaceId)?.name ?? null,
         commandContext,
     }), [assets, commandContext, hideParamNames, slashAtAlias, tracks]);
     return <StoryCommandLineContext.Provider value={value}>{children}</StoryCommandLineContext.Provider>;

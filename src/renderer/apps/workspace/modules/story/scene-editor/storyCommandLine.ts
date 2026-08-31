@@ -1740,6 +1740,22 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
         if (block.payload.control === "ending") {
             return { commandId: "ending", args: [positional("name", block.payload.name)] };
         }
+        if (block.payload.control === "quit") {
+            const payload = block.payload;
+            const pages = lookups.commandContext?.surfaces ?? [];
+            // Named, never the stored id - and blank when no page answers to it, which is a deleted
+            // one. The row then prints `/quit`, i.e. a quit that names nowhere, which is what it has
+            // become and what `story/quit-page-missing` reports.
+            const name = pages.find(page => page.id === payload.surfaceId)?.name ?? "";
+            return {
+                commandId: "quit",
+                args: [positional("page", name, pages.length === 0 ? {} : {
+                    choices: pages.map(page => ({ value: page.id, label: page.name })),
+                    ...(payload.surfaceId ? { editValue: payload.surfaceId } : {}),
+                    apply: next => ({ ...payload, surfaceId: next }),
+                })],
+            };
+        }
         // Containers lead with their own pill and hold children; a one-line command would be a header
         // that lies about what the row is.
         return null;

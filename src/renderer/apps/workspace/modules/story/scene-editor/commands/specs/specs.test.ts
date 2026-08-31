@@ -37,6 +37,7 @@ const CONTEXT: StoryCommandContext = {
     ],
     labels: ["intro", "after refusal"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
+    surfaces: [{ id: "u1", name: "Map" }, { id: "u2", name: "Title" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
         { name: "met", ref: { scope: "saved", variableId: "var_met" }, valueType: "boolean" },

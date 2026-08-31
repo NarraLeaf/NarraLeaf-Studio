@@ -560,6 +560,7 @@ export const blueprint = {
         pattern: "パターン",
         replacement: "置換後",
         savedVariable: "セーブ変数",
+        pageId: "ページ Id",
         sceneId: "シーン Id",
         optionId: "選択肢 Id",
         sceneVariable: "シーン変数",

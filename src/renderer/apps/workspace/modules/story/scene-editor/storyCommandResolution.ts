@@ -356,6 +356,17 @@ function resolveAgainstType(
                 ? { value: { kind: "appTag", appTagId: found.id } }
                 : { issue: { code: "unknownAppTag", span, value } };
         }
+        case "surface": {
+            // By name, exactly as a variant and a scene are: the author types what the page is
+            // called and the row keeps its id, so a rename never reaches the stored row.
+            const found = findByName(context.surfaces, value);
+            if (found === "ambiguous") {
+                return { issue: { code: "ambiguousName", span, value } };
+            }
+            return found
+                ? { value: { kind: "surface", surfaceId: found.id } }
+                : { issue: { code: "unknownSurface", span, value } };
+        }
         case "variable": {
             const needle = value.trim().toLowerCase();
             const matches = context.variables.filter(entry => entry.name.trim().toLowerCase() === needle);
@@ -585,6 +596,8 @@ function issueForUnresolvable(type: StoryCommandParamType, value: string, span: 
             return { code: "unknownLabel", span, value };
         case "appTag":
             return { code: "unknownAppTag", span, value };
+        case "surface":
+            return { code: "unknownSurface", span, value };
         case "variable":
             return { code: "unknownVariable", span, value };
         case "target":

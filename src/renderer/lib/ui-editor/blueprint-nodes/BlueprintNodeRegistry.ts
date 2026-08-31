@@ -31,6 +31,7 @@ import {
     type BlueprintNodeDef,
     type BlueprintNodeEditorCatalogEntry,
     type BlueprintPaletteContext,
+    HOST_API_OWNER_KINDS,
 } from "./types";
 import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
 
@@ -44,6 +45,7 @@ type BlueprintNodeGraphContextDef = Pick<
     | "allowInBlueprintValueGraph"
     | "role"
     | "scope"
+    | "requiresHostApi"
     | "magicElementTarget"
     | "inspectorParams"
 >;
@@ -239,6 +241,11 @@ export function isBlueprintNodeAllowedInGraphContext(
     ctx: BlueprintPaletteContext,
 ): boolean {
     if (!def.graphKinds.includes(ctx.graphKind)) {
+        return false;
+    }
+    // Ahead of the scope, and independent of it: a node that needs the host API needs it in every
+    // owner, including the magic-element path below, which clears `scope` on purpose.
+    if (def.requiresHostApi && !HOST_API_OWNER_KINDS.includes(ctx.owner.kind)) {
         return false;
     }
     if (!matchesBlueprintNodeScope(def, ctx)) {

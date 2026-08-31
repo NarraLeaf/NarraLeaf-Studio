@@ -365,6 +365,12 @@ export function buildStoryCommandContext(input: {
      * list, and a slot that takes a variant must never be a dropdown with nothing in it.
      */
     appTags?: readonly { id: string; name: string }[];
+    /**
+     * The project's UI pages. Omitted where no project is open, which leaves `/quit` reporting every
+     * page name as unknown - the honest answer when the list could not be read at all, and the same
+     * bargain the audio tracks above take.
+     */
+    surfaces?: readonly { id: string; name: string }[];
 }): StoryCommandContext {
     // What a `/show` row can name after the character: a preset character's poses, a layered one's
     // tags (across every axis — the engine resolves each against the group that owns it, so the
@@ -415,6 +421,7 @@ export function buildStoryCommandContext(input: {
         // special case, just another table this projection carries.
         labels: sceneLabelNames(input.scene),
         appTags: appTagRefs(input.appTags),
+        surfaces: (input.surfaces ?? []).map(surface => ({ id: surface.id, name: surface.name })),
         variables: variableEntries(
             input.document,
             input.scene,

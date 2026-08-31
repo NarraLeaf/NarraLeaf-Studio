@@ -84,45 +84,57 @@ export { timeBlueprintNodes } from "./timeNodes";
 export { structuralBlueprintNodes } from "./structuralNodes";
 export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 
+/**
+ * Mark a whole family as needing the blueprint host API, which keeps it out of the one owner that
+ * cannot serve one - a Story Action Blueprint. See {@link HOST_API_OWNER_KINDS} for why, and for
+ * why the restriction is a flag of its own rather than a scope.
+ *
+ * Applied here rather than on each definition because the reason is a property of the family, and
+ * writing it out a hundred times is a hundred chances to forget it on the next node.
+ */
+function withHostApiOwnerKinds(defs: readonly BlueprintNodeDef[]): BlueprintNodeDef[] {
+    return defs.map(def => ({ ...def, requiresHostApi: true }));
+}
+
 /** All core built-in nodes in registration order (must stay stable if you rely on duplicate checks elsewhere). */
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...structuralBlueprintNodes,
     ...eventHeadBlueprintNodes,
     ...broadcastBlueprintNodes,
     ...fnBlueprintNodes,
-    ...frameBlueprintNodes,
-    ...pointerBlueprintNodes,
+    ...withHostApiOwnerKinds(frameBlueprintNodes),
+    ...withHostApiOwnerKinds(pointerBlueprintNodes),
     ...inputActionBlueprintNodes,
-    ...layerBlueprintNodes,
+    ...withHostApiOwnerKinds(layerBlueprintNodes),
     ...componentBlueprintNodes,
-    ...gameBlueprintNodes,
-    ...visitedBlueprintNodes,
-    ...dlcBlueprintNodes,
-    ...endingBlueprintNodes,
+    ...withHostApiOwnerKinds(gameBlueprintNodes),
+    ...withHostApiOwnerKinds(visitedBlueprintNodes),
+    ...withHostApiOwnerKinds(dlcBlueprintNodes),
+    ...withHostApiOwnerKinds(endingBlueprintNodes),
     ...appTagBlueprintNodes,
-    ...progressBlueprintNodes,
-    ...storageBlueprintNodes,
-    ...backlogBlueprintNodes,
+    ...withHostApiOwnerKinds(progressBlueprintNodes),
+    ...withHostApiOwnerKinds(storageBlueprintNodes),
+    ...withHostApiOwnerKinds(backlogBlueprintNodes),
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
     ...collectionBlueprintNodes,
-    ...listBlueprintNodes,
-    ...elementBlueprintNodes,
+    ...withHostApiOwnerKinds(listBlueprintNodes),
+    ...withHostApiOwnerKinds(elementBlueprintNodes),
     ...localVariableBlueprintNodes,
-    ...localizationBlueprintNodes,
-    ...voiceBlueprintNodes,
-    ...soundBlueprintNodes,
-    ...networkBlueprintNodes,
+    ...withHostApiOwnerKinds(localizationBlueprintNodes),
+    ...withHostApiOwnerKinds(voiceBlueprintNodes),
+    ...withHostApiOwnerKinds(soundBlueprintNodes),
+    ...withHostApiOwnerKinds(networkBlueprintNodes),
     ...persistentVariableBlueprintNodes,
     ...storyVariableBlueprintNodes,
     ...mathBlueprintNodes,
     ...booleanCompareBlueprintNodes,
     ...stringBlueprintNodes,
     ...timeBlueprintNodes,
-    ...textBlueprintNodes,
-    ...sliderBlueprintNodes,
-    ...switchBlueprintNodes,
-    ...textInputBlueprintNodes,
-    ...widgetPropertyBlueprintNodes,
+    ...withHostApiOwnerKinds(textBlueprintNodes),
+    ...withHostApiOwnerKinds(sliderBlueprintNodes),
+    ...withHostApiOwnerKinds(switchBlueprintNodes),
+    ...withHostApiOwnerKinds(textInputBlueprintNodes),
+    ...withHostApiOwnerKinds(widgetPropertyBlueprintNodes),
     ...devtoolsBlueprintNodes,
 ];

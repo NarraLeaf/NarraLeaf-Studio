@@ -92,9 +92,14 @@ function liveChildren(scene: StoryScene, block: StoryBlock): StoryBlock[] {
     return children;
 }
 
-/** Whether this row is an `/ending`. */
-function isEndingRow(block: StoryBlock): boolean {
-    return block.kind === "control" && block.payload.control === "ending";
+/**
+ * Whether this row ends playback - an `/ending` or a `/quit`.
+ *
+ * The same pair `endsPlayback` uses in the compiler, and it has to be the same pair: this is what
+ * `story/rows-after-ending` reads, and the rows it reports are exactly the ones that compile away.
+ */
+function isPlaybackEndRow(block: StoryBlock): boolean {
+    return block.kind === "control" && (block.payload.control === "ending" || block.payload.control === "quit");
 }
 
 /**
@@ -282,6 +287,11 @@ function blockTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBl
         // walk means it - the scene runs no further - which is why it belongs beside `goto` and not
         // in the transfer scan below: an ending hands control to nothing at all.
         if (block.payload.control === "ending") {
+            return true;
+        }
+        // A quit ends the run rather than the story, but for this walk they are the same: the scene
+        // runs no further, and control is not handed to another scene either.
+        if (block.payload.control === "quit") {
             return true;
         }
         if (block.payload.control === "condition") {
@@ -902,11 +912,11 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
     },
     {
         /**
-         * A row written after an `/ending` in the same list.
+         * A row written after an `/ending` or a `/quit` in the same list.
          *
          * It never plays. The engine has no way to be stopped mid-story, so the compiler drops
-         * everything after an ending in the list that holds it - which is correct, and completely
-         * invisible on the page. This rule is what makes it visible.
+         * everything after either of them in the list that holds it - which is correct, and
+         * completely invisible on the page. This rule is what makes it visible.
          *
          * Anchored on the FIRST such row rather than on the ending, and one finding per list: the
          * rows are the surprise, and repeating the same sentence for each of twelve of them buries
@@ -926,7 +936,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     const live = listIds
                         .map(id => scene.blocks[id])
                         .filter((block): block is StoryBlock => Boolean(block) && !block!.disabled);
-                    const at = live.findIndex(isEndingRow);
+                    const at = live.findIndex(isPlaybackEndRow);
                     const orphan = at >= 0 ? live[at + 1] : undefined;
                     if (!orphan) {
                         continue;
@@ -936,6 +946,55 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         messageKey: "lint.rule.storyRowsAfterEnding.message",
                         location: storyLocation(entry, scene, orphan.id),
                         target: blockTarget(entry, scene, orphan.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A `/quit` row with no page, or with one this project no longer has.
+         *
+         * An error rather than a warning, and the reason is what ships: the row is the only way out
+         * of the scene that holds it - everything after it in the same list is dropped at compile
+         * time - so a quit that cannot land leaves the player on a last frame with no story behind
+         * it and nothing to touch. There is no degraded behaviour to fall back on the way a missing
+         * ending page has one (the last frame is a *choice* an ending may make); here it is simply
+         * a run that cannot be left.
+         *
+         * The two cases are one rule because they are one question and one fix - point the row at a
+         * page - and their messages differ only in whether there is a name to report.
+         */
+        id: "story/quit-page-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyQuitPageMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            // Null when the project's interface document could not be read at all. Every page would
+            // then look deleted, and a rule that fails the build for every quit row in the project
+            // because it could not open one file is worse than the defect it is looking for.
+            const surfaces = ctx.uiDocument
+                ? new Set(ctx.uiDocument.surfaces.map(surface => surface.id))
+                : null;
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    if (block.kind !== "control" || block.payload.control !== "quit") {
+                        continue;
+                    }
+                    const surfaceId = block.payload.surfaceId.trim();
+                    if (surfaceId && (!surfaces || surfaces.has(surfaceId))) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/quit-page-missing",
+                        messageKey: surfaceId
+                            ? "lint.rule.storyQuitPageMissing.deleted"
+                            : "lint.rule.storyQuitPageMissing.message",
+                        ...(surfaceId ? { messageParams: { page: surfaceId } } : {}),
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
                     });
                 }
             }

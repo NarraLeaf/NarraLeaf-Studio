@@ -3,6 +3,7 @@ import type { NarralangLookups } from "@/lib/story/narralang/narralangPrinter";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -30,10 +31,12 @@ export function narralangLookups(
     const blueprintService = services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const assetsService = services.get<AssetsService>(Services.Assets);
     const appTagService = services.get<AppTagService>(Services.AppTags);
+    const uiDocumentService = services.get<UIDocumentService>(Services.UIDocument);
 
     const characters = characterService.listCharacter();
     const motions = new Map(storyService.listAnimationAssets().map(entry => [entry.id, entry.name]));
     const appTags = new Map(appTagService.listTags().map(tag => [tag.id, tag.name]));
+    const surfaces = new Map((uiDocumentService.getDocument().surfaces ?? []).map(surface => [surface.id, surface.name]));
 
     return {
         character: characterRowLookup(characters),
@@ -49,6 +52,7 @@ export function narralangLookups(
             ...blueprintService.listPersistentVariables(),
         ]),
         appTagName: appTagId => appTags.get(appTagId) ?? null,
+        surfaceName: surfaceId => surfaces.get(surfaceId) ?? null,
         scenes: document.scenes,
         document,
     };

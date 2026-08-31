@@ -3108,6 +3108,9 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     if (props.payload.control === "ending") {
         return <EndingFields payload={props.payload} onChange={props.onChange} />;
     }
+    if (props.payload.control === "quit") {
+        return <QuitFields payload={props.payload} onChange={props.onChange} />;
+    }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         const isRepeat = groupPayload.control === "repeat";
@@ -3312,6 +3315,52 @@ function EndingFields(props: {
                 value={selected}
                 onChange={next => props.onChange({ ...props.payload, page: parseEndingPageOption(String(next)) })}
             />
+        </div>
+    );
+}
+
+/**
+ * The one value a `/quit` row carries: the page the run hands the screen to.
+ *
+ * A plain page picker rather than the ending row's three-valued one, because neither of that one's
+ * other two answers exists here: there is no project-level "quit page" to inherit, and quitting to
+ * nothing would strand the player on a last frame with no story behind it. So the field is required,
+ * and blank is an unfinished row rather than a decision - the same reading `story/quit-page-missing`
+ * takes.
+ *
+ * A page this project no longer has stays selectable, for the reason `EndingFields` gives: opening
+ * the row must not rewrite its value, and an author needs to see which row still points at the page
+ * they deleted.
+ */
+function QuitFields(props: {
+    payload: Extract<StoryControlPayload, { control: "quit" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const surfaces = useProjectSurfaces();
+    const selected = props.payload.surfaceId;
+
+    const options = useMemo<SelectOption[]>(() => {
+        const known = surfaces.map(surface => ({ value: surface.id, label: surface.name }));
+        const missing = selected && !surfaces.some(surface => surface.id === selected)
+            ? [{ value: selected, label: selected }]
+            : [];
+        return [
+            { value: "", label: t("storyInspector.control.quitPageUnset") },
+            ...known,
+            ...missing,
+        ];
+    }, [selected, surfaces, t]);
+
+    return (
+        <div className="flex max-w-sm flex-col gap-2">
+            <SelectField
+                label={t("storyInspector.control.quitPage")}
+                options={options}
+                value={selected}
+                onChange={next => props.onChange({ ...props.payload, surfaceId: String(next) })}
+            />
+            <div className="text-2xs text-fg-subtle">{t("storyInspector.control.quitHint")}</div>
         </div>
     );
 }

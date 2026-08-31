@@ -596,6 +596,7 @@ export const story = {
         lineText: "テキスト",
         labelName: "ラベル",
         endingName: "エンディング",
+        quitPage: "ページ",
         scene: "シーン",
         track: "オーディオトラック",
         appTag: "ビルドバリアント",
@@ -873,6 +874,7 @@ export const story = {
             audioTrack: "オーディオトラック",
             label: "このシーンの中のラベル",
             appTag: "ビルドバリアント",
+            surface: "ページ",
             variable: "変数",
             content: "新しい中身。対象に応じた型で書く",
             color: "色",
@@ -1162,6 +1164,7 @@ export const story = {
         // 名前が背負えない半分、すなわちこの行が 1 つのビルドだけのものだという事実は詳細に置く。
         cut: { label: "カットポイント", detail: "あるビルドバリアントのストーリーをこの行で終わらせる。他のビルドにこの行は入らない" },
         ending: { label: "エンディング", detail: "この行でストーリーを終わらせ、到達したエンディングを記録する" },
+        quit: { label: "ページへ戻る", detail: "この行でプレイを終了してページを表示する。エンディングは記録しない" },
         blueprint: { label: "ブループリント", detail: "ストーリーアクションブループリントを実行する" },
         // 「シーンをまたいで残る」は詳細の行に置く。どのコマンドにも詳細はあり、スラッシュメニューと
         // コマンドの手引きで、作者がカメラについて最初に読む場所がそこだから。
@@ -1211,6 +1214,7 @@ export const story = {
         break: "中断",
         cut: "カットポイント",
         ending: "エンディング",
+        quit: "ページへ戻る",
         jump: "ジャンプ",
         note: "メモ",
         invalid: "不正",
@@ -1279,6 +1283,8 @@ export const story = {
         // 無いか。どちらでも真であることだけを言う。削除されたと名指しするのは、一覧を持つ行の印のほう。
         cutUnknown: "カットポイント",
         ending: "エンディング {name}",
+        quit: "{page} へ戻る",
+        quitUnset: "ページへ戻る",
         jump: "{scene} へジャンプ",
         note: "メモ",
         invalid: "不正なコマンド",

@@ -5120,3 +5120,77 @@ describe("a row-precise launch that reaches a scene jump", () => {
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("leave");
     });
 });
+
+/**
+ * `/quit` — the row that says this playthrough is over.
+ *
+ * The same two acts an `/ending` performs, minus the one that makes an ending an ending: it tells
+ * the host where to land the player and truncates the list that holds it, and it records nothing.
+ */
+describe("quit", () => {
+    function quitBlock(id: string, surfaceId: string): StoryBlock {
+        return { id, kind: "control", parentId: null, childrenIds: [], payload: { control: "quit", surfaceId } };
+    }
+
+    it("tells the host which page to land on", async () => {
+        const landed: string[] = [];
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ leave: quitBlock("leave", "surface-map") }, ["leave"]),
+            sceneId: "scene-1",
+            onQuitToPage: surfaceId => landed.push(surfaceId),
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("leave");
+        // Nothing has run yet: the statement carries the call, it does not make it at compile time.
+        expect(landed).toEqual([]);
+    });
+
+    it("drops the rows after it in the same list", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                leave: quitBlock("leave", "surface-map"),
+                after: narrationBlock("after", "text-after", "Never played"),
+            }, ["leave", "after"]),
+            sceneId: "scene-1",
+            onQuitToPage: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).toContain("leave");
+        expect(boundBlocks).not.toContain("after");
+    });
+
+    it("emits nothing for a row with no page, and nothing for a host that cannot land the player", async () => {
+        // A quit with nowhere to go would take the story away and leave the player on a frame with
+        // nothing to touch; `story/quit-page-missing` is what says so in the editor.
+        const unset = await compileStudioStoryToNlr({
+            document: baseDocument({ leave: quitBlock("leave", "  ") }, ["leave"]),
+            sceneId: "scene-1",
+            onQuitToPage: () => undefined,
+        });
+        expect(unset.actionIdBindings.map(binding => binding.blockId)).not.toContain("leave");
+
+        const noHost = await compileStudioStoryToNlr({
+            document: baseDocument({ leave: quitBlock("leave", "surface-map") }, ["leave"]),
+            sceneId: "scene-1",
+        });
+        expect(noHost.diagnostics).toEqual([]);
+        expect(noHost.actionIdBindings.map(binding => binding.blockId)).not.toContain("leave");
+    });
+
+    it("lets the scene carry on past a disabled one", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                leave: { ...quitBlock("leave", "surface-map"), disabled: true },
+                after: narrationBlock("after", "text-after", "Still played"),
+            }, ["leave", "after"]),
+            sceneId: "scene-1",
+            onQuitToPage: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).not.toContain("leave");
+        expect(boundBlocks).toContain("after");
+    });
+});

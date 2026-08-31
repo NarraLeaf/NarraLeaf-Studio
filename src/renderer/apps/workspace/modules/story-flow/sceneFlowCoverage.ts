@@ -393,7 +393,9 @@ export function computeSceneFlowCoverage(
                 : afterScene;
             if (exit.kind === "ending") {
                 reachedEndingIds.add(exit.endingId);
-            } else if (exit.kind !== "stop") {
+            } else if (exit.kind !== "stop" && exit.kind !== "quit") {
+                // A quit is terminal and reaches no ending: it has no `target` to walk into, and
+                // nothing about it belongs in the endings this path covered.
                 push(exit.target, outgoing);
             }
         }
@@ -438,7 +440,7 @@ function frontierOf(
     const frontier = new Set<StorySceneId>();
     for (const sceneId of reachable) {
         for (const exit of continuations.get(sceneId) ?? []) {
-            if (exit.kind === "ending" || exit.kind === "stop") {
+            if (exit.kind === "ending" || exit.kind === "stop" || exit.kind === "quit") {
                 continue;
             }
             if (structural.sceneIds.has(exit.target) && !reachable.has(exit.target)) {
@@ -483,7 +485,7 @@ function structuralReach(
             }
             if (exit.kind === "ending") {
                 endingIds.add(exit.endingId);
-            } else if (exit.kind !== "stop") {
+            } else if (exit.kind !== "stop" && exit.kind !== "quit") {
                 enter(exit.target);
             }
         }
