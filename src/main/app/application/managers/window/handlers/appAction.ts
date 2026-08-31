@@ -3,6 +3,7 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import { showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, shell } from "electron";
@@ -774,6 +775,109 @@ export class AppImportSettingsHandler extends IPCHandler<IPCEventType.appImportS
             const stat = await fs.stat(filePath);
             if (stat.size > AppImportSettingsHandler.MAX_BYTES) {
                 return this.failed(new Error("That file is too large to be a settings document"));
+            }
+            return this.success({
+                canceled: false,
+                filePath,
+                content: await fs.readFile(filePath, "utf8"),
+            });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * What each exportable library is called in the native dialog's title.
+ *
+ * English literals, like every other dialog title in this process: the main process has no
+ * translator, and the two titles are the whole of what the kind decides here.
+ */
+const LIBRARY_DIALOG_TITLE: Record<LibraryExchangeKind, { export: string; import: string; fallbackName: string }> = {
+    "transform-preset": {
+        export: "Export Transform Presets",
+        import: "Import Transform Presets",
+        fallbackName: "transform-presets.json",
+    },
+    "story-motion": {
+        export: "Export Story Motions",
+        import: "Import Story Motions",
+        fallbackName: "story-motions.json",
+    },
+};
+
+/**
+ * Write an exported library to a file the user picks.
+ *
+ * Shaped exactly like {@link AppExportSettingsHandler}, and for the same reason: the renderer has
+ * already composed the document, and the only path involved is the one the save dialog returned, so
+ * there is no grant to check.
+ */
+export class AppExportLibraryItemsHandler extends IPCHandler<IPCEventType.appExportLibraryItems> {
+    readonly name = IPCEventType.appExportLibraryItems;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { kind, defaultFileName, content }: IPCEvents[IPCEventType.appExportLibraryItems]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportLibraryItems]["response"]>> {
+        try {
+            const titles = LIBRARY_DIALOG_TITLE[kind];
+            if (!titles) {
+                return this.failed(new Error(`Unknown library kind: ${kind}`));
+            }
+            const selection = await showSaveDialog(window, {
+                title: titles.export,
+                defaultPath: sanitizeBundleFileName(defaultFileName, titles.fallbackName, [".json"]),
+                filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+            if (selection.canceled || !selection.filePath) {
+                return this.success({ canceled: true });
+            }
+            await fs.writeFile(selection.filePath, content, { encoding: "utf8" });
+            return this.success({ canceled: false, filePath: selection.filePath });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Read an exported library the user picks.
+ *
+ * Only reads and hands back the text: what an item means belongs with the service that owns the
+ * library, and both of those live in the renderer. Capped for the reason
+ * {@link AppImportSettingsHandler} is - this must not become a way to pull an arbitrary file into
+ * the renderer whole.
+ */
+export class AppImportLibraryItemsHandler extends IPCHandler<IPCEventType.appImportLibraryItems> {
+    readonly name = IPCEventType.appImportLibraryItems;
+    readonly type = IPCMessageType.request;
+
+    /** Generous next to a real export (a motion with a long timeline is tens of kilobytes). */
+    private static readonly MAX_BYTES = 4 * 1024 * 1024;
+
+    public async handle(
+        window: AppWindow,
+        { kind }: IPCEvents[IPCEventType.appImportLibraryItems]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.appImportLibraryItems]["response"]>> {
+        try {
+            const titles = LIBRARY_DIALOG_TITLE[kind];
+            if (!titles) {
+                return this.failed(new Error(`Unknown library kind: ${kind}`));
+            }
+            const selection = await showOpenDialog(window, {
+                title: titles.import,
+                properties: ["openFile"],
+                filters: [{ name: "JSON", extensions: ["json"] }],
+            });
+            if (selection.canceled || selection.filePaths.length === 0) {
+                return this.success({ canceled: true });
+            }
+            const filePath = selection.filePaths[0];
+            const stat = await fs.stat(filePath);
+            if (stat.size > AppImportLibraryItemsHandler.MAX_BYTES) {
+                return this.failed(new Error("That file is too large to be an exported library"));
             }
             return this.success({
                 canceled: false,

@@ -117,6 +117,7 @@ export const motion = {
 
     panel: {
         searchPlaceholder: "Search motions",
+        libraryActions: "Import and export",
         createMotion: "Create motion",
         empty: "No motions.",
         newMotion: "New Motion",

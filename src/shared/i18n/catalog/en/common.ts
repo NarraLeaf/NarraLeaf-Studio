@@ -48,6 +48,27 @@ export const common = {
     open: "Open",
     import: "Import",
     export: "Export",
+    /**
+     * Taking a library out to a file and reading one back - the transform presets and the Story
+     * Motions. The sentences are shared because both surfaces exchange the same kind of file and
+     * fail in the same four ways.
+     */
+    library: {
+        exportAll: "Export all",
+        imported: {
+            one: "Imported {count} entry.",
+            other: "Imported {count} entries.",
+        },
+        /** Not one of ours, or not JSON at all. */
+        unreadable: "That file is not an exported library.",
+        /** Ours, but the other library's - a motion file offered to the preset list. */
+        wrongKind: "That file holds a different kind of entry.",
+        tooNew: "That file was exported by a newer version of Studio.",
+        /** Ours and the right kind, but nothing in it survived reading. */
+        empty: "That file holds nothing this version can read.",
+        exportFailed: "The file could not be written.",
+        importFailed: "The file could not be read.",
+    },
     enable: "Enable",
     disable: "Disable",
     show: "Show",
