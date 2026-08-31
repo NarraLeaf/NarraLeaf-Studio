@@ -2319,6 +2319,49 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-en-say");
     });
 
+    /**
+     * Each scene carries its OWN takes and nobody else's.
+     *
+     * The engine copies the config a `Scene` is constructed with, so a table shared by every scene
+     * is a copy of every take in the project per scene - `scenes x takes` entries built on each
+     * compile and held for as long as the story is loaded. A scene resolves only the ids its own
+     * lines carry, so that is what it is given.
+     */
+    it("gives each scene only the takes its own lines speak", async () => {
+        const document = baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]);
+        // A second scene with a line, and therefore a take, of its own.
+        document.scenes["scene-2"] = {
+            id: "scene-2",
+            name: "Scene 2",
+            runtimeName: "Scene 2",
+            rootBlockIds: ["say-2"],
+            blocks: { "say-2": dialogueBlock("say-2", "text-say-2", "there") },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
+            voice: {
+                voicedLocales: [{ code: "en", displayName: "English" }],
+                tables: { en: { "text-say": "asset-say", "text-say-2": "asset-say-2" } },
+                getVoiceLocale: () => "en",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const first = (compiled.scenes["scene-1"] as any).config?.voices ?? {};
+        const second = (compiled.scenes["scene-2"] as any).config?.voices ?? {};
+        expect(Object.keys(first)).toEqual(["text-say"]);
+        expect(Object.keys(second)).toEqual(["text-say-2"]);
+
+        // The switch still reaches every scene's own copy, each with its own subset.
+        expect(compiled.setVoiceLocale?.("en")).toBe(true);
+        expect(Object.keys((compiled.scenes["scene-2"] as any).config?.voices ?? {})).toEqual(["text-say-2"]);
+
+        // Replay reads the whole project's table, not one scene's - a backlog row can be anywhere.
+        expect(compiled.getVoicePlayback?.("text-say-2")).toEqual({ src: "nlr://asset-say-2", busId: "voice" });
+    });
+
     it("carries a voiceId for a line voiced in some other language", async () => {
         // English-first build, line recorded only in Japanese: without the id on the sentence,
         // switching to Japanese mid-game would find nothing to play.
