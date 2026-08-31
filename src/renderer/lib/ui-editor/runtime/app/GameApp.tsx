@@ -3555,6 +3555,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     payload,
                 );
             },
+            // Same reason the slot surfaces seed theirs: a host API rebuilt for a scope that is
+            // already drawn has to start from what is on screen, or every write back to an
+            // authored value is dropped as a no-op. See `initialWidgetPatches`.
+            initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
             voiceConfig: bundle.voice ?? null,
@@ -3990,6 +3994,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                             payload,
                         );
                     },
+                    // As above: a frame's page keeps its drawing when its host API is rebuilt.
+                    initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
                     widgetRuntimeStore,
                     localizationConfig: bundle.localization ?? null,
                     voiceConfig: bundle.voice ?? null,
