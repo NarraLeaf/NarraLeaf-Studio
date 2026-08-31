@@ -791,6 +791,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                     state={state}
                                     asset={asset}
                                     matcher={find.matcher}
+                                    matchActive={find.activeIndex === item.index}
                                     duration={formatVoiceDuration(unit?.duration)}
                                     note={unit?.note ?? ""}
                                     onNoteChange={note => setNote(row.unitId, row.sourceText, note)}

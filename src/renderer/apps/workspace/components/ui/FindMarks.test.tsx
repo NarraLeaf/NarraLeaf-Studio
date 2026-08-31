@@ -29,6 +29,38 @@ describe("MarkedText", () => {
         expect(container.querySelector("mark")?.textContent).toBe("Corridor");
     });
 
+    it("wears the quiet wash by default and the strong one on the entry the cursor is on", () => {
+        const { container: quiet } = render(
+            <MarkedText text="The corridor" matcher={compileMatcher("corridor", PLAIN)} />,
+        );
+        const quietClass = quiet.querySelector("mark")!.className;
+        cleanup();
+        const { container: strong } = render(
+            <MarkedText text="The corridor" matcher={compileMatcher("corridor", PLAIN)} active />,
+        );
+        const strongClass = strong.querySelector("mark")!.className;
+
+        // Two weights of one colour, not two colours: the ring around the row and the wash inside it
+        // are the same answer at two scales.
+        expect(quietClass).not.toBe(strongClass);
+        expect(quietClass).toContain("bg-primary/20");
+        expect(strongClass).toContain("bg-primary/45");
+        // Neither may set a colour of its own - the mirror behind a textarea paints its letters
+        // transparent, and a mark that overrode that would light up a second copy of the sentence.
+        expect(quietClass).toContain("text-inherit");
+        expect(strongClass).toContain("text-inherit");
+    });
+
+    it("marks every hit in the current entry, because the cursor steps entries and not words", () => {
+        const { container } = render(
+            <MarkedText text="corridor and corridor" matcher={compileMatcher("corridor", PLAIN)} active />,
+        );
+
+        const classes = [...container.querySelectorAll("mark")].map(node => node.className);
+        expect(classes).toHaveLength(2);
+        expect(new Set(classes).size).toBe(1);
+    });
+
     it("adds no elements at all when nothing is being searched", () => {
         const { container } = render(<MarkedText text="The corridor" matcher={null} />);
 
@@ -60,6 +92,14 @@ describe("TextareaMarkLayer", () => {
         expect(layer.className).toContain("text-transparent");
         expect(layer.className).toContain("pointer-events-none");
         expect(layer.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("carries the same two weights as the text it sits behind", () => {
+        const { container } = render(
+            <TextareaMarkLayer value="The corridor" matcher={compileMatcher("corridor", PLAIN)} active />,
+        );
+
+        expect(container.querySelector("mark")!.className).toContain("bg-primary/45");
     });
 
     it("is absent when there is nothing to mark", () => {

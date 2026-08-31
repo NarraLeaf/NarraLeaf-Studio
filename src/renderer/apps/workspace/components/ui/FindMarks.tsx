@@ -16,16 +16,34 @@ import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatche
 import { cn } from "@/lib/utils/cn";
 
 /**
- * The accent at the weight a background can carry text on top of.
+ * The accent at two weights: every hit, and the one the cursor is on.
  *
  * The accent rather than a highlighter yellow: `warning` is a severity in this app, and a found
- * word is not a problem. It is the same colour as the ring around the row the cursor is on, one
- * step lighter, so the two read as one answer at two scales.
+ * word is not a problem. It is the colour of the ring around the row the cursor is on, so the ring
+ * and the words inside it read as one answer at two scales.
+ *
+ * The step between them is what says which hit is current while the rest stay visible - the quiet
+ * one is "there is one here too", and it has to survive being scrolled past at a glance without
+ * competing with the line it is inside. Text stays legible on both: the strong wash holds the
+ * body-text ratio (7.2:1 against `fg` on the dark surface), which is why it stops where it does
+ * rather than going further.
+ *
+ * `text-inherit` on both, always. `<mark>` carries a colour of its own from the user agent, and
+ * the mirror behind a textarea paints its letters transparent - a mark that set its own colour
+ * would light up a second copy of the sentence there.
  */
-const MARK_CLASS = "rounded-sm bg-primary/30 text-inherit";
+const MARK_CLASS = "rounded-sm bg-primary/20 text-inherit";
+const ACTIVE_MARK_CLASS = "rounded-sm bg-primary/45 text-inherit";
 
-/** Split `text` at the matcher's hits. Returns the plain string when there are none. */
-export function markedFragments(text: string, matcher: CompiledMatcher | null): ReactNode {
+/**
+ * Split `text` at the matcher's hits. Returns the plain string when there are none.
+ *
+ * `active` is a property of the entry, not of the word: the find steps entry by entry, because an
+ * entry is what an author acts on - a line they translate, a take they assign, a finding they jump
+ * to - and there is nothing to do with the third occurrence inside one of them. So every hit in the
+ * row the cursor is on wears the strong wash, and every hit everywhere else wears the quiet one.
+ */
+export function markedFragments(text: string, matcher: CompiledMatcher | null, active = false): ReactNode {
     if (!matcher || !text) {
         return text;
     }
@@ -33,6 +51,7 @@ export function markedFragments(text: string, matcher: CompiledMatcher | null): 
     if (ranges.length === 0) {
         return text;
     }
+    const className = active ? ACTIVE_MARK_CLASS : MARK_CLASS;
     const parts: ReactNode[] = [];
     let cursor = 0;
     ranges.forEach((range, index) => {
@@ -40,7 +59,7 @@ export function markedFragments(text: string, matcher: CompiledMatcher | null): 
             parts.push(text.slice(cursor, range.start));
         }
         parts.push(
-            <mark key={index} className={MARK_CLASS}>
+            <mark key={index} className={className}>
                 {text.slice(range.start, range.end)}
             </mark>,
         );
@@ -53,8 +72,13 @@ export function markedFragments(text: string, matcher: CompiledMatcher | null): 
 }
 
 /** Read-only text with the find's hits marked in it. */
-export function MarkedText({ text, matcher }: { text: string; matcher: CompiledMatcher | null }) {
-    return <>{markedFragments(text, matcher)}</>;
+export function MarkedText({ text, matcher, active }: {
+    text: string;
+    matcher: CompiledMatcher | null;
+    /** This entry is the one the find's cursor is on, so its hits wear the strong wash. */
+    active?: boolean;
+}) {
+    return <>{markedFragments(text, matcher, active)}</>;
 }
 
 /**
@@ -74,9 +98,11 @@ export function MarkedText({ text, matcher }: { text: string; matcher: CompiledM
  * `className` must be the typography the host gives the textarea. Passing anything else is how a
  * mirror drifts, so hosts share one constant between the two.
  */
-export function TextareaMarkLayer({ value, matcher, className }: {
+export function TextareaMarkLayer({ value, matcher, active, className }: {
     value: string;
     matcher: CompiledMatcher | null;
+    /** This entry is the one the find's cursor is on, so its hits wear the strong wash. */
+    active?: boolean;
     className?: string;
 }) {
     if (!matcher || !value || matcher.findRanges(value).length === 0) {
@@ -90,7 +116,7 @@ export function TextareaMarkLayer({ value, matcher, className }: {
                 className,
             )}
         >
-            {markedFragments(value, matcher)}
+            {markedFragments(value, matcher, active)}
         </div>
     );
 }

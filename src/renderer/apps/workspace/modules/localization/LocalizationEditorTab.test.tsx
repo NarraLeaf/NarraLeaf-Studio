@@ -227,8 +227,12 @@ describe("LocalizationEditorTab find", () => {
         await openFind();
         await typeQuery("Line 4242.");
 
-        const marked = container.querySelectorAll("[data-index].ring-1 mark");
-        expect([...marked].map(node => node.textContent)).toEqual(["Line 4242."]);
+        const marked = [...container.querySelectorAll("[data-index].ring-1 mark")];
+        expect(marked.map(node => node.textContent)).toEqual(["Line 4242."]);
+        // The row the cursor is on wears the strong wash. The wiring is what this asserts: the
+        // weight is chosen from the windowed index, and an off-by-one there would mark the
+        // neighbouring row as current while the ring stayed here.
+        expect(marked[0].className).toContain("bg-primary/45");
     });
 
     it("counts every hit and steps through them without leaving the list", async () => {

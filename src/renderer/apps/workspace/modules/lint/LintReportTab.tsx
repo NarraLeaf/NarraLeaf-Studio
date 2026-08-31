@@ -383,6 +383,7 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
                                             secondary={groupMode === "location" ? ruleTitle(row.entry.ruleId) : ""}
                                             showSeverity={groupMode === "rule" && row.group.mixedSeverity}
                                             matcher={find.matcher}
+                                            matchActive={find.activeIndex === item.index}
                                             onJump={handleJump}
                                         />
                                     )}
@@ -443,6 +444,7 @@ function LintEntryRow({
     secondary,
     showSeverity,
     matcher,
+    matchActive,
     onJump,
 }: {
     entry: LintReportEntry;
@@ -452,6 +454,8 @@ function LintEntryRow({
     showSeverity: boolean;
     /** The open find's matcher, or null. What marks the hits inside the row's own text. */
     matcher: CompiledMatcher | null;
+    /** This row is the hit the find's cursor is on, so its marks wear the strong wash. */
+    matchActive: boolean;
     onJump: (entry: LintReportEntry) => void;
 }) {
     const { t } = useTranslation();
@@ -470,7 +474,9 @@ function LintEntryRow({
                 </span>
             ) : (
                 <span className="flex min-w-0 max-w-[45%] shrink-0 items-baseline text-2xs text-fg-subtle">
-                    <span className="truncate"><MarkedText text={label} matcher={matcher} /></span>
+                    <span className="truncate">
+                        <MarkedText text={label} matcher={matcher} active={matchActive} />
+                    </span>
                     {line === null ? null : (
                         <span className="shrink-0 tabular-nums" aria-label={t("lint.report.lineAria", { line })}>
                             {label ? `:${line}` : line}
@@ -484,14 +490,16 @@ function LintEntryRow({
                 </span>
             ) : null}
             <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
-                <MarkedText text={message} matcher={matcher} />
+                <MarkedText text={message} matcher={matcher} active={matchActive} />
                 {excerpt ? (
-                    <span className="ml-2 text-fg-subtle"><MarkedText text={excerpt} matcher={matcher} /></span>
+                    <span className="ml-2 text-fg-subtle">
+                        <MarkedText text={excerpt} matcher={matcher} active={matchActive} />
+                    </span>
                 ) : null}
             </span>
             {secondary ? (
                 <span className={cn("max-w-[30%] shrink-0 truncate text-2xs", SEVERITY_TEXT_CLASS[entry.severity])}>
-                    <MarkedText text={secondary} matcher={matcher} />
+                    <MarkedText text={secondary} matcher={matcher} active={matchActive} />
                 </span>
             ) : null}
         </>

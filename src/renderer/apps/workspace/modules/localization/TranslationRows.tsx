@@ -106,6 +106,8 @@ function AutosizeTextarea(props: {
     ariaLabel?: string;
     /** The open find's matcher, so the box can show where in it the hits are. */
     matcher?: CompiledMatcher | null;
+    /** This row is the find's current hit, so its marks wear the strong wash. */
+    matchActive?: boolean;
     /**
      * The document this box writes, as the project-relative path the freeze policy takes.
      *
@@ -162,6 +164,7 @@ function AutosizeTextarea(props: {
             <TextareaMarkLayer
                 value={props.value}
                 matcher={props.matcher ?? null}
+                active={props.matchActive}
                 className={cn(TEXT_BOX_CLASS, "min-h-[3.25rem]")}
             />
             <textarea
@@ -229,6 +232,8 @@ function TargetEditor(props: {
     heldBy: string | null;
     /** The open find's matcher, for the plain box. The inline field draws its own runs. */
     matcher: CompiledMatcher | null;
+    /** This row is the find's current hit, so its marks wear the strong wash. */
+    matchActive: boolean;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
 }) {
     const { t } = useTranslation();
@@ -276,6 +281,7 @@ function TargetEditor(props: {
                 freezeScope={scope}
                 heldBy={props.heldBy}
                 matcher={props.matcher}
+                matchActive={props.matchActive}
                 onChange={value => props.onTargetChange(props.row, value)}
                 onFocus={() => holdFor(true)}
                 onBlur={() => holdFor(false)}
@@ -297,9 +303,13 @@ function TargetEditor(props: {
  * is the whole of what Studio has over the `.po` file the same line would arrive in - there, run 1
  * can only ever be the characters `‹1›`.
  */
-function SourceText({ row, matcher }: { row: TranslationTableRow; matcher: CompiledMatcher | null }) {
+function SourceText({ row, matcher, active }: {
+    row: TranslationTableRow;
+    matcher: CompiledMatcher | null;
+    active: boolean;
+}) {
     if (!row.sourceRuns) {
-        return <MarkedText text={row.sourceText} matcher={matcher} />;
+        return <MarkedText text={row.sourceText} matcher={matcher} active={active} />;
     }
     // A line that carries tags is drawn by the engine's own run renderer, straight into the DOM
     // rather than through React, so there is nothing here to wrap a mark around. The row's ring
@@ -325,6 +335,8 @@ export function TranslateRow(props: {
     editing?: InlineEditing;
     /** The open find's matcher, or null. What marks the hits inside the row's own text. */
     matcher?: CompiledMatcher | null;
+    /** This row is the hit the find's cursor is on, so its marks wear the strong wash. */
+    matchActive?: boolean;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
     onSourceChange?: (row: TranslationTableRow, sourceText: string) => void;
     onRemove?: (row: TranslationTableRow) => void;
@@ -357,7 +369,7 @@ export function TranslateRow(props: {
             <StateIndicator state={props.state} />
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 truncate px-2 text-2xs text-fg-subtle">
                 <span className="select-text truncate">
-                    <MarkedText text={props.speaker} matcher={props.matcher ?? null} />
+                    <MarkedText text={props.speaker} matcher={props.matcher ?? null} active={props.matchActive} />
                 </span>
                 {/* Two marks, because the row draws two documents: the source text of a named string
                     and its translation. Two people can hold one row, one column each. */}
@@ -374,6 +386,7 @@ export function TranslateRow(props: {
                         heldBy={keyHeldBy}
                         heldTip={keyHeldTip}
                         matcher={props.matcher ?? null}
+                        matchActive={props.matchActive}
                         onFocus={() => props.onFocusKey?.(props.row.keyName ?? null)}
                         onBlur={() => props.onFocusKey?.(null)}
                         onChange={value => props.onSourceChange?.(props.row, value)}
@@ -381,7 +394,7 @@ export function TranslateRow(props: {
                 </div>
             ) : (
                 <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
-                    <SourceText row={props.row} matcher={props.matcher ?? null} />
+                    <SourceText row={props.row} matcher={props.matcher ?? null} active={props.matchActive === true} />
                 </div>
             )}
             <div className="col-start-2 row-start-2 min-w-0">
@@ -392,6 +405,7 @@ export function TranslateRow(props: {
                     editing={props.editing}
                     heldBy={heldBy}
                     matcher={props.matcher ?? null}
+                    matchActive={props.matchActive === true}
                     onTargetChange={props.onTargetChange}
                 />
             </div>
@@ -429,6 +443,8 @@ export function ReviewRow(props: {
     editing?: InlineEditing;
     /** The open find's matcher, or null. What marks the hits inside the row's own text. */
     matcher?: CompiledMatcher | null;
+    /** This row is the hit the find's cursor is on, so its marks wear the strong wash. */
+    matchActive?: boolean;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
     onApprove: (row: TranslationTableRow) => void;
     onReturn: (row: TranslationTableRow) => void;
@@ -454,14 +470,14 @@ export function ReviewRow(props: {
             <StateIndicator state={state} />
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 px-2">
                 <span className="select-text truncate text-2xs text-fg-subtle">
-                    <MarkedText text={speaker} matcher={props.matcher ?? null} />
+                    <MarkedText text={speaker} matcher={props.matcher ?? null} active={props.matchActive} />
                 </span>
                 <span aria-hidden className="text-2xs text-fg-subtle">·</span>
                 <span className="shrink-0 text-2xs text-fg-muted">{t(stateLabelKey(state))}</span>
                 {heldBy ? <TranslationClaimMark account={heldBy} /> : null}
             </div>
             <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
-                <MarkedText text={row.sourceText} matcher={props.matcher ?? null} />
+                <MarkedText text={row.sourceText} matcher={props.matcher ?? null} active={props.matchActive} />
             </div>
             <div className="col-start-2 row-start-2 flex min-w-0 flex-col gap-1.5">
                 {state === "stale" ? (
@@ -477,6 +493,7 @@ export function ReviewRow(props: {
                     editing={props.editing}
                     heldBy={heldBy}
                     matcher={props.matcher ?? null}
+                    matchActive={props.matchActive === true}
                     onTargetChange={props.onTargetChange}
                 />
                 <div className="flex items-center gap-1.5">
