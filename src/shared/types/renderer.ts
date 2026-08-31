@@ -1,6 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
+import type { LibraryExchangeKind } from "../story/libraryExchange";
 import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
@@ -515,6 +516,17 @@ export interface RendererPreloadedInterface {
         }>>;
         /** Read a settings document the user picks; parsing happens in the renderer. */
         importSettings(): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+            content?: string;
+        }>>;
+        /** Write an exported library - transform presets, Story Motions - to a file the user picks. */
+        exportLibraryItems(kind: LibraryExchangeKind, defaultFileName: string, content: string): Promise<RequestStatus<{
+            canceled: boolean;
+            filePath?: string;
+        }>>;
+        /** Read an exported library the user picks; parsing happens in the renderer. */
+        importLibraryItems(kind: LibraryExchangeKind): Promise<RequestStatus<{
             canceled: boolean;
             filePath?: string;
             content?: string;

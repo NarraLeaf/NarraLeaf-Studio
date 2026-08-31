@@ -85,6 +85,24 @@ export const storyInspector = {
         persistent: "永続",
     },
 
+    transformCard: {
+        menu: "その他の操作",
+        savePreset: "プリセットとして保存",
+        clearChannels: "すべてのチャンネルを削除",
+        managePresets: "プリセットを管理",
+        projectLabel: "プロジェクト",
+        saveTitle: "プリセットとして保存",
+        nameLabel: "名前",
+        namePlaceholder: "プリセット名",
+        replace: "置き換える",
+        nameTaken: "この名前は別のプリセットが使用しています。",
+        manageTitle: "変換プリセット",
+        empty: "保存されたプリセットはありません。",
+        rename: "名前を変更",
+        delete: "削除",
+        noChannels: "保存できるチャンネルがありません",
+    },
+
     transformPreset: {
         left: "左",
         center: "中央",

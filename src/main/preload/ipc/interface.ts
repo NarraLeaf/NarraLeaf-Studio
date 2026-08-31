@@ -3,6 +3,7 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
+import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
@@ -373,6 +374,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
         importSettings: () =>
             ipcClient.invoke(IPCEventType.appImportSettings, {}),
+        exportLibraryItems: (kind: LibraryExchangeKind, defaultFileName: string, content: string) =>
+            ipcClient.invoke(IPCEventType.appExportLibraryItems, { kind, defaultFileName, content }),
+        importLibraryItems: (kind: LibraryExchangeKind) =>
+            ipcClient.invoke(IPCEventType.appImportLibraryItems, { kind }),
         update: {
             getState: () => ipcClient.invoke(IPCEventType.appUpdateGetState, {}),
             check: () => ipcClient.invoke(IPCEventType.appUpdateCheck, {}),

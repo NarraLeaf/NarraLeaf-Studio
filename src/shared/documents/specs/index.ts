@@ -15,6 +15,7 @@ import {projectConfigSpec} from "./project";
 import {saveSchemaSpec} from "./saveSchema";
 import {storyDocumentSpec} from "./story";
 import {storyIndexSpec} from "./storyIndex";
+import {transformPresetsSpec} from "./transformPresets";
 import {uiDocumentSpec} from "./uiDocument";
 import {uiGraphsSpec} from "./uiGraphs";
 import {variableRegistrySpec} from "./variables";
@@ -44,6 +45,7 @@ export {
 } from "./project";
 export {STORY_DOCUMENT_PATH, storyDocumentSpec} from "./story";
 export {STORY_INDEX_DOCUMENT_PATH, storyIndexSpec} from "./storyIndex";
+export {TRANSFORM_PRESETS_DOCUMENT_PATH, transformPresetsSpec} from "./transformPresets";
 export {UI_DOCUMENT_PATH, uiDocumentSpec} from "./uiDocument";
 export {UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec} from "./uiGraphs";
 export {
@@ -76,6 +78,7 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     dictionarySpec,
     dlcSpec,
     saveSchemaSpec,
+    transformPresetsSpec,
     variableRegistrySpec,
     voiceDocumentSpec,
     localizationDocumentSpec,

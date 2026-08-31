@@ -32,6 +32,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { placementWordFor } from "./commands/transitions";
 import { AssetField } from "./AssetField";
 import { TransformChannelPreview } from "./TransformChannelPreview";
+import { TransformCardMenu } from "./TransformCardMenu";
 import { Disclosure, type TFunc } from "./inspectorFieldKit";
 import {
     addableTransformChannels,
@@ -728,7 +729,7 @@ function AddChannelPicker(props: {
         return null;
     }
     return (
-        <div className="pt-1">
+        <div>
             <button
                 ref={triggerRef}
                 type="button"
@@ -842,13 +843,24 @@ export function TransformChannelEditor(props: {
                     </ChannelRow>
                 );
             })}
-            <AddChannelPicker
-                channels={addable}
-                previewUrl={preview.url}
-                isCamera={isCamera}
-                t={t}
-                onAdd={channel => props.onChange(channel.add(ref))}
-            />
+            {/*
+              * The card's own row: what can be added on the left, what can be done to the whole
+              * transform on the right. The menu is pushed rather than the row justified, so it stays
+              * at the right edge on a card whose channel list has taken every addable channel and
+              * left no `Add` button standing.
+              */}
+            <div className="flex items-center gap-2 pt-1">
+                <AddChannelPicker
+                    channels={addable}
+                    previewUrl={preview.url}
+                    isCamera={isCamera}
+                    t={t}
+                    onAdd={channel => props.onChange(channel.add(ref))}
+                />
+                <div className="ml-auto">
+                    <TransformCardMenu value={props.value} onChange={props.onChange} />
+                </div>
+            </div>
         </div>
     );
 }
