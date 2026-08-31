@@ -65,7 +65,7 @@ import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
-import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetExportEntry, AssetExportFileEntry, AssetExportFileResult, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
 import type { StudioClipboardKind } from "./studioClipboard";
 import type {
@@ -1274,6 +1274,16 @@ export interface RendererPreloadedInterface {
          * the dialog is a success carrying `canceled: true`, not a failure.
          */
         exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
+
+        /**
+         * Ask where to save one library file, and write it there.
+         *
+         * The single-file half of {@link exportToFolder}: the author names the file in the dialog
+         * instead of taking the name the library holds. Main writes the copy for the same reason,
+         * and cancelling is a success carrying `canceled: true`. Bundle assets are directories and
+         * belong on `exportToFolder`.
+         */
+        exportToFile(entry: AssetExportFileEntry): Promise<RequestStatus<AssetExportFileResult>>;
 
         /**
          * Moving an asset's bytes between two workspace windows of one Studio process.

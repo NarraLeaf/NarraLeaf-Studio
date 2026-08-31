@@ -2,10 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import type { AssetExportFailure, AssetExportResult } from "@shared/types/assetExport";
+import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
 import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
 import { fetchRemoteAsset } from "../../remoteAssetFetcher";
-import { showOpenDialog } from "../fileDialog";
+import { showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -176,6 +176,73 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 exportedCount,
                 failures: failures.length > 0 ? failures : undefined,
             });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Copy one library file out to a place the author names.
+ *
+ * The single-file counterpart of {@link AssetExportToFolderHandler}, and it lives here rather than
+ * in the renderer for the same reason: a path that comes back from a picker carries no write grant,
+ * so the copy is made in main. The author names the file in the dialog, which is also where an
+ * overwrite is confirmed - so unlike the folder export this writes over what it is pointed at,
+ * because that is what the dialog just asked about.
+ */
+export class AssetExportToFileHandler extends IPCHandler<IPCEventType.assetExportToFile> {
+    readonly name = IPCEventType.assetExportToFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { entry }: IPCEvents[IPCEventType.assetExportToFile]["data"],
+    ): Promise<RequestStatus<AssetExportFileResult>> {
+        try {
+            if (!entry || typeof entry.sourcePath !== "string" || entry.sourcePath.length === 0) {
+                return this.failed("Nothing was handed to the export.");
+            }
+
+            // Asked before the dialog: a source this window may not read is not worth a picker the
+            // author would fill in and then be refused on.
+            const source = path.resolve(entry.sourcePath);
+            if (!await window.app.storageManager.isPathAllowed(window, source, "read")) {
+                return this.failed("This file is outside the project and was not exported.");
+            }
+
+            const fileName = sanitizeExportSegment(typeof entry.fileName === "string" ? entry.fileName : "");
+            const extension = path.extname(fileName).replace(/^\./, "");
+
+            const selection = await showSaveDialog(window, {
+                title: "Export File",
+                buttonLabel: "Export",
+                ...(fileName ? { defaultPath: fileName } : {}),
+                filters: extension
+                    ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: "All Files", extensions: ["*"] }]
+                    : [{ name: "All Files", extensions: ["*"] }],
+                securityScopedBookmarks: true,
+            });
+
+            if (selection.canceled || !selection.filePath) {
+                return this.success({ canceled: true });
+            }
+
+            const target = path.resolve(selection.filePath);
+            if (await window.app.storageManager.isPathProtected(target)) {
+                return this.failed("Selected location is inside protected Studio storage.");
+            }
+            // The scope, not a grant: main does the writing, so the renderer needs no reach into the
+            // folder the author picked. Same reasoning as the folder export.
+            window.app.storageManager.startSecurityScopedAccess(
+                window,
+                target,
+                selection.bookmark,
+                "session",
+            );
+
+            await fs.copyFile(source, target);
+            return this.success({ canceled: false, filePath: target });
         } catch (error) {
             return this.failed(error);
         }

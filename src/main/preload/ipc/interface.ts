@@ -44,7 +44,7 @@ import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/
 import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
 import type { PrivilegedActor, PrivilegedWriteBatchEntry } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
-import type { AssetExportEntry } from "@shared/types/assetExport";
+import type { AssetExportEntry, AssetExportFileEntry } from "@shared/types/assetExport";
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
@@ -879,6 +879,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
         exportToFolder: (entries: AssetExportEntry[]) =>
             ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
+        exportToFile: (entry: AssetExportFileEntry) =>
+            ipcClient.invoke(IPCEventType.assetExportToFile, { entry }),
         transfer: {
             offer: (entries: AssetTransferEntry[]) =>
                 ipcClient.invoke(IPCEventType.assetTransferOffer, { entries }),

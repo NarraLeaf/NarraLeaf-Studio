@@ -55,7 +55,7 @@ import type {
     SpellcheckRange,
     SpellcheckStatus,
 } from "./spellcheck";
-import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetExportEntry, AssetExportFileEntry, AssetExportFileResult, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
 import type { StudioClipboardKind } from "./studioClipboard";
 import type { LocaleContribution } from "@shared/i18n";
@@ -348,6 +348,7 @@ export enum IPCEventType {
 
     assetFetchRemote = "asset.fetchRemote",
     assetExportToFolder = "asset.exportToFolder",
+    assetExportToFile = "asset.exportToFile",
     assetTransferOffer = "asset.transfer.offer",
     assetTransferRedeem = "asset.transfer.redeem",
 
@@ -3459,6 +3460,22 @@ export type IPCAssetEvents = {
             entries: AssetExportEntry[];
         },
         response: AssetExportResult;
+    };
+    /**
+     * Copy one library file out under a name the author types in a save dialog.
+     *
+     * The single-file half of {@link IPCEventType.assetExportToFolder}: the file is named where
+     * it is saved rather than dropped into a folder under the name the library holds. Main checks
+     * the source against the window's grants and writes the copy itself, for the same reason the
+     * folder export does - a path chosen through a picker never becomes a renderer write grant.
+     */
+    [IPCEventType.assetExportToFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entry: AssetExportFileEntry;
+        },
+        response: AssetExportFileResult;
     };
     /**
      * Offer the files behind a copy to whichever window pastes it, and take back the token that

@@ -3,14 +3,17 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { showOpenDialog } = vi.hoisted(() => ({ showOpenDialog: vi.fn() }));
+const { showOpenDialog, showSaveDialog } = vi.hoisted(() => ({
+    showOpenDialog: vi.fn(),
+    showSaveDialog: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
-    dialog: { showOpenDialog },
+    dialog: { showOpenDialog, showSaveDialog },
     net: { request: vi.fn() },
 }));
 
-const { AssetExportToFolderHandler } = await import("./assetAction");
+const { AssetExportToFileHandler, AssetExportToFolderHandler } = await import("./assetAction");
 type AppWindowLike = Parameters<InstanceType<typeof AssetExportToFolderHandler>["handle"]>[0];
 
 let root: string;
@@ -56,6 +59,8 @@ beforeEach(async () => {
     await fs.mkdir(project, { recursive: true });
     await fs.mkdir(exportDir, { recursive: true });
     showOpenDialog.mockReset();
+    showSaveDialog.mockReset();
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: path.join(exportDir, "chosen.png") });
     showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [exportDir], bookmarks: [] });
 });
 
@@ -194,5 +199,87 @@ describe("AssetExportToFolderHandler", () => {
         expect(result).toMatchObject({ success: true, data: { exportedCount: 1 } });
         expect(result.success && result.data.failures?.[0].relativePath).toBe("gone.png");
         await expect(fs.readFile(path.join(exportDir, "room.png"), "utf8")).resolves.toBe("room-bytes");
+    });
+});
+
+describe("AssetExportToFileHandler", () => {
+    const handler = new AssetExportToFileHandler();
+
+    it("writes the file where the author named it", async () => {
+        const room = await shard("a1", "room-bytes");
+
+        const result = await handler.handle(makeWindow(), {
+            entry: { sourcePath: room, fileName: "room.png" },
+        });
+
+        expect(result).toMatchObject({
+            success: true,
+            data: { canceled: false, filePath: path.join(exportDir, "chosen.png") },
+        });
+        await expect(fs.readFile(path.join(exportDir, "chosen.png"), "utf8")).resolves.toBe("room-bytes");
+    });
+
+    it("opens the dialog on the library's own name for the file", async () => {
+        await handler.handle(makeWindow(), {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        });
+
+        expect(showSaveDialog.mock.calls[0][1]).toMatchObject({ defaultPath: "room.png" });
+    });
+
+    it("overwrites what the dialog already asked about", async () => {
+        // The save dialog confirms the replacement itself, so a second name-and-save has to land on
+        // the file the author pointed at rather than beside it as the folder export would.
+        await fs.writeFile(path.join(exportDir, "chosen.png"), "already-here", "utf8");
+
+        await handler.handle(makeWindow(), {
+            entry: { sourcePath: await shard("a1", "room-bytes"), fileName: "room.png" },
+        });
+
+        await expect(fs.readFile(path.join(exportDir, "chosen.png"), "utf8")).resolves.toBe("room-bytes");
+    });
+
+    it("opens the security scope without granting the renderer the chosen location", async () => {
+        const window = makeWindow();
+        await handler.handle(window, {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        });
+
+        expect(storageOf(window).grantFileSystemAccess).not.toHaveBeenCalled();
+        expect(storageOf(window).startSecurityScopedAccess).toHaveBeenCalledWith(
+            window,
+            path.join(exportDir, "chosen.png"),
+            undefined,
+            "session",
+        );
+    });
+
+    it("reports the dismissed dialog as a cancel rather than a failure", async () => {
+        showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined });
+
+        await expect(handler.handle(makeWindow(), {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        })).resolves.toEqual({ success: true, data: { canceled: true } });
+    });
+
+    it("refuses a source the window has no read grant for, without opening a dialog", async () => {
+        const outside = path.join(root, "secret.txt");
+        await fs.writeFile(outside, "not-yours", "utf8");
+
+        const result = await handler.handle(makeWindow(), {
+            entry: { sourcePath: outside, fileName: "secret.txt" },
+        });
+
+        expect(result).toMatchObject({ success: false });
+        expect(showSaveDialog).not.toHaveBeenCalled();
+    });
+
+    it("refuses a location inside protected Studio storage", async () => {
+        const result = await handler.handle(makeWindow({ protectedPath: true }), {
+            entry: { sourcePath: await shard("a1", "x"), fileName: "room.png" },
+        });
+
+        expect(result).toMatchObject({ success: false });
+        await expect(fs.access(path.join(exportDir, "chosen.png"))).rejects.toThrow();
     });
 });
