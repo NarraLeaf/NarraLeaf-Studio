@@ -58,3 +58,25 @@ export const CONTROL_HEIGHT_CLASS: Record<ControlSize, string> = {
     md: "min-h-9",
     lg: "min-h-10",
 };
+
+/**
+ * The floor stated as a fixed height as well, for a control that sits inside a flex row which
+ * would otherwise squeeze it - a single-line field, which cannot grow anyway.
+ *
+ * Both halves are needed and neither is redundant: `h-*` is what the flex parent has to respect,
+ * `min-h-*` is what a caller's own `min-h` would have to beat to change the size. Stating only the
+ * fixed height is what made `EnhancedInput` unresizable - a caller asking for the `sm` height got
+ * `min-h-7` merged in and `h-9` left standing, so the field stayed 36px beside a 28px select.
+ */
+export const CONTROL_FIXED_HEIGHT_CLASS: Record<ControlSize, string> = {
+    sm: "h-7 min-h-7",
+    md: "h-9 min-h-9",
+    lg: "h-10 min-h-10",
+};
+
+/** The type scale alone, for a control that states its own height. */
+export const CONTROL_TEXT_CLASS: Record<ControlSize, string> = {
+    sm: "text-xs",
+    md: "text-sm",
+    lg: "text-base",
+};
