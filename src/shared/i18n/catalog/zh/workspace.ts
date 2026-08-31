@@ -106,6 +106,7 @@ export const workspace = {
             statusTranslated: "已翻译",
             statusReviewed: "已校对",
             statusStale: "待复查",
+            findPlaceholder: "在译文中查找",
         },
         live: {
             entryClaimed: "{name} 正在翻译该行",
@@ -182,6 +183,7 @@ export const workspace = {
             statusOutdated: "待更新",
             notePlaceholder: "备注…",
             dropHint: "拖入音频以指派",
+            findPlaceholder: "在台词中查找",
         },
     },
     recovery: {
@@ -1014,6 +1016,18 @@ export const workspace = {
             mergeResolve: "完成合并",
         },
         // 快捷键自定义（设置 tab）+「?」速查浮层。
+        // 翻译表与配音表共用的查找浮层。查询框的标签由各自的表提供。
+        tableFind: {
+            caseSensitive: "区分大小写",
+            wholeWord: "全词匹配",
+            regex: "使用正则表达式",
+            invalidPattern: "表达式无效",
+            noMatches: "未找到匹配结果",
+            previous: "上一个",
+            next: "下一个",
+            // 筛选器挡住条目时显示在计数旁边,否则作者明知在表里的一行会得到「未找到」。
+            filterHidden: "另有 {count} 条被筛选隐藏",
+        },
         keybindings: {
             searchPlaceholder: "搜索快捷键…",
             hint: "点击快捷键即可录制新组合，Esc 取消",
@@ -1037,6 +1051,8 @@ export const workspace = {
                 blueprint: "蓝图编辑器",
                 storyMotion: "故事动效",
                 assets: "资产",
+                localization: "翻译表",
+                voice: "配音表",
                 other: "其他",
             },
             // 此前没有自带 i18n key 的目录条目标签。
@@ -1046,6 +1062,8 @@ export const workspace = {
                 cheatSheet: "显示快捷键速查",
                 contextHelp: "当前位置的帮助",
                 reopenClosedTab: "重新打开关闭的标签",
+                localizationFind: "在译文中查找",
+                voiceFind: "在配音中查找",
                 // 一个键位对应开发模式、预览、测试里当前占着运行位的那一个,
                 // 所以停止它们的三条命令共用同一条可重绑的快捷键。
                 run: {

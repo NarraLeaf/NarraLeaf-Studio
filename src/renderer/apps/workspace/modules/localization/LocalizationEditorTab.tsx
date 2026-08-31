@@ -26,6 +26,10 @@ import {
 import type { EditorComponentProps } from "../types";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
+import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
+import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
+import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -96,12 +100,23 @@ function impliedInterpolationCount(sourceText: string): number {
     return max + 1;
 }
 
+/**
+ * Everything about one row that Mod+F searches: who says it, the source line, and the translation.
+ *
+ * The translation is in here on purpose. A translator looking for a term they have already settled
+ * is looking for their own words, not the author's, and a find that read only the source column
+ * would answer for the wrong half of the table.
+ */
+function rowHaystack(row: TableRow, document: LocalizationDocument | null): string {
+    return [row.speaker, row.sourceText, document?.units[row.unitId]?.target ?? ""].join("\n");
+}
+
 /** States a reviewer still has to act on (feeds the pending-count badge). */
 function isPendingReview(state: LocalizationUnitState): boolean {
     return state === "stale" || state === "translated" || state === "machine";
 }
 
-export function LocalizationEditorTab({ payload, active }: EditorComponentProps<LocalizationEditorTabPayload | undefined>) {
+export function LocalizationEditorTab({ tabId, payload, active }: EditorComponentProps<LocalizationEditorTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const { t } = useTranslation();
     const locale = payload?.locale ?? "";
@@ -509,6 +524,52 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
     });
 
     /**
+     * Mod+F over the table, stepping the hits and scrolling each one into view.
+     *
+     * The searched set is the list on screen, because that is the list the hits are navigated in;
+     * what the filter is holding back is reported as a count instead (see `TableFindOverlay`).
+     */
+    const findItemText = useCallback((index: number): string | null => {
+        const entry = flatItems[index];
+        return entry?.kind === "row" ? rowHaystack(entry.row, locDocument) : null;
+    }, [flatItems, locDocument]);
+
+    const findUnfilteredTexts = useCallback(
+        () => rows.map(row => rowHaystack(row, locDocument)),
+        [rows, locDocument],
+    );
+
+    const find = useTableFind({
+        itemCount: flatItems.length,
+        getItemText: findItemText,
+        getUnfilteredTexts: findUnfilteredTexts,
+    });
+
+    useKeybinding({
+        id: `localization-find-${tabId}`,
+        catalogId: "localization.find",
+        key: "mod+f",
+        // A translator has the caret in a translation almost the whole time this table is open, so
+        // a Find that stood down for typing would be a Find that never fires. It types nothing.
+        allowInEditable: true,
+        when: whenEditorFocused(tabId),
+        handler: find.openFind,
+    });
+
+    /**
+     * A hit is an arrival even though nobody scrolled.
+     *
+     * Next can throw the cursor a hundred rows down the table, and a hit placed for reading is the
+     * difference between finding a line and finding a line whose surroundings have to be worked out.
+     */
+    const findActiveIndex = find.activeIndex;
+    useEffect(() => {
+        if (findActiveIndex !== null) {
+            virtualizer.scrollToIndex(findActiveIndex, { align: "center" });
+        }
+    }, [findActiveIndex, virtualizer]);
+
+    /**
      * A filter change is a different page, so the scroll position from the old one does not survive it.
      *
      * The list shrinks under a scroller whose retained `scrollTop` can then sit entirely below the
@@ -724,6 +785,10 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                     </div>
                 </div>
             </div>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+            {find.open ? (
+                <TableFindOverlay find={find} placeholder={t("workspace.localization.table.findPlaceholder")} />
+            ) : null}
             <div
                 ref={scrollRef}
                 className="min-h-0 flex-1 overflow-y-auto"
@@ -761,7 +826,12 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                     key={item.key}
                                     ref={virtualizer.measureElement}
                                     data-index={item.index}
-                                    className="absolute left-0 top-0 w-full"
+                                    className={cn(
+                                        "absolute left-0 top-0 w-full",
+                                        // The row the find bar is on. Inset, because a ring drawn
+                                        // outside a windowed item overlaps the one above it.
+                                        find.activeIndex === item.index && "ring-1 ring-inset ring-primary/60",
+                                    )}
                                     style={{ transform: `translateY(${item.start}px)` }}
                                 >
                                     {entry.kind === "group" ? (
@@ -801,6 +871,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                         })}
                     </div>
                 )}
+            </div>
             </div>
         </div>
         </TranslationClaimsProvider>

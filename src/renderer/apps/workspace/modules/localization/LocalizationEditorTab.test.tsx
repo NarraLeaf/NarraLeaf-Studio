@@ -17,6 +17,8 @@ const LINE_COUNT = 5000;
 const SCENE_COUNT = 10;
 
 const updateUnit = vi.fn();
+/** Keybindings the tab registered, so a test can fire one without a live KeybindingService. */
+const registeredKeybindings: { id: string; catalogId?: string; handler: (context: never) => void }[] = [];
 
 vi.mock("@/apps/workspace/components/ui/freezeGuard", async () => {
     const actual = await vi.importActual<typeof import("@/apps/workspace/components/ui/freezeGuard")>(
@@ -87,7 +89,14 @@ const services = {
         listCharacter: () => [],
         subscribe: () => () => undefined,
     },
-    [Services.UI]: {},
+    [Services.UI]: {
+        keybindings: {
+            register: (keybinding: { id: string; catalogId?: string; handler: (context: never) => void }) => {
+                registeredKeybindings.push(keybinding);
+                return () => undefined;
+            },
+        },
+    },
     [Services.UIDocument]: { getDocument: () => null },
 } as Record<string, unknown>;
 
@@ -107,6 +116,7 @@ afterEach(() => {
     cleanup();
     restoreLayout();
     updateUnit.mockReset();
+    registeredKeybindings.length = 0;
 });
 
 async function renderTab() {
@@ -117,6 +127,25 @@ async function renderTab() {
         );
     });
     return result;
+}
+
+/** Press the tab's Mod+F, by calling what it registered under that chord. */
+async function openFind() {
+    const binding = registeredKeybindings.find(item => item.catalogId === "localization.find");
+    expect(binding, "the table registers a find binding").toBeDefined();
+    await act(async () => {
+        binding!.handler(undefined as never);
+    });
+}
+
+/** Type into the find overlay's query box, the way a change event reaches a controlled input. */
+async function typeQuery(text: string) {
+    const box = window.document.querySelector<HTMLInputElement>("input[placeholder]")!;
+    await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+        setter.call(box, text);
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
 }
 
 describe("LocalizationEditorTab on a long story", () => {
@@ -173,5 +202,32 @@ describe("LocalizationEditorTab on a long story", () => {
         });
 
         expect(updateUnit).toHaveBeenCalledWith("ja", "u-0", "Line 0.", { target: "訳文" });
+    });
+});
+
+describe("LocalizationEditorTab find", () => {
+    it("scrolls a hit thousands of rows down into the window", async () => {
+        const { container } = await renderTab();
+        const scroller = container.querySelector(".overflow-y-auto")! as HTMLElement;
+        expect(scroller.scrollTop).toBe(0);
+        await openFind();
+        await typeQuery("Line 4242.");
+
+        // One line in five thousand carries that text, and it is far below the opening window - so
+        // a table that only counted the hit would have left the author looking at Scene 0.
+        expect(window.document.body.textContent).toContain("1/1");
+        expect(scroller.scrollTop).toBeGreaterThan(0);
+        const marked = container.querySelectorAll("[data-index].ring-1");
+        expect(marked.length).toBe(1);
+        expect(marked[0].textContent).toContain("Line 4242.");
+    });
+
+    it("counts every hit and steps through them without leaving the list", async () => {
+        await renderTab();
+        await openFind();
+        // "Line 424" heads "Line 424." and the ten lines from 4240 to 4249.
+        await typeQuery("Line 424");
+
+        expect(window.document.body.textContent).toContain("1/11");
     });
 });

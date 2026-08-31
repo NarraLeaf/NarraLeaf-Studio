@@ -109,6 +109,7 @@ export const workspace = {
             statusTranslated: "Translated",
             statusReviewed: "Reviewed",
             statusStale: "To review",
+            findPlaceholder: "Find in translations",
         },
         live: {
             // On the mark a line wears while somebody else is translating it. A person is named:
@@ -189,6 +190,7 @@ export const workspace = {
             statusOutdated: "Outdated",
             notePlaceholder: "Note…",
             dropHint: "Drop audio to assign",
+            findPlaceholder: "Find in lines",
         },
     },
     // Recovery mode: the read-only, plugin-free way to reopen a workspace whose project will not
@@ -1231,6 +1233,20 @@ export const workspace = {
             mergeResolve: "Finish the merge",
         },
         // Keyboard-shortcut customization (Settings window → Editor) + the "?" cheat sheet overlay.
+        // The find overlay the translation and voice tables share. Its query box is labelled by
+        // each table, in that table's own words.
+        tableFind: {
+            caseSensitive: "Match case",
+            wholeWord: "Match whole word",
+            regex: "Use a regular expression",
+            invalidPattern: "Invalid pattern",
+            noMatches: "No results",
+            previous: "Previous match",
+            next: "Next match",
+            // Beside the hit count when the filter is holding entries back, because "No results"
+            // would otherwise be the answer for a line the author knows is in the table.
+            filterHidden: "{count} hidden by the filter",
+        },
         keybindings: {
             searchPlaceholder: "Search shortcuts…",
             hint: "Click a shortcut to record a new one. Esc cancels.",
@@ -1254,6 +1270,8 @@ export const workspace = {
                 blueprint: "Blueprint Editor",
                 storyMotion: "Story Motion",
                 assets: "Assets",
+                localization: "Translation Table",
+                voice: "Voice Table",
                 other: "Other",
             },
             // Labels for catalog entries that had no i18n key of their own.
@@ -1263,6 +1281,8 @@ export const workspace = {
                 cheatSheet: "Show Keyboard Shortcuts",
                 contextHelp: "Help for What Is Focused",
                 reopenClosedTab: "Reopen Closed Tab",
+                localizationFind: "Find in Translations",
+                voiceFind: "Find in Voice-over",
                 // One chord for whichever of Dev Mode, Preview and Test is holding the run slot,
                 // so the three commands that stop them share a single rebindable shortcut.
                 run: {

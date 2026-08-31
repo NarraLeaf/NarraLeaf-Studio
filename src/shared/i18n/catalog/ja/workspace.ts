@@ -110,6 +110,7 @@ export const workspace = {
             statusTranslated: "翻訳済み",
             statusReviewed: "確認済み",
             statusStale: "要確認",
+            findPlaceholder: "訳文を検索",
         },
         live: {
             entryClaimed: "{name} がこの行を翻訳している",
@@ -186,6 +187,7 @@ export const workspace = {
             statusOutdated: "古い",
             notePlaceholder: "メモ…",
             dropHint: "音声をドロップすると割り当てる",
+            findPlaceholder: "セリフを検索",
         },
     },
     // 復旧モード。プロジェクトが読み込めない、あるいは正しく読み込めないワークスペースを、
@@ -1060,6 +1062,19 @@ export const workspace = {
             mergeResolve: "マージを完了する",
         },
         // キーボードショートカットの変更（設定ウィンドウ → エディタ）と「?」の一覧。
+        // 翻訳表と音声表が共有する検索の浮動パネル。検索欄の見出しは各表が渡す。
+        tableFind: {
+            caseSensitive: "大文字小文字を区別",
+            wholeWord: "単語全体に一致",
+            regex: "正規表現を使う",
+            invalidPattern: "パターンが不正",
+            noMatches: "結果なし",
+            previous: "前の一致",
+            next: "次の一致",
+            // 絞り込みが項目を隠しているとき、件数の隣に出す。出さないと、表にあると
+            // わかっている行に対して「結果なし」と答えることになる。
+            filterHidden: "絞り込みで非表示 {count} 件",
+        },
         keybindings: {
             searchPlaceholder: "ショートカットを検索…",
             hint: "ショートカットをクリックすると新しいキーを記録する。Esc で取り消し",
@@ -1083,6 +1098,8 @@ export const workspace = {
                 blueprint: "ブループリントエディタ",
                 storyMotion: "ストーリーモーション",
                 assets: "アセット",
+                localization: "翻訳表",
+                voice: "音声表",
                 other: "その他",
             },
             // 自分の i18n キーを持たなかったカタログの項目の名前。
@@ -1092,6 +1109,8 @@ export const workspace = {
                 cheatSheet: "キーボードショートカットを表示",
                 contextHelp: "フォーカスされているもののヘルプ",
                 reopenClosedTab: "閉じたタブを開き直す",
+                localizationFind: "訳文を検索",
+                voiceFind: "音声を検索",
                 // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
                 // 停止する三つのコマンドが同じ割り当てを共有する。
                 run: {
