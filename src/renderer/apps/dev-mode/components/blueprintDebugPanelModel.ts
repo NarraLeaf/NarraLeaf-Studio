@@ -14,6 +14,7 @@
 
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
+import { blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type { UIDocument, UIElementId, UISurface } from "@shared/types/ui-editor/document";
 
 export type BlueprintDevToolsScope = {
@@ -178,15 +179,18 @@ export function blueprintWidgetElementId(bp: Blueprint): string | null {
 }
 
 function isBlueprintInSurfaceScope(bp: Blueprint, scope: SurfaceElementScope): boolean {
-    const owner = bp.owner;
-    if (owner.kind === "globalMain") {
+    // Purely a question of where the blueprint sits, so it is asked of the anchor: a project one is
+    // everywhere, a surface or one of its elements is here when this surface is on screen, and a
+    // component definition or a story row sits somewhere this scope cannot name.
+    const anchor = blueprintAnchor(bp.owner);
+    if (anchor.kind === "project") {
         return true;
     }
-    if (owner.kind === "surfaceMain") {
-        return scope.surfaceIds.has(owner.surfaceId);
+    if (anchor.kind === "surface") {
+        return scope.surfaceIds.has(anchor.surfaceId);
     }
-    if (owner.kind === "widgetMain" || owner.kind === "widgetValue") {
-        return scope.elementIdsBySurfaceId.get(owner.surfaceId)?.has(owner.elementId) === true;
+    if (anchor.kind === "surfaceElement") {
+        return scope.elementIdsBySurfaceId.get(anchor.surfaceId)?.has(anchor.elementId) === true;
     }
     return false;
 }

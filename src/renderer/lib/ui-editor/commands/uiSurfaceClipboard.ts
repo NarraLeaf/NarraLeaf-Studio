@@ -2,6 +2,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { InterpolationParams, PluralKey, TranslationKey } from "@shared/i18n";
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { anchorSurfaceId } from "@shared/blueprint/ownerShape";
 import type { UIDocument, UIElement, UIElementId, UISurface } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import {
@@ -327,8 +328,7 @@ function collectSurfaceBlueprints(source: BlueprintDocument | null, surfaceId: s
 }
 
 function ownsSurface(owner: BlueprintOwnerRef, surfaceId: string): boolean {
-    return (owner.kind === "surfaceMain" || owner.kind === "widgetMain" || owner.kind === "widgetValue")
-        && owner.surfaceId === surfaceId;
+    return anchorSurfaceId(owner) === surfaceId;
 }
 
 /**

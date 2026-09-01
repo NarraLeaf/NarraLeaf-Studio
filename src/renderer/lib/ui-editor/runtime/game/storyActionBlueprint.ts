@@ -16,6 +16,7 @@ import type { Scene, ScriptCtx } from "narraleaf-react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectStoryActionEventHeadNodeIdsForDispatch } from "@shared/types/blueprint/graph";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
+import { blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type {
     StoryDocument,
     StorySavedVariableDefinition,
@@ -274,9 +275,13 @@ async function invokeStoryActionFn(options: {
     if (!decl) {
         throw new Error(`Fn does not exist: ${fnRef}`);
     }
+    // Project-wide fns are callable from anywhere; a story fn only from a scene that reaches its
+    // row. Every other position - a surface, a widget, a component definition - is a UI pool a
+    // compiled story cannot see into.
+    const declAnchor = blueprintAnchor(decl.owner);
     const visible =
-        decl.owner.kind === "globalMain" ||
-        (decl.owner.kind === "storyAction" && input.sceneFnCatalog.blueprintIds.has(decl.owner.blueprintId));
+        declAnchor.kind === "project" ||
+        (declAnchor.kind === "storyRow" && input.sceneFnCatalog.blueprintIds.has(declAnchor.blueprintId));
     if (!visible) {
         throw new Error(`Fn "${decl.name}" is not available in this scene`);
     }

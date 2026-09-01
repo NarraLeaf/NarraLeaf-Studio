@@ -1,6 +1,7 @@
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -72,7 +73,9 @@ export async function evaluateBlueprintValue(input: {
     maxSteps?: number;
 }): Promise<BlueprintValueEvaluationResult> {
     const bp = input.blueprintDocument.blueprints[input.blueprintId];
-    if (!bp || bp.owner.kind !== "widgetValue" || bp.program.kind !== "graph") {
+    // Asked of the contract rather than the owner kind: this path exists for the one invocation
+    // that returns a value to a prop, not for a particular slot the value binding happens to sit in.
+    if (!bp || blueprintContract(bp.owner).invocation !== "valueBinding" || bp.program.kind !== "graph") {
         return { returned: false, value: undefined, dependencies: [] };
     }
 

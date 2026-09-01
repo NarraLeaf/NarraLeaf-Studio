@@ -1,6 +1,7 @@
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
@@ -24,7 +25,9 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     const doc = localBp.getBlueprintDocument();
     const rec = doc.ownerRecords[ownerKey];
     const ids = rec?.privateBlueprintIds ?? [];
-    const allowTypeScriptRevision = blueprint.owner.kind !== "widgetValue";
+    // A value binding is evaluated for its Return Value, and the TypeScript frontend has no way to
+    // hand one back - so the offer is withheld for that invocation rather than for that slot.
+    const allowTypeScriptRevision = blueprintContract(blueprint.owner).invocation !== "valueBinding";
 
     return (
         <div className="space-y-2 text-2xs text-fg-muted">

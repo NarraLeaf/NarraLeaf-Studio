@@ -24,6 +24,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { anchorComponentId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import {
     blueprintNodeRegistry,
     isBlueprintNodeAllowedInGraphContext,
@@ -353,7 +354,7 @@ function compileParams(
         raw[param.key] = valueToJs(param.value);
     }
 
-    const widgetElementType = isWidgetOwner(owner) ? options.resolveWidgetElementType?.(owner) : undefined;
+    const widgetElementType = isWidgetEventGraph(owner) ? options.resolveWidgetElementType?.(owner) : undefined;
     const widgetElement = "elementId" in owner ? options.uiElements?.[owner.elementId] : undefined;
     const definition = blueprintNodeRegistry.get(nodeAst.type);
     if (!definition) {
@@ -381,9 +382,9 @@ function compileParams(
             widgetElementType,
             widgetElement,
             uiDocument: options.uiElements ? { elements: options.uiElements } : null,
-            isComponentDefinitionGraph: owner.kind === "componentWidgetMain",
+            isComponentDefinitionGraph: anchorComponentId(owner) !== null,
         }))
-        && !(definition.role === "eventHead" && isWidgetOwner(owner) && !widgetElementType)
+        && !(definition.role === "eventHead" && isWidgetEventGraph(owner) && !widgetElementType)
     ) {
         diagnostics.push({
             severity: "warning",
@@ -653,10 +654,6 @@ function describeParamOptions(
         parts.push(`Input pins that take a literal: ${pins.join(", ")}`);
     }
     return parts.length > 0 ? parts.join(". ") : "This node takes no fields.";
-}
-
-function isWidgetOwner(owner: BlueprintOwnerRef): boolean {
-    return owner.kind === "widgetMain" || owner.kind === "componentWidgetMain";
 }
 
 function buildOwnerRef(ast: BpBlueprintAst, diagnostics: BpDiagnostic[]): BlueprintOwnerRef | null {

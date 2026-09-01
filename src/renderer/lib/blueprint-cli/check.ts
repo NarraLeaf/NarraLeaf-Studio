@@ -12,6 +12,7 @@
 
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { anchorComponentId } from "@shared/blueprint/ownerShape";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
@@ -180,7 +181,7 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
         // Told rather than derived from the owner inside the validator, because it is the same flag
         // the runtime bridge takes (`componentDefinitionMode`): a definition's graph addresses its
         // own elements and reads its instance's params, and both are refused anywhere else.
-        isComponentDefinitionGraph: owner.kind === "componentWidgetMain",
+        isComponentDefinitionGraph: anchorComponentId(owner) !== null,
     };
 }
 

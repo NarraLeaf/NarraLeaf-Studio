@@ -148,6 +148,7 @@ import {
     buildAccessibleBlueprintVariableOptions,
     listEffectiveBlueprintVariables,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import { anchorElementId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
     buildBlueprintGraphClipboardPayload,
@@ -676,10 +677,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
-        (payload.ownerKind === "widgetMain" ||
-            payload.ownerKind === "widgetValue" ||
-            payload.ownerKind === "componentWidgetMain") &&
-        payload.elementId
+        anchorElementId(bp.owner) !== null && payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
     const widgetLogicEvents = useMemo(() => {
@@ -1296,10 +1294,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             widgetElement,
             uiDocument,
             widgetBlueprintEvents: widgetLogicEvents,
-            widgetEventLayerSlots:
-                (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") && widgetElement
-                    ? []
-                    : undefined,
+            widgetEventLayerSlots: isWidgetEventGraph(bp.owner) && widgetElement ? [] : undefined,
             hasEventHead: false,
             hasFunctionEntry: false,
             isComponentDefinitionGraph,
@@ -1381,7 +1376,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         nodeCatalog,
         payload.blueprintId,
         isComponentDefinitionGraph,
-        payload.ownerKind,
         selectEventGraph,
         uiService,
         uiDocument,
@@ -1492,12 +1486,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const widgetEventLayerSlots = useMemo(() => {
         return resolveWidgetEventLayerSlotsForPalette({
-            ownerKind: payload.ownerKind,
+            owner: bp.owner,
             widgetElement,
             graphView: editor.graphView,
             widgetBlueprintEvents: widgetLogicEvents,
         });
-    }, [editor.graphView, payload.ownerKind, widgetElement, widgetLogicEvents]);
+    }, [bp.owner, editor.graphView, widgetElement, widgetLogicEvents]);
 
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";
@@ -1928,10 +1922,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 label: param.name.trim() || param.id,
             }));
         }
-        if (
-            (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") &&
-            payload.surfaceId
-        ) {
+        if (isWidgetEventGraph(bp.owner) && payload.surfaceId) {
             const surface = uiDocument.surfaces.find(s => s.id === payload.surfaceId);
             if (surface) {
                 const collectElements = (rootId: string): BlueprintInspectorParamSelectOption[] => {
@@ -1954,6 +1945,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     }, [
         blueprintDocumentService,
         revision,
+        bp.owner,
         payload.ownerKind,
         payload.surfaceId,
         payload.componentId,
