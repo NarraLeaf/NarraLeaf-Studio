@@ -126,10 +126,14 @@ export type GameUiSlotHostOptions = {
      *
      * A slot surface builds its own host API, and every callback left off this build is a node
      * that answers with the bridge's default - `false`, `{found:false}`, an empty list - without
-     * throwing and without a diagnostic. That has now happened four times (sound, progress,
-     * saved variables, and this batch), so the guard is no longer a list somebody remembers to
-     * extend: `stageSlotHostForwarding.test.ts` compares this file with the page path and fails
-     * naming whatever is missing.
+     * throwing and without a diagnostic. That has now happened five times (sound, progress,
+     * saved variables, this batch, and the dub languages), so the guard is no longer a list
+     * somebody remembers to extend: `stageSlotHostForwarding.test.ts` compares this file with the
+     * page path and fails naming whatever is missing.
+     *
+     * The fifth one is why that comparison covers every option and not only the callbacks: the
+     * missing piece was `voiceConfig`, a data field, and its default was not silence but a node
+     * throwing "This project has no voice languages configured" at the author.
      *
      * Several of these are the ones most likely to be reached for from a stage slot in the first
      * place: a replay button on the dialogue box (`onPlayVoice`), an already-read mark on the
@@ -410,6 +414,11 @@ export function useStageSlotSurfaceRuntime(input: {
             initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
+            // The dub languages, from the same bundle the page host reads. Without it
+            // `voice.listLocales()` answers empty inside every slot surface, and the voice nodes
+            // raise "This project has no voice languages configured" - an error that blames the
+            // author's project for a field the host forgot to hand over.
+            voiceConfig: bundle.voice ?? null,
         });
     }, [
         core,

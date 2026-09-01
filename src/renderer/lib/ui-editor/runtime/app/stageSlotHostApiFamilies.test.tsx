@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UIDocument, UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { CreateBlueprintHostApiRuntimeOptions } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { GameVoiceBundle } from "@shared/types/voice";
 import { useStageSlotSurfaceRuntime, type GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
 import type { SoundTransport } from "./soundTransport";
@@ -249,6 +250,65 @@ describe("stage slot surface language carry", () => {
         const options = renderShell({});
 
         expect(options.onLocaleChanged).toBeUndefined();
+    });
+});
+
+describe("stage slot surface voice carry", () => {
+    afterEach(cleanup);
+
+    /**
+     * The dub languages of the running game. Unlike every hole before it this one is not a
+     * callback but a plain data field, which is why the key-set comparison in
+     * `stageSlotHostForwarding` - reading only keys spelled `onSomething` - passed while it was
+     * missing. It also failed louder than the rest: `voice.listLocales()` answered empty, so every
+     * voice node threw "This project has no voice languages configured" on a dialogue box, a
+     * choice list, an NVL surface or the quick menu, blaming the author's project for a field the
+     * host had not handed over.
+     */
+    const VOICE: GameVoiceBundle = {
+        voicedLocales: [
+            { code: "ja", displayName: "日本語" },
+            { code: "en", displayName: "English" },
+        ],
+        tables: {},
+    };
+
+    function withVoice(rest: Partial<GameUiSlotHostOptions> = {}): Partial<GameUiSlotHostOptions> {
+        return {
+            ...rest,
+            bundle: { ui: { uidoc: document_ }, localization: undefined, voice: VOICE },
+        } as unknown as Partial<GameUiSlotHostOptions>;
+    }
+
+    it("passes the dub languages and both playback callbacks to the slot's host API", () => {
+        const playVoiceUnit = vi.fn(async () => true);
+        const playChoiceVoiceUnit = vi.fn(async () => true);
+
+        const options = renderShell(withVoice({ playVoiceUnit, playChoiceVoiceUnit }));
+
+        expect(options.voiceConfig).toBe(VOICE);
+        expect(options.onPlayVoice).toBe(playVoiceUnit);
+        expect(options.onPlayChoiceVoice).toBe(playChoiceVoiceUnit);
+    });
+
+    it("lists the project's dub languages from inside a slot", async () => {
+        const options = renderShell(withVoice());
+        const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
+            .createDevModeBlueprintHostApi(options);
+
+        // Before the fix this was empty, and empty is exactly what the voice nodes raise on.
+        expect(hostApi.voice.listLocales().map(entry => entry.code)).toEqual(["ja", "en"]);
+    });
+
+    it("answers empty on a project with no voice set up, rather than throwing", async () => {
+        // The documented degrade, and the reason the field is optional: a project that was never
+        // dubbed has no languages to list, and the node reports that as the author's own state.
+        const options = renderShell({});
+        const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
+            .createDevModeBlueprintHostApi(options);
+
+        expect(options.voiceConfig).toBeNull();
+        expect(hostApi.voice.listLocales()).toEqual([]);
     });
 });
 
