@@ -31,7 +31,7 @@ export function DialogSlotSurface(props: {
         >
             <DialogStateBridge
                 core={options.core}
-                getCurrentNametag={options.getCurrentNametag}
+                getCurrentNametag={options.host.onGetNametag}
                 resolveAvatarAssetId={options.resolveAvatarAssetId}
                 flushDialogElements={runtime.flushSlotElements}
             />

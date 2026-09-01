@@ -16,6 +16,7 @@ import type { ChoiceMenus } from "./choiceMenus";
 import { createNvlSlotComponent } from "./NvlSlotSurface";
 import { createOnStageSlotNode } from "./OnStageSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
+import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { readNlrLastDialogSpeaker } from "./nlrDialogReaders";
 import { findStageSurfaceForSlot } from "./stageSlots";
 
@@ -194,27 +195,40 @@ export type LiveGameUiCallbackDeps = {
     dialogClickTargets: DialogClickTargets;
 };
 
-export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
-    | "getCurrentNametag"
-    | "getNotificationsInGame"
-    | "getHistoryInGame"
-    | "getFutureInGame"
-    | "restoreHistoryInGame"
-    | "redoHistoryInGame"
-    | "canUndoHistoryInGame"
-    | "canRedoHistoryInGame"
-    | "getChoiceCountInGame"
-    | "isNvlModeInGame"
-    | "selectChoiceInGame"
-    | "nextInGame"
-    | "skipInGame"
-    | "showDialogInGame"
-    | "hideDialogInGame"
-    | "toggleDialogDisplayInGame"
-    | "setSentenceSpeedInGame"
-    | "getGamePreferenceInGame"
-    | "setGamePreferenceInGame"
->;
+/**
+ * The part of a game's host capabilities that the running `LiveGame` answers.
+ *
+ * Named in the bridge's own vocabulary, and picked out of {@link GameHostCapabilities} rather than
+ * declared again, so a host builds its capabilities by spreading this in and TypeScript accounts
+ * for every key exactly once.
+ *
+ * `NonNullable` because these nineteen are the ones a running game always answers: a host declares
+ * a capability it lacks by writing `undefined`, and there is no such thing as a `LiveGame` that
+ * cannot be asked what the play head is on.
+ */
+export type LiveGameUiCallbacks = {
+    [K in
+    | "onGetNametag"
+    | "onGetNotifications"
+    | "onGetHistory"
+    | "onGetFuture"
+    | "onRestoreHistory"
+    | "onRedoHistory"
+    | "onCanUndoHistory"
+    | "onCanRedoHistory"
+    | "onGetChoiceCount"
+    | "onIsNvlMode"
+    | "onSelectChoice"
+    | "onNext"
+    | "onSkip"
+    | "onShowDialog"
+    | "onHideDialog"
+    | "onToggleDialogDisplay"
+    | "onSetSentenceSpeed"
+    | "onGetGamePreference"
+    | "onSetGamePreference"
+    ]: NonNullable<GameHostCapabilities[K]>;
+};
 
 /**
  * Restore the running game to a past backlog line by token.
@@ -328,12 +342,12 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
     const { requireLiveGame, getLiveGame, choiceMenus, currentDialogNametagRef, dialogClickTargets } = deps;
 
     return {
-        getCurrentNametag: (): string | null => {
+        onGetNametag: (): string | null => {
             const liveGameSpeaker = readNlrLastDialogSpeaker(getLiveGame());
             return liveGameSpeaker ?? currentDialogNametagRef.current;
         },
 
-        getNotificationsInGame: (): BlueprintGameNotification[] => {
+        onGetNotifications: (): BlueprintGameNotification[] => {
             const gameState = getLiveGame()?.getGameState?.();
             const manager = (gameState as { notificationMgr?: { toArray?: () => unknown } } | null | undefined)
                 ?.notificationMgr;
@@ -350,17 +364,17 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             });
         },
 
-        getHistoryInGame: (): BlueprintGameHistoryEntry[] => {
+        onGetHistory: (): BlueprintGameHistoryEntry[] => {
             return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.());
         },
 
-        getFutureInGame: (): BlueprintGameHistoryEntry[] => {
+        onGetFuture: (): BlueprintGameHistoryEntry[] => {
             const liveGame = getLiveGame();
             const getFuture = liveGame ? liveGameHistoryControls(liveGame).getFuture : undefined;
             return toBlueprintHistoryEntries(getFuture ? getFuture.call(liveGame) : undefined);
         },
 
-        restoreHistoryInGame: async (id?: string): Promise<void> => {
+        onRestoreHistory: async (id?: string): Promise<void> => {
             const token = String(id ?? "").trim();
             const liveGame = requireLiveGame("Restore From History");
             // Snapshot-based restore works both during live play and after loading a save (where the
@@ -377,36 +391,36 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             }
         },
 
-        redoHistoryInGame: async (): Promise<void> => {
+        onRedoHistory: async (): Promise<void> => {
             const liveGame = requireLiveGame("Redo Next History Entry");
             liveGameHistoryControls(liveGame).redo?.call(liveGame);
         },
 
-        canUndoHistoryInGame: (): boolean => {
+        onCanUndoHistory: (): boolean => {
             const liveGame = getLiveGame();
             return liveGame ? liveGameHistoryControls(liveGame).canUndo?.call(liveGame) === true : false;
         },
 
-        canRedoHistoryInGame: (): boolean => {
+        onCanRedoHistory: (): boolean => {
             const liveGame = getLiveGame();
             return liveGame ? liveGameHistoryControls(liveGame).canRedo?.call(liveGame) === true : false;
         },
 
-        getChoiceCountInGame: (): number => {
+        onGetChoiceCount: (): number => {
             // The newest menu on the stage. A graph running inside one never reaches here - the
             // choice surface binds this call to its own menu - so this answers the callers that are
             // outside every menu.
             return choiceMenus.current()?.count ?? 0;
         },
 
-        isNvlModeInGame: (): boolean => {
+        onIsNvlMode: (): boolean => {
             const gameState = getLiveGame()?.getGameState?.();
             const nvlState = (gameState as { getNvlState?: () => { active?: unknown } } | null | undefined)
                 ?.getNvlState?.();
             return nvlState?.active === true;
         },
 
-        selectChoiceInGame: async (index: number): Promise<void> => {
+        onSelectChoice: async (index: number): Promise<void> => {
             const runtime = choiceMenus.current();
             if (!runtime) {
                 throw new Error("Select Choice: no active choice menu");
@@ -414,7 +428,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             runtime.choose(index);
         },
 
-        nextInGame: async (): Promise<void> => {
+        onNext: async (): Promise<void> => {
             // The newest box still on the stage. A Game UI dialog surface covers the stage and takes
             // the click itself, so this is the whole of the advance path for a game that has one:
             // the click a player made reaches the line only by being made again here.
@@ -437,24 +451,24 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             clickTarget.click();
         },
 
-        skipInGame: async (): Promise<void> => {
+        onSkip: async (): Promise<void> => {
             requireLiveGame("Skip").skipDialog();
         },
 
-        showDialogInGame: async (): Promise<void> => {
+        onShowDialog: async (): Promise<void> => {
             requireLiveGame("Show Dialog").game.preference.setPreference("showDialog", true);
         },
 
-        hideDialogInGame: async (): Promise<void> => {
+        onHideDialog: async (): Promise<void> => {
             requireLiveGame("Hide Dialog").game.preference.setPreference("showDialog", false);
         },
 
-        toggleDialogDisplayInGame: async (): Promise<void> => {
+        onToggleDialogDisplay: async (): Promise<void> => {
             const preference = requireLiveGame("Toggle Dialog Display").game.preference;
             preference.setPreference("showDialog", preference.getPreference("showDialog") !== true);
         },
 
-        setSentenceSpeedInGame: async (cps: number): Promise<void> => {
+        onSetSentenceSpeed: async (cps: number): Promise<void> => {
             const value = typeof cps === "number" ? cps : Number(cps);
             if (!Number.isFinite(value) || value <= 0) {
                 throw new Error("Set Sentence Speed: CPS must be a positive number");
@@ -462,14 +476,14 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             requireLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
         },
 
-        getGamePreferenceInGame: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
+        onGetGamePreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
             const preference = requireLiveGame(`Get ${key} Preference`).game.preference as {
                 getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
             };
             return preference.getPreference(key) as BlueprintGamePreferenceValue;
         },
 
-        setGamePreferenceInGame: async (
+        onSetGamePreference: async (
             key: BlueprintGamePreferenceKey,
             value: BlueprintGamePreferenceValue,
         ): Promise<void> => {

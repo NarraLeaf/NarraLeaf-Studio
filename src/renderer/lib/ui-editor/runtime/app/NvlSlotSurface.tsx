@@ -40,7 +40,7 @@ export function NvlSlotSurface(props: {
 }) {
     const { options, surface, dialogs } = props;
     const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "nvl" });
-    const { core, bundle, widgetRuntimeStore, isNvlModeInGame } = options;
+    const { core, bundle, host: { widgetRuntimeStore, onIsNvlMode: isNvlModeInGame } } = options;
     const { runtimeScopeId, flushSlotElements } = runtime;
     const previousCountRef = useRef(0);
 
@@ -65,7 +65,9 @@ export function NvlSlotSurface(props: {
         for (const elementId of listElementIds) {
             widgetRuntimeStore.setListItems(stageSlotWidgetRuntimeKey(runtimeScopeId, elementId), items);
         }
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY, isNvlModeInGame());
+        // `=== true` rather than a call: a host may declare it cannot answer, and "not in NVL"
+        // is what the bridge's own reader answers for it.
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY, isNvlModeInGame?.() === true);
         flushSlotElements();
         if (items.length > previousCountRef.current) {
             for (const elementId of listElementIds) {

@@ -108,7 +108,7 @@ export function ChoiceSlotSurface(props: {
     // render is replayed; the slot itself is what everything this menu addresses is keyed by.
     const drawingId = useId();
     const slot = choiceMenus.claimSlot(drawingId);
-    const { core, bundle, widgetRuntimeStore } = options;
+    const { core, bundle, host: { widgetRuntimeStore } } = options;
     const menu = useUIMenuContext();
     /**
      * What this menu offers, for the host API bound to it below.
@@ -130,13 +130,16 @@ export function ChoiceSlotSurface(props: {
      */
     const scopedOptions = useMemo<GameUiSlotHostOptions>(() => ({
         ...options,
-        getChoiceCountInGame: () => ownRuntimeRef.current?.count ?? 0,
-        selectChoiceInGame: async (index: number) => {
-            const own = ownRuntimeRef.current;
-            if (!own) {
-                throw new Error("Select Choice: no active choice menu");
-            }
-            own.choose(index);
+        host: {
+            ...options.host,
+            onGetChoiceCount: () => ownRuntimeRef.current?.count ?? 0,
+            onSelectChoice: async (index: number) => {
+                const own = ownRuntimeRef.current;
+                if (!own) {
+                    throw new Error("Select Choice: no active choice menu");
+                }
+                own.choose(index);
+            },
         },
     }), [options]);
 

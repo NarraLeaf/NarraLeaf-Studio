@@ -24,6 +24,7 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { useBlueprintRuntimeCore, type BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { SurfaceLifecycleOrchestrator } from "@/lib/ui-editor/runtime/app/lifecycle/surfaceLifecycleOrchestrator";
 import type { GameUiSlotHostOptions } from "@/lib/ui-editor/runtime/app/StageSlotSurfaceShell";
+import type { GameHostCapabilities } from "@/lib/ui-editor/runtime/app/gameHostApiOptions";
 import { createChoiceMenus } from "@/lib/ui-editor/runtime/app/choiceMenus";
 import {
     createGameUiSlotComponents,
@@ -233,6 +234,106 @@ export function useStoryPreviewGameUi(input: {
         const notAvailable = (operation: string) => async (): Promise<never> => {
             throw new Error(`${operation} is not available in the story preview`);
         };
+        /**
+         * What the blueprint nodes may ask of a scene preview.
+         *
+         * The same shape a real session's host builds, and every key has to be named - so what this
+         * host cannot do is written down as `undefined` rather than left out. That distinction is
+         * the whole point: an omission used to be indistinguishable from a forgotten forward, and
+         * five capabilities reached a running game's pages and not its dialogue box that way.
+         *
+         * What is genuinely absent here is absent because the preview is a Studio panel showing one
+         * scene, not a game: no window to resize, no playthrough to save or carry, no story to
+         * start, and no dub of the author's project loaded to play a line from.
+         */
+        const hostCapabilities: GameHostCapabilities = {
+            // Navigation, application, and save APIs do not exist inside the editor preview;
+            // blueprint calls reach these stubs and surface as execution.error debug events.
+            onOpenSurface: async () => undefined,
+            onPageBack: async () => undefined,
+            onClearPages: undefined,
+            onClearGameOverlay: undefined,
+            onQuitApplication: async () => undefined,
+            // The preview renders into a Studio panel, not an application window.
+            onGetFullscreen: notAvailable("Get Fullscreen"),
+            onSetFullscreen: notAvailable("Set Fullscreen"),
+            onGetWindowScaleOptions: undefined,
+            onGetWindowScale: undefined,
+            onSetWindowScale: undefined,
+            onGetWindowSize: undefined,
+            onSetWindowSize: undefined,
+            // Layers belong to the surface stack a game app owns; this preview draws one scene.
+            onShowLayer: undefined,
+            onHideLayer: undefined,
+            onHideLayerGroup: undefined,
+            onWaitLayer: undefined,
+            onCloseOwnLayer: undefined,
+            onIsLayerMounted: undefined,
+            onCaptureRun: undefined,
+            onReadSaveGame: undefined,
+            onIsInGame: () => true,
+            onQuitGame: notAvailable("Quit Game"),
+            onWriteSave: notAvailable("Save Game"),
+            onLoadSave: notAvailable("Load Save"),
+            onDeleteSave: notAvailable("Delete Save"),
+            onListSaveIds: async () => [],
+            onGetSaveMetadata: async () => null,
+            onGetSaveTimes: async () => null,
+            onGetSaveLine: async () => null,
+            onGetSavePlaytime: async () => null,
+            onGetSavePreview: async () => null,
+            // The editor preview keeps no stopwatch: what it runs is an author checking a scene,
+            // not a playthrough, and counting it would put working time into a player's total.
+            onGetPlaytime: () => 0,
+            onGetTotalPlaytime: () => 0,
+            onWriteAutoSave: notAvailable("Auto Save"),
+            onListAutoSaves: async () => [],
+            onIsCurrentTextRead: undefined,
+            onIsTextRead: undefined,
+            onClearTextRead: undefined,
+            onIsSceneVisited: undefined,
+            // The preview settles one scene's stage; there is no playthrough behind it, so a
+            // saved variable has no value to report and nowhere to be written.
+            onGetSavedVariable: () => ({ value: null, found: false }),
+            onSetSavedVariable: () => {
+                throw new Error("Set Saved Var: game runtime is not available");
+            },
+            onIsOptionPicked: undefined,
+            onClearVisited: undefined,
+            onIsEndingReached: undefined,
+            onIsDlcInstalled: undefined,
+            onListEndings: undefined,
+            onClearEndingState: undefined,
+            onClearEndings: undefined,
+            // No audio transport, no network, no shell: the sound nodes degrade to their warned
+            // no-op and the rest report the refusal the author's graph can hear.
+            onPlaySound: undefined,
+            onStopSound: undefined,
+            onPauseSound: undefined,
+            onResumeSound: undefined,
+            onSetSoundVolume: undefined,
+            onSeekSound: undefined,
+            onIsSoundPlaying: undefined,
+            onGetTrackVolume: undefined,
+            onSetTrackVolume: undefined,
+            onNetworkFetch: undefined,
+            onMovePointer: undefined,
+            onOpenExternal: undefined,
+            onExportProgress: undefined,
+            onImportProgress: undefined,
+            onStorageDurability: undefined,
+            audioTracks: undefined,
+            onSubscribeGamePreferences: undefined,
+            // Changing the language restarts the application and returns to the save it wrote, and
+            // there is no application here to restart.
+            onLocaleChanged: undefined,
+            onPlayVoice: undefined,
+            onPlayChoiceVoice: undefined,
+            localizationConfig: null,
+            voiceConfig: null,
+            widgetRuntimeStore,
+            ...liveGameCallbacks,
+        };
         // Frozen once per session - hostApi memos key off this object's identity.
         const slotHostOptions: GameUiSlotHostOptions = {
             sessionId: gameInput.sessionId,
@@ -250,43 +351,11 @@ export function useStoryPreviewGameUi(input: {
                     set: (key: string, value: unknown) => store.set(key, value),
                 };
             },
-            // Navigation, application, and save APIs do not exist inside the editor preview;
-            // blueprint calls reach these stubs and surface as execution.error debug events.
-            openSurfaceWithTransition: async () => undefined,
-            goBackWithTransition: async () => undefined,
-            quitApplication: async () => undefined,
-            // The preview renders into a Studio panel, not an application window.
             resolveAvatarAssetId: gameInput.resolveAvatarAssetId,
-            getFullscreen: notAvailable("Get Fullscreen"),
-            setFullscreen: notAvailable("Set Fullscreen"),
-            startStoryInGame: notAvailable("Start Story"),
-            writeSaveInGame: notAvailable("Save Game"),
-            loadSaveInGame: notAvailable("Load Save"),
-            deleteSaveInGame: notAvailable("Delete Save"),
-            listSaveIds: async () => [],
-            getSaveMetadata: async () => null,
-            getSaveTimes: async () => null,
-            getSaveLine: async () => null,
-            getSavePlaytime: async () => null,
-            getSavePreview: async () => null,
-            // The editor preview keeps no stopwatch: what it runs is an author checking a scene,
-            // not a playthrough, and counting it would put working time into a player's total.
-            getPlaytime: () => 0,
-            getTotalPlaytime: () => 0,
-            writeAutoSaveInGame: notAvailable("Auto Save"),
-            listAutoSaves: async () => [],
-            isInGame: () => true,
-            quitGame: notAvailable("Quit Game"),
-            // The preview settles one scene's stage; there is no playthrough behind it, so a
-            // saved variable has no value to report and nowhere to be written.
-            getSavedVariableInGame: () => ({ value: null, found: false }),
-            setSavedVariableInGame: () => {
-                throw new Error("Set Saved Var: game runtime is not available");
-            },
-            ...liveGameCallbacks,
+            host: hostCapabilities,
+            startStory: notAvailable("Start Story"),
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
-            widgetRuntimeStore,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,

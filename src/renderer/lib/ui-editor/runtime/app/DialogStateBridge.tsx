@@ -49,7 +49,8 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
  */
 export function DialogStateBridge(props: {
     core: BlueprintRuntimeCore | null;
-    getCurrentNametag: () => string | null;
+    /** Absent on a host that cannot name a speaker, which reads the same as a narrator line. */
+    getCurrentNametag?: () => string | null;
     resolveAvatarAssetId?: (url: string) => string | null;
     flushDialogElements: () => void;
 }) {
@@ -62,7 +63,7 @@ export function DialogStateBridge(props: {
         if (!core) {
             return;
         }
-        const nametag = dialog.isNarrator ? null : getCurrentNametag();
+        const nametag = dialog.isNarrator ? null : getCurrentNametag?.() ?? null;
         const avatarAssetId = avatarSrc ? resolveAvatarAssetId?.(avatarSrc) ?? null : null;
         core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
         // The same write is the clock: `refreshAll` is key-agnostic, so mirroring the avatar here

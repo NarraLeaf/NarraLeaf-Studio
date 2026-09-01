@@ -8,40 +8,29 @@ import {
     type MutableRefObject,
     type SetStateAction,
 } from "react";
-import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
+import type { DevModeBundle } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
-import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
-import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
-    type BlueprintGameHistoryEntry,
-    type BlueprintGameNotification,
-    type BlueprintGamePreferenceKey,
-    type BlueprintGamePreferenceValue,
-    type BlueprintLayerShowRequest,
-    type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
-import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
-import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
-import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
-import type { ProjectAudioTrack } from "@shared/types/audioTrack";
-import type { SoundTransport } from "./soundTransport";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { collectSurfaceFlushElementIds } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
-import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
+import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
+import {
+    buildGameHostApiOptions,
+    type GameHostCapabilities,
+    type GameHostSurfaceBinding,
+} from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
-import { staticSurfaceHostAdapter, type OpenSurfaceOptions, type PageProps, type SurfaceStateAccessors } from "./types";
+import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
 
 /**
  * Host callbacks shared by every Game UI slot surface. Built once per NLR session in
@@ -56,167 +45,41 @@ export type GameUiSlotHostOptions = {
     rendererRegistry: ElementRendererRegistry;
     lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
     makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
-    openSurfaceWithTransition: (
-        surfaceId: string,
-        props?: PageProps,
-        options?: OpenSurfaceOptions,
-    ) => Promise<void>;
-    goBackWithTransition: () => Promise<void>;
-    quitApplication: () => Promise<void>;
-    /** Hosts without a real application window (story preview) leave these unset. */
-    getFullscreen?: () => Promise<boolean>;
-    setFullscreen?: (fullscreen: boolean) => Promise<void>;
-    getWindowScaleOptions?: () => Promise<number[]>;
-    getWindowScale?: () => Promise<number>;
-    setWindowScale?: (scale: number) => Promise<void>;
-    getWindowSize?: () => Promise<{ width: number; height: number }>;
-    setWindowSize?: (width: number, height: number) => Promise<void>;
-    startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-    /** Resolves false when the save was not applied; `Load Save` routes that to its `Failed` pin. */
-    loadSaveInGame: (id: string) => Promise<boolean>;
-    deleteSaveInGame: (id: string) => Promise<void>;
-    listSaveIds: () => Promise<string[]>;
-    getSaveMetadata: (id: string) => Promise<unknown>;
-    getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
-    getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
-    getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
-    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
-    /** The running playthrough's playtime, in seconds. */
-    getPlaytime: () => number;
-    /** Seconds ever spent in this project, across every playthrough. */
-    getTotalPlaytime: () => number;
-    writeAutoSaveInGame: () => Promise<void>;
-    listAutoSaves: () => Promise<AutoSaveEntry[]>;
-    getHistoryInGame: () => BlueprintGameHistoryEntry[];
-    /** The lines the player has stepped back past, nearest first. Empty unless they have. */
-    getFutureInGame: () => BlueprintGameHistoryEntry[];
-    restoreHistoryInGame: (id?: string) => Promise<void>;
-    /** Step the play head forward one line, back over a line already read. */
-    redoHistoryInGame: () => Promise<void>;
-    canUndoHistoryInGame: () => boolean;
-    canRedoHistoryInGame: () => boolean;
-    /**
-     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
-     * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
-     * (the in-editor story preview) genuinely cannot write the document, and the bridge answers the
-     * node with a refusal the author's graph can hear. It is not optional for a real session - a
-     * title screen is exactly the kind of surface an author builds out of Game UI slots, and
-     * without these both nodes reported "progress cannot be written here" inside a dialogue,
-     * choice or NVL slot while working perfectly one surface above.
-     */
-    exportProgressInGame?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
-    importProgressInGame?: () => Promise<GameProgressImportOutcome>;
-    getCurrentNametag: () => string | null;
     /**
      * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
      * avatars to URLs; a blueprint pin carries an `ImageAsset`. Absent on hosts with no compiled
      * story, where there are no avatars to invert.
      */
     resolveAvatarAssetId?: (url: string) => string | null;
-    getNotificationsInGame: () => BlueprintGameNotification[];
-    getChoiceCountInGame: () => number;
-    isNvlModeInGame: () => boolean;
-    /** Optional: hosts without a text-read tracker (story preview) fall back to the mirrored state key. */
-    isCurrentTextReadInGame?: () => boolean;
-    /** Optional: hosts without a text-read tracker fall back to wiping the persistence key directly. */
-    clearTextReadInGame?: () => Promise<void>;
     /**
-     * The rest of the game host, forwarded verbatim.
+     * The whole game host, as one value.
      *
-     * A slot surface builds its own host API, and every callback left off this build is a node
-     * that answers with the bridge's default - `false`, `{found:false}`, an empty list - without
-     * throwing and without a diagnostic. That has now happened five times (sound, progress,
-     * saved variables, this batch, and the dub languages), so the guard is no longer a list
-     * somebody remembers to extend: `stageSlotHostForwarding.test.ts` compares this file with the
-     * page path and fails naming whatever is missing.
+     * This used to be sixty-odd fields declared here and forwarded one by one into the slot's own
+     * host API, which is how a capability could reach the pages of a game and not its dialogue box:
+     * every one of those options is optional, so a name left off the list was indistinguishable
+     * from a host that could not do the thing, and the node answered the bridge's default in
+     * silence. It went wrong five times - sound, progress, the saved variables, a batch of
+     * twenty-five, and `voiceConfig`, whose absence made every voice node blame the author's
+     * project for having no dub languages.
      *
-     * The fifth one is why that comparison covers every option and not only the callbacks: the
-     * missing piece was `voiceConfig`, a data field, and its default was not silence but a node
-     * throwing "This project has no voice languages configured" at the author.
-     *
-     * Several of these are the ones most likely to be reached for from a stage slot in the first
-     * place: a replay button on the dialogue box (`onPlayVoice`), an already-read mark on the
-     * choice list (`onIsTextRead` / `onIsOptionPicked`), a confirm layer from the quick menu
-     * (`onShowLayer` / `onWaitLayer`), an endings counter on an on-stage strip.
+     * The list is gone. Whoever owns the game builds {@link GameHostCapabilities} once and hands
+     * the same value to every surface of it, and `buildGameHostApiOptions` is the only thing that
+     * turns it into bridge options - so a slot surface can no longer be handed less than a page.
      */
-    clearPages?: () => void | Promise<void>;
-    clearGameOverlay?: () => void | Promise<void>;
-    showLayer?: (request: BlueprintLayerShowRequest) => string;
-    hideLayer?: (handle: string) => Promise<void> | void;
-    hideLayerGroup?: (group: string) => Promise<void> | void;
-    waitLayer?: (handle: string) => Promise<unknown>;
-    closeOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
-    isLayerMounted?: (handle: string) => boolean;
-    captureRun?: () => unknown | null;
-    readSaveGame?: (id: string) => Promise<unknown | null> | unknown | null;
-    hasReadTextInGame?: (textId: string) => boolean;
-    isSceneVisitedInGame?: (sceneId: string) => boolean;
-    isOptionPickedInGame?: (optionId: string) => boolean;
-    clearVisitedInGame?: () => void;
-    isEndingReachedInGame?: (endingId: string) => boolean;
-    isDlcInstalledInGame?: (dlcId: string) => boolean;
-    listEndingsInGame?: (storyId: string) => BlueprintStoryEnding[];
-    clearEndingStateInGame?: (endingId: string) => Promise<void> | void;
-    clearEndingsInGame?: () => Promise<void> | void;
-    networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
-    movePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
-    openExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
-    storageDurability?: () => Promise<GameStorageDurability>;
-    playVoiceUnit?: (unitId: string) => Promise<boolean>;
-    playChoiceVoiceUnit?: (unitId: string, options: { interruptOthers: boolean }) => Promise<boolean>;
-
+    host: GameHostCapabilities;
     /**
-     * The running playthrough's saved variables.
+     * The player's way into a story from a slot surface.
      *
-     * A slot surface needs these as much as a page does, and arguably more: the screens that show
-     * a counter while the story plays - a HUD, an affection meter, a status strip - are the
-     * on-stage ones. Without them the nodes answer `found: false` and refuse the write with
-     * "game runtime is not available" while a game is plainly running.
+     * Separate from {@link GameUiSlotHostOptions.host} because it is the one capability the three
+     * surfaces of a game legitimately reach differently, and an absence should never be how that is
+     * said. A slot keeps whatever callable it was handed when its session was mounted, so a real
+     * game gives it the boot gate - which finds the runtime through a ref at call time and waits
+     * out a boot still in flight - while a page host, rebuilt whenever the runtime's own start
+     * changes, holds that start directly.
      */
-    getSavedVariableInGame: (variableId: string) => { value: unknown; found: boolean };
-    setSavedVariableInGame: (variableId: string, value: unknown) => void;
-    selectChoiceInGame: (index: number) => Promise<void>;
-    isInGame: () => boolean;
-    quitGame: (surfaceId: string) => Promise<void>;
-    nextInGame: () => Promise<void>;
-    skipInGame: () => Promise<void>;
-    showDialogInGame: () => Promise<void>;
-    hideDialogInGame: () => Promise<void>;
-    toggleDialogDisplayInGame: () => Promise<void>;
-    setSentenceSpeedInGame: (cps: number) => Promise<void>;
-    getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
-    setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-    /**
-     * The session's sound transport.
-     *
-     * Optional because a host may back no audio at all (the in-editor story preview), in which case
-     * the sound nodes degrade to their warned no-op exactly as they do on a Page previewed in
-     * Studio. It is *not* optional in the sense of "nice to have": a slot surface without it is the
-     * shipped defect where a button-click sound in a dialogue box, choice or NVL surface silently
-     * did nothing, because this shell built its host API with none of the sound callbacks the
-     * top-level surfaces pass.
-     */
-    soundTransport?: SoundTransport;
-    /** Project audio tracks (from the bundle); resolves the video widget's mixer volume. */
-    audioTracks?: readonly ProjectAudioTrack[];
-    /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
-    subscribeGamePreferences?: (listener: () => void) => () => void;
-    /**
-     * The player changed the language from inside the game. A slot surface is exactly where that
-     * happens — a language picker built into a dialogue-box quick menu — and `GameApp` owns what it
-     * costs (writing a save, restarting, returning to the playthrough), so the slot bridge only
-     * forwards the request rather than deciding anything.
-     *
-     * Optional for the same reason `getFullscreen` is: what it does is restart the application and
-     * come back to the save it just wrote, and the story preview has no application to restart. That
-     * host leaves it unset, and a `Set Language` node on a slot surface there reaches nothing —
-     * which is the truth about the capability, not a gap to fill with a partial imitation.
-     */
-    localeChangedInGame?: (code: string) => Promise<void>;
-    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
-    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
-    widgetRuntimeStore: WidgetRuntimeStateStore;
+    startStory: GameHostSurfaceBinding["startStory"];
+    setWidgetPatchesByScope: Dispatch<SetStateAction<WidgetPatchesByScope>>;
+    widgetPatchesByScopeRef: MutableRefObject<WidgetPatchesByScope>;
 };
 
 export type StageSlotSurfaceRuntime = {
@@ -276,7 +139,6 @@ export function useStageSlotSurfaceRuntime(input: {
         sessionId,
         core,
         bundle,
-        widgetRuntimeStore,
         setWidgetPatchesByScope,
         widgetPatchesByScopeRef,
     } = options;
@@ -291,135 +153,25 @@ export function useStageSlotSurfaceRuntime(input: {
         if (!core) {
             return null;
         }
-        return createDevModeBlueprintHostApi({
+        return createDevModeBlueprintHostApi(buildGameHostApiOptions(options.host, {
             document,
             scope: core.scopeBridge,
+            emit: event => core.debug.emit(event),
             activeSurfaceId: surface.id,
             runtimeScopeId,
+            // A slot surface is put on the screen by the story rather than opened by anyone, so
+            // there is nothing it could have been opened *with*.
             pageProps: {},
-            emit: event => core.debug.emit(event),
-            onOpenSurface: options.openSurfaceWithTransition,
-            onPageBack: options.goBackWithTransition,
-            onQuitApplication: options.quitApplication,
-            onGetFullscreen: options.getFullscreen,
-            onSetFullscreen: options.setFullscreen,
-            onGetWindowScaleOptions: options.getWindowScaleOptions,
-            onGetWindowScale: options.getWindowScale,
-            onSetWindowScale: options.setWindowScale,
-            onGetWindowSize: options.getWindowSize,
-            onSetWindowSize: options.setWindowSize,
-            onStartStory: options.startStoryInGame,
-            onWriteSave: options.writeSaveInGame,
-            onLoadSave: options.loadSaveInGame,
-            onDeleteSave: options.deleteSaveInGame,
-            onListSaveIds: options.listSaveIds,
-            onGetSaveMetadata: options.getSaveMetadata,
-            onGetSaveTimes: options.getSaveTimes,
-            onGetSaveLine: options.getSaveLine,
-            onGetSavePlaytime: options.getSavePlaytime,
-            onGetPlaytime: options.getPlaytime,
-            onGetTotalPlaytime: options.getTotalPlaytime,
-            onGetSavePreview: options.getSavePreview,
-            onWriteAutoSave: options.writeAutoSaveInGame,
-            onListAutoSaves: options.listAutoSaves,
-            onGetHistory: options.getHistoryInGame,
-            onGetFuture: options.getFutureInGame,
-            onRestoreHistory: options.restoreHistoryInGame,
-            onRedoHistory: options.redoHistoryInGame,
-            onCanUndoHistory: options.canUndoHistoryInGame,
-            onCanRedoHistory: options.canRedoHistoryInGame,
-            onExportProgress: options.exportProgressInGame,
-            onImportProgress: options.importProgressInGame,
-            onGetNametag: options.getCurrentNametag,
-            onGetNotifications: options.getNotificationsInGame,
-            onGetChoiceCount: options.getChoiceCountInGame,
-            onIsNvlMode: options.isNvlModeInGame,
-            onIsCurrentTextRead: options.isCurrentTextReadInGame,
-            onClearTextRead: options.clearTextReadInGame,
-            onGetSavedVariable: options.getSavedVariableInGame,
-            onSetSavedVariable: options.setSavedVariableInGame,
-            onClearPages: options.clearPages,
-            onClearGameOverlay: options.clearGameOverlay,
-            onShowLayer: options.showLayer,
-            onHideLayer: options.hideLayer,
-            onHideLayerGroup: options.hideLayerGroup,
-            onWaitLayer: options.waitLayer,
-            onCloseOwnLayer: options.closeOwnLayer,
-            onIsLayerMounted: options.isLayerMounted,
-            onCaptureRun: options.captureRun,
-            onReadSaveGame: options.readSaveGame,
-            onIsTextRead: options.hasReadTextInGame,
-            onIsSceneVisited: options.isSceneVisitedInGame,
-            onIsOptionPicked: options.isOptionPickedInGame,
-            onClearVisited: options.clearVisitedInGame,
-            onIsEndingReached: options.isEndingReachedInGame,
-            onIsDlcInstalled: options.isDlcInstalledInGame,
-            onListEndings: options.listEndingsInGame,
-            onClearEndingState: options.clearEndingStateInGame,
-            onClearEndings: options.clearEndingsInGame,
-            onNetworkFetch: options.networkFetch,
-            onMovePointer: options.movePointer,
-            onOpenExternal: options.openExternal,
-            onStorageDurability: options.storageDurability,
-            onPlayVoice: options.playVoiceUnit,
-            onPlayChoiceVoice: options.playChoiceVoiceUnit,
-            onSelectChoice: options.selectChoiceInGame,
-            onIsInGame: options.isInGame,
-            onIsGameOverlay: () => true,
-            onQuitGame: options.quitGame,
-            onNext: options.nextInGame,
-            onSkip: options.skipInGame,
-            onShowDialog: options.showDialogInGame,
-            onHideDialog: options.hideDialogInGame,
-            onToggleDialogDisplay: options.toggleDialogDisplayInGame,
-            onSetSentenceSpeed: options.setSentenceSpeedInGame,
-            onGetGamePreference: options.getGamePreferenceInGame,
-            onSetGamePreference: options.setGamePreferenceInGame,
-            // The same sound callbacks the top-level surfaces pass. Left off, `sound.play` returns null
-            // and every transport node is a silent no-op, so an authored click sound inside a
-            // dialogue box just never happens.
-            onPlaySound: options.soundTransport?.play,
-            onStopSound: options.soundTransport?.stop,
-            onPauseSound: options.soundTransport?.pause,
-            onResumeSound: options.soundTransport?.resume,
-            onSetSoundVolume: options.soundTransport?.setVolume,
-            onSeekSound: options.soundTransport?.seek,
-            onIsSoundPlaying: options.soundTransport?.isPlaying,
-            onGetTrackVolume: options.soundTransport?.getTrackVolume,
-            onSetTrackVolume: options.soundTransport?.setTrackVolume,
-            audioTracks: options.audioTracks,
-            onSubscribeGamePreferences: options.subscribeGamePreferences,
-            onLocaleChanged: options.localeChangedInGame,
-            onWidgetPatch: (elementId, patch) => {
-                applyWidgetRuntimePatch({
-                    setWidgetPatchesByScope,
-                    widgetPatchesByScopeRef,
-                    runtimeScopeId,
-                    elementId,
-                    patch,
-                });
+            // Always: a Game UI slot is only ever drawn by a running game, so a graph asking
+            // whether it is over one is asking about the game it is part of.
+            isGameOverlay: () => true,
+            startStory: options.startStory,
+            widgetPatches: {
+                setByScope: setWidgetPatchesByScope,
+                byScopeRef: widgetPatchesByScopeRef,
             },
-            onElementFlush: (elementId, payload) => {
-                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                    elementId,
-                    "flush",
-                    payload,
-                );
-            },
-            // What this scope is already showing. A slot surface is rebuilt whenever the engine
-            // gives its box a new key - which the dialog box gets whenever the gap between two
-            // lines outlives the replacement grace - and the patches painted before that survive
-            // in the host's map. Without them the new host API believes the drawing is untouched
-            // and drops every write that returns an element to its authored value.
-            initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
-            widgetRuntimeStore,
-            localizationConfig: bundle.localization ?? null,
-            // The dub languages, from the same bundle the page host reads. Without it
-            // `voice.listLocales()` answers empty inside every slot surface, and the voice nodes
-            // raise "This project has no voice languages configured" - an error that blames the
-            // author's project for a field the host forgot to hand over.
-            voiceConfig: bundle.voice ?? null,
-        });
+            resolveHostAdapter: () => hostAdapterRef.current,
+        }));
     }, [
         core,
         document,
@@ -428,7 +180,6 @@ export function useStageSlotSurfaceRuntime(input: {
         setWidgetPatchesByScope,
         surface.id,
         widgetPatchesByScopeRef,
-        widgetRuntimeStore,
     ]);
 
     const hostAdapter = useMemo((): UIHostAdapter => {
@@ -516,7 +267,10 @@ export function StageSlotSurfaceBody(props: {
     passive?: boolean;
 }) {
     const { options, surface, runtime, surfacePointerEvents, passive } = props;
-    const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetRuntimeStore, widgetPatchesByScopeRef } = options;
+    // The runtime store comes from the game's capabilities rather than from a second field beside
+    // them: the store the widgets render against has to be the one the host API writes into.
+    const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetPatchesByScopeRef } = options;
+    const { widgetRuntimeStore } = options.host;
     const document = bundle.ui.uidoc;
     const { runtimeScopeId, hostAdapter } = runtime;
     const [subscriptionsReady, setSubscriptionsReady] = useState(false);

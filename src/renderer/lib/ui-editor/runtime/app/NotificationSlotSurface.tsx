@@ -36,7 +36,7 @@ export function NotificationSlotSurface(props: {
 }) {
     const { options, surface, notifications } = props;
     const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "notification" });
-    const { core, bundle, widgetRuntimeStore } = options;
+    const { core, bundle, host: { widgetRuntimeStore } } = options;
     const { runtimeScopeId, flushSlotElements } = runtime;
 
     const listElementIds = useMemo(

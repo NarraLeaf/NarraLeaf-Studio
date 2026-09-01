@@ -16,7 +16,9 @@
  *
  *  1. `GameApp` hands the reading to the store on the way into a save.
  *  2. All three shells accept it and pass it on.
- *  3. The playtime bridge options reach **every** options block `GameApp` builds, not just one.
+ *  3. The playtime bridge options reach **every** options block `GameApp` builds, not just one,
+ *     and through it every surface of the game - a save screen is as often a Game UI slot as a
+ *     page, and the two used to be handed different hosts.
  */
 
 import fs from "fs/promises";
@@ -143,16 +145,24 @@ describe("save playtime forwarding", () => {
             .toEqual([]);
     });
 
-    it("has the Game UI slot shell forwarding them too", async () => {
-        // A title screen is built out of Game UI slots, and the slot shell builds its own host API.
-        // A family missing here is dead exactly where a save screen lives, while working one
-        // surface above - the defect the sound transport and progress families both shipped with.
+    it("reaches a Game UI slot, which is where a save screen usually lives", async () => {
+        // A title screen is built out of Game UI slots. The slot shell used to build its own host
+        // API from a hand-written forwarding list, and a family missing from that list was dead
+        // exactly where a save screen lives while working one surface above - the defect the sound
+        // transport and the progress families both shipped with.
+        //
+        // It builds from the game's capabilities now, and the case above has already established
+        // that the three readers are in them. So what is left to check is that one seam: the slot
+        // host is that same object, and the shell has not gone back to composing its own.
         const source = await fs.readFile(path.join(HERE, "StageSlotSurfaceShell.tsx"), "utf-8");
-        for (const option of ["onGetPlaytime:", "onGetTotalPlaytime:", "onGetSavePlaytime:"]) {
-            expect(
-                occurrences(source, option),
-                `the Game UI slot shell does not forward ${option}`,
-            ).toBe(1);
-        }
+        expect(
+            occurrences(source, "createDevModeBlueprintHostApi(buildGameHostApiOptions(options.host,"),
+            "the Game UI slot host is no longer built from the game's capabilities, so the playtime "
+            + "readers reach it only if somebody remembered to forward them",
+        ).toBe(1);
+        expect(
+            occurrences(source, "createDevModeBlueprintHostApi("),
+            "the slot shell should build exactly one host API",
+        ).toBe(1);
     });
 });
