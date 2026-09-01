@@ -104,6 +104,36 @@ export default defineRuntimePlugin({
 });
 ```
 
+### game.menu
+
+出货游戏窗口上方那条原生菜单栏，整条声明、整条替换。
+
+- **需要声明 `runtimeCapabilities: ["menu"]`，并且只在真的有菜单栏的宿主上存在**：网页导出（页面没有自己的菜单栏）和 Dev Mode（那扇窗是 Studio 的，上面已经有 Studio 的菜单）都没有这个域，`if (app.game.menu)` 是唯一诚实的判断。
+- `set(spec)` 替换整条栏，没有增删单项：菜单是被整体阅读的东西，两个插件各自追加只会得到谁都没选择过的顺序。传空的 `menus` 就是把菜单栏撤掉。
+- **一行说什么是插件的，一行是什么意思是游戏的**：`spec` 里的 `label` 是已经定好的字符串，动作则是一份封闭词表（`@shared/types/gameMenu` 的 `GameMenuAction`），勾选态、灰态与语言/窗口尺寸这类动态列表由运行时按当前游戏状态解析，插件不参与。词表之外的一切走 `{ type: "fn", fnRef }`——调用作者在全局蓝图里声明的函数。
+- **没有快捷键，也不会有**：菜单加速键会在渲染层看到按键之前被主进程吃掉，那等于从作者的输入意图里拿走一个键而不告诉任何人。
+- 游戏没挂载时调用会 reject（那时还没有可供解析的状态）。
+
+```ts
+const menu = app.game.menu;
+if (menu) {
+  await menu.set({ menus: [{ label: "File", items: [
+    { kind: "action", label: "Settings", action: { type: "openPage", surfaceId } },
+    { kind: "separator" },
+    { kind: "action", label: "Quit", action: { type: "quitApp" } },
+  ] }] });
+}
+```
+
+内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签走工程本地化键。
+
+### game.locale
+
+游戏当前语言，以及工程自己的文案。
+
+- `current` / `onChange(listener)`：玩家正在读的语言，与切换通知。
+- `text(key)`：按工程的本地化键取当前语言下的文案，走的是 `Get Text` 节点那张表、那条 fallback 链；工程没声明这个键时返回 `null`。**给玩家看的字一律走这里**，插件自带一份译文是翻译流程唯一看不到的那份。
+
 ### game.log
 
 写入宿主日志，自动带 `[plugin:{id}]` 前缀。Dev Mode 输出到窗口 console；Preview/Production 经 runtime bridge 输出到游戏进程日志。
@@ -120,7 +150,7 @@ studio entry 可以额外注册 palette 动作（`app.services.story.actions`，
 
 ## 限制
 
-- 当前 API 面：`blueprintNodes` + `widgets` + `log`。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
+- 当前 API 面：`blueprintNodes` + `widgets` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile`）。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
 - runtime entry 必须自包含（单文件 ESM），不能在运行时 import 插件包内其他文件；React 相关包与 `narraleaf-studio/runtime` 除外（host external）。
 - `react-dom/client` 不可用：插件不得在游戏内挂载自己的 React root。
 - 无 cleanup、无跨插件依赖排序。

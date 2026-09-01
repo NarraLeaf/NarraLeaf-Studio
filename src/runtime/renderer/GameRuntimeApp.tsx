@@ -1,3 +1,4 @@
+import type { GameMenuModel } from "@shared/types/gameMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
@@ -350,6 +351,10 @@ function createRuntimePluginHost(
             },
         },
         assetUrl: assetId => bridge.assetUrl(assetId),
+        // Whether this shell has a bar at all. The rows on it are resolved against a running game,
+        // so the game app attaches the seam itself once it is up - the same split `saves.writable`
+        // makes, and for the same reason.
+        menuBar: Boolean(bridge.menu),
         subscribeFullscreenChanged: listener => bridge.onFullscreenChanged(listener),
         // Observers only: a plugin watching the close never gets to veto it, so
         // this handler always agrees and the blueprint decider stays the only
@@ -763,6 +768,21 @@ function GameRuntimeSession() {
         return bridge?.onCloseRequested(listener) ?? (() => undefined);
     }, [bridge]);
 
+    /*
+     * The menu bar, when this shell has one.
+     *
+     * Both halves are omitted together when the bridge has no `menu` - a game packaged before menus
+     * existed, or a shell built without window chrome - so a game reading the host sees one honest
+     * answer rather than a setter that resolves and a subscription that never fires.
+     */
+    const setApplicationMenu = useCallback(async (model: GameMenuModel): Promise<void> => {
+        await bridge?.menu?.set(model);
+    }, [bridge]);
+
+    const subscribeMenuCommand = useCallback((listener: (itemId: string) => void): (() => void) => {
+        return bridge?.menu?.onCommand(listener) ?? (() => undefined);
+    }, [bridge]);
+
     /**
      * The puppet backends published with this game.
      *
@@ -817,6 +837,9 @@ function GameRuntimeSession() {
             setFullscreen,
             subscribeFullscreenChanged,
             subscribeCloseRequested,
+            // Present only when the shell really has a bar: see the host's own note on why an
+            // absent pair is the answer rather than a pair that does nothing.
+            ...(bridge?.menu ? { setApplicationMenu, subscribeMenuCommand } : {}),
             listPuppetBackendModules,
             networkFetch,
             movePointer,
@@ -853,6 +876,9 @@ function GameRuntimeSession() {
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,
+        setApplicationMenu,
+        subscribeMenuCommand,
+        bridge,
         saveStore,
     ]);
 
