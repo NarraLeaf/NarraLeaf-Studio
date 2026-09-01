@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CacheNamespace } from "@shared/types/constants";
-import { pruneToolchain, zigCacheRoot, zigExecutablePath, zigMirror, ZIG_VERSION } from "./zigToolchain";
+import { archiveSuffix, pruneToolchain, zigCacheRoot, zigExecutablePath, zigMirror, ZIG_VERSION } from "./zigToolchain";
 
 /** Build a tree from a list of file paths, so a test can state the shape it means. */
 async function makeTree(root: string, files: readonly string[]): Promise<void> {
@@ -63,6 +63,20 @@ describe("where a Zig toolchain comes from", () => {
     it("names the executable the way the host does", () => {
         const expected = process.platform === "win32" ? "zig.exe" : "zig";
         expect(path.basename(zigExecutablePath(path.join("root", `zig-${ZIG_VERSION}`)))).toBe(expected);
+    });
+});
+
+describe("what the downloaded archive is staged as", () => {
+    it("keeps the whole suffix of a .tar.xz", () => {
+        // 7-Zip names what it unwraps after the archive minus its last extension. Staged as `.xz`,
+        // `zig-aarch64-macos-0.16.0.tar.xz` decompresses to a file with no `.tar` on it and the tar
+        // step finds nothing - which is every macOS and Linux host, and no Windows one.
+        expect(archiveSuffix("zig-aarch64-macos-0.16.0.tar.xz")).toBe(".tar.xz");
+        expect(archiveSuffix("zig-x86_64-linux-0.16.0.tar.xz")).toBe(".tar.xz");
+    });
+
+    it("leaves a single-container archive with the one extension it has", () => {
+        expect(archiveSuffix("zig-x86_64-windows-0.16.0.zip")).toBe(".zip");
     });
 });
 
