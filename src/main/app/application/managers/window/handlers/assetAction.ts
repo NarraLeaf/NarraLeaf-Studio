@@ -6,6 +6,7 @@ import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } fro
 import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
 import { fileExtensionFromBytes, MEDIA_SNIFF_PREFIX_BYTES } from "@shared/utils/mediaSniff";
 import { fetchRemoteAsset } from "../../remoteAssetFetcher";
+import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -13,18 +14,30 @@ import { IPCHandler } from "./IPCHandler";
 /**
  * Fetch a remote asset's bytes on the renderer's behalf.
  *
- * There is no capability gate: this reads a URL the author typed and returns the bytes, touching
- * nothing on the machine. The things worth gating - where those bytes are then written - are on the
- * privileged file-system facade the renderer already has to go through.
+ * Where those bytes are then written is gated on the privileged file-system facade the renderer
+ * already goes through, so this handler does not gate the write. What it does gate is the request.
+ *
+ * # Why a distrusted project may not do this
+ *
+ * The reasoning that once applied here - "a URL the author typed, touching nothing on the machine"
+ * - holds only for a project the author wrote. In one that arrived from elsewhere the addresses in
+ * the asset table were chosen by whoever built the package, and Refresh turns one of them into a
+ * request from this machine, at this address, at a moment somebody else picked. That is an effect
+ * on the world, which is exactly what trust governs, and it is not covered by the network block on
+ * the workspace window: this request leaves from main.
  */
 export class AssetFetchRemoteHandler extends IPCHandler<IPCEventType.assetFetchRemote> {
     readonly name = IPCEventType.assetFetchRemote;
     readonly type = IPCMessageType.request;
 
     public async handle(
-        _window: AppWindow,
+        window: AppWindow,
         data: IPCEvents[IPCEventType.assetFetchRemote]["data"],
     ): Promise<RequestStatus<RemoteAssetFetchResult>> {
+        const distrusted = refuseDistrustedWindow(window, "remote asset download");
+        if (distrusted) {
+            return this.failed(new Error(distrusted));
+        }
         return this.tryUse(() => fetchRemoteAsset(data.url, data.validators));
     }
 }

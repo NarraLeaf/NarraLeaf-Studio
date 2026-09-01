@@ -26,16 +26,27 @@ import { emitWorkspaceConsoleLog } from "./workspaceConsole";
  * and there is exactly one place that can answer no.
  */
 
-/** The operations a distrusted project does not get, named as the author would name them. */
-export type DistrustedOperation =
-    | "production build"
-    | "patch export"
-    | "preview"
-    | "Dev Mode"
-    | "test run"
-    | "weather clip bake"
-    | "media inspection"
-    | "media conversion";
+/**
+ * The operations a distrusted project does not get, named as the author would name them.
+ *
+ * A list rather than a bare union so a test can walk it. Every entry here is something that either
+ * runs code the project supplied, starts a child process on its behalf, or sends a request to an
+ * address the project chose; adding one means a gate exists somewhere for it, and the test beside
+ * this file will not let a new name in without one.
+ */
+export const DISTRUSTED_OPERATIONS = [
+    "production build",
+    "patch export",
+    "preview",
+    "Dev Mode",
+    "test run",
+    "weather clip bake",
+    "media inspection",
+    "media conversion",
+    "remote asset download",
+] as const;
+
+export type DistrustedOperation = typeof DISTRUSTED_OPERATIONS[number];
 
 export function projectDistrustedMessage(operation: DistrustedOperation): string {
     return `The ${operation} is unavailable because this project is not trusted. `

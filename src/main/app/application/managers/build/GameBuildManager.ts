@@ -542,11 +542,20 @@ export class GameBuildManager {
      * everything and stays the authority (see preflight.ts).
      *
      * Deliberately NOT refused while the workspace is frozen. It starts no work
-     * and writes nothing - every check here reads (`checkOutputDir` probes with
-     * `access`, the vault answers `secretsAvailable` without unsealing) - so
-     * there is nothing for a freeze to be inconsistent with, and refusing would
-     * replace the dialog's findings with an error about a build nobody asked
-     * for yet. {@link start} is where the refusal belongs.
+     * and writes nothing - `checkOutputDir` probes with `access`, the vault
+     * answers `secretsAvailable` without unsealing - so there is nothing for a
+     * freeze to be inconsistent with, and refusing would replace the dialog's
+     * findings with an error about a build nobody asked for yet.
+     * {@link start} is where the refusal belongs.
+     *
+     * Not refused for a distrusted project either, which is the closer call:
+     * `checkBuildDependencies` sends a HEAD to each build dependency a shipping
+     * plugin declares, so this is not purely local. It stays open because the
+     * addresses come from plugins the author installed on this machine rather
+     * than from the project, and because the alternatives are worse - skipping
+     * the probe would report no gaps, which reads as a clean bill of health for
+     * a check that never ran. The build those findings describe is refused in
+     * {@link start} regardless.
      */
     public async preflight(projectPath: string, request: GameBuildRequest): Promise<BuildPreflightFinding[]> {
         const normalizedProjectPath = path.resolve(projectPath);
