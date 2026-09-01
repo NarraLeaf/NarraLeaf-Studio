@@ -190,6 +190,7 @@ import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
 import type { BlueprintKeyboardEventLike } from "@shared/types/blueprint/graph";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
+import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { resolveSurfaceInputActionHits } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
@@ -4445,6 +4446,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack.setUnrenderedLayers(unrenderedLayerKeysRef.current);
     }, [layerStack, unrenderedLayerKeysToken]);
 
+    /**
+     * Whether the active page may hear a key.
+     *
+     * The *page* half of the keyboard dispatch only - the global blueprint's heads are not gated on
+     * this, see `resolveKeyboardDispatchScope`. A page that is not drawn is not a page anyone is
+     * pressing a key at, and while a layer owns the keyboard an Escape belongs to that layer rather
+     * than to the page under it.
+     */
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
@@ -4453,10 +4462,18 @@ export function GameApp(props: GameAppProps): ReactNode {
             pagesHiddenForGame: studioPageHiddenForGame,
             gameHiddenKeys: gameHiddenNavKeys,
         }) &&
-        // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
-        // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
         compositeInput.keyboardOwnerKey === activeEntry.key,
     );
+
+    /**
+     * The page half's target, read at dispatch time rather than closed over.
+     *
+     * One listener serves both halves so their order is fixed - global first, then the page - and a
+     * listener re-registered whenever the active page changed would keep swapping that order. So the
+     * effect below depends only on the host, and the page it may reach comes from here.
+     */
+    const keyboardSurfaceRef = useRef<UISurface | null>(null);
+    keyboardSurfaceRef.current = activeSurfaceKeyboardReady ? activeSurface : null;
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!core) {
@@ -4865,7 +4882,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [activeEntry, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
 
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !activeSurfaceKeyboardReady) {
+        const scope = resolveKeyboardDispatchScope({
+            gameReady: Boolean(host.ready && core && hostAdapterBundle),
+            // Only the page half moves while this listener is up; it is read per press below.
+            surfaceKeyboardReady: true,
+        });
+        if (!scope.global || !core || !hostAdapterBundle) {
             return;
         }
         const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
@@ -4898,13 +4920,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setSurfaceState: (key, value) => surfaceStore.set(key, value),
                 executionManager: core.executionManager,
             }).then(() => {
-                if (eventControl.isPropagationStopped()) {
+                const surface = keyboardSurfaceRef.current;
+                if (!surface || eventControl.isPropagationStopped()) {
                     return;
                 }
                 return dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
                     persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: activeSurface.id,
+                    surfaceId: surface.id,
                     runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                     eventName,
                     eventPayload: payload,
@@ -4923,18 +4946,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // keys, and that is a fact about the whole composite that only this level knows. For
                 // the same reason nothing consumes here - `consume` decides how far down the lanes
                 // under a pointer an input travels, and a key has no lanes under it.
-                if (eventName !== "keyDown" || eventControl.isPropagationStopped()) {
+                const surface = keyboardSurfaceRef.current;
+                if (!surface || eventName !== "keyDown" || eventControl.isPropagationStopped()) {
                     return undefined;
                 }
                 const actionHits = resolveSurfaceInputActionHits({
                     vocabulary: bundle.ui.uidoc.actions,
-                    enablements: activeSurface.actions,
+                    enablements: surface.actions,
                     signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
                 });
                 return Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
                     persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: activeSurface.id,
+                    surfaceId: surface.id,
                     runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                     eventName: UI_SURFACE_INPUT_ACTION_EVENT,
                     eventPayload: { ...hit.payload },
@@ -4954,7 +4978,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [activeSurface, activeSurfaceKeyboardReady, bundle, core, host, hostAdapterBundle]);
+    }, [bundle, core, host, hostAdapterBundle]);
 
     /**
      * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
