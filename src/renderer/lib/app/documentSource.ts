@@ -23,7 +23,7 @@ import { versionedProjectRelativePath } from "./writeFreeze";
  *    have had to be invented, and each is a place to forget.
  *
  * So the gate is here, at the read boundary (`BaseFileSystemService`), keyed by the same
- * `isVersioned` predicate the freeze uses. `.nlstudio/` (panel layout, plugins,
+ * `isVersioned` predicate the freeze uses. `.nlstudio/` (panel layout, merge decisions,
  * quarantine), `editor/cache/` and `dist/` therefore keep reading the disk while a
  * revision is shown - which is the point: the editor's own state is not the author's
  * project, and a version view whose panel layout came out of a revision would look

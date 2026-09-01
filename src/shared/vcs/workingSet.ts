@@ -69,7 +69,7 @@ const ROOT_EXCLUDED_DIRECTORIES: readonly string[] = [
 const EXCLUDED_NAMES: ReadonlySet<string> = new Set([
     /** The repository itself. Lore excludes it intrinsically; listed so this predicate agrees. */
     ".lore",
-    /** Studio's per-machine state: editor layout, installed plugins, quarantine. */
+    /** Studio's per-machine state: panel layout, build and preview output, quarantine. */
     ".nlstudio",
     ".git",
     ".DS_Store",
