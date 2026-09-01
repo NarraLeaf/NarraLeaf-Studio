@@ -45,16 +45,57 @@ import {
  */
 export const STORY_DOCUMENT_MIN_SUPPORTED_VERSION = 21;
 
+/**
+ * The refusal a document below the floor gets, as a value rather than only as a sentence.
+ *
+ * The message already names both versions, because "could not be read" cannot tell an author a
+ * damaged file from a project older than this build. That only helps where the message survives,
+ * and it does not: every reader between here and a surface rewraps or replaces it, and what an
+ * author was left with was their story's name and nothing about versions at all - which reads as a
+ * fault in their own script. The two numbers are carried as fields so a surface can say what
+ * happened in its own words, in the author's own language.
+ */
+export class StoryDocumentTooOldError extends Error {
+    constructor(
+        /** The version the document on disk is written at. */
+        public readonly version: number,
+        /** The oldest version this build opens - {@link STORY_DOCUMENT_MIN_SUPPORTED_VERSION}. */
+        public readonly minimumVersion: number,
+    ) {
+        super(
+            `Story document schema v${version} is older than this Studio version can read`
+            + ` (v${minimumVersion} is the oldest supported)`,
+        );
+        this.name = "StoryDocumentTooOldError";
+    }
+}
+
+/**
+ * The {@link StoryDocumentTooOldError} behind a failure, however many times it has been rewrapped.
+ *
+ * `loadStory` re-throws as a `RendererError` carrying the original as its `cause`, and a caller two
+ * services away should not have to know how many wrappers are between it and the ladder.
+ */
+export function findStoryDocumentTooOldError(error: unknown): StoryDocumentTooOldError | null {
+    const seen = new Set<unknown>();
+    let current = error;
+    while (current && typeof current === "object" && !seen.has(current)) {
+        if (current instanceof StoryDocumentTooOldError) {
+            return current;
+        }
+        seen.add(current);
+        current = (current as { cause?: unknown }).cause;
+    }
+    return null;
+}
+
 export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocument {
     const version = typeof document.schemaVersion === "number" ? document.schemaVersion : 1;
     if (version >= STORY_DOCUMENT_SCHEMA_VERSION) {
         return document;
     }
     if (version < STORY_DOCUMENT_MIN_SUPPORTED_VERSION) {
-        throw new Error(
-            `Story document schema v${version} is older than this Studio version can read`
-            + ` (v${STORY_DOCUMENT_MIN_SUPPORTED_VERSION} is the oldest supported)`,
-        );
+        throw new StoryDocumentTooOldError(version, STORY_DOCUMENT_MIN_SUPPORTED_VERSION);
     }
     let migrated = document;
     if (version < 22) {

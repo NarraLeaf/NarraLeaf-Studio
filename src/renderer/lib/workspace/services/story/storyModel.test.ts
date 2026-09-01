@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryExpr, StoryLibraryIndex, StoryVariableRef } from "@shared/types/story";
 import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import { findStoryDocumentTooOldError, StoryDocumentTooOldError } from "@shared/story/migrateStoryDocument";
 import {
     bindRowsToCharacter,
     collectInvalidBlocks,
@@ -963,6 +964,22 @@ describe("story document migration ladder", () => {
                 .toThrow(/older than this Studio version can read/);
         },
     );
+
+    // The same refusal as data, and the two are not interchangeable. Every reader between the ladder
+    // and a surface rewraps the sentence, so a caller that wants to *say* what happened - the lint
+    // sweep, which is where an author meets this - has only the fields to go on.
+    it("refuses with the two versions as fields, not only inside the sentence", () => {
+        let thrown: unknown;
+        try {
+            normalizeStoryDocument(docAtVersion(17), "2026-07-16T00:00:00.000Z");
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(StoryDocumentTooOldError);
+        expect(findStoryDocumentTooOldError(new Error("wrapped", { cause: thrown }))).toBe(thrown);
+        expect((thrown as StoryDocumentTooOldError).version).toBe(17);
+        expect((thrown as StoryDocumentTooOldError).minimumVersion).toBe(STORY_DOCUMENT_MIN_SUPPORTED_VERSION);
+    });
 
     /**
      * v21→v22: the hold becomes a length of time, and `maskWipe` retires.

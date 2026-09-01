@@ -530,7 +530,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 error,
                 severity: "degraded",
             });
-            throw new RendererError(error instanceof Error ? error.message : String(error));
+            // With the cause, because the message is not always the whole answer: a document below
+            // the schema floor throws a `StoryDocumentTooOldError` that names both versions, and the
+            // lint sweep turns that into a sentence an author can act on. Rewrapping the text alone
+            // would leave that reader nothing to recognise.
+            throw new RendererError(error instanceof Error ? error.message : String(error), { cause: error });
         }
     }
 
