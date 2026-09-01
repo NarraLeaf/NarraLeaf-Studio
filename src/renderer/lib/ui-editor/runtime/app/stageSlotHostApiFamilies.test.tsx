@@ -9,16 +9,28 @@
  * "progress cannot be written here" inside those same slots while working one surface above, which
  * reads like the feature refusing rather than the host missing.
  *
- * Both holes were invisible because both halves type-check: every option in these families is
+ * Then voice, and that one is the worst of the three to meet: with the dub languages missing the
+ * bridge reports the game as having none, so `Set Voice Language` throws "This project has no voice
+ * languages configured" - an error that names the author's project settings for a field the host
+ * simply never handed over. The author goes and edits a configuration that was correct all along.
+ *
+ * All three holes were invisible because both halves type-check: every option in these families is
  * optional by design (the in-editor story preview genuinely has neither audio nor a shell to write
  * a document). So the guard has to be that the options object the shell hands to
  * `createDevModeBlueprintHostApi` actually carries them.
+ *
+ * Voice also shows that a family can arrive half-wired. Its callback half (`onPlayVoice`,
+ * `onPlayChoiceVoice`) was forwarded all along, because the sibling source comparison in
+ * `stageSlotHostForwarding.test.ts` compared `onX` keys; `voiceConfig` is data, so it fell outside
+ * that comparison entirely. That test now reads every top-level option key, and these tests pin
+ * what the forwarded options are actually worth once the bridge has them.
  */
 import { renderHook, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UIDocument, UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { CreateBlueprintHostApiRuntimeOptions } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { GameVoiceBundle } from "@shared/types/voice";
 import { useStageSlotSurfaceRuntime, type GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
 import type { SoundTransport } from "./soundTransport";
@@ -45,6 +57,15 @@ vi.mock("@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter", () =
 const TRACKS: ProjectAudioTrack[] = [
     { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false, builtin: true },
 ];
+
+/** A two-language dub, the shape `DevModeBundle.voice` carries for a game with voice-over. */
+const VOICE: GameVoiceBundle = {
+    voicedLocales: [
+        { code: "ja-JP", displayName: "日本語" },
+        { code: "en-US", displayName: "English" },
+    ],
+    tables: { "ja-JP": { "line-1": "take-ja" }, "en-US": { "line-1": "take-en" } },
+};
 
 function createSoundTransportStub(): SoundTransport {
     return {
@@ -314,5 +335,43 @@ describe("stage slot surface saved variables", () => {
         expect(hostApi.game.getSavedVariable("affection")).toEqual({ value: 7, found: true });
         hostApi.game.setSavedVariable("affection", 42);
         expect(hostApi.game.getSavedVariable("affection")).toEqual({ value: 42, found: true });
+    });
+});
+
+describe("stage slot surface voice languages", () => {
+    afterEach(cleanup);
+
+    /** The shell reads voice off the bundle, so overriding it means replacing the whole bundle. */
+    function bundleWith(voice: GameVoiceBundle | undefined): Partial<GameUiSlotHostOptions> {
+        return {
+            bundle: { ui: { uidoc: document_ }, localization: undefined, voice },
+        } as unknown as Partial<GameUiSlotHostOptions>;
+    }
+
+    it("passes the dub languages through to the slot's host API", () => {
+        // The callback half of this family (`onPlayVoice`, `onPlayChoiceVoice`) reached the slot
+        // already; the languages themselves did not, which is the half every language node reads.
+        const options = renderShell(bundleWith(VOICE));
+
+        expect(options.voiceConfig).toBe(VOICE);
+    });
+
+    it("reports the game's dub languages from inside a slot", async () => {
+        const options = renderShell(bundleWith(VOICE));
+        const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
+            .createDevModeBlueprintHostApi(options);
+
+        // Before the fix this was `[]` on every stage slot while a page one surface above listed
+        // both - so a dub picker built into a dialogue-box quick menu had nothing to offer, and
+        // `Set Voice Language` refused with "This project has no voice languages configured".
+        expect(hostApi.voice.listLocales()).toEqual(VOICE.voicedLocales);
+    });
+
+    it("still builds a host API for a game with no voice at all", () => {
+        // The honest empty case, which has to stay distinguishable from the broken one: a project
+        // without voice really does offer no languages, and that is not a crash.
+        const options = renderShell(bundleWith(undefined));
+
+        expect(options.voiceConfig).toBeNull();
     });
 });

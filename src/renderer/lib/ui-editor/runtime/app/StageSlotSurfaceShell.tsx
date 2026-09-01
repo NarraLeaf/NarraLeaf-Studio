@@ -410,6 +410,13 @@ export function useStageSlotSurfaceRuntime(input: {
             initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
+            // The dub languages this build ships. `onPlayVoice` and `onPlayChoiceVoice` are already
+            // forwarded above, but they are only half the family: without this the bridge answers
+            // `voice.listLocales()` with an empty list, `voice.getLocale()` with the empty string,
+            // and `Set Voice Language` throws "This project has no voice languages configured" -
+            // which blames the project for a field the host never handed over. A dub picker in a
+            // dialogue-box quick menu is exactly where an author puts one.
+            voiceConfig: bundle.voice ?? null,
         });
     }, [
         core,
