@@ -347,6 +347,10 @@ export const settings = {
         keybindings: {
             label: "Keyboard shortcuts",
         },
+        projectTrust: {
+            label: "Trusted projects",
+            description: "Projects that arrived from a package or a remote source, and whether they may run.",
+        },
         cacheInventory: {
             label: "Cached files",
         },
@@ -487,6 +491,19 @@ export const settings = {
         },
     },
     data: {
+        projectTrust: {
+            loading: "Reading…",
+            empty: "No project has arrived from a package or a remote source.",
+            waiting: "Waiting for a decision",
+            granted: "Trusted",
+            trust: "Trust",
+            remove: "Remove",
+            removeNote: "Removing a project takes effect the next time it is opened.",
+            origin: {
+                package: "From a package",
+                remote: "From a remote source",
+            },
+        },
         cache: {
             measuring: "Measuring…",
             unavailable: "Not available",

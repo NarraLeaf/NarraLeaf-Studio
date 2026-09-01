@@ -965,6 +965,20 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: "",
     },
     {
+        // Rendered by `SETTING_PANELS.projectTrust`. Nothing is stored under this key; the ledger
+        // lives in main, under `authorization/`, where no renderer can reach it.
+        key: "data.projectTrust",
+        category: "data",
+        scope: SettingScope.Global,
+        type: SettingValueType.Custom,
+        panel: "projectTrust",
+        label: "Trusted projects",
+        labelKey: "settings.items.projectTrust.label",
+        description: "Projects that arrived from a package or a remote source, and whether they may run.",
+        descriptionKey: "settings.items.projectTrust.description",
+        defaultValue: null,
+    },
+    {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel
         // measures the buckets over IPC and clears them the same way.
         key: "data.cache",

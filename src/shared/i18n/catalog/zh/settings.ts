@@ -332,6 +332,10 @@ export const settings = {
             label: "本机名称",
             description: "会与账号一同显示给协作者。为空时使用主机名",
         },
+        projectTrust: {
+            label: "受信任的工程",
+            description: "从工程包或远程源引入的工程，以及它们是否可以运行。",
+        },
         cacheInventory: {
             label: "缓存文件",
         },
@@ -426,6 +430,19 @@ export const settings = {
         },
     },
     data: {
+        projectTrust: {
+            loading: "读取中…",
+            empty: "没有从工程包或远程源引入的工程。",
+            waiting: "等待处理",
+            granted: "已信任",
+            trust: "信任",
+            remove: "移除",
+            removeNote: "移除后在下次打开该工程时生效。",
+            origin: {
+                package: "来自工程包",
+                remote: "来自远程源",
+            },
+        },
         cache: {
             measuring: "正在统计…",
             unavailable: "无法读取",

@@ -341,6 +341,10 @@ export const settings = {
         keybindings: {
             label: "キーボードショートカット",
         },
+        projectTrust: {
+            label: "信頼済みプロジェクト",
+            description: "パッケージまたはリモートソースから取り込んだプロジェクトと、実行を許可するかどうか。",
+        },
         cacheInventory: {
             label: "キャッシュしたファイル",
         },
@@ -445,6 +449,19 @@ export const settings = {
         },
     },
     data: {
+        projectTrust: {
+            loading: "読み込み中…",
+            empty: "パッケージやリモートソースから取り込んだプロジェクトはない。",
+            waiting: "未処理",
+            granted: "信頼済み",
+            trust: "信頼する",
+            remove: "解除",
+            removeNote: "解除は次にそのプロジェクトを開いたときに反映される。",
+            origin: {
+                package: "パッケージから",
+                remote: "リモートソースから",
+            },
+        },
         cache: {
             measuring: "計測中…",
             unavailable: "取得不可",
