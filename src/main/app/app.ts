@@ -1626,7 +1626,13 @@ export class App extends BaseApp {
         // through a plugin panel - and this is the only hook Electron allows on that session,
         // so it is shared with the Dev Mode policy rather than registered a second time.
         if (!this.projectTrustManager.isTrusted(props.projectPath)) {
-            devModeNetworkPolicy.blockDistrusted(window.getWebContents().id);
+            const distrustedWebContentsId = window.getWebContents().id;
+            devModeNetworkPolicy.blockDistrusted(distrustedWebContentsId);
+            // Released the way the Dev Mode policy beside it is. Electron does not hand the same
+            // id to a later window, so nothing is mis-blocked by leaving it - but a set that only
+            // ever grows is a lifecycle nobody is keeping, and the next reader would have to prove
+            // the id-reuse claim to themselves before touching anything near it.
+            window.onClose(() => devModeNetworkPolicy.releaseDistrusted(distrustedWebContentsId));
         }
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
