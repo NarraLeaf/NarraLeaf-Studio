@@ -162,7 +162,13 @@ export function RunControl() {
     const [variantId, setVariantId] = useState<string | null>(null);
     const [dlcOpen, setDlcOpen] = useState(false);
     const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    // Reset player data is a flyout submenu, not an inline section like the variant and DLC pickers:
+    // those show a persistent current choice, while this is a one-shot action, so it opens to the
+    // side on hover and takes no permanent room in the menu.
     const [resetOpen, setResetOpen] = useState(false);
+    const [resetToLeft, setResetToLeft] = useState(false);
+    const resetRowRef = useRef<HTMLDivElement | null>(null);
+    const resetCloseTimerRef = useRef<number | null>(null);
     /** The ids ticked on, as the setting stores them. An id the project lost is left alone here. */
     const [dlcOn, setDlcOn] = useState<readonly string[]>([]);
 
@@ -812,6 +818,36 @@ export function RunControl() {
         }
     }, [context, setMenuOpen]);
 
+    // The flyout opens on hover and closes on a short delay, so crossing the gap from the row to the
+    // panel does not shut it. Which side it opens on is measured, because the Run button sits well to
+    // the right of the bar and a panel pinned to the right would run off screen there.
+    const openResetFlyout = useCallback(() => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+            resetCloseTimerRef.current = null;
+        }
+        const rect = resetRowRef.current?.getBoundingClientRect();
+        if (rect) {
+            const PANEL_WIDTH = 176; // min-w-44
+            setResetToLeft(rect.right + PANEL_WIDTH + 8 > window.innerWidth);
+        }
+        setResetOpen(true);
+    }, []);
+    const scheduleCloseResetFlyout = useCallback(() => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+        }
+        resetCloseTimerRef.current = window.setTimeout(() => {
+            resetCloseTimerRef.current = null;
+            setResetOpen(false);
+        }, 200);
+    }, []);
+    useEffect(() => () => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+        }
+    }, []);
+
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
@@ -1124,52 +1160,82 @@ export function RunControl() {
 
                         {/* Reset player data. Clears the saves and persistent data a run leaves
                             behind - the recovery path when the author's own game poisons that state
-                            and crashes on launch, reached without launching anything. Dev Mode and
-                            Preview keep their data apart, so each row resets one without touching the
-                            other. Always here, not behind a setting: the author it helps most is the
-                            one who cannot get the game to start, and that is exactly who would never
-                            find it hidden. */}
-                        <button
-                            type="button"
-                            role="menuitem"
-                            aria-expanded={resetOpen}
-                            aria-label={t("actions.run.resetData")}
-                            onClick={() => setResetOpen(open => !open)}
-                            className="flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                            and crashes on launch, reached without launching anything. A flyout rather
+                            than an inline section: it is a one-shot action, not a persistent choice
+                            like the variant and DLC pickers, so it opens to the side on hover and
+                            leaves the menu the height it was. Dev Mode and Preview keep their data
+                            apart, so each row resets one without touching the other. Always here, not
+                            behind a setting: the author it helps most is the one who cannot get the
+                            game to start, and that is exactly who would never find it hidden. */}
+                        <div
+                            ref={resetRowRef}
+                            className="relative"
+                            onMouseEnter={openResetFlyout}
+                            onMouseLeave={scheduleCloseResetFlyout}
                         >
-                            <span className="flex h-4 w-4 items-center justify-center">
-                                <RotateCcw className="h-4 w-4" />
-                            </span>
-                            <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.resetData")}</span>
-                            <span className="w-3">
-                                <ChevronRight className={cn("h-3 w-3 transition-transform", resetOpen && "rotate-90")} />
-                            </span>
-                        </button>
-                        {resetOpen && RUN_MODES.map(option => {
-                            // Disabled while its own mode runs: clearing the store under a live
-                            // process would race its next write. Never blocks the lockout case, where
-                            // the mode is crashed rather than running.
-                            const optionRunning = option === "devMode" ? devActive : previewActive;
-                            return (
-                                <button
-                                    key={option}
-                                    type="button"
-                                    role="menuitem"
-                                    aria-disabled={optionRunning || undefined}
-                                    disabled={optionRunning}
-                                    data-tip={optionRunning ? t("actions.run.resetWhileRunning") : undefined}
-                                    onClick={() => void resetPlayerData(option)}
+                            <button
+                                type="button"
+                                role="menuitem"
+                                aria-haspopup="menu"
+                                aria-expanded={resetOpen}
+                                aria-label={t("actions.run.resetData")}
+                                onClick={openResetFlyout}
+                                className={cn(
+                                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                    resetOpen ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                )}
+                            >
+                                <span className="flex h-4 w-4 items-center justify-center">
+                                    <RotateCcw className="h-4 w-4" />
+                                </span>
+                                <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.resetData")}</span>
+                                <span className="w-3">
+                                    <ChevronRight className="h-3 w-3" />
+                                </span>
+                            </button>
+
+                            {/* The panel is a DOM child of the row, so moving the pointer onto it is
+                                not "leaving" the row - that, plus the close delay, is what lets the
+                                pointer travel across to it without the flyout shutting. */}
+                            {resetOpen && (
+                                <div
+                                    role="menu"
+                                    aria-label={t("actions.run.resetData")}
                                     className={cn(
-                                        "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
-                                        optionRunning
-                                            ? "cursor-not-allowed text-fg-subtle"
-                                            : "text-fg-muted hover:bg-fill hover:text-fg",
+                                        "absolute top-0 z-30 min-w-44 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg",
+                                        resetToLeft ? "right-full mr-1" : "left-full ml-1",
                                     )}
                                 >
-                                    <span className="flex-1 whitespace-nowrap text-left">{t(RUN_MODE_META[option].labelKey)}</span>
-                                </button>
-                            );
-                        })}
+                                    {RUN_MODES.map(option => {
+                                        // Disabled while its own mode runs: clearing the store under a
+                                        // live process would race its next write. Never blocks the
+                                        // lockout case, where the mode is crashed rather than running.
+                                        const optionRunning = option === "devMode" ? devActive : previewActive;
+                                        const optionMeta = RUN_MODE_META[option];
+                                        return (
+                                            <button
+                                                key={option}
+                                                type="button"
+                                                role="menuitem"
+                                                aria-disabled={optionRunning || undefined}
+                                                disabled={optionRunning}
+                                                data-tip={optionRunning ? t("actions.run.resetWhileRunning") : undefined}
+                                                onClick={() => void resetPlayerData(option)}
+                                                className={cn(
+                                                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                                    optionRunning
+                                                        ? "cursor-not-allowed text-fg-subtle"
+                                                        : "text-fg-muted hover:bg-fill hover:text-fg",
+                                                )}
+                                            >
+                                                <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>
+                                                <span className="flex-1 whitespace-nowrap text-left">{t(optionMeta.labelKey)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}
