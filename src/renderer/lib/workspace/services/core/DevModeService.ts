@@ -4,6 +4,7 @@ import { getInterface } from "@/lib/app/bridge";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import { EventEmitter } from "../ui/EventEmitter";
 import { CharacterService } from "./CharacterService";
+import { ProjectService } from "./ProjectService";
 import { StoryService } from "../story/StoryService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
@@ -118,6 +119,26 @@ export class DevModeService extends Service<DevModeService> {
             this.updateStatus("error");
         }
         return this.status;
+    }
+
+    /**
+     * Clear this project's Dev Mode save slots and persistence store.
+     *
+     * The projectRef is built the way the running game builds it (identifier when the project has
+     * one, path otherwise), so this clears the very store the game writes under - see the Dev Mode
+     * save handler for why the two have to agree. Rejects on a failing call so the caller can report
+     * it; leaves the running state untouched, since this touches disk rather than the game.
+     */
+    public async resetData(): Promise<void> {
+        const ctx = this.getContext();
+        const identifier = ctx.services.get<ProjectService>(Services.Project).getProjectConfig().identifier?.trim();
+        const result = await getInterface().devMode.resetData({
+            projectIdentifier: identifier ? identifier : undefined,
+            projectPath: ctx.project.getConfig().projectPath,
+        });
+        if (!result.success) {
+            throw new Error(result.error ?? "Failed to reset Dev Mode data");
+        }
     }
 
     /** This window's project - every Dev Mode call is scoped to it, never to "whatever is running". */

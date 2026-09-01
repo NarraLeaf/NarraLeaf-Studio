@@ -10,7 +10,13 @@ import { DropIndicator } from "@/lib/components/elements/DropIndicator";
 
 import { formatStageMountLabel } from "./constants";
 import { LivePreviewFrame } from "./LivePreviewFrame";
-import { moveSurfaceIdWithinKind, surfaceEdgeFromPointer, type SurfaceDropEdge } from "./surfaceReorder";
+import {
+    moveSurfaceIdToGap,
+    surfaceGapAnchor,
+    surfaceGapForCard,
+    surfaceHalfFromPointer,
+    type SurfaceDropGap,
+} from "./surfaceReorder";
 
 const SURFACE_PREVIEW_HEIGHT = 96;
 const SURFACE_PREVIEW_FRAME_CLASS = "mt-2 h-24 w-full overflow-hidden rounded-md border border-edge bg-surface-canvas";
@@ -30,7 +36,7 @@ type SurfaceListProps = {
      * document holds; the panel owns the second and turns this into one. Absent while the document
      * may not be written - the cards then do not pick up at all, rather than picking up and refusing.
      */
-    onReorder?: (draggedId: string, anchorId: string, edge: SurfaceDropEdge) => void;
+    onReorder?: (draggedId: string, gap: SurfaceDropGap) => void;
 };
 
 export type SurfaceListGlobalBlueprintCard = {
@@ -68,12 +74,14 @@ type SurfaceRowProps = {
     draggable: boolean;
     /** This card is the one being carried, so it is greyed where it sits. */
     dragging: boolean;
-    /** Which side of this card the drop indicator is on, or null for no indicator. */
-    dropEdge: SurfaceDropEdge | null;
-    onDragStart?: (event: DragEvent, surfaceId: string) => void;
+    /** Which edge of this card the one indicator hangs on, or null when it is elsewhere. */
+    dropEdge: "before" | "after" | null;
+    onDragStart?: (event: DragEvent, cardIndex: number) => void;
     onDragEnd?: () => void;
-    onDragOver?: (event: DragEvent, surfaceId: string) => void;
-    onDrop?: (event: DragEvent, surfaceId: string) => void;
+    onDragOver?: (event: DragEvent, cardIndex: number) => void;
+    onDrop?: (event: DragEvent, cardIndex: number) => void;
+    /** Where this card sits in the list, which is what a gap is counted from. */
+    cardIndex: number;
 };
 
 /**
@@ -101,6 +109,7 @@ const SurfaceRow = memo(
         onDragEnd,
         onDragOver,
         onDrop,
+        cardIndex,
     }: SurfaceRowProps) {
         const handleClick = useCallback(() => onSurfaceClick(surface), [onSurfaceClick, surface]);
         const handleMenu = useCallback(
@@ -117,10 +126,10 @@ const SurfaceRow = memo(
                     dragging && "opacity-50",
                 )}
                 draggable={draggable}
-                onDragStart={onDragStart ? event => onDragStart(event, surface.id) : undefined}
+                onDragStart={onDragStart ? event => onDragStart(event, cardIndex) : undefined}
                 onDragEnd={onDragEnd}
-                onDragOver={onDragOver ? event => onDragOver(event, surface.id) : undefined}
-                onDrop={onDrop ? event => onDrop(event, surface.id) : undefined}
+                onDragOver={onDragOver ? event => onDragOver(event, cardIndex) : undefined}
+                onDrop={onDrop ? event => onDrop(event, cardIndex) : undefined}
                 onClick={handleClick}
                 onContextMenu={handleMenu}
                 role="button"
@@ -128,10 +137,11 @@ const SurfaceRow = memo(
             >
                 {/*
                   * In the gutter between cards rather than on the card's own border, which the card
-                  * already draws: `space-y-2` leaves 8px, and a 2px line centred in it belongs to
+                  * already draws: `space-y-2` leaves 8px, and a line centred in it belongs to
                   * neither card, which is what an insertion point is.
                   */}
-                {dropEdge ? <DropIndicator edge={dropEdge} className={dropEdge === "before" ? "-top-1" : "-bottom-1"} /> : null}
+                {dropEdge === "before" ? <DropIndicator edge="before" className="-top-1" /> : null}
+                {dropEdge === "after" ? <DropIndicator edge="after" className="-bottom-1" /> : null}
                 <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-fg truncate">{surface.name}</div>
@@ -176,6 +186,7 @@ const SurfaceRow = memo(
         previous.draggable === next.draggable &&
         previous.dragging === next.dragging &&
         previous.dropEdge === next.dropEdge &&
+        previous.cardIndex === next.cardIndex &&
         previous.onDragStart === next.onDragStart &&
         previous.onDragEnd === next.onDragEnd &&
         previous.onDragOver === next.onDragOver &&
@@ -202,59 +213,66 @@ export function SurfaceList({
      */
     const dragRef = useRef<string | null>(null);
     const [draggingId, setDraggingId] = useState<string | null>(null);
-    const [dropTarget, setDropTarget] = useState<{ surfaceId: string; edge: SurfaceDropEdge } | null>(null);
+    const [dropGap, setDropGap] = useState<SurfaceDropGap | null>(null);
     const visibleIds = useMemo(() => surfaces.map(surface => surface.id), [surfaces]);
 
-    const handleDragStart = useCallback((event: DragEvent, surfaceId: string) => {
+    const handleDragStart = useCallback((event: DragEvent, cardIndex: number) => {
+        const surfaceId = visibleIds[cardIndex];
+        if (!surfaceId) {
+            return;
+        }
         dragRef.current = surfaceId;
         setDraggingId(surfaceId);
-        setDropTarget(null);
+        setDropGap(null);
         event.dataTransfer.effectAllowed = "move";
         // A drag with an empty data transfer is not a drag at all in Chromium. Nothing is being
         // handed anywhere else, so it carries the card's own id and no more.
         event.dataTransfer.setData("text/plain", surfaceId);
-    }, []);
+    }, [visibleIds]);
 
     const handleDragEnd = useCallback(() => {
         dragRef.current = null;
         setDraggingId(null);
-        setDropTarget(null);
+        setDropGap(null);
     }, []);
 
     /**
-     * Light a card up, or leave it alone.
+     * Light a gap up, or leave it alone.
      *
      * Not calling `preventDefault` is how a card says it is not a target, which is what draws the
      * "no drop" cursor - so this asks the same move the drop asks rather than a looser test of its
      * own, and the two can never disagree.
      */
-    const handleDragOver = useCallback((event: DragEvent, surfaceId: string) => {
+    const handleDragOver = useCallback((event: DragEvent, cardIndex: number) => {
         const draggedId = dragRef.current;
         if (!draggedId) {
             return;
         }
-        const edge = surfaceEdgeFromPointer(event.clientY, event.currentTarget.getBoundingClientRect());
-        if (!moveSurfaceIdWithinKind(visibleIds, draggedId, surfaceId, edge)) {
+        const half = surfaceHalfFromPointer(event.clientY, event.currentTarget.getBoundingClientRect());
+        const gap = surfaceGapForCard(cardIndex, half);
+        if (!moveSurfaceIdToGap(visibleIds, draggedId, gap)) {
             return;
         }
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
-        setDropTarget(current => (
-            current && current.surfaceId === surfaceId && current.edge === edge ? current : { surfaceId, edge }
-        ));
+        setDropGap(current => (current === gap ? current : gap));
     }, [visibleIds]);
 
-    const handleDrop = useCallback((event: DragEvent, surfaceId: string) => {
+    const handleDrop = useCallback((event: DragEvent, cardIndex: number) => {
         event.preventDefault();
         event.stopPropagation();
         const draggedId = dragRef.current;
-        const edge = surfaceEdgeFromPointer(event.clientY, event.currentTarget.getBoundingClientRect());
+        const half = surfaceHalfFromPointer(event.clientY, event.currentTarget.getBoundingClientRect());
+        const gap = surfaceGapForCard(cardIndex, half);
         handleDragEnd();
-        if (!draggedId || !moveSurfaceIdWithinKind(visibleIds, draggedId, surfaceId, edge)) {
+        if (!draggedId || !moveSurfaceIdToGap(visibleIds, draggedId, gap)) {
             return;
         }
-        onReorder?.(draggedId, surfaceId, edge);
+        onReorder?.(draggedId, gap);
     }, [handleDragEnd, onReorder, visibleIds]);
+
+    /** The one card that draws the indicator, and which edge of it. Nothing else draws one. */
+    const gapAnchor = dropGap === null ? null : surfaceGapAnchor(visibleIds.length, dropGap);
 
     // Nothing to list yet: the list is empty and stays empty. The Create Page / Create Game UI
     // button is the row directly above this pane (SurfaceActions), so two lines saying there are no
@@ -294,7 +312,7 @@ export function SurfaceList({
                     <div className="mt-2">{globalBlueprintCard.preview}</div>
                 </button>
             ) : null}
-            {surfaces.map(surface => {
+            {surfaces.map((surface, cardIndex) => {
                 const typeLabel = getSurfaceTypeLabel(surface, t);
                 return (
                     <SurfaceRow
@@ -311,11 +329,12 @@ export function SurfaceList({
                         onOpenMenu={onOpenMenu}
                         draggable={Boolean(onReorder)}
                         dragging={draggingId === surface.id}
-                        dropEdge={dropTarget?.surfaceId === surface.id ? dropTarget.edge : null}
+                        dropEdge={gapAnchor?.cardIndex === cardIndex ? gapAnchor.edge : null}
                         onDragStart={onReorder ? handleDragStart : undefined}
                         onDragEnd={onReorder ? handleDragEnd : undefined}
                         onDragOver={onReorder ? handleDragOver : undefined}
                         onDrop={onReorder ? handleDrop : undefined}
+                        cardIndex={cardIndex}
                     />
                 );
             })}

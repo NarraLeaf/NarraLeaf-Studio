@@ -13,6 +13,7 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
     DEFAULT_GAME_CRASH_POLICY,
@@ -20,6 +21,12 @@ import {
     type GameCrashPolicy,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
+import {
+    EMPTY_GAME_MENU_MODEL,
+    isGameMenuModelEmpty,
+    normalizeGameMenuModel,
+    type GameMenuModel,
+} from "@shared/types/gameMenu";
 import {
     normalizeWindowConfiguration,
     WINDOW_SCALE_DESIGN,
@@ -79,6 +86,7 @@ import {
 } from "@shared/utils/gameProgressFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { buildGameMenuTemplate } from "./gameMenu";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
 import { claimSingleInstance } from "./singleInstance";
@@ -302,6 +310,15 @@ let windowDesign = { width: 1280, height: 720 };
 let normalWindowBounds: { width: number; height: number; x: number | null; y: number | null } | null = null;
 /** What this platform's window frame adds to the stage, measured from the window itself. */
 let windowChrome: WindowChrome = NO_WINDOW_CHROME;
+/**
+ * The menu bar the game asked for, or nothing.
+ *
+ * Held because the window outlives any one page: a renderer that reloads (a crash recovery, a
+ * language restart) is a renderer whose menu has to come back, and it is the one that says what the
+ * menu is. Cleared when a page starts loading so a game that no longer publishes one does not keep
+ * the last page's bar.
+ */
+let gameMenuModel: GameMenuModel = EMPTY_GAME_MENU_MODEL;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -966,9 +983,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         event.preventDefault();
     });
     if (process.platform !== "darwin") {
-        // The window carries a menu of its own, and `autoHideMenuBar` only hides
-        // it - Alt would still pull it back down over the game. Removing it is
-        // what makes the bar unreachable rather than merely out of sight.
+        // The window carries a menu of its own, and `autoHideMenuBar` only hides it - Alt would
+        // still pull it back down over the game. Removing it is what makes the bar unreachable
+        // rather than merely out of sight. A game whose author wrote a menu gets one back here
+        // later, through `applyGameMenu`, which also re-measures what the strip costs the stage.
         win.removeMenu();
     }
     // Show on first paint. The timer is a safety net: a renderer that never
@@ -1055,6 +1073,14 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // Auto mode plays for an hour without a single input, which the system reads as an idle
     // machine; the renderer says when the story is moving on its own and this holds the display
     // for as long as it is, and the window is on screen.
+    // A page that is going away takes its menu with it. The renderer publishes the bar, so the one
+    // that comes back publishes it again - and a build whose menu plugin was removed must not keep
+    // the last page's rows on a window nothing is listening behind.
+    win.webContents.on("did-start-loading", () => {
+        if (!isGameMenuModelEmpty(gameMenuModel)) {
+            applyGameMenu(EMPTY_GAME_MENU_MODEL);
+        }
+    });
     displaySleep = installDisplaySleepInhibitor(win, {
         hold: () => powerSaveBlocker.start("prevent-display-sleep"),
         release: id => {
@@ -1104,19 +1130,21 @@ function requestRendererCloseDecision(win: BrowserWindow): Promise<boolean> {
 }
 
 /**
- * No mode ships Electron's default menu: it carries Reload and DevTools items
- * (and their accelerators) that have no place above a game, and a menu bar is
- * chrome the author's surface layout never accounts for. Preview is held to the
- * same rule deliberately - a playtest that grows a menu bar is not the window
- * the player gets - and it loses nothing, because preview's DevTools is on F12
- * and its reload comes from the Studio recompiling, neither of which was ever
- * the menu's doing.
+ * The bar a game starts with: Electron's default menu, never.
  *
- * macOS cannot simply drop the menu. It is the process's only route to Quit,
- * and the Edit roles are what make Cmd+C/V work inside a text field at all
- * (the OS routes those through the menu, so a game with no Edit menu has a save
- * name box nothing can be pasted into). That platform therefore keeps the
- * smallest set that leaves the OS's own operations intact, and nothing beyond it.
+ * It carries Reload and DevTools items (and their accelerators) that have no place above a game,
+ * and preview is held to the same rule - preview's DevTools is on F12 and its reload comes from
+ * Studio recompiling, neither of which was ever the menu's doing.
+ *
+ * What a game may have instead is the menu its author wrote, which arrives later and through
+ * `applyGameMenu` (see `gameMenu.ts`). Preview gets that one on exactly the same terms as
+ * production, and deliberately so: once a shipped game can have a bar, a playtest WITHOUT one is
+ * the window that is not what the player gets.
+ *
+ * macOS cannot simply drop the menu. It is the process's only route to Quit, and the Edit roles are
+ * what make Cmd+C/V work inside a text field at all (the OS routes those through the menu, so a
+ * game with no Edit menu has a save name box nothing can be pasted into). That platform therefore
+ * keeps the smallest set that leaves the OS's own operations intact, and nothing beyond it.
  */
 function applyRuntimeMenu(): void {
     if (process.platform === "darwin") {
@@ -1128,6 +1156,77 @@ function applyRuntimeMenu(): void {
     } else {
         Menu.setApplicationMenu(null);
     }
+}
+
+/**
+ * Take the frame's measurements again, and put the window back inside the screen.
+ *
+ * Windows and Linux lay the menu bar out INSIDE the window, so a bar arriving or leaving changes
+ * what the frame costs - and the first frame, every offered scale and every `setContentSize` are
+ * measured against that number. Asking the window again is the only honest way to get it: the strip
+ * depends on the platform, the theme and the display's scaling, exactly as the border does (which
+ * is why the border is measured rather than assumed - see `createWindow`).
+ *
+ * Re-applying the content size afterwards is not a resize of the stage: it asks for the size the
+ * stage already has, and `applyWindowContentSize` clamps the pair to the work area. That is what
+ * catches the case this exists for - a window that fitted the desktop exactly until a menu bar made
+ * it a strip taller, which Windows would otherwise silently clip off the bottom.
+ */
+function remeasureWindowChrome(): void {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || win.isFullScreen() || win.isMaximized()) {
+        return;
+    }
+    const outer = win.getBounds();
+    const [contentWidth, contentHeight] = win.getContentSize();
+    windowChrome = {
+        width: Math.max(0, outer.width - contentWidth),
+        height: Math.max(0, outer.height - contentHeight),
+    };
+    applyWindowContentSize(contentWidth, contentHeight);
+}
+
+/** Report a pick to the page that drew the menu. Nothing here knows what the item does. */
+function dispatchGameMenuCommand(itemId: string): void {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    win.webContents.send(GAME_RUNTIME_MENU_COMMAND_CHANNEL, { itemId });
+}
+
+/**
+ * Put the game's menu on the window, or take it away.
+ *
+ * The bar is the window's on Windows and Linux and the application's on macOS, which is not a
+ * detail: a per-window menu goes away with the window, while the macOS one is the process's only
+ * route to Quit and to a working clipboard inside a text field, so that platform is handed a
+ * template that still carries them (see `buildGameMenuTemplate`).
+ */
+function applyGameMenu(model: GameMenuModel): void {
+    gameMenuModel = model;
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    const template = buildGameMenuTemplate(model, process.platform, dispatchGameMenuCommand);
+    if (process.platform === "darwin") {
+        Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+        // Nothing to re-measure: the macOS bar is the system's own strip at the top of the screen
+        // and costs the window not one pixel.
+        return;
+    }
+    if (template.length === 0) {
+        win.removeMenu();
+    } else {
+        win.setMenu(Menu.buildFromTemplate(template));
+        // Both, and neither is redundant: the window was built with `autoHideMenuBar` so a bar left
+        // on auto-hide would only appear when the player pressed Alt, and a game whose author put a
+        // menu there means it to be visible.
+        win.setAutoHideMenuBar(false);
+        win.setMenuBarVisibility(true);
+    }
+    remeasureWindowChrome();
 }
 
 function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
@@ -1585,6 +1684,12 @@ function registerRuntimeIpc(): void {
     });
     ipcMain.handle("runtime:window:setSize", (_event, size: { width?: number; height?: number }) => {
         applyWindowContentSize(Number(size?.width), Number(size?.height));
+    });
+    // The renderer owns what the menu says; this only draws it. `normalizeGameMenuSpec` already ran
+    // on the far side, but the model still arrives over IPC, so the shapes are read defensively
+    // here rather than trusted - a malformed item drops out instead of taking the bar down.
+    ipcMain.handle("runtime:menu:set", (_event, model: unknown) => {
+        applyGameMenu(normalizeGameMenuModel(model));
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {

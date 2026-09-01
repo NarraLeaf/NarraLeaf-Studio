@@ -32,44 +32,17 @@ export type DialogueConfiguration = {
      * `Game.DefaultConfig.autoForwardDefaultPause` in the engine.
      */
     autoForwardDefaultPause: number;
-    /**
-     * Milliseconds a newly typed character takes to fade in. `0` types text at full strength.
-     *
-     * `Game.DefaultConfig.textRevealDuration` in the engine. The same kind of value as the pause
-     * above and here for the same reason: how a line arrives on screen is part of how it was
-     * written, not something a player picks off a settings screen.
-     */
-    textRevealDuration: number;
 };
 
 /** The engine's own value, so a project that has never opened the page ships what it always did. */
 export const DEFAULT_DIALOGUE_CONFIGURATION: DialogueConfiguration = {
     autoForwardDefaultPause: 1000,
-    textRevealDuration: 0,
 };
 
 /** Zero is a real answer: it makes a pause pass straight through while auto-forward is on. */
 export const AUTO_FORWARD_DEFAULT_PAUSE_MIN = 0;
 /** The ceiling `autoForwardDelay` uses, so the two pacing fields refuse the same values. */
 export const AUTO_FORWARD_DEFAULT_PAUSE_MAX = 30000;
-
-/** No fade at all: text is typed at full strength, which is what it did before this existed. */
-export const TEXT_REVEAL_DURATION_MIN = 0;
-/**
- * Long enough for the softest edge worth having. The engine caps a fade at what fits between two
- * characters anyway, so a larger number here would only ever be shortened.
- */
-export const TEXT_REVEAL_DURATION_MAX = 500;
-
-/**
- * The fade a project is created with.
- *
- * Not the default above, which is what a project that has never carried the setting reads as: a
- * game already written was written against text arriving at full strength, and a value it never
- * chose must not change how its lines land. A new project has nothing to be consistent with, and
- * a soft edge is the better starting point.
- */
-export const NEW_PROJECT_TEXT_REVEAL_DURATION = 120;
 
 /**
  * Coerce a persisted value into a complete dialogue configuration.
@@ -85,12 +58,6 @@ export function normalizeDialogueConfiguration(value: unknown): DialogueConfigur
             DEFAULT_DIALOGUE_CONFIGURATION.autoForwardDefaultPause,
             AUTO_FORWARD_DEFAULT_PAUSE_MIN,
             AUTO_FORWARD_DEFAULT_PAUSE_MAX,
-        ),
-        textRevealDuration: clamp(
-            record.textRevealDuration,
-            DEFAULT_DIALOGUE_CONFIGURATION.textRevealDuration,
-            TEXT_REVEAL_DURATION_MIN,
-            TEXT_REVEAL_DURATION_MAX,
         ),
     };
 }

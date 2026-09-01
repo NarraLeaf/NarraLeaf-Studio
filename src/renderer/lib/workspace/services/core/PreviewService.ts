@@ -93,6 +93,19 @@ export class PreviewService extends Service<PreviewService> {
         return this.status;
     }
 
+    /**
+     * Clear this project's Preview save slots and persistence file.
+     *
+     * Rejects on a failing call - the main process refuses while a preview is running, and the
+     * caller reports that rather than silently doing nothing.
+     */
+    public async resetData(): Promise<void> {
+        const result = await getInterface().preview.resetData(this.projectPath());
+        if (!result.success) {
+            throw new Error(result.error ?? "Failed to reset Preview data");
+        }
+    }
+
     private async prepareProjectForPreview(): Promise<void> {
         const services = this.getContext().services;
         const uid = services.get<UIDocumentService>(Services.UIDocument);

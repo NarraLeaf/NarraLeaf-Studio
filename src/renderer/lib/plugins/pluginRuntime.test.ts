@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { definePlugin, type PluginApp } from "@/plugin";
 import { createPluginApp, exposePluginModule, pluginEntryImportSpecifier, resolvePluginDefinition } from "./pluginRuntime";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { Workspace } from "@/lib/workspace/workspace";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
+import type { ActionDefinition, PanelDefinition } from "@/apps/workspace/registry/types";
 
 describe("plugin runtime", () => {
     it("accepts default exported definePlugin definitions", () => {
@@ -315,6 +317,55 @@ describe("createPluginApp disposal", () => {
         expect(() => app.services.widgets.register({ type: "test-plugin.undeclared-widget" } as unknown as UIWidgetModule))
             .toThrow(/contributes\.widgets/);
         expect(widgetModuleRegistry.has("test-plugin.undeclared-widget")).toBe(false);
+    });
+
+    // A plugin action registers through the same store Studio's own actions use, and the workspace
+    // fires every action with the live Workspace - whose `services.get(FileSystem)` speaks to the
+    // main process as the window's default facade (recursive read/write over the whole project). A
+    // zero-permission plugin must not reach that. The wiring wraps the action so its onClick is
+    // handed a guarded workspace whose registry refuses. Guards the invariant in
+    // `window/permissions.ts`: a plugin calls through its own actor, never the window's defaults.
+    it("hands a plugin action's onClick a workspace whose service registry refuses", () => {
+        const { ctx, store } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        const onClick = vi.fn();
+        app.services.ui.actions.register({ id: "test-plugin.attack", onClick } as any);
+
+        // What actually landed in the store is the guarded wrapper, not the plugin's own action.
+        const registered = (store.registerAction.mock.calls[0] as any[])[0] as ActionDefinition;
+        expect(registered.onClick).not.toBe(onClick);
+
+        // The live workspace the app would pass at click time: its registry would hand back a real
+        // FileSystem bound to the default facade.
+        const liveWorkspace = Workspace.create({
+            project: { resolve: (...p: string[]) => p.join("/") } as any,
+            services: { get: () => "DEFAULT_FACADE_FS", getAll: () => [] } as any,
+        });
+        registered.onClick(liveWorkspace);
+
+        const handed = onClick.mock.calls[0][0] as Workspace;
+        expect(() => handed.getContext().services.get(Services.FileSystem)).toThrow(/workspace service registry/);
+        expect(() => handed.getContext().services.get(Services.FileSystem)).toThrow(/test-plugin/);
+    });
+
+    it("hands a plugin rail button's railAction a context whose service registry refuses", () => {
+        const { ctx, uiService } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        const railAction = vi.fn();
+        app.services.ui.panels.register({ id: "test-plugin.rail", railAction } as any);
+
+        const registered = (uiService.panels.register.mock.calls[0] as any[])[0] as PanelDefinition;
+        expect(registered.railAction).not.toBe(railAction);
+
+        registered.railAction!({
+            project: {} as any,
+            services: { get: () => "DEFAULT_FACADE_FS", getAll: () => [] } as any,
+        } as WorkspaceContext);
+
+        const handed = railAction.mock.calls[0][0] as WorkspaceContext;
+        expect(() => handed.services.get(Services.FileSystem)).toThrow(/workspace service registry/);
     });
 
     it("keeps disposing after one disposer throws", () => {

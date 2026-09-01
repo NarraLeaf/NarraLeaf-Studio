@@ -91,9 +91,11 @@ import {
     DevModeSaveReadPreviewHandler,
     DevModeSaveWriteHandler,
 } from "./handlers/devModeSaveAction";
+import { DevModeDataResetHandler } from "./handlers/devModeDataResetAction";
 import {
     PreviewGetStatusHandler,
     PreviewLaunchHandler,
+    PreviewResetDataHandler,
     PreviewStopHandler,
 } from "./handlers/previewAction";
 import {
@@ -306,11 +308,13 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeSaveListHeadersHandler(),
         new DevModeSaveReadPreviewHandler(),
         new DevModeSaveDeleteHandler(),
+        new DevModeDataResetHandler(),
 
         // Preview runtime handlers
         new PreviewLaunchHandler(),
         new PreviewStopHandler(),
         new PreviewGetStatusHandler(),
+        new PreviewResetDataHandler(),
 
         // Game sessions owned by a test run (not by the Run button)
         new GameTestLaunchHandler(),

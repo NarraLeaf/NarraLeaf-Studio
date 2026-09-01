@@ -45,3 +45,17 @@ export class PreviewGetStatusHandler extends IPCHandler<IPCEventType.previewGetS
         return this.success({ status });
     }
 }
+
+export class PreviewResetDataHandler extends IPCHandler<IPCEventType.previewResetData> {
+    readonly name = IPCEventType.previewResetData;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.previewResetData]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.previewResetData]["response"]>> {
+        return this.tryUse(async () => {
+            await window.getApp().getPreviewManager().resetPlayerData(projectPath);
+        });
+    }
+}

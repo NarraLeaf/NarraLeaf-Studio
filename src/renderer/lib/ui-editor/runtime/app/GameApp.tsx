@@ -22,8 +22,10 @@ import {
     planSaveResume,
     readSaveCompatibilityStamp,
 } from "@shared/types/saveCompatibility";
+import { EMPTY_GAME_MENU_MODEL } from "@shared/types/gameMenu";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
+    localizationKeyUnitId,
     LOCALE_RESTART_RESUME_KEY,
     LOCALE_STORAGE_KEY,
     characterTranslationUnitId,
@@ -92,6 +94,7 @@ import {
 } from "./lifecycle/surfaceLifecycleOrchestrator";
 import {
     dispatchGlobalBlueprintEvent,
+    invokeBlueprintFnCall,
     dispatchSurfaceBlueprintEvent,
     dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
@@ -169,6 +172,7 @@ import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audio
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { translate } from "@/lib/i18n";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
+import { createGameMenuController, type GameMenuPort } from "./gameMenu";
 import {
     applyLocaleChange,
     consumeFreshRestart,
@@ -186,6 +190,7 @@ import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
 import type { BlueprintKeyboardEventLike } from "@shared/types/blueprint/graph";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
+import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { resolveSurfaceInputActionHits } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
@@ -3576,12 +3581,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The `skipReadText` preference cannot be honoured from outside the engine's own skip
             // loop, so the game app runs its own; see the effect that builds `skipRunController`.
             hostOwnsSkipKey: true,
-            // The author's pacing values, from the bundle. A bundle written before a setting
+            // The author's pause length, from the bundle. A bundle written before the setting
             // carries nothing and gets the engine's own value, which is what those builds shipped.
-            ...(bundle.dialogue ? {
-                autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause,
-                textRevealDuration: bundle.dialogue.textRevealDuration,
-            } : {}),
+            ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
             ...(bundle.preload ? { preloadGate: preloadGateFor(bundle.preload.behavior) } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.
@@ -4099,6 +4101,162 @@ export function GameApp(props: GameAppProps): ReactNode {
         return createHostAdapterBundle(activeEntry, activeSurface);
     }, [activeEntry, activeSurface, createHostAdapterBundle]);
 
+    /*
+     * The menu bar: the port the rows act through, the controller that draws them, and the seam a
+     * plugin declares them from.
+     *
+     * Every row goes through the same host API a blueprint node would - one vocabulary, one set of
+     * failure modes, and nothing the author could not already have built themselves. The port is
+     * rebuilt whenever the surface under it changes, and the controller reads it through a ref for
+     * the reason a compiled story's callbacks are refs: it outlives any one page.
+     */
+    const menuPort = useMemo<GameMenuPort | null>(() => {
+        const hostApi = hostAdapterBundle?.hostAdapter.blueprintRuntime?.hostApi;
+        if (!hostApi || !hostAdapterBundle || !activeSurface || !core) {
+            return null;
+        }
+        const runtimeScopeId = hostAdapterBundle.runtimeScopeId;
+        return {
+            isInGame: () => hostApi.game.isInGame(),
+            getPreference: key => hostApi.game.getPreference(key),
+            setPreference: (key, value) => hostApi.game.setPreference(key, value),
+            canUndoHistory: () => hostApi.game.canUndoHistory(),
+            canRedoHistory: () => hostApi.game.canRedoHistory(),
+            undoHistory: () => hostApi.game.restoreHistory(),
+            redoHistory: () => hostApi.game.redoHistory(),
+            next: () => hostApi.game.next(),
+            toggleDialog: () => hostApi.game.toggleDialogDisplay(),
+            openPage: surfaceId => hostApi.navigation.openSurface(surfaceId),
+            openLayer: async (surfaceId, options) => {
+                await hostApi.layers.show(surfaceId, undefined, options);
+            },
+            quitToPage: surfaceId => hostApi.game.quit(surfaceId),
+            quitApplication: () => hostApi.navigation.quitApplication(),
+            getFullscreen: () => hostApi.navigation.getFullscreen(),
+            setFullscreen: fullscreen => hostApi.navigation.setFullscreen(fullscreen),
+            getWindowScale: () => hostApi.navigation.getWindowScale(),
+            getWindowScaleOptions: () => hostApi.navigation.getWindowScaleOptions(),
+            setWindowScale: scale => hostApi.navigation.setWindowScale(scale),
+            // The same table, chain and fallback the Get Text node reads, so a menu row and a
+            // dialogue line resolve one key the same way. Synchronous because the whole bar is
+            // resolved against one language per rebuild - see the port's own note.
+            localizedText: (key, locale) => {
+                const config = hostApi.localization.getConfig();
+                if (!config || !(key in (config.keys ?? {}))) {
+                    return null;
+                }
+                const translated = resolveLocalizedUnitText(
+                    { sourceLocale: config.sourceLocale, locales: config.locales, tables: config.tables ?? {} },
+                    locale,
+                    localizationKeyUnitId(key),
+                );
+                return translated ?? config.keys?.[key] ?? null;
+            },
+            listTextLanguages: () => hostApi.localization.getConfig()?.locales ?? [],
+            getTextLanguage: () => hostApi.localization.getLocale(),
+            // The bridge's own setter, so a language picked from the menu takes exactly the path one
+            // picked from a settings page takes - the project's in-game answer included, which is
+            // what decides whether the run is parked and restarted or kept for the next launch.
+            setTextLanguage: code => hostApi.localization.setLocale(code),
+            listVoiceLanguages: () => hostApi.voice.listLocales(),
+            getVoiceLanguage: () => hostApi.voice.getLocale(),
+            setVoiceLanguage: code => hostApi.voice.setLocale(code),
+            callFn: async (fnRef, args) => {
+                await invokeBlueprintFnCall({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    persistentVariables: bundle.ui.persistentVariables,
+                    surfaceId: activeSurface.id,
+                    runtimeScopeId,
+                    fnRef,
+                    args: args ?? {},
+                    depth: 0,
+                    hostAdapter: hostAdapterBundle.hostAdapter,
+                    debug: core.debug,
+                });
+            },
+        };
+    }, [activeSurface, bundle, core, hostAdapterBundle]);
+
+    const menuPortRef = useRef<GameMenuPort | null>(null);
+
+    const menuController = useMemo(() => {
+        // Absent on every shell without a bar to draw on - the web export, the story preview, and
+        // Dev Mode, whose window is Studio's own. Nothing downstream then resolves a menu at all.
+        if (!host.setApplicationMenu) {
+            return null;
+        }
+        const setMenu = host.setApplicationMenu;
+        return createGameMenuController({
+            getPort: () => menuPortRef.current,
+            setMenu: model => setMenu(model),
+            log: (level, message) => host.log(level, message),
+        });
+    }, [host]);
+
+    useEffect(() => {
+        if (!menuController) {
+            return;
+        }
+        return () => {
+            menuController.dispose();
+            // The window outlives this app - a Dev Mode reload, a language restart - and a bar left
+            // behind would be rows pointing at a game that has gone.
+            void host.setApplicationMenu?.(EMPTY_GAME_MENU_MODEL);
+        };
+    }, [host, menuController]);
+
+    useEffect(() => {
+        menuPortRef.current = menuPort;
+        menuController?.refresh();
+        return () => {
+            if (menuPortRef.current === menuPort) {
+                menuPortRef.current = null;
+            }
+        };
+    }, [menuController, menuPort]);
+
+    /*
+     * What makes the bar redraw.
+     *
+     * Every tick and grey-out on it is a fact about the running game, and these are the four ways
+     * one changes: a preference written (auto, skip, the dialogue box), the window entering or
+     * leaving full screen - including when the OS did it - the story advancing (which is what moves
+     * undo and redo), and the player picking something. The controller coalesces them, so a skipped
+     * run redraws the bar a few times a second at most rather than once a line.
+     */
+    useEffect(() => {
+        if (!menuController) {
+            return;
+        }
+        const unsubscribes = [
+            subscribeGamePreferences(() => menuController.refresh()),
+            host.subscribeFullscreenChanged?.(() => menuController.refresh()),
+            storyRuntime.subscribeCurrentAction(() => menuController.refresh()),
+            // The player's language lives in the persistent store, and changing it on the title
+            // screen does NOT restart the game - so without this the bar would keep the words it
+            // was drawn with while every other screen changed language.
+            core?.scopeBridge.subscribePersistence(() => menuController.refresh()),
+            host.subscribeMenuCommand?.(itemId => menuController.handleCommand(itemId)),
+        ];
+        return () => {
+            for (const unsubscribe of unsubscribes) {
+                unsubscribe?.();
+            }
+        };
+    }, [core, host, menuController, storyRuntime.subscribeCurrentAction, subscribeGamePreferences]);
+
+    // The plugin seam. A menu is authored data published with the game, so the plugin that owns it
+    // declares the whole bar and this hands it to the controller - which is the same controller the
+    // shell draws from, so there is no second answer about what is on screen.
+    useEffect(() => {
+        if (!pluginHost || !menuController) {
+            return;
+        }
+        return pluginHost.attachMenuActions({
+            setSpec: spec => menuController.setSpec(spec),
+        });
+    }, [menuController, pluginHost]);
+
     // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
     // preload the configured default scene (or launch directly into a story entry), otherwise
     // boot an empty NLR environment. gameReady fires here, once, at boot.
@@ -4288,6 +4446,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack.setUnrenderedLayers(unrenderedLayerKeysRef.current);
     }, [layerStack, unrenderedLayerKeysToken]);
 
+    /**
+     * Whether the active page may hear a key.
+     *
+     * The *page* half of the keyboard dispatch only - the global blueprint's heads are not gated on
+     * this, see `resolveKeyboardDispatchScope`. A page that is not drawn is not a page anyone is
+     * pressing a key at, and while a layer owns the keyboard an Escape belongs to that layer rather
+     * than to the page under it.
+     */
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
@@ -4296,10 +4462,18 @@ export function GameApp(props: GameAppProps): ReactNode {
             pagesHiddenForGame: studioPageHiddenForGame,
             gameHiddenKeys: gameHiddenNavKeys,
         }) &&
-        // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
-        // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
         compositeInput.keyboardOwnerKey === activeEntry.key,
     );
+
+    /**
+     * The page half's target, read at dispatch time rather than closed over.
+     *
+     * One listener serves both halves so their order is fixed - global first, then the page - and a
+     * listener re-registered whenever the active page changed would keep swapping that order. So the
+     * effect below depends only on the host, and the page it may reach comes from here.
+     */
+    const keyboardSurfaceRef = useRef<UISurface | null>(null);
+    keyboardSurfaceRef.current = activeSurfaceKeyboardReady ? activeSurface : null;
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!core) {
@@ -4708,7 +4882,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [activeEntry, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
 
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !activeSurfaceKeyboardReady) {
+        const scope = resolveKeyboardDispatchScope({
+            gameReady: Boolean(host.ready && core && hostAdapterBundle),
+            // Only the page half moves while this listener is up; it is read per press below.
+            surfaceKeyboardReady: true,
+        });
+        if (!scope.global || !core || !hostAdapterBundle) {
             return;
         }
         const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
@@ -4741,13 +4920,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setSurfaceState: (key, value) => surfaceStore.set(key, value),
                 executionManager: core.executionManager,
             }).then(() => {
-                if (eventControl.isPropagationStopped()) {
+                const surface = keyboardSurfaceRef.current;
+                if (!surface || eventControl.isPropagationStopped()) {
                     return;
                 }
                 return dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
                     persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: activeSurface.id,
+                    surfaceId: surface.id,
                     runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                     eventName,
                     eventPayload: payload,
@@ -4766,18 +4946,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // keys, and that is a fact about the whole composite that only this level knows. For
                 // the same reason nothing consumes here - `consume` decides how far down the lanes
                 // under a pointer an input travels, and a key has no lanes under it.
-                if (eventName !== "keyDown" || eventControl.isPropagationStopped()) {
+                const surface = keyboardSurfaceRef.current;
+                if (!surface || eventName !== "keyDown" || eventControl.isPropagationStopped()) {
                     return undefined;
                 }
                 const actionHits = resolveSurfaceInputActionHits({
                     vocabulary: bundle.ui.uidoc.actions,
-                    enablements: activeSurface.actions,
+                    enablements: surface.actions,
                     signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
                 });
                 return Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
                     persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: activeSurface.id,
+                    surfaceId: surface.id,
                     runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                     eventName: UI_SURFACE_INPUT_ACTION_EVENT,
                     eventPayload: { ...hit.payload },
@@ -4797,7 +4978,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [activeSurface, activeSurfaceKeyboardReady, bundle, core, host, hostAdapterBundle]);
+    }, [bundle, core, host, hostAdapterBundle]);
 
     /**
      * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to

@@ -481,6 +481,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             delete: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveDelete, { projectRef, id }) as Promise<RequestStatus<{ deleted: boolean }>>,
         },
+        // Clear every Dev Mode save slot and the persistence store for one project. The recovery
+        // path when the author's own game poisons that state and crashes on launch.
+        resetData: (projectRef: DevModeSaveProjectRef) =>
+            ipcClient.invoke(IPCEventType.devModeDataReset, { projectRef }) as Promise<RequestStatus<void>>,
     },
 
     preview: {
@@ -490,6 +494,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+        // Clear the Preview save slots and persistence file. Refuses in the main process while a
+        // preview for the project is running.
+        resetData: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.previewResetData, { projectPath }) as Promise<RequestStatus<void>>,
     },
 
     /**

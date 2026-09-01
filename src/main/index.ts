@@ -91,7 +91,8 @@ if (!app.acquireSingleInstanceLock()) {
     const build = app.getCommandLineBuild();
     if (build) {
         process.stderr.write(
-            '[error] Build: another Studio is already running on this profile, so this build was not started.\n',
+            '[error] Build: another Studio is already running on this profile, so this build was not started.'
+            + ' Pass --build-user-data-dir to give the build a profile of its own.\n',
         );
         app.electronApp.exit(COMMAND_LINE_BUILD_EXIT_CODES['studio-failed']);
     } else {

@@ -93,7 +93,7 @@ Manifest 字段：
 | `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
 | `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
 | `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
-| `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
+| `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，十一选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile`。`menu` 是出货游戏的菜单栏（只在有菜单栏的宿主上存在，见 [runtime-api.md](./runtime-api.md#gamemenu)）。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
 | `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的子进程。声明它本身就是权限请求，无需再声明能力。字段与两种 kind 的通道差异见下面的 [sidecars](#sidecars随游戏发布的子进程) 一节。 |
 | `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
 | `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |

@@ -15,6 +15,11 @@ import {
 import { LOCALE_STORAGE_KEY } from "@shared/types/localization";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import {
+    PLAYER_PREFERENCE_KEYS,
+    PLAYER_PREFERENCE_SPECS,
+    RUNTIME_PREFERENCE_KEYS,
+} from "@shared/types/preference";
+import {
     createDevModeBlueprintHostApi,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
@@ -1854,5 +1859,62 @@ describe("createDevModeBlueprintHostApi language", () => {
             setValue: async () => undefined,
         });
         expect(await bare.hostApi.localization.getLocale()).toBe("en");
+    });
+});
+
+/**
+ * Every preference an author can set a default for is one a graph can read and write.
+ *
+ * The bridge checks writes against a list of its own, and that list is a `Set` literal of a union
+ * type - which does not have to be exhaustive, so a key added to the union and forgotten there
+ * compiles cleanly and then throws at runtime. The author sees a `Set ...` node that runs and
+ * changes nothing, which is how `textRevealDuration` shipped broken for exactly as long as it took
+ * to try it in a game.
+ */
+describe("game preference keys", () => {
+    const sampleFor = (key: string): BlueprintGamePreferenceValue => {
+        const spec = (PLAYER_PREFERENCE_SPECS as Record<string, { kind: string, defaultValue: unknown }>)[key];
+        if (!spec) {
+            // Runtime-only, and there is one: `skipping` is a boolean the host owns.
+            return true;
+        }
+        return spec.defaultValue as BlueprintGamePreferenceValue;
+    };
+
+    it("accepts every key the project can configure", async () => {
+        const writes: Array<{ key: string, value: BlueprintGamePreferenceValue }> = [];
+        const hostApi = createHostApi({
+            onGetGamePreference: key => sampleFor(key),
+            onSetGamePreference: (key, value) => {
+                writes.push({ key, value });
+            },
+        });
+        const keys = [...PLAYER_PREFERENCE_KEYS, ...RUNTIME_PREFERENCE_KEYS];
+
+        for (const key of keys) {
+            expect(() => hostApi.game.getPreference(key as BlueprintGamePreferenceKey)).not.toThrow();
+            await hostApi.game.setPreference(key as BlueprintGamePreferenceKey, sampleFor(key));
+        }
+
+        expect(writes.map(write => write.key)).toEqual(keys);
+    });
+
+    it("lets the text fade be turned off, which is what zero is for", async () => {
+        const writes: Array<{ key: string, value: BlueprintGamePreferenceValue }> = [];
+        const hostApi = createHostApi({
+            onGetGamePreference: () => 0,
+            onSetGamePreference: (key, value) => {
+                writes.push({ key, value });
+            },
+        });
+
+        await hostApi.game.setPreference("textRevealDuration", 0);
+        await hostApi.game.setPreference("textRevealDuration", 400);
+        await expect(hostApi.game.setPreference("textRevealDuration", -1)).rejects.toThrow(/textRevealDuration/);
+
+        expect(writes).toEqual([
+            { key: "textRevealDuration", value: 0 },
+            { key: "textRevealDuration", value: 400 },
+        ]);
     });
 });

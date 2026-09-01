@@ -263,9 +263,6 @@ export const project = {
         autoForwardPauseTitle: "自動送り中の間の長さ",
         autoForwardPauseDescription: "自動送りがオンのとき、クリック待ちの間はこの長さになる。ゲームの速さが掛かる",
         autoForwardPauseUnit: "ms",
-        textRevealTitle: "新しい文字のフェード時間",
-        textRevealDescription: "タイプされた文字が完全に表示されるまでの時間。0 でフェードなし。文字表示が速いときは自動的に短くなる",
-        textRevealUnit: "ms",
     },
     // 「プレイヤーの初期値」の群。各設定がどの値から始まるか。どれもプレイ中にプレイヤーが
     // 変えられ、変えた内容は保たれる。だから文言は「初期値」に徹し、設定画面が守らない約束はしない。
@@ -288,6 +285,10 @@ export const project = {
         cps: {
             title: "文字表示の速さ",
             description: "1 秒あたりに表示する文字数",
+        },
+        textRevealDuration: {
+            title: "文字のフェードイン",
+            description: "タイプされた文字が完全に表示されるまでの時間。0 ならフェードなし、文字表示が速いときは自動的に短くなる",
         },
         gameSpeed: {
             title: "ゲームの速さ",

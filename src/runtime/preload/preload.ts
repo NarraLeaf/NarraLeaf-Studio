@@ -4,6 +4,7 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
     type GameRuntimePackV1,
@@ -11,6 +12,7 @@ import {
     type GameRuntimeSidecarBridge,
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
+import type { GameMenuModel } from "@shared/types/gameMenu";
 import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_COMMAND_CHANNEL,
@@ -221,6 +223,29 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
         return () => {
             closeRequestedListeners.delete(listener);
         };
+    },
+    /**
+     * The window's menu bar. Present here and absent on the web export, which is the whole signal:
+     * a page has no bar of its own to own.
+     *
+     * Nothing is decided on this side - the model arrives resolved and leaves unchanged, and a pick
+     * comes back as the id it was drawn with. Same shape as `onFullscreenChanged`: subscribe, and
+     * the returned function is the only way off.
+     */
+    menu: {
+        set: (model: GameMenuModel) => ipcRenderer.invoke("runtime:menu:set", model) as Promise<void>,
+        onCommand: (listener: (itemId: string) => void) => {
+            const handler = (_event: unknown, payload: { itemId?: unknown }) => {
+                const itemId = typeof payload?.itemId === "string" ? payload.itemId : "";
+                if (itemId) {
+                    listener(itemId);
+                }
+            };
+            ipcRenderer.on(GAME_RUNTIME_MENU_COMMAND_CHANNEL, handler);
+            return () => {
+                ipcRenderer.off(GAME_RUNTIME_MENU_COMMAND_CHANNEL, handler);
+            };
+        },
     },
     capabilities: { closeRequested: true, windowScale: true },
     /*

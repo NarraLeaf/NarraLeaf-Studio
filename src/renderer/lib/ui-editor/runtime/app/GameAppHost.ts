@@ -12,6 +12,7 @@ import type {
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
+import type { GameMenuModel } from "@shared/types/gameMenu";
 import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -312,6 +313,22 @@ export type GameAppHost = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     /** Subscribe to fullscreen transitions; returns an unsubscribe function. */
     subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
+    /**
+     * Put a menu bar on this shell's window, and hear which item the player picked.
+     *
+     * Both or neither: a bar nobody hears from is a row of words that do nothing. Omitted by every
+     * host with no window chrome to hang one from - the web export (a page has no menu bar), the
+     * story preview (no window of its own), and Dev Mode, whose window is Studio's and already
+     * carries Studio's menu. The caller reads the absence as "this shell has no bar" and stops
+     * there, which is what keeps a game from resolving a menu nobody will draw.
+     *
+     * The model handed over is already resolved - labels, ticks and grey-outs decided - because the
+     * shell below is a process that must not learn what a save or a language is in order to draw a
+     * word. See `@shared/types/gameMenu`.
+     */
+    setApplicationMenu?: (model: GameMenuModel) => Promise<void>;
+    /** Subscribe to menu picks by item id; returns an unsubscribe function. */
+    subscribeMenuCommand?: (listener: (itemId: string) => void) => () => void;
     /**
      * Subscribe to window-close requests (the user asked to close the window). The main process
      * holds the close open until the listener resolves: `true` lets the window close, `false`

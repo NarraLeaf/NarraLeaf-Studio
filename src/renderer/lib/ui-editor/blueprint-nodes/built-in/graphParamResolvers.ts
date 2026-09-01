@@ -144,6 +144,7 @@ import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
@@ -1549,6 +1550,7 @@ function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime):
 const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string }> = {
     [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD]: { portId: "autoForward", key: "autoForward" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY]: { portId: "autoForwardDelay", key: "autoForwardDelay" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION]: { portId: "textRevealDuration", key: "textRevealDuration" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING]: { portId: "skipping", key: "skipping" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT]: { portId: "skipReadText", key: "skipReadText" },

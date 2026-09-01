@@ -639,12 +639,16 @@ export interface RendererPreloadedInterface {
             readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
             delete(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ deleted: boolean }>>;
         };
+        /** Clear every Dev Mode save slot and the persistence store for one project. */
+        resetData(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<void>>;
     };
 
     preview: {
         launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
         stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+        /** Clear the Preview save slots and persistence file; refuses while a preview is running. */
+        resetData(projectPath: string): Promise<RequestStatus<void>>;
     };
 
     /**

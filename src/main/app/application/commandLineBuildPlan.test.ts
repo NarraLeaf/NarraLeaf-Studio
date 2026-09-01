@@ -23,6 +23,9 @@ const BASE: BuildCommandLineOptions = {
     arch: null,
     outputDir: null,
     reportPath: null,
+    userDataDir: null,
+    signingPath: null,
+    settings: [],
     allowUnsigned: false,
     error: null,
 };
@@ -144,6 +147,52 @@ describe("planCommandLineBuild", () => {
         const result = plan({ platform: "windows" }, "linux");
 
         expect(result.ok && result.plan.arch).toBe("x64");
+    });
+
+    it("resolves the signing file against the working directory", () => {
+        const result = plan({ signingPath: path.join("keys", "signing.json") });
+
+        expect(result.ok && result.plan.signingPath)
+            .toBe(path.join(WORKING_DIRECTORY, "keys", "signing.json"));
+
+        const none = plan({});
+        expect(none.ok && none.plan.signingPath).toBe(null);
+    });
+
+    it("reads the settings a run was given, letting the last of a repeated key win", () => {
+        const result = plan({
+            settings: [
+                "build.electronMirror=https://first.example/",
+                "build.zigMirror=https://mirror.example/zig?token=abc",
+                "build.electronMirror=https://second.example/",
+            ],
+        });
+
+        expect(result.ok && result.plan.settings).toEqual({
+            // Only the first "=" separates: the value keeps its own.
+            "build.zigMirror": "https://mirror.example/zig?token=abc",
+            "build.electronMirror": "https://second.example/",
+        });
+    });
+
+    it("keeps an empty setting, which is how a run asks for the official source", () => {
+        const result = plan({ settings: ["build.electronMirror="] });
+
+        expect(result.ok && result.plan.settings).toEqual({ "build.electronMirror": "" });
+    });
+
+    it("refuses a setting outside the build namespace", () => {
+        expect(plan({ settings: ["workspace.theme=dark"] })).toEqual({
+            ok: false,
+            reason: expect.stringContaining("cannot change \"workspace.theme\""),
+        });
+    });
+
+    it("refuses a setting that is not key=value", () => {
+        expect(plan({ settings: ["build.electronMirror"] })).toEqual({
+            ok: false,
+            reason: expect.stringContaining("Expected key=value"),
+        });
     });
 });
 

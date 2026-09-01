@@ -27,17 +27,20 @@ import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
 import { useNarralangExport } from "../narralang/useNarralangExport";
-import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
+import { narralangUiEnabled } from "../narralang/narralangUi";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import {
+    buildOutlineRows,
     isOutlineDropAllowed,
-    outlineEdgeFromPointer,
-    resolveChapterDrop,
-    resolveSceneDrop,
-    sameOutlineDropHint,
+    outlineChapterGapForRow,
+    outlineGapAnchor,
+    outlineGapForRow,
+    outlineHalfFromPointer,
+    resolveChapterDropAtGap,
+    resolveSceneDropAtGap,
     type StoryOutlineDrag,
     type StoryOutlineDropHint,
-    type StoryOutlineDropTarget,
+    type StoryOutlineGap,
 } from "./storyOutlineDnd";
 
 interface StoryPanelState {
@@ -131,6 +134,24 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const outlineDragRef = useRef<StoryOutlineDrag | null>(null);
     const [outlineDrag, setOutlineDrag] = useState<StoryOutlineDrag | null>(null);
     const [outlineDropHint, setOutlineDropHint] = useState<StoryOutlineDropHint | null>(null);
+
+    // The same default as the effect further down, applied a render earlier so the first paint after
+    // a switch is already expanded instead of expanding a frame later. A deliberately emptied outline
+    // is a stored `[]` and survives this, since only a missing entry falls back.
+    const chapterOpenItems = selectedStoryId && document?.id === selectedStoryId
+        ? chapterOpenItemsByStoryId[selectedStoryId] ?? document.chapters.map(chapter => chapter.id)
+        : [];
+
+    /**
+     * The outline as one flat list of rows, which is what a drag reasons about.
+     *
+     * Up here rather than beside the JSX because every drag handler needs it, and it has to be the
+     * same list the rows are drawn from - a gap index means nothing against a different list.
+     */
+    const outlineRows = useMemo(
+        () => (document ? buildOutlineRows(document, new Set(chapterOpenItems)) : []),
+        [chapterOpenItems, document],
+    );
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -471,7 +492,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 label: t("story.script.exportStory"),
                 onClick: () => beginScriptExport({ storyId: entry.id, sceneIds: null }),
             },
-            ...(NARRALANG_UI_ENABLED
+            ...(narralangUiEnabled()
                 ? [{
                     // Beside the `.txt` export rather than in a submenu of its own: they are one
                     // feature in two formats, and the format is the only choice between them.
@@ -655,15 +676,19 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     }, []);
 
     /**
-     * Light a row up, or leave it alone.
+     * Light a gap up, or leave it alone.
      *
      * Not calling `preventDefault` is how a row says it is not a target, which is what draws the
      * "no drop" cursor - so this asks the same resolvers the drop asks rather than a looser test of
-     * its own. A row that lit up and then refused would be the worse of the two answers.
+     * its own. A gap that lit up and then refused would be the worse of the two answers.
      */
-    const handleOutlineDragOver = useCallback((event: React.DragEvent, target: StoryOutlineDropTarget) => {
+    const handleOutlineDragOver = useCallback((event: React.DragEvent, gap: StoryOutlineGap | null) => {
         const drag = outlineDragRef.current;
-        if (!drag || !document || !isOutlineDropAllowed(document, drag, target)) {
+        if (gap === null || !drag || !document || !isOutlineDropAllowed(document, outlineRows, drag, gap)) {
+            // The line is on screen exactly while a drop would land. Leaving the last good one up
+            // while the pointer sits somewhere that refuses it points at a place the row is not
+            // going, which is worse than no line at all - the cursor already says "not here".
+            setOutlineDropHint(null);
             return;
         }
         event.preventDefault();
@@ -672,20 +697,23 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         // Also the repair for a `dragstart` whose state update has not landed: the row being carried
         // is greyed from here on, whether or not the first update arrived.
         setOutlineDrag(current => (current === drag ? current : drag));
-        const hint = { target, dragKind: drag.kind };
-        setOutlineDropHint(current => (current && sameOutlineDropHint(current, hint) ? current : hint));
-    }, [document]);
+        setOutlineDropHint(current => (
+            current && current.gap === gap && current.dragKind === drag.kind
+                ? current
+                : { gap, dragKind: drag.kind }
+        ));
+    }, [document, outlineRows]);
 
-    const handleOutlineDrop = useCallback((event: React.DragEvent, target: StoryOutlineDropTarget) => {
+    const handleOutlineDrop = useCallback((event: React.DragEvent, gap: StoryOutlineGap | null) => {
         event.preventDefault();
         event.stopPropagation();
         const drag = outlineDragRef.current;
         handleOutlineDragEnd();
-        if (!drag || !storyService || !selectedStoryId || !document || outlineFreeze.frozen) {
+        if (gap === null || !drag || !storyService || !selectedStoryId || !document || outlineFreeze.frozen) {
             return;
         }
         if (drag.kind === "scene") {
-            const move = resolveSceneDrop(document, drag.sceneId, target);
+            const move = resolveSceneDropAtGap(document, outlineRows, drag.sceneId, gap);
             if (move) {
                 storyService.moveScene(selectedStoryId, drag.sceneId, move);
                 // A scene dropped into a collapsed chapter would otherwise vanish: it is gone from
@@ -701,20 +729,28 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             }
             return;
         }
-        const move = resolveChapterDrop(document, drag.chapterId, target);
+        const move = resolveChapterDropAtGap(document, outlineRows, drag.chapterId, gap);
         if (move) {
             storyService.moveChapter(selectedStoryId, drag.chapterId, move.beforeChapterId);
         }
-    }, [document, handleOutlineDragEnd, outlineFreeze, selectedStoryId, storyService]);
+    }, [document, handleOutlineDragEnd, outlineFreeze, outlineRows, selectedStoryId, storyService]);
 
-    /** The row under the pointer, as a target: the row's id plus which half of it the pointer is in. */
-    const outlineTargetAt = useCallback(
-        (event: React.DragEvent, row: { kind: "scene"; sceneId: string } | { kind: "chapter"; chapterId: string }): StoryOutlineDropTarget => ({
-            ...row,
-            edge: outlineEdgeFromPointer(event.clientY, event.currentTarget.getBoundingClientRect()),
-        }),
-        [],
-    );
+    /**
+     * The gap a pointer over this row is aiming at.
+     *
+     * A chapter heading answers differently from a scene row for a chapter drag: its halves are the
+     * two ends of the chapter's whole block rather than the two sides of the heading itself, because
+     * the gaps inside the block are not places a chapter can go. See `outlineChapterGapForRow`.
+     */
+    const outlineGapAt = useCallback((event: React.DragEvent, rowIndex: number): StoryOutlineGap | null => {
+        if (rowIndex < 0) {
+            return null;
+        }
+        const half = outlineHalfFromPointer(event.clientY, event.currentTarget.getBoundingClientRect());
+        return outlineDragRef.current?.kind === "chapter"
+            ? outlineChapterGapForRow(outlineRows, rowIndex, half)
+            : outlineGapForRow(rowIndex, half);
+    }, [outlineRows]);
 
     const buildSceneContextMenu = useCallback((scene: StoryScene): ContextMenuDef => {
         const isEntry = document?.entrySceneId === scene.id;
@@ -740,7 +776,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     }
                 },
             },
-            ...(NARRALANG_UI_ENABLED
+            ...(narralangUiEnabled()
                 ? [{
                     id: "export-scene-narralang",
                     label: t("story.narralang.exportScene"),
@@ -834,12 +870,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         showMenu(event);
     }, [buildSceneContextMenu, showMenu, withDeveloperRows]);
 
-    // The same default as the effect above, applied a render earlier so the first paint after a
-    // switch is already expanded instead of expanding a frame later. A deliberately emptied outline
-    // is a stored `[]` and survives this, since only a missing entry falls back.
-    const chapterOpenItems = selectedStoryId && document?.id === selectedStoryId
-        ? chapterOpenItemsByStoryId[selectedStoryId] ?? document.chapters.map(chapter => chapter.id)
-        : [];
+    /**
+     * Where the one drop indicator goes: which row it hangs on and which edge of it.
+     *
+     * Computed once for the whole outline rather than asked per row, so that "is this gap the one"
+     * is a comparison against a single answer. Two rows can never both draw a line.
+     */
+    const dropAnchor = outlineDropHint ? outlineGapAnchor(outlineRows.length, outlineDropHint.gap) : null;
 
     const handleRootOpenChange = useCallback((nextOpenItems: string[]) => {
         setRootOpenItems(filterStoryRootOpenItems(nextOpenItems));
@@ -857,7 +894,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
 
     return (
         <div className="flex h-full min-h-0 flex-col" data-panel-id={panelId}>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            {/*
+              * A row that accepts a drop stops the event here, so anything that reaches this
+              * container is a place no row would take - including the empty space below the last
+              * one. Clearing here is what stops a line hanging about over ground that refuses it.
+              */}
+            <div
+                className="min-h-0 flex-1 overflow-y-auto"
+                onDragOver={outlineFreeze.gesture(() => setOutlineDropHint(null))}
+            >
                 <Accordion
                     openItems={getRenderedStoryRootOpenItems(filterStoryRootOpenItems(rootOpenItems), Boolean(selectedEntry))}
                     onOpenChange={handleRootOpenChange}
@@ -974,18 +1019,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     className="border-t border-edge-subtle"
                                 >
                                     {document.chapters.map(chapter => {
-                                        const chapterRow = { kind: "chapter" as const, chapterId: chapter.id };
-                                        const chapterHint = outlineDropHint?.target.kind === "chapter" && outlineDropHint.target.chapterId === chapter.id
-                                            ? outlineDropHint
-                                            : null;
-                                        // A scene dropped on a chapter header goes into that chapter,
-                                        // so the header itself is what lights up; a chapter dropped
-                                        // there goes above or below it, which is a line in the gap.
-                                        const takesDraggedScene = chapterHint?.dragKind === "scene";
-                                        const chapterInsertEdge = chapterHint?.dragKind === "chapter" ? chapterHint.target.edge : null;
+                                        const chapterRowIndex = outlineRows.findIndex(row => row.kind === "chapter" && row.chapterId === chapter.id);
+                                        const chapterDrag = { kind: "chapter" as const, chapterId: chapter.id };
+                                        // The one indicator, on the row the gap hangs from. Nothing
+                                        // else in the outline draws a drop hint of its own.
+                                        const chapterMark = dropAnchor?.rowIndex === chapterRowIndex ? dropAnchor.edge : null;
                                         return (
                                             <div key={chapter.id} className="relative">
-                                                {chapterInsertEdge ? <DropIndicator edge={chapterInsertEdge} /> : null}
+                                                {chapterMark === "before" ? <DropIndicator edge="before" /> : null}
+                                                {chapterMark === "after" ? <DropIndicator edge="after" /> : null}
                                                 <AccordionItem
                                                     id={chapter.id}
                                                     level={1}
@@ -996,15 +1038,14 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             // Without this class the global `-webkit-user-drag: none`
                                                             // leaves `draggable` inert and no drag starts at all.
                                                             !outlineFreeze.frozen && "nl-drag-source",
-                                                            takesDraggedScene && "bg-primary/20",
                                                             outlineDrag?.kind === "chapter" && outlineDrag.chapterId === chapter.id && "opacity-50",
                                                         ),
                                                         draggable: !outlineFreeze.frozen,
                                                         onContextMenu: event => handleOpenChapterMenu(event, chapter),
-                                                        onDragStart: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragStart(event, chapterRow)),
+                                                        onDragStart: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragStart(event, chapterDrag)),
                                                         onDragEnd: outlineFreeze.gesture(handleOutlineDragEnd),
-                                                        onDragOver: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineTargetAt(event, chapterRow))),
-                                                        onDrop: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineTargetAt(event, chapterRow))),
+                                                        onDragOver: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineGapAt(event, chapterRowIndex))),
+                                                        onDrop: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineGapAt(event, chapterRowIndex))),
                                                     }}
                                                     actions={
                                                         <>
@@ -1030,13 +1071,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     contentClassName="py-1"
                                                 >
                                                     {chapter.sceneIds.length === 0 ? (
+                                                        // An empty chapter draws no scene rows, so the only gap inside it is
+                                                        // the one below its heading - which is what this stands in for.
                                                         <div
-                                                            className={cn(
-                                                                "px-8 py-2 text-xs text-fg-subtle",
-                                                                takesDraggedScene && "bg-primary/20",
-                                                            )}
-                                                            onDragOver={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineTargetAt(event, chapterRow)))}
-                                                            onDrop={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineTargetAt(event, chapterRow)))}
+                                                            className="px-8 py-2 text-xs text-fg-subtle"
+                                                            onDragOver={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, chapterRowIndex < 0 ? null : chapterRowIndex + 1))}
+                                                            onDrop={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, chapterRowIndex < 0 ? null : chapterRowIndex + 1))}
                                                         >
                                                             {t("story.panel.emptyScenes")}
                                                         </div>
@@ -1048,10 +1088,9 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             }
                                                             const isEntry = document.entrySceneId === scene.id;
                                                             const lineCount = buildStorySceneTextProjection(scene).lines.length;
-                                                            const sceneRow = { kind: "scene" as const, sceneId: scene.id };
-                                                            const sceneEdge = outlineDropHint?.target.kind === "scene" && outlineDropHint.target.sceneId === scene.id
-                                                                ? outlineDropHint.target.edge
-                                                                : null;
+                                                            const sceneRowIndex = outlineRows.findIndex(row => row.kind === "scene" && row.sceneId === scene.id);
+                                                            const sceneDrag = { kind: "scene" as const, sceneId: scene.id };
+                                                            const sceneMark = dropAnchor?.rowIndex === sceneRowIndex ? dropAnchor.edge : null;
                                                             return (
                                                                 <div
                                                                     key={scene.id}
@@ -1063,14 +1102,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                                     )}
                                                                     style={{ paddingLeft: "44px" }}
                                                                     draggable={!outlineFreeze.frozen}
-                                                                    onDragStart={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragStart(event, sceneRow))}
+                                                                    onDragStart={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragStart(event, sceneDrag))}
                                                                     onDragEnd={outlineFreeze.gesture(handleOutlineDragEnd)}
-                                                                    onDragOver={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineTargetAt(event, sceneRow)))}
-                                                                    onDrop={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineTargetAt(event, sceneRow)))}
+                                                                    onDragOver={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineGapAt(event, sceneRowIndex)))}
+                                                                    onDrop={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineGapAt(event, sceneRowIndex)))}
                                                                     onClick={() => handleOpenScene(scene.id, scene.name)}
                                                                     onContextMenu={event => handleOpenSceneMenu(event, scene)}
                                                                 >
-                                                                    {sceneEdge ? <DropIndicator edge={sceneEdge} /> : null}
+                                                                    {sceneMark === "before" ? <DropIndicator edge="before" /> : null}
+                                                                    {sceneMark === "after" ? <DropIndicator edge="after" /> : null}
                                                                     {isEntry ? (
                                                                         <Star className="h-4 w-4 shrink-0 text-fg-muted" />
                                                                     ) : (

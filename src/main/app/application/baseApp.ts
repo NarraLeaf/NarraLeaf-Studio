@@ -164,6 +164,7 @@ export class BaseApp {
         this.events = new EventEmitter();
 
         this.configureCdp();
+        this.configureHeadlessBuild();
         this.setupUserDataDir();
         this.setupLogging();
         this.reportExperimentalMode();
@@ -587,7 +588,9 @@ export class BaseApp {
      * items, two update checks, and two processes writing the same `globalState.json`.
      *
      * Must be called after {@link setupUserDataDir}: Electron keys the lock on the userData
-     * directory, and development redirects that path.
+     * directory, and both development and `--build-user-data-dir` redirect that path. The latter is
+     * what lets a command-line build run on a machine whose owner has Studio open - see
+     * {@link setupUserDataDir}, and `index.ts` for what a build does when it loses the lock anyway.
      *
      * Development is exempt. `dev-electron.js` restarts this process on every rebuild, and a new
      * instance starting before the old one has finished exiting would lose the lock and quit -
@@ -926,12 +929,70 @@ export class BaseApp {
         });
     }
 
+    /**
+     * Point this process at the profile directory it will use, before anything reads one.
+     *
+     * Three cases, in order. A `--build` launch that named a profile gets it; a development launch
+     * gets its own, so a checkout never writes into an installed Studio's; everything else keeps
+     * the platform's default.
+     *
+     * ## Why a build may name one
+     *
+     * Electron keys the single-instance lock on this directory, so a second Studio on the same
+     * profile is refused and exits - which is right for a launch that wants a window and useless
+     * for one that wants an exit code. On a machine that is both a build agent and somebody's
+     * computer, that made a command-line build impossible while its owner had Studio open. A
+     * profile of its own gives the build its own lock.
+     *
+     * **A different profile is a different everything.** The signing vault lives under it, and so
+     * do the machine's build settings; a scratch profile has neither, which is what `--build-signing`
+     * and `--build-setting` are for. Whether the *download* caches come with it depends on the
+     * install: `resolveCacheRoot` puts them beside the executable only where the platform allows
+     * that, so a scratch profile costs an Electron download on macOS and costs nothing on an
+     * ordinary Windows install.
+     *
+     * Build-only, for the reason `--project` is development-only: in a packaged build argv is where
+     * shortcuts and file associations arrive, and answering one of those by silently pointing
+     * Studio at an empty profile would look exactly like every project the author had being gone.
+     * The parser refuses the flag outright when no build was asked for.
+     */
     private setupUserDataDir(): void {
+        const build = this.commandLine.build;
+        if (build.requested && build.userDataDir) {
+            const userDataPath = path.resolve(process.cwd(), build.userDataDir);
+            // Created here rather than left to Electron: the log sink, the global state and the
+            // vault all open files under it within the next few statements.
+            fs.mkdirSync(userDataPath, { recursive: true });
+            this.electronApp.setPath("userData", userDataPath);
+            this.logger.info(`[App] Build profile: ${userDataPath}`);
+            return;
+        }
         if (!this.electronApp.isPackaged) {
             const userDataPath = path.join(this.getDevTempDir(), "userData-dev");
             this.electronApp.setPath("userData", userDataPath);
             this.logger.info(`[App] Setting up dev userData path: ${userDataPath}`);
         }
+    }
+
+    /**
+     * Take the GPU out of a command-line build.
+     *
+     * A `--build` run draws nothing anybody will see: its one window is created hidden and the
+     * process exits when the build ends. What it does do is run wherever the job runs, and a
+     * machine reached over SSH has no window server for a GPU process to attach to - on macOS that
+     * is `GPU process isn't usable. Goodbye.` and a launch that never reaches `ready`.
+     *
+     * Software rendering costs a hidden window nothing worth measuring, so this is unconditional
+     * for a build rather than a flag somebody has to know to pass. Every other launch keeps the
+     * GPU: they have a person in front of them.
+     *
+     * Must happen before `ready`, which is why it is in the constructor beside `configureCdp`.
+     */
+    private configureHeadlessBuild(): void {
+        if (!this.commandLine.build.requested) {
+            return;
+        }
+        this.electronApp.disableHardwareAcceleration();
     }
 
     /**
