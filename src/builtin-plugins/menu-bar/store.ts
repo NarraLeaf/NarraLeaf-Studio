@@ -21,6 +21,7 @@ import type { GameMenuAction, GameMenuDynamicSource } from "@shared/types/gameMe
 import type { PluginApp } from "narraleaf-studio/plugin";
 import {
     EMPTY_MENU_BAR_DOCUMENT,
+    createMenuBarPreset,
     MENU_BAR_STORE_NAMESPACE,
     createMenuBarId,
     createMenuBarLabel,
@@ -30,6 +31,7 @@ import {
     type MenuBarItemKind,
     type MenuBarLabel,
     type MenuBarMenu,
+    type MenuBarPresetLabels,
 } from "./document";
 
 export type MenuBarStore = ReturnType<typeof createMenuBarStore>;
@@ -192,6 +194,12 @@ export function createMenuBarStore(app: PluginApp) {
             return findItem(menu.items, rest);
         },
         setEnabled: (enabled: boolean): Promise<void> => commit({ enabled }),
+        /** Append a whole working bar. Appends rather than replaces: an author's rows are theirs. */
+        addPreset: (labels: MenuBarPresetLabels): MenuBarPath => {
+            const menus = createMenuBarPreset(labels);
+            void commitMenus([...data.menus, ...menus]);
+            return [menus[0]?.id ?? ""];
+        },
         addMenu: (label: string): MenuBarPath => {
             const menu: MenuBarMenu = { id: createMenuBarId("menu"), label: createMenuBarLabel(label), items: [] };
             void commitMenus([...data.menus, menu]);

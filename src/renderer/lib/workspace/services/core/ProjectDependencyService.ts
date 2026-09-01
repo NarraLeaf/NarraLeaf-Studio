@@ -9,7 +9,7 @@ import {
     type ProjectPluginDependency,
 } from "@shared/types/pluginDependencies";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
-import { parsePluginStoreOwner } from "@shared/utils/pluginStorage";
+import { parsePluginStore } from "@shared/utils/pluginStorage";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectDependencyService, Services, WorkspaceContext } from "../services";
@@ -150,7 +150,7 @@ export class ProjectDependencyService
         const authoritative = new Set<string>();
         this.collectBlueprintNodeUsage(usage, authoritative);
         this.collectWidgetUsage(usage, authoritative);
-        await this.collectStorageUsage(usage);
+        await this.collectStorageUsage(usage, await this.listPublishedNamespaces());
         await this.collectStoryActionUsage(usage, authoritative);
 
         return buildDependencyTable({
@@ -283,13 +283,24 @@ export class ProjectDependencyService
     }
 
     /**
-     * Soft dependencies: plugins that have written project storage. Attributable
-     * from the store filename on disk (see {@link parsePluginStoreOwner}), so it
-     * works even when the owning plugin is not installed. Not marked
-     * authoritative - a data-only store never breaks the document, so it must not
-     * cause a hard dependency for the same plugin to be pruned.
+     * Plugins that have written project storage. Attributable from the store filename on disk (see
+     * {@link parsePluginStore}), so it works even when the owning plugin is not installed.
+     *
+     * **Whether a store is a hard dependency is the plugin's own declaration.** A namespace listed
+     * in `contributes.runtimeData` is published into the game, so the shipped game reads it and the
+     * pack has to carry the plugin that does the reading; anything else is editor-only data and
+     * stays soft. Getting this wrong is silent in the worst way: a plugin whose whole contribution
+     * is authored data - no blueprint nodes, no widgets - was classed soft, so it was dropped from
+     * every pack as "enabled but unused", and its feature simply did not exist in preview or in a
+     * build while the panel in Studio went on working.
+     *
+     * Never marked authoritative either way: the *documents* do not break without the plugin, so a
+     * store must not prune a hard dependency the same plugin has elsewhere.
      */
-    private async collectStorageUsage(usage: DependencyUsageRecord[]): Promise<void> {
+    private async collectStorageUsage(
+        usage: DependencyUsageRecord[],
+        publishedNamespaces: Map<string, ReadonlySet<string>>,
+    ): Promise<void> {
         const ctx = this.getContext();
         const servicesDir = ctx.project.resolve(ProjectNameConvention.EditorServices);
         const listed = await ctx.services.get<FileSystemService>(Services.FileSystem).list(servicesDir);
@@ -300,11 +311,35 @@ export class ProjectDependencyService
             if (entry.type !== "file" || entry.ext !== ".json") {
                 continue;
             }
-            const owner = parsePluginStoreOwner(entry.name);
-            if (owner) {
-                usage.push({ pluginId: owner, kind: "storage", id: entry.name, hard: false });
+            const store = parsePluginStore(entry.name);
+            if (store) {
+                usage.push({
+                    pluginId: store.pluginId,
+                    kind: "storage",
+                    id: entry.name,
+                    hard: publishedNamespaces.get(store.pluginId)?.has(store.namespace) === true,
+                });
             }
         }
+    }
+
+    /**
+     * Which of each installed plugin's storage namespaces travel into the game.
+     *
+     * Read from the manifest rather than remembered in the table: what a plugin publishes is a fact
+     * about the version installed now, and a namespace it stopped publishing must stop making the
+     * project depend on it.
+     */
+    private async listPublishedNamespaces(): Promise<Map<string, ReadonlySet<string>>> {
+        const result = await getInterface().plugins.list();
+        const published = new Map<string, ReadonlySet<string>>();
+        if (!result.success || !result.data) {
+            return published;
+        }
+        for (const plugin of result.data.plugins) {
+            published.set(plugin.pluginId, new Set(plugin.manifest.contributes?.runtimeData ?? []));
+        }
+        return published;
     }
 
     private async listInstalledPlugins(): Promise<InstalledPlugin[]> {

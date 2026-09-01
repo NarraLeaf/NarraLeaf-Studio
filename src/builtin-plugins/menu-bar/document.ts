@@ -233,6 +233,87 @@ export function isMenuBarItemComplete(item: MenuBarItem): boolean {
 }
 
 /**
+ * A complete menu bar, in one click.
+ *
+ * Every row here works in any project: nothing names a page, a function or anything else the author
+ * has to have made first, so the bar the button produces is one the player can use immediately.
+ * Rows that would need a target - Save, Load, Settings - are left out rather than added incomplete;
+ * a row pointing nowhere is worse than a row the author adds themselves.
+ *
+ * The labels come from the caller, which reads them from the editor's language at the moment the
+ * button is pressed, and they are written as plain text with no localization key. A preset is a
+ * starting point, not a translation contract: an author who wants the bar to follow the player's
+ * language sets keys on the rows they keep.
+ */
+export type MenuBarPresetLabels = {
+    fileMenu: string;
+    gameMenu: string;
+    viewMenu: string;
+    languageMenu: string;
+    quit: string;
+    next: string;
+    autoForward: string;
+    skipping: string;
+    skipRead: string;
+    skipAll: string;
+    dialog: string;
+    undo: string;
+    redo: string;
+    fullscreen: string;
+    windowScale: string;
+    textLanguage: string;
+    voiceLanguage: string;
+};
+
+export function createMenuBarPreset(labels: MenuBarPresetLabels): MenuBarMenu[] {
+    const action = (text: string, action: GameMenuAction): MenuBarItem => ({
+        id: createMenuBarId("item"),
+        kind: "action",
+        label: createMenuBarLabel(text),
+        action,
+    });
+    const dynamic = (source: GameMenuDynamicSource): MenuBarItem => ({
+        id: createMenuBarId("item"),
+        kind: "dynamic",
+        source,
+    });
+    const separator = (): MenuBarItem => ({ id: createMenuBarId("item"), kind: "separator" });
+    const menu = (text: string, items: MenuBarItem[]): MenuBarMenu => ({
+        id: createMenuBarId("menu"),
+        label: createMenuBarLabel(text),
+        items,
+    });
+
+    return [
+        menu(labels.fileMenu, [
+            action(labels.quit, { type: "quitApp" }),
+        ]),
+        menu(labels.gameMenu, [
+            action(labels.next, { type: "next" }),
+            separator(),
+            action(labels.autoForward, { type: "toggleAutoForward" }),
+            action(labels.skipping, { type: "toggleSkipping" }),
+            action(labels.skipRead, { type: "setSkipReadText", value: true }),
+            action(labels.skipAll, { type: "setSkipReadText", value: false }),
+            separator(),
+            action(labels.dialog, { type: "toggleDialog" }),
+            separator(),
+            action(labels.undo, { type: "historyUndo" }),
+            action(labels.redo, { type: "historyRedo" }),
+        ]),
+        menu(labels.viewMenu, [
+            action(labels.fullscreen, { type: "toggleFullscreen" }),
+            separator(),
+            dynamic("windowScale"),
+        ]),
+        menu(labels.languageMenu, [
+            dynamic("textLanguage"),
+            dynamic("voiceLanguage"),
+        ]),
+    ];
+}
+
+/**
  * Turn the authored document into the spec the running game is handed.
  *
  * Two things happen here and nowhere else: the panel's own bookkeeping (row ids) is dropped, and so
