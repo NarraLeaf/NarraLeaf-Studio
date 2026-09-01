@@ -2076,6 +2076,37 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Put the surfaces in the order given.
+     *
+     * The order is the document's own - `document.surfaces` is an array and every list of pages is
+     * drawn from it - so this takes the whole order rather than a hop from one position to another.
+     * The panel that drives it draws one kind at a time and has to say where the other kind's cards
+     * stayed; a "move this before that" call could not express that without this method guessing.
+     *
+     * Surfaces the order does not name keep their places at the end rather than being dropped: an
+     * order written against a document that has since gained a page is a stale statement about
+     * position, never a request to delete the page it says nothing about.
+     *
+     * No undo entry: the interface editor's history is per surface (`mutateDocument` records only
+     * when a caller names one), and reordering the list is not an edit to any single one of them -
+     * the same answer creating and deleting a surface already give.
+     */
+    public reorderSurfaces(orderedSurfaceIds: readonly string[]): void {
+        this.mutateDocument(document => {
+            const remaining = new Map(document.surfaces.map(surface => [surface.id, surface]));
+            const ordered: UISurface[] = [];
+            for (const id of orderedSurfaceIds) {
+                const surface = remaining.get(id);
+                if (surface) {
+                    ordered.push(surface);
+                    remaining.delete(id);
+                }
+            }
+            document.surfaces = [...ordered, ...remaining.values()];
+        });
+    }
+
     public renameSurface(surfaceId: string, name: string): void {
         const nextName = name.trim();
         if (!nextName) {
