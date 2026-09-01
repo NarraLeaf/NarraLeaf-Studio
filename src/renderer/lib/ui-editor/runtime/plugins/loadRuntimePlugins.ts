@@ -17,7 +17,11 @@ import type { RuntimePluginDescriptor } from "@shared/types/plugins";
 import type { PluginRuntimeCapability } from "@shared/types/pluginPermissions";
 import { behaviorNodeRegistry } from "../../behavior-graph/BehaviorNodeRegistry";
 import { registerStoryCompilePass } from "../game/storyCompilePass";
-import type { ElementRendererRegistry } from "../ElementRendererRegistry";
+import type {
+    ElementRendererDefinition,
+    ElementRendererProps,
+    ElementRendererRegistry,
+} from "../ElementRendererRegistry";
 import {
     defineRuntimePlugin,
     isRuntimePluginDefinition,
@@ -27,6 +31,7 @@ import {
     type RuntimePluginLogLevel,
     type RuntimePluginSidecarHandle,
     type RuntimeWidgetRendererDef,
+    type RuntimeWidgetRendererProps,
 } from "./runtimePluginApi";
 import type { RuntimePluginHost } from "./runtimePluginHost";
 
@@ -71,8 +76,12 @@ type RuntimePluginModuleGlobal = {
 /** Owner plugin id per registered node type; guards cross-plugin collisions. */
 const runtimeNodeOwners = new Map<string, string>();
 
-/** Widget renderers collected from plugin setup, keyed by widget type. */
-const runtimeWidgetRenderers = new Map<string, { ownerPluginId: string; def: RuntimeWidgetRendererDef }>();
+/**
+ * Widget renderers collected from plugin setup, keyed by widget type. What is stored is
+ * the host-facing binding built by {@link bindWidgetRenderer}, never the plugin's own
+ * function: the narrowing has to be in place before anything can reach the registry.
+ */
+const runtimeWidgetRenderers = new Map<string, { ownerPluginId: string; renderer: ElementRendererDefinition }>();
 
 /**
  * Load-once cache keyed by plugin id + version + entry URL. Game environments
@@ -133,15 +142,70 @@ export async function loadRuntimePlugins(
  * Idempotent; never overrides a type the host (built-in) already provides.
  */
 function applyRuntimeWidgetRenderers(registry: ElementRendererRegistry): void {
-    for (const { def } of runtimeWidgetRenderers.values()) {
-        const existing = registry.get(def.type);
-        if (existing && existing.render !== def.render) {
+    for (const { renderer } of runtimeWidgetRenderers.values()) {
+        const existing = registry.get(renderer.type);
+        if (existing && existing.render !== renderer.render) {
             // Built-in renderers win; plugin types are prefix-namespaced so this
-            // only happens on a stale registry re-application.
+            // only happens on a stale registry re-application. The comparison holds
+            // because the binding is built once, at registration.
             continue;
         }
-        registry.register({ type: def.type, render: def.render });
+        registry.register(renderer);
     }
+}
+
+/**
+ * Bind one plugin widget renderer to the host's element renderer contract.
+ *
+ * The host props are narrowed on the way in, for the reason a node's execution context
+ * is: passing them through would hand the plugin `hostAdapter`, and with it every host
+ * API, none of which its manifest declared or the user approved. A widget legitimately
+ * needs more than a node does - the element, the document around it, its children, the
+ * row it is drawn in - and it needs one thing off the adapter, which is the ability to
+ * raise its own event slots. That much is rebuilt here, bound to this element; see
+ * {@link RuntimeWidgetRendererProps}.
+ */
+function bindWidgetRenderer(
+    type: string,
+    render: RuntimeWidgetRendererDef["render"],
+    game: RuntimePluginGame,
+): ElementRendererDefinition {
+    return {
+        type,
+        render: (props: ElementRendererProps) => render(narrowWidgetRendererProps(props, game)),
+    };
+}
+
+function narrowWidgetRendererProps(
+    props: ElementRendererProps,
+    game: RuntimePluginGame,
+): RuntimeWidgetRendererProps {
+    const blueprintRuntime = props.hostAdapter.blueprintRuntime;
+    const listItemScope = props.listItemScope ?? null;
+    const instanceKey = props.instanceKey;
+    return {
+        element: props.element,
+        surface: props.surface,
+        document: props.document,
+        children: props.children,
+        instanceKey,
+        listItemScope,
+        renderChildren: props.renderChildren,
+        runtimeData: props.runtimeData,
+        dispatchEvent: (eventName, payload, options) => {
+            if (!blueprintRuntime) {
+                return Promise.resolve();
+            }
+            // The row is carried, not merely described: a handler answering a click on a
+            // repeated row is asking about that row, and an unscoped dispatch would run
+            // the author's graph against whichever one drew last.
+            return blueprintRuntime.dispatchElementBlueprintEvent(props.element.id, eventName, payload, {
+                listItemScope: options && "listItemScope" in options ? options.listItemScope : listItemScope,
+                instanceKey: options?.instanceKey ?? instanceKey,
+            });
+        },
+        game,
+    };
 }
 
 async function loadRuntimePlugin(
@@ -226,7 +290,7 @@ function createRuntimePluginApp(
         }
         runtimeWidgetRenderers.set(type, {
             ownerPluginId: pluginId,
-            def: { type, render: def.render },
+            renderer: bindWidgetRenderer(type, def.render, game),
         });
     };
 

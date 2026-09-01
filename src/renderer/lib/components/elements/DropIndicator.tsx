@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { cn } from "../../utils/cn";
 
 export type DropEdge = "before" | "after";
@@ -26,7 +27,11 @@ export interface DropIndicatorProps {
  *
  * The parent must be positioned (`relative`); this fills its width and hangs on the named edge.
  */
-export function DropIndicator({ edge, className }: DropIndicatorProps) {
+// The return type is written out rather than inferred because this component is reachable from the
+// published plugin declarations, and the bundler that builds them prints an inferred JSX return as
+// `import("react").React.JSX.Element` after it has already renamed that namespace - a reference to
+// a member that does not exist, which fails the generated package's own typecheck.
+export function DropIndicator({ edge, className }: DropIndicatorProps): ReactElement {
     return (
         <div
             aria-hidden
