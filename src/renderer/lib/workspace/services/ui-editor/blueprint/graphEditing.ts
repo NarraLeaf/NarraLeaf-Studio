@@ -32,10 +32,17 @@ import {
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
+    isBuiltInBlueprintNodeType,
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
 } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
-import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
+    BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY,
+    readBlueprintNodePinSnapshot,
+    toBlueprintNodePinSnapshot,
+    type BlueprintNodePinSnapshotEntry,
+} from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     withInferredBlueprintVariableValueTypeParam,
     type BlueprintGraphVariableTypeInferenceContext,
@@ -194,6 +201,58 @@ export function isValidBlueprintIrExecConnection(
         sourceParams,
         targetParams,
     });
+}
+
+function blueprintPinSnapshotsEqual(
+    a: readonly BlueprintNodePinSnapshotEntry[],
+    b: readonly BlueprintNodePinSnapshotEntry[],
+): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+        const x = a[i]!;
+        const y = b[i]!;
+        if (
+            x.id !== y.id ||
+            x.kind !== y.kind ||
+            x.semantic !== y.semantic ||
+            x.valueType !== y.valueType ||
+            x.label !== y.label
+        ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Refresh the recorded pin shape of every plugin node whose type is currently known.
+ *
+ * Built-in nodes never become unknown, so they are skipped - only plugin nodes carry a snapshot. A
+ * node whose plugin is not loaded right now is left untouched, keeping the shape it last had. Meant
+ * to run at commit: it writes only when a node's pins actually changed, so a settled graph and its
+ * undo history are left alone. Mutates the passed IR in place; returns whether it changed anything.
+ */
+export function captureBlueprintNodePinSnapshots(ir: Pick<BlueprintGraphIr, "nodes">): boolean {
+    let changed = false;
+    for (const node of Object.values(ir.nodes ?? {})) {
+        if (isBuiltInBlueprintNodeType(node.type)) {
+            continue;
+        }
+        const entry = resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params);
+        if (entry.unknown) {
+            continue;
+        }
+        const next = toBlueprintNodePinSnapshot(entry.pins);
+        const current = readBlueprintNodePinSnapshot(node.params);
+        if (current && blueprintPinSnapshotsEqual(current, next)) {
+            continue;
+        }
+        node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY]: next };
+        changed = true;
+    }
+    return changed;
 }
 
 /**

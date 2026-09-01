@@ -56,6 +56,7 @@ import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/Blueprint
 import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     applyBlueprintIrConnection,
+    captureBlueprintNodePinSnapshots,
     createGraphNodeForPalette,
     ensureBlueprintGraphIr,
     graphIrHasFunctionEntry,
@@ -810,6 +811,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             if (!editor.graphView) {
                 return;
             }
+            // Keep every plugin node's recorded pin shape current while its plugin is loaded, so the
+            // node stays legible if that plugin is later removed. A no-op once the shapes are settled.
+            captureBlueprintNodePinSnapshots(next);
             activeIrRef.current = next;
             const { blueprintId } = payload;
             const apply = (draft: BlueprintGraphIr) => {

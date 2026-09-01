@@ -253,6 +253,13 @@ export const lint = {
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
         },
+        blueprintUnknownNode: {
+            title: "Unknown node type",
+            description: "A node whose type the project cannot load",
+            // Names the type, because the locator points at the graph and the node but a node id is
+            // not something the author can act on - the type is what says which plugin is missing.
+            message: "{type} is not loaded, so this node will not run in the game",
+        },
         uiUnlocalizedText: {
             title: "Unlocalized text",
             description: "Text written straight onto a widget in a project that has a second language",

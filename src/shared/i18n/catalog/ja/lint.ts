@@ -247,6 +247,11 @@ export const lint = {
             description: "実行する内容が接続されていないイベントレイヤー",
             message: "このイベントは何も実行しない",
         },
+        blueprintUnknownNode: {
+            title: "不明なノード型",
+            description: "型を読み込めないノード",
+            message: "{type} が読み込まれていないため、このノードはゲームで実行されない",
+        },
         uiUnlocalizedText: {
             title: "ローカライズされていないテキスト",
             description: "第二の言語があるプロジェクトで、ウィジェットに直接書かれたテキスト",

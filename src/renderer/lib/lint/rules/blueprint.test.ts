@@ -997,6 +997,47 @@ describe("blueprint/empty-event", () => {
         expect(findings).toEqual([]);
     });
 });
+describe("blueprint/unknown-node", () => {
+    it("is an error by default", () => {
+        // A shipped game runs nothing for an unknown node, so what plays is not what the author
+        // built; a downgrade here would let that ship.
+        expect(rule("blueprint/unknown-node").defaultSeverity).toBe("error");
+    });
+
+    it("reports a node whose type the project cannot load", async () => {
+        const findings = await run(
+            "blueprint/unknown-node",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: {
+                        onBoot: {
+                            nodes: {
+                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                                mystery: { id: "mystery", type: "com.example.plugin.doThing", params: {} },
+                            },
+                            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "mystery", port: "in" } }],
+                        },
+                    },
+                }),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "blueprint/unknown-node",
+            messageKey: "lint.rule.blueprintUnknownNode.message",
+            messageParams: { type: "com.example.plugin.doThing" },
+            location: { kind: "blueprint", blueprintId: "bp1", graphId: "onBoot", nodeId: "mystery" },
+        });
+    });
+
+    it("says nothing when every node type is known", async () => {
+        const findings = await run(
+            "blueprint/unknown-node",
+            createTestLintContext({ blueprintDocument: documentWithGraphs({ events: { onBoot: goPageGraph("s1") } }) }),
+        );
+        expect(findings).toEqual([]);
+    });
+});
 describe("blueprint/save-field-empty", () => {
     const CHAPTER: SaveSchemaField = {
         id: "f-chapter",

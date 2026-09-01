@@ -68,6 +68,11 @@ export function resolveBlueprintNodeEditorCatalogEntry(type: string): BlueprintN
     return catalog().resolveCatalogEntry(type);
 }
 
+/** Whether this node type ships with the host (core), as opposed to coming from a plugin. */
+export function isBuiltInBlueprintNodeType(type: string): boolean {
+    return catalog().isBuiltIn(type);
+}
+
 export function resolveBlueprintNodeEditorCatalogEntryForNode(
     type: string,
     params?: Record<string, unknown>,

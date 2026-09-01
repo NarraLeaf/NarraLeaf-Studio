@@ -115,6 +115,7 @@ export type LintRuleId =
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
     | "blueprint/dlc-entrance-unguarded"
+    | "blueprint/unknown-node"
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
