@@ -162,6 +162,7 @@ export const build = {
                 output: "选择文件的保存位置",
                 reading: "正在读取构建目录",
                 artifact: "该目录中没有本游戏的构建",
+                artifactAccess: "用「浏览」选择该目录后才能读取",
                 dlcBaseline: "选择此 DLC 所附加的构建",
                 dlcVariant: "该构建不是此 DLC 依附的变体",
             },

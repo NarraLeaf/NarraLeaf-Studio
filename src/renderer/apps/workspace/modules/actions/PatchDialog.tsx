@@ -48,6 +48,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PatchBaselineMode, PatchConfiguration } from "@/lib/workspace/project/configuration";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
+import { GameBuildErrorCode } from "@shared/types/gameBuild";
 import { dlcArtifactFileName } from "@shared/utils/dlcDelivery";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
@@ -59,6 +60,7 @@ const BLOCKER_MESSAGE_KEYS: Record<PatchExportBlocker, TranslationKey> = {
     output: "build.patch.blocked.output",
     reading: "build.patch.blocked.reading",
     artifact: "build.patch.blocked.artifact",
+    artifactAccess: "build.patch.blocked.artifactAccess",
     dlcBaseline: "build.patch.blocked.dlcBaseline",
     dlcVariant: "build.patch.blocked.dlcVariant",
 };
@@ -149,7 +151,14 @@ function PatchDialogContent({
 
     /** What the chosen folder says about itself, and why it says nothing when it does not. */
     const [reading, setReading] = useState<BaselineReading | null>(null);
-    const [readingError, setReadingError] = useState<string | null>(null);
+    /**
+     * Why the last read failed: the backend's sentence, or the code where it named one.
+     *
+     * The code is kept beside the sentence rather than instead of it. A refusal the interface has
+     * words for is said in the reader's language; everything else is still shown as it always was,
+     * which is right for a message that names its own remedy.
+     */
+    const [readingError, setReadingError] = useState<{ message: string; code: string | null } | null>(null);
     const [readingBusy, setReadingBusy] = useState(false);
 
     const variantOptions = useMemo<SelectOption[]>(
@@ -208,7 +217,7 @@ function PatchDialogContent({
                 setReadingError(null);
             } else {
                 setReading(null);
-                setReadingError(result.error ?? null);
+                setReadingError({ message: result.error ?? "", code: result.code ?? null });
             }
         });
     }, [baselineAppDir, baselineMode]);
@@ -235,6 +244,12 @@ function PatchDialogContent({
         && (effectiveContentId || RELEASE_APP_TAG.id) === (effectiveTargetId || RELEASE_APP_TAG.id);
 
     /**
+     * The folder was refused before anything looked inside it, because this window has never been
+     * handed it. Read off the code rather than the sentence: the sentence is English.
+     */
+    const baselineNotGranted = readingError?.code === GameBuildErrorCode.BaselineNotGranted;
+
+    /**
      * What is standing in the way of exporting, or null when nothing is.
      *
      * Computed from what the fields say rather than checked when the button is pressed: an export
@@ -246,10 +261,11 @@ function PatchDialogContent({
         baselineMode,
         baselineAppDir: baselineMode === "artifact" ? baselineAppDir.trim() : "",
         readingBaseline: readingBusy,
-        baselineUnreadable: Boolean(readingError),
+        baselineUnreadable: Boolean(readingError) && !baselineNotGranted,
+        baselineNotGranted,
         baselineAppTagId: reading?.appTagId ?? null,
         dlcAttachTo: dlc?.attachTo ?? null,
-    }), [baselineAppDir, baselineMode, dlc, outputFile, reading, readingBusy, readingError]);
+    }), [baselineAppDir, baselineMode, baselineNotGranted, dlc, outputFile, reading, readingBusy, readingError]);
 
     const pickBaseline = useCallback(async () => {
         const result = await getInterface().gameBuild.selectPatchBaseline(baselineAppDir || undefined);
@@ -354,7 +370,11 @@ function PatchDialogContent({
                             <span className="text-2xs text-fg-subtle">{t("build.patch.artifactReading")}</span>
                         )}
                         {readingError && (
-                            <span className="text-2xs text-danger">{readingError}</span>
+                            <span className="text-2xs text-danger">
+                                {baselineNotGranted
+                                    ? t("build.patch.blocked.artifactAccess")
+                                    : readingError.message}
+                            </span>
                         )}
                         {reading && (
                             <span className="text-2xs text-fg-subtle">

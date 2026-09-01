@@ -23,7 +23,7 @@ import { sep } from "@shared/utils/path";
  *
  * **What counts as project data is not decided here.** {@link isVersioned} is the single source of
  * truth for what the repository stores, and this module only turns that predicate into a gate. So
- * `.nlstudio/` (panel layout, installed plugins, quarantine), `editor/cache/` and `dist/` keep
+ * `.nlstudio/` (panel layout, merge decisions, quarantine), `editor/cache/` and `dist/` keep
  * working while frozen - which is the point: the editor's own state is not the author's project, and
  * a freeze that also froze the panel layout would look like a broken application.
  *
