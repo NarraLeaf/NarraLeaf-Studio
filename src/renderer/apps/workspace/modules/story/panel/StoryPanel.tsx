@@ -27,7 +27,7 @@ import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
 import { useNarralangExport } from "../narralang/useNarralangExport";
-import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
+import { narralangUiEnabled } from "../narralang/narralangUi";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 import {
     isOutlineDropAllowed,
@@ -471,7 +471,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 label: t("story.script.exportStory"),
                 onClick: () => beginScriptExport({ storyId: entry.id, sceneIds: null }),
             },
-            ...(NARRALANG_UI_ENABLED
+            ...(narralangUiEnabled()
                 ? [{
                     // Beside the `.txt` export rather than in a submenu of its own: they are one
                     // feature in two formats, and the format is the only choice between them.
@@ -740,7 +740,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     }
                 },
             },
-            ...(NARRALANG_UI_ENABLED
+            ...(narralangUiEnabled()
                 ? [{
                     id: "export-scene-narralang",
                     label: t("story.narralang.exportScene"),
