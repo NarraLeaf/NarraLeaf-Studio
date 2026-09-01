@@ -3,7 +3,7 @@ import type { DevModeService } from "@/lib/workspace/services/core/DevModeServic
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryBlockId, StoryId, StorySceneId } from "@shared/types/story";
-import { getSelectedSnapshotId } from "../../story-snapshots/storySnapshotSelection";
+import { DECLARED_DEFAULTS_ENTRY, getSelectedSnapshotId } from "../../story-snapshots/storySnapshotSelection";
 
 /**
  * Which Scene Snapshot a row start carries, or `undefined` for none.
@@ -13,18 +13,19 @@ import { getSelectedSnapshotId } from "../../story-snapshots/storySnapshotSelect
  * author never opened the snapshot panel. The compiler and the running game already agree on that
  * fallback, so nothing has to be invented for it.
  *
- * The stored selection is the author's, published by the Scene Snapshot panel. It is checked against
- * the scene's current snapshots because a snapshot can be deleted while the selection remains, and a
- * launch carrying an id the scene no longer holds would silently apply no overrides at all under a
- * name the panel still shows. With nothing stored the first snapshot stands in, which is the same
- * one the panel's dropdown selects when it opens: the two read one key so that what a launch applies
- * is what the panel says it will.
+ * The selection is the author's, read from the same key the Scene Snapshot panel writes, so the
+ * panel always shows what this will do. Two selections mean no snapshot: the declared-defaults entry
+ * the list draws first, and a snapshot the scene no longer holds - which happens when the one that
+ * was selected is deleted, and which resolves to the entry the author can see rather than to some
+ * other snapshot they did not pick.
  */
 export function resolveLaunchSnapshotId(
     snapshots: readonly { id: string }[],
-    selected: string | undefined,
+    selected: string,
 ): string | undefined {
-    return selected && snapshots.some(snapshot => snapshot.id === selected) ? selected : snapshots[0]?.id;
+    return selected !== DECLARED_DEFAULTS_ENTRY && snapshots.some(snapshot => snapshot.id === selected)
+        ? selected
+        : undefined;
 }
 
 /**
@@ -53,8 +54,7 @@ export function launchStoryRowInDevMode(params: {
     const { context, storyId, sceneId, blockId } = params;
     const services = context.services;
     const snapshots = services.get<StoryService>(Services.Story).listSceneSnapshots(storyId, sceneId);
-    const panelState = services.get<PanelStateService>(Services.PanelState);
-    const selected = panelState ? getSelectedSnapshotId(panelState, storyId, sceneId) : undefined;
+    const selected = getSelectedSnapshotId(services.get<PanelStateService>(Services.PanelState), storyId, sceneId);
     void services.get<DevModeService>(Services.DevMode).launch({
         kind: "story",
         storyId,
