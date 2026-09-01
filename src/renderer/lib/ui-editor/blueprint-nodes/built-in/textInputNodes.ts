@@ -20,6 +20,7 @@ import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -29,7 +30,7 @@ const TEXT_INPUT_MAGIC_TARGET: NonNullable<BlueprintNodeDef["magicElementTarget"
     elementTypes: [TEXT_INPUT_ELEMENT_TYPE],
 };
 const TEXT_INPUT_SCOPE: BlueprintNodeDef["scope"] = {
-    ownerKinds: ["widgetMain"],
+    ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS],
     widgetElementTypes: [TEXT_INPUT_ELEMENT_TYPE],
 };
 

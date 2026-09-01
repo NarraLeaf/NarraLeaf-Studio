@@ -48,6 +48,7 @@ import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSur
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -210,7 +211,7 @@ function readNode(input: {
         isPure: true,
         pins: elementTarget ? [elementIn(input.target), ...outputs] : outputs,
         magicElementTarget: elementTarget ? { inputPinId: "element", elementTypes: [input.target.elementType] } : undefined,
-        scope: elementTarget ? undefined : { ownerKinds: ["widgetMain"], widgetElementTypes: [input.target.elementType] },
+        scope: elementTarget ? undefined : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [input.target.elementType] },
         execute: () => ({}),
     };
 }
@@ -242,7 +243,7 @@ function writeNode(input: {
             : [execIn, execNext, ...(input.pins ?? [])],
         inspectorParams: input.inspectorParams,
         magicElementTarget: elementTarget ? { inputPinId: "element", elementTypes: [input.target.elementType] } : undefined,
-        scope: elementTarget ? undefined : { ownerKinds: ["widgetMain"], widgetElementTypes: [input.target.elementType] },
+        scope: elementTarget ? undefined : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [input.target.elementType] },
         execute: input.execute,
     };
 }

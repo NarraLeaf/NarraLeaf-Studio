@@ -94,6 +94,7 @@ import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIDisplayableMotionValue } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -282,7 +283,7 @@ function displayableReadNode(input: {
         inspectorParams: input.inspectorParams,
         scope: elementTarget
             ? undefined
-            : { ownerKinds: ["widgetMain"], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
+            : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
         execute: () => ({}),
     };
 }
@@ -311,7 +312,7 @@ function displayableVariantReadNode(input: {
             : [out("variantId", "Variant", "string")],
         scope: elementTarget
             ? undefined
-            : { ownerKinds: ["widgetMain"], widgetElementTypes: [...APPEARANCE_VARIANT_WIDGET_TYPES] },
+            : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [...APPEARANCE_VARIANT_WIDGET_TYPES] },
         execute: () => ({}),
     };
 }
@@ -342,7 +343,7 @@ function displayableWriteNode(input: {
         inspectorParams: input.inspectorParams,
         scope: elementTarget
             ? undefined
-            : { ownerKinds: ["widgetMain"], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
+            : { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [...(input.elementTypes ?? DISPLAYABLE_WIDGET_TYPES)] },
         execute: input.execute,
     };
 }
@@ -364,7 +365,7 @@ function displayableAnimationControlNode(input: {
         isLatent: true,
         pins: [execIn, execNext, animationTokenIn()],
         scope: input.category === "Displayable"
-            ? { ownerKinds: ["widgetMain"], widgetElementTypes: [...DISPLAYABLE_WIDGET_TYPES] }
+            ? { ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS], widgetElementTypes: [...DISPLAYABLE_WIDGET_TYPES] }
             : undefined,
         execute: input.execute,
     };

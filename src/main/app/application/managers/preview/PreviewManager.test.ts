@@ -378,6 +378,10 @@ describe("PreviewManager.resetPlayerData", () => {
         getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
         getGlobalState: () => ({ get: () => undefined }),
         getAppInfo: () => ({ version: "0.0.0-test" }),
+        // A launch asks whether the project may run at all, and the gate refuses when it cannot
+        // find out - absence of a ledger is not permission. These cases reach `launch` only to put
+        // a session into the state they are really about, so the answer here is simply yes.
+        projectTrustManager: { isTrusted: () => true },
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
 
     /** A compile that never resolves on its own, so its session stays in "compiling" until stopped. */

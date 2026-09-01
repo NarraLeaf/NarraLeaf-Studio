@@ -334,6 +334,30 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
  * `blueprintContract(owner).invocation` instead, which is the fact the list was spelling out.
  */
 
+/**
+ * The owners of a widget's own graph: one on a surface, and one inside a component definition.
+ *
+ * A node that acts on the widget the graph belongs to - set this slider's value, animate this
+ * element, read this switch - is available in both, because both are a widget with a graph of its
+ * own. Eleven declarations used to name only the surface one, which left a component definition's
+ * graph able to hear its own click and unable to do anything to itself in response.
+ *
+ * That was a leftover rather than a rule. Component instances address their widgets through a widget
+ * address - the element id plus the instance key - and both write paths were rebuilt around it, so
+ * the same setter that drives a surface widget drives one inside a component and writes to the
+ * instance rather than to the shared definition. The runtime could do this; the palette had not been
+ * told.
+ *
+ * Deliberately *not* widened with it: nodes that address a **different** element (`Element Click`,
+ * `Element Flush`), the broadcast pair, and the keyboard heads. Those are not "this widget acting on
+ * itself", and whether a component definition should reach them is a separate question with its own
+ * answer. Page nodes stay out for a plainer reason - a component definition has no page.
+ */
+export const WIDGET_OWN_GRAPH_OWNER_KINDS: readonly BlueprintNodeScopeOwnerKind[] = [
+    "widgetMain",
+    "componentWidgetMain",
+];
+
 /** Context for palette filtering in the editor */
 /** Declared widget UI event slots from WidgetModule.logicApi.events (optional per-slot head override). */
 export type BlueprintWidgetEventCapabilityRef = {

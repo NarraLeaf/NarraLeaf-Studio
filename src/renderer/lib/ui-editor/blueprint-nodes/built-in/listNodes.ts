@@ -76,6 +76,7 @@ import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -87,7 +88,7 @@ const LIST_MAGIC_TARGET: NonNullable<BlueprintNodeDef["magicElementTarget"]> = {
 // Self nodes are available on every list-like widget's own private blueprint (including the
 // Game UI slot wrappers); Element-targeted derived nodes stay `nl.list`-only for now.
 const LIST_SCOPE: BlueprintNodeDef["scope"] = {
-    ownerKinds: ["widgetMain"],
+    ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS],
     widgetElementTypes: [...UI_LIST_LIKE_WIDGET_TYPES],
 };
 

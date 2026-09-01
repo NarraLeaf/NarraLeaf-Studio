@@ -71,6 +71,7 @@ import {
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
 import {
     componentWidgetMainOwnerKey,
+    ownerRefToIndexKey,
     surfaceMainOwnerKey,
     widgetMainOwnerKey,
     widgetValueOwnerKey,
@@ -2278,16 +2279,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!newOwner) {
                     continue;
                 }
-                let newOwnerKey: string;
-                if (newOwner.kind === "surfaceMain") {
-                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
-                } else if (newOwner.kind === "widgetMain") {
-                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
-                } else if (newOwner.kind === "widgetValue") {
-                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
-                } else {
-                    continue;
-                }
+                // The encoder, not a chain that reproduces it. Two of these had grown here, both
+                // handling exactly the three kinds `remapDuplicatedBlueprintOwner` can return - so
+                // the trailing branch was unreachable, and the format was written out in a third
+                // and fourth place that could drift from it.
+                const newOwnerKey = ownerRefToIndexKey(newOwner);
                 for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
                     const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
                     const newBlueprintId = blueprintIdMap[oldBlueprintId];
@@ -2763,16 +2759,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!newOwner) {
                     continue;
                 }
-                let newOwnerKey: string;
-                if (newOwner.kind === "surfaceMain") {
-                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
-                } else if (newOwner.kind === "widgetMain") {
-                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
-                } else if (newOwner.kind === "widgetValue") {
-                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
-                } else {
-                    continue;
-                }
+                // The encoder, not a chain that reproduces it. Two of these had grown here, both
+                // handling exactly the three kinds `remapDuplicatedBlueprintOwner` can return - so
+                // the trailing branch was unreachable, and the format was written out in a third
+                // and fourth place that could drift from it.
+                const newOwnerKey = ownerRefToIndexKey(newOwner);
                 for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
                     const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
                     const newBlueprintId = blueprintIdMap[oldBlueprintId];

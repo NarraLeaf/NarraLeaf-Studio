@@ -3619,7 +3619,9 @@ describe("built-in blueprint nodes", () => {
         expect(setVariant?.inspectorParams).toBeUndefined();
         expect(setVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
         expect(setVariant?.scope).toMatchObject({
-            ownerKinds: ["widgetMain"],
+            // Both widget owners: a component definition's graph acts on its own widget too, and
+            // writes land on the instance rather than on the definition every instance shares.
+            ownerKinds: ["widgetMain", "componentWidgetMain"],
             widgetElementTypes: ["nl.container", "nl.text", "nl.image", "nl.button"],
         });
 

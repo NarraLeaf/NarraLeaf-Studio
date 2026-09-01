@@ -25,6 +25,7 @@ import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -34,7 +35,7 @@ const SWITCH_MAGIC_TARGET: NonNullable<BlueprintNodeDef["magicElementTarget"]> =
     elementTypes: [SWITCH_ELEMENT_TYPE],
 };
 const SWITCH_SCOPE: BlueprintNodeDef["scope"] = {
-    ownerKinds: ["widgetMain"],
+    ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS],
     widgetElementTypes: [SWITCH_ELEMENT_TYPE],
 };
 

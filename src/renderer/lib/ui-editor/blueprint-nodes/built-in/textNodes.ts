@@ -42,6 +42,7 @@ import type {
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
+import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -50,7 +51,7 @@ const TEXT_ALIGN_VALUES = ["left", "center", "right"] as const;
 const TEXT_VERTICAL_ALIGN_VALUES = ["start", "center", "end"] as const;
 const TEXT_WRAP_MODE_VALUES = ["word", "character", "nowrap"] as const;
 const TEXT_SCOPE: BlueprintNodeDef["scope"] = {
-    ownerKinds: ["widgetMain"],
+    ownerKinds: [...WIDGET_OWN_GRAPH_OWNER_KINDS],
     widgetElementTypes: ["nl.text"],
 };
 
