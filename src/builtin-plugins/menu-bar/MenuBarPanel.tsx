@@ -174,6 +174,29 @@ function itemKindIcon(kind: MenuBarItemKind) {
     return null;
 }
 
+/** The preset's wording, taken from the editor's language when the author asks for it. */
+function presetLabels(tr: PluginTranslator) {
+    return {
+        fileMenu: tr.t("presetFileMenu"),
+        gameMenu: tr.t("presetGameMenu"),
+        viewMenu: tr.t("presetViewMenu"),
+        languageMenu: tr.t("presetLanguageMenu"),
+        quit: tr.t("presetQuit"),
+        next: tr.t("presetNext"),
+        autoForward: tr.t("presetAutoForward"),
+        skipping: tr.t("presetSkipping"),
+        skipRead: tr.t("presetSkipRead"),
+        skipAll: tr.t("presetSkipAll"),
+        dialog: tr.t("presetDialog"),
+        undo: tr.t("presetUndo"),
+        redo: tr.t("presetRedo"),
+        fullscreen: tr.t("presetFullscreen"),
+        windowScale: tr.t("presetWindowScale"),
+        textLanguage: tr.t("presetTextLanguage"),
+        voiceLanguage: tr.t("presetVoiceLanguage"),
+    };
+}
+
 export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarStore }) {
     const tr = useMenuBarTranslator(app);
     const [data, setData] = useState(() => store.getData());
@@ -256,7 +279,25 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                 onDrop={drag.end}
             >
                 {data.menus.length === 0
-                    ? <ui.Panel.EmptyState title={tr.t("empty")} />
+                    ? (
+                        <ui.Panel.EmptyState
+                            title={tr.t("empty")}
+                            actions={(
+                                <ui.Button
+                                    size="sm"
+                                    disabled={frozen}
+                                    onClick={() => {
+                                        const path = store.addPreset(presetLabels(tr));
+                                        setOpenMenuId(path[0] ?? null);
+                                        setOpenRowKey(null);
+                                    }}
+                                >
+                                    <Plus size={13} />
+                                    {tr.t("addPreset")}
+                                </ui.Button>
+                            )}
+                        />
+                    )
                     : (
                         <ui.Accordion
                             multiple={false}
@@ -296,7 +337,7 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                         </ui.Accordion>
                     )}
 
-                <div className="pt-2">
+                <div className="flex flex-wrap items-center gap-1 pt-2">
                     <ui.Button
                         size="sm"
                         variant="ghost"
@@ -310,6 +351,21 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                         <Plus size={13} />
                         {tr.t("addMenu")}
                     </ui.Button>
+                    {data.menus.length > 0 && (
+                        <ui.Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={frozen}
+                            onClick={() => {
+                                const path = store.addPreset(presetLabels(tr));
+                                setOpenMenuId(path[0] ?? null);
+                                setOpenRowKey(null);
+                            }}
+                        >
+                            <Plus size={13} />
+                            {tr.t("addPreset")}
+                        </ui.Button>
+                    )}
                 </div>
             </div>
         </ui.Panel.Root>

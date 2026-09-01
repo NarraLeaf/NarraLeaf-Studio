@@ -108,6 +108,24 @@ describe("buildDependencyTable", () => {
         expect(table.plugins[0].usedBy.storage).toEqual(["plugin__acme.data__prefs"]);
     });
 
+    it("records a published storage namespace as a hard dependency", () => {
+        // The case a data-only plugin lives or dies by: it contributes no node and no widget, so a
+        // soft classification drops it from every pack as "enabled but unused" and its feature
+        // silently does not exist in the built game.
+        const table = buildDependencyTable({
+            usage: [{
+                pluginId: "narraleaf.menu-bar",
+                kind: "storage",
+                id: "plugin__narraleaf.menu-bar__narraleaf.menu-bar.menu",
+                hard: true,
+            }],
+            authoritativePluginIds: [],
+            installed: [],
+            existing: undefined,
+        });
+        expect(table.plugins[0]?.hard).toBe(true);
+    });
+
     it("marks a plugin hard when it has both a node reference and storage", () => {
         const table = buildDependencyTable({
             usage: [
