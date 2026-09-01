@@ -67,6 +67,10 @@ export const uiEditor = {
         component: "Component {index}",
         inputAction: "Action {index}",
     },
+    // Names for the undo steps this panel leaves behind ("Undo move interface Title").
+    history: {
+        moveSurface: "move interface {name}",
+    },
     // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
     // interface answers the ones it wants, so the same six words are read in the library panel and
     // again in the interface's own Input section.

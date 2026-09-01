@@ -1316,12 +1316,15 @@ export const story = {
         openInspector: "インスペクタを開く",
         delete: "削除",
     },
-    // これらの削除が履歴に残す名前（「シーン 駅にて の削除を元に戻す」）。
+    // これらの変更が履歴に残す名前（「シーン 駅にて の削除を元に戻す」）。
     history: {
         deleteScene: "シーン {name} の削除",
         deleteChapter: "チャプター {name} の削除",
         deleteStory: "ストーリー {name} の削除",
         deleteAnimation: "モーション {name} の削除",
+        // チャプターの移動も並べ替えも同じドラッグ操作なので、言い方も一つにする。
+        moveScene: "シーン {name} の移動",
+        moveChapter: "チャプター {name} の移動",
     },
     keybindings: {
         find: "検索と置換",

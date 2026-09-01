@@ -1453,12 +1453,16 @@ export const story = {
         openInspector: "Open inspector",
         delete: "Delete",
     },
-    // Names for the undo steps these deletions leave behind ("Undo delete scene At the Station").
+    // Names for the undo steps these edits leave behind ("Undo delete scene At the Station").
     history: {
         deleteScene: "delete scene {name}",
         deleteChapter: "delete chapter {name}",
         deleteStory: "delete story {name}",
         deleteAnimation: "delete motion {name}",
+        // One word for both halves of a drag: changing chapters and changing position are the same
+        // gesture, and an author taking one back is not distinguishing them.
+        moveScene: "move scene {name}",
+        moveChapter: "move chapter {name}",
     },
     keybindings: {
         find: "Find and replace",

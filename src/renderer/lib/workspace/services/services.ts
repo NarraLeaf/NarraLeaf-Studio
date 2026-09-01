@@ -415,7 +415,7 @@ interface IUIDocumentService extends IService {
     }): UISurface;
     deleteSurface(surfaceId: string): void;
     renameSurface(surfaceId: string, name: string): void;
-    reorderSurfaces(orderedSurfaceIds: readonly string[]): void;
+    reorderSurfaces(orderedSurfaceIds: readonly string[], movedSurfaceId?: string): void;
     updateSurface(
         surfaceId: string,
         updater: (surface: UISurface) => void,

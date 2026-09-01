@@ -1259,12 +1259,15 @@ export const story = {
         openInspector: "打开检查器",
         delete: "删除",
     },
-    // 这几个删除留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
+    // 这几处改动留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
     history: {
         deleteScene: "删除场景 {name}",
         deleteChapter: "删除章节 {name}",
         deleteStory: "删除故事 {name}",
         deleteAnimation: "删除运动 {name}",
+        // 换章和调位置是同一个拖拽手势，撤销的人不会去分它们，所以只有一种说法。
+        moveScene: "移动场景 {name}",
+        moveChapter: "移动章节 {name}",
     },
     keybindings: {
         find: "查找和替换",

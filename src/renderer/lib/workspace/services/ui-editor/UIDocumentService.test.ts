@@ -12,6 +12,8 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { UIDocumentService } from "./UIDocumentService";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -64,6 +66,7 @@ type RecordedHistoryCall = { surfaceId: string; mergeKey?: string };
 function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
+    const projectHistory = new HistoryService();
     const historyCalls: RecordedHistoryCall[] = [];
     const historyService = {
         // Enough of the real service for the recording decision: the snapshots themselves are
@@ -155,6 +158,12 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
                 if (options.withHistory && serviceId === Services.UIEditorHistory) {
                     return historyService;
                 }
+                // The workspace-wide stack, which is a different service from the interface
+                // editor's own per-surface history above. Reordering the surface list is the one
+                // thing this service puts there.
+                if (serviceId === Services.History) {
+                    return projectHistory;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
@@ -163,7 +172,7 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls };
+    return { service, initialDocument, blueprintDocument, createGraphBlueprint, historyCalls, projectHistory };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -1761,5 +1770,82 @@ describe("UIDocumentService input model normalization", () => {
 
         expect(Object.keys(loaded.actions ?? {})).toEqual(["advance"]);
         expect(loaded.surfaces[0]!.actions).toEqual([{ actionId: "advance" }]);
+    });
+});
+
+/**
+ * Reordering the surface list is the panel's drag, and the only edit this service puts on the
+ * workspace-wide stack: it belongs to no single surface, so the editor's own per-surface history has
+ * nowhere to hold it.
+ */
+describe("UIDocumentService.reorderSurfaces", () => {
+    const names = (service: UIDocumentService) => service.getDocument().surfaces.map(surface => surface.name);
+
+    function seedPages(service: UIDocumentService) {
+        service.createSurface({ kind: "appSurface", host: "app", name: "Second" });
+        service.createSurface({ kind: "appSurface", host: "app", name: "Third" });
+    }
+
+    it("puts the surfaces in the order given", () => {
+        const { service } = createHarness();
+        seedPages(service);
+        const [main, second, third] = service.getDocument().surfaces.map(surface => surface.id);
+        const mainName = names(service)[0];
+
+        service.reorderSurfaces([third, main, second]);
+
+        expect(names(service)).toEqual(["Third", mainName, "Second"]);
+    });
+
+    it("keeps a surface the order does not name rather than dropping it", () => {
+        const { service } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+
+        // A stale order, written before "Third" existed. It states position, never deletion.
+        service.reorderSurfaces([ids[1], ids[0]]);
+
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([ids[1], ids[0], ids[2]]);
+    });
+
+    it("undoes and redoes the move on the project stack", () => {
+        const { service, projectHistory } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+        const original = [...ids];
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.reorderSurfaces([ids[2], ids[0], ids[1]], ids[2]);
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([ids[2], ids[0], ids[1]]);
+
+        expect(projectHistory.undo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual(original);
+        expect(projectHistory.redo(projectHistoryScope())).toBe(true);
+        expect(service.getDocument().surfaces.map(surface => surface.id)).toEqual([ids[2], ids[0], ids[1]]);
+    });
+
+    it("names the step after the surface that moved", () => {
+        const { service, projectHistory } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.reorderSurfaces([ids[2], ids[0], ids[1]], ids[2]);
+
+        expect(projectHistory.peekUndo(projectHistoryScope())).toEqual({
+            key: "uiEditor.history.moveSurface",
+            params: { name: "Third" },
+        });
+    });
+
+    it("records nothing when the order it is handed is the order it already has", () => {
+        const { service, projectHistory } = createHarness();
+        seedPages(service);
+        const ids = service.getDocument().surfaces.map(surface => surface.id);
+        projectHistory.clearScope(projectHistoryScope());
+
+        service.reorderSurfaces(ids, ids[0]);
+
+        expect(projectHistory.canUndo(projectHistoryScope())).toBe(false);
     });
 });

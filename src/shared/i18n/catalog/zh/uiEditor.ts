@@ -59,6 +59,10 @@ export const uiEditor = {
         component: "组件 {index}",
         inputAction: "操作 {index}",
     },
+    // 这个面板留下的撤销步骤叫什么（"撤销 移动界面 标题"）。
+    history: {
+        moveSurface: "移动界面 {name}",
+    },
     inputActions: {
         title: "输入意图",
         create: "新建意图",

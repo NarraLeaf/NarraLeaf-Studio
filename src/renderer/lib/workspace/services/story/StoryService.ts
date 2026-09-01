@@ -1119,7 +1119,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const name = this.getStoryDocument(storyId).chapters.find(c => c.id === chapterId)?.name ?? "";
         const changed = this.applyChapterDelete(storyId, chapterId);
         if (changed) {
-            this.recordStructuralDeletion(storyId, {
+            this.recordStructuralChange(storyId, {
                 key: "story.history.deleteChapter" as TranslationKey,
                 params: { name },
             }, before);
@@ -1157,9 +1157,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // chapter, which is the ordinary path's answer too - and it goes there to give it.
             const chapterIds = this.chapterOrderAfterMove(storyId, chapterId, beforeChapterId);
             if (chapterIds && this.handedToSink(storyId, { op: "reorder-chapters", chapterIds })) {
+                // No project-stack entry inside a session; see the same return in `moveScene`.
                 return true;
             }
         }
+        const before = this.captureStoryStructure(storyId);
+        const name = this.getStoryDocument(storyId).chapters.find(chapter => chapter.id === chapterId)?.name ?? "";
+        const changed = this.applyChapterMove(storyId, chapterId, beforeChapterId);
+        if (changed) {
+            this.recordStructuralChange(storyId, {
+                key: "story.history.moveChapter" as TranslationKey,
+                params: { name },
+            }, before);
+        }
+        return changed;
+    }
+
+    private applyChapterMove(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
             const from = document.chapters.findIndex(chapter => chapter.id === chapterId);
@@ -1774,7 +1788,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const name = this.getStoryDocument(storyId).scenes[sceneId]?.name ?? "";
         const changed = this.applySceneDelete(storyId, sceneId);
         if (changed) {
-            this.recordStructuralDeletion(storyId, {
+            this.recordStructuralChange(storyId, {
                 key: "story.history.deleteScene" as TranslationKey,
                 params: { name },
             }, before);
@@ -1813,9 +1827,21 @@ export class StoryService extends Service<StoryService> implements IStoryService
             chapterId: target.chapterId,
             beforeSceneId,
         })) {
+            // No project-stack entry inside a session, for `deleteChapter`'s reason: an undo there
+            // is the inverse operation, and a whole-structure snapshot restored here would put this
+            // machine's outline back over everybody else's work with nothing on screen saying so.
             return true;
         }
-        return this.applySceneMove(storyId, sceneId, target.chapterId, beforeSceneId);
+        const before = this.captureStoryStructure(storyId);
+        const name = this.getStoryDocument(storyId).scenes[sceneId]?.name ?? "";
+        const changed = this.applySceneMove(storyId, sceneId, target.chapterId, beforeSceneId);
+        if (changed) {
+            this.recordStructuralChange(storyId, {
+                key: "story.history.moveScene" as TranslationKey,
+                params: { name },
+            }, before);
+        }
+        return changed;
     }
 
     private applySceneMove(
@@ -2632,12 +2658,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /**
-     * Record a structural deletion as one undo step on the project stack.
+     * Record an edit to the outline - a deletion, or a scene or chapter changing places - as one
+     * undo step on the project stack.
+     *
+     * The project stack rather than a scene's, because none of these edits is *in* a document the
+     * author has open: they are made from the story panel, and that is where Ctrl+Z reaches from
+     * (`resolveWorkspaceUndoScope`).
      *
      * `before` is captured by the caller ahead of the mutation; `after` is taken here, so undo and
-     * redo are the same operation in opposite directions and neither has to re-derive what was lost.
+     * redo are the same operation in opposite directions and neither has to re-derive what changed.
      */
-    private recordStructuralDeletion(
+    private recordStructuralChange(
         storyId: StoryId,
         label: HistoryLabel,
         before: StoryStructureSnapshot,

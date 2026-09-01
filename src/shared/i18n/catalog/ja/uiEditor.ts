@@ -62,6 +62,10 @@ export const uiEditor = {
         component: "コンポーネント {index}",
         inputAction: "アクション {index}",
     },
+    // このパネルが履歴に残す名前（「インターフェース タイトル の移動を元に戻す」）。
+    history: {
+        moveSurface: "インターフェース {name} の移動",
+    },
     inputActions: {
         title: "入力アクション",
         create: "アクションを作成",

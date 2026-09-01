@@ -222,3 +222,104 @@ describe("StoryService structural deletions", () => {
         expect(history.canUndo(projectHistoryScope())).toBe(false);
     });
 });
+
+/**
+ * The other half of what the project stack holds for the outline: a scene or a chapter changing
+ * places. They share the deletions' snapshot, so what these prove is that they record one at all -
+ * dragging a row was the one outline edit Ctrl+Z could not take back.
+ */
+describe("StoryService outline moves", () => {
+    let harness: ReturnType<typeof createHarness>;
+
+    beforeEach(() => {
+        harness = createHarness();
+    });
+
+    it("undoes a scene moved to another chapter, back to its old chapter and place", async () => {
+        const { service, history } = harness;
+        const story = await seedStory(service, history);
+        const one = service.createChapter(story.id, "One");
+        const a = service.createScene(story.id, { chapterId: one.id, name: "A" });
+        const b = service.createScene(story.id, { chapterId: one.id, name: "B" });
+        const c = service.createScene(story.id, { chapterId: one.id, name: "C" });
+        const two = service.createChapter(story.id, "Two");
+        history.clearScope(projectHistoryScope());
+
+        expect(service.moveScene(story.id, b.id, { chapterId: two.id })).toBe(true);
+        const ids = (chapterId: string) =>
+            service.getStoryDocument(story.id).chapters.find(chapter => chapter.id === chapterId)!.sceneIds;
+        expect(ids(one.id)).toEqual([a.id, c.id]);
+        expect(ids(two.id)).toEqual([b.id]);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        // Between A and C, not appended after them.
+        expect(ids(one.id)).toEqual([a.id, b.id, c.id]);
+        expect(ids(two.id)).toEqual([]);
+    });
+
+    it("undoes a scene reordered inside its own chapter", async () => {
+        const { service, history } = harness;
+        const story = await seedStory(service, history);
+        const chapter = service.createChapter(story.id, "One");
+        const a = service.createScene(story.id, { chapterId: chapter.id, name: "A" });
+        const b = service.createScene(story.id, { chapterId: chapter.id, name: "B" });
+        const c = service.createScene(story.id, { chapterId: chapter.id, name: "C" });
+        history.clearScope(projectHistoryScope());
+
+        service.moveScene(story.id, c.id, { chapterId: chapter.id, beforeSceneId: a.id });
+        const ids = () => service.getStoryDocument(story.id).chapters[0].sceneIds;
+        expect(ids()).toEqual([c.id, a.id, b.id]);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(ids()).toEqual([a.id, b.id, c.id]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(ids()).toEqual([c.id, a.id, b.id]);
+    });
+
+    it("undoes a chapter reorder", async () => {
+        const { service, history } = harness;
+        const story = await seedStory(service, history);
+        const one = service.createChapter(story.id, "One");
+        const two = service.createChapter(story.id, "Two");
+        const three = service.createChapter(story.id, "Three");
+        history.clearScope(projectHistoryScope());
+
+        expect(service.moveChapter(story.id, three.id, one.id)).toBe(true);
+        const names = () => service.getStoryDocument(story.id).chapters.map(chapter => chapter.name);
+        expect(names()).toEqual(["Three", "One", "Two"]);
+
+        expect(history.undo(projectHistoryScope())).toBe(true);
+        expect(names()).toEqual(["One", "Two", "Three"]);
+        expect(history.redo(projectHistoryScope())).toBe(true);
+        expect(names()).toEqual(["Three", "One", "Two"]);
+        expect(two.id).not.toBe(one.id);
+    });
+
+    it("names the step after the row that moved", async () => {
+        const { service, history } = harness;
+        const story = await seedStory(service, history);
+        const chapter = service.createChapter(story.id, "One");
+        const scene = service.createScene(story.id, { chapterId: chapter.id, name: "At the Station" });
+        const other = service.createChapter(story.id, "Two");
+        history.clearScope(projectHistoryScope());
+
+        service.moveScene(story.id, scene.id, { chapterId: other.id });
+        expect(history.peekUndo(projectHistoryScope())).toEqual({
+            key: "story.history.moveScene",
+            params: { name: "At the Station" },
+        });
+    });
+
+    it("records nothing for a move that does not happen", async () => {
+        const { service, history } = harness;
+        const story = await seedStory(service, history);
+        const chapter = service.createChapter(story.id, "One");
+        history.clearScope(projectHistoryScope());
+
+        // No such scene, and no such chapter: both leave the document alone, so both must leave the
+        // stack alone as well - an undo entry for nothing costs the author a press that does nothing.
+        expect(service.moveScene(story.id, "00000000-0000-4000-8000-ffffffffffff", { chapterId: chapter.id })).toBe(false);
+        expect(service.moveChapter(story.id, "no-such-chapter", null)).toBe(false);
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+});

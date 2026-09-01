@@ -39,6 +39,9 @@ import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver
 import { registerAutoSaver } from "../autosave/SaveStatusService";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
+import type { TranslationKey } from "@shared/i18n";
+import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { UIDocumentContentRevisions } from "./uiDocumentContentRevisions";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -2088,11 +2091,34 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * order written against a document that has since gained a page is a stale statement about
      * position, never a request to delete the page it says nothing about.
      *
-     * No undo entry: the interface editor's history is per surface (`mutateDocument` records only
-     * when a caller names one), and reordering the list is not an edit to any single one of them -
-     * the same answer creating and deleting a surface already give.
+     * The undo step goes on the **project** stack rather than into the interface editor's own
+     * history, which is per surface: this is not an edit to any one surface, and it is made from the
+     * panel rather than from an editor - which is the stack Ctrl+Z reaches from there
+     * (`resolveWorkspaceUndoScope`). Two id lists is the whole entry.
+     *
+     * `movedSurfaceId` only names the step for the Edit menu. Leaving it out costs the name, never
+     * the entry.
      */
-    public reorderSurfaces(orderedSurfaceIds: readonly string[]): void {
+    public reorderSurfaces(orderedSurfaceIds: readonly string[], movedSurfaceId?: string): void {
+        const before = this.getDocument().surfaces.map(surface => surface.id);
+        const name = movedSurfaceId
+            ? this.getDocument().surfaces.find(surface => surface.id === movedSurfaceId)?.name ?? ""
+            : "";
+        this.applySurfaceOrder(orderedSurfaceIds);
+        const after = this.getDocument().surfaces.map(surface => surface.id);
+        // Nothing moved, or an operation sink took the gesture and this copy of the document has not
+        // moved yet - either way there is no step for this machine to take back.
+        if (before.length === after.length && before.every((id, index) => id === after[index])) {
+            return;
+        }
+        this.getContext().services.get<HistoryService>(Services.History).pushCommand(projectHistoryScope(), {
+            label: { key: "uiEditor.history.moveSurface" as TranslationKey, params: { name } },
+            undo: () => this.applySurfaceOrder(before),
+            redo: () => this.applySurfaceOrder(after),
+        });
+    }
+
+    private applySurfaceOrder(orderedSurfaceIds: readonly string[]): void {
         this.mutateDocument(document => {
             const remaining = new Map(document.surfaces.map(surface => [surface.id, surface]));
             const ordered: UISurface[] = [];

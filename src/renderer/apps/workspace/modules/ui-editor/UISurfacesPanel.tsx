@@ -312,7 +312,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
         const order = reorderSurfacesForDrop(documentService.getDocument().surfaces, kind, draggedId, anchorId, edge);
         if (order) {
-            documentService.reorderSurfaces(order);
+            documentService.reorderSurfaces(order, draggedId);
         }
     }, [documentService, kind]);
 
