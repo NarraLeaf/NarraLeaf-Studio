@@ -9,8 +9,9 @@
  * Four things this shape answers, each of which an earlier layout got wrong:
  *
  *  - **Levels have to be visible.** A column of indented names cannot show what the levels add up
- *    to, so the bar is drawn at the top as the player sees it - light chrome, the open menu's rows
- *    dropped underneath - and the accordion below mirrors it exactly.
+ *    to, so the bar is drawn at the top the way the player will meet it, and it is interactive: the
+ *    menu opened there is the menu opened in the list, and the row opened there is the row whose
+ *    fields open below. One notion of what is open, driven from either end.
  *  - **A row has to say what it does.** Each carries its action beside it, in the same words the
  *    action picker uses.
  *  - **One way to do each thing.** One "add row" naming the four kinds, drag for order, delete
@@ -257,7 +258,17 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
         <ui.Panel.Root>
             <ui.Panel.Header title={tr.t("title")} />
 
-            <BarPreview data={data} openMenu={openMenu} tr={tr} />
+            <BarPreview
+                data={data}
+                openMenu={openMenu}
+                openRowKey={openRowKey}
+                tr={tr}
+                onOpenMenu={menuId => {
+                    setOpenMenuId(menuId);
+                    setOpenRowKey(null);
+                }}
+                onOpenRow={setOpenRowKey}
+            />
 
             <ui.Panel.Toolbar>
                 <ui.Switch
@@ -379,48 +390,125 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
  * not a control of Studio's, and the operating systems that draw one draw it light. It follows the
  * menu opened below, so the picture and the list never describe different things.
  */
+/**
+ * The bar as the player will meet it, and the one place the author can try it.
+ *
+ * Interactive rather than a picture: clicking a menu opens it here and in the list below, clicking a
+ * row opens that row's fields, and a submenu opens its own panel - the same gestures the player will
+ * make, driving the same state the panel already had. There is no second notion of what is open.
+ *
+ * It follows the editor's theme. It once drew itself in light chrome to imitate the operating
+ * system, which put a white slab in a dark panel and read as a foreign object; what an author needs
+ * from it is the shape and the order, and those are legible in the colours everything else uses.
+ *
+ * What it simulates, and where it stops: rows keep a tick column, because that is the width a real
+ * menu reserves for the ones that carry a state; a generated list shows one muted row, because the
+ * values only exist once a game is running; and a row that is not finished is drawn faint, because
+ * the player will not be shown it at all.
+ */
 function BarPreview({
     data,
     openMenu,
+    openRowKey,
     tr,
+    onOpenMenu,
+    onOpenRow,
 }: {
     data: MenuBarDocument;
     openMenu: MenuBarMenu | null;
+    openRowKey: string | null;
     tr: PluginTranslator;
+    onOpenMenu: (menuId: string | null) => void;
+    onOpenRow: (key: string | null) => void;
 }) {
     const menus = data.enabled ? data.menus : [];
     return (
         <div className="mb-3 overflow-hidden rounded border border-edge">
-            <div className="flex flex-wrap items-center gap-2 bg-neutral-100 px-2 py-1">
+            <div className="flex flex-wrap items-center gap-1 bg-fill-subtle px-1 py-1">
                 {menus.length === 0
-                    ? <span className="text-2xs text-neutral-500">{tr.t("previewEmpty")}</span>
+                    ? <span className="px-1 text-2xs text-fg-subtle">{tr.t("previewEmpty")}</span>
                     : menus.map(menu => (
-                        <span
+                        <button
                             key={menu.id}
+                            type="button"
+                            onClick={() => onOpenMenu(menu.id === openMenu?.id ? null : menu.id)}
                             className={[
-                                "rounded px-1 text-2xs",
-                                menu.id === openMenu?.id ? "bg-neutral-300 text-neutral-900" : "text-neutral-700",
+                                "rounded px-1.5 py-0.5 text-2xs",
+                                menu.id === openMenu?.id ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill",
                             ].join(" ")}
                         >
                             {menu.label.text || tr.t("unnamed")}
-                        </span>
+                        </button>
                     ))}
             </div>
             {openMenu && openMenu.items.length > 0 && (
-                <div className="border-t border-neutral-300 bg-white px-1 py-1">
-                    {openMenu.items.map(item => (
-                        item.kind === "separator"
-                            ? <div key={item.id} className="my-1 border-t border-neutral-200" />
-                            : (
-                                <div
-                                    key={item.id}
-                                    className="flex items-center gap-2 px-2 py-0.5 text-2xs text-neutral-900"
-                                >
-                                    <span className="truncate">{itemTitle(item, tr)}</span>
-                                    {item.kind === "submenu" && <span className="ml-auto text-neutral-400">▸</span>}
-                                </div>
-                            )
-                    ))}
+                <PreviewMenu
+                    items={openMenu.items}
+                    path={[openMenu.id]}
+                    openRowKey={openRowKey}
+                    tr={tr}
+                    onOpenRow={onOpenRow}
+                />
+            )}
+        </div>
+    );
+}
+
+/** One dropped-down menu, and the flyout of whichever submenu inside it is open. */
+function PreviewMenu({
+    items,
+    path,
+    openRowKey,
+    tr,
+    onOpenRow,
+}: {
+    items: MenuBarItem[];
+    path: MenuBarPath;
+    openRowKey: string | null;
+    tr: PluginTranslator;
+    onOpenRow: (key: string | null) => void;
+}) {
+    const openChild = items.find(item => (
+        item.kind === "submenu" && openRowKey?.startsWith([...path, item.id].join("/"))
+    ));
+    return (
+        <div className="border-t border-edge bg-surface py-1">
+            {items.map(item => {
+                const rowPath = [...path, item.id];
+                const key = rowPath.join("/");
+                if (item.kind === "separator") {
+                    return <div key={item.id} className="my-1 border-t border-edge" />;
+                }
+                const complete = isMenuBarItemComplete(item);
+                return (
+                    <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onOpenRow(openRowKey === key ? null : key)}
+                        className={[
+                            "flex w-full items-center gap-2 px-2 py-0.5 text-left text-2xs",
+                            openRowKey === key ? "bg-fill text-fg" : "text-fg hover:bg-fill-subtle",
+                            complete ? "" : "opacity-40",
+                        ].join(" ")}
+                    >
+                        {/* The column a real menu reserves for a tick, empty until the game runs. */}
+                        <span className="w-3 shrink-0" />
+                        <span className={["truncate", item.kind === "dynamic" ? "italic text-fg-subtle" : ""].join(" ")}>
+                            {item.kind === "dynamic" ? tr.t("sourceHintShort") : itemTitle(item, tr)}
+                        </span>
+                        {item.kind === "submenu" && <span className="ml-auto shrink-0 text-fg-subtle">›</span>}
+                    </button>
+                );
+            })}
+            {openChild && openChild.kind === "submenu" && openChild.items.length > 0 && (
+                <div className="ml-4 border-l border-edge pl-1">
+                    <PreviewMenu
+                        items={openChild.items}
+                        path={[...path, openChild.id]}
+                        openRowKey={openRowKey}
+                        tr={tr}
+                        onOpenRow={onOpenRow}
+                    />
                 </div>
             )}
         </div>
@@ -601,9 +689,15 @@ function RowList({
     onOpenRow: (key: string | null) => void;
     drag: DragHandlers;
 }) {
-    const openHere = items.some(item => openRowKey === [...parentPath, item.id].join("/"))
-        ? [openRowKey as string]
-        : [];
+    /*
+     * Open the row that is open, or the one that contains it.
+     *
+     * The preview can open a row two levels down, and a list that only matched the exact key would
+     * fold the submenu above it shut while the preview still showed the child inside it.
+     */
+    const openHere = items
+        .map(item => [...parentPath, item.id].join("/"))
+        .filter(key => openRowKey === key || openRowKey?.startsWith(`${key}/`) === true);
     return (
         <>
             <ui.Accordion
@@ -822,7 +916,8 @@ function LabelFields({
                 control={(
                     <ui.Input
                         size="sm"
-                        className="w-40"
+                        // Narrow enough that the field's own label still fits beside it two rails in.
+                        className="w-32"
                         value={label.text}
                         disabled={frozen}
                         onChange={event => onChange({ ...label, text: event.target.value })}
