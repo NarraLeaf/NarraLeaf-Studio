@@ -167,3 +167,20 @@ export function sameOutlineDropTarget(a: StoryOutlineDropTarget, b: StoryOutline
         ? a.sceneId === b.sceneId
         : a.kind === "chapter" && b.kind === "chapter" && a.chapterId === b.chapterId;
 }
+
+/**
+ * What the outline draws while a row is in the air: the row under the pointer, and what kind of row
+ * is being carried.
+ *
+ * The second half is here rather than read from the drag state beside it because the two are
+ * separate state updates and the drag's does not always land first - see `StoryPanel`.
+ */
+export interface StoryOutlineDropHint {
+    target: StoryOutlineDropTarget;
+    dragKind: StoryOutlineDrag["kind"];
+}
+
+/** Whether a hint already says exactly what a new one would. */
+export function sameOutlineDropHint(a: StoryOutlineDropHint, b: StoryOutlineDropHint): boolean {
+    return a.dragKind === b.dragKind && sameOutlineDropTarget(a.target, b.target);
+}

@@ -8,6 +8,10 @@ export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";
 export { CONTROL_SIZE_CLASS, CONTROL_SQUARE_CLASS, CONTROL_HEIGHT_CLASS } from "./controlSize";
 export type { ControlSize } from "./controlSize";
 
+// The one drop indicator. Every reorderable list draws this and not its own line.
+export { DropIndicator } from "./DropIndicator";
+export type { DropEdge, DropIndicatorProps } from "./DropIndicator";
+
 // Accordion components
 export { Accordion, AccordionItem, NestedAccordion } from "./Accordion";
 export type { AccordionProps, AccordionItemProps, NestedAccordionProps } from "./Accordion";

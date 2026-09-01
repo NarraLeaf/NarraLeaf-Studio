@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
+import { DropIndicator } from "@/lib/components/elements/DropIndicator";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -33,8 +34,9 @@ import {
     outlineEdgeFromPointer,
     resolveChapterDrop,
     resolveSceneDrop,
-    sameOutlineDropTarget,
+    sameOutlineDropHint,
     type StoryOutlineDrag,
+    type StoryOutlineDropHint,
     type StoryOutlineDropTarget,
 } from "./storyOutlineDnd";
 
@@ -115,14 +117,20 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     /**
      * The outline drag, held twice on purpose.
      *
-     * A native drag runs a nested message loop, so the state set in `dragstart` is not there to be
-     * read by the `dragover` that has to decide whether this is a drop target at all - the ref is.
-     * The state beside it exists only to grey the row being carried, which is a render and so is
-     * allowed to arrive a frame later.
+     * A native drag runs a nested message loop, so the state set in `dragstart` is not reliably
+     * there to be read by the `dragover` that has to decide whether this is a drop target at all -
+     * the ref is, and every decision reads it. The state beside it drives what is drawn.
+     *
+     * ⚠ **The hint carries which kind of row is being dragged, rather than the drawing asking
+     * `outlineDrag` for it.** Those are two separate state updates, and the one from `dragstart`
+     * does not always land before the first `dragover` renders - which showed up as a chapter drag
+     * that highlighted nothing at all, intermittently, because the row it was over asked a value
+     * that was still null. The hint is written in `dragover` from the ref, so it cannot disagree
+     * with itself.
      */
     const outlineDragRef = useRef<StoryOutlineDrag | null>(null);
     const [outlineDrag, setOutlineDrag] = useState<StoryOutlineDrag | null>(null);
-    const [outlineDropTarget, setOutlineDropTarget] = useState<StoryOutlineDropTarget | null>(null);
+    const [outlineDropHint, setOutlineDropHint] = useState<StoryOutlineDropHint | null>(null);
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -635,7 +643,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         event.stopPropagation();
         outlineDragRef.current = drag;
         setOutlineDrag(drag);
-        setOutlineDropTarget(null);
+        setOutlineDropHint(null);
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", drag.kind === "scene" ? drag.sceneId : drag.chapterId);
     }, []);
@@ -643,7 +651,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const handleOutlineDragEnd = useCallback(() => {
         outlineDragRef.current = null;
         setOutlineDrag(null);
-        setOutlineDropTarget(null);
+        setOutlineDropHint(null);
     }, []);
 
     /**
@@ -661,7 +669,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = "move";
-        setOutlineDropTarget(current => (current && sameOutlineDropTarget(current, target) ? current : target));
+        // Also the repair for a `dragstart` whose state update has not landed: the row being carried
+        // is greyed from here on, whether or not the first update arrived.
+        setOutlineDrag(current => (current === drag ? current : drag));
+        const hint = { target, dragKind: drag.kind };
+        setOutlineDropHint(current => (current && sameOutlineDropHint(current, hint) ? current : hint));
     }, [document]);
 
     const handleOutlineDrop = useCallback((event: React.DragEvent, target: StoryOutlineDropTarget) => {
@@ -963,24 +975,17 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                 >
                                     {document.chapters.map(chapter => {
                                         const chapterRow = { kind: "chapter" as const, chapterId: chapter.id };
-                                        const chapterEdge = outlineDropTarget?.kind === "chapter" && outlineDropTarget.chapterId === chapter.id
-                                            ? outlineDropTarget.edge
+                                        const chapterHint = outlineDropHint?.target.kind === "chapter" && outlineDropHint.target.chapterId === chapter.id
+                                            ? outlineDropHint
                                             : null;
                                         // A scene dropped on a chapter header goes into that chapter,
                                         // so the header itself is what lights up; a chapter dropped
                                         // there goes above or below it, which is a line in the gap.
-                                        const takesDraggedScene = chapterEdge !== null && outlineDrag?.kind === "scene";
-                                        const chapterInsertEdge = chapterEdge !== null && outlineDrag?.kind === "chapter" ? chapterEdge : null;
+                                        const takesDraggedScene = chapterHint?.dragKind === "scene";
+                                        const chapterInsertEdge = chapterHint?.dragKind === "chapter" ? chapterHint.target.edge : null;
                                         return (
                                             <div key={chapter.id} className="relative">
-                                                {chapterInsertEdge ? (
-                                                    <div
-                                                        className={cn(
-                                                            "pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-primary",
-                                                            chapterInsertEdge === "before" ? "top-0" : "bottom-0",
-                                                        )}
-                                                    />
-                                                ) : null}
+                                                {chapterInsertEdge ? <DropIndicator edge={chapterInsertEdge} /> : null}
                                                 <AccordionItem
                                                     id={chapter.id}
                                                     level={1}
@@ -1044,8 +1049,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                             const isEntry = document.entrySceneId === scene.id;
                                                             const lineCount = buildStorySceneTextProjection(scene).lines.length;
                                                             const sceneRow = { kind: "scene" as const, sceneId: scene.id };
-                                                            const sceneEdge = outlineDropTarget?.kind === "scene" && outlineDropTarget.sceneId === scene.id
-                                                                ? outlineDropTarget.edge
+                                                            const sceneEdge = outlineDropHint?.target.kind === "scene" && outlineDropHint.target.sceneId === scene.id
+                                                                ? outlineDropHint.target.edge
                                                                 : null;
                                                             return (
                                                                 <div
@@ -1065,14 +1070,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                                     onClick={() => handleOpenScene(scene.id, scene.name)}
                                                                     onContextMenu={event => handleOpenSceneMenu(event, scene)}
                                                                 >
-                                                                    {sceneEdge ? (
-                                                                        <div
-                                                                            className={cn(
-                                                                                "pointer-events-none absolute inset-x-3 z-10 h-0.5 bg-primary",
-                                                                                sceneEdge === "before" ? "top-0" : "bottom-0",
-                                                                            )}
-                                                                        />
-                                                                    ) : null}
+                                                                    {sceneEdge ? <DropIndicator edge={sceneEdge} /> : null}
                                                                     {isEntry ? (
                                                                         <Star className="h-4 w-4 shrink-0 text-fg-muted" />
                                                                     ) : (

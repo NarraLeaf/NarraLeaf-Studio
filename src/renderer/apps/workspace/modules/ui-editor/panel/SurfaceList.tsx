@@ -6,6 +6,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { useTranslation } from "@/lib/i18n";
 import type { UseTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { DropIndicator } from "@/lib/components/elements/DropIndicator";
 
 import { formatStageMountLabel } from "./constants";
 import { LivePreviewFrame } from "./LivePreviewFrame";
@@ -125,14 +126,12 @@ const SurfaceRow = memo(
                 role="button"
                 tabIndex={0}
             >
-                {dropEdge ? (
-                    <div
-                        className={cn(
-                            "pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-primary",
-                            dropEdge === "before" ? "-top-1" : "-bottom-1",
-                        )}
-                    />
-                ) : null}
+                {/*
+                  * In the gutter between cards rather than on the card's own border, which the card
+                  * already draws: `space-y-2` leaves 8px, and a 2px line centred in it belongs to
+                  * neither card, which is what an insertion point is.
+                  */}
+                {dropEdge ? <DropIndicator edge={dropEdge} className={dropEdge === "before" ? "-top-1" : "-bottom-1"} /> : null}
                 <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-fg truncate">{surface.name}</div>
