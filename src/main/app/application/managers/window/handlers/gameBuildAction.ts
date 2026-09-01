@@ -1,10 +1,53 @@
+import path from "path";
 import { OVERLAY_FILE_EXTENSION } from "@narraleaf/bindings";
+import { GameBuildErrorCode } from "@shared/types/gameBuild";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { openPayload } from "../../build/patchPayload";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+
+/**
+ * A baseline the window holds no grant for, named so the interface can say so in its own words.
+ *
+ * The refusal has to be told apart from the folder holding no build: they are different facts with
+ * different remedies, and sharing one message would tell an author looking at their own build that
+ * it is not there. The sentence stays English for a log; the `code` is what the dialog reads.
+ */
+class BaselineNotGrantedError extends Error {
+    readonly code = GameBuildErrorCode.BaselineNotGranted;
+
+    constructor(resolved: string) {
+        super(`File system access is not allowed for patch baseline: ${resolved}`);
+    }
+}
+
+/**
+ * The build folder a patch is measured against, as a path this window is allowed to read.
+ *
+ * A baseline is deliberately not part of the project - it is a shipped build of it, sitting wherever
+ * the author keeps their releases - so there is nothing project-shaped to check it against. What
+ * makes one legitimate is that this window's author picked it, and a grant is the record of exactly
+ * that. So the picker mints one on the way out and everything that reads a baseline asks here,
+ * which is the same two-sided arrangement the project package pair uses.
+ *
+ * The tree rather than the path, because reading a payload means reading files *under* the folder -
+ * `pack.json`, `resources/app.asar`, every asset. A grant covering the folder alone would answer
+ * `isPathAllowed` yes while covering none of what is about to be read.
+ *
+ * That it is asked at all is decided by where an unchecked path ends up. A payload that looks sealed
+ * is opened by loading `bindings.node` from inside it, and loading a `.node` is `dlopen`: a renderer
+ * that can name any folder can run native code of its choosing in the main process, which is not a
+ * boundary a read check is merely tidy about.
+ */
+async function readableBaselineDir(window: AppWindow, target: string): Promise<string> {
+    const resolved = path.resolve(target);
+    if (!await window.app.storageManager.isPathTreeAllowed(window, resolved, "read")) {
+        throw new BaselineNotGrantedError(resolved);
+    }
+    return resolved;
+}
 
 export class GameBuildStartHandler extends IPCHandler<IPCEventType.gameBuildStart> {
     readonly name = IPCEventType.gameBuildStart;
@@ -90,6 +133,11 @@ export class GameBuildSelectOutputDirHandler extends IPCHandler<IPCEventType.gam
  * the dialog that started it watches it the way it watches a build - and the two
  * cannot be started at once, which is right: they compile the same project into
  * the same place.
+ *
+ * The baseline it may name is checked here rather than in the pipeline, and checked the same way
+ * the reader above checks its own. An export opens that folder with the very same reader, so the
+ * two are one hole with two entrances: guarding only the one the dialog polls while it is being
+ * typed into would leave the other reachable by the request that actually presses the button.
  */
 export class GameBuildExportPatchHandler extends IPCHandler<IPCEventType.gameBuildExportPatch> {
     readonly name = IPCEventType.gameBuildExportPatch;
@@ -100,7 +148,12 @@ export class GameBuildExportPatchHandler extends IPCHandler<IPCEventType.gameBui
         { projectPath, entry, request }: IPCEvents[IPCEventType.gameBuildExportPatch]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildExportPatch]["response"]>> {
         return this.tryUse(async () => ({
-            state: window.app.getGameBuildManager().exportPatch(projectPath, entry, request),
+            state: window.app.getGameBuildManager().exportPatch(projectPath, entry, {
+                ...request,
+                ...(request.baselineAppDir
+                    ? { baselineAppDir: await readableBaselineDir(window, request.baselineAppDir) }
+                    : {}),
+            }),
         }));
     }
 }
@@ -137,6 +190,12 @@ export class GameBuildSelectPatchFileHandler extends IPCHandler<IPCEventType.gam
  * A folder, and the one the author already has: the desktop output the packager
  * wrote. Where the payload sits inside it differs per platform, and finding it is
  * this tool's job rather than the author's - see `resolvePayloadLocation`.
+ *
+ * Picking is also what authorises the folder. Everything that goes on to read a baseline checks the
+ * window's grants ({@link readableBaselineDir}), and this is the one place a baseline can acquire
+ * one - so a path that arrives from anywhere other than an author's own picking is a path nothing
+ * downstream will open. Read, recursively, for the session: a baseline is read whole and never
+ * written, and it outlives the dialog that named it because the export reads it again later.
  */
 export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType.gameBuildSelectPatchBaseline> {
     readonly name = IPCEventType.gameBuildSelectPatchBaseline;
@@ -152,12 +211,22 @@ export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType
                 title: t("dialogs.file.title.selectPatchBaseline"),
                 buttonLabel: t("dialogs.file.button.select"),
                 properties: ["openDirectory"],
+                securityScopedBookmarks: true,
                 ...(defaultPath ? { defaultPath } : {}),
             });
             if (result.canceled || result.filePaths.length === 0) {
                 return { path: null };
             }
-            return { path: result.filePaths[0] };
+            const selected = path.resolve(result.filePaths[0]);
+            window.app.storageManager.grantFileSystemAccess(
+                window,
+                selected,
+                "read",
+                true,
+                result.bookmarks?.[0],
+                "session",
+            );
+            return { path: selected };
         });
     }
 }
@@ -172,11 +241,11 @@ export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.g
     readonly type = IPCMessageType.request;
 
     public async handle(
-        _window: AppWindow,
-        { path }: IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["data"],
+        window: AppWindow,
+        { path: target }: IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["response"]>> {
         return this.tryUse(async () => {
-            const payload = await openPayload(path);
+            const payload = await openPayload(await readableBaselineDir(window, target));
             try {
                 const pack = payload.pack;
                 return {

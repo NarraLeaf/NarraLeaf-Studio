@@ -164,6 +164,7 @@ export const build = {
                 output: "書き出し先を選択する",
                 reading: "ビルドフォルダーを読み取り中",
                 artifact: "このフォルダーにこのゲームのビルドはない",
+                artifactAccess: "「参照」でこのフォルダーを選択すると読み取れる",
                 dlcBaseline: "この DLC を追加するビルドを選択する",
                 dlcVariant: "このビルドは、この DLC の依存先バリアントではない",
             },
