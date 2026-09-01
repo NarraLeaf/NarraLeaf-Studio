@@ -57,7 +57,7 @@ type RuntimeBlueprintNodeDef = {
 
 type RuntimeWidgetRendererDef = {
   type: string;
-  render: (props: ElementRendererProps) => ReactElement | null;
+  render: (props: RuntimeWidgetRendererProps) => ReactElement | null;
 };
 ```
 
@@ -89,7 +89,7 @@ execute: async ctx => {
 注册插件 widget 元素类型的游戏侧渲染器。宿主把它并入游戏的 `ElementRendererRegistry`（与内建 `nl.*` 渲染器同一注册表），当项目的 UI 文档中出现该 widget 元素时由宿主渲染。
 
 - `type` 必须以插件 ID 为前缀，且必须在 manifest `contributes.widgets` 中声明。
-- `render` 接收与内建元素渲染器相同的 `ElementRendererProps`（element/surface/document/hostAdapter/renderChildren/renderSurface/runtimeData 等）——与 studio 侧 `UIWidgetModule.render` 的签名一致，插件可以把 render 函数放进共享模块，两个 entry 复用同一实现。
+- `render` 接收的是 `RuntimeWidgetRendererProps`，**不是**宿主传给内建渲染器的 `ElementRendererProps`。理由与节点上下文相同：宿主那份带着 `hostAdapter`，经由它可以够到存档、本地化、退出应用、正在播的混音器，而这条路径没有 manifest 声明、没有安装提示。收窄发生在注册那一刻——宿主注册表里存的从来不是插件自己那个函数，而是包好的绑定。
 - 内建类型永远优先；跨插件同名注册抛错。
 - 渲染器使用 JSX 时，构建时把 `react`、`react/jsx-runtime` 作为 external，游戏环境经 import map 提供宿主 React 实例。
 
@@ -103,6 +103,34 @@ export default defineRuntimePlugin({
   },
 });
 ```
+
+#### RuntimeWidgetRendererProps
+
+```ts
+type RuntimeWidgetRendererProps = {
+  element: UIElement;                    // 正在绘制的这个元素：它自己的 props / layout / extra
+  surface: UISurface;                    // 它所在的 Surface
+  document: UIDocument;                  // 整份界面文档
+  children?: ReactNode;                  // 已渲染好的子元素（除非自己摆放）
+  instanceKey?: string;                  // 同一份作者元素被重复绘制时的稳定后缀
+  listItemScope?: UIListItemScope | null;// 画在列表条目模板里时，这一次画的是哪一行
+  renderChildren?: (options?) => ReactNode[];
+  runtimeData?: { surfaceState?, globalState?, pageProps? };   // 只读
+  dispatchEvent?: (eventName, payload?, options?) => Promise<void>;
+  game?: RuntimePluginGame;              // 就是 setup(app) 收到的那个 app.game
+};
+```
+
+- **`document` 是数据不是权力**：游戏本来就在画它，而结构型控件没有它写不出来——查自己的 part、
+  算自己的后代，内建的 list 与 switch 就是这么做的。
+- **`dispatchEvent` 是插件 widget 通往作者蓝图的唯一一条路**，也是宿主的蓝图运行时不能干脆整个扣下的原因：
+  把一次点击翻译成 `mouseClick` 的那张表只认内建 widget 类型，插件类型不在表里，所以没有别的东西会替它
+  触发事件槽。它**绑死在正在绘制的这个元素上**（插件不能替别的元素发事件），并且默认带上这一次绘制所在的行，
+  只有要指向另一行时才传 `options`。它**每次渲染都是一个新函数**——从事件处理器里调用它，需要在 effect 里
+  用就放进 ref，别放进依赖数组。
+- **`dispatchEvent` 与 `game` 是可选的**，这样同一个 render 函数也能直接当 studio 侧 widget module 的
+  `render` 用：编辑器画布上既没有在跑的游戏，也没有可以发事件的蓝图，两者在那里确实不存在。
+  **反过来不成立**——按编辑器那份 props 写的函数当不了 runtime 渲染器，因为 `hostAdapter` 不会在那里。
 
 ### game.menu
 
