@@ -21,13 +21,18 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
-import { applyBlueprintIrConnection, createGraphNodeForPalette, isValidBlueprintIrExecConnection } from "./graphEditing";
+import {
+    applyBlueprintIrConnection,
+    countHiddenBlueprintConnectionsForNodes,
+    createGraphNodeForPalette,
+    isValidBlueprintIrExecConnection,
+} from "./graphEditing";
 
 describe("blueprint graph editing", () => {
     it("replaces an existing outgoing exec edge from the same source port", () => {
         const ir: BlueprintGraphIr = {
             nodes: {
-                source: { id: "source", type: "delay" },
+                source: { id: "source", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
                 first: { id: "first", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
                 second: { id: "second", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
             },
@@ -43,6 +48,32 @@ describe("blueprint graph editing", () => {
 
         expect(edges).toEqual([
             { from: { nodeId: "source", port: "next" }, to: { nodeId: "second", port: "in" } },
+        ]);
+    });
+
+    it("keeps an unknown node's existing connection when a new wire joins the same pin", () => {
+        // The plugin that defined this type is not loaded, so the editor cannot know the pin's real
+        // arity. A second wire onto it must not assume single-connection and drop the edge the card
+        // never rendered.
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                mystery: { id: "mystery", type: "com.example.plugin.doThing" },
+                first: { id: "first", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+                second: { id: "second", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+            },
+            edges: [{ from: { nodeId: "mystery", port: "next" }, to: { nodeId: "first", port: "in" } }],
+        };
+
+        const edges = applyBlueprintIrConnection(ir, {
+            source: "mystery",
+            sourceHandle: "next",
+            target: "second",
+            targetHandle: "in",
+        });
+
+        expect(edges).toEqual([
+            { from: { nodeId: "mystery", port: "next" }, to: { nodeId: "first", port: "in" } },
+            { from: { nodeId: "mystery", port: "next" }, to: { nodeId: "second", port: "in" } },
         ]);
     });
 
@@ -381,5 +412,27 @@ describe("blueprint graph editing", () => {
             .toEqual({
                 waitForTransition: "continue",
             });
+    });
+
+    it("counts only the connections an unknown node hides on its unshown pins", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                mystery: { id: "mystery", type: "com.example.plugin.doThing" },
+                getter: { id: "getter", type: BLUEPRINT_NODE_TYPE_LOCAL_GET },
+                setter: { id: "setter", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+            },
+            edges: [
+                // On the stub's rendered exec pins - the author can see these.
+                { from: { nodeId: "setter", port: "next" }, to: { nodeId: "mystery", port: "in" } },
+                { from: { nodeId: "mystery", port: "next" }, to: { nodeId: "setter", port: "in" } },
+                // On a data pin the stub never rendered - hidden.
+                { from: { nodeId: "getter", port: "value" }, to: { nodeId: "mystery", port: "value" } },
+            ],
+        };
+
+        expect(countHiddenBlueprintConnectionsForNodes(ir, ["mystery"])).toBe(1);
+        // An ordinary node hides nothing; the author sees all of its edges.
+        expect(countHiddenBlueprintConnectionsForNodes(ir, ["setter"])).toBe(0);
     });
 });

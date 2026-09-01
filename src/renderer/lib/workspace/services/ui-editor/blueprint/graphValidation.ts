@@ -551,6 +551,10 @@ export function validateBlueprintGraphIr(
             const outPin = ok.pins.find(p => p.id === edge.from.port && p.kind === "output");
             const inPin = itk.pins.find(p => p.id === edge.to.port && p.kind === "input");
             if (!outPin || !inPin) {
+                // Anchor on the node that is actually missing the pin. When the source lacks the
+                // output it is the from node; otherwise the target lacks the input, and blaming the
+                // from node leaves the ring on a healthy upstream neighbour - which is exactly what
+                // an unknown stub downstream produces, its real input pins gone.
                 out.push({
                     severity: "warning",
                     code: "edge.port_mismatch",
@@ -558,7 +562,12 @@ export function validateBlueprintGraphIr(
                         from: `${edge.from.nodeId}.${edge.from.port}`,
                         to: `${edge.to.nodeId}.${edge.to.port}`,
                     }),
-                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
+                    target: {
+                        kind: "node",
+                        graphKind: ctx.graphKind,
+                        graphId: ctx.graphId,
+                        nodeId: outPin ? edge.to.nodeId : edge.from.nodeId,
+                    },
                 });
             } else if (
                 !isValidBlueprintExecConnection({
@@ -632,7 +641,18 @@ export function validateBlueprintGraphIr(
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
-        if (!behaviorNodeRegistry.get(n.type)) {
+        if (!def) {
+            // The editor has no definition for this type: the plugin that contributed it is
+            // uninstalled, disabled, or failed to load. The card is a placeholder stub, so name the
+            // node here - a stub with no edges is otherwise silent, and one with edges reports only a
+            // pin mismatch that reads as a fault of its neighbours.
+            out.push({
+                severity: "warning",
+                code: "node.unknown_type",
+                message: translate("blueprint.diagnostics.node.unknownType", { node: nid, type: n.type }),
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+            });
+        } else if (!behaviorNodeRegistry.get(n.type)) {
             out.push({
                 severity: "warning",
                 code: "node.no_runtime",

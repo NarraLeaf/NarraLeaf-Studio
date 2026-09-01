@@ -43,6 +43,11 @@ export const blueprint = {
         addLayer: "Add layer",
         selectLayer: "Select a layer on the left.",
         previewUnavailable: "Preview unavailable",
+        unknownNode: "Unknown node",
+        unknownNodeDeleted: {
+            one: "Deleted the unknown node and its {count} hidden connection. Undo to restore.",
+            other: "Deleted the unknown node and its {count} hidden connections. Undo to restore.",
+        },
     },
     /**
      * A paste of nodes copied in another project.
@@ -148,6 +153,7 @@ export const blueprint = {
             contextInvalid: "Node \"{name}\" is not allowed in this {ownerKind} {graphKind} graph.{hint}",
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
+            unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
             savedVariableIdInvalid: "Node \"{node}\": pick a saved variable.",
