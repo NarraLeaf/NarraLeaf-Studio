@@ -232,7 +232,7 @@ export async function ensureZigToolchain(options: EnsureZigToolchainOptions): Pr
     log?.("info", `fetching the Zig ${ZIG_VERSION} toolchain (${release.archive})`);
 
     const stagingDir = `${finalDir}.staging-${process.pid}-${Date.now()}`;
-    const archivePath = `${stagingDir}${path.extname(release.archive)}`;
+    const archivePath = `${stagingDir}${archiveSuffix(release.archive)}`;
     try {
         await fs.mkdir(path.dirname(finalDir), { recursive: true });
         await fs.writeFile(archivePath, await downloadArchive(outcome.url, url, release));
@@ -304,6 +304,19 @@ async function downloadArchive(url: string, declaredUrl: string, release: ZigRel
 }
 
 /**
+ * The whole suffix an archive is stored under, `.tar.xz` rather than the `.xz` `path.extname` sees.
+ *
+ * It has to be the whole one. 7-Zip names what it unwraps after the archive with its last extension
+ * removed, so an archive staged as `foo.xz` decompresses to a file called `foo` with no `.tar` on it
+ * at all, and the tar step below then has nothing to find. Every host but Windows publishes Zig as a
+ * `.tar.xz`, which made this the difference between the toolchain installing and never installing on
+ * macOS and Linux - and invisible on Windows, whose archive is a plain `.zip`.
+ */
+export function archiveSuffix(name: string): string {
+    return name.endsWith(".tar.xz") ? ".tar.xz" : path.extname(name);
+}
+
+/**
  * Unpack the archive into `into`, whichever of the two published formats it is.
  *
  * Both go through the bundled 7za rather than a host `tar` or `unzip`: it is the extractor this
@@ -320,7 +333,11 @@ async function extractArchive(archivePath: string, into: string): Promise<void> 
     const unpackedTarDir = `${into}.tar-stage`;
     try {
         await execFileAsync(path7za, ["x", "-bd", "-y", `-o${unpackedTarDir}`, archivePath], { maxBuffer: MAX_7ZA_OUTPUT });
-        const tarName = (await fs.readdir(unpackedTarDir)).find(name => name.endsWith(".tar"));
+        const unpacked = await fs.readdir(unpackedTarDir);
+        // The name second, the count first: what comes out is whatever 7-Zip decided to call the
+        // stream inside, and one file in a directory this function created is that stream whatever
+        // its name. Matching on `.tar` alone is what broke here once already.
+        const tarName = unpacked.length === 1 ? unpacked[0] : unpacked.find(name => name.endsWith(".tar"));
         if (!tarName) {
             throw new Error(`${path.basename(archivePath)} did not decompress to a tar archive`);
         }
