@@ -3576,9 +3576,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The `skipReadText` preference cannot be honoured from outside the engine's own skip
             // loop, so the game app runs its own; see the effect that builds `skipRunController`.
             hostOwnsSkipKey: true,
-            // The author's pause length, from the bundle. A bundle written before the setting
+            // The author's pacing values, from the bundle. A bundle written before a setting
             // carries nothing and gets the engine's own value, which is what those builds shipped.
-            ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
+            ...(bundle.dialogue ? {
+                autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause,
+                textRevealDuration: bundle.dialogue.textRevealDuration,
+            } : {}),
             ...(bundle.preload ? { preloadGate: preloadGateFor(bundle.preload.behavior) } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.

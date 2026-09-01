@@ -511,6 +511,7 @@ export const documentDiff = {
         voiceChoices: "選択肢のボイス",
         dialogue: "ダイアログ",
         dialogueAutoForwardPause: "自動送り中の間の長さ",
+        dialogueTextReveal: "新しい文字のフェード時間",
         preferences: "プレイヤー設定の初期値",
         prefTextSpeed: "文字表示の速さ",
         prefGameSpeed: "ゲームの速さ",
