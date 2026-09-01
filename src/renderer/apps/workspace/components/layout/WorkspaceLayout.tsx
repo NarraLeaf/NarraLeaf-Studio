@@ -69,6 +69,7 @@ import {
     type DockEnv,
 } from "./dockLayoutModel";
 import { DEFAULT_COLLAPSED_PANEL_IDS } from "./sidebarPanelGroup";
+import { firstDrawablePanelId, resolveActivePanelId, type DockPanelAvailability } from "./dockActivePanel";
 import { VersionRail } from "./VersionRail";
 import { resolveVersionRailPresence, versionRailWidth } from "./versionRailModel";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
@@ -112,6 +113,14 @@ const ORDER_SETTINGS_KEY_BY_POSITION: Record<PanelPosition, string> = {
     [PanelPosition.Bottom]: SETTINGS_KEYS.BOTTOM_PANEL_ORDER,
 };
 
+/**
+ * Panels that no build of Studio has any more, whose stored selection is cleared on load.
+ *
+ * Distinct from an id that merely names nothing in THIS window - a plugin that is not installed
+ * here, or has not finished loading yet - which `resolveActivePanelId` answers at render without
+ * writing anything (see `dockActivePanel`). These ids are dead in every window, for every project
+ * and for good, so clearing them from an app-wide store loses nobody anything.
+ */
 const REMOVED_PANEL_IDS = new Set(["narraleaf-studio:running-tasks"]);
 
 /** The dock toggles this layout publishes; a private id, since the group declares its own slot. */
@@ -134,7 +143,15 @@ function normalizeStoredPanelId(panelId: string | null | undefined): string | nu
  * - Main editor area with tabs and split support
  */
 export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
-    const { getPanelsByPosition, registerActionGroup, unregisterActionGroup } = useRegistry();
+    const {
+        getPanelsByPosition,
+        // The rail state each dock's shown panel is resolved against, read reactively so a panel
+        // registering (a plugin finishing its load) re-renders the docks that were waiting for it.
+        visiblePanels,
+        collapsedPanels: collapsedPanelIds,
+        registerActionGroup,
+        unregisterActionGroup,
+    } = useRegistry();
     const { context, recovery } = useWorkspace();
     // Only whether one is up, for the title bar's menus; `DialogContainer` is what draws them.
     const dialogs = useDialogs();
@@ -288,10 +305,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     /**
      * A recovery window opens on the recovery panel.
      *
-     * The restored layout is about a project this window is not showing: it names the panel the
-     * author last had open, and in this mode that panel is usually not registered at all, so the
-     * sidebar restores to nothing and the one thing worth reading is behind an icon nobody has a
-     * reason to click. Runs once settings have loaded so it wins over them, and writes nothing back.
+     * The restored layout is about a project this window is not showing, and in this mode the panel
+     * it names is usually not registered at all - a case `resolveActivePanelId` already answers, by
+     * showing whatever this window does have. What that cannot know is which panel is worth
+     * reading: it is the recovery panel, and left to the general rule it would sit behind an icon
+     * nobody has a reason to click. So this names it, once settings have loaded so it wins over
+     * them, and writes nothing back.
      */
     useEffect(() => {
         if (!recovery || !settingsLoaded) {
@@ -313,13 +332,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         activeBottomPanelIdRef.current = activeBottomPanelId;
     }, [activeBottomPanelId]);
 
-    useEffect(() => {
-        leftSidebarVisibleRef.current = leftSidebarVisible;
-    }, [leftSidebarVisible]);
-
-    useEffect(() => {
-        rightSidebarVisibleRef.current = rightSidebarVisible;
-    }, [rightSidebarVisible]);
+    // The sidebar visibility mirrors are written where the dock's rendered openness is worked out
+    // (below), not from this state: a sidebar asked for but with no panel to put in it takes no
+    // width, and a drag bounded as though it did would let the other one over the editor's floor.
 
     // Load saved state on mount
     useEffect(() => {
@@ -445,12 +460,43 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const railWidth = versionRailWidth(railPresence);
     versionRailWidthRef.current = railWidth;
 
+    /**
+     * What each dock actually shows, resolved against the panels this window has registered.
+     *
+     * The stored selection outlives the panel it names: it is kept in an app-wide store, while the
+     * panel set is whatever this window happens to have registered - so a plugin that is not
+     * installed here, or has not finished loading yet, leaves an id behind that nothing can draw.
+     * `dockActivePanel` decides what to show for it and writes nothing back; see there for why the
+     * repair must stay out of the store.
+     *
+     * Everything below reads these rather than the stored ids: the rail (so the icon that is lit is
+     * the panel on screen), the cells (so one is never drawn around nothing), the toggles, and the
+     * sizing solver - a dock that draws nothing must not reserve a column either.
+     */
+    const availability = (position: PanelPosition): DockPanelAvailability => ({
+        visibility: visiblePanels,
+        collapsed: collapsedPanelIds[position],
+    });
+    const shownLeftPanelId = resolveActivePanelId(
+        activeLeftPanelId, getPanelsByPosition(PanelPosition.Left), availability(PanelPosition.Left));
+    const shownRightPanelId = resolveActivePanelId(
+        activeRightPanelId, getPanelsByPosition(PanelPosition.Right), availability(PanelPosition.Right));
+    const shownBottomPanelId = resolveActivePanelId(
+        activeBottomPanelId, getPanelsByPosition(PanelPosition.Bottom), availability(PanelPosition.Bottom));
+    // Whether each dock is a region on screen at all: asked for AND with a panel to put in it.
+    const leftDockOpen = leftSidebarVisible && shownLeftPanelId !== null;
+    const rightDockOpen = rightSidebarVisible && shownRightPanelId !== null;
+    const bottomDockOpen = bottomPanelVisible && shownBottomPanelId !== null;
+    // Mirrored for the resize handlers, which read them synchronously mid-drag.
+    leftSidebarVisibleRef.current = leftDockOpen;
+    rightSidebarVisibleRef.current = rightDockOpen;
+
     // Live environment for the sizing solver, rebuilt from the current viewport + visibility.
     const dockEnv: DockEnv = {
         windowWidth: viewport.width,
         windowHeight: viewport.height,
-        leftVisible: leftSidebarVisible,
-        rightVisible: rightSidebarVisible,
+        leftVisible: leftDockOpen,
+        rightVisible: rightDockOpen,
         versionRailWidth: railWidth,
     };
 
@@ -503,46 +549,42 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // The first panel that would actually show in a dock's rail: not hidden, not folded into the
     // collapse group, and not a (bodyless) rail action — so opening a sidebar with no active panel
-    // never lands on a hidden, folded-away or empty one.
-    const firstVisiblePanelId = (position: PanelPosition): string | null => {
-        const store = context?.services.get<UIService>(Services.UI).getStore();
-        const visibility = store?.getPanelVisibility() ?? {};
-        const collapsed = store?.getCollapsedPanels()[position] ?? [];
-        const first = getPanelsByPosition(position).find(
-            panel => !panel.railAction && visibility[panel.id] !== false && !collapsed.includes(panel.id),
-        );
-        return first?.id ?? null;
-    };
+    // never lands on a hidden, folded-away or empty one. The same rule `dockActivePanel` falls back
+    // to, from the same module, so the panel a dock opens onto and the one it recovers to agree.
+    const firstVisiblePanelId = (position: PanelPosition): string | null =>
+        firstDrawablePanelId(getPanelsByPosition(position), availability(position));
 
-    // Enhanced toggle functions that auto-select first panel if none is active
+    // Enhanced toggle functions that auto-select first panel if none is active. They turn on what
+    // the author can see — a dock asked for but drawing nothing is closed as far as they are
+    // concerned, and the press that ought to open it must not spend itself closing it instead.
     const toggleLeftSidebar = () => {
-        if (!leftSidebarVisible && !activeLeftPanelId) {
+        if (!leftDockOpen && !shownLeftPanelId) {
             const firstId = firstVisiblePanelId(PanelPosition.Left);
             if (firstId) {
                 setActiveLeftPanelId(firstId);
             }
         }
-        setLeftSidebarVisible(!leftSidebarVisible);
+        setLeftSidebarVisible(!leftDockOpen);
     };
 
     const toggleRightSidebar = () => {
-        if (!rightSidebarVisible && !activeRightPanelId) {
+        if (!rightDockOpen && !shownRightPanelId) {
             const firstId = firstVisiblePanelId(PanelPosition.Right);
             if (firstId) {
                 setActiveRightPanelId(firstId);
             }
         }
-        setRightSidebarVisible(!rightSidebarVisible);
+        setRightSidebarVisible(!rightDockOpen);
     };
 
     const toggleBottomPanel = () => {
-        if (!bottomPanelVisible && !activeBottomPanelId) {
+        if (!bottomDockOpen && !shownBottomPanelId) {
             const firstId = firstVisiblePanelId(PanelPosition.Bottom);
             if (firstId) {
                 setActiveBottomPanelId(firstId);
             }
         }
-        setBottomPanelVisible(!bottomPanelVisible);
+        setBottomPanelVisible(!bottomDockOpen);
     };
 
     // The toggles close over render-scoped state, so the menu calls them through refs rather
@@ -561,21 +603,21 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 // The same three glyphs the ControlBar buttons wear, so the palette row and the
                 // button that does the same thing are recognisably one control.
                 icon: <PanelLeft className="w-4 h-4" />,
-                checked: leftSidebarVisible,
+                checked: leftDockOpen,
                 run: () => panelTogglesRef.current.toggleLeftSidebar(),
             },
             {
                 id: WorkspaceMenuAction.ToggleBottomPanel,
                 labelKey: "menu.window.bottomPanel" as const,
                 icon: <PanelBottom className="w-4 h-4" />,
-                checked: bottomPanelVisible,
+                checked: bottomDockOpen,
                 run: () => panelTogglesRef.current.toggleBottomPanel(),
             },
             {
                 id: WorkspaceMenuAction.ToggleRightSidebar,
                 labelKey: "menu.window.rightSidebar" as const,
                 icon: <PanelRight className="w-4 h-4" />,
-                checked: rightSidebarVisible,
+                checked: rightDockOpen,
                 run: () => panelTogglesRef.current.toggleRightSidebar(),
             },
         ];
@@ -618,7 +660,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 unregisterActionGroup(PANEL_TOGGLES_GROUP_ID);
             }
         };
-    }, [t, context, leftSidebarVisible, bottomPanelVisible, rightSidebarVisible, registerActionGroup, unregisterActionGroup]);
+    }, [t, context, leftDockOpen, bottomDockOpen, rightDockOpen, registerActionGroup, unregisterActionGroup]);
 
     /**
      * The dock toggles, by key.
@@ -871,9 +913,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                                 session outlives every tab. */}
                             <LiveSessionPresence />
                             <ControlBar
-                                leftSidebarVisible={leftSidebarVisible}
-                                rightSidebarVisible={rightSidebarVisible}
-                                bottomPanelVisible={bottomPanelVisible}
+                                leftSidebarVisible={leftDockOpen}
+                                rightSidebarVisible={rightDockOpen}
+                                bottomPanelVisible={bottomDockOpen}
                                 onToggleLeftSidebar={toggleLeftSidebar}
                                 onToggleRightSidebar={toggleRightSidebar}
                                 onToggleBottomPanel={toggleBottomPanel}
@@ -899,9 +941,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                     {/* Left Sidebar Selector */}
                     <LeftSidebarSelector
-                        visible={leftSidebarVisible}
-                        activeId={activeLeftPanelId}
-                        onToggleVisibility={() => setLeftSidebarVisible(!leftSidebarVisible)}
+                        visible={leftDockOpen}
+                        activeId={shownLeftPanelId}
+                        onToggleVisibility={() => setLeftSidebarVisible(!leftDockOpen)}
                         onSelectPanel={setActiveLeftPanelId}
                     />
 
@@ -909,11 +951,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         hides the panel without unmounting it, so anything the panel portalled to the
                         body would stay on screen; `HostVisibility` is what tells those layers. */}
                     <div 
-                        className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
+                        className={leftDockOpen ? "flex" : "hidden"}
                     >
-                        <HostVisibility visible={!!(leftSidebarVisible && activeLeftPanelId)}>
+                        <HostVisibility visible={leftDockOpen}>
                             <LeftSidebar
-                                panelId={activeLeftPanelId || ""}
+                                panelId={shownLeftPanelId || ""}
                                 onClose={() => setLeftSidebarVisible(false)}
                                 width={effective.left}
                             />
@@ -938,13 +980,13 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                         {/* Bottom Panel - Always rendered, controlled by CSS visibility. shrink-0 keeps
                             its height so the editor above yields space instead of the panel collapsing. */}
                         <div
-                            className={bottomPanelVisible && activeBottomPanelId ? "shrink-0" : "hidden"}
-                            style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
+                            className={bottomDockOpen ? "shrink-0" : "hidden"}
+                            style={{ height: bottomDockOpen ? `${effective.bottom}px` : 0 }}
                         >
                             <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
-                            <HostVisibility visible={!!(bottomPanelVisible && activeBottomPanelId)}>
+                            <HostVisibility visible={bottomDockOpen}>
                                 <BottomPanel
-                                    panelId={activeBottomPanelId || ""}
+                                    panelId={shownBottomPanelId || ""}
                                     onClose={() => setBottomPanelVisible(false)}
                                     height={effective.bottom}
                                 />
@@ -954,12 +996,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                     {/* Right Sidebar - Always rendered, controlled by CSS visibility */}
                     <div 
-                        className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
+                        className={rightDockOpen ? "flex" : "hidden"}
                     >
                         <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
-                        <HostVisibility visible={!!(rightSidebarVisible && activeRightPanelId)}>
+                        <HostVisibility visible={rightDockOpen}>
                             <RightSidebar
-                                panelId={activeRightPanelId || ""}
+                                panelId={shownRightPanelId || ""}
                                 onClose={() => setRightSidebarVisible(false)}
                                 width={effective.right}
                             />
@@ -968,9 +1010,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
                     {/* Right Sidebar Selector */}
                     <RightSidebarSelector
-                        visible={rightSidebarVisible}
-                        activeId={activeRightPanelId}
-                        onToggleVisibility={() => setRightSidebarVisible(!rightSidebarVisible)}
+                        visible={rightDockOpen}
+                        activeId={shownRightPanelId}
+                        onToggleVisibility={() => setRightSidebarVisible(!rightDockOpen)}
                         onSelectPanel={setActiveRightPanelId}
                     />
                 </div>
@@ -987,9 +1029,9 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     version rail is a column of its own and does not adopt them. */}
                 <div className="absolute" style={{ bottom: statusBarHeight, left: railColumnOffsets(dockEnv).sidebarRail }}>
                     <BottomPanelSelector
-                        visible={bottomPanelVisible}
-                        activeId={activeBottomPanelId}
-                        onToggleVisibility={() => setBottomPanelVisible(!bottomPanelVisible)}
+                        visible={bottomDockOpen}
+                        activeId={shownBottomPanelId}
+                        onToggleVisibility={() => setBottomPanelVisible(!bottomDockOpen)}
                         onSelectPanel={setActiveBottomPanelId}
                         onActivatePanelForDrop={activateBottomPanelForDrop}
                     />
