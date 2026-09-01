@@ -26,7 +26,6 @@ import {
     List,
     Minus,
     Plus,
-    Square,
     Trash2,
 } from "lucide-react";
 import { ui, type PluginApp, type PluginTranslator } from "narraleaf-studio/plugin";
@@ -92,6 +91,13 @@ function actionFromValue(value: string): GameMenuAction {
     }
 }
 
+/**
+ * An icon only for the kinds that are not the ordinary case.
+ *
+ * A plain action row gets none: the first version drew a small square there and it read as an
+ * unticked checkbox - a control the reader expects to be able to click, on a row where clicking
+ * selects rather than toggles.
+ */
 function itemKindIcon(kind: MenuBarItemKind) {
     if (kind === "separator") {
         return <Minus size={12} />;
@@ -102,7 +108,7 @@ function itemKindIcon(kind: MenuBarItemKind) {
     if (kind === "submenu") {
         return <CornerDownRight size={12} />;
     }
-    return <Square size={12} />;
+    return null;
 }
 
 export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarStore }) {
@@ -144,6 +150,13 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                 </div>
             </ui.Panel.Toolbar>
 
+            {/*
+              * One scroller for the tree and the selected row together.
+              *
+              * Not a tall tree with the inspector pinned under it: a menu is a short list, and
+              * pinning left the row being edited at the far bottom of the panel with a hand's
+              * width of nothing between it and the tree it belongs to.
+              */}
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {menuCount === 0
                     ? (
@@ -191,19 +204,18 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                             ))}
                         </div>
                     )}
+                {selected && (
+                    <Inspector
+                        app={app}
+                        store={store}
+                        tr={tr}
+                        path={selected}
+                        frozen={frozen}
+                        onRemoved={() => setSelected(null)}
+                        onSelect={setSelected}
+                    />
+                )}
             </div>
-
-            {selected && (
-                <Inspector
-                    app={app}
-                    store={store}
-                    tr={tr}
-                    path={selected}
-                    frozen={frozen}
-                    onRemoved={() => setSelected(null)}
-                    onSelect={setSelected}
-                />
-            )}
         </ui.Panel.Root>
     );
 }
@@ -234,7 +246,8 @@ function TreeRow({
             ].join(" ")}
             style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
-            {icon && <span className="shrink-0 text-fg-subtle">{icon}</span>}
+            {/* A fixed slot either way, so labels line up whether or not the row has an icon. */}
+            <span className="w-3 shrink-0 text-fg-subtle">{icon}</span>
             <span className={["min-w-0 flex-1 truncate", complete ? "" : "italic text-fg-subtle"].join(" ")}>
                 {label}
             </span>
