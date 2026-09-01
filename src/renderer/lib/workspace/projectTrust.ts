@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import { PROJECT_DISTRUSTED_REASON } from "@shared/types/projectTrust";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 /**
  * Whether the project this window is open on may cause effects, as far as the renderer knows.
@@ -43,12 +44,18 @@ const answers = new Map<string, Promise<boolean>>();
  * session; see the note on memoization above.
  */
 export function isProjectTrusted(projectPath: string): Promise<boolean> {
-    const existing = answers.get(projectPath);
+    // Keyed by the same identity main files the record under, because callers do not spell the path
+    // the same way: some pass `project.resolve()`, which `join` has normalized, and some pass
+    // `getConfig().projectPath`, which is whatever was stored. Both name one project and main
+    // answers both identically - so without this they are two entries, two round trips, and a memo
+    // that looks like it is working while missing half its reads.
+    const key = normalizeProjectPath(projectPath);
+    const existing = answers.get(key);
     if (existing) {
         return existing;
     }
-    const pending = askMain(projectPath);
-    answers.set(projectPath, pending);
+    const pending = askMain(projectPath, key);
+    answers.set(key, pending);
     return pending;
 }
 
@@ -57,9 +64,14 @@ export function isProjectTrusted(projectPath: string): Promise<boolean> {
  *
  * The `delete` sits after an await, so it can only run once the caller above has stored this
  * promise - a failure therefore leaves the map empty rather than racing the store and leaving the
- * unanswered attempt behind for every later caller to read.
+ * unanswered attempt behind for every later caller to read. It removes the caller's key rather
+ * than re-deriving one, so the two can never drift apart.
+ *
+ * The path goes to main as the caller spelled it. Main files trust records under its own identity
+ * rule and applies it on the way in; sending the renderer's canonical form instead would mean two
+ * normalizers had to agree forever, and would hide it on the day they stopped.
  */
-async function askMain(projectPath: string): Promise<boolean> {
+async function askMain(projectPath: string, key: string): Promise<boolean> {
     try {
         const result = await getInterface().projectTrust.query(projectPath);
         if (result.success) {
@@ -71,7 +83,7 @@ async function askMain(projectPath: string): Promise<boolean> {
         // Falls through to the same place an unsuccessful result does: neither is an answer, and
         // the two are indistinguishable to a caller anyway.
     }
-    answers.delete(projectPath);
+    answers.delete(key);
     return false;
 }
 

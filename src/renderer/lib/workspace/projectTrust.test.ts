@@ -90,4 +90,23 @@ describe("renderer project trust", () => {
         expect([a, b]).toEqual([true, true]);
         expect(query).toHaveBeenCalledTimes(1);
     });
+    it("treats two spellings of one project path as one project", () => {
+        // Call sites do not agree on how to spell the path: some pass `project.resolve()`, which
+        // `join` has already normalized, and some pass the stored `getConfig().projectPath`. Both
+        // name one project and main answers both the same, so a memo that told them apart would be
+        // two round trips and a cache that looked like it was working.
+        //
+        // The trailing separator is the case worth asserting here: it is stripped on every
+        // platform, so this says something true wherever it runs. Which separator and which case
+        // fold into which is `projectPathIdentity`'s own question, decided by the host and tested
+        // where it is answered.
+        query.mockResolvedValue({ success: true, data: { trusted: false, record: null } });
+
+        return Promise.all([
+            expect(isProjectTrusted("D:/games/theirs")).resolves.toBe(false),
+            expect(isProjectTrusted("D:/games/theirs/")).resolves.toBe(false),
+        ]).then(() => {
+            expect(query).toHaveBeenCalledOnce();
+        });
+    });
 });
