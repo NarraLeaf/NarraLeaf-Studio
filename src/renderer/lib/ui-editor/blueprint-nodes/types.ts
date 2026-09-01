@@ -380,6 +380,13 @@ export type BlueprintNodeEditorCatalogEntry = {
     graphKinds: BlueprintGraphKind[];
     role?: BlueprintNodeRole;
     scope?: BlueprintNodeScope;
+    /**
+     * True when the node type is not in the editor registry: the plugin that contributed it is
+     * uninstalled, disabled, or failed to load. The entry is then a placeholder stub - the pins are
+     * a generic exec pair, not the node's real shape - so the card must be drawn as unmistakably
+     * unknown and its wiring left alone. See {@link BlueprintNodeDefinitionsRegistry.resolveCatalogEntry}.
+     */
+    unknown?: boolean;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
     /** True on the save nodes: the card offers the editor for the project's save fields. */

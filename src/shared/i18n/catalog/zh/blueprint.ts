@@ -44,6 +44,11 @@ export const blueprint = {
         addLayer: "添加图层",
         selectLayer: "在左侧选择一个图层",
         previewUnavailable: "预览不可用",
+        unknownNode: "未知节点",
+        unknownNodeDeleted: {
+            one: "已删除该未知节点及其 {count} 个未显示的连接，撤销可恢复",
+            other: "已删除该未知节点及其 {count} 个未显示的连接，撤销可恢复",
+        },
     },
     crossProject: {
         pasted: {
@@ -142,6 +147,7 @@ export const blueprint = {
             contextInvalid: "节点“{name}”不允许出现在此 {ownerKind} {graphKind} 图中：{hint}",
             contextValueReturnHint: "返回值仅属于蓝图值图",
             noRuntime: "节点“{node}”：类型“{type}”没有运行时",
+            unknownType: "节点“{node}”：未知类型“{type}”，其插件可能已卸载或停用",
             variableIdInvalid: "节点“{node}”：选择变量",
             persistentVariableIdInvalid: "节点“{node}”：选择持久化变量",
             savedVariableIdInvalid: "节点“{node}”：选择存档变量",

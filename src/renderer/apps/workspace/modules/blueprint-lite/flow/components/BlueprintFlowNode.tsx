@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
@@ -2545,6 +2545,10 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     // somewhere else, which is exactly what reading a Memo is.
     const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
+    // A node whose type the editor does not have: the pins on this card are a placeholder pair, not
+    // the node's real shape, so it wears a dashed warning frame and names itself unknown instead of
+    // passing for an ordinary card. See `resolveCatalogEntry` in BlueprintNodeRegistry.
+    const isUnknown = Boolean(catalog.unknown);
     // Errors first, then warnings. A warning is still something the graph is telling the author -
     // a node with no runtime behind it will not run - and a messages list that says so while the
     // card it names looks like every other card is state that never reached the picture.
@@ -2751,13 +2755,15 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
                 isEventHead || isVarDeclare ? "border-l-2" : ""
             } ${isTerminalNode ? "border-r-2" : ""} ${
-                nodeIssue
-                    ? nodeIssueRingClass(nodeIssue)
-                    : selected
-                      ? isMemo
-                          ? "border-binding/80 ring-1 ring-binding/40"
-                          : "border-primary/80 ring-1 ring-primary/40"
-                      : "border-edge"
+                isUnknown
+                    ? "border-dashed border-warning/80 ring-1 ring-warning/35"
+                    : nodeIssue
+                      ? nodeIssueRingClass(nodeIssue)
+                      : selected
+                        ? isMemo
+                            ? "border-binding/80 ring-1 ring-binding/40"
+                            : "border-primary/80 ring-1 ring-primary/40"
+                        : "border-edge"
             } ${!nodeIssue && isEventHead ? "border-l-primary/70" : ""} ${
                 !nodeIssue && isVarDeclare ? "border-l-amber-500/80" : ""
             } ${!nodeIssue && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
@@ -2767,10 +2773,21 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">
-                <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                {isUnknown ? (
+                    <div className="flex items-center gap-1 text-2xs font-medium tracking-wide text-warning">
+                        <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+                        <span>{t("blueprint.canvas.unknownNode")}</span>
+                    </div>
+                ) : (
+                    <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
+                )}
                 <div className="flex items-center gap-1.5">
-                    <div className="min-w-0 flex-1 font-medium leading-tight text-fg">
-                        {resolveBlueprintNodeTitle(catalog.displayName, t)}
+                    <div
+                        className={`min-w-0 flex-1 leading-tight ${
+                            isUnknown ? "truncate font-mono text-2xs text-fg-muted" : "font-medium text-fg"
+                        }`}
+                    >
+                        {isUnknown ? catalog.type : resolveBlueprintNodeTitle(catalog.displayName, t)}
                     </div>
                     {claimedBy === null ? null : <UINodeClaimMark account={claimedBy} />}
                 </div>

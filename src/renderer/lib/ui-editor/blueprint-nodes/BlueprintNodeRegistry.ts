@@ -345,11 +345,16 @@ class BlueprintNodeDefinitionsRegistry {
             return this.toCatalogEntry(def);
         }
         const runtime = behaviorNodeRegistry.get(type);
+        // No definition for this type: the plugin that contributed it is uninstalled, disabled, or
+        // failed to load. The pins here are a placeholder exec pair, NOT the node's real shape, so
+        // `unknown` is flagged for the card to draw it unmistakably and for the graph to leave its
+        // wiring alone rather than treat a stub pin set as the truth.
         return {
             type,
             category: "Other",
             displayName: runtime?.displayName ?? type,
             isPure: false,
+            unknown: true,
             graphKinds: ["event", "function", "macro"],
             pins: [
                 { id: "in", kind: "input", semantic: "exec", label: "In" },

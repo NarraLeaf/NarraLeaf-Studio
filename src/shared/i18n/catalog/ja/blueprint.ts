@@ -45,6 +45,11 @@ export const blueprint = {
         addLayer: "レイヤーを追加",
         selectLayer: "左でレイヤーを選ぶ",
         previewUnavailable: "プレビューを出せない",
+        unknownNode: "不明なノード",
+        unknownNodeDeleted: {
+            one: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
+            other: "不明なノードと、表示されていなかった {count} 件の接続を削除した。取り消しで戻せる",
+        },
     },
     crossProject: {
         pasted: {
@@ -142,6 +147,7 @@ export const blueprint = {
             contextInvalid: "ノード「{name}」は、この {ownerKind} の {graphKind} グラフでは使えない。{hint}",
             contextValueReturnHint: " 値を返すノードはブループリント値のグラフにしか置けない",
             noRuntime: "ノード「{node}」：型「{type}」に対応する実装がない",
+            unknownType: "ノード「{node}」：不明な型「{type}」。プラグインが未インストールか無効になっている可能性がある",
             variableIdInvalid: "ノード「{node}」：変数を選ぶ",
             persistentVariableIdInvalid: "ノード「{node}」：永続変数を選ぶ",
             savedVariableIdInvalid: "ノード「{node}」：セーブ変数を選ぶ",
