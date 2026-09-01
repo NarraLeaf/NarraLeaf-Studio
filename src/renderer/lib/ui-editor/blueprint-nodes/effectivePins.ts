@@ -256,9 +256,17 @@ export function resolveEffectiveBlueprintNodePins(
     params?: Record<string, unknown>,
 ): BlueprintNodePinDef[] {
     const magicInputPinId = def.magicElementTarget?.inputPinId;
+    // A node that names a magic element target takes one, unless the graph has asked to see the pin
+    // anyway. There used to be a second condition here - `&& !def.scope` - meaning "a scoped node
+    // addresses its own widget, so hide the pin". Nothing expressed that: the two are alternatives,
+    // written as separate variants by the factories that build them, and no registered node has ever
+    // had both (`magicElementTargetIsNotAScope.test.ts` keeps it that way). So the clause was
+    // vacuous, and it was a trap - giving any of the 133 magic-element nodes a scope for an unrelated
+    // reason would have silently stripped its element pin. A variant that addresses its own widget
+    // says so by declaring no magic target at all.
     const showMagicInputPin =
-        Boolean(params?.[BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN]) ||
-        (Boolean(def.magicElementTarget) && !def.scope);
+        Boolean(params?.[BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN])
+        || Boolean(def.magicElementTarget);
     const basePins =
         magicInputPinId && !showMagicInputPin
             ? def.pins.filter(pin => pin.id !== magicInputPinId)
