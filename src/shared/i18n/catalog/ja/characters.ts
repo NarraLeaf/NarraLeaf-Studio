@@ -85,6 +85,7 @@ export const characters = {
             describeNoModel: "読むモデルがない",
             describeNoBackend: "ランタイムを選んでいない",
             describeBackendMissing: "このプロジェクトにランタイムが入っていない",
+            describeDistrusted: "プロジェクトは信頼されていない",
             describeNotSupported: "このランタイムは何も列挙しない",
             describeFailed: "モデルを読めなかった",
             redescribe: "モデルを読み直す",

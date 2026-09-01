@@ -115,6 +115,7 @@ export function puppetDescribeStatusKey(reason: PuppetDescriptionUnavailableReas
         case "no-model": return "characters.editor.puppet.describeNoModel";
         case "no-backend": return "characters.editor.puppet.describeNoBackend";
         case "backend-missing": return "characters.editor.puppet.describeBackendMissing";
+        case "distrusted": return "characters.editor.puppet.describeDistrusted";
         case "not-described": return "characters.editor.puppet.describeNotSupported";
         case "failed": return "characters.editor.puppet.describeFailed";
         // Exhaustive rather than defaulting: a `default` arm reported a *new* kind of unavailability as

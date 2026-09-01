@@ -59,6 +59,12 @@ import {
 } from "./handlers/mediaAction";
 import { FontCoverageProbeHandler } from "./handlers/fontAction";
 import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
+import {
+    ProjectTrustQueryHandler,
+    ProjectTrustGrantHandler,
+    ProjectTrustRevokeHandler,
+    ProjectTrustListHandler,
+} from "./handlers/projectTrustAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineBuildHandler, WorkspaceSetRecoveryModeHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
@@ -269,6 +275,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceExportConsoleLogsHandler(),
         new WorkspaceMenuSyncHandler(),
         new WorkspaceSetRecoveryModeHandler(),
+        new ProjectTrustQueryHandler(),
+        new ProjectTrustGrantHandler(),
+        new ProjectTrustRevokeHandler(),
+        new ProjectTrustListHandler(),
         new WorkspaceLiveIntentTakenHandler(),
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),

@@ -1,3 +1,4 @@
+import type { ProjectTrustRecord } from "./projectTrust";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
@@ -387,6 +388,28 @@ export interface RendererPreloadedInterface {
         reportWriteFreeze(reason: WorkspaceFreezeKind | null, revision?: RevisionId): void;
         /** Main asking this workspace to reveal a surface on the Settings window's behalf. */
         onOpenViewRequest(handler: (view: WorkspaceViewRequest) => void): AppEventToken;
+    };
+
+    // Project trust
+    /**
+     * Whether a project that arrived from elsewhere may cause effects, and the author's answer.
+     *
+     * Reading is a courtesy to the interface - it is how a control stops being offered. The
+     * refusals themselves are in main, beside the operations they refuse, because the code being
+     * judged runs in a renderer and a renderer's belief is not a boundary.
+     */
+    projectTrust: {
+        query(projectPath: string): Promise<RequestStatus<{
+            trusted: boolean;
+            record: ProjectTrustRecord | null;
+        }>>;
+        grant(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
+        /** Takes effect on the project's next launch, not on a window already open on it. */
+        revoke(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
+        list(): Promise<RequestStatus<{
+            trusted: ProjectTrustRecord[];
+            distrusted: ProjectTrustRecord[];
+        }>>;
     };
 
     // App

@@ -303,6 +303,7 @@ export const widgets = {
         describeNoModel: "名前を一覧するにはモデルのバンドルを選ぶ",
         describeNoBackend: "モデルの名前を一覧するにはランタイムを選ぶ",
         describeBackendMissing: "そのランタイムはこのプロジェクトに入っていないので、名前は手入力する",
+        describeDistrusted: "このプロジェクトは信頼されていないため、ランタイムは読み込まれない。設定で信頼できる。",
         describeNotSupported: "このランタイムはモデルの内容を返さない。名前は手入力する",
         describeFailed: "モデルを読み込めなかった。名前は手入力する",
         redescribe: "読み直す",

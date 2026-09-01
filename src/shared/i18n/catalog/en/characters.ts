@@ -84,6 +84,7 @@ export const characters = {
             describeNoModel: "No model to read",
             describeNoBackend: "No runtime chosen",
             describeBackendMissing: "Runtime not installed here",
+            describeDistrusted: "Project not trusted",
             describeNotSupported: "This runtime lists nothing",
             describeFailed: "The model could not be read",
             redescribe: "Read the model again",

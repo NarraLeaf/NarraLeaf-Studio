@@ -301,6 +301,7 @@ export const widgets = {
         describeNoModel: "Pick a model bundle to list its names.",
         describeNoBackend: "Pick a runtime to list the model's names.",
         describeBackendMissing: "That runtime is not installed in this project, so names must be typed.",
+        describeDistrusted: "This project is not trusted, so its runtimes do not run. Trust it in Settings.",
         describeNotSupported: "This runtime does not describe its models. Type the names.",
         describeFailed: "Could not read the model; type names by hand.",
         redescribe: "Re-read",

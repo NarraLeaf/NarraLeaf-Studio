@@ -11,6 +11,8 @@
  * same recursive read grant on the project directory that Dev Mode does.
  */
 
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
+import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
@@ -121,6 +123,18 @@ export async function readPuppetRuntimeStamp(project: Porject, backend: string):
  * own directory.
  */
 export async function createPuppetBackendSource(project: Porject, backend: string): Promise<PuppetBackendModuleSource> {
+    // The one place a distrusted project is stopped from running its own code, and the reason this
+    // check is here rather than at the three call sites: this function is the only way a
+    // workspace-side backend source comes into being, and one of those callers is an offscreen
+    // probe that no gesture starts. A URL minted here is `import()`ed by `loadPuppetBackends`
+    // entirely inside the renderer - no IPC crosses, so main never gets the chance to refuse it.
+    if (!await isProjectTrusted(project.resolve())) {
+        // Thrown as an *unavailable* rather than a failure, because that is what it is: nothing
+        // is broken and the author has somewhere to go. The two hosts already degrade this type
+        // to an empty box with a sentence, and anything else is treated as "a runtime was found
+        // and then misbehaved" - which would put a red error box on a project that is merely new.
+        throw new SurfacePuppetUnavailableError("distrusted");
+    }
     const directory = project.resolve(ProjectNameConvention.PuppetRuntimes, backend);
     return {
         id: backend,

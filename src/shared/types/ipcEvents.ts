@@ -1,5 +1,6 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
+import type { ProjectTrustRecord } from "./projectTrust";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -236,6 +237,10 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    projectTrustQuery = "projectTrust.query",
+    projectTrustGrant = "projectTrust.grant",
+    projectTrustRevoke = "projectTrust.revoke",
+    projectTrustList = "projectTrust.list",
     workspaceLiveIntentTaken = "workspace.liveIntentTaken",
     workspaceJoinLive = "workspace.joinLive",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
@@ -2247,6 +2252,64 @@ export type IPCWorkspaceEvents = {
             reason?: string;
         },
         response: void;
+    };
+    /**
+     * Whether this project may cause effects, asked of the only process that can answer.
+     *
+     * The renderer never decides this. A project's own code runs in a renderer - a puppet backend
+     * is `import()`ed into it - so an answer computed there is an answer that code could have
+     * influenced. Main holds the ledger and main is what refuses; what comes back here is used to
+     * stop offering things, which is a courtesy rather than the boundary.
+     */
+    [IPCEventType.projectTrustQuery]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            trusted: boolean;
+            record: ProjectTrustRecord | null;
+        };
+    };
+    /** The author vouches for a project that arrived from elsewhere. */
+    [IPCEventType.projectTrustGrant]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            /** False when the project had no arrival on record, i.e. was already trusted. */
+            changed: boolean;
+        };
+    };
+    /**
+     * Take a grant back, from the settings list.
+     *
+     * Does not affect a window already open on it. Trust is read once when a workspace starts, the
+     * same way recovery mode is, so revoking takes effect on the next launch - which is what makes
+     * "remove the folder and open it again" something an author can reason about.
+     */
+    [IPCEventType.projectTrustRevoke]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            changed: boolean;
+        };
+    };
+    /** Everything the settings list shows: what was vouched for, and what is still waiting. */
+    [IPCEventType.projectTrustList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: {
+            trusted: ProjectTrustRecord[];
+            distrusted: ProjectTrustRecord[];
+        };
     };
     /**
      * Forget the live session this window was told to join, having now acted on it.

@@ -258,7 +258,9 @@ export class PuppetDescriptionService
             throw new SurfacePuppetUnavailableError(
                 // `plan()` cannot answer `not-described` — that is only decided after a mount — but the
                 // union permits it, so it folds into the nearest honest reason instead of being cast away.
-                reason === "no-backend" || reason === "backend-missing" ? reason : "no-model",
+                reason === "no-backend" || reason === "backend-missing" || reason === "distrusted"
+                    ? reason
+                    : "no-model",
                 message ?? reason,
             );
         }

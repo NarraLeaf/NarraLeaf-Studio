@@ -311,6 +311,20 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceOpenView, (data) => handler(data.view)),
     },
 
+    /**
+     * The project-trust ledger. Reading is what the interface uses to stop offering things;
+     * granting and revoking are the author changing their mind. None of it enforces anything -
+     * the refusals live in main, beside the operations they refuse.
+     */
+    projectTrust: {
+        query: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTrustQuery, { projectPath }),
+        grant: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTrustGrant, { projectPath }),
+        revoke: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.projectTrustRevoke, { projectPath }),
+        list: () => ipcClient.invoke(IPCEventType.projectTrustList, {}),
+    },
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
         onSettingsHighlight: (handler: (highlight: string) => void) =>
