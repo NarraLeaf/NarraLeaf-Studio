@@ -1,5 +1,5 @@
 import type { BlueprintDocument, BlueprintFrontendKind, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { decodeWidgetValueOwnerKey, GLOBAL_MAIN_OWNER_KEY } from "./ownerKeys";
+import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 
 export function getActiveBlueprintId(doc: BlueprintDocument, ownerKey: string): string | undefined {
     return doc.ownerRecords[ownerKey]?.activeBlueprintId;
@@ -17,29 +17,22 @@ export function setPrivateOwnerActive(doc: BlueprintDocument, ownerKey: string, 
 }
 
 /**
- * Parse a private owner slot key back to owner ref (excludes sharedAsset).
+ * The owner slot a private key names, or null.
+ *
+ * Reads the one decoder in `@shared/blueprint/ownerKey`; there used to be a second regular
+ * expression here, and it took `narraleaf-studio` for the surface and `main-surface:<elementId>` for
+ * the element on every widget of the built-in surface.
+ *
+ * **Private slots only.** A `sharedAsset` blueprint is stored outside this document and a
+ * `storyAction` one is its own key, so neither is a slot `ownerRecords` describes - answering for
+ * them would hand a caller a ref this document has nothing to say about.
  */
 export function parsePrivateOwnerKeyToRef(ownerKey: string): BlueprintOwnerRef | null {
-    if (ownerKey === GLOBAL_MAIN_OWNER_KEY) {
-        return { kind: "globalMain" };
+    const owner = decodeBlueprintOwnerKey(ownerKey);
+    if (!owner || owner.kind === "sharedAsset" || owner.kind === "storyAction") {
+        return null;
     }
-    const sm = /^surfaceMain:(.+)$/.exec(ownerKey);
-    if (sm) {
-        return { kind: "surfaceMain", surfaceId: sm[1] };
-    }
-    const wm = /^widgetMain:([^:]+):(.+)$/.exec(ownerKey);
-    if (wm) {
-        return { kind: "widgetMain", surfaceId: wm[1], elementId: wm[2] };
-    }
-    const cwm = /^componentWidgetMain:([^:]+):(.+)$/.exec(ownerKey);
-    if (cwm) {
-        return { kind: "componentWidgetMain", componentId: cwm[1], elementId: cwm[2] };
-    }
-    const wv = decodeWidgetValueOwnerKey(ownerKey);
-    if (wv) {
-        return { kind: "widgetValue", ...wv };
-    }
-    return null;
+    return owner;
 }
 
 /**

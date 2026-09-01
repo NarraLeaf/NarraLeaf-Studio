@@ -132,3 +132,60 @@ describe("migrateBlueprintDocumentToLatest (v9→v10 graph-slot order)", () => {
         })).toThrow(/Unsupported BlueprintDocument schemaVersion/);
     });
 });
+
+describe("migrateBlueprintDocumentToLatest (v10 to v11 owner keys)", () => {
+    const BUILT_IN = "widgetMain:narraleaf-studio:main-surface:0443cfc4-b06c-483b-a1a5-f56306351f08";
+    const ESCAPED = "widgetMain:narraleaf-studio%3Amain-surface:0443cfc4-b06c-483b-a1a5-f56306351f08";
+
+    function record(activeBlueprintId: string) {
+        return { activeBlueprintId, privateBlueprintIds: [activeBlueprintId] };
+    }
+
+    function documentAt(schemaVersion: number, ownerRecords: Record<string, unknown>): unknown {
+        return JSON.parse(JSON.stringify({ schemaVersion, ownerRecords, blueprints: {} }));
+    }
+
+    it("moves a record onto the escaped key, keeping the blueprint it points at", () => {
+        // The ids must survive untouched: a blueprint id is a hash of the owner key, and `ensure*`
+        // mints a new blueprint whenever a slot's key finds no record. A rewrite that lost the record
+        // would show every slot as empty and orphan the author's work.
+        const migrated = migrateBlueprintDocumentToLatest(
+            documentAt(10, { [BUILT_IN]: record("bp-built-in"), "widgetMain:s-1:e-1": record("bp-plain") }),
+        );
+
+        expect(Object.keys(migrated.ownerRecords).sort()).toEqual([ESCAPED, "widgetMain:s-1:e-1"].sort());
+        expect(migrated.ownerRecords[ESCAPED].activeBlueprintId).toBe("bp-built-in");
+        expect(migrated.ownerRecords[ESCAPED].privateBlueprintIds).toEqual(["bp-built-in"]);
+    });
+
+    it("cannot escape a key it has already escaped", () => {
+        // The failure this guards is silent and total: escaping twice gives
+        // `narraleaf-studio%253Amain-surface`, which no lookup finds, so every affected slot mints a
+        // second blueprint and the author's becomes unreachable. The version gate is what stops it,
+        // so a document already at the current version must come back byte-identical.
+        const already = documentAt(BLUEPRINT_DOCUMENT_SCHEMA_VERSION, { [ESCAPED]: record("bp") });
+        const once = migrateBlueprintDocumentToLatest(already);
+        const twice = migrateBlueprintDocumentToLatest(JSON.parse(JSON.stringify(once)));
+
+        expect(Object.keys(twice.ownerRecords)).toEqual([ESCAPED]);
+        expect(encodeCanonicalJson(twice)).toBe(encodeCanonicalJson(once));
+    });
+
+    it("leaves a key it cannot read where it is", () => {
+        // Dropping it would delete an author's blueprint over a spelling this code did not know.
+        const migrated = migrateBlueprintDocumentToLatest(
+            documentAt(10, { "somethingElse:x": record("bp-unknown") }),
+        );
+        expect(migrated.ownerRecords["somethingElse:x"].activeBlueprintId).toBe("bp-unknown");
+    });
+
+    it("keeps both records when two old keys want one new key", () => {
+        // Two slots claiming one record would silently discard whichever was written first. Neither
+        // spelling can produce the other today; the loser keeps its original key so nothing is lost
+        // on the day one can.
+        const collides = { [BUILT_IN]: record("bp-a"), [ESCAPED]: record("bp-b") };
+        const migrated = migrateBlueprintDocumentToLatest(documentAt(10, collides));
+        const kept = Object.values(migrated.ownerRecords).map(entry => entry.activeBlueprintId).sort();
+        expect(kept).toEqual(["bp-a", "bp-b"]);
+    });
+});

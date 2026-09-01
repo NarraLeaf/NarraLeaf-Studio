@@ -1,10 +1,16 @@
+import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+
 /**
- * Parse a blueprint owner slot key (`globalMain`, `surfaceMain:<id>`,
- * `widgetMain:<surfaceId>:<elementId>`, …) into the pieces a blueprint editor open target needs.
+ * A blueprint owner slot key, in the shape a search hit needs to open an editor on it.
  *
- * Lives beside the search index (its only current consumer) but is deliberately free of editor
- * imports so it stays cheap to test. Returns null for malformed or unknown keys - a search hit
- * with an unparseable owner simply has nowhere to jump.
+ * A flattened view of `BlueprintOwnerRef`: the jump target wants "which surface, which element,
+ * which prop" without switching on a union, and a hit whose owner cannot be read simply has nowhere
+ * to go.
+ *
+ * The reading itself is `@shared/blueprint/ownerKey`'s. This file used to split the key on every
+ * separator, which meant that for a widget on the built-in surface - whose id is
+ * `narraleaf-studio:main-surface` - it took `narraleaf-studio` for the surface, `main-surface` for
+ * the element, and silently dropped the element id the author was searching for.
  */
 export type ParsedBlueprintOwnerKey = {
     ownerKind: "globalMain" | "surfaceMain" | "widgetMain" | "widgetValue" | "componentWidgetMain" | "storyAction";
@@ -15,27 +21,30 @@ export type ParsedBlueprintOwnerKey = {
 };
 
 export function parseBlueprintOwnerKey(ownerKey: string): ParsedBlueprintOwnerKey | null {
-    const [kind, ...rest] = ownerKey.split(":");
-    switch (kind) {
+    const owner = decodeBlueprintOwnerKey(ownerKey);
+    switch (owner?.kind) {
         case "globalMain":
             return { ownerKind: "globalMain" };
         case "surfaceMain":
-            return rest[0] ? { ownerKind: "surfaceMain", surfaceId: rest[0] } : null;
+            return { ownerKind: "surfaceMain", surfaceId: owner.surfaceId };
         case "widgetMain":
-            return rest[0] && rest[1]
-                ? { ownerKind: "widgetMain", surfaceId: rest[0], elementId: rest[1] }
-                : null;
+            return { ownerKind: "widgetMain", surfaceId: owner.surfaceId, elementId: owner.elementId };
         case "widgetValue":
-            // The prop path is the tail and may itself contain separators.
-            return rest[0] && rest[1] && rest.length > 2
-                ? { ownerKind: "widgetValue", surfaceId: rest[0], elementId: rest[1], propPath: rest.slice(2).join(":") }
-                : null;
+            return {
+                ownerKind: "widgetValue",
+                surfaceId: owner.surfaceId,
+                elementId: owner.elementId,
+                propPath: owner.propPath,
+            };
         case "componentWidgetMain":
-            return rest[0] && rest[1]
-                ? { ownerKind: "componentWidgetMain", componentId: rest[0], elementId: rest[1] }
-                : null;
+            return { ownerKind: "componentWidgetMain", componentId: owner.componentId, elementId: owner.elementId };
         case "storyAction":
+            // The story blueprint is its own key, so there is no surface or element to carry; the
+            // jump target resolves the row from the blueprint itself.
             return { ownerKind: "storyAction" };
+        // A shared asset blueprint lives outside the interface documents, so there is no editor
+        // target of this shape to open on it.
+        case "sharedAsset":
         default:
             return null;
     }

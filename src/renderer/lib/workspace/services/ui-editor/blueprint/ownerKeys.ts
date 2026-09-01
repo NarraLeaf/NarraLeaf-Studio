@@ -1,37 +1,42 @@
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import {
+    decodeBlueprintOwnerKey,
+    encodeBlueprintOwnerKey,
+    GLOBAL_MAIN_OWNER_KEY,
+} from "@shared/blueprint/ownerKey";
 
-export const GLOBAL_MAIN_OWNER_KEY = "globalMain";
+/**
+ * The editor's names for owner keys, spelled by the one encoder in `@shared/blueprint/ownerKey`.
+ *
+ * These are convenience wrappers and nothing more. The format lives in shared because the disk
+ * migration has to write the same spelling the editor looks up, and the defect that made this file
+ * worth rewriting was exactly two implementations of one format drifting: the built-in surface's id
+ * contains the separator, so `widgetMain:narraleaf-studio:main-surface:<elementId>` read as three
+ * different things in three places.
+ *
+ * Nothing here escapes anything itself. A wrapper that did would be the third implementation.
+ */
+
+export { GLOBAL_MAIN_OWNER_KEY };
 
 export function surfaceMainOwnerKey(surfaceId: string): string {
-    return `surfaceMain:${surfaceId}`;
+    return encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId });
 }
 
 export function widgetMainOwnerKey(surfaceId: string, elementId: string): string {
-    return `widgetMain:${surfaceId}:${elementId}`;
+    return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId, elementId });
 }
 
 export function componentWidgetMainOwnerKey(componentId: string, elementId: string): string {
-    return `componentWidgetMain:${componentId}:${elementId}`;
+    return encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId, elementId });
 }
 
 export function storyActionOwnerKey(blueprintId: string): string {
-    return `storyAction:${blueprintId}`;
-}
-
-function encodeOwnerPart(value: string): string {
-    return encodeURIComponent(value);
-}
-
-function decodeOwnerPart(value: string): string {
-    try {
-        return decodeURIComponent(value);
-    } catch {
-        return value;
-    }
+    return encodeBlueprintOwnerKey({ kind: "storyAction", blueprintId });
 }
 
 export function widgetValueOwnerKey(surfaceId: string, elementId: string, propPath: string): string {
-    return `widgetValue:${surfaceId}:${elementId}:${encodeOwnerPart(propPath)}`;
+    return encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId, elementId, propPath });
 }
 
 export function decodeWidgetValueOwnerKey(ownerKey: string): {
@@ -39,36 +44,12 @@ export function decodeWidgetValueOwnerKey(ownerKey: string): {
     elementId: string;
     propPath: string;
 } | null {
-    const match = /^widgetValue:([^:]+):([^:]+):(.+)$/.exec(ownerKey);
-    if (!match) {
-        return null;
-    }
-    return {
-        surfaceId: match[1],
-        elementId: match[2],
-        propPath: decodeOwnerPart(match[3]),
-    };
+    const owner = decodeBlueprintOwnerKey(ownerKey);
+    return owner?.kind === "widgetValue"
+        ? { surfaceId: owner.surfaceId, elementId: owner.elementId, propPath: owner.propPath }
+        : null;
 }
 
 export function ownerRefToIndexKey(owner: BlueprintOwnerRef): string {
-    switch (owner.kind) {
-        case "globalMain":
-            return GLOBAL_MAIN_OWNER_KEY;
-        case "surfaceMain":
-            return surfaceMainOwnerKey(owner.surfaceId);
-        case "widgetMain":
-            return widgetMainOwnerKey(owner.surfaceId, owner.elementId);
-        case "widgetValue":
-            return widgetValueOwnerKey(owner.surfaceId, owner.elementId, owner.propPath);
-        case "componentWidgetMain":
-            return componentWidgetMainOwnerKey(owner.componentId, owner.elementId);
-        case "sharedAsset":
-            return `sharedAsset:${owner.assetId}`;
-        case "storyAction":
-            return storyActionOwnerKey(owner.blueprintId);
-        default: {
-            const _exhaustive: never = owner;
-            return _exhaustive;
-        }
-    }
+    return encodeBlueprintOwnerKey(owner);
 }

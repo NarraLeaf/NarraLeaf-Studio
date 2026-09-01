@@ -20,6 +20,7 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
+import { decodeLegacyBlueprintOwnerKey, encodeBlueprintOwnerKey } from "./ownerKey";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -57,10 +58,57 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
         && sv < BLUEPRINT_DOCUMENT_SCHEMA_VERSION
         && isRecord(raw.blueprints)
     ) {
-        return { ...(raw as unknown as BlueprintDocument), schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
+        const doc = { ...(raw as unknown as BlueprintDocument), schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
+        if (sv < OWNER_KEY_ESCAPING_VERSION) {
+            doc.ownerRecords = rewriteOwnerKeys(doc.ownerRecords);
+        }
+        return doc;
     }
     throw new Error(
         `Unsupported BlueprintDocument schemaVersion: ${String(sv)}`
         + ` (v${BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION} is the oldest this Studio version reads)`,
     );
+}
+
+/**
+ * The version at which every part of an owner key became percent-encoded.
+ *
+ * Named rather than inlined because the guard is the whole safety of this conversion: it reads a key
+ * whose parts are raw and writes one whose parts are escaped, so running it on a key it has already
+ * written would escape the escapes. `narraleaf-studio%3Amain-surface` would become
+ * `narraleaf-studio%253Amain-surface`, the slot would look empty, a second blueprint would be minted
+ * for it, and the author's would be orphaned. The version is what makes that unrepeatable.
+ */
+const OWNER_KEY_ESCAPING_VERSION = 11;
+
+/**
+ * Rewrite the keys of `ownerRecords` into the escaped spelling, keeping every record's contents.
+ *
+ * **The records move; the blueprints do not.** A blueprint id is a hash of its owner key
+ * (`derivedBlueprintId`), and the `ensure*` helpers mint a new blueprint whenever a slot's key finds
+ * no record - so changing how keys are spelled without moving the records with them would present
+ * every slot in every project as empty and orphan every private blueprint an author has written.
+ * Ids are therefore carried across untouched: they stay the hashes of the old keys, which is
+ * harmless, because nothing derives a key back from an id. The factory skeleton settles that
+ * independently - none of its 220 blueprint ids equals its own key's hash, they are uuids from
+ * before ids were derived at all, and they have always been read by lookup rather than recomputed.
+ *
+ * A key that cannot be read is left exactly as it is. Dropping it would delete an author's blueprint
+ * over a spelling this code did not recognise; leaving it means one slot stays on the old key and is
+ * found again the moment something can read it.
+ */
+function rewriteOwnerKeys(records: BlueprintDocument["ownerRecords"]): BlueprintDocument["ownerRecords"] {
+    if (!isRecord(records)) {
+        return records;
+    }
+    const rewritten: BlueprintDocument["ownerRecords"] = {};
+    for (const [key, record] of Object.entries(records)) {
+        const owner = decodeLegacyBlueprintOwnerKey(key);
+        const next = owner ? encodeBlueprintOwnerKey(owner) : key;
+        // A collision would mean two slots claiming one record, and the second write would silently
+        // discard the first author's blueprint. Keeping the loser under its original key leaves both
+        // readable, which is the outcome that loses nothing.
+        rewritten[next in rewritten ? key : next] = record;
+    }
+    return rewritten;
 }

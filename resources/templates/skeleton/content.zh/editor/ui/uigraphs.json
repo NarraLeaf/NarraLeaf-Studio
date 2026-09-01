@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "blueprintDocument": {
-    "schemaVersion": 10,
+    "schemaVersion": 11,
     "blueprints": {
       "885e69e4-c4dd-497d-bc30-d6a4895eaf1b": {
         "id": "885e69e4-c4dd-497d-bc30-d6a4895eaf1b",
@@ -21381,7 +21381,7 @@
         ],
         "initializedFrontend": "visual"
       },
-      "surfaceMain:narraleaf-studio:main-surface": {
+      "surfaceMain:narraleaf-studio%3Amain-surface": {
         "activeBlueprintId": "8f97f5d7-517b-4d78-b4eb-b53ce327b08a",
         "privateBlueprintIds": [
           "8f97f5d7-517b-4d78-b4eb-b53ce327b08a"
@@ -22494,63 +22494,63 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:b674b641-fd04-4871-b47c-0888c71eabe9": {
+      "widgetMain:narraleaf-studio%3Amain-surface:b674b641-fd04-4871-b47c-0888c71eabe9": {
         "activeBlueprintId": "b6259e79-cd57-4605-998b-47adaf645a62",
         "privateBlueprintIds": [
           "b6259e79-cd57-4605-998b-47adaf645a62"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:a4d2552e-a1db-4226-b224-e88d072f57b0": {
+      "widgetMain:narraleaf-studio%3Amain-surface:a4d2552e-a1db-4226-b224-e88d072f57b0": {
         "activeBlueprintId": "55a89b38-4cea-479c-bed6-76433e7ef8b9",
         "privateBlueprintIds": [
           "55a89b38-4cea-479c-bed6-76433e7ef8b9"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:c6d9dc8d-9524-4102-985e-5612b971a776": {
+      "widgetMain:narraleaf-studio%3Amain-surface:c6d9dc8d-9524-4102-985e-5612b971a776": {
         "activeBlueprintId": "5e5f891c-a7b9-4a2a-9115-91de26e1ade6",
         "privateBlueprintIds": [
           "5e5f891c-a7b9-4a2a-9115-91de26e1ade6"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:066f4e9c-faa0-469d-9503-cb31edc2230e": {
+      "widgetMain:narraleaf-studio%3Amain-surface:066f4e9c-faa0-469d-9503-cb31edc2230e": {
         "activeBlueprintId": "ced7fe38-4a52-4283-a3c0-06e8a20d9a3c",
         "privateBlueprintIds": [
           "ced7fe38-4a52-4283-a3c0-06e8a20d9a3c"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:1e01e9cf-1ef0-44bf-9cbf-c04422dce551": {
+      "widgetMain:narraleaf-studio%3Amain-surface:1e01e9cf-1ef0-44bf-9cbf-c04422dce551": {
         "activeBlueprintId": "7494970f-04e3-4267-9d1d-360f0a2f83aa",
         "privateBlueprintIds": [
           "7494970f-04e3-4267-9d1d-360f0a2f83aa"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:ac7c2f86-e356-4592-9dbf-04c0e55154da": {
+      "widgetMain:narraleaf-studio%3Amain-surface:ac7c2f86-e356-4592-9dbf-04c0e55154da": {
         "activeBlueprintId": "ac2e56ea-c9cf-42b8-9c7f-f6842a7c752c",
         "privateBlueprintIds": [
           "ac2e56ea-c9cf-42b8-9c7f-f6842a7c752c"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:2265f0c7-edba-462c-8dc0-e70627b6eded": {
+      "widgetMain:narraleaf-studio%3Amain-surface:2265f0c7-edba-462c-8dc0-e70627b6eded": {
         "activeBlueprintId": "7c97b092-6675-4b6e-8726-1569cc3e0fe9",
         "privateBlueprintIds": [
           "7c97b092-6675-4b6e-8726-1569cc3e0fe9"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:ae807231-9926-4bb0-a31d-8a9e625204e1": {
+      "widgetMain:narraleaf-studio%3Amain-surface:ae807231-9926-4bb0-a31d-8a9e625204e1": {
         "activeBlueprintId": "f16eef04-931a-44b6-be0d-cb271d3c24f4",
         "privateBlueprintIds": [
           "f16eef04-931a-44b6-be0d-cb271d3c24f4"
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:281a47c0-277d-4ffb-83b9-8bee6a984480": {
+      "widgetMain:narraleaf-studio%3Amain-surface:281a47c0-277d-4ffb-83b9-8bee6a984480": {
         "activeBlueprintId": "156b62e7-9766-4e22-8145-8908fd978358",
         "privateBlueprintIds": [
           "156b62e7-9766-4e22-8145-8908fd978358"
@@ -22781,7 +22781,7 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:narraleaf-studio:main-surface:4dd1f9ff-a1ad-42d0-b672-738d9d4d6f47": {
+      "widgetMain:narraleaf-studio%3Amain-surface:4dd1f9ff-a1ad-42d0-b672-738d9d4d6f47": {
         "activeBlueprintId": "d2f5cfbf-d3a7-4447-8ccc-639ad74fe777",
         "privateBlueprintIds": [
           "d2f5cfbf-d3a7-4447-8ccc-639ad74fe777"

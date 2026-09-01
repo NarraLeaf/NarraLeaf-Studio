@@ -19,7 +19,7 @@
  * named above it are kept as the record of what each one changed; the ones below are history only,
  * and a document at one of them is refused. See `@shared/blueprint/migrateBlueprintDocument`.
  */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 10 as const;
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 11 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 
