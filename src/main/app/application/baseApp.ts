@@ -937,9 +937,10 @@ export class BaseApp {
      *
      * **A different profile is a different everything.** The signing vault lives under it, and so
      * do the machine's build settings; a scratch profile has neither, which is what `--build-signing`
-     * and `--build-setting` are for. The download caches are the exception, and deliberately so:
-     * a packaged Studio keeps them beside the executable (see `resolveCacheRoot`), so a run in a
-     * throwaway profile does not re-download an Electron dist.
+     * and `--build-setting` are for. Whether the *download* caches come with it depends on the
+     * install: `resolveCacheRoot` puts them beside the executable only where the platform allows
+     * that, so a scratch profile costs an Electron download on macOS and costs nothing on an
+     * ordinary Windows install.
      *
      * Build-only, for the reason `--project` is development-only: in a packaged build argv is where
      * shortcuts and file associations arrive, and answering one of those by silently pointing

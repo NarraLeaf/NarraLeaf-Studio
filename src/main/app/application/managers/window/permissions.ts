@@ -110,6 +110,13 @@ const launcherDefaultCapabilities = (): PrivilegedCapability[] => [
  * checked against the permissions it was installed with (`isPluginCapabilityAllowed`), never
  * against the window's defaults. Installing from the store still raises the permission prompt
  * window the author has to answer.
+ *
+ * That separation is only real if a plugin cannot get hold of a service object the *renderer* bound
+ * to the window's default facade. A plugin action's `onClick` and a rail button's `railAction` are
+ * handed the live `Workspace`, whose `services.get(FileSystem)` is exactly such an object; the
+ * renderer wraps both with a guard that refuses the service registry before plugin code sees them
+ * (`pluginWorkspaceGuard`), so the only file-system path left to a plugin is `app.privileged.*`,
+ * bound to the plugin's own actor and gated here.
  */
 const workspaceDefaultCapabilities = (): PrivilegedCapability[] => [
     PrivilegedCapability.PluginInstall,
