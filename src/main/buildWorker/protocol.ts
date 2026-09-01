@@ -216,9 +216,15 @@ export type GameBuildWorkerTarget = {
      */
     electronDist?: string;
     /**
-     * Absolute path of the app icon for this platform. electron-builder
-     * converts a large PNG to the native format (.icns/.ico) as needed; unset
-     * falls back to the default Electron icon.
+     * Absolute path of the app icon for this platform, already in the format
+     * that platform's packager wants - `.ico` for Windows, `.icns` for macOS, a
+     * PNG for Linux. Unset falls back to the default Electron icon.
+     *
+     * The conversion is Studio's rather than electron-builder's on purpose:
+     * handed a PNG for a platform that wants a container, electron-builder runs
+     * its converter with `process.execPath`, which inside Studio starts a second
+     * Electron and fails on any machine with no window server. See
+     * `desktopIcons.ts`.
      */
     iconPath?: string;
     /**

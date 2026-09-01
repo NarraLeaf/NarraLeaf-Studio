@@ -295,9 +295,6 @@ export const project = {
         autoForwardPauseTitle: "Pause length under auto forward",
         autoForwardPauseDescription: "How long a pause that waits for a click holds a line while the player has auto forward on. Scaled by game speed.",
         autoForwardPauseUnit: "ms",
-        textRevealTitle: "Fade length of newly typed text",
-        textRevealDescription: "How long a newly typed character takes to reach full strength. Set to zero for no fade. High text speeds shorten it.",
-        textRevealUnit: "ms",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording
@@ -321,6 +318,10 @@ export const project = {
         cps: {
             title: "Text speed",
             description: "Characters typed per second.",
+        },
+        textRevealDuration: {
+            title: "Text fade in",
+            description: "How long a newly typed character takes to reach full strength. Zero types it at full strength; high text speeds shorten it.",
         },
         gameSpeed: {
             title: "Game speed",

@@ -73,6 +73,35 @@ export interface BuildCommandLineOptions {
     /** `--build-report`: where to write the JSON report. Null means no report file. */
     reportPath: string | null;
     /**
+     * `--build-user-data-dir`: the profile directory this launch runs against.
+     *
+     * Read far earlier than anything else here - `BaseApp` acts on it before it has a global state
+     * to read - and honoured only for a build, which is why it is a build flag rather than a
+     * general one. Electron keys the single-instance lock on this directory, so a build agent that
+     * is also somebody's own machine can build while its owner has Studio open; without it the
+     * second process is refused the lock and exits.
+     *
+     * A different profile is a different everything: no signing credentials, none of the machine's
+     * build settings. `--build-signing` and `--build-setting` are how a run puts back the two a
+     * build actually needs.
+     */
+    userDataDir: string | null;
+    /**
+     * `--build-signing`: a JSON file naming the credentials to sign this build with.
+     *
+     * For this run only - nothing is imported into the machine's vault - and it overrides what the
+     * project points at for every platform the file names. See `commandLineSigning.ts`.
+     */
+    signingPath: string | null;
+    /**
+     * `--build-setting key=value`, repeatable: build settings this run reads instead of the
+     * profile's.
+     *
+     * Kept as the raw strings they were typed as, like every other value here; the shape and which
+     * keys are allowed are decided by `planCommandLineBuild`.
+     */
+    settings: string[];
+    /**
      * `--build-allow-unsigned`: this launch accepts an artifact with no code signature.
      *
      * Without it a build whose target could carry a signature and has no credential configured is
@@ -218,7 +247,8 @@ function takeValue(value: string | undefined): string | null {
  * a value, how they report a missing one, or whether their value is mistaken for a path to open.
  * {@link VALUE_TAKING_FLAGS} is built from these keys for that last reason.
  */
-type BuildValueField = "selector" | "variantId" | "platform" | "format" | "arch" | "outputDir" | "reportPath";
+type BuildValueField = "selector" | "variantId" | "platform" | "format" | "arch" | "outputDir"
+    | "reportPath" | "userDataDir" | "signingPath";
 
 const BUILD_VALUE_FLAGS = {
     "--build": "selector",
@@ -228,12 +258,31 @@ const BUILD_VALUE_FLAGS = {
     "--build-arch": "arch",
     "--build-output": "outputDir",
     "--build-report": "reportPath",
+    "--build-user-data-dir": "userDataDir",
+    "--build-signing": "signingPath",
 } as const satisfies Record<string, BuildValueField>;
 
 type BuildValueFlag = keyof typeof BUILD_VALUE_FLAGS;
 
+/**
+ * The build flags that may be given more than once, and the list each one fills.
+ *
+ * Separate from the table above because "the last one wins" is wrong for them: two
+ * `--build-setting` flags name two different settings, and dropping the first would be an argument
+ * silently thrown away.
+ */
+const BUILD_LIST_FLAGS = {
+    "--build-setting": "settings",
+} as const satisfies Record<string, "settings">;
+
+type BuildListFlag = keyof typeof BUILD_LIST_FLAGS;
+
 function isBuildValueFlag(candidate: string): candidate is BuildValueFlag {
     return Object.prototype.hasOwnProperty.call(BUILD_VALUE_FLAGS, candidate);
+}
+
+function isBuildListFlag(candidate: string): candidate is BuildListFlag {
+    return Object.prototype.hasOwnProperty.call(BUILD_LIST_FLAGS, candidate);
 }
 
 /**
@@ -246,8 +295,8 @@ function isBuildValueFlag(candidate: string): candidate is BuildValueFlag {
 function readBuildFlag(
     arg: string,
     next: string | undefined,
-): { flag: BuildValueFlag; value: string | null; consumedNext: boolean } | null {
-    if (isBuildValueFlag(arg)) {
+): { flag: BuildValueFlag | BuildListFlag; value: string | null; consumedNext: boolean } | null {
+    if (isBuildValueFlag(arg) || isBuildListFlag(arg)) {
         const value = takeValue(next);
         return { flag: arg, value, consumedNext: value !== null };
     }
@@ -256,9 +305,11 @@ function readBuildFlag(
         return null;
     }
     const flag = arg.slice(0, separator);
-    if (!isBuildValueFlag(flag)) {
+    if (!isBuildValueFlag(flag) && !isBuildListFlag(flag)) {
         return null;
     }
+    // Only the first "=" separates the flag from its value: `--build-setting=key=value` carries a
+    // second one, and splitting on that too would hand the caller half a setting.
     const value = arg.slice(separator + 1).trim();
     return { flag, value: value === "" ? null : value, consumedNext: false };
 }
@@ -267,7 +318,7 @@ function readBuildFlag(
 const BUILD_ALLOW_UNSIGNED_FLAG = "--build-allow-unsigned";
 
 /** What each build flag says it wants, for the "missing value" message. */
-const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag, string> = {
+const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag | BuildListFlag, string> = {
     "--build": "a project path or a recent project's name",
     "--build-variant": "a build variant id",
     "--build-target": "a platform",
@@ -275,6 +326,9 @@ const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag, string> = {
     "--build-arch": "an architecture",
     "--build-output": "an output folder",
     "--build-report": "a file to write the report to",
+    "--build-user-data-dir": "a profile folder for this build to run in",
+    "--build-signing": "a file naming the signing credentials",
+    "--build-setting": "a setting, as key=value",
 };
 
 /**
@@ -288,6 +342,7 @@ const VALUE_TAKING_FLAGS = new Set<string>([
     "--cdp-port",
     "--dev-reload-port",
     ...Object.keys(BUILD_VALUE_FLAGS),
+    ...Object.keys(BUILD_LIST_FLAGS),
 ]);
 
 /**
@@ -310,6 +365,9 @@ function hasBuildCompanionFlag(build: BuildCommandLineOptions): boolean {
         || build.arch !== null
         || build.outputDir !== null
         || build.reportPath !== null
+        || build.userDataDir !== null
+        || build.signingPath !== null
+        || build.settings.length > 0
         || build.allowUnsigned;
 }
 
@@ -335,10 +393,13 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         arch: null,
         outputDir: null,
         reportPath: null,
+        userDataDir: null,
+        signingPath: null,
+        settings: [],
         allowUnsigned: false,
         error: null,
     };
-    const buildFlagErrors = new Map<BuildValueFlag, string>();
+    const buildFlagErrors = new Map<BuildValueFlag | BuildListFlag, string>();
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -379,6 +440,9 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
                     buildFlag.flag,
                     `Missing ${buildFlag.flag} value: expected ${BUILD_VALUE_DESCRIPTIONS[buildFlag.flag]}`,
                 );
+            } else if (isBuildListFlag(buildFlag.flag)) {
+                build[BUILD_LIST_FLAGS[buildFlag.flag]].push(buildFlag.value);
+                buildFlagErrors.delete(buildFlag.flag);
             } else {
                 build[BUILD_VALUE_FLAGS[buildFlag.flag]] = buildFlag.value;
                 buildFlagErrors.delete(buildFlag.flag);
@@ -497,7 +561,11 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
     // The first flag still missing a value, in the order the table lists them rather than the order
     // they were typed, so two launches with the same mistakes print the same sentence.
-    build.error = (Object.keys(BUILD_VALUE_FLAGS) as BuildValueFlag[])
+    const orderedBuildFlags = [
+        ...Object.keys(BUILD_VALUE_FLAGS),
+        ...Object.keys(BUILD_LIST_FLAGS),
+    ] as Array<BuildValueFlag | BuildListFlag>;
+    build.error = orderedBuildFlags
         .map(flag => buildFlagErrors.get(flag))
         .find((message): message is string => message !== undefined) ?? null;
     // A companion flag without `--build` names a build that was never asked for. Refusing rather

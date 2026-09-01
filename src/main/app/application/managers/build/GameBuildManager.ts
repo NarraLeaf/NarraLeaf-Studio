@@ -56,7 +56,6 @@ import {
     signingNotarizes,
     type ResolvedAppleNotarization,
     type ResolvedSigningMaterial,
-    type SigningCredential,
     type SigningPlatform,
 } from "@shared/types/signing";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
@@ -83,6 +82,7 @@ import {
     signingExpiryCode,
     signingPlatformForTarget,
     signingReachesNetwork,
+    type ProjectSigningIds,
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
@@ -91,6 +91,8 @@ import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
+import { ensureDesktopIcon } from "./desktopIcons";
+import type { CommandLineSigningCredential } from "../../commandLineSigning";
 import { readIconSlotSizes, writeScaledIcons } from "./mobileIcons";
 import { loadMobileShellTemplateForApp } from "./mobileShellTemplate";
 import { resolveMobileSigningIdentity } from "./mobileSigningIdentity";
@@ -528,8 +530,34 @@ export class GameBuildManager {
     private readonly sessions = new Map<string, BuildSession>();
     /** Lazily built: the vault needs a user-data dir, which a test double has no reason to provide. */
     private signingVaultCache: SigningVault | null = null;
+    /**
+     * Credentials `--build-signing` handed this launch, by platform. Empty for every launch that
+     * did not, which is every launch with a person in it.
+     */
+    private commandLineSigning = new Map<SigningPlatform, CommandLineSigningCredential>();
+    /** Build settings `--build-setting` gave this launch, read ahead of the profile's. */
+    private commandLineSettings: Record<string, string> = {};
 
     constructor(private readonly app: App) {}
+
+    /**
+     * Take the credentials and settings a command-line build was launched with.
+     *
+     * Called once, before anything is checked or built, and by that one caller only - see
+     * `CommandLineBuildRun`. Kept on the manager rather than threaded through `preflight` and
+     * `start` because both of them have to see it and they are reached separately: a check pass
+     * that said "unsigned" about a build that then signed would be worse than either answer.
+     *
+     * Nothing here is written to disk. The credentials are unsealed material held for the length of
+     * the process, and the settings are read instead of the profile's rather than into it.
+     */
+    public useCommandLineBuildOverrides(input: {
+        signing: readonly CommandLineSigningCredential[];
+        settings: Record<string, string>;
+    }): void {
+        this.commandLineSigning = new Map(input.signing.map(credential => [credential.platform, credential]));
+        this.commandLineSettings = { ...input.settings };
+    }
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
         return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle", progress: null };
@@ -2233,9 +2261,21 @@ export class GameBuildManager {
     /**
      * Resolve the configured app icon for a target platform into a worker
      * `iconPath`. An absent or corrupt icon falls back to NarraLeaf's mark - an
-     * icon that is merely smaller than the packager's floor still ships,
+     * icon that is merely smaller than the platform's largest slot still ships,
      * upscaled, because a blurry version of the author's icon beats a packaged
      * game wearing somebody else's logo.
+     *
+     * What goes to the worker is the platform's own container (`.ico`, `.icns`)
+     * rather than the PNG: handed a PNG, electron-builder converts it by
+     * starting a second Electron, which is fatal on a machine with no window
+     * server. See `desktopIcons.ts`. Linux keeps the PNG, which is already the
+     * format its target asks for.
+     *
+     * A conversion that fails ships no icon at all rather than falling back to
+     * the PNG. The fallback would be the packager's converter, which is the one
+     * thing this must never reach - and an Electron-branded build is a visible
+     * fault somebody notices, where a build that died two minutes later on an
+     * opaque packager error is not.
      */
     private async resolveTargetIcon(
         session: BuildSession,
@@ -2244,6 +2284,8 @@ export class GameBuildManager {
         platform: GameBuildDesktopPlatform,
     ): Promise<{ iconPath?: string }> {
         const icon = await checkIcon(projectPath, projectConfig, platform);
+        const fallback = this.app.getDefaultGameIconPath();
+        const sources: string[] = [];
         if (icon.status === "ok") {
             if (icon.lowResolution) {
                 this.emit(session, {
@@ -2253,18 +2295,49 @@ export class GameBuildManager {
                         + "it ships upscaled",
                 });
             }
-            return { iconPath: icon.iconPath };
+            sources.push(icon.iconPath);
+        } else {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: (icon.status === "missing"
+                    ? `no ${platform} app icon configured; `
+                    : `the ${platform} icon could not be read; `)
+                    + (fallback ? "using the NarraLeaf icon" : "using the default Electron icon"),
+            });
         }
-        const fallback = this.app.getDefaultGameIconPath();
-        this.emit(session, {
-            level: "warning",
-            source: "Build",
-            message: (icon.status === "missing"
-                ? `no ${platform} app icon configured; `
-                : `the ${platform} icon could not be read; `)
-                + (fallback ? "using the NarraLeaf icon" : "using the default Electron icon"),
-        });
-        return fallback ? { iconPath: fallback } : {};
+        if (fallback) {
+            sources.push(fallback);
+        }
+
+        for (const [index, sourceIconPath] of sources.entries()) {
+            try {
+                const converted = await ensureDesktopIcon({ sourceIconPath, platform, projectPath });
+                if (!converted.passedThrough && !converted.reused) {
+                    this.emit(session, {
+                        level: "info",
+                        source: "Build",
+                        message: `wrote the ${platform} app icon as `
+                            + `${path.extname(converted.iconPath)} (${path.basename(sourceIconPath)})`,
+                    });
+                }
+                return { iconPath: converted.iconPath };
+            } catch (error) {
+                // The last candidate is Studio's own mark; failing on that is a
+                // broken installation rather than a project problem, and either
+                // way the build goes on without an icon.
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: `the ${platform} app icon could not be converted `
+                        + `(${error instanceof Error ? error.message : String(error)}); `
+                        + (index === sources.length - 1
+                            ? "using the default Electron icon"
+                            : "falling back to the NarraLeaf icon"),
+                });
+            }
+        }
+        return {};
     }
 
     /**
@@ -2432,9 +2505,15 @@ export class GameBuildManager {
      * asked for, whether this machine can deliver it, and - when it asked for
      * nothing - the standing caveats of shipping unsigned.
      *
-     * Reads the vault but never unseals anything: `secretsAvailable` answers the
-     * only question preflight has about a password, without producing one. A
-     * dialog that is merely open must not be holding the author's private keys.
+     * A credential given on the command line counts as configured and overrides
+     * the project's choice for that platform, which is what makes a build agent
+     * able to sign a project whose author configured signing on their own machine
+     * (where the credential id means something) and not on this one.
+     *
+     * `secretsAvailable` answers the only question preflight has about a vault
+     * password without producing one; the certificate checks below do have to
+     * unseal, which is why they are the last thing done and why nothing they
+     * touch is emitted.
      */
     private async signingPreflight(
         projectConfig: ProjectConfigData | null,
@@ -2445,22 +2524,22 @@ export class GameBuildManager {
         const findings: BuildPreflightFinding[] = [];
         const ids = readProjectSigningIds(projectConfig);
         const vault = this.signingVault();
+        const configured = (slot: SigningPlatform | null): boolean =>
+            slot !== null && (this.commandLineSigning.has(slot) || Boolean(ids[slot]));
 
-        // The unsigned caveats are now conditional: they describe a platform
-        // nobody pointed at a credential. Once one is configured, whatever is
-        // wrong with it is reported instead, and repeating "this is unsigned"
-        // would be plainly false.
-        const unsignedDesktop = targets.filter(isDesktopTarget).some(target => {
-            const slot = signingPlatformForTarget(target.platform);
-            return slot === null || !ids[slot];
-        });
+        // The unsigned caveats are conditional: they describe a platform nobody
+        // pointed at a credential. Once one is configured, whatever is wrong with
+        // it is reported instead, and repeating "this is unsigned" would be
+        // plainly false.
+        const unsignedDesktop = targets.filter(isDesktopTarget)
+            .some(target => !configured(signingPlatformForTarget(target.platform)));
         if (unsignedDesktop) {
             findings.push({ code: "unsigned", severity: "warning", section: "signing" });
         }
-        if (targets.some(target => target.platform === "android") && !ids.android) {
+        if (targets.some(target => target.platform === "android") && !configured("android")) {
             findings.push({ code: "unsigned-android", severity: "warning", section: "signing" });
         }
-        if (targets.some(target => target.platform === "ios") && !ids.ios) {
+        if (targets.some(target => target.platform === "ios") && !configured("ios")) {
             // Not the same caveat as Android's: an .ipa without a signature
             // cannot be installed at all, so this is a prerequisite the author
             // must act on, not a limitation they can ignore.
@@ -2474,23 +2553,15 @@ export class GameBuildManager {
         // Checked whenever one is configured, not only alongside a Linux target:
         // the GPG signatures cover every artifact, and resolveSigningForBuild
         // will go looking for this credential on the same terms.
-        if (ids.linux) {
+        if (configured("linux")) {
             slots.add("linux");
         }
         for (const platform of slots) {
-            const id = ids[platform];
-            if (!id) {
+            const found = await this.preflightSigningCredential(vault, ids, platform);
+            if (found.status === "none") {
                 continue;
             }
-            // The id is deliberately absent from every finding below: it is an
-            // opaque internal handle, and the author knows their credentials by
-            // the label they gave them.
-            const credential = vault ? await vault.get(id).catch(() => null) : null;
-            // A credential of the wrong kind counts as "not here" rather than
-            // earning its own code: the dialog only ever offers the kinds a
-            // platform can use, so this is a hand-edited or stale config, and
-            // what the author has to do about it is the same either way.
-            if (!vault || !credential || SIGNING_CREDENTIAL_PLATFORM[credential.kind] !== platform) {
+            if (found.status === "missing") {
                 findings.push({
                     code: "signing-credential-missing",
                     severity: "error",
@@ -2499,16 +2570,11 @@ export class GameBuildManager {
                 });
                 continue;
             }
-            if (!signingCredentialSupportedOnHost(credential.kind, hostPlatform)) {
-                findings.push({
-                    code: "signing-host-unsupported",
-                    severity: "error",
-                    section: "signing",
-                    detail: { platform, host: hostPlatform },
-                });
-            }
-            if (SIGNING_CREDENTIAL_SECRET_FIELDS[credential.kind].length > 0
-                && !await vault.secretsAvailable(id).catch(() => false)) {
+            if (found.sealed) {
+                // Reported, and not the end of it: everything below is about the
+                // credential and the selection rather than about the password, and
+                // an author whose keyring is unavailable still needs to hear that
+                // their APK-only build cannot go to Play.
                 findings.push({
                     code: "signing-secret-unavailable",
                     severity: "error",
@@ -2516,38 +2582,117 @@ export class GameBuildManager {
                     detail: { platform },
                 });
             }
-            if (signingReachesNetwork(credential)) {
-                findings.push({
-                    code: "signing-needs-network",
-                    severity: "warning",
-                    section: "signing",
-                    detail: { platform },
-                });
-            }
-            if (credential.kind === "linux-gpg"
-                && !await findGpgBinary({ ...(credential.gpgPath ? { configuredPath: credential.gpgPath } : {}) })) {
-                findings.push({
-                    code: "signing-tool-missing",
-                    severity: "error",
-                    section: "signing",
-                    detail: { platform, tool: "gpg" },
-                });
-            }
-            if (credential.kind === "macos-keychain" && hostPlatform === "macos") {
-                findings.push(...await this.macIdentityPreflight(credential.identity));
-            }
-            findings.push(...await this.signingExpiryPreflight(vault, credential, platform));
-            if (platform === "android" && androidLacksPlayPackage(targets)) {
-                // Signed, and still not publishable on Play - which is exactly
-                // the assumption a release keystore invites. Read off the
-                // selected formats (which `targets` carries) rather than off the
-                // platform alone: turning the AAB format on is the fix, so a
-                // selection that already has it must stop saying this.
-                findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
-            }
-            if (platform === "ios" && targets.some(target => target.platform === "ios")) {
-                findings.push(...await this.iosProfilePreflight(vault, credential, iosBundleId));
-            }
+            findings.push(...await this.credentialPreflight({
+                material: found.material,
+                platform,
+                hostPlatform,
+                targets,
+                iosBundleId,
+            }));
+        }
+        return findings;
+    }
+
+    /**
+     * The credential a platform will sign with, or which way it is not there.
+     *
+     * The command line is asked first and answers outright: a credential handed over that way
+     * arrived as plain material, so neither of the vault-shaped failures can apply to it.
+     */
+    private async preflightSigningCredential(
+        vault: SigningVault | null,
+        ids: ProjectSigningIds,
+        platform: SigningPlatform,
+    ): Promise<
+        | { status: "none" }
+        | { status: "missing" }
+        | { status: "ready"; material: ResolvedSigningMaterial; sealed: boolean }
+    > {
+        const supplied = this.commandLineSigning.get(platform);
+        if (supplied) {
+            return { status: "ready", material: supplied.material, sealed: false };
+        }
+        const id = ids[platform];
+        if (!id) {
+            return { status: "none" };
+        }
+        // The id is deliberately absent from every finding this feeds: it is an
+        // opaque internal handle, and the author knows their credentials by the
+        // label they gave them.
+        const credential = vault ? await vault.get(id).catch(() => null) : null;
+        // A credential of the wrong kind counts as "not here" rather than
+        // earning its own code: the dialog only ever offers the kinds a platform
+        // can use, so this is a hand-edited or stale config, and what the author
+        // has to do about it is the same either way.
+        if (!vault || !credential || SIGNING_CREDENTIAL_PLATFORM[credential.kind] !== platform) {
+            return { status: "missing" };
+        }
+        const sealed = SIGNING_CREDENTIAL_SECRET_FIELDS[credential.kind].length > 0
+            && !await vault.secretsAvailable(id).catch(() => false);
+        // Caught rather than allowed to escape: a credentials.json missing a field it declares is a
+        // credential nobody can use, and it used to take the whole check pass down with it.
+        const material = await vault.resolveMaterial(id).catch(() => null);
+        return material ? { status: "ready", material, sealed } : { status: "missing" };
+    }
+
+    /**
+     * Everything preflight can say about a credential it has in hand, whichever side gave it to it.
+     *
+     * Above this, the vault and the command line differ in how a credential is found and in how it
+     * can fail to be. From here down a credential is a credential, and one set of checks is what
+     * keeps a build agent from being held to a different standard than the dialog.
+     */
+    private async credentialPreflight(input: {
+        material: ResolvedSigningMaterial;
+        platform: SigningPlatform;
+        hostPlatform: GameBuildDesktopPlatform;
+        targets: GameBuildTarget[];
+        iosBundleId: string;
+    }): Promise<BuildPreflightFinding[]> {
+        const { material, platform, hostPlatform, targets, iosBundleId } = input;
+        const findings: BuildPreflightFinding[] = [];
+        if (!signingCredentialSupportedOnHost(material.kind, hostPlatform)) {
+            findings.push({
+                code: "signing-host-unsupported",
+                severity: "error",
+                section: "signing",
+                detail: { platform, host: hostPlatform },
+            });
+        }
+        if (signingReachesNetwork(material)) {
+            findings.push({
+                code: "signing-needs-network",
+                severity: "warning",
+                section: "signing",
+                detail: { platform },
+            });
+        }
+        if (material.kind === "linux-gpg"
+            && !await findGpgBinary({ ...(material.gpgPath ? { configuredPath: material.gpgPath } : {}) })) {
+            findings.push({
+                code: "signing-tool-missing",
+                severity: "error",
+                section: "signing",
+                detail: { platform, tool: "gpg" },
+            });
+        }
+        if (material.kind === "macos-keychain" && hostPlatform === "macos") {
+            findings.push(...await this.macIdentityPreflight(material.identity));
+        }
+        findings.push(...await this.signingExpiryPreflight(material, platform));
+        if (platform === "android" && androidLacksPlayPackage(targets)) {
+            // Signed, and still not publishable on Play - which is exactly the
+            // assumption a release keystore invites. Read off the selected
+            // formats (which `targets` carries) rather than off the platform
+            // alone: turning the AAB format on is the fix, so a selection that
+            // already has it must stop saying this.
+            findings.push({ code: "signing-android-not-play", severity: "warning", section: "signing" });
+        }
+        if (platform === "ios" && targets.some(target => target.platform === "ios")) {
+            findings.push(...await this.iosProfilePreflight(
+                material.kind === "ios-apple" ? material.provisioningProfileFile : null,
+                iosBundleId,
+            ));
         }
         return findings;
     }
@@ -2566,11 +2711,9 @@ export class GameBuildManager {
      * which is more use than "something is wrong with your profile".
      */
     private async iosProfilePreflight(
-        vault: SigningVault,
-        credential: SigningCredential,
+        profilePath: string | null,
         bundleId: string,
     ): Promise<BuildPreflightFinding[]> {
-        const profilePath = vault.materialPath(credential, "provisioningProfileFile");
         if (!profilePath) {
             return [];
         }
@@ -2645,22 +2788,20 @@ export class GameBuildManager {
      * The expiry findings for one credential's certificate.
      *
      * Every certificate worth checking here lives inside a PKCS#12 or a JKS,
-     * whose certificate bags are encrypted under the store password - so this
-     * unseals the credential to read them. The passwords are dropped when the
-     * call returns; what comes back is `SigningInspectResult`, which by its type
-     * carries only certificate facts.
+     * whose certificate bags are encrypted under the store password - which is
+     * why this takes unsealed material rather than a credential. The passwords
+     * are dropped when the call returns; what comes back is
+     * `SigningInspectResult`, which by its type carries only certificate facts.
      *
      * A credential whose certificate this process cannot reach at all - one in
      * the Windows certificate store, or in Azure - has no container and is
      * skipped. Its expiry is the signing tool's business, not ours.
      */
     private async signingExpiryPreflight(
-        vault: SigningVault,
-        credential: SigningCredential,
+        material: ResolvedSigningMaterial,
         platform: SigningPlatform,
     ): Promise<BuildPreflightFinding[]> {
-        const material = await vault.resolveMaterial(credential.id);
-        const container = material ? certificateContainer(material) : null;
+        const container = certificateContainer(material);
         if (!container) {
             return [];
         }
@@ -2729,19 +2870,38 @@ export class GameBuildManager {
         // is resolved whenever the author configured one, whether or not a Linux
         // target is in the request - which is the only way it is reachable at
         // all from a Windows host, where a Linux target cannot be built.
-        if (ids.linux) {
+        if (ids.linux || this.commandLineSigning.has("linux")) {
             needed.add("linux");
         }
-        const slots = [...needed].filter(slot => ids[slot]);
+        const slots = [...needed].filter(slot => this.commandLineSigning.has(slot) || ids[slot]);
         if (slots.length === 0) {
             return {};
         }
-        const vault = this.signingVault();
-        if (!vault) {
-            throw new Error("This project is configured to sign its builds, but the credential vault is unavailable.");
-        }
         const signing: ResolvedBuildSigning = {};
         for (const platform of slots) {
+            // The command line wins over the project's selection. A project's id
+            // names a credential in the vault of the machine its author works on,
+            // which on a build agent is a handle to nothing; a job that carried
+            // its own credential in meant to sign with it.
+            const supplied = this.commandLineSigning.get(platform);
+            if (supplied) {
+                signing[platform] = supplied.material;
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `signing the ${platform} build with the credential given on the command line`
+                        + ` (${supplied.kind})`,
+                });
+                continue;
+            }
+            // Looked up lazily: a run whose every slot came from the command line
+            // has no business failing because this machine has no vault.
+            const vault = this.signingVault();
+            if (!vault) {
+                throw new Error(
+                    "This project is configured to sign its builds, but the credential vault is unavailable.",
+                );
+            }
             const id = ids[platform]!;
             const credential = await vault.get(id);
             if (!credential) {
@@ -3685,10 +3845,18 @@ export class GameBuildManager {
     /**
      * A configured, non-empty string setting, or undefined.
      *
+     * `--build-setting` is read first and wins outright, including when it gives an empty value:
+     * that is how a command line says "the official source" about a mirror the profile has set, and
+     * falling through to the profile would leave no way to say it.
+     *
      * Guarded because a build must not fail over a store read: an unreadable setting means the
      * official source, which is the same thing an unconfigured one means.
      */
     private readStringSetting(key: string): string | undefined {
+        const given = this.commandLineSettings[key];
+        if (given !== undefined) {
+            return given.trim() ? given.trim() : undefined;
+        }
         try {
             const value = this.app.getGlobalState().get(key);
             return typeof value === "string" && value.trim() ? value.trim() : undefined;
