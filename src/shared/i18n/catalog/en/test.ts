@@ -73,6 +73,9 @@ export const test = {
     },
     // Why a picker row is greyed out. An unavailable test is a normal state, not an error.
     reason: {
+        // The project arrived from a package or a remote source and nobody has vouched for it yet.
+        // Names the remedy, because there is one and it is where the author would look for it.
+        distrusted: "Not available until this project is trusted in Settings",
         frozen: "Not available while the workspace is frozen",
         alreadyRunning: "Another run is in progress",
         // A test that asks which one, in a project that has none yet. `parameter` is the

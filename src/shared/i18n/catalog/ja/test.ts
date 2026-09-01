@@ -63,6 +63,7 @@ export const test = {
     },
     // 選択画面の行が灰色になっている理由。実行できないのは異常ではなく普通の状態。
     reason: {
+        distrusted: "設定でこのプロジェクトを信頼するまで実行できない",
         frozen: "ワークスペースの凍結中は実行できない",
         alreadyRunning: "別の実行が進行中",
         parameterEmpty: "このプロジェクトに{parameter}の選択肢がない",

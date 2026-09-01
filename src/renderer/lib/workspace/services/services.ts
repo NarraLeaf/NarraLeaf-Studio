@@ -1382,7 +1382,8 @@ interface ILintService extends IService {
  * contends with Dev Mode and Preview for the same compiled artifacts and the same Stop affordance.
  * `getAvailability` is the definition's own answer with the host's gates on top - notably that a
  * `windowed` test is unavailable while the workspace is frozen, while a `headless` one stays
- * available exactly as `lint:project` does (ruling R9).
+ * available exactly as `lint:project` does (ruling R9), and that a project nobody has vouched for
+ * runs nothing at all.
  */
 interface ITestRunService extends IService {
     listTests(): RegisteredTest[];
@@ -1391,6 +1392,8 @@ interface ITestRunService extends IService {
     listParameters(id: TestId): ResolvedTestParameter[];
     /** Load what those lists read, before asking for them. Never rejects. */
     prepareParameterSources(): Promise<void>;
+    /** Settle the host's gates - trust crosses IPC to reach - before asking about them. Never rejects. */
+    prepareAvailability(): Promise<void>;
     /** The values each test was last run with, off the project cache. Never rejects. */
     readRememberedParameters(): Promise<TestParameterMemory>;
     /** Keep what a test was just started with. Silently does nothing on a frozen workspace. */

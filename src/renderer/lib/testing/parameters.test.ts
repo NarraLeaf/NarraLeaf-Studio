@@ -15,7 +15,7 @@ import type { TestAvailabilityContext, TestDefinition, TestParameterDefinition }
  * that walks somewhere and one that walks nowhere and says it passed.
  */
 
-const CONTEXT: TestAvailabilityContext = { projectPath: "D:/project", frozen: false };
+const CONTEXT: TestAvailabilityContext = { projectPath: "D:/project", frozen: false, distrusted: false };
 
 function parametersOf(...parameters: TestParameterDefinition[]) {
     const definition: TestDefinition = {

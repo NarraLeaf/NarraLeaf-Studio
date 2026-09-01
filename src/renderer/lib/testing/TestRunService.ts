@@ -5,6 +5,7 @@ import type { GameTestEventPayload } from "@shared/types/gameTest";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { ProjectNameConvention } from "../workspace/project/nameConvention";
+import { isProjectTrusted } from "../workspace/projectTrust";
 import { Service } from "../workspace/services/Service";
 import { Services, type ITestRunService, type WorkspaceContext } from "../workspace/services/services";
 import type { ConsoleService } from "../workspace/services/core/ConsoleService";
@@ -250,6 +251,21 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
     private disposeGameTestEvents: (() => void) | null = null;
     private clearProgressTimer: ReturnType<typeof setTimeout> | null = null;
     /**
+     * Whether this project is one Studio will not run anything for, as last settled.
+     *
+     * A kept copy rather than a question asked on the spot: `getAvailability` is synchronous, and
+     * the trust ledger is main's. {@link activate} seeds it while the workspace comes up and
+     * {@link prepareAvailability} settles it again before the picker opens, so both readers - the
+     * picker, which waits for that, and the report tab's Run again, which cannot exist before a run
+     * has already finished - read a settled answer.
+     *
+     * Starts at "trusted", the same default `useProjectDistrusted` starts at and for the same
+     * reason: the milliseconds before the first answer lands are not worth greying out every row of
+     * every project the author wrote themselves, and nothing is at risk in them - `GameTestManager`
+     * refuses a distrusted project's run in the main process on its own account.
+     */
+    private distrusted = false;
+    /**
      * Events for a session whose `launch()` has not resolved yet, keyed by session id.
      *
      * Main can push before the request's answer gets back across IPC, and dropping those lines
@@ -281,11 +297,25 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         }
     }
 
+    /**
+     * Ask main whether this project may run anything, without holding startup up for the answer.
+     *
+     * Not awaited, exactly as `DevModeService` does not await its first status poll: services
+     * activate one after another, so awaiting an IPC round trip here would put it on the path to
+     * the window appearing - for a field nothing reads until an author opens Run > Test.
+     */
+    public override activate(_ctx: WorkspaceContext): void {
+        void this.refreshProjectTrust();
+    }
+
     public override dispose(_ctx: WorkspaceContext): void {
         this.active?.controller.abort();
         void this.active?.session?.stop();
         this.active = null;
         this.runs = [];
+        // The answer was about the project this service came up for. A singleton outlives a project
+        // switch, and the next one settles its own in `activate`.
+        this.distrusted = false;
         this.pendingSessionEvents.clear();
         if (this.clearProgressTimer) {
             clearTimeout(this.clearProgressTimer);
@@ -331,11 +361,24 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         if (this.active) {
             return { available: false, reason: { key: "test.reason.alreadyRunning" } };
         }
+        const windowed = registered.definition.presentation === "windowed";
+        // Distrust takes the windowed half and leaves the other, along the same seam ruling R9 cut
+        // for the freeze - and for a reason that happens to coincide rather than by copying it.
+        //
+        // A windowed test starts a game process on the project's behalf, which is the thing trust
+        // governs; `GameTestManager.launch` refuses it in main, and this is that refusal's
+        // affordance. A headless test starts nothing: the three Studio ships run the project's own
+        // lint rules and walk the story graph, which is reading, and reading is what a distrusted
+        // project keeps. Tests can only be contributed by installed plugins, never by the project,
+        // so no code the project supplied runs either way.
+        if (this.distrusted && windowed) {
+            return { available: false, reason: { key: "test.reason.distrusted" } };
+        }
         const frozen = this.isFrozen();
         // Ruling R9: a headless test is a read-only observer and runs while frozen exactly as
         // `lint:project` does; a windowed one is refused because Preview already is, and a test must
         // not become the way around that gate.
-        if (frozen && registered.definition.presentation === "windowed") {
+        if (frozen && windowed) {
             return { available: false, reason: { key: "test.reason.frozen" } };
         }
         // A declared `select` with nothing in it is a host gate for the same reason the two above
@@ -353,7 +396,8 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
             };
         }
         try {
-            return registered.definition.checkAvailability?.({ projectPath: this.projectPath(), frozen })
+            return registered.definition
+                .checkAvailability?.({ projectPath: this.projectPath(), frozen, distrusted: this.distrusted })
                 ?? { available: true };
         } catch (error) {
             // A definition that throws while the picker is opening is a defect in it, not a reason
@@ -387,6 +431,25 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         } catch (error) {
             console.warn("[TestRunService] could not load the project's stories for the picker", error);
         }
+    }
+
+    /**
+     * Settle the host's own gates before the picker asks about them.
+     *
+     * Only trust needs this. The run slot and the freeze are read from memory the renderer already
+     * holds, while trust is main's ledger and crosses IPC to reach - so the picker awaits this the
+     * way it awaits {@link prepareParameterSources}, and every row it draws states an answer rather
+     * than a default.
+     *
+     * Asking again rather than trusting what {@link activate} seeded is what keeps a query that
+     * failed once from greying every test out for the rest of the window's life: `isProjectTrusted`
+     * deliberately does not remember a refusal, so this re-asks after one and costs nothing after
+     * an answer.
+     *
+     * Never rejects.
+     */
+    public async prepareAvailability(): Promise<void> {
+        await this.refreshProjectTrust();
     }
 
     public listParameters(id: TestId): ResolvedTestParameter[] {
@@ -949,13 +1012,31 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         }
     }
 
+    /**
+     * Take main's answer on whether this project may run anything, and keep it.
+     *
+     * A failure leaves the last answer standing rather than replacing it: a thrown call is the
+     * absence of an answer (a preload without the namespace, a service already torn down), not an
+     * answer of its own, and main refuses on its own account either way. A query that *reaches*
+     * main and fails there is already "not trusted" by the time it gets here - `isProjectTrusted`
+     * fails closed, because absence of an answer is not evidence of safety about running somebody
+     * else's code.
+     */
+    private async refreshProjectTrust(): Promise<void> {
+        try {
+            this.distrusted = !(await isProjectTrusted(this.projectPath()));
+        } catch (error) {
+            console.warn("[TestRunService] could not read whether this project is trusted", error);
+        }
+    }
+
     private projectPath(): string {
         return this.getContext().project.getConfig().projectPath;
     }
 
     /** What a definition is allowed to look at when it lists options or declines to run. */
     private availabilityContext(): TestAvailabilityContext {
-        return { projectPath: this.projectPath(), frozen: this.isFrozen() };
+        return { projectPath: this.projectPath(), frozen: this.isFrozen(), distrusted: this.distrusted };
     }
 
     private parameterCachePath(): string {

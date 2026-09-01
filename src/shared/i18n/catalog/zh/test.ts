@@ -57,6 +57,7 @@ export const test = {
         durationMinutes: "{minutes} 分 {seconds} 秒",
     },
     reason: {
+        distrusted: "在设置中信任该项目后才可用",
         frozen: "工作区冻结时不可用",
         alreadyRunning: "已有测试正在运行",
         parameterEmpty: "本项目中「{parameter}」没有可选值",

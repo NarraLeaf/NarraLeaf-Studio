@@ -297,6 +297,20 @@ export type TestAvailabilityContext = {
      * and there is nothing for the refusal to protect.
      */
     readonly frozen: boolean;
+    /**
+     * Whether this project is one Studio will not run anything for - it arrived from a package or a
+     * remote source and nobody has vouched for it yet.
+     *
+     * Passed in for the reason above and one more of its own: the ledger that answers it lives in
+     * the main process, so asking costs a round trip, and everything here is synchronous. The host
+     * settles the answer when the workspace comes up and hands the settled copy down.
+     *
+     * `checkAvailability` will not normally see this true - the host refuses every test before it
+     * asks a definition anything, because a run is an execution of the project. It is here because
+     * `options` is *not* gated: a list that would cost real work to build can decline to build it
+     * for a project that cannot run it.
+     */
+    readonly distrusted: boolean;
 };
 
 export type TestAvailability =
@@ -392,7 +406,8 @@ export type TestDefinition = {
     /**
      * Evaluated when the picker opens, so keep it synchronous and cheap. Absent means always
      * available; the host still applies its own gates (a `windowed` test is unavailable while the
-     * workspace is frozen no matter what this returns).
+     * workspace is frozen, and no test runs at all in a project that is not trusted, no matter what
+     * this returns).
      */
     checkAvailability?(ctx: TestAvailabilityContext): TestAvailability;
     run(ctx: TestRunContext): Promise<TestVerdict> | TestVerdict;
