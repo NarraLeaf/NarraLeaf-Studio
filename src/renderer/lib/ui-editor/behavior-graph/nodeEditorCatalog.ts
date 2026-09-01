@@ -4,19 +4,14 @@
  * Comments in English per project convention.
  */
 
-import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
-import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import {
     isValidBlueprintExecConnection as isValidBlueprintPinConnectionInner,
 } from "../blueprint-nodes/connectionPolicy";
 import type {
-    BlueprintMagicElementRefPaletteEntry,
     BlueprintNodeEditorCatalogEntry,
     BlueprintPaletteContext,
     BlueprintPinSemantic,
-    BlueprintWidgetEventCapabilityRef,
 } from "../blueprint-nodes/types";
 
 export type { BlueprintPinSemantic, BlueprintNodeEditorCatalogEntry };
@@ -33,36 +28,12 @@ export function listBlueprintNodePaletteEntries(ctx: BlueprintPaletteContext): B
     return catalog().listPaletteEntries(ctx);
 }
 
-/** Build palette context from editor tab payload (defaults when unknown). */
-export function buildBlueprintPaletteContext(input: {
-    graphKind: "event" | "function";
-    owner: BlueprintOwnerRef;
-    widgetElementType?: string;
-    widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
-    widgetEventLayerSlots?: string[];
-    hasEventHead?: boolean;
-    hasFunctionEntry?: boolean;
-    isBlueprintValueGraph?: boolean;
-    listItemContextAvailable?: boolean;
-    magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
-    isComponentDefinitionGraph?: boolean;
-}): BlueprintPaletteContext {
-    const gk: BlueprintGraphKind = input.graphKind;
-    return {
-        graphKind: gk,
-        owner: input.owner,
-        widgetElementType: input.widgetElementType,
-        widgetBlueprintEvents: input.widgetBlueprintEvents,
-        widgetEventLayerSlots: input.widgetEventLayerSlots,
-        hasEventHead: input.hasEventHead,
-        hasFunctionEntry: input.hasFunctionEntry,
-        isBlueprintValueGraph: input.isBlueprintValueGraph,
-        isSyncOnlyGraph: isStorySyncValueOwner(input.owner),
-        listItemContextAvailable: input.listItemContextAvailable,
-        magicElementRefs: input.magicElementRefs,
-        isComponentDefinitionGraph: input.isComponentDefinitionGraph,
-    };
-}
+/**
+ * Palette context for a graph. Re-exported here because this module is what the editor imports its
+ * node metadata from; the derivation itself lives beside the rule it feeds.
+ */
+export { buildBlueprintGraphContext } from "../blueprint-nodes/graphContext";
+export type { BlueprintGraphContextInput } from "../blueprint-nodes/graphContext";
 
 export function resolveBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry {
     return catalog().resolveCatalogEntry(type);

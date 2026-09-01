@@ -12,10 +12,10 @@
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import type {
     BlueprintNodeDef,
     BlueprintNodeEditorCatalogEntry,
-    BlueprintPaletteContext,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 
 export type NodeQuery = {
@@ -104,15 +104,18 @@ function summarize(def: BlueprintNodeDef): NodeSummary {
 /**
  * Palette entries for a synthetic owner, which is how "may I use this node here" gets answered
  * without a project open. The ids are placeholders: owner *kind* decides scope, the ids do not.
+ *
+ * No interface document to hand, and none wanted: this answers for every element a node could ever
+ * sit on rather than for one, so the scopes that depend on where an element sits count as reachable.
+ * That is what `buildBlueprintGraphContext` does with a missing document, which is why the answer
+ * comes from it rather than from a context assembled here.
  */
 function paletteTypesFor(query: NodeQuery): Set<string> {
-    const owner = syntheticOwner(query.ownerKind as BlueprintOwnerRef["kind"]);
-    const context: BlueprintPaletteContext = {
+    const context = buildBlueprintGraphContext({
         graphKind: query.graphKind ?? "event",
-        owner,
+        owner: syntheticOwner(query.ownerKind as BlueprintOwnerRef["kind"]),
         widgetElementType: query.widgetElementType,
-        listItemContextAvailable: true,
-    };
+    });
     return new Set(blueprintNodeRegistry.listPaletteEntries(context).map(entry => entry.type));
 }
 

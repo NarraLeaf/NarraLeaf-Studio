@@ -18,7 +18,10 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -26,13 +29,21 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
     BLUEPRINT_NODE_TYPE_SAVED_SET,
+    BLUEPRINT_NODE_TYPE_SCENE_GET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
+import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { createBlueprintFnRef } from "./fnCatalog";
 import { ownerRefToIndexKey } from "./ownerKeys";
-import { validateBlueprintDocumentGraphs, validateBlueprintGraphIr } from "./graphValidation";
+import {
+    validateBlueprintDocumentGraphs,
+    validateBlueprintGraphIr,
+    type BlueprintGraphEditorDiagnostic,
+} from "./graphValidation";
 
 describe("blueprint graph validation", () => {
     it("reports multiple outgoing edges from one output pin", () => {
@@ -429,7 +440,6 @@ describe("blueprint graph validation", () => {
             graphId: "init",
             blueprintOwner: { kind: "widgetMain", surfaceId: "surface", elementId: "text" },
             widgetElementType: "nl.text",
-            isBlueprintValueGraph: false,
         });
 
         const contextError = diagnostics.find(d => d.code === "node.context_invalid");
@@ -462,7 +472,6 @@ describe("blueprint graph validation", () => {
                 propPath: "props.text",
             },
             widgetElementType: "nl.text",
-            isBlueprintValueGraph: true,
         });
 
         expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
@@ -814,5 +823,206 @@ describe("blueprint fn validation", () => {
         const diagnostics = validateBlueprintDocumentGraphs(doc, "bp-a");
         const contextInvalid = diagnostics.find(d => d.code === "node.context_invalid");
         expect(contextInvalid?.target).toMatchObject({ kind: "node", nodeId: "head" });
+    });
+});
+
+/**
+ * The palette decides what an author may drop on the canvas; this validator decides what a saved
+ * graph may hold. When the two part company the author gets a node that is an error the moment it
+ * lands and cannot be cleared, and `blueprint apply` then refuses to write that blueprint at all -
+ * so the command-line tools are locked out of a graph the editor itself made. These tests build a
+ * graph out of exactly what the palette offered and expect this validator to accept all of it.
+ */
+describe("palette and validator agreement", () => {
+    function surfaceDocument(): Pick<UIDocument, "elements"> {
+        const layout = { x: 0, y: 0, width: 10, height: 10 };
+        const element = (id: string, type: string, parentId: string | null, childrenIds: string[]): UIElement => ({
+            id,
+            type,
+            parentId,
+            childrenIds,
+            layout,
+        });
+        return {
+            elements: {
+                root: element("root", "nl.root", null, ["list", "loose"]),
+                list: element("list", "nl.list", "root", ["row"]),
+                row: element("row", "nl.container", "list", ["label"]),
+                label: element("label", "nl.text", "row", []),
+                loose: element("loose", "nl.text", "root", []),
+            },
+        };
+    }
+
+    /** Every node type the add-node palette offers for this owner, on this element. */
+    function paletteTypes(owner: BlueprintOwnerRef, elementId?: string): string[] {
+        registerCoreBlueprintNodes();
+        const document = surfaceDocument();
+        return BlueprintNodeCatalogService.getInstance()
+            .listPaletteEntries(buildBlueprintGraphContext({
+                graphKind: "event",
+                owner,
+                widgetElement: elementId ? document.elements[elementId] : undefined,
+                uiDocument: document,
+                // No layer wired yet, which is what the head picker asks about: offer every head
+                // this widget can carry rather than the ones one open layer is wired to.
+                widgetEventLayerSlots: elementId ? [] : undefined,
+            }))
+            .map(entry => entry.type);
+    }
+
+    /** One event graph holding all of `types`, judged the way the editor judges a saved graph. */
+    function contextRefusals(
+        owner: BlueprintOwnerRef,
+        types: readonly string[],
+        elementId?: string,
+    ): BlueprintGraphEditorDiagnostic[] {
+        registerCoreBlueprintNodes();
+        const document = surfaceDocument();
+        const nodes: NonNullable<BlueprintGraphIr["nodes"]> = {};
+        for (const type of types) {
+            nodes[type] = { id: type, type };
+        }
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Blueprint",
+                    owner,
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    program: {
+                        kind: "graph",
+                        graphs: { events: { layer: { id: "layer", graph: { nodes, edges: [] } } }, functions: {} },
+                    },
+                },
+            },
+            ownerRecords: {},
+        };
+        return validateBlueprintDocumentGraphs(doc, "bp", {
+            widgetElement: elementId ? document.elements[elementId] : undefined,
+            uiDocument: document,
+            widgetSurfaceId: "surface",
+        }).filter(d => d.code === "node.context_invalid");
+    }
+
+    const CASES: Array<{ name: string; owner: BlueprintOwnerRef; elementId?: string }> = [
+        {
+            name: "a story control-flow condition",
+            owner: { kind: "storyAction", blueprintId: "bp", mode: "condition" },
+        },
+        {
+            name: "a story inline value",
+            owner: { kind: "storyAction", blueprintId: "bp", mode: "value" },
+        },
+        {
+            name: "a story action",
+            owner: { kind: "storyAction", blueprintId: "bp" },
+        },
+        {
+            name: "an element a list draws once per row",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "row" },
+            elementId: "row",
+        },
+        {
+            name: "the list itself",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
+            elementId: "list",
+        },
+        {
+            name: "an element no list draws",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "loose" },
+            elementId: "loose",
+        },
+        {
+            name: "a widget value binding",
+            owner: { kind: "widgetValue", surfaceId: "surface", elementId: "label", propPath: "props.text" },
+            elementId: "label",
+        },
+        {
+            name: "a surface",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+        },
+    ];
+
+    for (const testCase of CASES) {
+        it(`accepts every node the palette offers for ${testCase.name}`, () => {
+            const offered = paletteTypes(testCase.owner, testCase.elementId);
+            expect(offered.length).toBeGreaterThan(0);
+            expect(contextRefusals(testCase.owner, offered, testCase.elementId).map(d => d.message)).toEqual([]);
+        });
+    }
+
+    it("lets a story condition read a scene variable and return it", () => {
+        const owner: BlueprintOwnerRef = { kind: "storyAction", blueprintId: "bp", mode: "condition" };
+        const wanted = [
+            BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+            BLUEPRINT_NODE_TYPE_SCENE_GET,
+            BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+        ];
+        expect(paletteTypes(owner)).toEqual(expect.arrayContaining(wanted));
+        expect(contextRefusals(owner, wanted)).toEqual([]);
+    });
+
+    it("offers the List Item Refresh head where a list draws the element, and accepts it there", () => {
+        const owner: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "surface", elementId: "row" };
+        expect(paletteTypes(owner, "row")).toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH);
+        expect(contextRefusals(owner, [BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH], "row")).toEqual([]);
+    });
+
+    it("offers list row readers on the list's own blueprint, where its item heads supply the row", () => {
+        const owner: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "surface", elementId: "list" };
+        expect(paletteTypes(owner, "list")).toContain(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD);
+        expect(contextRefusals(owner, [BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD], "list")).toEqual([]);
+    });
+
+    it("hides and refuses list row readers where nothing draws a row", () => {
+        const owner: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "surface", elementId: "loose" };
+        expect(paletteTypes(owner, "loose")).not.toContain(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX);
+        const refused = contextRefusals(owner, [BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX], "loose");
+        expect(refused).toHaveLength(1);
+        expect(refused[0]?.target).toMatchObject({ kind: "node", nodeId: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX });
+    });
+
+    it("does not refuse a list row reader when there was no document to walk", () => {
+        // The command-line tools check blueprints without an interface document to hand. A scope
+        // nothing established is not a scope that is absent, and refusing on one would lock those
+        // tools out of graphs the editor writes happily.
+        registerCoreBlueprintNodes();
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Blueprint",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "loose" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                layer: {
+                                    id: "layer",
+                                    graph: {
+                                        nodes: {
+                                            read: { id: "read", type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        };
+
+        expect(validateBlueprintDocumentGraphs(doc, "bp").map(d => d.code)).not.toContain("node.context_invalid");
     });
 });

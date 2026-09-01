@@ -258,7 +258,12 @@ export type BlueprintNodeDef = {
      * built on one refreshes on the host's dependencies, never on the plugin's.
      */
     allowInBlueprintValueGraph?: boolean;
-    /** Palette-only guard for nodes that read the active List item template scope. */
+    /**
+     * The node reads the list row that is in scope while it runs, so it belongs only where a row can
+     * be: on an element a list draws once per row, or on the list itself, whose item heads each run
+     * for one row. Enforced by `isBlueprintNodeAllowedInGraphContext`, so the palette and the graph
+     * validator answer it the same way.
+     */
     requiresListItemContext?: boolean;
     /** Latent/async execution (delay, host awaits) - disallowed in function graphs */
     isLatent?: boolean;
@@ -322,6 +327,14 @@ export type BlueprintWidgetEventCapabilityRef = {
     headNodeTypes?: readonly string[];
 };
 
+/**
+ * What `isBlueprintNodeAllowedInGraphContext` is asked about - both by the add-node palette and by
+ * the graph validator.
+ *
+ * Build it with `buildBlueprintGraphContext` rather than by hand: the fields marked *derived* below
+ * follow from the owner and from where its element sits, and the palette and the validator working
+ * one of them out separately is how a node comes to be offered and then permanently refused.
+ */
 export type BlueprintPaletteContext = {
     graphKind: BlueprintGraphKind;
     owner: BlueprintOwnerRef;
@@ -340,15 +353,15 @@ export type BlueprintPaletteContext = {
     hasEventHead?: boolean;
     /** Current function graph already has an entry node */
     hasFunctionEntry?: boolean;
-    /** Blueprint Value graphs have a restricted palette and value-return sink. */
+    /** *Derived.* Blueprint Value graphs have a restricted palette and value-return sink. */
     isBlueprintValueGraph?: boolean;
     /**
-     * Sync-only graphs (e.g. inline story value blueprints) forbid async/"latent" nodes but still
-     * allow synchronous exec nodes (branches, Get/Set var). Distinct from `isBlueprintValueGraph`,
-     * which additionally restricts to the pure widget-value node whitelist.
+     * *Derived.* Sync-only graphs (e.g. inline story value blueprints) forbid async/"latent" nodes
+     * but still allow synchronous exec nodes (branches, Get/Set var). Distinct from
+     * `isBlueprintValueGraph`, which additionally restricts to the pure widget-value node whitelist.
      */
     isSyncOnlyGraph?: boolean;
-    /** Current widget owner is rendered inside an nl.list item template. */
+    /** *Derived.* A list row can be in scope here - see `isListItemScopeReachable`. */
     listItemContextAvailable?: boolean;
     /** Bound Element Literal nodes in the active graph, same Surface only. */
     magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];

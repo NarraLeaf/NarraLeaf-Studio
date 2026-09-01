@@ -41,6 +41,32 @@ export function isStorySyncValueOwner(owner: BlueprintOwnerRef | undefined): boo
     return owner?.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
 }
 
+/**
+ * True for a Blueprint Value graph: the per-property value provider behind one widget prop.
+ *
+ * Narrow on purpose, and not to be widened to the synchronous story owners above. A Blueprint Value
+ * graph is re-run every time a binding's dependencies change, so its palette is cut down to the
+ * nodes that are safe to re-run - no event heads but Init and Flush, nothing effectful. A story
+ * value or condition also returns a value, but it runs once where the story asks for it, and the
+ * only thing it may not do is block: that is {@link isStorySyncValueOwner}, which forbids async
+ * nodes and nothing else. Answering this question with "storyAction value too" made every node a
+ * condition is written out of - `Get Scene Var` first among them - an error the author could not
+ * clear and the command-line tools then refused to write.
+ */
+export function isBlueprintValueGraphOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    return owner?.kind === "widgetValue";
+}
+
+/**
+ * True for the owners that hang off one interface element, and so can be asked where that element
+ * sits: a widget's own graph, one of its value bindings, or a component definition's.
+ */
+export function isBlueprintWidgetOwner(owner: BlueprintOwnerRef | undefined): boolean {
+    return owner?.kind === "widgetMain"
+        || owner?.kind === "widgetValue"
+        || owner?.kind === "componentWidgetMain";
+}
+
 export type BlueprintFrontendKind = "visual" | "typescript";
 
 export type BlueprintProgramKind = "graph" | "scriptModule";

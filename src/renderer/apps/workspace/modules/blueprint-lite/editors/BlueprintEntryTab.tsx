@@ -43,7 +43,7 @@ import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/sto
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { findOwningListItemTemplate, isListItemContextElement } from "@shared/types/ui-editor/listItemContext";
+import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
@@ -61,7 +61,7 @@ import {
     graphIrHasFunctionEntry,
     writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
-import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
 import {
     BlueprintGraphAddressProvider,
@@ -682,7 +682,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
-    const listItemContextAvailable = isListItemContextElement(uiDocument, widgetElement);
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
         return t ? widgetModuleRegistry.get(t)?.logicApi?.events : undefined;
@@ -715,6 +714,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     });
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
         widgetElement,
+        // The same document the palette walks, so the two agree about which element a list draws.
+        uiDocument,
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
         isComponentDefinitionGraph,
@@ -1289,10 +1290,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const onAddEvent = useCallback(async () => {
-        const eventHeadEntries = nodeCatalog.listPaletteEntries(buildBlueprintPaletteContext({
+        const eventHeadEntries = nodeCatalog.listPaletteEntries(buildBlueprintGraphContext({
             graphKind: "event",
             owner: bp.owner,
-            widgetElementType: widgetElement?.type,
+            widgetElement,
+            uiDocument,
             widgetBlueprintEvents: widgetLogicEvents,
             widgetEventLayerSlots:
                 (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") && widgetElement
@@ -1300,8 +1302,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     : undefined,
             hasEventHead: false,
             hasFunctionEntry: false,
-            isBlueprintValueGraph: bp.owner.kind === "widgetValue",
-            listItemContextAvailable,
             isComponentDefinitionGraph,
         })).filter(entry => entry.role === "eventHead" || entry.role === "elementEventHead");
         const defaultLayerName = t("blueprint.eventLayer.defaultName", { index: eventIds.length + 1 });
@@ -1377,7 +1377,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         bp.owner,
         editor,
         eventIds.length,
-        listItemContextAvailable,
         localBp,
         nodeCatalog,
         payload.blueprintId,
@@ -1385,6 +1384,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         payload.ownerKind,
         selectEventGraph,
         uiService,
+        uiDocument,
         uuid,
         widgetElement,
         widgetLogicEvents,
@@ -1507,16 +1507,15 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             document: blueprintDocumentService.getDocument(),
             surfaceId: payload.surfaceId,
         });
-        return buildBlueprintPaletteContext({
+        return buildBlueprintGraphContext({
             graphKind: gk,
             owner: bp.owner,
-            widgetElementType: widgetElement?.type,
+            widgetElement,
+            uiDocument,
             widgetBlueprintEvents: widgetLogicEvents,
             widgetEventLayerSlots,
             hasEventHead: false,
             hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
-            isBlueprintValueGraph: bp.owner.kind === "widgetValue",
-            listItemContextAvailable,
             magicElementRefs,
             isComponentDefinitionGraph,
         });
@@ -1526,10 +1525,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         editor.graphView,
         ir,
         isComponentDefinitionGraph,
-        listItemContextAvailable,
         payload.surfaceId,
         revision,
-        widgetElement?.type,
+        uiDocument,
+        widgetElement,
         widgetEventLayerSlots,
         widgetLogicEvents,
     ]);

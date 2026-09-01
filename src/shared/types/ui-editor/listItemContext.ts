@@ -59,3 +59,26 @@ export function isListItemContextElement(
 ): boolean {
     return findOwningListItemTemplate(document, element) != null;
 }
+
+/**
+ * Whether a list row can be in scope while a blueprint attached to this element runs.
+ *
+ * Two ways it can be, where {@link isListItemContextElement} knows only the first:
+ *  - the element is drawn once per row, so everything on it runs with that row in scope;
+ *  - the element *is* the list, whose Item Click, Item Render, Item Hover and Selection Changed
+ *    heads each run for one row. The shipped backlog and save screens read the clicked row exactly
+ *    this way, from a `Get Item Field` on the list's own graph.
+ *
+ * This is the reachability question - may a node that reads the row be here at all - and it is
+ * deliberately separate from the template question above, which is about the shape a row has and so
+ * only ever means the first case.
+ */
+export function isListItemScopeReachable(
+    document: Pick<UIDocument, "elements">,
+    element: UIElement | undefined | null,
+): boolean {
+    if (!element) {
+        return false;
+    }
+    return isListLikeWidgetType(element.type) || isListItemContextElement(document, element);
+}

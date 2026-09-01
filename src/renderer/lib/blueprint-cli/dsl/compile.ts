@@ -22,12 +22,13 @@ import type {
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
 } from "@shared/types/blueprint/document";
-import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     blueprintNodeRegistry,
     isBlueprintNodeAllowedInGraphContext,
 } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import { isValidBlueprintPinConnection } from "@/lib/ui-editor/blueprint-nodes/connectionPolicy";
 import {
@@ -62,6 +63,12 @@ export type BpCompileOptions = {
      * carry a line no author would think to write.
      */
     resolveElementType?: (elementId: string) => string | undefined;
+    /**
+     * Every element in the project, by id, so that the scopes which depend on where an element sits
+     * can be walked. Without it such a scope counts as reachable rather than as absent - see
+     * `BlueprintGraphContextInput`.
+     */
+    uiElements?: Readonly<Record<string, UIElement>>;
 };
 
 export type BpCompileResult = {
@@ -348,6 +355,7 @@ function compileParams(
     }
 
     const widgetElementType = isWidgetOwner(owner) ? options.resolveWidgetElementType?.(owner) : undefined;
+    const widgetElement = "elementId" in owner ? options.uiElements?.[owner.elementId] : undefined;
     const definition = blueprintNodeRegistry.get(nodeAst.type);
     if (!definition) {
         pushError(
@@ -368,12 +376,14 @@ function compileParams(
             `It is available in: ${definition.graphKinds.join(", ")}.`,
         );
     } else if (
-        !isBlueprintNodeAllowedInGraphContext(definition, {
+        !isBlueprintNodeAllowedInGraphContext(definition, buildBlueprintGraphContext({
             graphKind: graphAst.kind,
             owner,
             widgetElementType,
-            isSyncOnlyGraph: isStorySyncValueOwner(owner),
-        })
+            widgetElement,
+            uiDocument: options.uiElements ? { elements: options.uiElements } : null,
+            isComponentDefinitionGraph: owner.kind === "componentWidgetMain",
+        }))
         && !(definition.role === "eventHead" && isWidgetOwner(owner) && !widgetElementType)
     ) {
         diagnostics.push({

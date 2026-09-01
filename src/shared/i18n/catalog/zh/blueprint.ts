@@ -141,6 +141,7 @@ export const blueprint = {
         node: {
             contextInvalid: "节点“{name}”不允许出现在此 {ownerKind} {graphKind} 图中：{hint}",
             contextValueReturnHint: "返回值仅属于蓝图值图",
+            contextListItemHint: "该节点读取它所在的列表行，而此处没有任何列表行",
             noRuntime: "节点“{node}”：类型“{type}”没有运行时",
             variableIdInvalid: "节点“{node}”：选择变量",
             persistentVariableIdInvalid: "节点“{node}”：选择持久化变量",

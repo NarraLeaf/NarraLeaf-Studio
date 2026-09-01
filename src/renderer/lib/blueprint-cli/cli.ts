@@ -16,6 +16,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import {
@@ -411,6 +412,7 @@ function commandCheck(args: Args, io: CliIo): number {
             persistentVariables: variables.persistent,
             savedVariables: variables.saved,
             resolveWidgetElement: widgetElementResolver(targets),
+            uiElements: targets.raw as Readonly<Record<string, UIElement>>,
         });
         io.out(
             args.flags.json === true
@@ -432,6 +434,9 @@ function commandCheck(args: Args, io: CliIo): number {
         resolveElementType: projectDir ? elementTypeResolver(readUiDocumentTargets(projectDir)) : undefined,
         resolveWidgetElement: projectDir
             ? widgetElementResolver(readUiDocumentTargets(projectDir))
+            : undefined,
+        uiElements: projectDir
+            ? readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>
             : undefined,
     });
     io.out(
@@ -460,6 +465,7 @@ function commandApply(args: Args, io: CliIo): number {
         resolveWidgetElementType: widgetElementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
+        uiElements: readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>,
     });
     const report = formatDiagnostics(result.diagnostics, {
         fileName: reportPath(resolved),

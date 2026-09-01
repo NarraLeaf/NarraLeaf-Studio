@@ -39,6 +39,15 @@ export type CheckOptions = {
      * one of them as not allowed here - 150-odd refusals on a project that is fine.
      */
     resolveWidgetElement?: (owner: BlueprintOwnerRef) => { element: unknown; surfaceId?: string } | undefined;
+    /**
+     * Every element in the project, by id.
+     *
+     * A handful of node scopes are a fact about where an element sits rather than about what it is -
+     * the list row a node reads is the one there is - and both the palette and the validator answer
+     * those by walking this. Without it neither refuses such a node, because nothing established
+     * that the scope is out of reach.
+     */
+    uiElements?: Readonly<Record<string, UIElement>>;
 };
 
 export type CheckResult = {
@@ -57,6 +66,7 @@ export function checkBlueprintSource(source: string, options: CheckOptions = {})
         newId: options.newId,
         resolveWidgetElementType: options.resolveWidgetElementType,
         resolveElementType: options.resolveElementType,
+        uiElements: options.uiElements,
     });
     diagnostics.push(...compiled.diagnostics);
 
@@ -165,6 +175,7 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
         persistentVariables: options.persistentVariables,
         savedVariables: options.savedVariables,
         widgetElement: widget?.element as UIElement | undefined,
+        uiDocument: options.uiElements ? { elements: options.uiElements } : null,
         widgetSurfaceId: widget?.surfaceId,
         // Told rather than derived from the owner inside the validator, because it is the same flag
         // the runtime bridge takes (`componentDefinitionMode`): a definition's graph addresses its

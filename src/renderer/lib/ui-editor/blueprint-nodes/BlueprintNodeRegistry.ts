@@ -46,6 +46,7 @@ type BlueprintNodeGraphContextDef = Pick<
     | "role"
     | "scope"
     | "requiresHostApi"
+    | "requiresListItemContext"
     | "magicElementTarget"
     | "inspectorParams"
 >;
@@ -251,6 +252,14 @@ export function isBlueprintNodeAllowedInGraphContext(
     if (!matchesBlueprintNodeScope(def, ctx)) {
         return false;
     }
+    // Here rather than in `listPaletteEntries`, so that the graph validator answers this the same
+    // way the palette does. While it was a palette-only filter the two could only agree by luck:
+    // the palette hid these nodes and the validator said nothing about them, so a graph that lost
+    // its row scope - an element dragged out of the list it was drawn by - kept reading a row that
+    // is no longer there, and nothing said so.
+    if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
+        return false;
+    }
     if (ctx.isBlueprintValueGraph && !isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
         return false;
     }
@@ -379,9 +388,6 @@ class BlueprintNodeDefinitionsRegistry {
                 continue;
             }
             if (def.type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL && !canUseImageAssetLiteral(ctx)) {
-                continue;
-            }
-            if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
                 continue;
             }
             if (def.magicElementTarget) {

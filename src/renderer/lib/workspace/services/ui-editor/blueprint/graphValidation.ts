@@ -5,7 +5,6 @@ import type {
     BlueprintGraphIr,
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
-import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
@@ -36,7 +35,8 @@ import {
     resolveBlueprintFnCallTarget,
     type BlueprintFnDeclaration,
 } from "./fnCatalog";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
@@ -74,6 +74,15 @@ export type BlueprintGraphEditorDiagnostic = {
 /** Optional UI document context when validating a widgetMain blueprint from the graph editor. */
 export type ValidateBlueprintDocumentGraphsOptions = {
     widgetElement?: UIElement | null;
+    /**
+     * The interface document `widgetElement` belongs to.
+     *
+     * Some node scopes are a fact about where an element sits rather than about what it is, and the
+     * add-node palette answers those by walking this document. Without it the same walk is not
+     * merely skipped, it is *unavailable* - so `buildBlueprintGraphContext` treats such a scope as
+     * reachable rather than refusing a graph on a fact nothing established.
+     */
+    uiDocument?: Pick<UIDocument, "elements"> | null;
     /** Surface id for the widget; used with widgetElement to match blueprint owner. */
     widgetSurfaceId?: string;
     /** Runtime widget event catalog used to validate scoped event-head nodes. */
@@ -133,59 +142,54 @@ function isExecInputEdge(
     return entry.pins.some(pin => pin.id === edge.to.port && pin.kind === "input" && pin.semantic === "exec");
 }
 
-/**
- * Owners whose "On Call" graph produces a value via a Return Value node: widget value bindings and
- * synchronous story blueprints (inline value interpolations + control-flow conditions).
- */
-function isBlueprintValueGraphOwner(owner: BlueprintOwnerRef | undefined): boolean {
-    if (!owner) {
-        return false;
-    }
-    if (owner.kind === "widgetValue") {
-        return true;
-    }
-    return owner.kind === "storyAction" && (owner.mode === "value" || owner.mode === "condition");
-}
-
 /** True for a story condition blueprint whose Return Value must be typed boolean. */
 function isStoryConditionOwner(owner: BlueprintOwnerRef | undefined): boolean {
     return owner?.kind === "storyAction" && owner.mode === "condition";
 }
 
+/**
+ * The context this graph's nodes are judged against - built by the same function the add-node
+ * palette builds its own from, so that a node offered on the canvas is a node this accepts.
+ */
 function buildNodeValidationPaletteContext(ctx: {
     graphKind: "event" | "function";
     blueprintOwner?: BlueprintOwnerRef;
+    widgetElement?: UIElement | null;
     widgetElementType?: string;
+    uiDocument?: Pick<UIDocument, "elements"> | null;
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
-    isBlueprintValueGraph?: boolean;
     isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext | null {
     if (!ctx.blueprintOwner) {
         return null;
     }
-    return {
+    return buildBlueprintGraphContext({
         graphKind: ctx.graphKind,
         owner: ctx.blueprintOwner,
+        widgetElement: ctx.widgetElement,
         widgetElementType: ctx.widgetElementType,
+        uiDocument: ctx.uiDocument,
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
-        isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? isBlueprintValueGraphOwner(ctx.blueprintOwner),
-        isSyncOnlyGraph: isStorySyncValueOwner(ctx.blueprintOwner),
         isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
+        // What the canvas holds is the canvas's business; a graph already written is judged on its
+        // nodes, not on which one of them was dropped first.
         hasEventHead: false,
         hasFunctionEntry: false,
-    };
+    });
 }
 
 function describeNodeContextError(def: BlueprintNodeDef, ctx: BlueprintPaletteContext): string {
-    const valueGraphHint =
-        def.role === "valueReturn"
-            ? translate("blueprint.diagnostics.node.contextValueReturnHint")
-            : "";
+    let hint = "";
+    if (def.role === "valueReturn") {
+        hint = translate("blueprint.diagnostics.node.contextValueReturnHint");
+    } else if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
+        hint = translate("blueprint.diagnostics.node.contextListItemHint");
+    }
     return translate("blueprint.diagnostics.node.contextInvalid", {
         name: def.displayName,
         ownerKind: ctx.owner.kind,
         graphKind: ctx.graphKind,
-        hint: valueGraphHint,
+        hint,
     });
 }
 
@@ -400,10 +404,12 @@ export function validateBlueprintGraphIr(
         validSavedVariableIds?: ReadonlySet<string>;
         variableValueTypes?: readonly BlueprintVariableTypeOption[];
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
+        widgetElement?: UIElement | null;
         widgetElementType?: string;
+        /** The interface document the widget element lives in; see `BlueprintGraphContextInput`. */
+        uiDocument?: Pick<UIDocument, "elements"> | null;
         widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
         blueprintOwner?: BlueprintOwnerRef;
-        isBlueprintValueGraph?: boolean;
         isComponentDefinitionGraph?: boolean;
         /** Whole document; enables cross-blueprint checks such as Fn call target resolution. */
         blueprintDocument?: BlueprintDocument;
@@ -826,10 +832,11 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
+                widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
+                uiDocument: options?.uiDocument,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
                 blueprintDocument: doc,
             }),
@@ -846,10 +853,11 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
+                widgetElement: options?.widgetElement,
                 widgetElementType: options?.widgetElement?.type,
+                uiDocument: options?.uiDocument,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
-                isBlueprintValueGraph: isBlueprintValueGraphOwner(bp.owner),
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );

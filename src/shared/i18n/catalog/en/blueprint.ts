@@ -147,6 +147,7 @@ export const blueprint = {
         node: {
             contextInvalid: "Node \"{name}\" is not allowed in this {ownerKind} {graphKind} graph.{hint}",
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
+            contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",

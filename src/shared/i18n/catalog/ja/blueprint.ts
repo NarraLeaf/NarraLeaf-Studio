@@ -141,6 +141,7 @@ export const blueprint = {
         node: {
             contextInvalid: "ノード「{name}」は、この {ownerKind} の {graphKind} グラフでは使えない。{hint}",
             contextValueReturnHint: " 値を返すノードはブループリント値のグラフにしか置けない",
+            contextListItemHint: " このノードは自分が並んでいるリストの行を読むが、ここには行がない",
             noRuntime: "ノード「{node}」：型「{type}」に対応する実装がない",
             variableIdInvalid: "ノード「{node}」：変数を選ぶ",
             persistentVariableIdInvalid: "ノード「{node}」：永続変数を選ぶ",
