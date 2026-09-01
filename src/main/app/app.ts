@@ -1620,6 +1620,14 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
+        // Before the document loads, which is what `blockDistrusted` requires: a request made
+        // while the first frame is coming up is still a request. A distrusted project reaches
+        // nothing remote from its own window - not through fetch, not through an <img>, not
+        // through a plugin panel - and this is the only hook Electron allows on that session,
+        // so it is shared with the Dev Mode policy rather than registered a second time.
+        if (!this.projectTrustManager.isTrusted(props.projectPath)) {
+            devModeNetworkPolicy.blockDistrusted(window.getWebContents().id);
+        }
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
         // Maximized right here rather than once the page reports ready: the window is on screen

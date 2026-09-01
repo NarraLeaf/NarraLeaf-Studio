@@ -1,4 +1,6 @@
 import type { App } from "@/app/app";
+import type { AppWindow } from "../managers/window/appWindow";
+import { WindowAppType } from "@shared/types/window";
 import type { ProjectTrustManager } from "../managers/projectTrustManager";
 import { emitWorkspaceConsoleLog } from "./workspaceConsole";
 
@@ -31,7 +33,9 @@ export type DistrustedOperation =
     | "preview"
     | "Dev Mode"
     | "test run"
-    | "weather clip bake";
+    | "weather clip bake"
+    | "media inspection"
+    | "media conversion";
 
 export function projectDistrustedMessage(operation: DistrustedOperation): string {
     return `The ${operation} is unavailable because this project is not trusted. `
@@ -76,4 +80,25 @@ export function refuseDistrustedOperation(
         emitWorkspaceConsoleLog(app, projectPath, { level: "error", source: "Trust", message });
     }
     return message;
+}
+
+/**
+ * Refuse an operation asked for by a window whose project is not trusted.
+ *
+ * Takes the project from the **window**, never from the request. Fifty-odd IPC payloads carry a
+ * `projectPath` of their own and nothing checks it against the window that sent it; a gate that
+ * read one of those would be asking the caller whether the caller is allowed.
+ *
+ * A window with no project - the launcher, settings - is not governed by project trust at all, and
+ * answers null.
+ */
+export function refuseDistrustedWindow(
+    window: AppWindow,
+    operation: DistrustedOperation,
+): string | null {
+    if (window.getWindowType() !== WindowAppType.Workspace) {
+        return null;
+    }
+    const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps().projectPath;
+    return projectPath ? refuseDistrustedOperation(window.getApp(), projectPath, operation) : null;
 }

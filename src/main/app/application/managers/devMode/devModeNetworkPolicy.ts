@@ -71,6 +71,7 @@ export type PreviewNetworkPolicy = {
 class DevModeNetworkPolicyManager {
     private readonly installedSessions = new WeakSet<Session>();
     private readonly policies = new Map<number, PreviewNetworkPolicy>();
+    private readonly distrusted = new Set<number>();
 
     /**
      * Register (or refresh) the policy for a Dev Mode window and ensure the
@@ -87,10 +88,35 @@ class DevModeNetworkPolicyManager {
         this.policies.delete(webContentsId);
     }
 
+    /**
+     * Cut a window off from the network because the project it is open on is not trusted.
+     *
+     * Lives on this manager rather than in a hook of its own, and that is a correctness point
+     * rather than tidiness: Electron keeps **one** `onBeforeRequest` listener per session, so a
+     * second registration would silently replace the Dev Mode policy above and quietly widen the
+     * thing it exists to narrow. Everything that wants to cancel a request on this session has to
+     * come through here.
+     *
+     * Whole-window rather than per-request-kind: a distrusted project must not reach the network at
+     * all, and the two are asked as one question by {@link isBlocked}.
+     */
+    public blockDistrusted(webContentsId: number): void {
+        this.distrusted.add(webContentsId);
+        this.install(electronSession.defaultSession);
+    }
+
+    /** The window is gone, or its project has since been trusted and it reloaded. */
+    public releaseDistrusted(webContentsId: number): void {
+        this.distrusted.delete(webContentsId);
+    }
+
     /** A preview confined to the app protocol: no remote request of any kind leaves it. */
     private isBlocked(webContentsId: number | undefined): boolean {
         if (webContentsId === undefined) {
             return false;
+        }
+        if (this.distrusted.has(webContentsId)) {
+            return true;
         }
         const policy = this.policies.get(webContentsId);
         return policy !== undefined && !policy.allowHttp;
