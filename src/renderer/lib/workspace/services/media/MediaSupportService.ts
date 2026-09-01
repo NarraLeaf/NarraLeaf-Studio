@@ -6,6 +6,7 @@ import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { getInterface } from "@/lib/app/bridge";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import {
     blocksShipping,
     imageSupportRecord,
@@ -46,6 +47,20 @@ import {
  * with **no record at all**, {@link MediaSupportScan.probeAvailable} goes false, and the build gate
  * lets the build through saying so. The one direction of error this must never make is asserting a
  * file is bad on the strength of a question that was never answered.
+ *
+ * ## A distrusted project is not probed at all
+ *
+ * A project that arrived from outside this machine may not cause effects until the author vouches
+ * for it, and every probe is a spawn: main refuses each one, and says so on the workspace console,
+ * because a refusal nobody asked for still has to be visible. The asset browser scans on mount, so
+ * a library of two hundred voice takes would spend two hundred refused calls and two hundred error
+ * lines to establish a single fact - and the author, who only opened a panel, would be reading them.
+ *
+ * So trust is asked once, before the loop, and the answer lands in the shape above rather than in a
+ * second one: no probe is sent, every sound and video asset is unanswered with no record, and
+ * `probeAvailable` is false. Distrust governs execution, not reading, and nothing here concludes
+ * anything about the files. Images are decided from their names inside the renderer with no process
+ * involved, so they keep answering and the browser is not left blank.
  */
 
 export type MediaSupportScan = {
@@ -59,7 +74,8 @@ export type MediaSupportScan = {
      */
     records: ReadonlyMap<string, MediaAssetSupportRecord>;
     /**
-     * False when this host cannot probe. Every sound and video asset is then unanswered, and no
+     * False when no probe would be answered - this host has no ffprobe, or the project is not
+     * trusted and main refuses the spawn. Every sound and video asset is then unanswered, and no
      * caller may conclude anything about any of them.
      */
     probeAvailable: boolean;
@@ -195,7 +211,11 @@ export class MediaSupportService extends Service<MediaSupportService> implements
         const records = new Map<string, MediaAssetSupportRecord>();
         const unanswered: string[] = [];
         const liveHashes = new Set<string>();
-        let probeAvailable = true;
+        // Starts false for a distrusted project, which folds that case into the skip below rather
+        // than giving it a branch of its own: the loop already knows how to answer nothing about a
+        // probe-kind asset without asserting anything, and this is the same situation reached by a
+        // different route.
+        let probeAvailable = await this.mayProbe();
 
         for (const asset of this.checkableAssets()) {
             if (asset.hash) {
@@ -229,6 +249,24 @@ export class MediaSupportService extends Service<MediaSupportService> implements
         this.scanResult = { records, probeAvailable, unanswered, finishedAt: Date.now() };
         this.notify();
         return this.scanResult;
+    }
+
+    /**
+     * Whether a probe sent from here would be answered at all, as far as is knowable in advance.
+     *
+     * Trust is the one thing worth asking up front. A missing ffprobe is learned from the first
+     * probe that comes back `unavailable`, which is the right way round for a fact that costs one
+     * spawn to discover; distrust is not, because main answers every probe with a refusal *and a
+     * console error*, so learning it the same way would cost the author an error line per clip in
+     * the library. One question, before the first request, is the whole difference.
+     *
+     * A "no" also puts the cache out of reach for this scan, since the skip it feeds is ahead of
+     * the cache lookup. That is not a loss worth guarding against: `editor/cache` is excluded from
+     * version control and from every package, so a project that arrived from elsewhere brought no
+     * answers with it.
+     */
+    private mayProbe(): Promise<boolean> {
+        return isProjectTrusted(this.getContext().project.resolve());
     }
 
     /** Every asset worth checking, in library order so a report reads the way the browser looks. */
