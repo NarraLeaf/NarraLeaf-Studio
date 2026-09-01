@@ -31,6 +31,7 @@ import { workspacePluginSession } from "./workspacePluginSession";
 import { openPluginsPanel } from "@/apps/workspace/modules/plugins/openPluginsPanel";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
+import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
@@ -704,27 +705,30 @@ export function createPluginApp(
                 panels: {
                     register: panel => {
                         assertOwnedId(descriptor.plugin.id, panel.id, "panel");
-                        return trackReturn(ui.panels.register(panel as any));
+                        return trackReturn(ui.panels.register(guardPluginPanel(descriptor.plugin.id, panel) as any));
                     },
                     registerMany: panels => combine(panels.map(panel => {
                         assertOwnedId(descriptor.plugin.id, panel.id, "panel");
-                        return trackReturn(ui.panels.register(panel as any));
+                        return trackReturn(ui.panels.register(guardPluginPanel(descriptor.plugin.id, panel) as any));
                     })),
                 },
                 actions: {
+                    // The workspace hands `onClick` the live Workspace; the guard swaps in one whose
+                    // service registry refuses, so a plugin action cannot reach the default-facade
+                    // file system. See `pluginWorkspaceGuard`.
                     register: action => {
                         assertOwnedId(descriptor.plugin.id, action.id, "action");
-                        ui.getStore().registerAction(action);
+                        ui.getStore().registerAction(guardPluginAction(descriptor.plugin.id, action));
                         return trackReturn(() => ui.getStore().unregisterAction(action.id));
                     },
                     registerMany: actions => combine(actions.map(action => {
                         assertOwnedId(descriptor.plugin.id, action.id, "action");
-                        ui.getStore().registerAction(action);
+                        ui.getStore().registerAction(guardPluginAction(descriptor.plugin.id, action));
                         return trackReturn(() => ui.getStore().unregisterAction(action.id));
                     })),
                     registerGroup: group => {
                         assertOwnedId(descriptor.plugin.id, group.id, "action group");
-                        ui.getStore().registerActionGroup(confineToOwnMenu(group));
+                        ui.getStore().registerActionGroup(confineToOwnMenu(guardPluginActionGroup(descriptor.plugin.id, group)));
                         return trackReturn(() => ui.getStore().unregisterActionGroup(group.id));
                     },
                 },
