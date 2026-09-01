@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import { WindowAppType } from "@shared/types/window";
 import {
@@ -96,5 +98,42 @@ describe("refusing a window", () => {
     it("does not govern a workspace window that was launched without a project path", () => {
         const window = windowDouble({ type: WindowAppType.Workspace, trusted: false });
         expect(refuseDistrustedWindow(window, "preview")).toBeNull();
+    });
+});
+
+describe("every operation is actually refused somewhere", () => {
+    /**
+     * A name in {@link DISTRUSTED_OPERATIONS} is a promise that something in main says no to it.
+     * Nothing else in the codebase checks that, and the failure it guards against is silent: an
+     * operation added to the list, wired into no manager, reads in review as a gate that exists.
+     *
+     * The search is for a call rather than for the string, because half these names also appear as
+     * ordinary log sources - `source: "Dev Mode"` occurs a dozen times in the manager that gates it,
+     * and matching on that would let an ungated name pass on the strength of its own logging.
+     */
+    const MAIN_ROOT = path.resolve(__dirname, "../../..");
+    const GATE_CALL = "(?:refuseDistrustedOperation|refuseDistrustedWindow|projectDistrustedRefusal)";
+
+    function mainSources(dir: string, out: string[] = []): string[] {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                mainSources(full, out);
+            } else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+                out.push(full);
+            }
+        }
+        return out;
+    }
+
+    const sources = mainSources(MAIN_ROOT)
+        .filter(file => !file.endsWith(`${path.sep}projectTrustGate.ts`))
+        .map(file => fs.readFileSync(file, "utf-8"));
+
+    it.each(DISTRUSTED_OPERATIONS)("%s has a gate that refuses it", operation => {
+        // Failing here means the name was added and nothing calls the gate with it. Wire it into
+        // the manager that starts the operation, at the point before any work begins.
+        const call = new RegExp(`${GATE_CALL}[(][^;]*?"${operation}"`, "s");
+        expect(sources.some(source => call.test(source))).toBe(true);
     });
 });
