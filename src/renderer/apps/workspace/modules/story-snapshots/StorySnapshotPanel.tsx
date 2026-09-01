@@ -1,9 +1,10 @@
 /**
- * Scene Snapshot panel (变量快照, right sidebar). Active while a Story scene editor is focused. A
- * snapshot is a named set of variable override values used to launch a row-precise Dev Mode preview
- * under conditions the editor cannot analyse statically (e.g. a global flag). The table lists every
- * variable in scope for the current scene (scene + saved + persistent); switching scene tabs re-binds
- * it. Comments in English per convention.
+ * Scene Snapshot panel (变量快照, right sidebar). A snapshot is a named set of variable override
+ * values a row-precise Dev Mode launch can start under, for conditions the editor cannot analyse
+ * statically (e.g. a global flag). It is optional: a row start with none uses the values the project
+ * declares. The table lists every variable in scope for the current scene (scene + saved +
+ * persistent); switching scene tabs re-binds it, and with no scene focused the panel says so.
+ * Comments in English per convention.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";

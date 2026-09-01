@@ -3,7 +3,9 @@ import type { PanelStateService } from "@/lib/workspace/services/core/PanelState
 /**
  * The snapshot the author last selected in the Scene Snapshot panel, per (story, scene). Persisted
  * through {@link PanelStateService} so the panel's dropdown and the row ▶ launcher (which lives in the
- * scene editor tab, a separate component) agree on which snapshot a launch should use.
+ * scene editor tab, a separate component) agree on which snapshot a launch should use. A scene with
+ * no entry here falls back on both sides to the first snapshot it holds, and a scene that holds none
+ * launches on the values the project declares.
  */
 const SELECTED_SNAPSHOT_KEY = "story:snapshot:selected";
 type SelectedSnapshotStore = Record<string, string>;

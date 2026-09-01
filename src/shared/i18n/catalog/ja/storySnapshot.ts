@@ -12,9 +12,4 @@ export const storySnapshot = {
         true: "真",
         false: "偽",
     },
-    launch: {
-        needSnapshot: "ここからゲームを始めるにはスナップショットが必要",
-        needSnapshotDetail: "行から再生するには変数の具体的な値が必要。先にシーンのスナップショットを作成する",
-        createAction: "スナップショットを作成",
-    },
 } satisfies LocaleNamespace<"storySnapshot">;
