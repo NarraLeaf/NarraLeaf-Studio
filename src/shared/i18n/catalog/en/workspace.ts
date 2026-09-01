@@ -662,6 +662,13 @@ export const workspace = {
         },
         // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
         statusBar: {
+            // Shown only while the project has not been trusted. It states the standing
+            // fact and goes to the page that changes it; a tooltip on a greyed control is
+            // not enough on its own, because an author who never hovers never learns why.
+            distrusted: {
+                label: "Not trusted",
+                tooltip: "This project cannot run until it is trusted. Open Settings to trust it.",
+            },
             // Mode names for the unified run-status cell, which reads "<mode> | <phase>" and tints
             // the whole bar with the theme colour while any mode runs.
             devMode: "Dev Mode",
@@ -710,6 +717,7 @@ export const workspace = {
                 // name of the thing their project is shared through.
                 team: "NarraLeaf Team",
                 runStatus: "Run status",
+                projectTrust: "Project trust",
         studioTasks: "Background work",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",

@@ -619,6 +619,10 @@ export const workspace = {
         },
         // 下端のステータスの帯。意味のあるときだけ出る。
         statusBar: {
+            distrusted: {
+                label: "未信頼",
+                tooltip: "このプロジェクトは信頼するまで実行できない。設定を開いて信頼する。",
+            },
             // 実行状態のセルのモード名。「<モード> | <段階>」と読ませ、いずれかが動いている間は
             // 帯全体にテーマ色が乗る。
             devMode: "開発モード",
@@ -667,6 +671,7 @@ export const workspace = {
                 // name of the thing their project is shared through.
                 team: "NarraLeaf Team",
                 runStatus: "実行状態",
+                projectTrust: "プロジェクトの信頼",
         studioTasks: "バックグラウンド処理",
                 unsavedChanges: "未保存の変更",
                 wordCount: "ストーリーの統計",

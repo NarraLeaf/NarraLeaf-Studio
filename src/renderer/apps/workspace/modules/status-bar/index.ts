@@ -1,12 +1,13 @@
 import { StatusBarAlignment } from "@/lib/workspace/services/ui/types";
 import type { StatusBarEntryModule } from "../types";
 import {
+    DistrustedProjectEntry,
     NotificationsEntry,
     RunStatusEntry,
-    StudioTaskEntry,
-    ShortcutsEntry,
-    ThemeEntry,
     SaveStatusEntry,
+    ShortcutsEntry,
+    StudioTaskEntry,
+    ThemeEntry,
     VersionEntry,
     WordCountEntry,
     ZoomEntry,
@@ -49,6 +50,15 @@ export const builtInStatusBarEntries: StatusBarEntryModule[] = [
         labelKey: "workspace.shell.statusBar.entries.team",
         alignment: StatusBarAlignment.Left,
         component: TeamStatusEntry,
+    },
+    {
+        // Beside the cell that says where the project came from, and outboard of everything
+        // transient: whether a project is trusted is a property of the project, so it must not
+        // shift as runs and tasks appear and disappear beside it.
+        id: "narraleaf-studio:status-bar/project-trust",
+        labelKey: "workspace.shell.statusBar.entries.projectTrust",
+        alignment: StatusBarAlignment.Left,
+        component: DistrustedProjectEntry,
     },
     {
         id: "narraleaf-studio:status-bar/run-status",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Bell, BookText, CircleDot, GitBranch, History, Keyboard, Loader2, Monitor, Moon, Sun, TriangleAlert } from "lucide-react";
+import { Bell, BookText, CircleDot, GitBranch, History, Keyboard, Loader2, Monitor, Moon, ShieldAlert, Sun, TriangleAlert } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
@@ -17,6 +17,7 @@ import { openDashboardTab } from "../dashboard";
 import { NOTIFICATIONS_PANEL_ID } from "../notifications";
 import { StatusEntry } from "./StatusEntry";
 import { useActiveRunMode } from "./useActiveRunMode";
+import { useProjectDistrusted } from "../../hooks/useProjectDistrusted";
 import { useStudioTasks } from "./useStudioTasks";
 import { useVersionSurface } from "../../hooks/useVersionSurface";
 import { openVersionRail } from "../../components/layout/versionRailController";
@@ -443,6 +444,41 @@ export function VersionEntry() {
         >
             {onRevision ? <History className="h-3 w-3" /> : <GitBranch className="h-3 w-3" />}
             <span className="max-w-[22ch] truncate tabular-nums">{face.text}</span>
+        </StatusEntry>
+    );
+}
+
+/**
+ * A standing mark that this project has not been trusted, and the way to trust it.
+ *
+ * Without it the only sign is a tooltip on a control the author may never hover, so a project that
+ * will not run looks like a Studio that will not work. This says which it is, and goes to the place
+ * that changes it.
+ *
+ * Outboard of the transient cells, beside the one that names where the project came from: trust is
+ * a property of the project rather than something happening at the moment, so it should not shift
+ * as runs and tasks come and go.
+ *
+ * Silent for the ordinary case - a project the author made themselves is trusted and has no record,
+ * so this cell never appears for it.
+ */
+export function DistrustedProjectEntry() {
+    const { t } = useTranslation();
+    const distrusted = useProjectDistrusted();
+
+    if (!distrusted) {
+        return null;
+    }
+
+    return (
+        <StatusEntry
+            emphasis
+            tooltip={t("workspace.shell.statusBar.distrusted.tooltip")}
+            ariaLabel={t("workspace.shell.statusBar.distrusted.label")}
+            onClick={() => { void getInterface().app.launchSettings({ highlight: "data.projectTrust" }); }}
+        >
+            <ShieldAlert className="h-3 w-3" />
+            <span>{t("workspace.shell.statusBar.distrusted.label")}</span>
         </StatusEntry>
     );
 }

@@ -592,6 +592,10 @@ export const workspace = {
         },
         // 底部状态条。各信号只在有意义时出现（运行中/构建中/未保存）。
         statusBar: {
+            distrusted: {
+                label: "未受信任",
+                tooltip: "此项目受信任后方可运行。点击前往设置。",
+            },
             // 统一「运行状态」单元格的模式名称，格式为「模式 | 阶段」，任一模式运行时整条状态栏都会染成主题色。
             devMode: "开发模式",
             preview: "预览",
@@ -638,6 +642,7 @@ export const workspace = {
                 // name of the thing their project is shared through.
                 team: "NarraLeaf Team",
                 runStatus: "运行状态",
+                projectTrust: "项目信任",
         studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
                 wordCount: "故事统计",
