@@ -1,6 +1,7 @@
 import { isLocalizationEnabled, type LocalizationDocument } from "@shared/types/localization";
 import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
 import { getInterface } from "@/lib/app/bridge";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { isVoiceEnabled, type VoiceDocument } from "@shared/types/voice";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
 import { runLintRules, type LintRunOptions } from "@/lib/lint/engine";
@@ -226,7 +227,7 @@ export class LintService extends Service<LintService> implements ILintService {
             }, null),
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
-            io: this.createIo(assetsService),
+            io: this.createIo(assetsService, await this.mayProbeMedia()),
         };
     }
 
@@ -469,12 +470,40 @@ export class LintService extends Service<LintService> implements ILintService {
     }
 
     /**
+     * Whether an ffprobe spawn sent from a rule would be attempted at all.
+     *
+     * Trust, asked once, before the sweep - and the only thing about the probe worth asking in
+     * advance. A host that has no ffprobe declines cheaply and quietly, so learning that from the
+     * first request costs nothing. A distrusted project is not like that: main refuses every spawn
+     * *and writes an error line to the workspace console* for each one, deliberately, so that a
+     * refusal nobody asked for is still visible. `portability/vfx-alpha` asks about every distinct
+     * clip a `/vfx create` row uses, so one sweep of a project that arrived from elsewhere would
+     * fill the console with refusals the author did not ask for and cannot act on from there.
+     *
+     * What the sweep reports is unchanged. An unanswered probe is never spent as a verdict (see
+     * `LintAlphaProbe`), so the rule falls silent here in exactly the way it already does on a host
+     * without ffprobe, and no finding can be invented or lost by this.
+     *
+     * Asked here rather than borrowed from `MediaSupportService`, which asks the same question for
+     * its own scan: the two probe paths are separate on purpose (the reasoning is on
+     * `probeVideoAlpha` below), and `isProjectTrusted` memoizes per path, so both of them asking
+     * costs one IPC call in total.
+     */
+    private mayProbeMedia(): Promise<boolean> {
+        return isProjectTrusted(this.getContext().project.resolve());
+    }
+
+    /**
      * The rules' only door to the filesystem. `probeImage` reuses ImageService's decoder rather
      * than opening a second one - there is exactly one answer to "what are this image's
      * dimensions", and a rule that disagreed with the asset browser would be reporting a bug in
      * itself.
+     *
+     * `mayProbeMedia` is the answer to "would main run ffprobe for this project at all", settled
+     * once before the sweep instead of being learned from a refusal per clip - see
+     * {@link mayProbeMedia}.
      */
-    private createIo(assetsService: AssetsService): LintIo {
+    private createIo(assetsService: AssetsService, mayProbeMedia: boolean): LintIo {
         const probeQueue = createConcurrencyLimiter(IMAGE_PROBE_CONCURRENCY);
         const shardPath = (assetId: string): string =>
             this.getContext().project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
@@ -529,8 +558,18 @@ export class LintService extends Service<LintService> implements ILintService {
              * Every way the probe can decline is `ok: false` with the reason carried through. None
              * of them may be spent as a verdict - no ffprobe on this host is the common one, and it
              * says nothing whatever about the file.
+             *
+             * Being separate is also why the trust question has to be asked here: the service's own
+             * pre-check does not cover this path, and without one this would send a spawn per clip
+             * to a main process that refuses each one on the console. See {@link mayProbeMedia}.
              */
             probeVideoAlpha: (assetId: string) => videoProbeQueue(async (): Promise<LintAlphaProbe> => {
+                if (!mayProbeMedia) {
+                    // Not a verdict, and read as one nowhere: the rule treats every `ok: false`
+                    // the same way it treats a host with no ffprobe, which is to conclude nothing
+                    // about the clip.
+                    return { ok: false, reason: "probing is not permitted for this project" };
+                }
                 const asset = assetsService.getAssets()[AssetType.Video]?.[assetId];
                 if (!asset) {
                     return { ok: false, reason: "not a video asset" };

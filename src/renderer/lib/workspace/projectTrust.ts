@@ -15,12 +15,20 @@ import { PROJECT_DISTRUSTED_REASON } from "@shared/types/projectTrust";
  * A renderer's copy of a security answer is worth having only when the thing it guards is also in
  * the renderer. Everything else must ask main.
  *
- * # Memoized per path, and deliberately never invalidated
+ * # Memoized per path, except when the question was never answered
  *
  * Trust is settled when a workspace starts, the same way recovery mode is, and revoking a grant
  * takes effect on the next launch. So one answer per path for the life of the window is not a cache
  * that can go stale - it is the semantics. It also removes a whole class of ordering bug: callers
  * await the same promise rather than racing a "not seeded yet" state.
+ *
+ * The exception is a query that produced no answer at all. "Distrusted" and "the question did not
+ * get through" are both `false` to a caller, and only the first is a fact about the project: a
+ * dropped IPC call remembered as a "no" would leave a window whose puppets, probes and previews are
+ * all quietly off, for a reason nothing on screen explains. So an answer main actually gave is kept
+ * whichever way it went - and the "no" is the case this module exists for, now read on every editor
+ * tab mount, by the media scan, by the puppet loader and by several top-bar components - while a
+ * failure is forgotten and asked again on the next call.
  */
 
 const answers = new Map<string, Promise<boolean>>();
@@ -28,28 +36,43 @@ const answers = new Map<string, Promise<boolean>>();
 /**
  * Whether this project is trusted, asked once.
  *
- * Fails **closed**: a query that errors answers "not trusted". Absence of an answer is not evidence
- * of safety, and the one thing this guards - executing the project's own JavaScript - is not worth
- * doing on a guess. The failed answer is not memoized, so a transient IPC failure does not distrust
- * the project for the rest of the session.
+ * Fails **closed**: a query that throws, or that comes back unsuccessful, answers "not trusted".
+ * Absence of an answer is not evidence of safety, and the one thing this guards - executing the
+ * project's own JavaScript - is not worth doing on a guess. That fail-closed `false` is the one
+ * answer not kept, so a transient IPC failure does not distrust the project for the rest of the
+ * session; see the note on memoization above.
  */
 export function isProjectTrusted(projectPath: string): Promise<boolean> {
     const existing = answers.get(projectPath);
     if (existing) {
         return existing;
     }
-    const pending = getInterface().projectTrust.query(projectPath)
-        .then(result => (result.success ? result.data.trusted : false))
-        .catch(() => false);
+    const pending = askMain(projectPath);
     answers.set(projectPath, pending);
-    return pending.then(trusted => {
-        if (!trusted) {
-            // Only a positive answer is worth keeping: a "no" that came from a failed query would
-            // otherwise stick for the window's whole life.
-            answers.delete(projectPath);
+    return pending;
+}
+
+/**
+ * One trip to main, which forgets itself unless main answered.
+ *
+ * The `delete` sits after an await, so it can only run once the caller above has stored this
+ * promise - a failure therefore leaves the map empty rather than racing the store and leaving the
+ * unanswered attempt behind for every later caller to read.
+ */
+async function askMain(projectPath: string): Promise<boolean> {
+    try {
+        const result = await getInterface().projectTrust.query(projectPath);
+        if (result.success) {
+            // Kept whichever way it went. A distrusted project is asked about once, not once per
+            // caller, which is the whole point of the map.
+            return result.data.trusted;
         }
-        return trusted;
-    });
+    } catch {
+        // Falls through to the same place an unsuccessful result does: neither is an answer, and
+        // the two are indistinguishable to a caller anyway.
+    }
+    answers.delete(projectPath);
+    return false;
 }
 
 /** Thrown where a distrusted project would otherwise have had its code run. */

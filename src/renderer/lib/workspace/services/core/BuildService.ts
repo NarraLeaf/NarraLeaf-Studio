@@ -61,6 +61,7 @@ import type { ReferenceIndexGap } from "../references/referenceModel";
 // value import would drag every extractor into the build path and its tests.
 import type { ReferenceService } from "../references/ReferenceService";
 import { translate, translateN } from "@/lib/i18n";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import type { LintingConfiguration } from "../../project/configuration";
@@ -1322,10 +1323,21 @@ export class BuildService extends Service<BuildService> {
             return null;
         }
 
-        if (uncheckedCount > 0) {
-            // Said at `info` rather than `verbose` because the console hides verbose by default, and
-            // an author on a host with no converter is entitled to know the check did not happen -
-            // otherwise a silent pass reads as a clean bill of health.
+        // Said at `info` rather than `verbose` because the console hides verbose by default, and an
+        // author on a host with no converter is entitled to know the check did not happen -
+        // otherwise a silent pass reads as a clean bill of health.
+        //
+        // Only for a trusted project, though. A distrusted one leaves every clip unanswered as well,
+        // for a reason that has nothing to do with this machine - main refuses the probe - so this
+        // sentence would name a missing converter that is in fact installed. Saying nothing is the
+        // honest answer there: main refuses the build itself at `gameBuild.start`, just past these
+        // gates, so the one refusal the author needs is already on its way and a wrong explanation
+        // ahead of it only has to be unlearned. Asking is cheap - the answer is settled once per
+        // project path and held for the life of the window, and the scan just above asks main the
+        // same thing. A trust query that never answered reads as distrusted and so costs this line;
+        // that is cheaper than printing a false cause, and the no-converter case on a trusted
+        // project is untouched.
+        if (uncheckedCount > 0 && await isProjectTrusted(this.projectPath())) {
             consoleService?.log(
                 BUILD_CONSOLE_CHANNEL,
                 "info",

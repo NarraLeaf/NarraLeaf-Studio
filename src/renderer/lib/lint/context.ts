@@ -77,9 +77,10 @@ export type LintImageProbe =
  * Whether a video asset's bytes carry an alpha channel.
  *
  * Two arms rather than a bare boolean because **not knowing is never an answer here**. The probe
- * needs ffprobe, which some hosts do not have, and a rule that read a failed probe as "no alpha"
- * would go quiet on exactly the projects it exists to protect - silently, and only on the machines
- * where nobody could tell.
+ * needs ffprobe, which some hosts do not have, and it needs a project Studio has been told to
+ * trust, since main refuses to spawn anything for one that has not been. A rule that read either
+ * of those as "no alpha" would go quiet on exactly the projects it exists to protect - silently,
+ * and only on the machines where nobody could tell.
  */
 export type LintAlphaProbe =
     | { ok: true; carriesAlpha: boolean }

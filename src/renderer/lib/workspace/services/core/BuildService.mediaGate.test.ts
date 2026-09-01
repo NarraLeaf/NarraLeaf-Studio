@@ -7,6 +7,7 @@ import type { LintingConfiguration } from "../../project/configuration";
 import type { MediaAssetSupportRecord } from "../media/mediaAssetSupport";
 import { Services, type WorkspaceContext } from "../services";
 import { BUILD_CONSOLE_CHANNEL, BuildService } from "./BuildService";
+import { resetProjectTrustCacheForTests } from "../../projectTrust";
 
 /**
  * The media gate: a project holding an asset the engine cannot decode does not build.
@@ -26,8 +27,16 @@ const gameBuild = vi.hoisted(() => ({
     preflight: vi.fn(),
 }));
 
+/** What main would answer if asked whether this project may cause effects. Reset per test. */
+const projectTrust = vi.hoisted(() => ({ trusted: true }));
+
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ gameBuild }),
+    getInterface: () => ({
+        gameBuild,
+        projectTrust: {
+            query: async () => ({ success: true, data: { trusted: projectTrust.trusted, record: null } }),
+        },
+    }),
 }));
 
 /** Keys and params, not prose: a copy edit must not fail this file. */
@@ -81,7 +90,10 @@ function mount(options: {
     scanThrows?: boolean;
     storyHasInvalidBlock?: boolean;
     lintRunOnBuild?: boolean;
+    /** A project that arrived from elsewhere and has not been vouched for. */
+    distrusted?: boolean;
 } = {}) {
+    projectTrust.trusted = !options.distrusted;
     const lines: ConsoleLine[] = [];
     const lintRun = vi.fn(async (): Promise<LintReport> => ({
         startedAt: 0,
@@ -180,6 +192,10 @@ function mount(options: {
 
 beforeEach(() => {
     vi.useFakeTimers();
+    // The renderer memoizes trust per project path for the life of the window, so one case's
+    // answer would otherwise be every later case's answer.
+    resetProjectTrustCacheForTests();
+    projectTrust.trusted = true;
     gameBuild.start.mockClear();
     gameBuild.start.mockResolvedValue({ success: true, data: { state: { status: "done" } } });
 });
@@ -289,6 +305,17 @@ describe("BuildService media gate", () => {
         expect(state.status).toBe("done");
         expect(lines.some(line => line.level === "info"
             && line.message.includes("build.mediaUnchecked"))).toBe(true);
+    });
+
+    it("says nothing about unchecked files when the project is not trusted", async () => {
+        // Every clip is unanswered here because main refuses the probe, not because this machine
+        // has no converter - which is what `build.mediaUnchecked` says. The refusal the author
+        // needs comes from main when the build itself is asked for, just past these gates.
+        const { service, lines } = mount({ distrusted: true, unanswered: ["a1", "a2"] });
+
+        await service.start(REQUEST);
+
+        expect(lines.some(line => line.message.includes("build.mediaUnchecked"))).toBe(false);
     });
 
     it("says nothing about unchecked files when there were none", async () => {

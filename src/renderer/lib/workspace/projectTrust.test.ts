@@ -48,11 +48,32 @@ describe("renderer project trust", () => {
         expect(query).toHaveBeenCalledTimes(1);
     });
 
-    it("does not remember a refusal, so one failed query does not distrust for the session", async () => {
-        // The memo exists because trust is settled at launch, not because "no" is cheap to keep. A
-        // remembered "no" that came from a dropped IPC call would break puppets for the whole
-        // window with nothing on screen to explain it.
+    it("asks once for a project it was told is distrusted", async () => {
+        // The case the module exists for, and the one every editor tab mount, the media scan and
+        // the puppet loader ask about. Asking main again for each of them would spend an IPC round
+        // trip per caller on an answer that cannot change until the project is launched again.
+        query.mockResolvedValue({ success: true, data: { trusted: false, record: null } });
+        await expect(isProjectTrusted("D:/games/theirs")).resolves.toBe(false);
+        await expect(isProjectTrusted("D:/games/theirs")).resolves.toBe(false);
+        expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not remember a query that failed, so one dropped call does not distrust for the session", async () => {
+        // A "no" main actually gave is a fact about the project and is kept. A "no" invented here
+        // because the call never arrived is not, and remembering it would break puppets for the
+        // whole window with nothing on screen to explain it.
         query.mockRejectedValueOnce(new Error("transient"));
+        await expect(isProjectTrusted("D:/games/mine")).resolves.toBe(false);
+
+        query.mockResolvedValue({ success: true, data: { trusted: true, record: null } });
+        await expect(isProjectTrusted("D:/games/mine")).resolves.toBe(true);
+        expect(query).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not remember an unsuccessful result either", async () => {
+        // `success: false` is main declining to answer, not main answering "no" - the same
+        // situation as a rejected call, and it is retried for the same reason.
+        query.mockResolvedValueOnce({ success: false, error: "denied" });
         await expect(isProjectTrusted("D:/games/mine")).resolves.toBe(false);
 
         query.mockResolvedValue({ success: true, data: { trusted: true, record: null } });
