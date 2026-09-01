@@ -27,6 +27,16 @@ export const actions = {
         runAs: "运行为",
             runWithDlc: "带 DLC 运行",
             dlcCount: "{active} / {total}",
+        // 清除一次运行留下的存档与持久化数据，用于游戏自身让该状态出错、启动即崩溃时。开发模式与预览各存各的，
+        // 子菜单只重置其中一个，不影响另一个。
+        resetData: "重置玩家数据",
+        // 正在运行的那个模式对应的行，置灰:在运行进程之下重置会与它的下一次写入发生竞争。
+        resetWhileRunning: "停止后可重置其数据",
+        resetDevModeConfirm: "重置开发模式的玩家数据",
+        resetPreviewConfirm: "重置预览的玩家数据",
+        resetDetail: "该项目的所有存档与持久化数据将被清除",
+        resetDone: "玩家数据已重置",
+        resetFailed: "无法重置玩家数据",
     },
     file: {
         label: "文件",

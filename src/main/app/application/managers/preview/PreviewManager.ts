@@ -218,6 +218,32 @@ export class PreviewManager {
         await Promise.allSettled(projects.map(projectPath => this.stop(projectPath)));
     }
 
+    /**
+     * Clear a project's Preview player data: the save slots and the persistence file the preview
+     * runtime keeps beside the compiled app, at `<project>/.nlstudio/preview/userData`.
+     *
+     * Only those two, not the whole userData directory: the rest of it is the runtime's Chromium
+     * profile, which is a cache the next launch rebuilds and never the thing an author's game poisons.
+     *
+     * Refuses while a preview for this project is running or launching. That runtime is a separate
+     * process still writing to these files; deleting them under it would race a write and leave the
+     * store in whatever state the race landed on. The caller stops the preview first.
+     */
+    public async resetPlayerData(projectPath: string): Promise<void> {
+        const key = this.projectKey(projectPath);
+        const status = this.getStatus(projectPath);
+        const launching = (this.launchAttempts.get(key)?.size ?? 0) > 0;
+        // Refuse only while a preview is genuinely live - the same states `isPreviewRuntimeActive`
+        // greys the button under. A session left in "error" after a failed launch has no process
+        // writing these files, and blocking on it would strand the author the reset exists to help.
+        if (launching || (status !== "idle" && status !== "error")) {
+            throw new Error("Stop the preview before resetting its player data");
+        }
+        const userDataDir = path.join(path.resolve(projectPath), ".nlstudio", "preview", "userData");
+        await fs.promises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
+        await fs.promises.rm(path.join(userDataDir, "persistence.json"), { force: true });
+    }
+
     private cancelLaunches(key: string): void {
         for (const attempt of this.launchAttempts.get(key) ?? []) {
             attempt.cancelled = true;

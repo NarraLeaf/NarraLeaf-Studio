@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackagePlus, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
@@ -162,6 +162,13 @@ export function RunControl() {
     const [variantId, setVariantId] = useState<string | null>(null);
     const [dlcOpen, setDlcOpen] = useState(false);
     const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    // Reset player data is a flyout submenu, not an inline section like the variant and DLC pickers:
+    // those show a persistent current choice, while this is a one-shot action, so it opens to the
+    // side on hover and takes no permanent room in the menu.
+    const [resetOpen, setResetOpen] = useState(false);
+    const [resetToLeft, setResetToLeft] = useState(false);
+    const resetRowRef = useRef<HTMLDivElement | null>(null);
+    const resetCloseTimerRef = useRef<number | null>(null);
     /** The ids ticked on, as the setting stores them. An id the project lost is left alone here. */
     const [dlcOn, setDlcOn] = useState<readonly string[]>([]);
 
@@ -173,6 +180,7 @@ export function RunControl() {
         if (!menuOpen) {
             setVariantOpen(false);
             setDlcOpen(false);
+            setResetOpen(false);
         }
     }, [menuOpen]);
 
@@ -777,6 +785,69 @@ export function RunControl() {
         // several clicks, and closing after each would make the author reopen it every time.
     }, [context, dlcOn]);
 
+    /**
+     * Clear the save slots and persistent data a mode leaves behind.
+     *
+     * The recovery path for a game that poisons its own persisted state and crashes on launch: the
+     * data is cleared through the main process without booting the game, so it works when the game
+     * will not. Confirmed first because it is destructive, and reported either way.
+     */
+    const resetPlayerData = useCallback(async (target: RunMode): Promise<void> => {
+        if (!context) {
+            return;
+        }
+        setMenuOpen(false);
+        const uiService = context.services.get<UIService>(Services.UI);
+        const confirmed = await uiService.showConfirm(
+            translate(target === "devMode" ? "actions.run.resetDevModeConfirm" : "actions.run.resetPreviewConfirm"),
+            translate("actions.run.resetDetail"),
+        );
+        if (!confirmed) {
+            return;
+        }
+        try {
+            if (target === "devMode") {
+                await context.services.get<DevModeService>(Services.DevMode).resetData();
+            } else {
+                await context.services.get<PreviewService>(Services.Preview).resetData();
+            }
+            uiService.showNotification(translate("actions.run.resetDone"), "success");
+        } catch (error) {
+            console.error("[run] reset player data failed", error);
+            uiService.showNotification(translate("actions.run.resetFailed"), "error");
+        }
+    }, [context, setMenuOpen]);
+
+    // The flyout opens on hover and closes on a short delay, so crossing the gap from the row to the
+    // panel does not shut it. Which side it opens on is measured, because the Run button sits well to
+    // the right of the bar and a panel pinned to the right would run off screen there.
+    const openResetFlyout = useCallback(() => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+            resetCloseTimerRef.current = null;
+        }
+        const rect = resetRowRef.current?.getBoundingClientRect();
+        if (rect) {
+            const PANEL_WIDTH = 176; // min-w-44
+            setResetToLeft(rect.right + PANEL_WIDTH + 8 > window.innerWidth);
+        }
+        setResetOpen(true);
+    }, []);
+    const scheduleCloseResetFlyout = useCallback(() => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+        }
+        resetCloseTimerRef.current = window.setTimeout(() => {
+            resetCloseTimerRef.current = null;
+            setResetOpen(false);
+        }, 200);
+    }, []);
+    useEffect(() => () => {
+        if (resetCloseTimerRef.current !== null) {
+            window.clearTimeout(resetCloseTimerRef.current);
+        }
+    }, []);
+
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
@@ -1084,6 +1155,87 @@ export function RunControl() {
                             <MenuShortcut of={shortcuts.forBinding(TEST_RUN_COMMAND_ID)} />
                             <span className="w-3" />
                         </button>
+
+                        <div className="my-1 mx-2 h-px bg-fill-strong" />
+
+                        {/* Reset player data. Clears the saves and persistent data a run leaves
+                            behind - the recovery path when the author's own game poisons that state
+                            and crashes on launch, reached without launching anything. A flyout rather
+                            than an inline section: it is a one-shot action, not a persistent choice
+                            like the variant and DLC pickers, so it opens to the side on hover and
+                            leaves the menu the height it was. Dev Mode and Preview keep their data
+                            apart, so each row resets one without touching the other. Always here, not
+                            behind a setting: the author it helps most is the one who cannot get the
+                            game to start, and that is exactly who would never find it hidden. */}
+                        <div
+                            ref={resetRowRef}
+                            className="relative"
+                            onMouseEnter={openResetFlyout}
+                            onMouseLeave={scheduleCloseResetFlyout}
+                        >
+                            <button
+                                type="button"
+                                role="menuitem"
+                                aria-haspopup="menu"
+                                aria-expanded={resetOpen}
+                                aria-label={t("actions.run.resetData")}
+                                onClick={openResetFlyout}
+                                className={cn(
+                                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                    resetOpen ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                )}
+                            >
+                                <span className="flex h-4 w-4 items-center justify-center">
+                                    <RotateCcw className="h-4 w-4" />
+                                </span>
+                                <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.resetData")}</span>
+                                <span className="w-3">
+                                    <ChevronRight className="h-3 w-3" />
+                                </span>
+                            </button>
+
+                            {/* The panel is a DOM child of the row, so moving the pointer onto it is
+                                not "leaving" the row - that, plus the close delay, is what lets the
+                                pointer travel across to it without the flyout shutting. */}
+                            {resetOpen && (
+                                <div
+                                    role="menu"
+                                    aria-label={t("actions.run.resetData")}
+                                    className={cn(
+                                        "absolute top-0 z-30 min-w-44 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg",
+                                        resetToLeft ? "right-full mr-1" : "left-full ml-1",
+                                    )}
+                                >
+                                    {RUN_MODES.map(option => {
+                                        // Disabled while its own mode runs: clearing the store under a
+                                        // live process would race its next write. Never blocks the
+                                        // lockout case, where the mode is crashed rather than running.
+                                        const optionRunning = option === "devMode" ? devActive : previewActive;
+                                        const optionMeta = RUN_MODE_META[option];
+                                        return (
+                                            <button
+                                                key={option}
+                                                type="button"
+                                                role="menuitem"
+                                                aria-disabled={optionRunning || undefined}
+                                                disabled={optionRunning}
+                                                data-tip={optionRunning ? t("actions.run.resetWhileRunning") : undefined}
+                                                onClick={() => void resetPlayerData(option)}
+                                                className={cn(
+                                                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                                    optionRunning
+                                                        ? "cursor-not-allowed text-fg-subtle"
+                                                        : "text-fg-muted hover:bg-fill hover:text-fg",
+                                                )}
+                                            >
+                                                <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>
+                                                <span className="flex-1 whitespace-nowrap text-left">{t(optionMeta.labelKey)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}

@@ -40,6 +40,15 @@ function createStore(window: AppWindow, projectRef: BlueprintPersistenceProjectR
     );
 }
 
+/**
+ * Empty a project's Dev Mode persistence store: persistent variables, unlocked content, read-text
+ * and every plugin store keyed under it. Through the store's own `clear` rather than deleting the
+ * file, so an instance the store opens next reads an empty state rather than a missing one.
+ */
+export function clearBlueprintPersistence(window: AppWindow, projectRef: BlueprintPersistenceProjectRef): void {
+    createStore(window, projectRef).clear();
+}
+
 export class BlueprintPersistenceGetAllHandler extends IPCHandler<IPCEventType.blueprintPersistenceGetAll> {
     readonly name = IPCEventType.blueprintPersistenceGetAll;
     readonly type = IPCMessageType.request;

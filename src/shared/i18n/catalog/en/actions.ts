@@ -32,6 +32,18 @@ export const actions = {
             // is, and DLC are what is beside it.
             runWithDlc: "Run with DLC",
             dlcCount: "{active} of {total}",
+        // Clears the save slots and persistent data a run leaves behind, for when the author's own
+        // game poisons that state and crashes on launch. Dev Mode and Preview keep theirs apart, so
+        // the submenu resets one without touching the other.
+        resetData: "Reset player data",
+        // The row for the mode that is running now, disabled: resetting under a live process would
+        // race its next write.
+        resetWhileRunning: "Stop it to reset its data",
+        resetDevModeConfirm: "Reset Dev Mode player data?",
+        resetPreviewConfirm: "Reset Preview player data?",
+        resetDetail: "Every save slot and all persistent data for this project are removed.",
+        resetDone: "Player data reset.",
+        resetFailed: "Could not reset player data.",
     },
     file: {
         label: "File",

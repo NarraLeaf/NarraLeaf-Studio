@@ -70,6 +70,17 @@ function saveFilePath(window: AppWindow, projectRef: DevModeSaveProjectRef, id: 
     return path.join(saveDirectory(window, projectRef), saveFileName(id));
 }
 
+/**
+ * Remove every Dev Mode save slot for a project.
+ *
+ * The whole per-project directory rather than a walk of ids: the point is to leave nothing behind,
+ * and a slot whose record no longer parses would survive an id-by-id delete. Missing is success -
+ * there is nothing to clear.
+ */
+export async function clearDevModeSaves(window: AppWindow, projectRef: DevModeSaveProjectRef): Promise<void> {
+    await fs.rm(saveDirectory(window, projectRef), { recursive: true, force: true });
+}
+
 function isSaveFile(name: string): boolean {
     return name.endsWith(SAVE_FILE_EXTENSION);
 }

@@ -355,3 +355,96 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
         expect(child.kill).not.toHaveBeenCalled();
     });
 });
+
+describe("PreviewManager.resetPlayerData", () => {
+    const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
+    const makeManager = () => new PreviewManager({
+        logger: { error: () => undefined },
+        pluginManager: {
+            listPlugins: async () => [],
+            listRuntimePluginPackSources: async () => [],
+        },
+        getDistDir: () => path.join(os.tmpdir(), "dist"),
+        getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+        getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
+        getGlobalState: () => ({ get: () => undefined }),
+        getAppInfo: () => ({ version: "0.0.0-test" }),
+    } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
+
+    /** A compile that never resolves on its own, so its session stays in "compiling" until stopped. */
+    function stallingCompile() {
+        const worker = { kill: vi.fn() };
+        const started = new Promise<void>(resolve => {
+            vi.mocked(compileGameRuntimeArtifactInWorker).mockImplementation((_app, _input, hooks) => {
+                hooks?.onStart?.(worker as never);
+                resolve();
+                // The real worker turns kill() into an exit the helper reports as a rejection; mirror
+                // that so a stop actually unwinds this launch.
+                return new Promise((_res, rej) => {
+                    worker.kill.mockImplementation(() => rej(new Error("Build cancelled")));
+                });
+            });
+        });
+        return { started };
+    }
+
+    let projectDir = "";
+    let userDataDir = "";
+
+    beforeEach(async () => {
+        vi.mocked(spawn).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preview-reset-"));
+        userDataDir = path.join(projectDir, ".nlstudio", "preview", "userData");
+        await fs.mkdir(path.join(userDataDir, "saves"), { recursive: true });
+        await fs.writeFile(path.join(userDataDir, "saves", "slot.json"), "{}", "utf-8");
+        await fs.writeFile(path.join(userDataDir, "persistence.json"), "{}", "utf-8");
+        // A file that is neither a save nor persistence stands in for the Chromium profile, to prove
+        // the reset leaves it alone.
+        await fs.writeFile(path.join(userDataDir, "geometry.json"), "{}", "utf-8");
+    });
+
+    afterEach(async () => {
+        await fs.rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("removes the saves and persistence but nothing else, and is a no-op when they are gone", async () => {
+        const manager = makeManager();
+
+        await manager.resetPlayerData(projectDir);
+
+        await expect(fs.access(path.join(userDataDir, "saves"))).rejects.toThrow();
+        await expect(fs.access(path.join(userDataDir, "persistence.json"))).rejects.toThrow();
+        // The rest of the runtime profile survives - it is a cache the next launch rebuilds, not the
+        // author's game state.
+        await expect(fs.access(path.join(userDataDir, "geometry.json"))).resolves.toBeUndefined();
+
+        // Clearing an already-clear project is success, not an error: nothing was there to remove.
+        await expect(manager.resetPlayerData(projectDir)).resolves.toBeUndefined();
+    });
+
+    it("clears even after a failed launch left an errored session - that session writes nothing", async () => {
+        const manager = makeManager();
+        // The compile mock resolves undefined, so launchNow throws reaching for the artifact and the
+        // session lands in "error". The reset is exactly what an author reaches for at that point.
+        await expect(manager.launch(projectDir, entry)).resolves.toBe("error");
+
+        await expect(manager.resetPlayerData(projectDir)).resolves.toBeUndefined();
+        await expect(fs.access(path.join(userDataDir, "persistence.json"))).rejects.toThrow();
+    });
+
+    it("refuses while a preview for the project is genuinely running", async () => {
+        const manager = makeManager();
+        const compile = stallingCompile();
+        const launch = manager.launch(projectDir, entry);
+        await compile.started;
+
+        // The session is stuck in "compiling" - a live launch with a process on the way.
+        await expect(manager.resetPlayerData(projectDir)).rejects.toThrow(/Stop the preview/);
+        // The refusal touched nothing.
+        await expect(fs.access(path.join(userDataDir, "persistence.json"))).resolves.toBeUndefined();
+
+        await manager.stop(projectDir);
+        await expect(launch).resolves.toBe("idle");
+    });
+});

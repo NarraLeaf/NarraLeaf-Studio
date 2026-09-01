@@ -272,6 +272,7 @@ export enum IPCEventType {
     devModeSaveListHeaders = "devMode.save.listHeaders",
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
+    devModeDataReset = "devMode.data.reset",
     devModeFullscreenGet = "devMode.fullscreen.get",
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
@@ -280,6 +281,7 @@ export enum IPCEventType {
     previewLaunch = "preview.launch",
     previewStop = "preview.stop",
     previewGetStatus = "preview.getStatus",
+    previewResetData = "preview.resetData",
 
     gameTestLaunch = "gameTest.launch",
     gameTestStop = "gameTest.stop",
@@ -2645,6 +2647,20 @@ export type IPCDevModeEvents = {
             deleted: boolean;
         };
     };
+    /**
+     * Clear one project's Dev Mode player data: every save slot and the persistence store behind
+     * persistent variables, unlocks and read-text. The recovery path when the author's own game
+     * poisons that state and crashes on launch, so it is a plain file operation that never boots the
+     * game. The projectRef must be the one the game writes under, or a different store is cleared.
+     */
+    [IPCEventType.devModeDataReset]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        };
+        response: void;
+    };
 };
 
 export type IPCPreviewEvents = {
@@ -2678,6 +2694,19 @@ export type IPCPreviewEvents = {
         response: {
             status: PreviewStatus;
         };
+    };
+    /**
+     * Clear a project's Preview player data: the save slots and persistence file the preview runtime
+     * keeps beside the compiled app. Refuses while a preview for the project is running - that
+     * runtime is a separate process still writing to those files.
+     */
+    [IPCEventType.previewResetData]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: void;
     };
 };
 
