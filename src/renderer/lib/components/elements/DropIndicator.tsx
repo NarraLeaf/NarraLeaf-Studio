@@ -18,12 +18,11 @@ export interface DropIndicatorProps {
  * reading as the same answer to the same question. A drop indicator is one thing in this app and it
  * is drawn here.
  *
- * ⚠ **`h-1` is a rendering decision, not a taste one.** At 125% Windows scaling a 2px line is 2.5
- * device pixels, and where it lands decides whether Chromium paints two rows or three - measured, in
- * this panel: the scene-level line came out 2 device rows and the chapter-level one 3, from the same
- * CSS box. That is the "one of them looks thicker" this component exists to end. 4px is a whole
- * number of device pixels at every scaling Windows offers (125% → 5, 150% → 6, 175% → 7), so both
- * levels paint the same bar.
+ * ⚠ **2px is not exact at every display scaling and that is accepted.** At 125% it is 2.5 device
+ * pixels, so Chromium paints two rows or three depending on where the row it hangs from happens to
+ * sit; 4px would be exact at every scaling Windows offers, and was tried, and reads as a slab. What
+ * made the difference visible was two lines being on screen to compare - a list that draws one line
+ * at a time has nothing to compare it against.
  *
  * The parent must be positioned (`relative`); this fills its width and hangs on the named edge.
  */
@@ -32,7 +31,7 @@ export function DropIndicator({ edge, className }: DropIndicatorProps) {
         <div
             aria-hidden
             className={cn(
-                "pointer-events-none absolute inset-x-0 z-10 h-1 rounded-full bg-primary",
+                "pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-primary",
                 edge === "before" ? "top-0" : "bottom-0",
                 className,
             )}

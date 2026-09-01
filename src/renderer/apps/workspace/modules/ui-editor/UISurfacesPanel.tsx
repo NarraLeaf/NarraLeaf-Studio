@@ -30,7 +30,7 @@ import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/free
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
-import { reorderSurfacesForDrop, type SurfaceDropEdge } from "./panel/surfaceReorder";
+import { reorderSurfacesForDrop, type SurfaceDropGap } from "./panel/surfaceReorder";
 import {
     useOpenBlueprintTarget,
     type BlueprintOpenOptions,
@@ -302,15 +302,15 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     /**
      * A card dropped somewhere else in the list.
      *
-     * The list states the move over the cards it draws - one kind - and the order that has to be
-     * written is the whole document's, so the two are joined here, where both are in hand. See
+     * The list states the move as a gap between the cards it draws - one kind - and the order that
+     * has to be written is the whole document's, so the two are joined here. See
      * {@link reorderSurfacesForDrop} for why the other kind's cards must not shift.
      */
-    const handleReorderSurfaces = useCallback((draggedId: string, anchorId: string, edge: SurfaceDropEdge) => {
+    const handleReorderSurfaces = useCallback((draggedId: string, gap: SurfaceDropGap) => {
         if (!documentService) {
             return;
         }
-        const order = reorderSurfacesForDrop(documentService.getDocument().surfaces, kind, draggedId, anchorId, edge);
+        const order = reorderSurfacesForDrop(documentService.getDocument().surfaces, kind, draggedId, gap);
         if (order) {
             documentService.reorderSurfaces(order, draggedId);
         }
