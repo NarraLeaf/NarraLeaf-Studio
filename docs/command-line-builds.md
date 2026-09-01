@@ -82,8 +82,13 @@ A dedicated agent does not need it. A machine that is both an agent and somebody
 
 **A different profile is a different everything.** The signing vault lives under it, and so do the
 machine's build settings — a scratch profile has neither. That is what the next two sections are
-for. The download caches are the exception: a packaged Studio keeps them beside the executable, so a
-run in a throwaway profile does not re-download an Electron distribution.
+for.
+
+Whether the *download* caches come with it depends on the install. `resolveCacheRoot` puts them
+beside the executable where the platform allows that, and under the profile where it does not:
+macOS never allows it (writing into the bundle breaks its ad-hoc signature), nor does an AppImage,
+nor does a per-machine Windows install the user cannot write to. So a throwaway profile on a Mac
+re-downloads the Electron distribution it needs, and one on an ordinary Windows install does not.
 
 ## Signing
 
