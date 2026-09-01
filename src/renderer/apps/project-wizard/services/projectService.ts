@@ -3,10 +3,10 @@ import { translate } from "@/lib/i18n";
 import { isValidLocaleCode, localeAutonym } from "@shared/types/localization";
 import { parseStageSize, stageOrientation } from "@shared/types/stageSize";
 import {
-    DEFAULT_DIALOGUE_CONFIGURATION,
     DEFAULT_MOBILE_CONFIGURATION,
     DEFAULT_NETWORK_CONFIGURATION,
     NEW_PROJECT_TEXT_REVEAL_DURATION,
+    normalizePlayerPreferences,
 } from "@/lib/workspace/project/configuration";
 import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
@@ -358,10 +358,16 @@ function buildAppConfiguration(
     const sourceLocale = projectData.sourceLocale.trim();
     return {
         network: { ...DEFAULT_NETWORK_CONFIGURATION },
-        // A new project types its dialogue in rather than snapping it on. Written here rather
-        // than taken as a default so that a project created before this - and one whose author
-        // has since turned it off - keeps the text it was written against.
-        dialogue: { ...DEFAULT_DIALOGUE_CONFIGURATION, textRevealDuration: NEW_PROJECT_TEXT_REVEAL_DURATION },
+        // A new project types its dialogue in rather than snapping it on. Written as a starting
+        // value rather than taken as the table's default, so that a project created before this
+        // - and a player who has since turned it down - keeps the text they were reading.
+        //
+        // The whole table is written, which is the shape `app.preferences` has on disk
+        // everywhere else; the rest of it is the defaults it would have read anyway.
+        preferences: {
+            ...normalizePlayerPreferences(undefined),
+            textRevealDuration: NEW_PROJECT_TEXT_REVEAL_DURATION,
+        },
         // Derived rather than asked. A project laid out taller than it is wide plays upright, and
         // a second control that agrees with the stage size in every case but the one where somebody
         // set them apart by accident is not a choice, it is a way to be inconsistent. The project

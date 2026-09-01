@@ -13,8 +13,6 @@ import {
     AUTO_FORWARD_DEFAULT_PAUSE_MAX,
     AUTO_FORWARD_DEFAULT_PAUSE_MIN,
     normalizeDialogueConfiguration,
-    TEXT_REVEAL_DURATION_MAX,
-    TEXT_REVEAL_DURATION_MIN,
     type DialogueConfiguration,
 } from "@/lib/workspace/project/configuration";
 import { SettingShell } from "./settingRows";
@@ -71,21 +69,6 @@ export function ProjectDialogueSection({ projectService, uiService, config, onCo
                     disabled={freeze.writes(saving).disabled}
                     ariaLabel={t("project.game.autoForwardPauseTitle")}
                     onCommit={value => void commit({ autoForwardDefaultPause: value })}
-                />
-            </SettingShell>
-            <SettingShell
-                title={t("project.game.textRevealTitle")}
-                description={t("project.game.textRevealDescription")}
-                tooltip={freeze.writes()["data-tip"]}
-            >
-                <NumberField
-                    value={dialogue.textRevealDuration}
-                    min={TEXT_REVEAL_DURATION_MIN}
-                    max={TEXT_REVEAL_DURATION_MAX}
-                    unit={t("project.game.textRevealUnit")}
-                    disabled={freeze.writes(saving).disabled}
-                    ariaLabel={t("project.game.textRevealTitle")}
-                    onCommit={value => void commit({ textRevealDuration: value })}
                 />
             </SettingShell>
         </SettingsGroup>

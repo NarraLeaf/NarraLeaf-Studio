@@ -5,6 +5,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
@@ -52,6 +53,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_SET_TEXT_REVEAL_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
@@ -273,6 +275,22 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         defaultValue: 3000,
         min: 0,
         keywords: ["game", "preference", "auto", "forward", "delay", "wait", "pause", "dialog"],
+    },
+    {
+        // Milliseconds. Read against the typing speed rather than on its own: the engine brings
+        // the fade down to what fits between two characters, so a fast reader gets a short one
+        // whatever is written here.
+        key: "textRevealDuration",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_TEXT_REVEAL_DURATION,
+        getterDisplayName: "Get Text Fade In",
+        setterDisplayName: "Set Text Fade In",
+        pinId: "textRevealDuration",
+        pinLabel: "Text Fade In",
+        valueType: "float",
+        defaultValue: 0,
+        min: 0,
+        keywords: ["game", "preference", "text", "fade", "reveal", "typewriter", "dialog"],
     },
     {
         key: "skip",

@@ -320,6 +320,8 @@ export type BlueprintGamePreferenceKey =
     | "showDialog"
     | "gameSpeed"
     | "cps"
+    /** Milliseconds a newly typed character takes to fade in; `0` types it at full strength. */
+    | "textRevealDuration"
     | "voiceVolume"
     | "voiceFadeDuration"
     | "voiceEndMode"

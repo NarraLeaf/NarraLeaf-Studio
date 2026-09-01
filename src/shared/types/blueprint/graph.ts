@@ -1231,6 +1231,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.to
  */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN = "blueprint.game.isDialogShown" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_TEXT_REVEAL_DURATION = "blueprint.game.setTextRevealDuration" as const;
 
 /**
  * Sound transport for authored UI. Not story audio - a story line's `/bgm` is a
@@ -1251,6 +1252,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED = "blueprint.game.setSkip
 export const BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED = "blueprint.game.getGameSpeed" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED = "blueprint.game.setGameSpeed" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED = "blueprint.game.getCps" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_TEXT_REVEAL_DURATION = "blueprint.game.getTextRevealDuration" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME = "blueprint.game.getVoiceVolume" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME = "blueprint.game.setVoiceVolume" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION = "blueprint.game.getVoiceFadeDuration" as const;
