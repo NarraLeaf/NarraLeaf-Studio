@@ -37,6 +37,7 @@ import {
     type CacheRootResolution,
 } from "./managers/storage/cacheRoot";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
+import { ProjectTrustManager } from "./managers/projectTrustManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
@@ -93,6 +94,13 @@ export class BaseApp {
     public readonly storageManager: StorageManager;
     public readonly globalState: GlobalStateManager;
     public readonly pluginPermissionManager: PluginPermissionManager;
+    /**
+     * Which projects arrived from elsewhere and are therefore not allowed to cause effects.
+     *
+     * Held here rather than on a window because the answer must not depend on which renderer is
+     * asking - the untrusted code runs in one.
+     */
+    public readonly projectTrustManager: ProjectTrustManager;
     public readonly pluginManager: PluginManager;
     public readonly pluginIconCache: PluginIconCache;
     public readonly uiTemplatePosterCache: UITemplatePosterCache;
@@ -174,6 +182,7 @@ export class BaseApp {
         // the answer is fixed for the rest of the session.
         this.logger.info(`[Cache] ${describeCacheRoot(this.resolveCacheRootOnce())}`);
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
+        this.projectTrustManager = new ProjectTrustManager(this.getUserDataDir());
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
@@ -998,6 +1007,7 @@ export class BaseApp {
         this.menuManager.initialize();
         this.storageManager.initialize();
         this.pluginPermissionManager.initialize();
+        this.projectTrustManager.initialize();
         this.pluginManager.initialize();
         // Feed plugin language packs into the locale registry and rebuild the
         // native menu once they resolve (best-effort; never blocks startup).

@@ -118,6 +118,11 @@ export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventTyp
             }
 
             const result = await readProjectPackageInto(resolvedPackage, resolvedTarget);
+            // Recorded before answering, so the window that opens this path cannot get there ahead
+            // of the record: a project unpacked from somebody else's file ships executable code
+            // (a puppet backend is `import()`ed the moment anything shows a model), and the only
+            // thing standing between opening it and running it is this row.
+            window.app.projectTrustManager.recordImport(resolvedTarget, "package", new Date().toISOString());
             return this.success({
                 projectPath: resolvedTarget,
                 projectName: result.projectName,

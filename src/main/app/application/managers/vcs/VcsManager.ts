@@ -2675,6 +2675,10 @@ export class VcsManager extends Manager {
                     { repositoryUrl, onProgress: options.onProgress },
                 ));
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
+                // A clone is somebody else's working tree, and a working tree can carry a puppet
+                // backend that Studio `import()`s as soon as anything shows a model. Recorded
+                // inside the try, after the copy is on disk and before anything can open it.
+                this.app.projectTrustManager.recordImport(root, "remote", new Date().toISOString());
             } catch (error) {
                 // Logged here because nothing else does: the handler turns this into a
                 // refusal the wizard prints, and a clone that failed used to leave the log
