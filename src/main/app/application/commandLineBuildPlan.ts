@@ -43,7 +43,28 @@ export type CommandLineBuildPlan = {
     allowUnsigned: boolean;
     /** Absolute, or null when the launch asked for no report file. */
     reportPath: string | null;
+    /** Absolute, or null when the launch named no signing file. */
+    signingPath: string | null;
+    /**
+     * Build settings this run reads instead of the profile's, by key. Empty unless the launch gave
+     * `--build-setting`.
+     */
+    settings: Record<string, string>;
 };
+
+/**
+ * The only settings `--build-setting` may name.
+ *
+ * A build reads a handful of machine-level settings - which Electron mirror to download from, where
+ * to get the packager's own binaries - and a run in a scratch profile (`--build-user-data-dir`) has
+ * none of them. This is how they come back.
+ *
+ * Confined to the one namespace on purpose. The flag exists to make a throwaway profile usable for
+ * a build, not to be a general way of writing over whatever a person configured: nothing outside
+ * `build.` has any bearing on what comes out of a build, and a flag that could reach the rest would
+ * be a launch argument that changes the editor.
+ */
+export const COMMAND_LINE_SETTING_PREFIX = "build.";
 
 export type CommandLineBuildPlanResult =
     | { ok: true; plan: CommandLineBuildPlan }
@@ -110,6 +131,11 @@ export function planCommandLineBuild(input: {
         return { ok: false, reason: `--build-arch does not apply to the ${platform} platform, which has no CPU architecture.` };
     }
 
+    const settings = readCommandLineSettings(options.settings);
+    if (!settings.ok) {
+        return { ok: false, reason: settings.reason };
+    }
+
     const variantId = options.variantId ?? APP_TAG_ID_RELEASE;
     const outputDir = options.outputDir
         ? path.resolve(workingDirectory, options.outputDir)
@@ -134,8 +160,39 @@ export function planCommandLineBuild(input: {
             outputDir,
             allowUnsigned: options.allowUnsigned,
             reportPath: options.reportPath ? path.resolve(workingDirectory, options.reportPath) : null,
+            signingPath: options.signingPath ? path.resolve(workingDirectory, options.signingPath) : null,
+            settings: settings.settings,
         },
     };
+}
+
+/**
+ * Read the `--build-setting` flags into one map, or say which of them is not a setting.
+ *
+ * An empty value is kept rather than rejected: it is how a run says "the official source" for a
+ * mirror the profile has set, and dropping it would leave no way to say that at all. A key given
+ * twice takes its last value, which is what every other repeated flag on a command line does.
+ */
+function readCommandLineSettings(
+    raw: readonly string[],
+): { ok: true; settings: Record<string, string> } | { ok: false; reason: string } {
+    const settings: Record<string, string> = {};
+    for (const entry of raw) {
+        const separator = entry.indexOf("=");
+        const key = (separator === -1 ? entry : entry.slice(0, separator)).trim();
+        if (separator === -1 || key === "") {
+            return { ok: false, reason: `--build-setting "${entry}" is not a setting. Expected key=value.` };
+        }
+        if (!key.startsWith(COMMAND_LINE_SETTING_PREFIX)) {
+            return {
+                ok: false,
+                reason: `--build-setting cannot change "${key}".`
+                    + ` Only ${COMMAND_LINE_SETTING_PREFIX}* settings can be given on the command line.`,
+            };
+        }
+        settings[key] = entry.slice(separator + 1).trim();
+    }
+    return { ok: true, settings };
 }
 
 /** What experimental mode came to for this run: what the report says, and whether to build at all. */

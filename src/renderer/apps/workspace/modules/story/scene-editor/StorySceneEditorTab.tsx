@@ -86,7 +86,7 @@ import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
 import { useNarralangCommit } from "../narralang/useNarralangCommit";
-import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
+import { narralangUiEnabled } from "../narralang/narralangUi";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
@@ -2192,9 +2192,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     {/* The same scene, read as a script. It is tinted the way the other view controls
                         are when they are on, because that is what it is — a way of looking at the
                         page, not a pane that opens beside it. Icon-only for the same reason they are:
-                        one glyph nothing else here can be. The only way into the script view, so with
-                        NarraLang hidden the scene stays rows. */}
-                    {NARRALANG_UI_ENABLED ? (
+                        one glyph nothing else here can be. The only way into the script view, so a
+                        launch without the NarraLang condition leaves the scene as rows. */}
+                    {narralangUiEnabled() ? (
                         <button
                             type="button"
                             onClick={() => setScriptOpen(open => !open)}
