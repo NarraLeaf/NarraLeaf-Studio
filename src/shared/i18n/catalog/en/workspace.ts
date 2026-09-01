@@ -810,6 +810,13 @@ export const workspace = {
             // said where the session is started or joined, not on every greyed control.
             unavailableLive: "Unavailable during a live session. Leave the session to use it.",
         },
+        // Hover text on every control switched off because the project is not trusted. One
+        // string for all of them, on the same bargain the freeze sentence above makes: the
+        // author learns what an untrusted project looks like once. It names the way out
+        // rather than the reason, because the reason is on the Settings page it points at.
+        distrust: {
+            unavailable: "Unavailable until this project is trusted. Trust it in Settings to run it.",
+        },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
         // whose behaviour cannot be reached by a person cannot be accepted.

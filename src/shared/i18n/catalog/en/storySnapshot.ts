@@ -15,5 +15,7 @@ export const storySnapshot = {
         needSnapshot: "A snapshot is needed to start the game here",
         needSnapshotDetail: "Playing from a row requires concrete variable values. Create a scene snapshot first.",
         createAction: "Create snapshot",
+        distrusted: "This project is not trusted, so the game cannot start here",
+        distrustedDetail: "Playing from a row runs the project. Trust it in Settings to allow that.",
     },
 } as const;

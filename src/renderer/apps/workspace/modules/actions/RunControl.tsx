@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
 import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
-import { useProjectDistrusted } from "../../hooks/useProjectDistrusted";
+import { useProjectDistrusted, useProjectDistrustedReason } from "../../hooks/useProjectDistrusted";
 import { useFreezeUnavailableReason } from "../../components/ui/freezeGuard";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
@@ -426,15 +426,30 @@ export function RunControl() {
      * always be stoppable, and this same button is the stop control.
      */
     const previewBlocked = frozen && !running && shownMode === "preview";
+    /**
+     * Nothing launches for a project that is not trusted - every mode, not just Preview.
+     *
+     * Guarded by `!running` for the reason the freeze is: this button is also the stop control, and
+     * a process that somehow got started must always be stoppable. Trust is settled when a workspace
+     * starts, so in practice nothing is running to stop; the condition is there because the day it
+     * is wrong, the wrong outcome is an unkillable process.
+     */
+    const launchBlocked = distrusted && !running;
     const frozenTitle = useFreezeUnavailableReason();
+    const distrustedTitle = useProjectDistrustedReason();
     const building = buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
     /**
      * Production Build is off while frozen, exactly as it was when it had its own button - the same
      * answer `resolveFrozenActionDisabled` gives for `buildAction`, which is still what the palette
      * and the macOS menu consult. A frozen workspace is not claiming to be shippable, and main refuses
      * the build a second time anyway (greying a renderer control is affordance, not enforcement).
+     *
+     * Off for a distrusted project too, and unconditionally rather than `!running`: a build is not
+     * this button, so there is no stop control to keep alive. The action bar reaches the same verdict
+     * through `startsMainOperation`, which is the membership test the two share; the verdicts stay
+     * separate because a freeze permits Dev Mode and distrust does not.
      */
-    const buildBlocked = frozen;
+    const buildBlocked = frozen || distrusted;
 
     /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
     /**
@@ -811,13 +826,13 @@ export function RunControl() {
                 <button
                     type="button"
                     onClick={runOrStop}
-                    disabled={previewBlocked}
-                    data-tip={previewBlocked ? frozenTitle : runTitle}
+                    disabled={previewBlocked || launchBlocked}
+                    data-tip={launchBlocked ? distrustedTitle : previewBlocked ? frozenTitle : runTitle}
                     aria-label={runTitle}
                     aria-pressed={running || undefined}
                     className={cn(
                         "flex cursor-default items-center gap-1.5 px-2 text-sm transition-colors",
-                        previewBlocked
+                        previewBlocked || launchBlocked
                             ? "cursor-not-allowed text-fg-subtle"
                             : running ? "hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
                     )}
@@ -868,8 +883,10 @@ export function RunControl() {
                             // Selecting a mode whose run button is dead would be a dead end, so the
                             // frozen mode is disabled here too - and stays listed, so the author can
                             // see that Preview exists and why it is off. Everything is inert while
-                            // something runs: the mode cannot change under a running process.
-                            const optionBlocked = running || (frozen && option === "preview");
+                            // something runs: the mode cannot change under a running process, and
+                            // inert again when nothing may start at all, which is every row rather
+                            // than just Preview - distrust is about running, not about shipping.
+                            const optionBlocked = running || launchBlocked || (frozen && option === "preview");
                             return (
                                 <button
                                     key={option}
@@ -878,7 +895,9 @@ export function RunControl() {
                                     aria-checked={selected}
                                     aria-disabled={optionBlocked || undefined}
                                     disabled={optionBlocked}
-                                    data-tip={frozen && option === "preview" ? frozenTitle : undefined}
+                                    data-tip={launchBlocked
+                                        ? distrustedTitle
+                                        : frozen && option === "preview" ? frozenTitle : undefined}
                                     onClick={() => selectMode(option)}
                                     className={cn(
                                         "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
@@ -1014,7 +1033,7 @@ export function RunControl() {
                             role="menuitem"
                             aria-disabled={buildBlocked || undefined}
                             disabled={buildBlocked}
-                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            data-tip={distrusted ? distrustedTitle : frozen ? frozenTitle : undefined}
                             onClick={() => {
                                 setMenuOpen(false);
                                 if (workspace) {
@@ -1046,7 +1065,7 @@ export function RunControl() {
                             role="menuitem"
                             aria-disabled={buildBlocked || undefined}
                             disabled={buildBlocked}
-                            data-tip={buildBlocked ? frozenTitle : undefined}
+                            data-tip={distrusted ? distrustedTitle : frozen ? frozenTitle : undefined}
                             onClick={() => {
                                 setMenuOpen(false);
                                 if (workspace) {

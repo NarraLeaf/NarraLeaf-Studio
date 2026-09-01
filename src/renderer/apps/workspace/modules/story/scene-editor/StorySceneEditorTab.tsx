@@ -46,6 +46,7 @@ import {
 import { stopVoiceAudition } from "./voiceAudition";
 import { STORY_DENSITY_METRICS, StoryEditorTextStyleProvider, storyEditorRootStyle } from "./storyEditorTextStyle";
 import { useStoryRowHighlight } from "@/apps/workspace/hooks/useStoryRowHighlight";
+import { useProjectDistrusted } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { StoryRowActionsContext, type StoryRowActions } from "./storyRowActions";
 import { StoryRowClaimsProvider } from "./storyRowClaims";
 import { StoryPasteWizardModal } from "./StoryPasteWizardModal";
@@ -502,6 +503,11 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     // Scene Snapshot inside it - and every one of them would leave this machine holding a scene the
     // room has never seen.
     const liveSession = useStoryLiveSessionGuard(payload?.storyId);
+    // A third refusal, and neither of the two above stands in for it: a project that arrived from a
+    // package or a remote source stays fully readable and fully editable, and only its EXECUTION
+    // waits on the author vouching for it in Settings. The one thing in this editor that executes is
+    // "play from here", which is why this is read here and nowhere else in the file.
+    const distrusted = useProjectDistrusted();
     const editor = useStorySceneEditorController(tabId, payload);
     // The command reference overlay, opened from the header. Local state, not a panel — it is a
     // read-only reference the author dips into, not a docked surface, so it mirrors the cheat sheet.
@@ -1638,6 +1644,16 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         const services = editor.context.services;
         const storyService = services.get<StoryService>(Services.Story);
         const uiService = services.get<UIService>(Services.UI);
+        // Stated here, in the same shape as the missing-snapshot refusal below, rather than left to
+        // the main process: main refuses this launch on its own account, but a refusal that reaches
+        // nobody looks to the author like a button that does nothing.
+        if (distrusted) {
+            uiService.notifications.warning(
+                t("storySnapshot.launch.distrusted"),
+                t("storySnapshot.launch.distrustedDetail"),
+            );
+            return;
+        }
         const snapshots = storyService.listSceneSnapshots(storyId, sceneId);
         if (snapshots.length === 0) {
             uiService.panels.show(STORY_SNAPSHOT_PANEL_ID);
@@ -1670,7 +1686,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             blockId,
             snapshotId,
         });
-    }, [editor.context, liveSession, payload?.storyId, payload?.sceneId, panelStateService, t]);
+    }, [distrusted, editor.context, liveSession, payload?.storyId, payload?.sceneId, panelStateService, t]);
 
     // Row context menu. Right-clicking a row outside the current selection selects just it first,
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the

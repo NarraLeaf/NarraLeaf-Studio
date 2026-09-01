@@ -760,6 +760,9 @@ export const workspace = {
             unavailable: "プロジェクトが凍結している間は使えない。凍結を解除すると使える",
             unavailableLive: "リアルタイムセッション中は使えない。セッションから退出すると使える",
         },
+        distrust: {
+            unavailable: "このプロジェクトを信頼するまで使えない。設定で信頼すると使える",
+        },
         // 実際のエディタで履歴を見る。バージョンのレールができるまでの道。
         revisionView: {
             showPrevious: "前のバージョンを表示（読み取り専用）",

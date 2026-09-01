@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "@/lib/i18n";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 import { useWorkspace } from "../context";
 
@@ -42,4 +43,18 @@ export function useProjectDistrusted(): boolean {
     }, [projectPath]);
 
     return distrusted;
+}
+
+/**
+ * The one sentence a control switched off by distrust shows.
+ *
+ * One string for every such control, on the same bargain `useFreezeUnavailableReason` makes next
+ * door: the author learns what an untrusted project looks like once instead of reading a different
+ * excuse on each button. Controls are greyed rather than hidden precisely so there is something to
+ * hover, and the sentence names the way out rather than the reason - the reason is on the Settings
+ * page it points at, where the decision is actually made.
+ */
+export function useProjectDistrustedReason(): string {
+    const { t } = useTranslation();
+    return t("workspace.shell.distrust.unavailable");
 }

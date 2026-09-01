@@ -16,5 +16,7 @@ export const storySnapshot = {
         needSnapshot: "ここからゲームを始めるにはスナップショットが必要",
         needSnapshotDetail: "行から再生するには変数の具体的な値が必要。先にシーンのスナップショットを作成する",
         createAction: "スナップショットを作成",
+        distrusted: "このプロジェクトは信頼されていないため、ここからゲームを始められない",
+        distrustedDetail: "行から再生するとプロジェクトが実行される。設定で信頼すると始められる",
     },
 } satisfies LocaleNamespace<"storySnapshot">;

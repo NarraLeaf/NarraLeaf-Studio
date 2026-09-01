@@ -21,6 +21,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
+import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -349,6 +350,12 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     // enters the canvas - everything below `lib/ui-editor` takes a plain `readOnly` and knows nothing
     // about version control.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    // A separate question from the freeze above, and it reaches exactly one control: the canvas
+    // launch button. Main refuses every launch for a project that arrived from elsewhere, so the
+    // button is greyed rather than left to hand over a request that comes back refused. Affordance
+    // only - nothing here enforces anything, and the tip says which of the two causes applies.
+    const distrusted = useProjectDistrusted();
+    const distrustedTitle = useProjectDistrustedReason();
     const undoOverride = useLiveUndoOverride();
     const readOnly = useMemo<UIEditorReadOnly>(
         () => ({ active: freeze.frozen, reason: freeze.reason }),
@@ -791,8 +798,11 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                         <div className="mx-1 h-6 w-px bg-fill" />
                         <SurfaceEditorToolbarButton
                             onClick={handleStartCurrentSurface}
-                            data-tip={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")} aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
-                            disabled={!surfaceId || isComponentEdit}
+                            data-tip={isComponentEdit
+                                ? t("uiEditor.editor.componentDefinitionHint")
+                                : distrusted ? distrustedTitle : t("uiEditor.editor.openInDevMode")}
+                            aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
+                            disabled={!surfaceId || isComponentEdit || distrusted}
                         >
                             <Play className="w-4 h-4" />
                         </SurfaceEditorToolbarButton>
