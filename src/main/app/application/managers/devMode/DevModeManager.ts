@@ -1,3 +1,4 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import path from "path";
 import crypto from "crypto";
 import chokidar, { FSWatcher } from "chokidar";
@@ -108,6 +109,10 @@ export class DevModeManager {
     }
 
     public launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
+        const refusal = refuseDistrustedOperation(this.app, projectPath, "Dev Mode");
+        if (refusal) {
+            return Promise.reject(new Error(refusal));
+        }
         return this.enqueue(projectPath, () => this.launchNow(projectPath, entry));
     }
 

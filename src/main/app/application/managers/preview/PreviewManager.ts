@@ -1,3 +1,4 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
@@ -152,6 +153,10 @@ export class PreviewManager {
      * status change with the message dropped).
      */
     public launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<PreviewStatus> {
+        const distrusted = refuseDistrustedOperation(this.app, projectPath, "preview");
+        if (distrusted) {
+            return Promise.reject(new Error(distrusted));
+        }
         const frozen = getWorkspaceFreeze(projectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "preview");

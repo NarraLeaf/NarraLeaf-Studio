@@ -325,7 +325,14 @@ describe("WeatherBakeManager", () => {
     let toolDir = "";
     // `getDistDir` is where the real manager finds its worker; these tests hand it a bake instead,
     // so nothing ever reads it.
-    const app = { isPackaged: () => false, resolveResource: (p: string) => p, getDistDir: () => "" };
+    const app = {
+        isPackaged: () => false,
+        resolveResource: (p: string) => p,
+        getDistDir: () => "",
+        // These cases are about the encoder, not about who may start one. A trusting ledger
+        // keeps them testing what they were written to test.
+        projectTrustManager: { isTrusted: () => true },
+    } as unknown as ConstructorParameters<typeof WeatherBakeManager>[0];
     /**
      * The resolver looks for a real file, so the tests give it one. It is never executed - the bake
      * is injected - but pointing the override at a directory that genuinely holds the binary is what

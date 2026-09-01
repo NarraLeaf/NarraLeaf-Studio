@@ -85,6 +85,9 @@ describe("PreviewManager.launch while the workspace is frozen", () => {
     // Enough app for the guard and for launchNow to fail on its own terms; see below.
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
+        // A trusting ledger: these cases are about what the manager does once it is allowed to
+        // start, not about who may start it. The refusal has its own tests.
+        projectTrustManager: { isTrusted: () => true },
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
     const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-preview-project");
@@ -159,6 +162,9 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
 
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
+        // A trusting ledger: these cases are about what the manager does once it is allowed to
+        // start, not about who may start it. The refusal has its own tests.
+        projectTrustManager: { isTrusted: () => true },
         pluginManager: {
             listPlugins: async () => [],
             listRuntimePluginPackSources: async () => [],
@@ -303,6 +309,9 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
 
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
+        // A trusting ledger: these cases are about what the manager does once it is allowed to
+        // start, not about who may start it. The refusal has its own tests.
+        projectTrustManager: { isTrusted: () => true },
         isPackaged: () => false,
         pluginManager: {
             listPlugins: async () => [],

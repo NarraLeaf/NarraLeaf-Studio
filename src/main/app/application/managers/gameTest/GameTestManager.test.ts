@@ -171,6 +171,9 @@ function captureEvents() {
 
 const makeManager = () => new GameTestManager({
     logger: { error: () => undefined },
+    // A trusting ledger: these cases are about what the manager does once it is allowed to
+    // start, not about who may start it. The refusal has its own tests.
+    projectTrustManager: { isTrusted: () => true },
     isPackaged: () => false,
     pluginManager: {
         listPlugins: async () => [],

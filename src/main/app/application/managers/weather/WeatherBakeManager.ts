@@ -1,3 +1,5 @@
+import type { App } from "@/app/app";
+import { projectDistrustedRefusal } from "../../utils/projectTrustGate";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
@@ -158,7 +160,10 @@ export type WeatherBakeManagerOptions = FfmpegResolveOptions & {
 
 export class WeatherBakeManager {
     constructor(
-        private readonly app: FfmpegResolverApp & WeatherBakeWorkerHostApp,
+        // `projectTrustManager` because a bake spawns ffmpeg, and the prebake starts one on a
+        // timer a few seconds after a project opens. The ledger is the smallest thing that can
+        // answer whether the project it would run for is allowed to make Studio do that.
+        private readonly app: FfmpegResolverApp & WeatherBakeWorkerHostApp & Pick<App, "projectTrustManager">,
         private readonly scheduler: StudioTaskScheduler,
     ) {}
 
@@ -193,6 +198,24 @@ export class WeatherBakeManager {
     ): Promise<WeatherBakeOutcome> {
         const paths = new Map<string, string>();
         const failures = new Map<string, string>();
+        // Ahead of everything else, including the claim bookkeeping below, because this is the one
+        // caller that starts on a timer: the prebake settles a few seconds after a project opens,
+        // with no gesture behind it, and it reads every story rather than the open one. A project
+        // that arrived from elsewhere must not get an ffmpeg process out of merely being opened.
+        //
+        // Silent: nothing asked for this, so a console error would be Studio complaining about a
+        // decision the author already made. The failures below say it per clip, where anything
+        // actually waiting on a bake will read it.
+        const distrusted = projectDistrustedRefusal(this.app, request.projectRoot, "weather clip bake");
+        if (distrusted) {
+            for (const spec of request.specs) {
+                failures.set(weatherBakeKey(spec), distrusted);
+            }
+            if (request.claim) {
+                this.scheduler.supersede(request.claim);
+            }
+            return { paths, failures };
+        }
         // Every path out of here retires the claim, including the ones that submit nothing. Asking
         // for no clips at all is how deleting the last weather row arrives, and a bake for the row
         // that is gone has to stop on that news rather than on the next one that happens to come.

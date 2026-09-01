@@ -1,3 +1,4 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import crypto from "crypto";
 import { existsSync } from "fs";
 import fs from "fs/promises";
@@ -934,6 +935,22 @@ export class GameBuildManager {
             assetCompression: null,
         };
         this.sessions.set(key, session);
+        const distrustedBuild = refuseDistrustedOperation(this.app, normalizedProjectPath, "production build");
+        if (distrustedBuild) {
+            // Same shape as the frozen refusal below, and for the same reason: recorded on the
+            // session so the dialog shows it, emitted verbatim rather than through failSession,
+            // whose "build failed:" prefix would send the author looking for a broken toolchain.
+            session.snapshot = {
+                status: "error",
+                progress: null,
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                platforms: session.snapshot.platforms,
+                error: distrustedBuild,
+            };
+            this.emit(session, { level: "error", source: "Build", message: distrustedBuild });
+            return session.snapshot;
+        }
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "production build");
@@ -1013,6 +1030,22 @@ export class GameBuildManager {
             assetCompression: null,
         };
         this.sessions.set(key, session);
+        const distrustedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export");
+        if (distrustedPatch) {
+            // Same shape as the frozen refusal below, and for the same reason: recorded on the
+            // session so the dialog shows it, emitted verbatim rather than through failSession,
+            // whose "build failed:" prefix would send the author looking for a broken toolchain.
+            session.snapshot = {
+                status: "error",
+                progress: null,
+                startedAt: session.snapshot.startedAt,
+                finishedAt: Date.now(),
+                platforms: session.snapshot.platforms,
+                error: distrustedPatch,
+            };
+            this.emit(session, { level: "error", source: "Build", message: distrustedPatch });
+            return session.snapshot;
+        }
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "patch export");

@@ -1,3 +1,4 @@
+import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import crypto from "crypto";
 import net from "net";
 import path from "path";
@@ -320,6 +321,11 @@ export class GameTestManager {
     public launch(request: GameTestLaunchRequest): Promise<GameTestLaunchResult> {
         const projectPath = path.resolve(request.projectPath);
         const key = this.projectKey(projectPath);
+
+        const distrusted = refuseDistrustedOperation(this.app, projectPath, "test run");
+        if (distrusted) {
+            return Promise.resolve({ ok: false, reason: distrusted });
+        }
 
         const frozen = getWorkspaceFreeze(projectPath);
         if (frozen !== null && refusesOperations(frozen)) {
