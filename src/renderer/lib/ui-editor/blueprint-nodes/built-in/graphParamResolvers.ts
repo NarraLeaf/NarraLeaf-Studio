@@ -5,6 +5,7 @@
 
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
@@ -486,6 +487,21 @@ export type DataPinResolveRuntime = {
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
+
+/**
+ * The address every widget getter below reads from: the element, in the drawing asking about it.
+ *
+ * A bare element id names the template - the record a list row and a component placement are each
+ * drawn from, and that none of them *is*. The write side has carried the drawing since
+ * `widgetAddress.ts`; a getter that does not returns the value the author typed however many times
+ * the running graph has changed it, which reads on screen as a write that never happened.
+ *
+ * One helper rather than the same expression at seven call sites, because these were seven separate
+ * omissions of the same thing and would be again.
+ */
+function widgetReadAddress(elementId: string | undefined, runtime?: DataPinResolveRuntime): string | undefined {
+    return elementId === undefined ? undefined : buildUIWidgetAddress(elementId, runtime?.instanceKey);
+}
 
 function isElementBindingOutput(type: string, portId: string): boolean {
     return (
@@ -2204,7 +2220,7 @@ function resolveSelfDisplayableNodeOutput(
     if (!isDisplayableNode) {
         return undefined;
     }
-    const elementId = runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2285,7 +2301,7 @@ function resolveSelfDisplayableNodeOutput(
 }
 
 function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
-    const elementId = runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2366,7 +2382,7 @@ function resolveTextInputNodeOutput(
     if (isElementTarget && ref?.elementType !== "nl.textInput") {
         return undefined;
     }
-    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2412,7 +2428,7 @@ function resolveSliderNodeOutput(
     if (isElementTarget && ref?.elementType !== "nl.slider") {
         return undefined;
     }
-    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2487,7 +2503,7 @@ function resolveSwitchNodeOutput(
     if (isElementTarget && ref?.elementType !== "nl.switch") {
         return undefined;
     }
-    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
+    const elementId = widgetReadAddress(isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId, runtime);
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -2525,14 +2541,17 @@ function resolveListNodeOutput(
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD;
-    const elementId = resolveListElementIdInput(
-        graph,
-        nodeId,
-        params,
-        blueprintLocals,
-        depth,
+    const elementId = widgetReadAddress(
+        resolveListElementIdInput(
+            graph,
+            nodeId,
+            params,
+            blueprintLocals,
+            depth,
+            runtime,
+            isElementTarget ? "element" : "self",
+        ),
         runtime,
-        isElementTarget ? "element" : "self",
     );
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
@@ -2675,6 +2694,7 @@ function resolveWidgetPropertyNodeOutput(
     } else {
         elementId = runtime?.executionOwner?.elementId;
     }
+    elementId = widgetReadAddress(elementId, runtime);
     if (!elementId) {
         return undefined;
     }
