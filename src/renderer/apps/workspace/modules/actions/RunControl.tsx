@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
 import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useProjectDistrusted } from "../../hooks/useProjectDistrusted";
 import { useFreezeUnavailableReason } from "../../components/ui/freezeGuard";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
@@ -141,6 +142,10 @@ export function RunControl() {
     // rows there would leave a button that does nothing while the process behind it would have said
     // yes.
     const frozen = useWorkspaceOperationsFrozen();
+    // A separate question from the freeze above, and it gates more: main refuses every launch
+    // for a project that arrived from elsewhere, including Dev Mode, which a freeze deliberately
+    // does not refuse (it compiles the revision instead). Affordance only - the refusal is main's.
+    const distrusted = useProjectDistrusted();
     const [mode, setMode] = useState<RunMode>("devMode");
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
@@ -544,8 +549,8 @@ export function RunControl() {
         }
     };
 
-    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest, openBuild });
-    runStateRef.current = { devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest, openBuild };
+    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, distrusted, runOrStop, launchMode, openTest, openBuild });
+    runStateRef.current = { devActive, previewActive, testActive, frozen, distrusted, runOrStop, launchMode, openTest, openBuild };
 
     useEffect(() => {
         if (!context) {
@@ -553,6 +558,9 @@ export function RunControl() {
         }
         const commandService = context.services.get<CommandService>(Services.Command);
         const idle = () => !runStateRef.current.devActive && !runStateRef.current.previewActive;
+        // Every launch, including Dev Mode. Nothing a distrusted project could start is allowed
+        // to start, so unlike the freeze there is no launch this one lets through.
+        const launchable = () => idle() && !runStateRef.current.distrusted;
         const launch = (target: RunMode) => runStateRef.current.launchMode(target);
         return commandService.registerMany([
             {
@@ -562,7 +570,7 @@ export function RunControl() {
                 // The run modes already own a glyph each (RUN_MODE_META) - reused here rather than
                 // chosen again, so the palette row and the button that does the same thing match.
                 icon: RUN_MODE_META.devMode.icon,
-                when: idle,
+                when: launchable,
                 run: () => launch("devMode"),
             },
             {
@@ -571,7 +579,7 @@ export function RunControl() {
                 categoryKey: "workspace.shell.commandPalette.categoryRun",
                 icon: RUN_MODE_META.preview.icon,
                 // Preview is what a frozen workspace is specifically not claiming to be; see above.
-                when: () => idle() && !runStateRef.current.frozen,
+                when: () => launchable() && !runStateRef.current.frozen,
                 run: () => launch("preview"),
             },
             {
@@ -650,7 +658,9 @@ export function RunControl() {
                 key: "f5",
                 description: "Run the project in Dev Mode",
                 allowInEditable: true,
-                when: () => !runStateRef.current.devActive && !runStateRef.current.previewActive,
+                when: () => !runStateRef.current.devActive
+                    && !runStateRef.current.previewActive
+                    && !runStateRef.current.distrusted,
                 handler: () => runStateRef.current.launchMode("devMode"),
             },
             {
@@ -660,7 +670,8 @@ export function RunControl() {
                 allowInEditable: true,
                 when: () => !runStateRef.current.devActive
                     && !runStateRef.current.previewActive
-                    && !runStateRef.current.frozen,
+                    && !runStateRef.current.frozen
+                    && !runStateRef.current.distrusted,
                 handler: () => runStateRef.current.launchMode("preview"),
             },
             {
@@ -704,7 +715,7 @@ export function RunControl() {
         key: "f10",
         description: "Open the production build dialog",
         allowInEditable: true,
-        when: () => !runStateRef.current.frozen,
+        when: () => !runStateRef.current.frozen && !runStateRef.current.distrusted,
         handler: () => runStateRef.current.openBuild(),
     });
 

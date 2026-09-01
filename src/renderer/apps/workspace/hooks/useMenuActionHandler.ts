@@ -4,8 +4,9 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
 import { getActionGroupItems, findActionMenuItemById, isActionVisible } from "../components/ui/actionMenuModel";
-import { resolveFrozenActionDisabled } from "../components/ui/freezeActionPolicy";
+import { resolveFrozenActionDisabled, startsMainOperation } from "../components/ui/freezeActionPolicy";
 import { useWorkspaceFreezeReason } from "./useWorkspaceFrozen";
+import { useProjectDistrusted } from "./useProjectDistrusted";
 import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -26,6 +27,9 @@ export function useMenuActionHandler(): void {
     const { actions, actionGroups } = useRegistry();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
     const freeze = useWorkspaceFreezeReason();
+    // The native menu bar is a second door onto the same actions - it was one once, and the fix
+    // only holds if every verdict the toolbar reaches is asked here too.
+    const distrusted = useProjectDistrusted();
 
     useEffect(() => {
         if (!context) return;
@@ -68,7 +72,7 @@ export function useMenuActionHandler(): void {
             // ran from the macOS menu, so the freeze covered one door and not the other. Ask
             // `freezeActionPolicy` the same question the bar asks - which keeps File and Help
             // (close the window, read the docs) alive, so a frozen workspace is never a trap.
-            if (resolveFrozenActionDisabled(action, freeze)) {
+            if (resolveFrozenActionDisabled(action, freeze) || (distrusted && startsMainOperation(action.id))) {
                 return;
             }
             if (!workspace) {
