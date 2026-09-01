@@ -469,13 +469,23 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
  * quit - none of which the manifest declared or the user approved. Only the
  * fields of {@link RuntimeBlueprintNodeContext} cross over, plus the same
  * capability-gated `game` the plugin's runtime entry would see.
+ *
+ * `scope` and `requiresHostApi` are dropped for a related reason. Neither is on
+ * `PluginBlueprintNodeDef`, but a plugin ships compiled JavaScript, so the type
+ * only states the contract - it cannot enforce it. Both say where a node may
+ * appear, which is the host's answer: `requiresHostApi` claims a host API the
+ * narrowed context does not reach anyway, and a stray `scope` is worse than
+ * ignored, since `resolveEffectiveBlueprintNodePins` reads the mere presence of
+ * one as "widget-scoped variant" and strips the node's element pin.
  */
 function toEditorBlueprintNodeDef(
     def: PluginBlueprintNodeDef,
     game: RuntimePluginGame,
 ): BlueprintNodeDef {
+    const { scope: _scope, requiresHostApi: _requiresHostApi, ...declared } = def as PluginBlueprintNodeDef
+        & Partial<Pick<BlueprintNodeDef, "scope" | "requiresHostApi">>;
     return {
-        ...def,
+        ...declared,
         execute: hostCtx => def.execute({
             params: hostCtx.params,
             resolveInput: hostCtx.resolveInput,

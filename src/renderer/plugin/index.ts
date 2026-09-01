@@ -10,7 +10,7 @@ import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type {
     BlueprintInspectorParamSelectOption,
-    BlueprintNodeDef,
+    BlueprintNodeDeclaration,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type {
     RuntimeBlueprintNodeContext,
@@ -59,14 +59,20 @@ export type {
 } from "@/apps/workspace/modules/assets/components/AssetSelector";
 export type {
     BlueprintInspectorParamSelectOption,
-    BlueprintNodeDef,
-    BlueprintNodeExecuteFn,
     BlueprintNodePinDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 
 /**
- * A blueprint node as a *plugin* writes it: the editor's full palette metadata,
- * but with the narrowed execute of `narraleaf-studio/runtime`.
+ * A blueprint node as a *plugin* writes it: everything a node declares about itself, with the
+ * narrowed execute of `narraleaf-studio/runtime`.
+ *
+ * Built on `BlueprintNodeDeclaration` rather than on the host's `BlueprintNodeDef`, so the two
+ * fields that say *where* a node may appear — `scope` and `requiresHostApi` — are not merely
+ * omitted here but unreachable from the published package. `scope` in particular is a list of
+ * owner kinds taken from `BlueprintOwnerRef`; publishing it would let a plugin pin an internal
+ * union, and every later change to the blueprint model would break plugins that had. Both
+ * restrictions are the host's answer, decided by review for the built-in catalogue, and the host
+ * drops either one a plugin's compiled JavaScript still carries.
  *
  * The host's own `BlueprintNodeDef.execute` receives a `BehaviorNodeExecutionContext`,
  * which carries `hostAdapter` — and through it every host API: saves, localization,
@@ -74,13 +80,15 @@ export type {
  * declared and the user never approved. So a plugin's execute gets the very same
  * capability-gated context its runtime entry gets, in both targets: one node module
  * can be shared by the studio and runtime entries, and neither is the privileged one.
+ * That is also why `BlueprintNodeExecuteFn`, which names the host context, is not published:
+ * nothing a plugin can write would satisfy it.
  *
  * The editor is an environment that backs no game, so the gated domains on
  * `ctx.game` (`saves`, `store`, `state`, …) are absent while a node runs in Studio.
  * Nodes must degrade rather than assume them — the same discipline a plugin already
  * needs for the web export versus the desktop shell.
  */
-export type PluginBlueprintNodeDef = Omit<BlueprintNodeDef, "execute"> & {
+export type PluginBlueprintNodeDef = BlueprintNodeDeclaration & {
     execute: RuntimeBlueprintNodeExecute;
 };
 

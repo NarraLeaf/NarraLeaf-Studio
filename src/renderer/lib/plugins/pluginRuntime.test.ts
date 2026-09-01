@@ -219,6 +219,27 @@ describe("createPluginApp disposal", () => {
         expect(blueprintNodesService.register).toHaveBeenCalledTimes(1);
     });
 
+    it("drops the host-only restrictions a plugin's compiled code may still carry", () => {
+        const { ctx, blueprintNodesService } = createFakeContext();
+        const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
+
+        // Neither field is on PluginBlueprintNodeDef, but a plugin ships JavaScript and can put
+        // anything in the object. Where a node may appear is the host's answer, and a stray
+        // `scope` is read downstream as "widget-scoped variant" - which would strip the node's
+        // element pin.
+        app.services.blueprintNodes.register({
+            type: "test-plugin.node",
+            displayName: "Node",
+            scope: { ownerKinds: ["widgetMain"] },
+            requiresHostApi: true,
+        } as any);
+
+        const registered = blueprintNodesService.register.mock.calls[0][0];
+        expect(registered).not.toHaveProperty("scope");
+        expect(registered).not.toHaveProperty("requiresHostApi");
+        expect(registered.displayName).toBe("Node");
+    });
+
     it("keeps hostAdapter out of the context a plugin node's execute receives", async () => {
         const { ctx, blueprintNodesService } = createFakeContext();
         const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);

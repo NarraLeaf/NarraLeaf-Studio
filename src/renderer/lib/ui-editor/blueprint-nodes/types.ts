@@ -224,10 +224,13 @@ export type BlueprintMagicElementRefPaletteEntry = {
 export type BlueprintNodeExecuteFn = BehaviorNodeDefinition["execute"];
 
 /**
- * Full node definition: editor pins + inspector + runtime execute.
- * Registered via defineBlueprintNode().
+ * What a node says about itself: identity, palette metadata, pins and inspector.
+ *
+ * Split out of {@link BlueprintNodeDef} because this half - and only this half - is what the
+ * `narraleaf-studio` types package publishes to plugins, as `PluginBlueprintNodeDef`. The rest of
+ * a definition says where the node may appear and how it runs, which is the host's answer to give.
  */
-export type BlueprintNodeDef = {
+export type BlueprintNodeDeclaration = {
     type: string;
     displayName: string;
     category: string;
@@ -280,6 +283,20 @@ export type BlueprintNodeDef = {
      */
     saveSchemaPins?: { kind: "input" | "output" };
     inspectorParams?: BlueprintInspectorParamDef[];
+    role?: BlueprintNodeRole;
+};
+
+/**
+ * Full node definition as the catalogue holds it: everything a node declares, plus where the host
+ * lets it appear and the host-side execute. Registered via defineBlueprintNode().
+ *
+ * `scope` and `requiresHostApi` sit here rather than in {@link BlueprintNodeDeclaration} because
+ * neither is a node author's to answer. Both say where a node may appear, which for the built-in
+ * catalogue is settled by review; and `scope` names owner kinds straight off `BlueprintOwnerRef`,
+ * so a published type carrying it would pin an internal union and turn every change to the
+ * blueprint model into a break for installed plugins.
+ */
+export type BlueprintNodeDef = BlueprintNodeDeclaration & {
     scope?: BlueprintNodeScope;
     /**
      * This node reaches the blueprint host API, so it may only appear where a host serves one.
@@ -292,7 +309,6 @@ export type BlueprintNodeDef = {
      * node in the catalogue.
      */
     requiresHostApi?: boolean;
-    role?: BlueprintNodeRole;
     execute: BlueprintNodeExecuteFn;
 };
 

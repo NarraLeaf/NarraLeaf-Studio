@@ -292,7 +292,7 @@ app.services.blueprintNodes.register({
 } satisfies PluginBlueprintNodeDef);
 ```
 
-`PluginBlueprintNodeDef` 的字段与 `BlueprintNodeDef` 一致，只有 `execute` 换成窄签名。`BlueprintNodePinDef` / `BlueprintInspectorParamDef` 的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`（类型均从 `narraleaf-studio/plugin` 导出）。
+`PluginBlueprintNodeDef` 是宿主 `BlueprintNodeDef` 中「节点自述」的那一半（`BlueprintNodeDeclaration`：type / 分类 / 引脚 / inspector / role），加上窄签名的 `execute`。`scope` 与 `requiresHostApi` 不在其中：这两个字段回答的是「这个节点可以出现在哪些 owner 里」，属于宿主的判断，内置目录靠评审给出；而且 `scope` 直接列举 `BlueprintOwnerRef` 的 owner kind，公开它等于让插件钉死一个内部联合类型。插件编译后的代码若仍带着这两个字段，注册时会被丢弃。`BlueprintNodePinDef` / inspector 参数的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`；从 `narraleaf-studio/plugin` 导出的是 `BlueprintNodePinDef` 与 `BlueprintInspectorParamSelectOption`，inspector 参数本身用 `PluginBlueprintNodeDef["inspectorParams"]` 取。
 
 ## app.services.story
 
