@@ -79,26 +79,42 @@ function mapItems(
     });
 }
 
-/** Move a row one place within its own list. Never moves a row between lists. */
-function moveWithin(items: MenuBarItem[], path: MenuBarPath, delta: number): MenuBarItem[] {
+/**
+ * Move a row to a gap in its own list. Never moves a row between lists.
+ *
+ * A gap index rather than "before this row": a list of n rows has n+1 places a row can land, the
+ * lower half of one row and the upper half of the next are the same place, and an index is the only
+ * way to say that once. See the drop model the whole app shares.
+ *
+ * The index is read against the list with the dragged row already taken out, which is what makes
+ * dragging downwards land where the line was drawn rather than one row short.
+ */
+function moveToGapWithin(items: MenuBarItem[], path: MenuBarPath, gapIndex: number): MenuBarItem[] {
     const [head, ...rest] = path;
     if (rest.length > 0) {
         return items.map(item => (
             item.id === head && item.kind === "submenu"
-                ? { ...item, items: moveWithin(item.items, rest, delta) }
+                ? { ...item, items: moveToGapWithin(item.items, rest, gapIndex) }
                 : item
         ));
     }
-    const from = items.findIndex(item => item.id === head);
-    const to = from + delta;
-    if (from < 0 || to < 0 || to >= items.length) {
+    return reorderToGap(items, head ?? "", gapIndex);
+}
+
+/** The list with `id` lifted out and put back at `gapIndex`, or the same list when nothing moves. */
+function reorderToGap<T extends { id: string }>(items: T[], id: string, gapIndex: number): T[] {
+    const from = items.findIndex(item => item.id === id);
+    if (from < 0) {
         return items;
     }
-    const next = [...items];
-    const [moved] = next.splice(from, 1);
-    if (moved) {
-        next.splice(to, 0, moved);
+    const without = items.filter(item => item.id !== id);
+    const to = Math.max(0, Math.min(without.length, gapIndex > from ? gapIndex - 1 : gapIndex));
+    if (to === from) {
+        // Dropped back where it started: no write, no history entry, nothing to report.
+        return items;
     }
+    const next = [...without];
+    next.splice(to, 0, items[from]!);
     return next;
 }
 
@@ -203,23 +219,20 @@ export function createMenuBarStore(app: PluginApp) {
             }
             void editMenu([menuId!], menu => ({ ...menu, items: mapItems(menu.items, rest, () => null) }));
         },
-        move: (path: MenuBarPath, delta: number): void => {
+        /** Drop a menu or a row into one of the gaps in the list it already belongs to. */
+        moveToGap: (path: MenuBarPath, gapIndex: number): void => {
             const [menuId, ...rest] = path;
             if (rest.length === 0) {
-                const from = data.menus.findIndex(menu => menu.id === menuId);
-                const to = from + delta;
-                if (from < 0 || to < 0 || to >= data.menus.length) {
-                    return;
+                const menus = reorderToGap(data.menus, menuId ?? "", gapIndex);
+                if (menus !== data.menus) {
+                    void commitMenus(menus);
                 }
-                const menus = [...data.menus];
-                const [moved] = menus.splice(from, 1);
-                if (moved) {
-                    menus.splice(to, 0, moved);
-                }
-                void commitMenus(menus);
                 return;
             }
-            void editMenu([menuId!], menu => ({ ...menu, items: moveWithin(menu.items, rest, delta) }));
+            void editMenu([menuId!], menu => ({
+                ...menu,
+                items: moveToGapWithin(menu.items, rest, gapIndex),
+            }));
         },
         setLabel: (path: MenuBarPath, label: MenuBarLabel): void => {
             const [menuId, ...rest] = path;

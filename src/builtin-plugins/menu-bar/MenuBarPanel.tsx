@@ -1,56 +1,62 @@
 /**
- * The Menu Bar side panel: the whole authoring surface for the shipped game's menu.
+ * The Menu Bar side panel.
  *
- * The panel is read top to bottom as one thing: the bar as the player will read it, the menus and
- * their rows underneath in that same order, and - only when a row is selected - what that row says
- * and does. Everything the author can do is named in words.
+ * One list, read top to bottom: the bar as the player will see it, then the menus, then the rows
+ * inside the menu that is open, then the fields of the row that is open. Opening a menu and opening
+ * a row are the same gesture, order is a drag, and nothing is edited anywhere except inside the row
+ * it belongs to - so there is one place to look at any moment.
  *
- * The first version was three competing blocks with two ways to add a row and three unlabelled icon
- * buttons floating between them, and it was not readable even to someone who knew what it was for.
- * What that cost, and what replaced it:
+ * Four things this shape answers, each of which an earlier layout got wrong:
  *
- *  - **A row said nothing about itself.** The tree was a column of names, so knowing what "Settings"
- *    did meant selecting it and reading the editor. Every row now carries what it does beside it, in
- *    the same words the action picker uses.
- *  - **The editor floated free of its subject.** It now opens with the row it is editing, named and
- *    typed ("Row - Settings"), and the reorder and delete controls sit in that heading rather than
- *    hovering above the fields.
- *  - **Two ways to add a row, neither explained.** One now: "Add row" opens a short menu naming the
- *    four kinds. The four kinds are a fact about menus, so a menu is where they belong.
+ *  - **Levels have to be visible.** A column of indented names cannot show what the levels add up
+ *    to, so the bar is drawn at the top as the player sees it - light chrome, the open menu's rows
+ *    dropped underneath - and the accordion below mirrors it exactly.
+ *  - **A row has to say what it does.** Each carries its action beside it, in the same words the
+ *    action picker uses.
+ *  - **One way to do each thing.** One "add row" naming the four kinds, drag for order, delete
+ *    inside the row. No second path and no floating icon buttons.
+ *  - **One thing open at a time.** Both accordions are single-open, which is what keeps the panel
+ *    short enough to read at this width.
  *
- * Two things that have not changed and should not: order is buttons rather than dragging (a menu is
- * a short ordered list, and a drag inside a panel this narrow misses more often than it lands), and
- * unfinished rows stay visible and marked - that is what a row looks like halfway through being
- * built, and the player never sees one (see `toGameMenuSpec`).
+ * Drag follows the model the rest of the app uses: a list of n rows has n+1 gaps, a drop is one gap
+ * index, one line is drawn at a time, and a row dropped back where it started writes nothing. The
+ * dragged path is held in a ref because a native drag runs a nested message loop - state set in
+ * `dragstart` is not visible to the `dragover` that has to accept the drop - and every row carries
+ * `nl-drag-source`, without which `draggable` is inert in this app.
  *
  * Comments in English per project convention.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import {
-    ChevronDown,
-    ChevronUp,
-    CornerDownRight,
-    List,
-    Minus,
-    Plus,
-    Trash2,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CornerDownRight, List, Minus, Plus, Trash2 } from "lucide-react";
 import { ui, type PluginApp, type PluginTranslator } from "narraleaf-studio/plugin";
 import type { GameMenuAction, GameMenuDynamicSource } from "@shared/types/gameMenu";
 import {
     MENU_BAR_ITEM_KINDS,
     isMenuBarItemComplete,
+    type MenuBarDocument,
     type MenuBarItem,
     type MenuBarItemKind,
     type MenuBarLabel,
     type MenuBarMenu,
 } from "./document";
 import { useMenuBarTranslator } from "./messages";
-import { samePath, type MenuBarPath, type MenuBarStore } from "./store";
+import type { MenuBarPath, MenuBarStore } from "./store";
 
 type SurfaceEntry = { id: string; name: string };
 type FnEntry = { fnRef: string; name: string; params: { pinId: string; name: string; valueType: string }[] };
+type KeyEntry = { name: string; sourceText: string };
+
+/** Where a dragged row would land: which list, and which of that list's n+1 gaps. */
+type DropTarget = { listKey: string; gapIndex: number };
+
+type DragHandlers = {
+    dropTarget: DropTarget | null;
+    begin: (path: MenuBarPath, listKey: string) => void;
+    end: () => void;
+    hover: (listKey: string, gapIndex: number) => boolean;
+    drop: (listKey: string, gapIndex: number) => void;
+};
 
 /** Every action the author can pick, in the order the picker lists them. */
 const ACTION_OPTIONS: { type: GameMenuAction["type"]; messageKey: string; skipValue?: boolean }[] = [
@@ -115,13 +121,7 @@ function actionMessageKey(action: GameMenuAction): string {
     return ACTION_OPTIONS.find(option => actionOptionValue(option) === value)?.messageKey ?? "kindAction";
 }
 
-/**
- * What a row does, in one line, for the tree.
- *
- * The same words the picker uses, so reading the tree and opening the picker never disagree. A
- * target that has not been chosen yet says so rather than being left blank - blank reads as "does
- * nothing", and this row does not exist for the player at all.
- */
+/** What a row does, in one line, in the same words the action picker uses. */
 function describeItem(
     item: MenuBarItem,
     tr: PluginTranslator,
@@ -129,7 +129,7 @@ function describeItem(
     fns: FnEntry[],
 ): string {
     if (item.kind === "separator") {
-        return tr.t("kindSeparator");
+        return "";
     }
     if (item.kind === "dynamic") {
         return tr.t("sourceHintShort");
@@ -150,7 +150,7 @@ function describeItem(
     return name;
 }
 
-/** What the row is called in the tree and in the editor's heading. */
+/** What the row is called in the accordion header and in the preview. */
 function itemTitle(item: MenuBarItem, tr: PluginTranslator): string {
     if (item.kind === "separator") {
         return tr.t("kindSeparator");
@@ -177,8 +177,19 @@ function itemKindIcon(kind: MenuBarItemKind) {
 export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarStore }) {
     const tr = useMenuBarTranslator(app);
     const [data, setData] = useState(() => store.getData());
-    const [selected, setSelected] = useState<MenuBarPath | null>(null);
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [openRowKey, setOpenRowKey] = useState<string | null>(null);
+    const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
     const frozen = app.services.workspace.frozen;
+
+    /*
+     * The row being dragged, held outside React state.
+     *
+     * A native drag runs a nested message loop, so the state set in `dragstart` has not landed by
+     * the time the first `dragover` has to decide whether to accept the drop. The handlers read the
+     * ref; the state above only draws the line.
+     */
+    const draggedRef = useRef<{ path: MenuBarPath; listKey: string } | null>(null);
 
     useEffect(() => store.subscribe(() => setData({ ...store.getData() })), [store]);
 
@@ -186,26 +197,44 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
     const fns = useMemo(() => app.services.interface.listGlobalFns(), [app]);
     const keys = useMemo(() => app.services.localization.listKeys(), [app]);
 
+    const openMenu = data.menus.find(menu => menu.id === openMenuId) ?? null;
+
+    const drag: DragHandlers = {
+        dropTarget,
+        begin: (path, listKey) => {
+            draggedRef.current = { path, listKey };
+        },
+        end: () => {
+            draggedRef.current = null;
+            setDropTarget(null);
+        },
+        hover: (listKey, gapIndex) => {
+            const dragged = draggedRef.current;
+            if (!dragged || dragged.listKey !== listKey) {
+                return false;
+            }
+            setDropTarget(current => (
+                current && current.listKey === listKey && current.gapIndex === gapIndex
+                    ? current
+                    : { listKey, gapIndex }
+            ));
+            return true;
+        },
+        drop: (listKey, gapIndex) => {
+            const dragged = draggedRef.current;
+            draggedRef.current = null;
+            setDropTarget(null);
+            if (dragged && dragged.listKey === listKey) {
+                store.moveToGap(dragged.path, gapIndex);
+            }
+        },
+    };
+
     return (
         <ui.Panel.Root>
-            <ui.Panel.Header title={tr.t("title")} description={tr.t("subtitle")}>
-                {/*
-                  * The bar as the player reads it, in one line.
-                  *
-                  * Part of the heading rather than a block of its own: it is not something to edit,
-                  * it is what the list below adds up to - which is the one thing a column of
-                  * indented names cannot show on its own.
-                  */}
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-edge bg-fill-subtle px-2 py-1">
-                    {data.enabled && data.menus.length > 0
-                        ? data.menus.map(menu => (
-                            <span key={menu.id} className="text-2xs text-fg">
-                                {menu.label.text || tr.t("unnamed")}
-                            </span>
-                        ))
-                        : <span className="text-2xs text-fg-subtle">{tr.t("previewEmpty")}</span>}
-                </div>
-            </ui.Panel.Header>
+            <ui.Panel.Header title={tr.t("title")} description={tr.t("subtitle")} />
+
+            <BarPreview data={data} openMenu={openMenu} tr={tr} />
 
             <ui.Panel.Toolbar>
                 <ui.Switch
@@ -217,25 +246,44 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                 <span className="text-xs text-fg-muted">{tr.t("enabled")}</span>
             </ui.Panel.Toolbar>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            {/*
+              * The container clears the line: a row that accepts a drop stops the event, so anything
+              * reaching here is a position nothing would take.
+              */}
+            <div
+                className="min-h-0 flex-1 overflow-y-auto"
+                onDragOver={() => setDropTarget(null)}
+                onDrop={drag.end}
+            >
                 {data.menus.length === 0
                     ? <ui.Panel.EmptyState title={tr.t("empty")} description={tr.t("emptyHint")} />
                     : (
-                        <div className="space-y-2">
-                            {data.menus.map(menu => (
-                                <MenuCard
+                        <ui.Accordion
+                            multiple={false}
+                            openItems={openMenuId ? [openMenuId] : []}
+                            onOpenChange={items => {
+                                setOpenMenuId(items[items.length - 1] ?? null);
+                                setOpenRowKey(null);
+                            }}
+                        >
+                            {data.menus.map((menu, index) => (
+                                <MenuSection
                                     key={menu.id}
                                     menu={menu}
+                                    index={index}
+                                    lastIndex={data.menus.length - 1}
                                     tr={tr}
                                     store={store}
                                     frozen={frozen}
                                     surfaces={surfaces}
                                     fns={fns}
-                                    selected={selected}
-                                    onSelect={setSelected}
+                                    keys={keys}
+                                    openRowKey={openRowKey}
+                                    onOpenRow={setOpenRowKey}
+                                    drag={drag}
                                 />
                             ))}
-                        </div>
+                        </ui.Accordion>
                     )}
 
                 <div className="pt-2">
@@ -243,118 +291,521 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                         size="sm"
                         variant="ghost"
                         disabled={frozen}
-                        onClick={() => setSelected(store.addMenu(tr.t("newMenu")))}
+                        onClick={() => {
+                            const path = store.addMenu(tr.t("newMenu"));
+                            setOpenMenuId(path[0] ?? null);
+                            setOpenRowKey(null);
+                        }}
                     >
                         <Plus size={13} />
                         {tr.t("addMenu")}
                     </ui.Button>
                 </div>
-
-                {selected && (
-                    <Editor
-                        store={store}
-                        tr={tr}
-                        path={selected}
-                        frozen={frozen}
-                        surfaces={surfaces}
-                        fns={fns}
-                        keys={keys}
-                        onRemoved={() => setSelected(null)}
-                    />
-                )}
             </div>
         </ui.Panel.Root>
     );
 }
 
-function MenuCard({
+/**
+ * The bar as the player will see it.
+ *
+ * Light chrome rather than Studio's, deliberately: this is a picture of the window's own menu bar,
+ * not a control of Studio's, and the operating systems that draw one draw it light. It follows the
+ * menu opened below, so the picture and the list never describe different things.
+ */
+function BarPreview({
+    data,
+    openMenu,
+    tr,
+}: {
+    data: MenuBarDocument;
+    openMenu: MenuBarMenu | null;
+    tr: PluginTranslator;
+}) {
+    const menus = data.enabled ? data.menus : [];
+    return (
+        <div className="mb-3 overflow-hidden rounded border border-edge">
+            <div className="flex flex-wrap items-center gap-2 bg-neutral-100 px-2 py-1">
+                {menus.length === 0
+                    ? <span className="text-2xs text-neutral-500">{tr.t("previewEmpty")}</span>
+                    : menus.map(menu => (
+                        <span
+                            key={menu.id}
+                            className={[
+                                "rounded px-1 text-2xs",
+                                menu.id === openMenu?.id ? "bg-neutral-300 text-neutral-900" : "text-neutral-700",
+                            ].join(" ")}
+                        >
+                            {menu.label.text || tr.t("unnamed")}
+                        </span>
+                    ))}
+            </div>
+            {openMenu && openMenu.items.length > 0 && (
+                <div className="border-t border-neutral-300 bg-white px-1 py-1">
+                    {openMenu.items.map(item => (
+                        item.kind === "separator"
+                            ? <div key={item.id} className="my-1 border-t border-neutral-200" />
+                            : (
+                                <div
+                                    key={item.id}
+                                    className="flex items-center gap-2 px-2 py-0.5 text-2xs text-neutral-900"
+                                >
+                                    <span className="truncate">{itemTitle(item, tr)}</span>
+                                    {item.kind === "submenu" && <span className="ml-auto text-neutral-400">▸</span>}
+                                </div>
+                            )
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** The drag props every reorderable row shares. */
+function dragProps(
+    path: MenuBarPath,
+    listKey: string,
+    index: number,
+    frozen: boolean,
+    drag: DragHandlers,
+) {
+    const gapAt = (event: React.DragEvent<HTMLDivElement>): number => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        return event.clientY < rect.top + rect.height / 2 ? index : index + 1;
+    };
+    return {
+        className: "relative nl-drag-source",
+        draggable: !frozen,
+        onDragStart: (event: React.DragEvent<HTMLDivElement>) => {
+            event.stopPropagation();
+            drag.begin(path, listKey);
+        },
+        onDragEnd: drag.end,
+        onDragOver: (event: React.DragEvent<HTMLDivElement>) => {
+            // Unconditional: the accept decision cannot read state set during this same drag.
+            event.preventDefault();
+            if (drag.hover(listKey, gapAt(event))) {
+                event.stopPropagation();
+            }
+        },
+        onDrop: (event: React.DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            drag.drop(listKey, gapAt(event));
+        },
+    };
+}
+
+/** The one line, drawn once: on the top edge of the row below the gap, or the last row's bottom. */
+function GapLines({
+    listKey,
+    index,
+    lastIndex,
+    drop,
+}: {
+    listKey: string;
+    index: number;
+    lastIndex: number;
+    drop: DropTarget | null;
+}) {
+    if (!drop || drop.listKey !== listKey) {
+        return null;
+    }
+    if (drop.gapIndex === index) {
+        return <ui.DropIndicator edge="before" />;
+    }
+    if (index === lastIndex && drop.gapIndex === lastIndex + 1) {
+        return <ui.DropIndicator edge="after" />;
+    }
+    return null;
+}
+
+function MenuSection({
     menu,
+    index,
+    lastIndex,
     tr,
     store,
     frozen,
     surfaces,
     fns,
-    selected,
-    onSelect,
+    keys,
+    openRowKey,
+    onOpenRow,
+    drag,
 }: {
     menu: MenuBarMenu;
+    index: number;
+    lastIndex: number;
     tr: PluginTranslator;
     store: MenuBarStore;
     frozen: boolean;
     surfaces: SurfaceEntry[];
     fns: FnEntry[];
-    selected: MenuBarPath | null;
-    onSelect: (path: MenuBarPath) => void;
+    keys: KeyEntry[];
+    openRowKey: string | null;
+    onOpenRow: (key: string | null) => void;
+    drag: DragHandlers;
 }) {
+    const listKey = "menus";
     return (
-        <div className="rounded border border-edge">
-            <TreeRow
-                depth={0}
-                title={menu.label.text || tr.t("unnamed")}
-                detail={tr.t("menuRowDetail", { count: menu.items.length })}
-                complete
-                selected={samePath(selected, [menu.id])}
-                onSelect={() => onSelect([menu.id])}
-            />
-            <div className="pb-1">
-                {menu.items.map(item => (
-                    <ItemRows
+        <div {...dragProps([menu.id], listKey, index, frozen, drag)}>
+            <GapLines listKey={listKey} index={index} lastIndex={lastIndex} drop={drag.dropTarget} />
+            <ui.AccordionItem
+                id={menu.id}
+                title={(
+                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                        <span className="truncate text-2xs font-semibold">
+                            {menu.label.text || tr.t("unnamed")}
+                        </span>
+                        <span className="ml-auto shrink-0 text-2xs text-fg-subtle">
+                            {tr.t("menuRowDetail", { count: menu.items.length })}
+                        </span>
+                    </span>
+                )}
+            >
+                {/*
+                  * The rows first, the menu's own fields after them.
+                  *
+                  * Opening a menu is how the author reaches its rows; the header already shows the
+                  * menu's name, so putting the name field above the rows only pushed the rows down
+                  * the panel behind two fields and a note.
+                  */}
+                <RowList
+                    items={menu.items}
+                    parentPath={[menu.id]}
+                    listKey={`menu:${menu.id}`}
+                    tr={tr}
+                    store={store}
+                    frozen={frozen}
+                    surfaces={surfaces}
+                    fns={fns}
+                    keys={keys}
+                    openRowKey={openRowKey}
+                    onOpenRow={onOpenRow}
+                    drag={drag}
+                />
+
+                <div className="mt-1 border-t border-edge pt-1">
+                    <LabelFields
+                        label={menu.label}
+                        tr={tr}
+                        frozen={frozen}
+                        keys={keys}
+                        onChange={label => store.setLabel([menu.id], label)}
+                    />
+                    <RemoveButton
+                        tr={tr}
+                        frozen={frozen}
+                        label={tr.t("removeMenu")}
+                        onClick={() => store.remove([menu.id])}
+                    />
+                </div>
+            </ui.AccordionItem>
+        </div>
+    );
+}
+
+function RowList({
+    items,
+    parentPath,
+    listKey,
+    tr,
+    store,
+    frozen,
+    surfaces,
+    fns,
+    keys,
+    openRowKey,
+    onOpenRow,
+    drag,
+}: {
+    items: MenuBarItem[];
+    parentPath: MenuBarPath;
+    listKey: string;
+    tr: PluginTranslator;
+    store: MenuBarStore;
+    frozen: boolean;
+    surfaces: SurfaceEntry[];
+    fns: FnEntry[];
+    keys: KeyEntry[];
+    openRowKey: string | null;
+    onOpenRow: (key: string | null) => void;
+    drag: DragHandlers;
+}) {
+    const openHere = items.some(item => openRowKey === [...parentPath, item.id].join("/"))
+        ? [openRowKey as string]
+        : [];
+    return (
+        <>
+            <ui.Accordion
+                multiple={false}
+                openItems={openHere}
+                onOpenChange={changed => onOpenRow(changed[changed.length - 1] ?? null)}
+            >
+                {items.map((item, index) => (
+                    <RowSection
                         key={item.id}
                         item={item}
-                        path={[menu.id, item.id]}
-                        depth={1}
+                        path={[...parentPath, item.id]}
+                        index={index}
+                        lastIndex={items.length - 1}
+                        listKey={listKey}
                         tr={tr}
                         store={store}
                         frozen={frozen}
                         surfaces={surfaces}
                         fns={fns}
-                        selected={selected}
-                        onSelect={onSelect}
+                        keys={keys}
+                        openRowKey={openRowKey}
+                        onOpenRow={onOpenRow}
+                        drag={drag}
                     />
                 ))}
-                <AddRowButton
-                    tr={tr}
-                    store={store}
-                    frozen={frozen}
-                    path={[menu.id]}
-                    depth={1}
-                    onAdded={onSelect}
-                />
-            </div>
+            </ui.Accordion>
+            <AddRowButton tr={tr} store={store} frozen={frozen} path={parentPath} onAdded={onOpenRow} />
+        </>
+    );
+}
+
+function RowSection({
+    item,
+    path,
+    index,
+    lastIndex,
+    listKey,
+    tr,
+    store,
+    frozen,
+    surfaces,
+    fns,
+    keys,
+    openRowKey,
+    onOpenRow,
+    drag,
+}: {
+    item: MenuBarItem;
+    path: MenuBarPath;
+    index: number;
+    lastIndex: number;
+    listKey: string;
+    tr: PluginTranslator;
+    store: MenuBarStore;
+    frozen: boolean;
+    surfaces: SurfaceEntry[];
+    fns: FnEntry[];
+    keys: KeyEntry[];
+    openRowKey: string | null;
+    onOpenRow: (key: string | null) => void;
+    drag: DragHandlers;
+}) {
+    const detail = describeItem(item, tr, surfaces, fns);
+    return (
+        <div {...dragProps(path, listKey, index, frozen, drag)}>
+            <GapLines listKey={listKey} index={index} lastIndex={lastIndex} drop={drag.dropTarget} />
+            <ui.AccordionItem
+                id={path.join("/")}
+                level={1}
+                title={(
+                    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                        <span className="shrink-0 self-center text-fg-subtle">{itemKindIcon(item.kind)}</span>
+                        <span
+                            className={[
+                                "truncate text-2xs",
+                                isMenuBarItemComplete(item) ? "" : "italic text-fg-subtle",
+                            ].join(" ")}
+                        >
+                            {itemTitle(item, tr)}
+                        </span>
+                        {detail && (
+                            <span className="ml-auto shrink-0 truncate text-2xs text-fg-subtle">{detail}</span>
+                        )}
+                    </span>
+                )}
+            >
+                {(item.kind === "action" || item.kind === "submenu") && (
+                    <LabelFields
+                        label={item.label}
+                        tr={tr}
+                        frozen={frozen}
+                        keys={keys}
+                        onChange={label => store.setLabel(path, label)}
+                    />
+                )}
+
+                {item.kind === "action" && (
+                    <ActionFields
+                        action={item.action}
+                        tr={tr}
+                        frozen={frozen}
+                        surfaces={surfaces}
+                        fns={fns}
+                        onChange={action => store.setAction(path, action)}
+                    />
+                )}
+
+                {item.kind === "dynamic" && (
+                    <>
+                        <ui.Panel.Row
+                            label={tr.t("source")}
+                            control={(
+                                <ui.Select
+                                    size="sm"
+                                    value={item.source}
+                                    disabled={frozen}
+                                    options={DYNAMIC_SOURCES.map(entry => ({
+                                        value: entry.source,
+                                        label: tr.t(entry.messageKey),
+                                    }))}
+                                    onChange={value => store.setSource(path, value as GameMenuDynamicSource)}
+                                />
+                            )}
+                        />
+                        <FieldHint text={tr.t("sourceHint")} />
+                    </>
+                )}
+
+                {item.kind === "separator" && <FieldHint text={tr.t("kindSeparatorHint")} />}
+
+                {!isMenuBarItemComplete(item) && (
+                    <div className="pt-1 text-2xs text-warning">{tr.t("incomplete")}</div>
+                )}
+                {frozen && <div className="pt-1 text-2xs text-fg-subtle">{tr.t("frozen")}</div>}
+
+                <RemoveButton tr={tr} frozen={frozen} label={tr.t("remove")} onClick={() => store.remove(path)} />
+
+                {item.kind === "submenu" && (
+                    <div className="mt-1 border-t border-edge pt-1">
+                        <RowList
+                            items={item.items}
+                            parentPath={path}
+                            listKey={`${listKey}/${item.id}`}
+                            tr={tr}
+                            store={store}
+                            frozen={frozen}
+                            surfaces={surfaces}
+                            fns={fns}
+                            keys={keys}
+                            openRowKey={openRowKey}
+                            onOpenRow={onOpenRow}
+                            drag={drag}
+                        />
+                    </div>
+                )}
+            </ui.AccordionItem>
         </div>
+    );
+}
+
+function RemoveButton({
+    tr,
+    frozen,
+    label,
+    onClick,
+}: {
+    tr: PluginTranslator;
+    frozen: boolean;
+    label: string;
+    onClick: () => void;
+}) {
+    return (
+        <div className="pt-1">
+            <ui.Button size="sm" variant="ghost" disabled={frozen} onClick={onClick} title={tr.t("remove")}>
+                <Trash2 size={12} />
+                {label}
+            </ui.Button>
+        </div>
+    );
+}
+
+/**
+ * A full-width note under a field.
+ *
+ * `Panel.Row`'s own description takes whatever the control leaves it, which at this width is a third
+ * of the panel - enough to wrap a sentence into a stack of two-word lines.
+ */
+function FieldHint({ text }: { text: string }) {
+    return <div className="pb-1 text-2xs leading-relaxed text-fg-subtle">{text}</div>;
+}
+
+function LabelFields({
+    label,
+    tr,
+    frozen,
+    keys,
+    onChange,
+}: {
+    label: MenuBarLabel;
+    tr: PluginTranslator;
+    frozen: boolean;
+    keys: KeyEntry[];
+    onChange: (label: MenuBarLabel) => void;
+}) {
+    return (
+        <>
+            <ui.Panel.Row
+                label={tr.t("labelText")}
+                control={(
+                    <ui.Input
+                        size="sm"
+                        className="w-40"
+                        value={label.text}
+                        disabled={frozen}
+                        onChange={event => onChange({ ...label, text: event.target.value })}
+                    />
+                )}
+            />
+            <ui.Panel.Row
+                label={tr.t("labelKey")}
+                control={(
+                    <ui.Select
+                        size="sm"
+                        value={label.key ?? ""}
+                        disabled={frozen}
+                        placeholder={keys.length === 0 ? tr.t("noKeys") : tr.t("labelKeyNone")}
+                        options={[
+                            { value: "", label: tr.t("labelKeyNone") },
+                            ...keys.map(key => ({
+                                value: key.name,
+                                label: key.name,
+                                secondaryLabel: key.sourceText,
+                            })),
+                        ]}
+                        onChange={value => onChange({ ...label, key: String(value) || null })}
+                    />
+                )}
+            />
+            <FieldHint text={tr.t("labelKeyHint")} />
+        </>
     );
 }
 
 /**
  * The one way to add a row, and the one place the four kinds are named.
  *
- * A menu rather than four buttons: the kinds are a short closed list an author reads once, and four
- * buttons repeated under every menu turned the tree into a wall of controls.
+ * A menu rather than four buttons: the kinds are a short closed list read once, and four buttons
+ * repeated under every menu turned the panel into a wall of controls.
  */
 function AddRowButton({
     tr,
     store,
     frozen,
     path,
-    depth,
     onAdded,
 }: {
     tr: PluginTranslator;
     store: MenuBarStore;
     frozen: boolean;
     path: MenuBarPath;
-    depth: number;
-    onAdded: (path: MenuBarPath) => void;
+    onAdded: (key: string) => void;
 }) {
     const { menuState, showMenu, hideMenu } = ui.useContextMenu();
     return (
         <>
-            <div style={{ paddingLeft: `${8 + depth * 14}px` }} className="pt-1">
-                <ui.Button size="sm" variant="ghost" disabled={frozen} onClick={showMenu}>
-                    <Plus size={12} />
-                    {tr.t("addItem")}
-                </ui.Button>
-            </div>
+            <ui.Button size="sm" variant="ghost" disabled={frozen} onClick={showMenu}>
+                <Plus size={12} />
+                {tr.t("addItem")}
+            </ui.Button>
             <ui.ContextMenu
                 visible={menuState.visible}
                 position={menuState.position}
@@ -371,7 +822,7 @@ function AddRowButton({
                             path,
                             kind,
                             kind === "submenu" ? tr.t("newSubmenu") : tr.t("newItem"),
-                        ));
+                        ).join("/"));
                     },
                 }))}
             />
@@ -379,284 +830,7 @@ function AddRowButton({
     );
 }
 
-function TreeRow({
-    depth,
-    title,
-    detail,
-    icon,
-    complete,
-    selected,
-    onSelect,
-}: {
-    depth: number;
-    title: string;
-    detail?: string;
-    icon?: React.ReactNode;
-    complete: boolean;
-    selected: boolean;
-    onSelect: () => void;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onSelect}
-            className={[
-                "flex w-full min-w-0 items-baseline gap-2 py-1 pr-2 text-left",
-                selected ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill-subtle",
-                depth === 0 ? "font-semibold" : "",
-            ].join(" ")}
-            style={{ paddingLeft: `${8 + depth * 14}px` }}
-        >
-            {/* A fixed slot either way, so titles line up whether or not the row has an icon. */}
-            <span className="w-3 shrink-0 self-center text-fg-subtle">{icon}</span>
-            <span className={["min-w-0 shrink truncate text-2xs", complete ? "" : "italic"].join(" ")}>
-                {title}
-            </span>
-            {detail && (
-                <span className="ml-auto shrink-0 truncate text-2xs text-fg-subtle">{detail}</span>
-            )}
-        </button>
-    );
-}
-
-function ItemRows({
-    item,
-    path,
-    depth,
-    tr,
-    store,
-    frozen,
-    surfaces,
-    fns,
-    selected,
-    onSelect,
-}: {
-    item: MenuBarItem;
-    path: MenuBarPath;
-    depth: number;
-    tr: PluginTranslator;
-    store: MenuBarStore;
-    frozen: boolean;
-    surfaces: SurfaceEntry[];
-    fns: FnEntry[];
-    selected: MenuBarPath | null;
-    onSelect: (path: MenuBarPath) => void;
-}) {
-    return (
-        <>
-            <TreeRow
-                depth={depth}
-                title={itemTitle(item, tr)}
-                detail={describeItem(item, tr, surfaces, fns)}
-                icon={itemKindIcon(item.kind)}
-                complete={isMenuBarItemComplete(item)}
-                selected={samePath(selected, path)}
-                onSelect={() => onSelect(path)}
-            />
-            {item.kind === "submenu" && (
-                <>
-                    {item.items.map(child => (
-                        <ItemRows
-                            key={child.id}
-                            item={child}
-                            path={[...path, child.id]}
-                            depth={depth + 1}
-                            tr={tr}
-                            store={store}
-                            frozen={frozen}
-                            surfaces={surfaces}
-                            fns={fns}
-                            selected={selected}
-                            onSelect={onSelect}
-                        />
-                    ))}
-                    <AddRowButton
-                        tr={tr}
-                        store={store}
-                        frozen={frozen}
-                        path={path}
-                        depth={depth + 1}
-                        onAdded={onSelect}
-                    />
-                </>
-            )}
-        </>
-    );
-}
-
-/**
- * What the selected row says and does.
- *
- * Opens by naming its subject, because it sits below a tree and nothing else would say which row
- * these fields belong to. Reorder and delete live in that heading for the same reason: they act on
- * the named row, and they used to float above the fields naming nothing.
- */
-function Editor({
-    store,
-    tr,
-    path,
-    frozen,
-    surfaces,
-    fns,
-    keys,
-    onRemoved,
-}: {
-    store: MenuBarStore;
-    tr: PluginTranslator;
-    path: MenuBarPath;
-    frozen: boolean;
-    surfaces: SurfaceEntry[];
-    fns: FnEntry[];
-    keys: { name: string; sourceText: string }[];
-    onRemoved: () => void;
-}) {
-    const node = store.find(path);
-    if (!node) {
-        return null;
-    }
-    const isMenu = path.length === 1;
-    const item = !isMenu && "kind" in node ? node : null;
-    const label: MenuBarLabel | null = isMenu || (item && item.kind !== "separator" && item.kind !== "dynamic")
-        ? (node as { label: MenuBarLabel }).label
-        : null;
-    const heading = isMenu
-        ? tr.t("editingMenu", { name: (node as MenuBarMenu).label.text || tr.t("unnamed") })
-        : tr.t("editingItem", {
-            kind: tr.t(KIND_MESSAGE_KEY[item!.kind]),
-            name: itemTitle(item!, tr),
-        });
-
-    return (
-        <div className="mt-3 rounded border border-edge">
-            <div className="flex items-center justify-between gap-2 rounded-t border-b border-edge bg-fill-subtle px-2 py-1.5">
-                <span className="min-w-0 truncate text-2xs font-semibold text-fg">{heading}</span>
-                <div className="flex shrink-0 items-center gap-1">
-                    <ui.IconButton
-                        size="sm"
-                        variant="ghost"
-                        aria-label={tr.t("moveUp")}
-                        title={tr.t("moveUp")}
-                        disabled={frozen}
-                        onClick={() => store.move(path, -1)}
-                    >
-                        <ChevronUp size={13} />
-                    </ui.IconButton>
-                    <ui.IconButton
-                        size="sm"
-                        variant="ghost"
-                        aria-label={tr.t("moveDown")}
-                        title={tr.t("moveDown")}
-                        disabled={frozen}
-                        onClick={() => store.move(path, 1)}
-                    >
-                        <ChevronDown size={13} />
-                    </ui.IconButton>
-                    <ui.IconButton
-                        size="sm"
-                        variant="ghost"
-                        aria-label={tr.t("remove")}
-                        title={tr.t("remove")}
-                        disabled={frozen}
-                        onClick={() => {
-                            store.remove(path);
-                            onRemoved();
-                        }}
-                    >
-                        <Trash2 size={13} />
-                    </ui.IconButton>
-                </div>
-            </div>
-
-            <div className="px-2 pb-2">
-                {label && (
-                    <>
-                        <ui.Panel.Row
-                            label={tr.t("labelText")}
-                            control={(
-                                <ui.Input
-                                    size="sm"
-                                    className="w-44"
-                                    value={label.text}
-                                    disabled={frozen}
-                                    onChange={event => store.setLabel(path, { ...label, text: event.target.value })}
-                                />
-                            )}
-                        />
-                        <ui.Panel.Row
-                            label={tr.t("labelKey")}
-                            control={(
-                                <ui.Select
-                                    size="sm"
-                                    value={label.key ?? ""}
-                                    disabled={frozen}
-                                    placeholder={keys.length === 0 ? tr.t("noKeys") : tr.t("labelKeyNone")}
-                                    options={[
-                                        { value: "", label: tr.t("labelKeyNone") },
-                                        ...keys.map(key => ({
-                                            value: key.name,
-                                            label: key.name,
-                                            secondaryLabel: key.sourceText,
-                                        })),
-                                    ]}
-                                    onChange={value => store.setLabel(path, { ...label, key: String(value) || null })}
-                                />
-                            )}
-                        />
-                        {/*
-                          * Under the row rather than beside its label: `Panel.Row` gives the text
-                          * column whatever the control leaves, and a sentence in a third of a panel
-                          * this narrow wraps into a stack of two-word lines.
-                          */}
-                        <div className="pb-1 text-2xs leading-relaxed text-fg-subtle">
-                            {tr.t("labelKeyHint")}
-                        </div>
-                    </>
-                )}
-
-                {item?.kind === "action" && (
-                    <ActionEditor
-                        action={item.action}
-                        tr={tr}
-                        frozen={frozen}
-                        surfaces={surfaces}
-                        fns={fns}
-                        onChange={action => store.setAction(path, action)}
-                    />
-                )}
-
-                {item?.kind === "dynamic" && (
-                    <ui.Panel.Row
-                        label={tr.t("source")}
-                        description={tr.t("sourceHint")}
-                        control={(
-                            <ui.Select
-                                size="sm"
-                                value={item.source}
-                                disabled={frozen}
-                                options={DYNAMIC_SOURCES.map(entry => ({
-                                    value: entry.source,
-                                    label: tr.t(entry.messageKey),
-                                }))}
-                                onChange={value => store.setSource(path, value as GameMenuDynamicSource)}
-                            />
-                        )}
-                    />
-                )}
-
-                {item?.kind === "separator" && (
-                    <div className="py-1 text-2xs text-fg-subtle">{tr.t("kindSeparatorHint")}</div>
-                )}
-
-                {item && !isMenuBarItemComplete(item) && (
-                    <div className="pt-1 text-2xs text-warning">{tr.t("incomplete")}</div>
-                )}
-                {frozen && <div className="pt-1 text-2xs text-fg-subtle">{tr.t("frozen")}</div>}
-            </div>
-        </div>
-    );
-}
-
-function ActionEditor({
+function ActionFields({
     action,
     tr,
     frozen,
@@ -735,7 +909,6 @@ function ActionEditor({
                 <>
                     <ui.Panel.Row
                         label={tr.t("fn")}
-                        description={fns.length === 0 ? tr.t("fnEmpty") : tr.t("fnHint")}
                         control={(
                             <ui.Select
                                 size="sm"
@@ -750,8 +923,9 @@ function ActionEditor({
                             />
                         )}
                     />
+                    <FieldHint text={fns.length === 0 ? tr.t("fnEmpty") : tr.t("fnHint")} />
                     {fn && fn.params.length > 0 && (
-                        <div className="pl-2">
+                        <>
                             <div className="pt-1 text-2xs text-fg-muted">{tr.t("fnArgs")}</div>
                             {fn.params.map(param => (
                                 <ui.Panel.Row
@@ -775,7 +949,7 @@ function ActionEditor({
                                     )}
                                 />
                             ))}
-                        </div>
+                        </>
                     )}
                 </>
             )}
@@ -786,9 +960,8 @@ function ActionEditor({
 /**
  * Type the author's typing to the pin that will receive it.
  *
- * Text is what a panel can offer for every pin type, and a function that declared an integer
- * parameter has to be handed a number - a string "3" reaching an arithmetic node is the kind of
- * failure that shows up as a wrong answer rather than an error. Anything unparseable stays the
+ * A function that declared an integer parameter has to be handed a number - a string "3" reaching an
+ * arithmetic node shows up as a wrong answer rather than an error. Anything unparseable stays the
  * string it was typed as, which is what the author sees in the box.
  */
 function coerceArg(raw: string, valueType: string): unknown {
