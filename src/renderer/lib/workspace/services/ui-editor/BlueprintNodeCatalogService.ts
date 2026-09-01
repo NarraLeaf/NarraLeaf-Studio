@@ -141,6 +141,12 @@ export class BlueprintNodeCatalogService
         return blueprintNodeRegistry.get(type);
     }
 
+    /** Whether this node type ships with the host (core), as opposed to coming from a plugin. */
+    public isBuiltIn(type: string): boolean {
+        this.ensureBuiltinsRegistered();
+        return blueprintNodeRegistry.isBuiltIn(type);
+    }
+
     /** The plugin id that owns a node type, or undefined for built-in (core) nodes. */
     public getNodeOwner(type: string): string | undefined {
         return this.pluginNodeOwners.get(type);

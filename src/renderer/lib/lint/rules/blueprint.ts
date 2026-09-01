@@ -731,6 +731,32 @@ function runStartSceneForeign(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+/**
+ * A node whose type the project cannot load - the plugin that defined it is uninstalled, disabled,
+ * or failed to load. The graph editor already shows the node as unknown; the build has to refuse it,
+ * because the node does nothing in the game and what ships is then not what the author wrote. Every
+ * graph kind counts - a macro or a function graph carrying one ships the same broken node.
+ */
+function runUnknownNode(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (blueprintNodeRegistry.get(node.type)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "blueprint/unknown-node",
+                messageKey: "lint.rule.blueprintUnknownNode.message" as TranslationKey,
+                messageParams: { type: node.type },
+                location: blueprintLocation(site, node.id),
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
 export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
     {
         id: "blueprint/reference-missing",
@@ -775,6 +801,15 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "blueprintEmptyEvent",
         run: ctx => runEmptyEvent(ctx),
+    },
+    {
+        id: "blueprint/unknown-node",
+        category: "blueprint",
+        // An error: the type is not in the build, so the node runs nothing and the game diverges from
+        // what the author sees on the canvas. Blocking the build is the only place that catches it.
+        defaultSeverity: "error",
+        slug: "blueprintUnknownNode",
+        run: ctx => runUnknownNode(ctx),
     },
     {
         id: "blueprint/dlc-entrance-unguarded",

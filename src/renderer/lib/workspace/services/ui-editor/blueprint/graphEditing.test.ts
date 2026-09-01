@@ -21,8 +21,14 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
+import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
+import {
+    BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY,
+    readBlueprintNodePinSnapshot,
+} from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     applyBlueprintIrConnection,
+    captureBlueprintNodePinSnapshots,
     countHiddenBlueprintConnectionsForNodes,
     createGraphNodeForPalette,
     isValidBlueprintIrExecConnection,
@@ -412,6 +418,49 @@ describe("blueprint graph editing", () => {
             .toEqual({
                 waitForTransition: "continue",
             });
+    });
+
+    it("records the pin shape of plugin nodes and leaves built-ins and unknowns alone", () => {
+        registerCoreBlueprintNodes();
+        const pluginType = `test.plugin.${crypto.randomUUID()}.thing`;
+        BlueprintNodeCatalogService.getInstance().register(
+            {
+                type: pluginType,
+                displayName: "Thing",
+                category: "Other",
+                graphKinds: ["event"],
+                isPure: false,
+                pins: [
+                    { id: "in", kind: "input", semantic: "exec" },
+                    { id: "amount", kind: "input", semantic: "data", valueType: "float" },
+                    { id: "next", kind: "output", semantic: "exec" },
+                ],
+                execute: () => ({}),
+            },
+            { ownerPluginId: "test.plugin", replaceExisting: true },
+        );
+
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                plug: { id: "plug", type: pluginType },
+                builtin: { id: "builtin", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+                gone: {
+                    id: "gone",
+                    type: "com.absent.plugin.node",
+                    params: { [BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY]: [{ id: "x", kind: "input", semantic: "exec" }] },
+                },
+            },
+            edges: [],
+        };
+
+        expect(captureBlueprintNodePinSnapshots(ir)).toBe(true);
+        expect(readBlueprintNodePinSnapshot(ir.nodes!.plug.params)?.map(p => p.id)).toEqual(["in", "amount", "next"]);
+        // Built-in: never carries a snapshot - it cannot become unknown.
+        expect(readBlueprintNodePinSnapshot(ir.nodes!.builtin.params)).toBeNull();
+        // Unknown right now: its recorded shape is left exactly as it was.
+        expect(readBlueprintNodePinSnapshot(ir.nodes!.gone.params)?.map(p => p.id)).toEqual(["x"]);
+        // A second pass changes nothing once the shapes are settled.
+        expect(captureBlueprintNodePinSnapshots(ir)).toBe(false);
     });
 
     it("counts only the connections an unknown node hides on its unshown pins", () => {

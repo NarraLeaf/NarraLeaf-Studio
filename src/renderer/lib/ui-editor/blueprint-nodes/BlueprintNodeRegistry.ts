@@ -27,6 +27,7 @@ import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES,
     BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
+    readBlueprintNodePinSnapshot,
     type BlueprintMagicElementRefPaletteEntry,
     type BlueprintNodeDef,
     type BlueprintNodeEditorCatalogEntry,
@@ -371,7 +372,12 @@ class BlueprintNodeDefinitionsRegistry {
         if (def) {
             return resolveEffectiveBlueprintCatalogEntry(def, params);
         }
-        return this.resolveCatalogEntry(type);
+        // Unknown type. If the node kept a snapshot of its pins from when its plugin was loaded, show
+        // those instead of the bare exec pair, so its connections stay attached and visible. The
+        // entry is still `unknown` - the card, the diagnostic, and the build gate all still fire.
+        const stub = this.resolveCatalogEntry(type);
+        const snapshot = readBlueprintNodePinSnapshot(params);
+        return snapshot ? { ...stub, pins: snapshot } : stub;
     }
 
     /**

@@ -243,6 +243,11 @@ export const lint = {
             description: "事件层中没有连接任何可执行内容",
             message: "该事件不会执行任何内容",
         },
+        blueprintUnknownNode: {
+            title: "未知的节点类型",
+            description: "项目无法加载其类型的节点",
+            message: "{type} 未加载，因此该节点不会在游戏中运行",
+        },
         uiUnlocalizedText: {
             title: "未本地化的文本",
             description: "项目已有第二种语言，文本仍直接写在控件上",
