@@ -1,10 +1,11 @@
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { collectBlueprintEventHeadNodeIdsForDispatch } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getWidgetLogicApi, getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 
 function widgetMainOwnerKey(surfaceId: string, elementId: string): string {
-    return `widgetMain:${surfaceId}:${elementId}`;
+    return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId, elementId });
 }
 
 function hasValueBindings(element: UIElement): boolean {

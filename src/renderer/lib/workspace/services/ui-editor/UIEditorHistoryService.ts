@@ -1,5 +1,6 @@
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import type { TranslationKey } from "@shared/i18n";
+import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
@@ -50,9 +51,7 @@ function cloneBlueprint<T>(value: T): T {
 }
 
 function isSurfaceBlueprintOwnerKey(surfaceId: string, ownerKey: string): boolean {
-    return ownerKey === `surfaceMain:${surfaceId}` ||
-        ownerKey.startsWith(`widgetMain:${surfaceId}:`) ||
-        ownerKey.startsWith(`widgetValue:${surfaceId}:`);
+    return ownerKeyBelongsToSurface(ownerKey, surfaceId);
 }
 
 export function captureBlueprintSurfaceSnapshot(

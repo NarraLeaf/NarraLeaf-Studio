@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import {
     UI_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -42,17 +43,17 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
         case "globalMain":
             return "globalMain";
         case "surfaceMain":
-            return `surfaceMain:${owner.surfaceId}`;
+            return encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: owner.surfaceId });
         case "widgetMain":
-            return `widgetMain:${owner.surfaceId}:${owner.elementId}`;
+            return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: owner.surfaceId, elementId: owner.elementId });
         case "widgetValue":
-            return `widgetValue:${owner.surfaceId}:${owner.elementId}:${encodeURIComponent(owner.propPath)}`;
+            return encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: owner.surfaceId, elementId: owner.elementId, propPath: owner.propPath });
         case "componentWidgetMain":
-            return `componentWidgetMain:${owner.componentId}:${owner.elementId}`;
+            return encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: owner.componentId, elementId: owner.elementId });
         case "sharedAsset":
-            return `sharedAsset:${owner.assetId}`;
+            return encodeBlueprintOwnerKey({ kind: "sharedAsset", assetId: owner.assetId });
         case "storyAction":
-            return `storyAction:${owner.blueprintId}`;
+            return encodeBlueprintOwnerKey({ kind: "storyAction", blueprintId: owner.blueprintId });
         default: {
             const _exhaustive: never = owner;
             return _exhaustive;
@@ -835,7 +836,7 @@ describe("UIDocumentService surface creation", () => {
         expect(duplicatedDoc.components).toHaveLength(1);
 
         const duplicatedWidgetBlueprintId =
-            blueprintDocument.ownerRecords[`widgetMain:${duplicated.id}:${duplicatedButton.id}`]?.activeBlueprintId;
+            blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: duplicated.id, elementId: duplicatedButton.id })]?.activeBlueprintId;
         expect(duplicatedWidgetBlueprintId).toBeTruthy();
         if (!duplicatedWidgetBlueprintId) {
             throw new Error("Expected the duplicated button to own a blueprint");
@@ -843,7 +844,7 @@ describe("UIDocumentService surface creation", () => {
         const duplicatedLabelBinding = duplicatedButton.valueBindings?.label;
         const duplicatedValueBlueprintId =
             duplicatedLabelBinding?.kind === "blueprintValue" ? duplicatedLabelBinding.blueprintId : undefined;
-        const duplicatedSurfaceBlueprintId = blueprintDocument.ownerRecords[`surfaceMain:${duplicated.id}`]?.activeBlueprintId;
+        const duplicatedSurfaceBlueprintId = blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: duplicated.id })]?.activeBlueprintId;
 
         expect(duplicatedSurfaceBlueprintId).toBeTruthy();
         expect(duplicatedSurfaceBlueprintId).not.toBe(surfaceBlueprintId);
@@ -854,13 +855,13 @@ describe("UIDocumentService surface creation", () => {
             throw new Error("Expected duplicated value blueprint binding");
         }
 
-        expect(blueprintDocument.ownerRecords[`surfaceMain:${source.id}`]?.activeBlueprintId).toBe(surfaceBlueprintId);
-        expect(blueprintDocument.ownerRecords[`widgetMain:${source.id}:${button.id}`]?.activeBlueprintId).toBe(widgetBlueprintId);
-        expect(blueprintDocument.ownerRecords[`widgetValue:${source.id}:${button.id}:label`]?.activeBlueprintId).toBe(valueBlueprintId);
-        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${component.rootElementId}`]?.activeBlueprintId)
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: source.id })]?.activeBlueprintId).toBe(surfaceBlueprintId);
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: source.id, elementId: button.id })]?.activeBlueprintId).toBe(widgetBlueprintId);
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: source.id, elementId: button.id, propPath: "label" })]?.activeBlueprintId).toBe(valueBlueprintId);
+        expect(blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: component.rootElementId })]?.activeBlueprintId)
             .toBe(componentBlueprintId);
         expect(Object.keys(blueprintDocument.ownerRecords).filter(key => key.startsWith("componentWidgetMain:")))
-            .toEqual([`componentWidgetMain:${component.id}:${component.rootElementId}`]);
+            .toEqual([encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: component.rootElementId })]);
 
         const duplicatedSurfaceBlueprint = blueprintDocument.blueprints[duplicatedSurfaceBlueprintId];
         expect(duplicatedSurfaceBlueprint.owner).toEqual({ kind: "surfaceMain", surfaceId: duplicated.id });
@@ -1088,7 +1089,7 @@ describe("UIDocumentService component library", () => {
                 },
             },
         } as never;
-        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${hit.id}`] = {
+        blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: surface.id, elementId: hit.id })] = {
             activeBlueprintId: "bp-hit",
             privateBlueprintIds: ["bp-hit"],
             initializedFrontend: "visual",
@@ -1100,7 +1101,7 @@ describe("UIDocumentService component library", () => {
         // The blueprint follows the element into the component, as a clone rather than the original:
         // an owner record still naming `bp-hit` would run the surface's blueprint from inside the
         // component and drive the element still out there.
-        const boundId = blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId;
+        const boundId = blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: component.id, elementId: copy.id })]?.activeBlueprintId;
         expect(boundId).toBeTruthy();
         expect(boundId).not.toBe("bp-hit");
 
@@ -1153,7 +1154,7 @@ describe("UIDocumentService component library", () => {
             bindings: {},
             program: { kind: "graph", graphs: { events: { click: { id: "click", graph: { nodes: {}, edges: [] } } }, functions: {} } },
         } as never;
-        blueprintDocument.ownerRecords[`widgetMain:${surface.id}:${box.id}`] = {
+        blueprintDocument.ownerRecords[encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: surface.id, elementId: box.id })] = {
             activeBlueprintId: "bp-empty",
             privateBlueprintIds: ["bp-empty"],
             initializedFrontend: "visual",

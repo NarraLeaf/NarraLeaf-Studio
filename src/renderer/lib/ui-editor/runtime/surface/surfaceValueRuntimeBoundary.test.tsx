@@ -11,6 +11,7 @@
  * owning the store's lifetime.
  */
 import { StrictMode } from "react";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { render, cleanup, act } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
@@ -99,7 +100,7 @@ function valueBlueprintDocument(input: { blueprintId: string; elementId: string;
             },
         },
         ownerRecords: {
-            [`widgetValue:${SURFACE_ID}:${input.elementId}:text`]: {
+            [encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: SURFACE_ID, elementId: input.elementId, propPath: "text" })]: {
                 activeBlueprintId: input.blueprintId,
                 privateBlueprintIds: [input.blueprintId],
                 initializedFrontend: "visual",

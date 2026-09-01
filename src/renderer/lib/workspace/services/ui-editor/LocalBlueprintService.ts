@@ -78,6 +78,7 @@ import {
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
+import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -464,13 +465,14 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public removeSurfaceAndWidgetOwners(surfaceId: string): void {
-        const prefixWidget = `widgetMain:${surfaceId}:`;
-        const prefixWidgetValue = `widgetValue:${surfaceId}:`;
-        const surfaceKey = surfaceMainOwnerKey(surfaceId);
+        // Asked of each key rather than matched as a prefix: rebuilding the opening of a key by
+        // hand is a second encoder, and this one was wrong twice - it left the surface id
+        // unescaped, and it would have swept up a surface whose id merely starts with this
+        // one's. Deleting a surface is not the place to be approximately right.
         this.applyBlueprintMutation(doc => {
             const toRemoveBlueprintIds = new Set<string>();
             for (const [k, rec] of Object.entries(doc.ownerRecords)) {
-                if (k === surfaceKey || k.startsWith(prefixWidget) || k.startsWith(prefixWidgetValue)) {
+                if (ownerKeyBelongsToSurface(k, surfaceId)) {
                     for (const bid of rec.privateBlueprintIds) {
                         toRemoveBlueprintIds.add(bid);
                     }

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
@@ -298,7 +300,19 @@ describe("ui/page-unreachable", () => {
 // ui/empty-behavior
 // ---------------------------------------------------------------------------
 
-const SURFACE_OWNER_KEY = `surfaceMain:${MAIN_APP_SURFACE_ID}`;
+/**
+ * Owner keys spelled by the encoder, not by hand.
+ *
+ * The main surface's id contains the key separator, so a hand-built key for anything on it is the
+ * one shape the format has always got wrong - and a fixture that spells its own keys is a second
+ * encoder that drifts the moment the first one changes. These three cases silently reported every
+ * wired button as unwired when it did.
+ */
+const SURFACE_OWNER_KEY = encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: MAIN_APP_SURFACE_ID });
+
+function widgetKey(elementId: string): string {
+    return encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: MAIN_APP_SURFACE_ID, elementId });
+}
 
 function button(overrides: Partial<UIElement> = {}): UIElement {
     return element({ id: "start", type: "nl.button", name: "Start", props: { label: "Play" }, ...overrides });
@@ -330,7 +344,7 @@ describe("ui/empty-behavior", () => {
         const ctx = createTestLintContext({
             uiDocument: onePage(button()),
             blueprintDocument: blueprintDocument({
-                [`widgetMain:${MAIN_APP_SURFACE_ID}:start`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
+                [widgetKey("start")]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
             }),
         });
 
@@ -368,7 +382,7 @@ describe("ui/empty-behavior", () => {
         const ctx = createTestLintContext({
             uiDocument: document,
             blueprintDocument: blueprintDocument({
-                [`widgetMain:${MAIN_APP_SURFACE_ID}:panel`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
+                [widgetKey("panel")]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
             }),
         });
 
@@ -387,7 +401,7 @@ describe("ui/empty-behavior", () => {
         const ctx = createTestLintContext({
             uiDocument: document,
             blueprintDocument: blueprintDocument({
-                [`widgetMain:${MAIN_APP_SURFACE_ID}:slots`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK),
+                [widgetKey("slots")]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK),
             }),
         });
 

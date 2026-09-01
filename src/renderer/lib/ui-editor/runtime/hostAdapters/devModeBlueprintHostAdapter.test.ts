@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -71,7 +72,7 @@ function createChainFixture(chain: readonly ChainNode[]) {
     };
     const ownerKeyOf = (node: ChainNode) => {
         const componentId = componentIdOf(node);
-        return componentId ? `componentWidgetMain:${componentId}:${node.id}` : `widgetMain:surface:${node.id}`;
+        return componentId ? encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: componentId, elementId: node.id }) : encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: "surface", elementId: node.id });
     };
     const listeners = chain.filter(node => node.listensTo);
     for (const node of listeners) {

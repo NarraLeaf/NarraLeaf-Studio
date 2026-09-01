@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
@@ -27,14 +28,14 @@ describe("resolveWidgetPrivateBlueprintId", () => {
      */
     it("names the blueprint an owner record points at", () => {
         expect(resolveWidgetPrivateBlueprintId(
-            ownerRecord(`widgetMain:${SURFACE_ID}:${ELEMENT_ID}`, "bp-own"),
+            ownerRecord(encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: ELEMENT_ID }), "bp-own"),
             { surfaceId: SURFACE_ID },
             ELEMENT_ID,
         )).toBe("bp-own");
     });
 
     it("reads a component's element from the component's own owner key, not the surface's", () => {
-        const document = ownerRecord(`componentWidgetMain:comp-1:${ELEMENT_ID}`, "bp-comp");
+        const document = ownerRecord(encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: "comp-1", elementId: ELEMENT_ID }), "bp-comp");
 
         expect(resolveWidgetPrivateBlueprintId(document, { surfaceId: SURFACE_ID, componentId: "comp-1" }, ELEMENT_ID))
             .toBe("bp-comp");
@@ -69,7 +70,7 @@ describe("the locals a released widget leaves behind", () => {
             .toBe("from the last visit");
 
         const owned = resolveWidgetPrivateBlueprintId(
-            ownerRecord(`widgetMain:${SURFACE_ID}:${ELEMENT_ID}`, "bp-own"),
+            ownerRecord(encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: ELEMENT_ID }), "bp-own"),
             { surfaceId: SURFACE_ID },
             ELEMENT_ID,
         );

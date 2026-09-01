@@ -13,6 +13,7 @@
  * which is the half that was missing.
  */
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -108,7 +109,7 @@ const localBlueprints: BlueprintDocument = {
         },
     },
     ownerRecords: {
-        [`widgetMain:${SURFACE_ID}:${BUTTON_ID}`]: {
+        [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: BUTTON_ID })]: {
             activeBlueprintId: BLUEPRINT_ID,
             privateBlueprintIds: [BLUEPRINT_ID],
             initializedFrontend: "visual",

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { Services } from "../services";
@@ -333,7 +334,7 @@ describe("importTemplateBundle: a surface copied from another project", () => {
 
         const imported = result.importedSurfaces[0]!;
         const newButtonId = service.getDocument().elements[imported.rootElementId]!.childrenIds[0]!;
-        const ownerKey = `widgetMain:${imported.id}:${newButtonId}`;
+        const ownerKey = encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: imported.id, elementId: newButtonId });
         expect(Object.keys(blueprintDocument.ownerRecords)).toContain(ownerKey);
         expect(blueprintDocument.ownerRecords["widgetMain:src-dialog:src-button"]).toBeUndefined();
 

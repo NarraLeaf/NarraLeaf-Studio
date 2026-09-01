@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
@@ -138,7 +139,7 @@ function singleValueBlueprintDocument(input: {
     valueType: UIElementValueBindingValueType;
     graph: BlueprintGraphIr;
 }): BlueprintDocument {
-    const ownerKey = `widgetValue:surface:${input.elementId}:${input.propPath}`;
+    const ownerKey = encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: "surface", elementId: input.elementId, propPath: input.propPath });
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {

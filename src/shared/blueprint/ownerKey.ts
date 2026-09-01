@@ -129,6 +129,30 @@ export function decodeBlueprintOwnerKey(key: string): BlueprintOwnerRef | null {
 }
 
 /**
+ * Whether this key names a slot that belongs to one surface.
+ *
+ * Asked by decoding rather than by matching a prefix. A prefix test has to rebuild the key's opening
+ * by hand - `widgetMain:${surfaceId}:` - which is a second encoder in disguise, and it was wrong in
+ * two ways at once: it did not escape the surface id, so it stopped matching anything on the
+ * built-in surface the moment keys were escaped, and it would happily match a different surface
+ * whose id merely starts with this one's.
+ *
+ * Component slots are not surface slots and answer false: a component is drawn on whatever surface
+ * instantiates it, so deleting a surface must not take a component's blueprints with it.
+ */
+export function ownerKeyBelongsToSurface(key: string, surfaceId: string): boolean {
+    const owner = decodeBlueprintOwnerKey(key);
+    switch (owner?.kind) {
+        case "surfaceMain":
+        case "widgetMain":
+        case "widgetValue":
+            return owner.surfaceId === surfaceId;
+        default:
+            return false;
+    }
+}
+
+/**
  * Read a key written before every part was escaped, so the migration can rewrite it.
  *
  * **Right to left, because that is the end that is fixed.** The old form left ids raw, so a

@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -70,7 +71,7 @@ function createBlueprintDocument(paramId: string): BlueprintDocument {
             },
         },
         ownerRecords: {
-            [`componentWidgetMain:${COMPONENT_ID}:${ELEMENT_ID}`]: {
+            [encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: COMPONENT_ID, elementId: ELEMENT_ID })]: {
                 activeBlueprintId: BLUEPRINT_ID,
                 privateBlueprintIds: [BLUEPRINT_ID],
                 initializedFrontend: "visual",

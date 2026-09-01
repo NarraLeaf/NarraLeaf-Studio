@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -55,7 +56,7 @@ function blueprintDocumentWiring(elementId: string, headNodeType: string): Bluep
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         ownerRecords: {
-            [`widgetMain:${SURFACE_ID}:${elementId}`]: {
+            [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: elementId })]: {
                 activeBlueprintId: "bp-1",
                 privateBlueprintIds: ["bp-1"],
             },
