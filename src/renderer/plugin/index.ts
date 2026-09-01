@@ -466,6 +466,64 @@ export type PluginI18n = {
  * nodes in open documents, and the catalog has no removal path - so there is
  * nothing to dispose.
  */
+/** One app surface (a page) of the project, as a plugin panel offers it to the author. */
+export type PluginSurfaceEntry = {
+    id: string;
+    name: string;
+};
+
+/**
+ * One function declared in the project's global blueprint.
+ *
+ * `fnRef` is what a caller names it by - the same reference the Call Fn node stores - and `params`
+ * are its head's parameter pins, so a panel can ask the author for the arguments a call needs
+ * instead of hard-coding a shape.
+ */
+export type PluginBlueprintFnEntry = {
+    fnRef: string;
+    name: string;
+    params: { pinId: string; name: string; valueType: string }[];
+};
+
+/** One of the project's named localization keys, with the text it reads in the source language. */
+export type PluginLocalizationKeyEntry = {
+    name: string;
+    sourceText: string;
+};
+
+/**
+ * The project's interface documents, read-only.
+ *
+ * The same reason `story.listStories` exists: a plugin panel that has to let the author point at
+ * something in their own project needs the catalogue of what there is to point at. Read-only on
+ * purpose - authoring surfaces and blueprints stays with Studio, and a plugin that could write
+ * either would be a second editor for a document Studio holds open.
+ */
+export type PluginInterfaceService = {
+    /** App surfaces (pages). Stage surfaces are excluded: they are slots, not places to go. */
+    listSurfaces(): PluginSurfaceEntry[];
+    /**
+     * Functions the global blueprint declares.
+     *
+     * Global ones only, because they are the ones callable from anywhere - a function declared on
+     * one surface is not something a plugin can honestly offer as an action, since it exists only
+     * while that surface is the one on screen.
+     */
+    listGlobalFns(): PluginBlueprintFnEntry[];
+};
+
+/**
+ * The project's own localization keys, read-only.
+ *
+ * A plugin that puts words in front of a player writes them as keys through this list rather than
+ * as literals, so they travel with everything else the project translates. Empty before the keys
+ * document has loaded, which is a moment rather than a state - subscribe through
+ * `services.workspace.registerReloader` if a panel has to re-read it.
+ */
+export type PluginLocalizationService = {
+    listKeys(): PluginLocalizationKeyEntry[];
+};
+
 export type PluginServices = {
     storage: PluginStorageService;
     assets: PluginAssetsService;
@@ -474,6 +532,10 @@ export type PluginServices = {
     workspace: PluginWorkspaceService;
     /** Extend Studio's built-in text editor; see {@link PluginTextEditorService}. */
     textEditor: PluginTextEditorService;
+    /** Read-only catalogue of surfaces and global functions; see {@link PluginInterfaceService}. */
+    interface: PluginInterfaceService;
+    /** Read-only catalogue of localization keys; see {@link PluginLocalizationService}. */
+    localization: PluginLocalizationService;
     /** Contribute checks to Run > Test; see {@link PluginTestService}. */
     tests: PluginTestService;
     ui: {

@@ -487,7 +487,20 @@ function buildCapabilityDomains(
                     return backend.current();
                 },
                 onChange: listener => backend.onChange(listener),
+                text: key => backend.text(key),
             };
+        }
+    }
+
+    if (declared.has("menu")) {
+        const backend = host.menu;
+        if (!backend) {
+            // Not every shell has a bar, and this is the one place that difference is reported.
+            // Absent rather than throwing: a plugin whose menu is its whole point still has to load
+            // on the web export, where it simply has nowhere to put one.
+            unavailable("menu");
+        } else {
+            domains.menu = { set: spec => backend.set(spec) };
         }
     }
 

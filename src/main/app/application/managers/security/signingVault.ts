@@ -3,7 +3,9 @@ import fs from "fs/promises";
 import path from "path";
 import {
     APPLE_NOTARIZATION_FIELDS,
+    assertNotarizationComplete,
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
+    SIGNING_CREDENTIAL_METADATA_FIELDS as METADATA_FIELDS,
     SIGNING_CREDENTIAL_SECRET_FIELDS,
     SIGNING_OPTIONAL_FIELDS,
     isSigningCredentialKind,
@@ -79,18 +81,6 @@ const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 const FORMAT_VERSION = 1;
 const MAX_MATERIAL_NAME_LENGTH = 100;
-
-/** Plain, non-secret, non-file fields each kind carries. Whitelisted: import payloads arrive over IPC. */
-const METADATA_FIELDS: Record<SigningCredentialKind, readonly string[]> = {
-    "windows-pfx": [],
-    "windows-store": ["subjectName", "sha1"],
-    "windows-azure": ["endpoint", "codeSigningAccountName", "certificateProfileName", "publisherName"],
-    "macos-keychain": ["identity", "notaryKeyId", "notaryIssuerId"],
-    "macos-apple": ["notaryKeyId", "notaryIssuerId"],
-    "android-keystore": ["alias"],
-    "ios-apple": [],
-    "linux-gpg": ["keyId", "gpgPath"],
-};
 
 /** A credential as it sits on disk: the redacted shape plus the sealed secrets. */
 type StoredCredential = SigningCredential & {
@@ -583,17 +573,6 @@ function isBlank(value: unknown): boolean {
  * a request to notarize, and accepting it would produce a credential that signs
  * happily and silently skips the step the author asked for.
  */
-function assertNotarizationComplete(kind: SigningCredentialKind, fields: Record<string, string>): void {
-    const present = APPLE_NOTARIZATION_FIELDS.filter(field => Boolean(fields[field]));
-    if (present.length !== 0 && present.length !== APPLE_NOTARIZATION_FIELDS.length) {
-        const missing = APPLE_NOTARIZATION_FIELDS.filter(field => !fields[field]);
-        throw new Error(
-            `A "${kind}" credential that notarizes needs all of ${APPLE_NOTARIZATION_FIELDS.join(", ")}; `
-            + `missing ${missing.join(", ")}`,
-        );
-    }
-}
-
 /**
  * Name the copy after the file the author picked, namespaced by the field so two
  * fields of the same credential cannot collide. Sanitized because the source

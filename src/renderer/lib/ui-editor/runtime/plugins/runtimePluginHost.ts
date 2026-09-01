@@ -16,6 +16,7 @@
  */
 
 import type { ReactElement } from "react";
+import type { GameMenuSpec } from "@shared/types/gameMenu";
 import type {
     BlueprintOpenExternalRequest,
     BlueprintOpenExternalResult,
@@ -85,6 +86,26 @@ export type RuntimePluginOverlayBackend = {
 export type RuntimePluginLocaleBackend = {
     current(): string;
     onChange(listener: (locale: string) => void): RuntimePluginHostUnsubscribe;
+    /**
+     * One of the project's own localization keys, in the language the game is running in.
+     *
+     * The same table the `Get Text` node reads, resolved through the same fallback chain, because a
+     * plugin that shows the player a word has to say it in the language the story is being read in
+     * - and a plugin carrying its own copy of the author's wording would be a second table for a
+     * translator to find. `null` when the key is not one the project declared.
+     */
+    text(key: string): string | null;
+};
+
+/**
+ * The window's menu bar, declared whole.
+ *
+ * The spec is authored data, so it is handed over as it stands: what a row says is the plugin's,
+ * what it means is the game's (see `runtime/app/gameMenu`), and what it looks like is the shell's.
+ * Absent on every environment without a bar to own.
+ */
+export type RuntimePluginMenuBackend = {
+    set(spec: GameMenuSpec): Promise<void>;
 };
 
 export type RuntimePluginAssetsBackend = {
@@ -142,4 +163,5 @@ export type RuntimePluginHost = {
     assets?: RuntimePluginAssetsBackend;
     sidecar?: RuntimePluginSidecarBackend;
     navigation?: RuntimePluginNavigationBackend;
+    menu?: RuntimePluginMenuBackend;
 };

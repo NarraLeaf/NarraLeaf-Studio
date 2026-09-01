@@ -265,6 +265,7 @@ const GAME_PREFERENCE_HEAD_OPTIONS: { value: string; label: string }[] = [
     { value: "showDialog", label: "Show Dialog" },
     { value: "gameSpeed", label: "Game Speed" },
     { value: "cps", label: "Sentence Speed (CPS)" },
+    { value: "textRevealDuration", label: "Text Fade In" },
     { value: "voiceVolume", label: "Voice Volume" },
     { value: "voiceFadeDuration", label: "Voice Fade" },
     { value: "voiceEndMode", label: "Voice End Mode" },

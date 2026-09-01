@@ -8,6 +8,7 @@
  * (see project/build/build-runtime.js allowedPrefixes).
  */
 
+import type { GameMenuSpec } from "@shared/types/gameMenu";
 import type { ReactElement } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
@@ -272,6 +273,33 @@ export type RuntimePluginOverlay = {
 export type RuntimePluginLocale = {
     readonly current: string;
     onChange(listener: (locale: string) => void): RuntimePluginCleanup;
+    /**
+     * One of the project's own localization keys, in the language the game is running in.
+     *
+     * The same table, chain and fallback the `Get Text` node uses. A plugin that puts the author's
+     * wording on screen reads it from here rather than shipping a copy: the copy would be the one
+     * string a translator never sees, and it would be wrong in exactly the languages the author
+     * added after the plugin was installed. `null` when the project declares no such key.
+     */
+    text(key: string): string | null;
+};
+
+/**
+ * `menu` - the whole menu bar above the game, declared at once.
+ *
+ * Present with the `menu` capability AND on a shell that has a bar: the web export has no menu bar
+ * and Dev Mode's window is Studio's own, so `app.game.menu` is simply absent there and
+ * `if (app.game.menu)` is the honest test - the same shape `sidecar` uses.
+ *
+ * `set` replaces the bar entirely; there is no add or remove, because a menu is read as a whole and
+ * two plugins each appending to it would produce an order neither of them chose. What the rows say
+ * is this plugin's; what they mean, and whether each is ticked or greyed out, is the game's (see
+ * `@shared/types/gameMenu`). An empty spec takes the bar away.
+ *
+ * Rejects when no game is mounted yet - a bar has nothing to be resolved against until then.
+ */
+export type RuntimePluginMenu = {
+    set(spec: GameMenuSpec): Promise<void>;
 };
 
 /** `assets` — turn an asset id from the pack into a URL this shell can load. */
@@ -401,6 +429,8 @@ export type RuntimePluginGame = {
     assets?: RuntimePluginAssets;
     /** Present with `"locale"`. */
     locale?: RuntimePluginLocale;
+    /** Present with `"menu"`, and only on a shell that has a menu bar to give. */
+    menu?: RuntimePluginMenu;
     /** Present with `"story.compile"`. */
     story?: RuntimePluginStory;
     /** Present when `contributes.sidecars` is non-empty. */

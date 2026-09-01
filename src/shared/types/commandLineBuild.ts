@@ -217,6 +217,15 @@ export type CommandLineBuildReport = {
         signed: boolean;
         /** Whether the launch passed `--build-allow-unsigned`. */
         unsignedAccepted: boolean;
+        /**
+         * Where the credential came from. Absent when nothing was signed.
+         *
+         * Worth recording for the same reason `experimental` is: a job that keeps its own
+         * credential and a machine that has one imported produce artifacts that look identical,
+         * and "which key signed this" is a question somebody eventually has to answer from the
+         * archive rather than from memory.
+         */
+        credentialSource?: "vault" | "command-line";
     };
     /**
      * What experimental mode did to this run.

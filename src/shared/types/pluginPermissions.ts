@@ -146,8 +146,25 @@ export const PluginRuntimeCapability = {
     UiOverlay: "ui.overlay",
     /** `app.game.assets` — resolve packaged asset URLs. */
     Assets: "assets",
-    /** `app.game.locale` — read and observe the game language. */
+    /**
+     * `app.game.locale` — read and observe the game language, and read the project's own
+     * localized text through the same table and fallback chain the `Get Text` node uses.
+     */
     Locale: "locale",
+    /**
+     * `app.game.menu` — own the menu bar above the game.
+     *
+     * Its own capability rather than part of anything else, because what it grants is *the chrome
+     * the player reads the game through*: every row on that bar, and what each one does, is this
+     * plugin's to decide. The rows still act through the game's own vocabulary (see
+     * `@shared/types/gameMenu`) - nothing here reaches past what a blueprint could already do - but
+     * an author approving this is handing over a surface their players will read as the game's own,
+     * which is worth a name at install rather than arriving with something else.
+     *
+     * Absent on shells with no bar to give (the web export, Dev Mode), which is reported the way
+     * every environment difference is: the member is not there.
+     */
+    Menu: "menu",
     /**
      * `app.game.story` — register a compile pass that observes each scene and injects engine
      * actions around its rows.

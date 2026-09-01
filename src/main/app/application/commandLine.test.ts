@@ -27,6 +27,9 @@ const NO_BUILD = {
     arch: null,
     outputDir: null,
     reportPath: null,
+    userDataDir: null,
+    signingPath: null,
+    settings: [],
     allowUnsigned: false,
     error: null,
 } as const;
@@ -335,6 +338,8 @@ describe("parseMainCommandLine", () => {
             "--build-arch", "arm64",
             "--build-output=D:\out",
             "--build-report", "D:\out\report.json",
+            "--build-user-data-dir=D:\profiles\agent",
+            "--build-signing", "D:\keys\signing.json",
             "--build-allow-unsigned",
         ]);
 
@@ -347,9 +352,34 @@ describe("parseMainCommandLine", () => {
             arch: "arm64",
             outputDir: "D:\out",
             reportPath: "D:\out\report.json",
+            userDataDir: "D:\profiles\agent",
+            signingPath: "D:\keys\signing.json",
+            settings: [],
             allowUnsigned: true,
             error: null,
         });
+    });
+
+    it("keeps every --build-setting rather than only the last", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe",
+            "--build", "demo",
+            "--build-setting", "build.electronMirror=https://mirror.example/electron/",
+            // The value carries an "=" of its own; only the first one separates.
+            "--build-setting=build.zigMirror=https://mirror.example/zig?token=abc",
+        ]);
+
+        expect(options.build.settings).toEqual([
+            "build.electronMirror=https://mirror.example/electron/",
+            "build.zigMirror=https://mirror.example/zig?token=abc",
+        ]);
+    });
+
+    it("refuses a profile or a credential file that names no build", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build-user-data-dir", "D:\\profiles\\agent"]);
+
+        expect(options.build.requested).toBe(true);
+        expect(options.build.error).toBe("Missing --build: the build flags name a build nothing asked for");
     });
 
     it("does not take a build flag's value for a path to open", () => {

@@ -320,6 +320,8 @@ export type BlueprintGamePreferenceKey =
     | "showDialog"
     | "gameSpeed"
     | "cps"
+    /** Milliseconds a newly typed character takes to fade in; `0` types it at full strength. */
+    | "textRevealDuration"
     | "voiceVolume"
     | "voiceFadeDuration"
     | "voiceEndMode"
@@ -2212,6 +2214,14 @@ function normalizeSentenceCps(cps: unknown): number {
     return value;
 }
 
+/**
+ * Every key a graph may read or write.
+ *
+ * A `Set` literal of a union type does not have to be exhaustive, so nothing here fails to
+ * compile when a key is added to {@link BlueprintGamePreferenceKey} and forgotten in this list -
+ * the node simply throws at runtime and the author sees a write that did nothing. The drift guard
+ * in the tests beside this file is what actually holds the two together.
+ */
 const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
     "autoForward",
     "autoForwardDelay",
@@ -2221,6 +2231,7 @@ const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
     "showDialog",
     "gameSpeed",
     "cps",
+    "textRevealDuration",
     "voiceVolume",
     "voiceFadeDuration",
     "voiceEndMode",
@@ -2259,6 +2270,7 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
         case "globalVolume":
         case "skipDelay":
         case "autoForwardDelay":
+        case "textRevealDuration":
             if (safeValue < 0) {
                 throw new Error(`${operation}: ${key} must be zero or greater`);
             }
@@ -2301,6 +2313,7 @@ function normalizeGamePreferenceValue(
         case "skipDelay":
         case "skipInterval":
         case "autoForwardDelay":
+        case "textRevealDuration":
             return normalizeGamePreferenceNumber(operation, key, value);
         default:
             throw new Error(`${operation}: ${key} is not supported`);

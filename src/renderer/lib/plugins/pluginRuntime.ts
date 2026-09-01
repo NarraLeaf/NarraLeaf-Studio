@@ -34,6 +34,10 @@ import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/type
 import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { collectDeclaredBlueprintFns } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
@@ -525,6 +529,9 @@ export function createPluginApp(
     const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
     const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const story = ctx.services.get<StoryService>(Services.Story);
+    const uiDocument = ctx.services.get<UIDocumentService>(Services.UIDocument);
+    const localBlueprint = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    const localization = ctx.services.get<LocalizationService>(Services.Localization);
     const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
     const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
     // One per plugin, shared by every node it registers - the runtime loader
@@ -783,6 +790,35 @@ export function createPluginApp(
                 get: type => widgetModuleRegistry.get(type),
                 list: () => widgetModuleRegistry.list(),
                 has: type => widgetModuleRegistry.has(type),
+            },
+            interface: {
+                listSurfaces: () => uiDocument.getDocument().surfaces
+                    // App surfaces only. A stage surface is a slot the engine fills - a dialogue
+                    // box, a choice menu - and "go to the dialogue box" is not a place.
+                    .filter(surface => surface.kind !== "stageSurface")
+                    .map(surface => ({ id: surface.id, name: surface.name })),
+                listGlobalFns: () => collectDeclaredBlueprintFns(localBlueprint.getBlueprintDocument())
+                    .filter(decl => decl.owner.kind === "globalMain")
+                    .map(decl => ({
+                        fnRef: decl.fnRef,
+                        name: decl.name,
+                        params: decl.params.map(param => ({
+                            pinId: param.pinId,
+                            name: param.name,
+                            valueType: param.valueType,
+                        })),
+                    })),
+            },
+            localization: {
+                listKeys: () => {
+                    // Undefined before the document has been read, which is a moment during
+                    // startup rather than a project without keys - an empty list is the right
+                    // answer to both, and a panel re-reads on reload like every other consumer.
+                    const document = localization.getKeysIfLoaded();
+                    return Object.entries(document?.keys ?? {})
+                        .map(([name, definition]) => ({ name, sourceText: definition.sourceText }))
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                },
             },
             story: {
                 listStories: () => story.listStories().map(entry => ({

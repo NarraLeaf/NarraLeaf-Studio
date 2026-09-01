@@ -10,6 +10,7 @@ import type {
     GameProgressExportResult,
     GameProgressImportResult,
 } from "./gameProgress";
+import type { GameMenuModel } from "./gameMenu";
 import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -19,6 +20,8 @@ export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
 export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
+/** Main -> renderer push naming the menu item the player picked. */
+export const GAME_RUNTIME_MENU_COMMAND_CHANNEL = "runtime:menu:command" as const;
 /**
  * Main -> renderer request when the user asks to close the window, carrying a `requestId`. The
  * renderer runs its blueprints and replies on {@link GAME_RUNTIME_CLOSE_DECISION_CHANNEL} with the
@@ -711,6 +714,18 @@ export type GameSessionClaim = "granted" | "taken";
  */
 export type GameStorageDurability = "durable" | "evictable" | "unknown";
 
+/**
+ * Set the menu bar, and hear which item was picked.
+ *
+ * The model is already resolved - labels, ticks and grey-outs (see `@shared/types/gameMenu`) - so
+ * the shell decides nothing about what the menu says. `set` with an empty model takes the bar away.
+ */
+export type GameRuntimeMenuBridge = {
+    set(model: GameMenuModel): Promise<void>;
+    /** Subscribe to picks. Returns an unsubscribe function. */
+    onCommand(listener: (itemId: string) => void): () => void;
+};
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -869,6 +884,15 @@ export type GameRuntimePreloadBridge = {
      * is missing, and `app.game.sidecar` then does not exist for plugins.
      */
     sidecar?: GameRuntimeSidecarBridge;
+    /**
+     * The window's own menu bar, on shells that have window chrome to hang one from.
+     *
+     * Absent on the web export, and absence is the whole signal here too: a page has no menu bar to
+     * own, so `app.game.menu` simply does not exist for plugins there rather than existing and
+     * doing nothing. Dev Mode omits it for a different reason - that window is Studio's, with
+     * Studio's own menu on it - which is why the capability is checked and not assumed.
+     */
+    menu?: GameRuntimeMenuBridge;
 };
 
 declare global {

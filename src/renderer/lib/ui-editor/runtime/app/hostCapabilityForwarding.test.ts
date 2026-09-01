@@ -207,6 +207,31 @@ describe("host capability forwarding", () => {
         expect(missing, `these shells cannot restart: ${missing.join(", ")}`).toEqual([]);
     });
 
+    it("has the menu bar wired end to end on the shell that has one", async () => {
+        // Another pair no bridge option names, and one that breaks in halves: a host that can set a
+        // menu but never reports a click draws rows nothing happens on, and one that reports clicks
+        // it was never asked to draw reports nothing at all. Both halves are checked together.
+        const { hostSource, appSource } = await readAll();
+        const hostFields = hostFieldsFrom(hostSource);
+        expect(hostFields.has("setApplicationMenu")).toBe(true);
+        expect(hostFields.has("subscribeMenuCommand")).toBe(true);
+
+        const packaged = await fs.readFile(GAME_SHELL_FILES["packaged runtime"]!, "utf-8");
+        expect(packaged).toContain("setApplicationMenu");
+        expect(packaged).toContain("subscribeMenuCommand");
+
+        // Dev Mode is deliberately not checked: that window is Studio's own and already carries
+        // Studio's menu, so the honest answer there is to leave both halves absent - which is what
+        // makes `app.game.menu` missing for plugins in Dev Mode rather than present and inert.
+        const devMode = await fs.readFile(GAME_SHELL_FILES["Dev Mode"]!, "utf-8");
+        expect(devMode).not.toContain("setApplicationMenu");
+
+        // And the middle hop: `GameApp` has to both draw through the host and listen back through
+        // it, or the menu is one of the two broken halves above.
+        expect(appSource).toContain("host.setApplicationMenu");
+        expect(appSource).toContain("host.subscribeMenuCommand?.(");
+    });
+
     it("keeps the nothing-to-offer allowlist honest", async () => {
         // Same reasoning as the allowlist below: an exemption for a capability that no longer
         // exists silently widens to whatever later takes the name.
