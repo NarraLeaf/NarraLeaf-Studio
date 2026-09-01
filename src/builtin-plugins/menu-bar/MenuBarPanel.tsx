@@ -232,7 +232,7 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
 
     return (
         <ui.Panel.Root>
-            <ui.Panel.Header title={tr.t("title")} description={tr.t("subtitle")} />
+            <ui.Panel.Header title={tr.t("title")} />
 
             <BarPreview data={data} openMenu={openMenu} tr={tr} />
 
@@ -256,10 +256,20 @@ export function MenuBarPanel({ app, store }: { app: PluginApp; store: MenuBarSto
                 onDrop={drag.end}
             >
                 {data.menus.length === 0
-                    ? <ui.Panel.EmptyState title={tr.t("empty")} description={tr.t("emptyHint")} />
+                    ? <ui.Panel.EmptyState title={tr.t("empty")} />
                     : (
                         <ui.Accordion
                             multiple={false}
+                            /*
+                             * No expand animation, at both levels.
+                             *
+                             * An animated section settles on a measured pixel height, and a row
+                             * opened inside one leaves that measurement stale - the fields below the
+                             * first were simply cut off (measured 280px against 406px of content).
+                             * Without the animation every level is auto-height and nesting cannot
+                             * clip. A panel this dense is better for opening instantly anyway.
+                             */
+                            disableAnimation
                             openItems={openMenuId ? [openMenuId] : []}
                             onOpenChange={items => {
                                 setOpenMenuId(items[items.length - 1] ?? null);
@@ -464,6 +474,7 @@ function MenuSection({
                     </span>
                 )}
             >
+                <Rail depth={1}>
                 {/*
                   * The rows first, the menu's own fields after them.
                   *
@@ -501,6 +512,7 @@ function MenuSection({
                         onClick={() => store.remove([menu.id])}
                     />
                 </div>
+                </Rail>
             </ui.AccordionItem>
         </div>
     );
@@ -540,6 +552,7 @@ function RowList({
         <>
             <ui.Accordion
                 multiple={false}
+                disableAnimation
                 openItems={openHere}
                 onOpenChange={changed => onOpenRow(changed[changed.length - 1] ?? null)}
             >
@@ -623,6 +636,7 @@ function RowSection({
                     </span>
                 )}
             >
+                <Rail depth={2}>
                 {(item.kind === "action" || item.kind === "submenu") && (
                     <LabelFields
                         label={item.label}
@@ -645,27 +659,22 @@ function RowSection({
                 )}
 
                 {item.kind === "dynamic" && (
-                    <>
-                        <ui.Panel.Row
-                            label={tr.t("source")}
-                            control={(
-                                <ui.Select
-                                    size="sm"
-                                    value={item.source}
-                                    disabled={frozen}
-                                    options={DYNAMIC_SOURCES.map(entry => ({
-                                        value: entry.source,
-                                        label: tr.t(entry.messageKey),
-                                    }))}
-                                    onChange={value => store.setSource(path, value as GameMenuDynamicSource)}
-                                />
-                            )}
-                        />
-                        <FieldHint text={tr.t("sourceHint")} />
-                    </>
+                    <ui.Panel.Row
+                        label={tr.t("source")}
+                        control={(
+                            <ui.Select
+                                size="sm"
+                                value={item.source}
+                                disabled={frozen}
+                                options={DYNAMIC_SOURCES.map(entry => ({
+                                    value: entry.source,
+                                    label: tr.t(entry.messageKey),
+                                }))}
+                                onChange={value => store.setSource(path, value as GameMenuDynamicSource)}
+                            />
+                        )}
+                    />
                 )}
-
-                {item.kind === "separator" && <FieldHint text={tr.t("kindSeparatorHint")} />}
 
                 {!isMenuBarItemComplete(item) && (
                     <div className="pt-1 text-2xs text-warning">{tr.t("incomplete")}</div>
@@ -692,7 +701,26 @@ function RowSection({
                         />
                     </div>
                 )}
+                </Rail>
             </ui.AccordionItem>
+        </div>
+    );
+}
+
+/**
+ * The line that carries one level of nesting.
+ *
+ * Indented past where its own header's text begins, so a field always sits to the right of the row
+ * it belongs to - the accordion indents a header by its level and the chevron, and content that
+ * started at the left edge read as belonging to the level above.
+ *
+ * On a wrapper of our own rather than on the accordion's `contentClassName`: that element is the one
+ * the accordion measures, and a margin there sits outside the measured box.
+ */
+function Rail({ depth, children }: { depth: 1 | 2; children: React.ReactNode }) {
+    return (
+        <div className={depth === 1 ? "ml-3 border-l border-edge pl-3" : "ml-6 border-l border-edge pl-3"}>
+            {children}
         </div>
     );
 }
@@ -716,16 +744,6 @@ function RemoveButton({
             </ui.Button>
         </div>
     );
-}
-
-/**
- * A full-width note under a field.
- *
- * `Panel.Row`'s own description takes whatever the control leaves it, which at this width is a third
- * of the panel - enough to wrap a sentence into a stack of two-word lines.
- */
-function FieldHint({ text }: { text: string }) {
-    return <div className="pb-1 text-2xs leading-relaxed text-fg-subtle">{text}</div>;
 }
 
 function LabelFields({
@@ -775,7 +793,6 @@ function LabelFields({
                     />
                 )}
             />
-            <FieldHint text={tr.t("labelKeyHint")} />
         </>
     );
 }
@@ -923,7 +940,6 @@ function ActionFields({
                             />
                         )}
                     />
-                    <FieldHint text={fns.length === 0 ? tr.t("fnEmpty") : tr.t("fnHint")} />
                     {fn && fn.params.length > 0 && (
                         <>
                             <div className="pt-1 text-2xs text-fg-muted">{tr.t("fnArgs")}</div>
