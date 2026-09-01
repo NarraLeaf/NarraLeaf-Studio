@@ -24,6 +24,21 @@ import type {
     GameMenuSpec,
 } from "@shared/types/gameMenu";
 
+/**
+ * The plugin's own version, and why it may not take a major bump.
+ *
+ * A project records the version of every plugin it depends on, and this one is a *hard* dependency:
+ * the menu it publishes only means anything while the plugin that reads it ships. `classifyCompatibility`
+ * calls a different major incompatible, and a hard dependency that resolves incompatible is
+ * suppressed - so bumping this to 2.0.0 would take the menu bar out of every game authored before
+ * it, silently, leaving only a line in the project's dependency list.
+ *
+ * Nothing about shipping needs a major: this plugin travels with Studio, so a change reaches every
+ * author at once, and the stored document carries its own {@link MENU_BAR_DOCUMENT_VERSION} for
+ * shape changes - which `normalizeMenuBarDocument` absorbs rather than refusing. Bump the minor.
+ *
+ * The guard in `document.test.ts` is what makes this note hard to miss.
+ */
 export const MENU_BAR_STORE_NAMESPACE = "narraleaf.menu-bar.menu";
 
 export const MENU_BAR_DOCUMENT_VERSION = 1 as const;
