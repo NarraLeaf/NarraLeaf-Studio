@@ -47,9 +47,24 @@ describe("createPuppetBackendSource and project trust", () => {
     });
 
     it("refuses as an unavailable, not as a failure", async () => {
-        // Both hosts degrade `SurfacePuppetUnavailableError` to an empty box with a sentence, and
-        // treat anything else as "a runtime was found and then misbehaved". A distrusted project is
-        // the first kind: nothing is broken, and the author has somewhere to go.
+        // The type is the contract, but carrying it is only half of it — three callers reach this
+        // function, and each has to do something with the `reason` rather than with the message:
+        //
+        //  - `PuppetDescriptionService.openSession`, whose rejection `SurfacePuppetMount` maps
+        //    through `publishUnavailable(error.reason)`. This one degrades correctly: the preview
+        //    box and the `nl.puppet` widget come up empty with the trust sentence under them.
+        //  - `PuppetDescriptionService.probe`, the description path behind every motion/expression/
+        //    skin dropdown. It caught this error and reported `reason: "failed"`, so a distrusted
+        //    project read as "The model could not be read" — an author sent to debug an asset that
+        //    is fine. It now passes the typed reason through, and `plan()` answers `distrusted`
+        //    before a mount is even set up.
+        //  - `installPuppetRuntime.registeredBackendNames`, which loads a freshly copied directory
+        //    to see what it registers. It rolls the install back and rethrows, reading the message
+        //    rather than the reason.
+        //
+        // Anything that is *not* this type means a runtime was found and then misbehaved, which is
+        // a red error box. A distrusted project is the other kind: nothing is broken, and the
+        // author has somewhere to go.
         query.mockResolvedValue({ success: true, data: { trusted: false, record: null } });
         await expect(createPuppetBackendSource(project, "live2d"))
             .rejects.toMatchObject({ reason: "distrusted" });

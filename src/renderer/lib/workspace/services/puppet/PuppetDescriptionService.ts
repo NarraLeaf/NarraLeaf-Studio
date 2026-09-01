@@ -27,9 +27,14 @@
  * ## When there is no answer
  *
  * Constantly, and it is not an error. Most projects carry no puppet runtime at all; a project
- * written on one machine may open on another that has not installed it; a backend is free to
+ * written on one machine may open on another that has not installed it; a project that arrived in a
+ * package is not trusted to run its own runtimes until the author says so; a backend is free to
  * implement no `describe()`. Every one of those comes back as `{status: "unavailable", reason}` so
  * the caller falls back to letting the author type names. Nothing here throws at a caller.
+ *
+ * The reason is load-bearing, not decoration: each one selects a different sentence under the
+ * dropdowns, and they say different things for the author to do. Flattening one into `failed` is
+ * how a project awaiting approval came to be reported as a broken model.
  */
 
 import type { PuppetDescription, PuppetSize } from "narraleaf-react";
@@ -59,6 +64,7 @@ import {
 } from "./projectPuppetRuntimes";
 import { createPuppetModelSession, type PuppetModelSession } from "@/lib/ui-editor/runtime/game/puppetModelSession";
 import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
+import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
 const DEFAULT_PROBE_SIZE: PuppetSize = { width: 512, height: 512 };
@@ -304,6 +310,14 @@ export class PuppetDescriptionService
         }
 
         const context = this.getContext();
+        // The two checks above are about the request and cost nothing, so they stay ahead of this
+        // one: a puppet that names no backend should be told so, not told about trust. Everything
+        // below reads the project, and none of it can produce an answer for a project whose
+        // runtimes may not run.
+        if (!await this.mayMount()) {
+            return unavailable("distrusted");
+        }
+
         const assets = context.services.get<AssetsService>(Services.Assets);
         const asset = assets.getAssets()[AssetType.Model]?.[assetId] as Asset<AssetType.Model> | undefined;
         if (!asset) {
@@ -367,6 +381,32 @@ export class PuppetDescriptionService
     }
 
     /**
+     * Whether a mount attempted from here could be answered at all, as far as is knowable in advance.
+     *
+     * Trust is the one thing worth asking up front, and asking it buys two separate things.
+     *
+     * The first is the message. `createPuppetBackendSource` refuses a distrusted project at the
+     * moment the mount is already being set up, and a refusal that arrives as a caught exception has
+     * to be recognised again on the way out — which is where the reason used to be lost, leaving the
+     * author reading "the model could not be read" about a model that is fine. Asked here, the
+     * reason is simply the answer.
+     *
+     * The second is the cost. Nothing below memoizes a failure, so every lookup that cannot succeed
+     * still walks the model bundle, reads the runtime's stamp and mints a fresh directory grant
+     * through `storageManager.allocateHash` — which does not dedup by path, and whose grants live as
+     * long as the window. The scene editor asks for every puppet character on each mount, so that
+     * repeats. A distrusted project now stops before any of it.
+     *
+     * A "no" also puts the disk cache out of reach, since this sits ahead of the cache lookup in
+     * {@link describe}. Nothing is lost by that: `editor/cache/` is excluded from version control
+     * and from `.nlspkg`, so a project that arrived from elsewhere — the only kind that starts
+     * distrusted — brought no descriptions with it.
+     */
+    private mayMount(): Promise<boolean> {
+        return isProjectTrusted(this.getContext().project.resolve());
+    }
+
+    /**
      * Mount the model offscreen, ask it, and take it down again.
      *
      * Offscreen rather than detached: a detached container has no layout, and a backend that sizes a
@@ -410,6 +450,21 @@ export class PuppetDescriptionService
             }
             return { status: "ok", description, origin: "live", fingerprint: plan.fingerprint };
         } catch (error) {
+            // A typed unavailability keeps the reason it was given; anything else is a failure and
+            // has to stay one. The asymmetry is the whole point: a model that genuinely cannot be
+            // read must never start reporting itself as a trust problem, because that sends the
+            // author to Settings over a broken file.
+            //
+            // `plan()` answers `distrusted` before a mount is ever attempted, so that reason
+            // should not reach this arm — and the arm is kept anyway. `createPuppetBackendSource`
+            // holds the refusal that actually stops the `import()`, deliberately, because it is the
+            // only place a workspace-side backend source is minted; and `loadPuppetBackends` is free
+            // to report unavailability of its own for a module that registers no backend under the
+            // name asked for. Flattening whichever of those arrives would put it back in the hole
+            // this arm exists to close.
+            if (error instanceof SurfacePuppetUnavailableError) {
+                return { status: "unavailable", reason: error.reason, message: errorMessage(error) };
+            }
             return { status: "unavailable", reason: "failed", message: errorMessage(error) };
         } finally {
             session?.dispose();

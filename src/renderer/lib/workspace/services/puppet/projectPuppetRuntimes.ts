@@ -130,9 +130,11 @@ export async function createPuppetBackendSource(project: Porject, backend: strin
     // entirely inside the renderer - no IPC crosses, so main never gets the chance to refuse it.
     if (!await isProjectTrusted(project.resolve())) {
         // Thrown as an *unavailable* rather than a failure, because that is what it is: nothing
-        // is broken and the author has somewhere to go. The two hosts already degrade this type
-        // to an empty box with a sentence, and anything else is treated as "a runtime was found
-        // and then misbehaved" - which would put a red error box on a project that is merely new.
+        // is broken and the author has somewhere to go. Every caller treats anything else as "a
+        // runtime was found and then misbehaved" - which would put a red error box on a project
+        // that is merely new. Carrying the reason is only half of it; each caller has to read it
+        // rather than the message, and `projectPuppetRuntimes.trust.test.ts` names what all three
+        // do with it.
         throw new SurfacePuppetUnavailableError("distrusted");
     }
     const directory = project.resolve(ProjectNameConvention.PuppetRuntimes, backend);
