@@ -1,43 +1,67 @@
 import type { UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
 
 /** Which half of a card the pointer is in. */
-export type SurfaceDropEdge = "before" | "after";
+export type SurfaceDropHalf = "top" | "bottom";
 
-export function surfaceEdgeFromPointer(clientY: number, rect: { top: number; height: number }): SurfaceDropEdge {
-    return clientY < rect.top + rect.height / 2 ? "before" : "after";
+/**
+ * Where a dragged card would land, as an index into the gaps between cards.
+ *
+ * `n` cards have `n + 1` gaps, and the bottom half of card `i` is the same gap as the top half of
+ * card `i + 1` - so the pointer has one answer at the seam rather than two a few pixels apart, and
+ * the list draws one line for it. The story outline states the same model one panel along.
+ */
+export type SurfaceDropGap = number;
+
+export function surfaceHalfFromPointer(clientY: number, rect: { top: number; height: number }): SurfaceDropHalf {
+    return clientY < rect.top + rect.height / 2 ? "top" : "bottom";
+}
+
+/** The gap a pointer in this half of this card is aiming at. */
+export function surfaceGapForCard(cardIndex: number, half: SurfaceDropHalf): SurfaceDropGap {
+    return half === "top" ? cardIndex : cardIndex + 1;
+}
+
+/**
+ * The card the one indicator hangs on, and which edge of it.
+ *
+ * A gap is drawn as the top edge of the card below it, and never also as the bottom edge of the card
+ * above, so one gap is one line in one place.
+ */
+export function surfaceGapAnchor(
+    cardCount: number,
+    gap: SurfaceDropGap,
+): { cardIndex: number; edge: "before" | "after" } | null {
+    if (cardCount === 0 || gap < 0 || gap > cardCount) {
+        return null;
+    }
+    return gap < cardCount
+        ? { cardIndex: gap, edge: "before" }
+        : { cardIndex: cardCount - 1, edge: "after" };
 }
 
 /**
  * The visible cards' order after a drop, or null when the drop would change nothing.
  *
- * Null is what the list draws its answer from as well as what the write is gated on: dropping a card
- * back on its own edge is the position it already has, and a row that lit up and then wrote nothing
- * would be the worse of the two answers.
+ * Null is what the list draws its answer from as well as what the write is gated on: the two gaps
+ * either side of a card are the position it already has, and a line that lit up there and then wrote
+ * nothing would be the worse of the two answers.
  *
  * The anchor is read off the list **with the dragged card taken out**, because that is the list it
- * is inserted into - read off the list as drawn, "after the card above me" would be one position too
- * far whenever a card moves down.
+ * is inserted into - read off the list as drawn, a card moving down would land one place too far.
  */
-export function moveSurfaceIdWithinKind(
+export function moveSurfaceIdToGap(
     visibleIds: readonly string[],
     draggedId: string,
-    anchorId: string,
-    edge: SurfaceDropEdge,
+    gap: SurfaceDropGap,
 ): string[] | null {
-    if (draggedId === anchorId) {
-        return null;
-    }
     const fromIndex = visibleIds.indexOf(draggedId);
-    if (fromIndex === -1) {
+    if (fromIndex === -1 || gap < 0 || gap > visibleIds.length) {
         return null;
     }
     const remaining = visibleIds.filter(id => id !== draggedId);
-    const anchorIndex = remaining.indexOf(anchorId);
-    if (anchorIndex === -1) {
-        return null;
-    }
-    const insertAt = edge === "before" ? anchorIndex : anchorIndex + 1;
-    if (insertAt === fromIndex) {
+    const anchorId = gap < visibleIds.length ? visibleIds[gap] : null;
+    const insertAt = anchorId === null ? remaining.length : remaining.indexOf(anchorId);
+    if (insertAt === -1 || insertAt === fromIndex) {
         return null;
     }
     remaining.splice(insertAt, 0, draggedId);
@@ -56,11 +80,10 @@ export function reorderSurfacesForDrop(
     surfaces: readonly UISurface[],
     kind: UISurfaceKind,
     draggedId: string,
-    anchorId: string,
-    edge: SurfaceDropEdge,
+    gap: SurfaceDropGap,
 ): string[] | null {
     const visible = surfaces.filter(surface => surface.kind === kind).map(surface => surface.id);
-    const moved = moveSurfaceIdWithinKind(visible, draggedId, anchorId, edge);
+    const moved = moveSurfaceIdToGap(visible, draggedId, gap);
     if (!moved) {
         return null;
     }
