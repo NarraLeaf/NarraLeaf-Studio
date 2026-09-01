@@ -11,8 +11,8 @@ import type {
 import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
 import { signingNotarizes } from "@shared/types/signing";
 import type {
+    AppleNotarizationFields,
     SigningCertificateExpiry,
-    SigningCredential,
     SigningCredentialKind,
     SigningPlatform,
 } from "@shared/types/signing";
@@ -46,7 +46,17 @@ import {
 const SEMVER_PATTERN =
     /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
-/** Minimum edge electron-builder needs to convert a PNG into .icns/.ico. */
+/**
+ * The largest square any platform's icon container asks for: the 512 macOS
+ * draws an icon at when it draws one large.
+ *
+ * A source below it still ships - Studio writes the container itself and
+ * upscales to fill the slots the source cannot reach (see `desktopIcons.ts`) -
+ * so this is the line between "as sharp as the platform can show it" and "the
+ * author's icon, blurry", which is what the warning says. It used to be the
+ * packager's own floor for converting a PNG, back when the packager did the
+ * converting; nothing refuses a build over it now.
+ */
 export const MIN_ICON_SIZE = 512;
 
 export function isValidProjectVersion(version: string): boolean {
@@ -112,7 +122,7 @@ export type IconCheck =
     | {
         status: "ok";
         iconPath: string;
-        /** Below the packager's floor: it ships, upscaled, and preflight says so. */
+        /** Below {@link MIN_ICON_SIZE}: it ships, upscaled, and preflight says so. */
         lowResolution: boolean;
         /** Whether the file came from the authoring bake rather than the raw source. */
         baked: boolean;
@@ -130,7 +140,7 @@ export type IconCheck =
  * project could carry an app icon the author had set, could show it in the
  * dialog, and could still ship a packaged game with the Electron logo on it.
  * Shipping the author's own icon upscaled is the lesser wrong, and the warning
- * carries the news.
+ * carries the news; `desktopIcons.ts` does the upscaling.
  */
 export async function checkIcon(
     projectPath: string,
@@ -459,7 +469,12 @@ export function signingCredentialSupportedOnHost(
  * and not just its kind. Signing a Mac build without notarizing is local, as are
  * the keystore, iOS and gpg paths.
  */
-export function signingReachesNetwork(credential: SigningCredential): boolean {
+export function signingReachesNetwork(
+    // The kind plus the notary fields, rather than a whole `SigningCredential`: the same question
+    // is asked of a credential in the vault and of one unsealed from `--build-signing`, and the two
+    // have no other type in common.
+    credential: { kind: SigningCredentialKind } & Partial<AppleNotarizationFields>,
+): boolean {
     switch (credential.kind) {
         case "windows-pfx":
         case "windows-store":

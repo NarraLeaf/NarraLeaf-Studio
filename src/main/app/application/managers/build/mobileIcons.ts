@@ -3,6 +3,7 @@ import path from "path";
 import zlib from "zlib";
 import { nativeImage } from "electron";
 import { decodePngToRgba, encodeOpaquePng, pngHasAlphaChannel } from "@shared/utils/pngOpaque";
+import { scaleIconTo } from "./iconScaling";
 // Relative on purpose: "@/" means src/main here but src/renderer under vitest.
 import { parseZipIndex, readEntryBytes } from "../../../../buildWorker/mobile/zipModel";
 
@@ -88,18 +89,9 @@ export function readIconSlotSizes(templateZip: Buffer, slots: string[], entryPre
  * or collide.
  *
  * The scale preserves the source's aspect ratio and centres the result, letting
- * a non-square source letterbox rather than stretch. Passing nativeImage.resize
- * both a width and a height - which is what this did - makes it resize to
- * exactly those, so a 1000×500 logo arrived on the launcher squashed to a
- * square with no warning anywhere.
- *
- * Note what this does *not* do: it never composites onto a background. Flatten-
- * ing (which iOS requires, since the App Store rejects an icon with an alpha
- * channel) happens in the authoring bake, where a canvas does the blending with
- * known semantics; nativeImage's raw bitmaps are premultiplied on some
- * platforms and not others, and getting that wrong shows up as a halo nobody
- * would trace back to here. A project that has baked hands us an already-opaque
- * square, and one that has not gets the behaviour it had before.
+ * a non-square source letterbox rather than stretch; see `scaleIconTo`, which
+ * the desktop icon containers share. A project that has baked hands us an
+ * already-opaque square, and one that has not gets the behaviour it had before.
  */
 export async function writeScaledIcons(
     sourceIconPath: string,
@@ -111,20 +103,11 @@ export async function writeScaledIcons(
     if (source.isEmpty()) {
         throw new Error(`The app icon could not be read: ${sourceIconPath}`);
     }
-    const sourceSize = source.getSize();
     await fs.rm(outputDir, { recursive: true, force: true });
     await fs.mkdir(outputDir, { recursive: true });
     const written: Record<string, string> = {};
     for (const [index, { slot, width, height }] of slots.entries()) {
-        const scale = Math.min(width / sourceSize.width, height / sourceSize.height);
-        const drawWidth = Math.max(1, Math.round(sourceSize.width * scale));
-        const drawHeight = Math.max(1, Math.round(sourceSize.height * scale));
-        // "good" is nativeImage's highest-quality resampling - icons are
-        // downscaled a long way (1024 → 48 at mdpi) and this is a one-off cost.
-        const resized = source.resize({ width: drawWidth, height: drawHeight, quality: "good" });
-        const fitted = drawWidth === width && drawHeight === height
-            ? resized
-            : centerOnTransparentCanvas(resized, width, height);
+        const fitted = scaleIconTo(source, width, height);
         const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);
         // nativeImage.toPNG() always encodes RGBA, so an iOS icon that arrived
         // here alpha-free would leave with an alpha channel again - and be
@@ -153,36 +136,4 @@ export async function stripAlphaChannel(png: Buffer): Promise<Buffer> {
         data => zlib.deflateSync(data),
     );
     return Buffer.from(encoded);
-}
-
-/**
- * Place an image in the middle of a larger transparent square. A straight copy
- * of the pixel rows - no blending - so it is indifferent to whether the
- * platform's bitmaps carry premultiplied alpha.
- */
-function centerOnTransparentCanvas(
-    image: Electron.NativeImage,
-    width: number,
-    height: number,
-): Electron.NativeImage {
-    const source = image.getSize();
-    // nativeImage bitmaps are 4 bytes per pixel; the channel order does not
-    // matter here because whole pixels are copied verbatim.
-    const bytesPerPixel = 4;
-    const sourceBitmap = image.toBitmap();
-    const canvas = Buffer.alloc(width * height * bytesPerPixel);
-    const offsetX = Math.floor((width - source.width) / 2);
-    const offsetY = Math.floor((height - source.height) / 2);
-
-    for (let row = 0; row < source.height; row++) {
-        const targetRow = row + offsetY;
-        if (targetRow < 0 || targetRow >= height) {
-            continue;
-        }
-        const sourceStart = row * source.width * bytesPerPixel;
-        const targetStart = (targetRow * width + offsetX) * bytesPerPixel;
-        sourceBitmap.copy(canvas, targetStart, sourceStart, sourceStart + source.width * bytesPerPixel);
-    }
-
-    return nativeImage.createFromBitmap(canvas, { width, height });
 }

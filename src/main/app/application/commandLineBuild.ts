@@ -23,6 +23,8 @@ import {
     resolveCommandLineBuildExperimental,
     type CommandLineBuildPlan,
 } from "./commandLineBuildPlan";
+import { readCommandLineSigning, type CommandLineSigningCredential } from "./commandLineSigning";
+import { signingPlatformForTarget } from "./managers/build/preflight";
 import { resolveStartupProject } from "./startupProject";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
@@ -30,6 +32,9 @@ import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
 
 /**
  * `narraleaf-studio --build <project>`: one build, no interface, an exit code.
+ *
+ * The flags, the exit codes and the report are set out for an operator in
+ * `docs/command-line-builds.md`; what follows is why they are what they are.
  *
  * ## What this is, and what it deliberately is not
  *
@@ -57,12 +62,28 @@ import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
  *
  * ## Signing
  *
- * This round builds no credential path. What it does do is refuse to *quietly* produce an unsigned
- * artifact: a target that could carry a signature and has no credential configured reports an
- * `unsigned` finding, which the Build dialog shows an author before they commit and which a command
- * line has nobody to show. So the run stops unless `--build-allow-unsigned` says the caller knows.
- * A credential that *is* configured and cannot be used here is already an error finding, and the
- * pipeline throws on it besides - see `resolveSigningForBuild`.
+ * Two halves. `--build-signing` names a file of credentials for this run - see
+ * `commandLineSigning.ts` for the shape and for why a job needs one at all - and they override what
+ * the project selected for every platform the file names. Nothing is imported, so a machine that
+ * built once can still not sign anything on its own.
+ *
+ * The other half is refusing to *quietly* produce an unsigned artifact. A target that could carry a
+ * signature and has no credential - from either side - reports an `unsigned` finding, which the
+ * Build dialog shows an author before they commit and which a command line has nobody to show. So
+ * the run stops unless `--build-allow-unsigned` says the caller knows. A credential that *is*
+ * configured and cannot be used here is already an error finding, and the pipeline throws on it
+ * besides - see `resolveSigningForBuild`.
+ *
+ * ## The profile, and the settings that come with it
+ *
+ * `--build-user-data-dir` gives the run a profile of its own, which is what lets it start at all on
+ * a machine whose owner has Studio open: Electron keys the single-instance lock on that directory.
+ * It is acted on long before this file - `BaseApp.setupUserDataDir` - because everything else reads
+ * through it.
+ *
+ * The cost is that a scratch profile has none of the machine's settings, and a build reads a few:
+ * which Electron mirror to download from, where the packager's own binaries come from.
+ * `--build-setting` puts those back for the run without writing them anywhere.
  *
  * ## Experimental mode
  *
@@ -132,6 +153,8 @@ export class CommandLineBuildRun {
     private plan: CommandLineBuildPlan | null = null;
     private findings: BuildPreflightFinding[] = [];
     private finished = false;
+    /** What `--build-signing` handed over, so the report can say where the signature came from. */
+    private signingCredentials: CommandLineSigningCredential[] = [];
     /**
      * What the report says about experimental mode.
      *
@@ -210,6 +233,14 @@ export class CommandLineBuildRun {
             return this.finish("invocation", unknownVariant);
         }
 
+        // Before the checks, because the checks read them: a credential given here is what decides
+        // whether this build is signed, and a mirror given here is what decides whether it can
+        // download an Electron dist at all.
+        const overrides = await this.applyBuildOverrides(planned.plan);
+        if (overrides) {
+            return this.finish("invocation", overrides);
+        }
+
         this.emit("info", `building ${this.projectName ?? path.basename(resolution.projectPath)}`
             + ` as variant "${planned.plan.variantId}"`
             + ` for ${planned.plan.platform} (${planned.plan.format}${planned.plan.arch ? `, ${planned.plan.arch}` : ""})`);
@@ -221,6 +252,51 @@ export class CommandLineBuildRun {
         }
 
         return this.runInWorkspace(planned.plan);
+    }
+
+    /**
+     * Hand the build manager the credentials and settings this launch carries, or say what is wrong
+     * with them.
+     *
+     * Refused as a bad invocation rather than reported as a build failure: a credentials file that
+     * will not parse is a mistake in the line, and it costs a second to say so rather than the
+     * minutes it takes to find out at the far end of a build.
+     *
+     * The settings are logged by key alone. Their values are URLs a job assembled, and a mirror URL
+     * carrying an access token is a token in a report file somebody archives.
+     */
+    private async applyBuildOverrides(plan: CommandLineBuildPlan): Promise<string | null> {
+        if (plan.signingPath) {
+            let document: unknown;
+            try {
+                document = JSON.parse(await fs.readFile(plan.signingPath, "utf8"));
+            } catch (error) {
+                return `The --build-signing file could not be read: ${describeError(error)}`;
+            }
+            const read = await readCommandLineSigning({
+                document,
+                // Against the file's own directory: see `commandLineSigning.ts`.
+                directory: path.dirname(plan.signingPath),
+                env: process.env,
+                exists: candidate => fs.access(candidate).then(() => true, () => false),
+            });
+            if (!read.ok) {
+                return read.reason;
+            }
+            this.signingCredentials = read.credentials;
+            for (const credential of read.credentials) {
+                this.emit("info", `--build-signing carries a ${credential.kind} credential for ${credential.platform}`);
+            }
+        }
+        const settingKeys = Object.keys(plan.settings);
+        if (settingKeys.length > 0) {
+            this.emit("info", `reading ${settingKeys.join(", ")} from the command line rather than this profile`);
+        }
+        this.app.getGameBuildManager().useCommandLineBuildOverrides({
+            signing: this.signingCredentials,
+            settings: plan.settings,
+        });
+        return null;
     }
 
     /**
@@ -452,6 +528,11 @@ export class CommandLineBuildRun {
 
         const finishedAt = Date.now();
         const signable = this.plan !== null && SIGNABLE_PLATFORMS.includes(this.plan.platform);
+        // Only a build that ran can have carried a signature, and it carried one exactly when the
+        // platform could and nothing reported that it would not.
+        const signed = signable
+            && outcome === "success"
+            && !this.findings.some(finding => UNSIGNED_FINDING_CODES.includes(finding.code));
         const report: CommandLineBuildReport = {
             schema: COMMAND_LINE_BUILD_REPORT_SCHEMA,
             result: outcome,
@@ -477,12 +558,9 @@ export class CommandLineBuildRun {
             durationMs: finishedAt - this.startedAt,
             signing: {
                 signable,
-                // Only a build that ran can have carried a signature, and it carried one exactly
-                // when the platform could and nothing reported that it would not.
-                signed: signable
-                    && outcome === "success"
-                    && !this.findings.some(finding => UNSIGNED_FINDING_CODES.includes(finding.code)),
+                signed,
                 unsignedAccepted: this.plan?.allowUnsigned ?? false,
+                ...(signed ? { credentialSource: this.credentialSource() } : {}),
             },
             experimental: this.experimental,
             findings: this.findings,
@@ -512,6 +590,20 @@ export class CommandLineBuildRun {
             // carry, and losing the report must not turn a good build into a failed one.
             process.stderr.write(`[error] could not write the build report to ${this.reportPath}: ${describeError(error)}\n`);
         }
+    }
+
+    /**
+     * Which side of the two supplied the credential this build signed with.
+     *
+     * The plan names one platform, so there is one answer. The GPG slot is not it: Linux is not a
+     * signable platform here (`SIGNABLE_PLATFORMS`), so a run that only gpg-signed never reaches
+     * this.
+     */
+    private credentialSource(): "vault" | "command-line" {
+        const slot = this.plan ? signingPlatformForTarget(this.plan.platform) : null;
+        return slot !== null && this.signingCredentials.some(credential => credential.platform === slot)
+            ? "command-line"
+            : "vault";
     }
 
     private readStudioVersion(): string {
