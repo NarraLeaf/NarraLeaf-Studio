@@ -296,19 +296,30 @@ function resolveDynamicItems(
     if (!port.setWindowScale) {
         return items;
     }
+    /*
+     * Radio rows only while one of them is actually the current size.
+     *
+     * A window may be any size at all - full screen, or dragged to something between two rungs - and
+     * in that case none of these is the answer. Left as a radio group, the platform supplies an
+     * answer anyway: MEASURED on Windows, a group with nothing checked is drawn with its FIRST row
+     * ticked, so a stage at 97% of the design size reported itself as 50%. Plain rows carry no such
+     * claim, which is the honest way to say "none of these".
+     */
+    const current = state.windowScaleOptions.findIndex(scale => (
+        state.fullscreen !== true && isSameScale(state.windowScale, scale)
+    ));
     for (const [index, scale] of state.windowScaleOptions.entries()) {
         const id = `${idPrefix}.${index}`;
         commands.set(id, { type: "pickWindowScale", scale });
-        items.push({
-            kind: "radio",
-            id,
-            label: windowScaleLabel(scale),
-            enabled: true,
-            // Full-screen is a size too, and none of the rungs is the one the stage is at while it
-            // is on - so the group shows nothing ticked rather than ticking the size it would
-            // return to.
-            checked: state.fullscreen !== true && isSameScale(state.windowScale, scale),
-        });
+        items.push(current < 0
+            ? { kind: "command", id, label: windowScaleLabel(scale), enabled: true }
+            : {
+                kind: "radio",
+                id,
+                label: windowScaleLabel(scale),
+                enabled: true,
+                checked: index === current,
+            });
     }
     return items;
 }
