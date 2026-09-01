@@ -12,6 +12,14 @@ import {
     CardTitle,
     Combobox,
     ConfirmModal,
+    /**
+     * The line that says where a dragged row would land.
+     *
+     * Exported because it is the app's only drawing of that answer: a plugin list that drew its own
+     * would be a second hint reading as a different kind of thing, which is the failure the shared
+     * component exists to prevent. Its parent must be positioned.
+     */
+    DropIndicator,
     ContextMenu,
     ContextMenuSeparator,
     IconButton,
@@ -257,6 +265,14 @@ export const pluginUi = Object.freeze({
     ContextMenu,
     ContextMenuSeparator,
     useContextMenu,
+    /**
+     * The line that says where a dragged row would land.
+     *
+     * Exported because it is the app's only drawing of that answer: a plugin list that drew its own
+     * would be a second hint reading as a different kind of thing, which is what the shared
+     * component exists to prevent. Its parent must be positioned.
+     */
+    DropIndicator,
     Progress,
     ProgressIndeterminate,
     ProgressCircle,
