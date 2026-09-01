@@ -140,6 +140,18 @@ export type WindowProps = {
 }
 
 /**
+ * A request named a project that is not the one its window has open.
+ *
+ * Carried as a `RequestStatus.code` so a renderer can tell this apart from an ordinary failure of
+ * the same operation without reading the English sentence beside it. Nothing in the interface has a
+ * remedy to offer for it: every legitimate caller sends back the `projectPath` it was given in its
+ * own window props, so this arrives only from a renderer that has gone wrong or one that is being
+ * driven. It is a code rather than prose so that a log, a test and a future diagnostic can all agree
+ * on what happened.
+ */
+export const WINDOW_PROJECT_MISMATCH_CODE = "window/project-mismatch";
+
+/**
  * What happens to a window that was opened *from* another one when that other one goes away.
  *
  * `"dependent"` is the answer for a prompt: it asks a question on behalf of the window that raised
