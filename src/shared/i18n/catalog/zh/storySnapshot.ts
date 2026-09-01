@@ -17,7 +17,7 @@ export const storySnapshot = {
         needSnapshot: "从此处启动游戏需要一个快照",
         needSnapshotDetail: "从某一行开始播放需要具体的变量值；创建场景快照",
         createAction: "创建快照",
-        distrusted: "工程未受信任，无法从此处启动游戏",
-        distrustedDetail: "从某一行开始播放会运行该工程；可在设置中信任它",
+        distrusted: "项目未受信任，无法从此处启动游戏",
+        distrustedDetail: "从某一行开始播放会运行该项目；可在设置中信任它",
     },
 } satisfies LocaleNamespace<"storySnapshot">;

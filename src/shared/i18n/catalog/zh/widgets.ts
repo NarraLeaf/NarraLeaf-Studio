@@ -298,7 +298,7 @@ export const widgets = {
         describeNoModel: "选择模型包后才能列出名称",
         describeNoBackend: "选择运行时后才能列出模型的名称",
         describeBackendMissing: "本机未安装该运行时，名称需要手动输入",
-        describeDistrusted: "该工程未受信任，其运行时不会加载。可在设置中信任该工程。",
+        describeDistrusted: "该项目未受信任，其运行时不会加载。可在设置中信任该项目。",
         describeNotSupported: "该运行时不描述模型，名称需要手动输入",
         describeFailed: "读取模型失败，名称需要手动输入",
         redescribe: "重新读取",

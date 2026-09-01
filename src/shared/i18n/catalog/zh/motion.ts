@@ -116,7 +116,7 @@ export const motion = {
         repeat: "重复次数",
         repeatDelaySeconds: "重复延迟（秒）",
         actionUses: "当前动作使用 {name}",
-        actionUsesMissing: "当前动作使用的动效已不在本工程中",
+        actionUsesMissing: "当前动作使用的动效已不在本项目中",
         previewAssetMissing: "图片缺失",
         actionNoMotion: "当前动作未绑定动画资产",
         bindToAction: "绑定到动作",

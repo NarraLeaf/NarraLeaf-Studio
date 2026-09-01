@@ -72,7 +72,7 @@ export const characters = {
             describeNoModel: "没有可读取的模型",
             describeNoBackend: "未选择运行时",
             describeBackendMissing: "本机未安装该运行时",
-            describeDistrusted: "工程未受信任",
+            describeDistrusted: "项目未受信任",
             describeNotSupported: "该运行时不提供清单",
             describeFailed: "无法读取该模型",
             redescribe: "重新读取模型",

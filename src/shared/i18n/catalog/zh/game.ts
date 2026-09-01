@@ -8,7 +8,7 @@ export const game = {
         putBack: "读取存档：「{id}」未生效，运行中的游戏已恢复。{detail}",
         notRestored: "读取存档：「{id}」未生效，运行中的游戏无法恢复。{detail}",
         otherStory: "读取存档：「{id}」来自另一个版本的故事。",
-        storyStarted: "读取存档：「{id}」写在本工程的另一个故事里，已启动那个故事来承接它。",
+        storyStarted: "读取存档：「{id}」写在本项目的另一个故事里，已启动那个故事来承接它。",
         relaunchedRow: "读取存档：「{id}」来自另一次构建，已从该存档记录的行重新开始故事。",
         relaunchedScene: "读取存档：「{id}」来自另一次构建，其记录的行已不存在，已从该行所在场景的开头重新开始故事。",
         detail: {
