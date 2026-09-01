@@ -14,6 +14,7 @@ import { assetTypeMatchesExtension } from '@/lib/workspace/services/assets/impor
 import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
 import type { ImportQueueController, ImportQueueFailure } from './useImportQueue';
 import { WorkspaceContext } from '@/lib/workspace/services/services';
+import { isProjectTrusted } from '@/lib/workspace/projectTrust';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
 import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
@@ -561,7 +562,17 @@ export function useAssetActions({
         if (categoryNeedsMediaTriage(category)) {
             notifyLoading(true);
             try {
+                // Asked once, not once per dropped file. Main refuses every probe for a distrusted
+                // project and says so in the console each time, so a folder of voice takes produced
+                // a screenful of refusals and one untriaged import. Answering `null` here reaches
+                // the rule `planMediaImport` already has for a host with no ffprobe: an unanswerable
+                // probe means import it, unconverted and unremarked, which is the same outcome the
+                // refusals were producing at the cost of a spawn request each.
+                const mayProbe = await isProjectTrusted(context.project.resolve());
                 const plan = await planMediaImport(paths, async (path) => {
+                    if (!mayProbe) {
+                        return null;
+                    }
                     const result = await getInterface().probeMedia(path);
                     return result.success ? result.data.outcome : null;
                 });
