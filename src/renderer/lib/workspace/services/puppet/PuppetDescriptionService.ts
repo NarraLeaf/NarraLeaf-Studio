@@ -56,6 +56,7 @@ import {
     type PuppetDescriptionRecord,
     type PuppetDescriptionRequest,
     type PuppetDescriptionResult,
+    type PuppetDescriptionUnavailableReason,
 } from "./puppetDescriptionModel";
 import {
     createPuppetBackendSource,
@@ -63,7 +64,10 @@ import {
     readPuppetRuntimeStamp,
 } from "./projectPuppetRuntimes";
 import { createPuppetModelSession, type PuppetModelSession } from "@/lib/ui-editor/runtime/game/puppetModelSession";
-import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
+import {
+    SurfacePuppetUnavailableError,
+    type SurfacePuppetUnavailableReason,
+} from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
@@ -93,6 +97,38 @@ function unavailable(
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The description reason a mount can be refused with, as the reason a surface understands.
+ *
+ * Two unions, and the surface's is the shorter one: it names the four ways there was never anything
+ * to draw, while a description can also report the two outcomes only a completed mount produces.
+ * Those two have to fold, because a caller asking for a session has not mounted anything yet.
+ *
+ * Written as a switch that ends in a `never` rather than as a condition, because the fold is the
+ * dangerous half. A reason added to {@link PuppetDescriptionUnavailableReason} and not considered
+ * here would have quietly become "no model" - the surface would show the emptiest, least true
+ * sentence of the set for a case nobody had thought about. This way the compiler asks.
+ */
+function surfaceReasonFor(reason: PuppetDescriptionUnavailableReason): SurfacePuppetUnavailableReason {
+    switch (reason) {
+        case "no-model":
+        case "no-backend":
+        case "backend-missing":
+        case "distrusted":
+            return reason;
+        // Neither is reachable from `plan()` - both are decided after a mount that has not happened -
+        // but the union permits them, so they fold rather than being cast away. "No model" is the
+        // honest answer for a surface that was never given one to draw.
+        case "not-described":
+        case "failed":
+            return "no-model";
+        default: {
+            const unconsidered: never = reason;
+            return unconsidered;
+        }
+    }
 }
 
 export class PuppetDescriptionService
@@ -261,14 +297,7 @@ export class PuppetDescriptionService
         const planned = await this.plan(request);
         if (!planned.ok) {
             const { reason, message } = planned.result;
-            throw new SurfacePuppetUnavailableError(
-                // `plan()` cannot answer `not-described` — that is only decided after a mount — but the
-                // union permits it, so it folds into the nearest honest reason instead of being cast away.
-                reason === "no-backend" || reason === "backend-missing" || reason === "distrusted"
-                    ? reason
-                    : "no-model",
-                message ?? reason,
-            );
+            throw new SurfacePuppetUnavailableError(surfaceReasonFor(reason), message ?? reason);
         }
         const { plan } = planned;
         const session = await createPuppetModelSession({
