@@ -161,7 +161,6 @@ describe("game runtime artifact compiler", () => {
                     uidoc: {
                         surfaces: [{ id: "surface-main" }],
                     },
-                    sharedBlueprints: [],
                 },
                 blueprintCompiledScripts: {},
                 blueprintScriptsCompileOk: true,

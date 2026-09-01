@@ -23,13 +23,13 @@ export function setPrivateOwnerActive(doc: BlueprintDocument, ownerKey: string, 
  * expression here, and it took `narraleaf-studio` for the surface and `main-surface:<elementId>` for
  * the element on every widget of the built-in surface.
  *
- * **Private slots only.** A `sharedAsset` blueprint is stored outside this document and a
- * `storyAction` one is its own key, so neither is a slot `ownerRecords` describes - answering for
- * them would hand a caller a ref this document has nothing to say about.
+ * **Private slots only.** A `storyAction` blueprint is its own key rather than a slot
+ * `ownerRecords` describes, so answering for it would hand a caller a ref this document has nothing
+ * to say about.
  */
 export function parsePrivateOwnerKeyToRef(ownerKey: string): BlueprintOwnerRef | null {
     const owner = decodeBlueprintOwnerKey(ownerKey);
-    if (!owner || owner.kind === "sharedAsset" || owner.kind === "storyAction") {
+    if (!owner || owner.kind === "storyAction") {
         return null;
     }
     return owner;

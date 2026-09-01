@@ -143,7 +143,6 @@ export const DOCUMENT_KIND_NAME_KEY: Record<DocumentKind, TranslationKey> = {
     voice: "documentDiff.name.voice",
     "assets-metadata": "documentDiff.name.assetsMetadata",
     "assets-groups": "documentDiff.name.assetsGroups",
-    blueprint: "documentDiff.name.blueprint",
     characters: "documentDiff.name.characters",
 };
 

@@ -16,7 +16,6 @@ export type BlueprintOwnerRef =
     | { kind: "widgetMain"; surfaceId: string; elementId: string }
     | { kind: "widgetValue"; surfaceId: string; elementId: string; propPath: string }
     | { kind: "componentWidgetMain"; componentId: string; elementId: string }
-    | { kind: "sharedAsset"; assetId: string }
     /**
      * Story Action Blueprint: an implicit project resource bound 1:1 to a single story action.
      * Self-referential - the owner key equals the blueprint id. Has no surface; its only event is
@@ -345,19 +344,4 @@ export type BlueprintDiagnostic = {
     code?: string;
     /** Source span or module location; M1 opaque */
     location?: Record<string, unknown>;
-};
-
-// ---------------------------------------------------------------------------
-// Shared asset wrapper (M5 target; typed in M1 for contract completeness)
-// ---------------------------------------------------------------------------
-
-export type SharedBlueprintAsset = {
-    assetId: string;
-    name: string;
-    frontend: BlueprintFrontendKind;
-    blueprint: Blueprint;
-    meta?: {
-        tags?: string[];
-        category?: string;
-    };
 };

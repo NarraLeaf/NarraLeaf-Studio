@@ -89,7 +89,6 @@ export const assets = {
         audio: "Audio",
         video: "Videos",
         json: "JSON Files",
-        blueprint: "Blueprints",
         font: "Fonts",
         model: "Models",
         other: "Other",

@@ -896,14 +896,8 @@ export function collectUnfoldableAppTagGraphs(
         .flatMap(blueprint => collectUnfoldableAppTagGraphsInBlueprint(blueprint, options));
 }
 
-/**
- * The same sweep over one blueprint.
- *
- * Exported for the shared blueprint assets, which are asset files rather than entries in the
- * document - see `foldSharedBlueprints` in the bundle assembler for why they are judged there and
- * not at the build gate.
- */
-export function collectUnfoldableAppTagGraphsInBlueprint(
+/** The same sweep over one blueprint. */
+function collectUnfoldableAppTagGraphsInBlueprint(
     blueprint: Blueprint,
     options: AppTagGraphFoldOptions,
 ): UnfoldableAppTagGraph[] {

@@ -65,7 +65,7 @@ export function attachBlueprintAssetSetVariants(input: {
     }
 
     // One answer per set however many nodes name it - and, unlike the other passes, however many
-    // blueprints name it, because a shared blueprint is used from several places at once.
+    // blueprints name it, because one set is commonly read from several graphs at once.
     const answers = new Map<string, ReturnType<typeof resolveAssetSetForBuild>>();
     const answerFor = (setId: string) => {
         const cached = answers.get(setId);

@@ -89,9 +89,9 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
  * The deep link that opens a site's graph with one node focused.
  *
  * Always produced, never withheld: a finding is worth reporting even when it cannot be navigated to,
- * and the alternative - dropping the site - would quietly narrow what the build gate refuses. The
- * one owner kind whose key `parseBlueprintOwnerKey` cannot read is `sharedAsset`, which has no
- * editor route at all; a row for one is clickable and does nothing, which is the lesser fault.
+ * and the alternative - dropping the site - would quietly narrow what the build gate refuses. A key
+ * `parseBlueprintOwnerKey` cannot read leaves a row that is clickable and does nothing, which is the
+ * lesser fault.
  */
 export function blueprintNodeJumpTarget(site: BlueprintGraphSite, nodeId: string): SearchJumpTarget {
     return {

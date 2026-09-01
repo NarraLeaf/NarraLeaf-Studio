@@ -14,12 +14,21 @@
  * the arrays, so every slot it adds or deletes leaves one stale, and canonical serialization would
  * then be free to reorder the records underneath them. Refusing to open is the honest outcome;
  * silently degrading the author's order is not.
+ * v11: every part of an owner key is percent-encoded, so the separator can no longer occur inside
+ * one. The migration rewrites `ownerRecords` keys into the escaped spelling. See
+ * `@shared/blueprint/ownerKey`.
+ * v12: the `sharedAsset` owner kind is gone, and with it the second place a blueprint could be
+ * stored - a `.nlbp` asset file under `assets/content/`, outside this document and so outside its
+ * version, its `ownerRecords` and this ladder. The migration drops any blueprint left carrying that
+ * owner. It is a version rather than a silent read because a leftover is not inert: every owner
+ * switch in the codebase is exhaustive over `BlueprintOwnerRef`, so one that no longer has an arm
+ * falls off the end of the key encoder and reaches the document validator as `[object Object]`.
  *
  * The ladder that reads these stops at `BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION`. The versions
  * named above it are kept as the record of what each one changed; the ones below are history only,
  * and a document at one of them is refused. See `@shared/blueprint/migrateBlueprintDocument`.
  */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 11 as const;
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 12 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 

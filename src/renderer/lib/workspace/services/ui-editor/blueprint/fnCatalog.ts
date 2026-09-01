@@ -349,7 +349,6 @@ function callerSurfaceId(caller: BlueprintOwnerRef): string | undefined {
  *   instantiated wherever somebody places it, so "the same surface" is not a question that can be
  *   asked about it; the definition itself is the boundary, and it is the right one - a graph that
  *   runs once per instance is exactly where one chain gets wanted from three call sites.
- * - sharedAsset callers see nothing.
  */
 export function isBlueprintFnVisibleToOwner(
     declOwner: BlueprintOwnerRef,

@@ -69,8 +69,6 @@ export function encodeBlueprintOwnerKey(owner: BlueprintOwnerRef): string {
             return join("widgetValue", owner.surfaceId, owner.elementId, owner.propPath);
         case "componentWidgetMain":
             return join("componentWidgetMain", owner.componentId, owner.elementId);
-        case "sharedAsset":
-            return join("sharedAsset", owner.assetId);
         case "storyAction":
             // Self-referential: the key is the blueprint's own id. `mode` is deliberately not part of
             // it - it says how the graph is consumed, not which slot this is, and folding it in would
@@ -119,8 +117,6 @@ export function decodeBlueprintOwnerKey(key: string): BlueprintOwnerRef | null {
             return rest.length === 2
                 ? { kind: "componentWidgetMain", componentId: at(0), elementId: at(1) }
                 : null;
-        case "sharedAsset":
-            return rest.length === 1 ? { kind: "sharedAsset", assetId: at(0) } : null;
         case "storyAction":
             return rest.length === 1 ? { kind: "storyAction", blueprintId: at(0) } : null;
         default:
@@ -203,8 +199,6 @@ export function decodeLegacyBlueprintOwnerKey(key: string): BlueprintOwnerRef | 
                     propPath: legacyTail(),
                 }
                 : null;
-        case "sharedAsset":
-            return rest.length >= 1 ? { kind: "sharedAsset", assetId: rest.join(SEPARATOR) } : null;
         case "storyAction":
             return rest.length >= 1 ? { kind: "storyAction", blueprintId: rest.join(SEPARATOR) } : null;
         default:

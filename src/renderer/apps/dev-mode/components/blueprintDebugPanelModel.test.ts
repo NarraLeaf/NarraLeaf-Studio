@@ -210,7 +210,6 @@ describe("listDevModeBlueprints — workspace", () => {
                 surfaceId: "other",
                 elementId: "other-button",
             }),
-            shared: authoredBlueprint("shared", "Shared", { kind: "sharedAsset", assetId: "asset" }),
         };
 
         expect(listForWorkspace(blueprints, { document, activeSurfaceId: "app" }).map(bp => bp.id)).toEqual([
@@ -279,10 +278,8 @@ describe("blueprintWidgetElementId", () => {
     it("answers nothing for the owners that are not a widget on the stage", () => {
         const surface = authoredBlueprint("surface", "Surface", { kind: "surfaceMain", surfaceId: "app" });
         const global = authoredBlueprint("global", "Global", { kind: "globalMain" });
-        const shared = authoredBlueprint("shared", "Shared", { kind: "sharedAsset", assetId: "asset" });
 
         expect(blueprintWidgetElementId(surface)).toBeNull();
         expect(blueprintWidgetElementId(global)).toBeNull();
-        expect(blueprintWidgetElementId(shared)).toBeNull();
     });
 });

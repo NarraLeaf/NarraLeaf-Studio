@@ -47,7 +47,6 @@ function createPack(): GameRuntimePackV1 {
                     blueprints: {},
                     ownerRecords: {},
                 },
-                sharedBlueprints: [],
                 persistentVariables: {},
                 savedVariables: {},
 

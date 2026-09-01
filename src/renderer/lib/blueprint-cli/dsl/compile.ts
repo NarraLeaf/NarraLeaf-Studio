@@ -83,7 +83,6 @@ const OWNER_REQUIRED_FIELDS: Record<string, string[]> = {
     widgetMain: ["surfaceId", "elementId"],
     widgetValue: ["surfaceId", "elementId", "propPath"],
     componentWidgetMain: ["componentId", "elementId"],
-    sharedAsset: ["assetId"],
     storyAction: ["blueprintId"],
 };
 
@@ -703,8 +702,6 @@ function buildOwnerRef(ast: BpBlueprintAst, diagnostics: BpDiagnostic[]): Bluepr
             };
         case "componentWidgetMain":
             return { kind: "componentWidgetMain", componentId: fields.componentId, elementId: fields.elementId };
-        case "sharedAsset":
-            return { kind: "sharedAsset", assetId: fields.assetId };
         case "storyAction":
             return {
                 kind: "storyAction",

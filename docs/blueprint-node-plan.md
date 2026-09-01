@@ -558,7 +558,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | --- | --- | --- |
 | Fetch | `blueprint.network.fetch` | 通过 Host API 发起 HTTP 请求并按结果分支。 |
 
-## Function / Macro / Shared Blueprint
+## Function / Macro
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -568,7 +568,6 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Macro Output | `blueprint.macro.output` | 宏图出口。 |
 | Call Function | `blueprint.function.call` | 调用当前 blueprint 内函数。 |
 | Call Macro | `blueprint.macro.call` | 调用当前 blueprint 内宏。 |
-| Call Shared Blueprint | `blueprint.shared.call` | 调用共享 blueprint asset。 |
 
 ## Asset / Resource
 

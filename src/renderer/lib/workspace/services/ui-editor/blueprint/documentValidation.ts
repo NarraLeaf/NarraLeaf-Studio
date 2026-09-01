@@ -59,9 +59,6 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
     }
 
     for (const bp of Object.values(doc.blueprints)) {
-        if (bp.owner.kind === "sharedAsset") {
-            continue;
-        }
         const k = ownerRefToIndexKey(bp.owner);
         const rec = doc.ownerRecords[k];
         if (!rec) {

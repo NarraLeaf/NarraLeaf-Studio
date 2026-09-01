@@ -78,7 +78,7 @@ group is what has to go in the list: one confirm button is `button_1_label` and
 
 `--owner` filters to what the add-node palette would offer for that owner kind
 (`globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`,
-`sharedAsset`, `storyAction`); `--widget` narrows a widget owner to one element
+`storyAction`); `--widget` narrows a widget owner to one element
 type, which is what decides its event heads. `--all` includes nodes kept for old
 graphs but hidden from the palette. `--json` on any of these.
 

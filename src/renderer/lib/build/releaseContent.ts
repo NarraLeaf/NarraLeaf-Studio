@@ -70,7 +70,7 @@ export type ReleaseContentInput = {
     /** The project's own scene declarations - the document root, which every variant inherits. */
     projectDeclaredScenes: AppTagReachableScenes;
     stories: readonly ReleaseContentStory[];
-    /** Every blueprint the project runs, loaded: the project's own plus every shared blueprint asset. */
+    /** Every blueprint the project runs, loaded. */
     blueprints: readonly Blueprint[];
     surfaces: readonly { id: string; name: string }[];
     assets: readonly { id: string; name: string }[];

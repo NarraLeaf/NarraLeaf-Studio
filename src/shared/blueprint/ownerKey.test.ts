@@ -13,7 +13,6 @@ const EVERY_KIND: BlueprintOwnerRef[] = [
     { kind: "widgetMain", surfaceId: "s-1", elementId: "e-1" },
     { kind: "widgetValue", surfaceId: "s-1", elementId: "e-1", propPath: "items.0.label" },
     { kind: "componentWidgetMain", componentId: "c-1", elementId: "e-1" },
-    { kind: "sharedAsset", assetId: "a-1" },
     { kind: "storyAction", blueprintId: "b-1" },
 ];
 

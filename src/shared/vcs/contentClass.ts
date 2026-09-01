@@ -99,7 +99,7 @@ const CLASS_OF_EXTENSION: ReadonlyMap<string, ContentClass> = new Map<string, Co
     ...asEntries("model", ["moc", "moc3", "can3", "mtn", "skel", "cmo3", "cmox"]),
     ...asEntries("text", [
         // Everything Studio itself writes.
-        "json", "jsonc", "nlbp", "nlproj",
+        "json", "jsonc", "nlproj",
         // The author's own notes and data.
         "txt", "md", "markdown", "csv", "tsv", "xml", "yml", "yaml", "ini", "toml", "cfg",
         "log", "atlas",

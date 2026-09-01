@@ -42,9 +42,6 @@ export function parseBlueprintOwnerKey(ownerKey: string): ParsedBlueprintOwnerKe
             // The story blueprint is its own key, so there is no surface or element to carry; the
             // jump target resolves the row from the blueprint itself.
             return { ownerKind: "storyAction" };
-        // A shared asset blueprint lives outside the interface documents, so there is no editor
-        // target of this shape to open on it.
-        case "sharedAsset":
         default:
             return null;
     }

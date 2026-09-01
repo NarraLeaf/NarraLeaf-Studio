@@ -37,8 +37,6 @@ const OWNER_FIELD_ALIASES: Record<string, string> = {
     proppath: "propPath",
     component: "componentId",
     componentid: "componentId",
-    asset: "assetId",
-    assetid: "assetId",
     blueprint: "blueprintId",
     blueprintid: "blueprintId",
     mode: "mode",
@@ -293,7 +291,7 @@ function parseBlueprintHeader(text: string, line: number, fail: FailFn): BpBluep
             "dsl.missing_owner",
             "Blueprint has no `owner=`.",
             "One of: globalMain, surfaceMain, widgetMain, widgetValue, componentWidgetMain, "
-                + "sharedAsset, storyAction.",
+                + "storyAction.",
         );
     }
     return blueprint;

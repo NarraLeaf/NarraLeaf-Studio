@@ -5,7 +5,6 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isVersioned } from "@shared/vcs/workingSet";
 import {
-    blueprintAssetContentPaths,
     materializeRevisionSnapshot,
     partitionSnapshotEntries,
     removeRevisionSnapshots,
@@ -26,9 +25,6 @@ import type { RevisionFileEntry } from "./revisionReader";
  */
 
 const REVISION = "d59feba37af3fbb9c0ffee0123456789abcdef0123456789abcdef0123456789";
-const BLUEPRINT_ID = "2d44332f-18b9-4892-b269-c6f02ad31d95";
-/** `assets/content/<2>/<2>/<rest>` for the id above, as `splitAssetStorageId` fans it out. */
-const BLUEPRINT_CONTENT = "assets/content/2d/44/332f18b94892b269c6f02ad31d95";
 
 let project: string;
 
@@ -84,27 +80,12 @@ describe("what travels", () => {
         expect(documents.map((e) => e.path)).toEqual(["editor/story/index.json"]);
         expect(media.map((e) => e.path)).toEqual(["assets/content/aa/bb/cc"]);
     });
-
-    it("resolves blueprint content the same way the compile path does", () => {
-        const paths = blueprintAssetContentPaths(Buffer.from(JSON.stringify({
-            [BLUEPRINT_ID]: { id: BLUEPRINT_ID, name: "shared" },
-            "not-a-storage-id": {},
-        })));
-        expect([...paths]).toEqual([BLUEPRINT_CONTENT]);
-    });
-
-    it("treats a broken shard as no shared blueprints, which is what the bundle would hold", () => {
-        expect(blueprintAssetContentPaths(Buffer.from("{ truncated"))).toEqual(new Set());
-        expect(blueprintAssetContentPaths(undefined)).toEqual(new Set());
-    });
 });
 
 describe("materialising", () => {
     it("writes the documents and leaves the media in the repository", async () => {
         const files = new Map<string, Buffer>([
             ["editor/story/index.json", Buffer.from("{\"stories\":[]}")],
-            ["assets/assets.metadata.blueprint.json", Buffer.from(JSON.stringify({ [BLUEPRINT_ID]: {} }))],
-            [BLUEPRINT_CONTENT, Buffer.from("{\"blueprint\":true}")],
             ["assets/content/ff/ee/dddddddddddddddddddddddddddd", Buffer.alloc(4096, 7)],
         ]);
 
@@ -112,12 +93,9 @@ describe("materialising", () => {
 
         expect(fs.readFileSync(path.join(result.directory, "editor", "story", "index.json"), "utf-8"))
             .toBe("{\"stories\":[]}");
-        // The one exception to skipping `assets/content/`: `loadSharedBlueprints` reads these, and a
-        // snapshot without them assembles a bundle whose shared blueprints are silently empty.
-        expect(fs.existsSync(path.join(result.directory, ...BLUEPRINT_CONTENT.split("/")))).toBe(true);
         expect(fs.existsSync(path.join(result.directory, "assets", "content", "ff", "ee", "dddddddddddddddddddddddddddd")))
             .toBe(false);
-        expect(result.files).toBe(3);
+        expect(result.files).toBe(1);
         expect(result.skippedFiles).toBe(1);
         expect(result.skippedBytes).toBe(4096);
     });

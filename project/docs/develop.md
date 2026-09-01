@@ -214,9 +214,7 @@
     - [ ] Exhaustive binding purity audits (beyond current diagnostic coverage)
     - [ ] Guided broken-binding repair workflows
     - [x] Jump/navigate toward blueprint fields from inspectors (wired through binding helpers)
-  - [ ] Shared logic assets
-    - [x] Shared blueprint asset loading participates in Dev Mode bundle assembly path
-    - [ ] Asset-manager UX completeness for blueprint assets as first-class authoring objects
+  - [ ] Reusable logic
     - [ ] Macro graphs parity
     - [ ] Exportable blueprint packages for marketplace-era sharing model
   - [ ] Runtime and debugging

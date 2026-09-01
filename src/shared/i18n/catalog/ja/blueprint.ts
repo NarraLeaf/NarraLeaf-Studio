@@ -228,7 +228,6 @@ export const blueprint = {
         defaultPersistentName: "永続",
     },
     revisions: {
-        sharedAssetSingle: "共有アセットにつきリビジョンは 1 つ",
         title: "リビジョン",
         active: "· 使用中",
         unnamed: "リビジョン {index}",

@@ -70,7 +70,7 @@ export type BpBlueprintAst = {
     name: string;
     id?: string;
     ownerKind: string;
-    /** Owner fields as written (surfaceId / elementId / propPath / componentId / assetId / mode). */
+    /** Owner fields as written (surfaceId / elementId / propPath / componentId / blueprintId / mode). */
     ownerFields: Record<string, string>;
     variables: BpVariableAst[];
     graphs: BpGraphAst[];

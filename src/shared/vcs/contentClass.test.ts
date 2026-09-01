@@ -36,7 +36,6 @@ const EXPECTED: Readonly<Record<string, ContentClass>> = {
     Audio: "audio",
     Video: "video",
     JSON: "text",
-    Blueprint: "text",
     Font: "font",
 };
 
@@ -79,7 +78,7 @@ describe("the asset browser's extension table and this one", () => {
         // Guards the vacuous pass: a moved file or a tightened pattern would empty the map and
         // make every assertion below hold trivially, which is the shape of the bug this is for.
         expect([...table.keys()].sort()).toEqual(
-            ["Audio", "Blueprint", "Font", "Image", "JSON", "Model", "Other", "Video"],
+            ["Audio", "Font", "Image", "JSON", "Model", "Other", "Video"],
         );
         expect(table.get("Image")).toContain("png");
         expect(table.get("Video")).toContain("mp4");

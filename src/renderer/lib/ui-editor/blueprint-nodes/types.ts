@@ -317,7 +317,6 @@ export const HOST_API_OWNER_KINDS: readonly BlueprintNodeScopeOwnerKind[] = [
     "widgetMain",
     "widgetValue",
     "componentWidgetMain",
-    "sharedAsset",
 ];
 
 /** Context for palette filtering in the editor */

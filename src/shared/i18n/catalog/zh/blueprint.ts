@@ -228,7 +228,6 @@ export const blueprint = {
         defaultPersistentName: "持久化变量",
     },
     revisions: {
-        sharedAssetSingle: "共享资产仅有一个修订版本",
         title: "修订版本",
         active: "· 使用中",
         unnamed: "修订版本 {index}",

@@ -750,7 +750,6 @@ export const documentDiff = {
         animation: "Motion",
         uiDocument: "Interface pages",
         uiGraphs: "Interface blueprints",
-        blueprint: "Blueprint",
         variables: "Variables",
         audioTracks: "Audio tracks",
         brand: "Brand palette",

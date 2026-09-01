@@ -168,7 +168,6 @@ export function useStoryPreviewGameUi(input: {
                 uidoc: uiDocumentService.getDocument(),
                 uigraphs: uiGraphService.getDocument(),
                 localBlueprints: localBlueprintService.getBlueprintDocument(),
-                sharedBlueprints: [],
                 persistentVariables: buildPersistentRuntimeTable(registry),
                 savedVariables: buildSavedRuntimeTable(registry),
                 saveSchema: context.services.get<SaveSchemaService>(Services.SaveSchema).listFields(),

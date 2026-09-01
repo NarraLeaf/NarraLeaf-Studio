@@ -212,7 +212,6 @@ function createChainFixture(chain: readonly ChainNode[]) {
                 blueprintDocument,
             },
             localBlueprints: blueprintDocument,
-            sharedBlueprints: [],
             persistentVariables: {},
             savedVariables: {},
             saveSchema: [],

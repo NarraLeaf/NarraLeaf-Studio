@@ -95,8 +95,6 @@ export const ProjectNameConvention = {
      */
     ProjectIconDerived: ["resources", "icons", "derived/"],
     ProjectIconDerivedFile: (fileName: string) => ["resources", "icons", "derived", fileName],
-    /** Reserved logical folder for shared blueprints; M2 persists bytes via {@link AssetsDataShard} like other assets. */
-    AssetsBlueprints: ["assets", "blueprints/"],
     AssetsContent: ["assets", "content/"],
     AssetsDataShard: (id: string) => ["assets", "content", ...splitId(id)],
     Scripts: ["scripts/"],

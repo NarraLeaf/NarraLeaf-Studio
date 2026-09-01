@@ -24,7 +24,7 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["var", "declare", "definition", "local", "variable", "default"],
         graphKinds: ["event", "function", "macro"],
         isPure: true,
-        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "componentWidgetMain", "sharedAsset", "storyAction"] },
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "componentWidgetMain", "storyAction"] },
         pins: [],
         inspectorParams: [
             { key: "name", label: "Name", kind: "string" },

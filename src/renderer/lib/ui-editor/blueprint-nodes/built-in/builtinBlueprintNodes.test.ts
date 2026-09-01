@@ -1254,12 +1254,6 @@ describe("built-in blueprint nodes", () => {
                 widgetElementType: "nl.button",
             }).map(entry => entry.type),
         );
-        const sharedAssetPaletteTypes = new Set(
-            blueprintNodeRegistry.listPaletteEntries({
-                graphKind: "event",
-                owner: { kind: "sharedAsset", assetId: "dialog-template" },
-            }).map(entry => entry.type),
-        );
         const valuePaletteTypes = new Set(
             blueprintNodeRegistry.listPaletteEntries({
                 graphKind: "event",
@@ -1277,7 +1271,6 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(componentWidgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
-        expect(sharedAssetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
     });
 

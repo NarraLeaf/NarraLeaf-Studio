@@ -97,7 +97,6 @@
 ## 已知缺口
 
 - TypeScript Blueprint 编辑体验仍是 textarea 级 partial，没有完整 Monaco/类型提示/源码级诊断闭环。
-- 共享 Blueprint asset 有读取和 Dev Mode 编译路径，但 Workspace 内创建、搜索、编辑、实例调用共享 blueprint 的产品入口不完整。
 - Function graph service API 存在，但 Workspace UI 暴露不完整。
 - 完整 DevTools、节点高亮、调用栈、局部变量、TS source map 等不是完整闭环。
 - Widget logic command 中 `setSource`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、button label/pointer、state/persistence/navigation/devtools 等能力。

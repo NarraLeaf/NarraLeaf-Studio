@@ -13,7 +13,6 @@ import { UuidService } from "../../core/UuidService";
 import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_TYPES, AssetCategory, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
-import { parseSharedBlueprintAssetJson } from "../blueprintAssetSchema";
 import { Asset, AssetResolveMeta, AssetSource } from "../types";
 import type { AssetContentDigest } from "./LocalAssetsManager";
 
@@ -142,9 +141,13 @@ export class RemoteAssetsManager {
     private chooseType(category: AssetCategory, url: string, fetched: RemoteAssetBytes): AssetType {
         const members = ASSET_CATEGORY_TYPES[category];
 
-        const byExtension = members.filter(type => assetTypeMatchesExtension(type, pathnameOf(url)));
-        if (byExtension.length > 0) {
-            return byExtension.length === 1 ? byExtension[0] : this.breakTie(byExtension, fetched.bytes);
+        // The first member that accepts the extension is the only one: no category holds two member
+        // types claiming one extension. A category that grows an overlapping pair needs a rule here
+        // and the same rule in the local importer, so that a file imported from a URL and the same
+        // file imported from disk stay the same kind of asset.
+        const byExtension = members.find(type => assetTypeMatchesExtension(type, pathnameOf(url)));
+        if (byExtension) {
+            return byExtension;
         }
 
         const declared = fetched.contentType?.split(";")[0]?.trim().toLowerCase();
@@ -157,40 +160,14 @@ export class RemoteAssetsManager {
 
         const validator = this.assetsService.getFileFormatValidator();
         const bySniff = members.find(type => {
-            // `sniffExtension` answers for JSON and Blueprint without looking, so it cannot break the
-            // tie inside the data category; only formats with magic bytes count as evidence here.
+            // `sniffExtension` answers for JSON without looking at the bytes, so it is no evidence
+            // at all; only formats with magic bytes count here.
             const sniffable = type === AssetType.Image || type === AssetType.Audio
                 || type === AssetType.Video || type === AssetType.Font;
             return sniffable && validator.sniffExtension(type, fetched.bytes) !== null;
         });
 
         return bySniff ?? members[0];
-    }
-
-    /**
-     * Break a tie between member types that all accept this extension, by reading the bytes.
-     *
-     * Only `.json` is ambiguous, claimed by both JSON and Blueprint, and the rule is the local
-     * importer's (`LocalAssetsManager.disambiguateImportType`): try the blueprint parser first,
-     * because a successful parse is positive evidence while "it is valid JSON" says nothing either
-     * way. Kept in step with that one deliberately - a file imported from a URL and the same file
-     * imported from disk must become the same kind of asset.
-     */
-    private breakTie(candidates: AssetType[], bytes: Uint8Array): AssetType {
-        if (candidates.includes(AssetType.Blueprint)) {
-            try {
-                parseSharedBlueprintAssetJson(new TextDecoder().decode(bytes));
-                return AssetType.Blueprint;
-            } catch {
-                // Valid JSON that is not a shared blueprint, or not JSON at all. Either way the JSON
-                // importer is the one that gets to say so.
-            }
-            const fallback = candidates.find(candidate => candidate !== AssetType.Blueprint);
-            if (fallback) {
-                return fallback;
-            }
-        }
-        return candidates[0];
     }
 
     /**

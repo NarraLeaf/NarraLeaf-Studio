@@ -67,7 +67,6 @@ function packNaming(assetIds: string[], modelBundles: string[]): GameRuntimePack
                 } as never,
                 uigraphs: {} as never,
                 localBlueprints: {} as never,
-                sharedBlueprints: [],
                 persistentVariables: {} as never,
                 savedVariables: {} as never,
                 saveSchema: [] as never,

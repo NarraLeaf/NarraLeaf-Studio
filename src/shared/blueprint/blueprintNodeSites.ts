@@ -26,7 +26,7 @@ export type BlueprintNodeSite = {
 };
 
 /** Every node of one of `nodeTypes` in this blueprint, across events, functions and macros. */
-export function collectBlueprintNodeSitesIn(
+function collectBlueprintNodeSitesIn(
     blueprint: Blueprint,
     nodeTypes: ReadonlySet<string>,
 ): BlueprintNodeSite[] {

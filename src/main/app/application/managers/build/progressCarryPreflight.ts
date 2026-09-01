@@ -1,5 +1,5 @@
 import path from "path";
-import { collectBlueprintNodeSites, collectBlueprintNodeSitesIn } from "@shared/blueprint/blueprintNodeSites";
+import { collectBlueprintNodeSites } from "@shared/blueprint/blueprintNodeSites";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import {
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
@@ -9,7 +9,6 @@ import type { BuildPreflightFinding, GameBuildPlatform } from "@shared/types/gam
 import { isMobileBuildPlatform } from "@shared/types/gameBuild";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { Fs } from "@shared/utils/fs";
-import { loadSharedBlueprints } from "../devMode/pipeline/bundleAssembler";
 
 /**
  * Targets whose shell cannot carry a playthrough from one edition of a title to the next.
@@ -69,11 +68,7 @@ export async function collectProgressCarryFindings(
 }
 
 /**
- * Distinct names of the blueprints holding a progress node, document and shared assets alike.
- *
- * The shared assets are half the answer, not a nicety: a title screen's "continue" button is exactly
- * the kind of graph an author factors out into a shared blueprint, and a check that read only
- * `uigraphs.json` would go quiet on the projects most likely to be affected.
+ * Distinct names of the blueprints holding a progress node.
  */
 async function readProgressNodeBlueprints(projectPath: string): Promise<string[]> {
     const names = new Set<string>();
@@ -92,11 +87,6 @@ async function readProgressNodeBlueprints(projectPath: string): Promise<string[]
         } catch {
             // A document that will not parse is the packer's to report; a dialog that warned on the
             // strength of a file it never read would be warning about a question it never asked.
-        }
-    }
-    for (const asset of await loadSharedBlueprints(projectPath)) {
-        if (collectBlueprintNodeSitesIn(asset.blueprint, PROGRESS_NODE_TYPES).length > 0) {
-            names.add(asset.name || asset.blueprint.name || asset.assetId);
         }
     }
     return [...names];

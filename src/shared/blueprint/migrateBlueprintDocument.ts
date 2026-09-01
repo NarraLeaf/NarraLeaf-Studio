@@ -1,7 +1,7 @@
 /**
  * BlueprintDocument disk migration (shared between Workspace UIGraphService and main-process Dev Mode reads).
  *
- * ## Why there is nothing left to convert
+ * ## Every conversion here is gated on a version
  *
  * This used to open v2 through v9 and, on every read including a current one, run four param-level
  * rewrites that were never gated on a version: declarations becoming fields, persistent variables
@@ -10,10 +10,12 @@
  * could carry any of those shapes was written at v8 or earlier - except the sound one, whose window
  * at v10 was four days wide in July and left nothing behind on any project this repository has.
  *
- * So the floor is {@link BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION} and the rest is a stamp. v9 needs
- * no conversion to become v10: v10 only added `eventIds` / `functionIds`, the arrays that carry the
- * graph-slot order key order used to imply, and `reconcileOrder` already reads a document with no
- * arrays by falling back to key order - which for a v9 document IS the authored order.
+ * So the floor is {@link BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION}, and what is left above it is a
+ * stamp plus two passes that each name the version they belong to: the owner-key escaping at v11 and
+ * the shared-asset removal at v12. v9 needs no conversion at all to become v10: v10 only added
+ * `eventIds` / `functionIds`, the arrays that carry the graph-slot order key order used to imply, and
+ * `reconcileOrder` already reads a document with no arrays by falling back to key order - which for a
+ * v9 document IS the authored order.
  *
  * A document below the floor is refused by name rather than half-read.
  */
@@ -62,6 +64,9 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
         if (sv < OWNER_KEY_ESCAPING_VERSION) {
             doc.ownerRecords = rewriteOwnerKeys(doc.ownerRecords);
         }
+        if (sv < SHARED_ASSET_REMOVED_VERSION) {
+            dropSharedAssetOwners(doc);
+        }
         return doc;
     }
     throw new Error(
@@ -80,6 +85,64 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
  * for it, and the author's would be orphaned. The version is what makes that unrepeatable.
  */
 const OWNER_KEY_ESCAPING_VERSION = 11;
+
+/**
+ * The version at which the `sharedAsset` owner kind stopped existing.
+ *
+ * Gated like the escaping above, and for the same reason rather than the same danger: this pass is
+ * idempotent, but a document already at the current version cannot contain what it removes, so
+ * paying for the scan on every read would be the shape the four ungated param rewrites had.
+ */
+const SHARED_ASSET_REMOVED_VERSION = 12;
+
+/**
+ * Drop the blueprints and owner records left behind by the shared blueprint asset.
+ *
+ * **Dropped rather than left alone, because nothing downstream can hold one.** A shared blueprint
+ * lived in a `.nlbp` file under `assets/content/` - a second storage location with no schema
+ * version and no `ownerRecords` entry - and the owner kind naming it is gone. Every switch over
+ * `BlueprintOwnerRef` is exhaustive, so a blueprint still carrying that owner does not sit inertly
+ * in the map: `encodeBlueprintOwnerKey` falls past its last arm and hands back the owner object,
+ * which reaches `assertValidBlueprintDocument` as an `[object Object]` key with no record and
+ * refuses the whole document. Refusing a project over one record is the worse outcome of the two,
+ * and the record is not the author's graph either way - shared blueprints were never written into
+ * this document, and across twenty-eight authored projects plus the factory skeleton there were
+ * zero `.nlbp` files, zero blueprint-category assets and zero `sharedAsset` owner records.
+ *
+ * The records that named those blueprints go with them, found by id rather than by reading the key.
+ * `ownerRecords` described private slots only, so a record for a shared asset is a shape the format
+ * allowed and no writer produced - but a record left pointing at a blueprint this sweep removed is
+ * the one thing that would still refuse the document, and the validator already requires every id a
+ * record lists to resolve. A record cannot list a mixture: its key has to equal the owner key of
+ * every blueprint it lists, so one that names a dropped blueprint names nothing else.
+ */
+function dropSharedAssetOwners(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints)) {
+        return;
+    }
+    const dropped = new Set<string>();
+    const blueprints: BlueprintDocument["blueprints"] = {};
+    for (const [id, blueprint] of Object.entries(doc.blueprints)) {
+        // `unknown` on purpose: the owner kind being removed is no longer part of `BlueprintOwnerRef`,
+        // so the typed field cannot be compared against it. What is on disk is not what compiles.
+        const owner: unknown = blueprint?.owner;
+        if (isRecord(owner) && owner.kind === "sharedAsset") {
+            dropped.add(id);
+            continue;
+        }
+        blueprints[id] = blueprint;
+    }
+    if (dropped.size === 0) {
+        return;
+    }
+    doc.blueprints = blueprints;
+    if (isRecord(doc.ownerRecords)) {
+        doc.ownerRecords = Object.fromEntries(
+            Object.entries(doc.ownerRecords)
+                .filter(([, record]) => !record.privateBlueprintIds?.some(id => dropped.has(id))),
+        );
+    }
+}
 
 /**
  * Rewrite the keys of `ownerRecords` into the escaped spelling, keeping every record's contents.

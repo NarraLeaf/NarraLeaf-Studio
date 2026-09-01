@@ -6,7 +6,6 @@ import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
-import { parseSharedBlueprintAssetJson } from "../blueprintAssetSchema";
 import { bundleListingFingerprint, detectModelBundleEntry } from "@shared/utils/modelBundle";
 import { Asset, AssetCreateErrorCode, AssetSource } from "../types";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
@@ -151,11 +150,6 @@ export class LocalAssetsManager {
                     throw new RendererError("JSON service not initialized");
                 }
                 return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
-            case AssetType.Blueprint:
-                if (!this.assetsService.blueprintService) {
-                    throw new RendererError("Blueprint service not initialized");
-                }
-                return await this.assetsService.blueprintService.readLocalBlueprint(path) as RequestStatus<AssetData<T>>;
             case AssetType.Font:
                 if (!this.assetsService.fontService) {
                     throw new RendererError("Font service not initialized");
@@ -719,10 +713,9 @@ export class LocalAssetsManager {
      * validator and the metadata shard need, so the decision has to be made per file and it has to
      * be made here, where the bytes can be read.
      *
-     * Extension settles it everywhere but one place: `.json` is claimed by both JSON and Blueprint.
-     * The rule there is to try the blueprint parser first and fall back to JSON — a shared blueprint
-     * is a *specific* JSON document, so a successful parse is positive evidence, while "it is valid
-     * JSON" says nothing either way. `.nlbp` is a blueprint by extension alone.
+     * Extension settles it, because no category holds two member types that accept one extension.
+     * A category that grows an overlapping pair needs a rule here again rather than the first match:
+     * this loop would otherwise file every ambiguous path under whichever member comes first.
      *
      * Paths matching no member type are dropped rather than forced into the first one; that is only
      * reachable by dropping files onto a category that does not accept them.
@@ -735,47 +728,16 @@ export class LocalAssetsManager {
         const buckets = new Map<AssetType, string[]>(memberTypes.map(type => [type, []]));
 
         for (const path of paths) {
-            const candidates = memberTypes.filter(type => assetTypeMatchesExtension(type, path));
-            if (candidates.length === 0) {
+            const type = memberTypes.find(member => assetTypeMatchesExtension(member, path));
+            if (!type) {
                 continue;
             }
-            const type = candidates.length === 1
-                ? candidates[0]
-                : await this.disambiguateImportType(candidates, path);
             buckets.get(type)!.push(path);
         }
 
         return memberTypes
             .map(type => ({ type, paths: buckets.get(type)! }))
             .filter(bucket => bucket.paths.length > 0);
-    }
-
-    /**
-     * Break a tie between member types that all accept this extension, by reading the file.
-     *
-     * Only `data`'s JSON/Blueprint pair is ambiguous today. A read failure falls through to the last
-     * candidate (the more permissive one), so an unreadable file is refused by the importer with its
-     * own error rather than here with a guess.
-     */
-    private async disambiguateImportType(candidates: AssetType[], path: string): Promise<AssetType> {
-        if (candidates.includes(AssetType.Blueprint)) {
-            const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-            const read = await fsService.read(path, "utf-8");
-            if (read.ok) {
-                try {
-                    parseSharedBlueprintAssetJson(read.data);
-                    return AssetType.Blueprint;
-                } catch {
-                    // Valid JSON that is not a shared blueprint, or not JSON at all. Either way the
-                    // JSON importer is the one that gets to say so.
-                }
-            }
-            const fallback = candidates.find(candidate => candidate !== AssetType.Blueprint);
-            if (fallback) {
-                return fallback;
-            }
-        }
-        return candidates[0];
     }
 
     /**

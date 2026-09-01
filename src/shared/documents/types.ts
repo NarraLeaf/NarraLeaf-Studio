@@ -55,7 +55,6 @@ export type DocumentKind =
     | "voice"
     | "assets-metadata"
     | "assets-groups"
-    | "blueprint"
     /**
      * The project's cast, at `editor/services/character.json`.
      *

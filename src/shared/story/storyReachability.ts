@@ -49,9 +49,8 @@ import {
 /**
  * One graph in one blueprint, flattened so callers with different blueprint containers agree.
  *
- * The main process holds loaded `Blueprint` objects (a project's own plus every shared blueprint
- * asset), lint holds a `BlueprintDocument`. Flattening both to this shape is what lets one scan read
- * both without either keeping a walk of its own.
+ * The main process holds loaded `Blueprint` objects, lint holds a `BlueprintDocument`. Flattening
+ * both to this shape is what lets one scan read both without either keeping a walk of its own.
  */
 export type BlueprintGraphCarrier = {
     blueprintId: string;

@@ -123,7 +123,7 @@ function qualifiesForPurpose(bp: Blueprint, purpose: BlueprintListingPurpose): b
     if (purpose === "breakpoints") {
         return bp.program.kind === "graph" && bp.frontend !== "typescript";
     }
-    if (bp.owner.kind === "sharedAsset" || bp.frontend === "typescript" || bp.program.kind === "scriptModule") {
+    if (bp.frontend === "typescript" || bp.program.kind === "scriptModule") {
         return true;
     }
     return (

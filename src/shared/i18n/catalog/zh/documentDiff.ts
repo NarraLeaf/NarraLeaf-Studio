@@ -616,7 +616,6 @@ export const documentDiff = {
         animation: "动效",
         uiDocument: "界面页面",
         uiGraphs: "界面蓝图",
-        blueprint: "蓝图",
         variables: "变量",
         audioTracks: "音频轨道",
         brand: "品牌配色",

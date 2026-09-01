@@ -2,7 +2,6 @@ import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
 import type { RevisionId } from "@shared/types/vcs";
-import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { isVersioned } from "@shared/vcs/workingSet";
 // Type-only, and it has to stay that way: `revisionReader` reaches the native library at module
 // scope, and this module is imported by Dev Mode on hosts that have no Lore build at all.
@@ -59,8 +58,7 @@ export function revisionSnapshotDirectory(projectPath: string, revision: Revisio
  *
  * Deliberately NOT materialised, and this is the one place the snapshot is not a faithful copy:
  *
- *  - **Nothing in the compile path opens one.** The bundle carries asset *ids*; the only bytes it
- *    reads out of `assets/content/` are shared blueprints, which are handled below.
+ *  - **Nothing in the compile path opens one.** The bundle carries asset *ids*, never their bytes.
  *  - **Nothing would read them if they were there.** The Dev Mode window resolves asset URLs by
  *    asking its *workspace* window (`DevModeResolveAssetUrlHandler`), which serves the working tree.
  *    So the copy would cost the whole art budget of the project on every launch and change nothing -
@@ -72,9 +70,6 @@ export function revisionSnapshotDirectory(projectPath: string, revision: Revisio
  * asset resolution through the revision, which is a renderer change and a milestone of its own.
  */
 const MEDIA_PREFIX = "assets/content/";
-
-/** The shard naming the blueprint assets the compile path really does read out of `assets/content/`. */
-const BLUEPRINT_METADATA_PATH = "assets/assets.metadata.blueprint.json";
 
 export interface RevisionSnapshotSource {
     /** Every file at the revision, with the content address of each. One tree walk. */
@@ -132,32 +127,15 @@ export async function materializeRevisionSnapshot(options: {
 
     let files = 0;
     let bytes = 0;
-    let blueprintShard: Buffer | undefined;
     for (const entry of documents) {
         const written = await writeEntry(directory, entry, await options.source.read(entry));
-        if (entry.path === BLUEPRINT_METADATA_PATH) {
-            blueprintShard = written;
-        }
         files += 1;
         bytes += written.length;
     }
 
-    // Shared blueprints are the exception to MEDIA_PREFIX: `loadSharedBlueprints` reads their content
-    // files, and a snapshot without them assembles a bundle whose shared blueprints are silently
-    // empty - a game that behaves differently with nothing on screen to say so.
-    const wanted = blueprintAssetContentPaths(blueprintShard);
-    let skippedFiles = 0;
-    let skippedBytes = 0;
-    for (const entry of media) {
-        if (!wanted.has(entry.path)) {
-            skippedFiles += 1;
-            skippedBytes += entry.size;
-            continue;
-        }
-        const written = await writeEntry(directory, entry, await options.source.read(entry));
-        files += 1;
-        bytes += written.length;
-    }
+    // Counted rather than written, so the progress line can say how much was left in place.
+    const skippedFiles = media.length;
+    const skippedBytes = media.reduce((total, entry) => total + entry.size, 0);
 
     const durationMs = Date.now() - started;
     options.onProgress?.(
@@ -188,35 +166,6 @@ export function partitionSnapshotEntries(entries: readonly RevisionFileEntry[]):
     return { documents, media };
 }
 
-/**
- * The `assets/content/**` paths named by the blueprint metadata shard.
- *
- * Built with the same `splitAssetStorageId` the compile path resolves with, rather than a second
- * spelling of the two-level fan-out - the two disagreeing would mean a blueprint present on disk and
- * absent from the bundle.
- */
-export function blueprintAssetContentPaths(shard: Buffer | undefined): Set<string> {
-    if (!shard) return new Set();
-    let record: unknown;
-    try {
-        record = JSON.parse(shard.toString("utf-8"));
-    } catch {
-        // The compile path treats a broken shard as "no shared blueprints" too, so a snapshot that
-        // skips their content matches what the bundle would hold anyway.
-        return new Set();
-    }
-    if (typeof record !== "object" || record === null) return new Set();
-    const paths = new Set<string>();
-    for (const assetId of Object.keys(record)) {
-        try {
-            const [a, b, rest] = splitAssetStorageId(assetId);
-            paths.add(`${MEDIA_PREFIX}${a}/${b}/${rest}`);
-        } catch {
-            // An id that is not a storage id has no content file; the compile path skips it as well.
-        }
-    }
-    return paths;
-}
 
 /**
  * How long to keep trying to remove a snapshot.

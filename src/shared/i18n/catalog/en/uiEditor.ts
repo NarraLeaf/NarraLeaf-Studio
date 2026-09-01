@@ -13,14 +13,13 @@ export const uiEditor = {
      * What a blueprint belongs to, in the words the author navigates by.
      *
      * The blueprint panel, the tab title and the read-only section beside a control all name the
-     * same six owners, so they are named once here.
+     * same five owners, so they are named once here.
      */
     ownerLabel: {
         globalMain: "App logic",
         surfaceMain: "Page logic",
         widgetMain: "Component logic",
         widgetValue: "Component value",
-        sharedAsset: "Shared blueprint",
         storyAction: "Story action",
     },
     // The five stage slots a Game UI can take. Named once here because the author meets the same

@@ -127,8 +127,6 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
     "assets-groups": "assets",
     /** A set is a library entry, so it belongs with the library it reads rather than with settings. */
     "asset-sets": "assets",
-    /** A shared blueprint is stored and browsed as an asset - `AssetType.Blueprint` is one. */
-    blueprint: "assets",
     characters: "characters",
 };
 

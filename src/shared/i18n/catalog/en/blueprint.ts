@@ -234,7 +234,6 @@ export const blueprint = {
         defaultPersistentName: "Persistent",
     },
     revisions: {
-        sharedAssetSingle: "One revision per shared asset.",
         title: "Revisions",
         active: "· active",
         // A revision nobody named. Numbered by its place in the list rather than spelled with its

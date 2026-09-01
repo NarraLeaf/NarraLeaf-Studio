@@ -132,7 +132,6 @@ const SYNTHETIC_OWNERS: Record<BlueprintOwnerRef["kind"], BlueprintOwnerRef> = {
     widgetMain: { kind: "widgetMain", surfaceId: "surface", elementId: "element" },
     widgetValue: { kind: "widgetValue", surfaceId: "surface", elementId: "element", propPath: "value" },
     componentWidgetMain: { kind: "componentWidgetMain", componentId: "component", elementId: "element" },
-    sharedAsset: { kind: "sharedAsset", assetId: "asset" },
     storyAction: { kind: "storyAction", blueprintId: "blueprint" },
 };
 

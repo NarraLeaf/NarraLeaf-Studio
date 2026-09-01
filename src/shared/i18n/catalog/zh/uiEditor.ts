@@ -14,7 +14,6 @@ export const uiEditor = {
         surfaceMain: "页面逻辑",
         widgetMain: "控件逻辑",
         widgetValue: "控件取值",
-        sharedAsset: "共享蓝图",
         storyAction: "剧情动作",
     },
     stageSlot: {

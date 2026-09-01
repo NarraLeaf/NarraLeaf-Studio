@@ -675,7 +675,6 @@ export const documentDiff = {
         animation: "モーション",
         uiDocument: "インターフェースのページ",
         uiGraphs: "インターフェースのブループリント",
-        blueprint: "ブループリント",
         variables: "変数",
         audioTracks: "オーディオトラック",
         brand: "ブランドの配色",

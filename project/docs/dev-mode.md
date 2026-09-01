@@ -7,11 +7,11 @@ Dev Mode 是独立 window，用于从项目磁盘数据组装 bundle 并运行 U
 - 已有 `WindowAppType.DevMode` 和独立 renderer app。
 - Workspace 通过 `DevModeService` 调用 main IPC：launch、stop、reload、getStatus。
 - Main `DevModeManager` 维护单个 session，负责窗口创建/关闭、状态、bundle revision、watcher、reload debounce。
-- Dev Mode 启动时会读取磁盘上的 `editor/ui/uidoc.json`、`editor/ui/uigraphs.json` 和 blueprint asset metadata/content。
+- Dev Mode 启动时会读取磁盘上的 `editor/ui/uidoc.json` 和 `editor/ui/uigraphs.json`。
 - TypeScript blueprint 会在主进程编译为 IIFE，挂到 Dev Mode runtime 可访问的 module registry。
 - Dev Mode renderer 可接收 bundle、渲染 surface、执行 blueprint runtime、展示 session error 和 blueprint debug panel。
 - 启动 NarraLeaf 故事时按 slot 注入 Game UI surface：`dialog` → `Game({ dialog })`、`notification` → `Game({ notification })`、`choice` → `Game({ menu })`、`nvl` → `Game({ nvlDialog })`、`onStage` → `<Player>` children（NLR RootLayout 常驻、点击穿透）。缺失的 slot 使用 NarraLeaf 默认组件。
-- 文件 watcher 监听 UI 文档、UI graph、blueprint metadata、assets content，变更后自动 reload。
+- 文件 watcher 监听 UI 文档、UI graph、assets content，变更后自动 reload。
 
 ## 入口文件
 

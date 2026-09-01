@@ -1,5 +1,5 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
-import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
+import type { BlueprintDocument } from "./blueprint/document";
 import type { BrandColor } from "./brand";
 import type { WindowConfiguration } from "./appWindow";
 import type { DialogueConfiguration } from "./dialogue";
@@ -289,8 +289,6 @@ export type DevModeBundle = {
         uigraphs: UIGraphDocument;
         /** Instance {@link BlueprintDocument} (same object as `uigraphs.blueprintDocument`); explicit for Dev Mode consumers. */
         localBlueprints: BlueprintDocument;
-        /** Shared blueprint assets loaded from project asset metadata + content files. */
-        sharedBlueprints: SharedBlueprintAsset[];
         /**
          * Project-level persistent variables (M-VAR registry), baked from `editor/variables.json`.
          * The runtime reads persistent definitions from here, not from `localBlueprints` - the field

@@ -2,11 +2,9 @@ import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
-import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type {
     Blueprint,
     BlueprintDocument,
-    SharedBlueprintAsset,
 } from "@shared/types/blueprint/document";
 import {
     VARIABLE_REGISTRY_SCHEMA_VERSION,
@@ -80,7 +78,6 @@ import {
     applyAppTagToBlueprint,
     applyAppTagToBlueprintDocument,
     collectUnfoldableAppTagGraphs,
-    collectUnfoldableAppTagGraphsInBlueprint,
     type AppTagGraphFoldOptions,
     type UnfoldableAppTagGraph,
 } from "@shared/blueprint/appTagGraphFold";
@@ -122,16 +119,11 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     };
     const localBlueprints = uigraphs.blueprintDocument;
     const variableTables = await loadVariableRuntimeTables(context.projectPath);
-    const sharedAssets = await loadSharedBlueprints(context.projectPath);
-    const sharedBlueprints = foldSharedBlueprints(sharedAssets, context, fold);
-    reportLiveVariantReads(context, fold, localBlueprints, sharedAssets);
+    reportLiveVariantReads(context, fold, localBlueprints);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
     // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
     // cannot run, so the scene it names is not an entry into any story this package holds.
-    const sceneDrop = planSceneDrop(context, variant.id, [
-        ...Object.values(localBlueprints.blueprints ?? {}),
-        ...sharedBlueprints.map(asset => asset.blueprint),
-    ]);
+    const sceneDrop = planSceneDrop(context, variant.id, Object.values(localBlueprints.blueprints ?? {}));
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
     // project has. See `DevModeBundleLoadContext.includedDlc`.
     const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
@@ -164,7 +156,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // package's problem and must not be able to refuse its build.
     await resolveBlueprintAssetSets(
         context,
-        [...Object.values(localBlueprints.blueprints ?? {}), ...sharedBlueprints.map(asset => asset.blueprint)],
+        Object.values(localBlueprints.blueprints ?? {}),
         localization,
         variant.name,
     );
@@ -193,7 +185,6 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             uidoc,
             uigraphs,
             localBlueprints,
-            sharedBlueprints,
             persistentVariables: variableTables.persistent,
             savedVariables: variableTables.saved,
             saveSchema,
@@ -293,83 +284,6 @@ async function loadSaveSchemaTable(projectPath: string): Promise<SaveSchemaRunti
 
 
 /**
- * Every shared blueprint asset a project holds, parsed.
- *
- * Exported because the build's preflight needs the same set: the renderer cannot enumerate these
- * (they are asset files, and nothing over there resolves an asset id to a path), so a check that
- * only reads the blueprint document is blind to exactly the graphs this loads.
- */
-export async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
-    const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
-    const shardResult = await Fs.read(shardPath, "utf-8");
-    if (!shardResult.ok) {
-        return [];
-    }
-    let record: Record<string, unknown>;
-    try {
-        record = JSON.parse(shardResult.data) as Record<string, unknown>;
-    } catch {
-        return [];
-    }
-    const out: SharedBlueprintAsset[] = [];
-    for (const assetId of Object.keys(record)) {
-        const filePath = resolveAssetContentPath(projectPath, assetId);
-        if (!filePath) {
-            continue;
-        }
-        const body = await Fs.read(filePath, "utf-8");
-        if (!body.ok) {
-            continue;
-        }
-        try {
-            out.push(parseSharedBlueprintAssetJson(body.data));
-        } catch {
-            // Skip invalid entries so Dev Mode still runs
-        }
-    }
-    return out;
-}
-
-/**
- * Shared blueprint assets, folded against this variant - and the one place a variant refusal is
- * raised from the main process rather than from the build gate.
- *
- * **This stays even though the gate now covers the same assets; do not tidy it away.**
- * `BuildService`'s gate reads them through `AssetsService.listSharedBlueprints`, so an author usually
- * hears about a refusal before the build starts rather than from the packer. That is a better first
- * report, not a substitute: this runs over the bytes actually being packaged, and a build is entitled
- * to assume nothing about which checks ran before it.
- *
- * Symmetry the other way round is what would be fatal. Leaving these graphs alone would ship a live
- * `Get App Tag`, and the runtime answers the release name to it (`resolveAppTagNodeOutput`) - so in a
- * Demo package `AppTag == "Demo"` would read false and the player would silently get release content.
- * A silent wrong answer is worse than either a refusal or a leak, because nothing anywhere says it
- * happened.
- *
- * Only a build throws - see `DevModeBundleLoadContext.packaging`. A host that ships nothing has
- * nobody to keep a variant read from, and a refused graph there is something the author is still
- * editing rather than something about to be packaged; stopping the assembly would take Dev Mode away
- * from them over a graph they cannot ship either way. It is reported instead, by the caller.
- * Exported for tests.
- */
-export function foldSharedBlueprints(
-    assets: readonly SharedBlueprintAsset[],
-    context: DevModeBundleLoadContext,
-    fold: AppTagGraphFoldOptions,
-): SharedBlueprintAsset[] {
-    return assets.map(asset => {
-        if (context.appTag && context.packaging) {
-            const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
-            if (refused.length > 0) {
-                throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
-            }
-        }
-        const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
-        return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
-    });
-}
-
-/**
  * Tell a non-packaging host which graphs still ask which edition they are.
  *
  * A graph the fold cannot reduce keeps its `Get App Tag` node, and the node answers the release name
@@ -385,17 +299,13 @@ function reportLiveVariantReads(
     context: DevModeBundleLoadContext,
     fold: AppTagGraphFoldOptions,
     document: BlueprintDocument | null,
-    sharedAssets: readonly SharedBlueprintAsset[],
 ): void {
     if (!context.appTag || context.packaging || !context.onNotice) {
         return;
     }
-    const names = [
-        ...collectUnfoldableAppTagGraphs(document, fold).map(graph => graph.blueprintName),
-        ...sharedAssets.flatMap(asset =>
-            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold).map(() => asset.name)),
-    ];
-    const distinct = [...new Set(names)];
+    const distinct = [...new Set(
+        collectUnfoldableAppTagGraphs(document, fold).map(graph => graph.blueprintName),
+    )];
     if (distinct.length === 0) {
         return;
     }
@@ -403,26 +313,6 @@ function reportLiveVariantReads(
         `${distinct.join(", ")} still asks which edition it is, and this run cannot fold the answer in, `
         + `so it reads "${RELEASE_APP_TAG.name}" there. A build refuses those graphs.`,
     );
-}
-
-/**
- * One refusal as the author reads it, through the same catalogue keys the build gate logs.
- *
- * The asset's own name rather than the blueprint's, because a shared blueprint is browsed and opened
- * as an asset; the blueprint's name inside the file is not what the author would go looking for.
- */
-function describeAppTagGraphRefusal(
-    refusal: UnfoldableAppTagGraph,
-    assetName: string,
-    locale: LocaleCode | undefined,
-): string {
-    const { t } = createTranslator(locale ?? FALLBACK_LOCALE);
-    const keys = {
-        unresolved: "build.appTagGraphUnresolved",
-        unknownNode: "build.appTagGraphUnknownNode",
-        fnHeadRemoved: "build.appTagGraphFnHead",
-    } as const;
-    return t(keys[refusal.reason], { blueprint: assetName, graph: refusal.graphName });
 }
 
 /**

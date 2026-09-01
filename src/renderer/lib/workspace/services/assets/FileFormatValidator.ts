@@ -1,5 +1,4 @@
 import { AssetExtensions, AssetType } from "./assetTypes";
-import { parseSharedBlueprintAssetJson, SharedBlueprintAssetParseError } from "./blueprintAssetSchema";
 import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 export type FileFormatValidationResult = {
@@ -84,18 +83,6 @@ export class FileFormatValidator {
                     return {
                         success: false,
                         error: `Not a valid JSON file: ${e instanceof Error ? e.message : 'parse failed'}`,
-                    };
-                }
-            case AssetType.Blueprint:
-                try {
-                    const text = stripBom(new TextDecoder().decode(buffer));
-                    parseSharedBlueprintAssetJson(text);
-                    return { success: true, data: void 0 };
-                } catch (e) {
-                    const msg = e instanceof SharedBlueprintAssetParseError ? e.message : "Invalid shared blueprint asset";
-                    return {
-                        success: false,
-                        error: msg,
                     };
                 }
             case AssetType.Other:
@@ -289,7 +276,6 @@ export class FileFormatValidator {
             case AssetType.Video: detected = this.detectVideoFormat(buffer); break;
             case AssetType.Font: detected = this.detectFontFormat(buffer); break;
             case AssetType.JSON: return "json";
-            case AssetType.Blueprint: return "nlbp";
             default: return null;
         }
         if (!detected || detected === "unknown") {
@@ -365,7 +351,6 @@ export const FORMAT_EXTENSIONS: Record<AssetType, Record<string, string[]>> = {
         'eot': ['eot'],
     },
     [AssetType.JSON]: {},
-    [AssetType.Blueprint]: {},
     // A bundle is a directory; there is no single file whose magic bytes could be checked.
     [AssetType.Model]: {},
     [AssetType.Other]: {},

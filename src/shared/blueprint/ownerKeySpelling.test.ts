@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
 const SRC = path.resolve(__dirname, "../..");
 
 /** The kinds that take an id, so a bare `globalMain` string is not a false positive. */
-const KINDS = ["surfaceMain", "widgetMain", "widgetValue", "componentWidgetMain", "sharedAsset", "storyAction"];
+const KINDS = ["surfaceMain", "widgetMain", "widgetValue", "componentWidgetMain", "storyAction"];
 
 /** Where the format is allowed to be written out: the module that defines it, and its own tests. */
 const OWNS_THE_FORMAT = ["blueprint/ownerKey.ts", "blueprint/ownerKey.test.ts", "blueprint/ownerKeySpelling.test.ts"];

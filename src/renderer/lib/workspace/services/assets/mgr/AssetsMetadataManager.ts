@@ -307,7 +307,6 @@ export class AssetsMetadataManager {
             [AssetType.Audio]: {},
             [AssetType.Video]: {},
             [AssetType.JSON]: {},
-            [AssetType.Blueprint]: {},
             [AssetType.Font]: {},
             [AssetType.Model]: {},
             [AssetType.Other]: {},

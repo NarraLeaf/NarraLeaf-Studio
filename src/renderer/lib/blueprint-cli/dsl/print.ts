@@ -198,8 +198,6 @@ function printOwner(owner: BlueprintOwnerRef): string[] {
                 `component=${printValue(owner.componentId)}`,
                 `element=${printValue(owner.elementId)}`,
             ];
-        case "sharedAsset":
-            return ["owner=sharedAsset", `asset=${printValue(owner.assetId)}`];
         case "storyAction":
             return [
                 "owner=storyAction",

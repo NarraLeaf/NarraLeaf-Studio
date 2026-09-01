@@ -23,7 +23,7 @@ import type { StudioTaskProgress } from "@shared/types/studioTask";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
-import type { Blueprint, BlueprintDocument, SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectBlueprintNetworkNodes, collectBlueprintPointerNodes } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
@@ -48,14 +48,10 @@ import {
 } from "@/lib/build/releaseContent";
 import {
     collectUnfoldableAppTagGraphs,
-    collectUnfoldableAppTagGraphsInBlueprint,
     type UnfoldableAppTagGraph,
     type AppTagGraphRefusalReason,
 } from "@shared/blueprint/appTagGraphFold";
 import { AppTagService } from "../appTag/AppTagService";
-// Type-only, like `LintService` below: this gate needs `listSharedBlueprints()` and nothing else,
-// and a value import would pull every asset service into the build path and its tests.
-import type { AssetsService } from "./AssetsService";
 import type { ReferenceIndexGap } from "../references/referenceModel";
 // Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
 // value import would drag every extractor into the build path and its tests.
@@ -972,21 +968,11 @@ export class BuildService extends Service<BuildService> {
      * second implementation: a refusal and a removal that judged different graphs would be exactly the
      * failure both exist to prevent.
      *
-     * ## Shared blueprint assets are judged here too
-     *
-     * They did not use to be, and the gap had a shape worth remembering: a `.nlbp` is an asset file
-     * rather than an entry in the document, so nothing on this side enumerated them and the refusal
-     * only arrived when the main process folded the pack and threw. That is a refusal *after* the
-     * author has committed to a build, phrased in the packer's words rather than the editor's.
-     * `AssetsService.listSharedBlueprints` is what closed it.
-     *
-     * The main process still folds and still throws, and that has to stay: this gate reads the assets
-     * as the author's project holds them right now, and a build is entitled to assume nothing about
-     * what ran before it. Do not narrow the removal to match the refusal - a shared asset that
-     * shipped unfolded would answer the release name in every edition, which is a silently wrong
-     * package rather than a failed build.
-     *
-     * Asynchronous only because of those assets; the document half is in memory as before.
+     * The main process still folds and still throws, and that has to stay: this gate reads the
+     * document as the author's project holds it right now, and a build is entitled to assume nothing
+     * about what ran before it. Do not narrow the removal to match the refusal - a graph that shipped
+     * unfolded would answer the release name in every edition, which is a silently wrong package
+     * rather than a failed build.
      */
     private async runAppTagGraphGate(
         startedAt: number,
@@ -1006,10 +992,7 @@ export class BuildService extends Service<BuildService> {
         // The name is passed for completeness only. Whether a graph reduces is a property of the
         // graph, so a chain that stops at a text field stops under every variant.
         const tagName = services.get<AppTagService>(Services.AppTags).resolveTag(appTagId).name;
-        const refused = [
-            ...collectUnfoldableAppTagGraphs(document, { tagName }),
-            ...await this.collectUnfoldableSharedBlueprints(tagName),
-        ];
+        const refused = collectUnfoldableAppTagGraphs(document, { tagName });
         if (refused.length === 0) {
             return null;
         }
@@ -1039,30 +1022,6 @@ export class BuildService extends Service<BuildService> {
             error: refusal,
         });
         return this.state;
-    }
-
-    /**
-     * The same sweep over the project's shared blueprint assets.
-     *
-     * Named by the asset rather than by the blueprint inside it: an author looking for "Continue" in
-     * the asset browser will not find a blueprint whose inner `name` drifted from the file's, and the
-     * asset's name is the one the browser shows.
-     *
-     * Answers an empty list if the assets cannot be listed at all. The removal in the main process is
-     * the backstop, and a build refused because a *gate* could not read something is a build refused
-     * for a reason the author cannot act on.
-     */
-    private async collectUnfoldableSharedBlueprints(tagName: string): Promise<UnfoldableAppTagGraph[]> {
-        let assets: SharedBlueprintAsset[];
-        try {
-            assets = await this.getContext().services.get<AssetsService>(Services.Assets).listSharedBlueprints();
-        } catch (error) {
-            console.error("[Build] could not read the shared blueprints for the variant check", error);
-            return [];
-        }
-        return assets.flatMap(asset =>
-            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, { tagName })
-                .map(graph => ({ ...graph, blueprintName: asset.name || graph.blueprintName })));
     }
 
     /**

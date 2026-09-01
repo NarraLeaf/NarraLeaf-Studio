@@ -143,7 +143,6 @@ function makePack(): GameRuntimePackV1 {
                 uidoc: document,
                 uigraphs: { blueprintDocument: { graphs: {}, nodes: {}, edges: {} } },
                 localBlueprints: { graphs: {}, nodes: {}, edges: {} },
-                sharedBlueprints: [],
             },
         } as unknown as GameRuntimePackV1["bundle"],
         assets: {

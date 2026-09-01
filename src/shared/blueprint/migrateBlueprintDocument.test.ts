@@ -189,3 +189,67 @@ describe("migrateBlueprintDocumentToLatest (v10 to v11 owner keys)", () => {
         expect(kept).toEqual(["bp-a", "bp-b"]);
     });
 });
+
+describe("migrateBlueprintDocumentToLatest (v11 to v12 shared asset removal)", () => {
+    /**
+     * A document carrying the owner kind that is gone.
+     *
+     * Nothing on disk has ever held one - a shared blueprint lived in a `.nlbp` asset file, not in
+     * this document, and the owner record half was excluded from `ownerRecords` by construction.
+     * The format permitted both, which is what this pass answers for.
+     */
+    function documentWithSharedAsset(schemaVersion: number): unknown {
+        return JSON.parse(JSON.stringify({
+            schemaVersion,
+            ownerRecords: {
+                globalMain: { activeBlueprintId: "bp-global", privateBlueprintIds: ["bp-global"] },
+                "sharedAsset:asset-1": { activeBlueprintId: "bp-shared", privateBlueprintIds: ["bp-shared"] },
+            },
+            blueprints: {
+                "bp-global": {
+                    id: "bp-global",
+                    name: "Global",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                },
+                "bp-shared": {
+                    id: "bp-shared",
+                    name: "Shared",
+                    owner: { kind: "sharedAsset", assetId: "asset-1" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                },
+            },
+        }));
+    }
+
+    it("drops the blueprint and the record that named it, keeping everything else", () => {
+        // Left alone it is not inert. `encodeBlueprintOwnerKey` is exhaustive over the owner kinds
+        // that exist, so an owner it has no arm for falls past the last case and comes back as the
+        // owner object; `assertValidBlueprintDocument` then reports a missing record for the key
+        // `[object Object]` and refuses the whole document. Refusing an author's project over a
+        // record no writer produced is the worse of the two outcomes.
+        const migrated = migrateBlueprintDocumentToLatest(documentWithSharedAsset(11));
+
+        expect(Object.keys(migrated.blueprints)).toEqual(["bp-global"]);
+        expect(Object.keys(migrated.ownerRecords)).toEqual(["globalMain"]);
+        expect(migrated.schemaVersion).toBe(BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("leaves a document with none of them byte-identical", () => {
+        // The gate is what keeps the pass off the ordinary read path; the sweep itself must also not
+        // rebuild a document it has nothing to remove from.
+        const clean = JSON.parse(JSON.stringify({
+            schemaVersion: 11,
+            ownerRecords: { globalMain: { activeBlueprintId: "bp", privateBlueprintIds: ["bp"] } },
+            blueprints: {},
+        }));
+        const migrated = migrateBlueprintDocumentToLatest(clean);
+
+        expect(Object.keys(migrated.ownerRecords)).toEqual(["globalMain"]);
+        expect(migrated.ownerRecords.globalMain.privateBlueprintIds).toEqual(["bp"]);
+    });
+});

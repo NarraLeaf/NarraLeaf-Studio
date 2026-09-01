@@ -50,8 +50,6 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
             return encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: owner.surfaceId, elementId: owner.elementId, propPath: owner.propPath });
         case "componentWidgetMain":
             return encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: owner.componentId, elementId: owner.elementId });
-        case "sharedAsset":
-            return encodeBlueprintOwnerKey({ kind: "sharedAsset", assetId: owner.assetId });
         case "storyAction":
             return encodeBlueprintOwnerKey({ kind: "storyAction", blueprintId: owner.blueprintId });
         default: {

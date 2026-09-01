@@ -20,12 +20,6 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     // Making a sibling revision writes the blueprint document. Switching which existing revision is
     // active writes too - it is what the game runs - so both are off; the list itself stays readable.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    if (blueprint.owner.kind === "sharedAsset") {
-        return (
-            <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>
-        );
-    }
-
     const ownerKey = ownerRefToIndexKey(blueprint.owner);
     const doc = localBp.getBlueprintDocument();
     const rec = doc.ownerRecords[ownerKey];

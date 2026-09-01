@@ -238,7 +238,6 @@ event E
                 "owner=widgetValue surface=s element=e prop=label",
                 { kind: "widgetValue", surfaceId: "s", elementId: "e", propPath: "label" },
             ],
-            ["owner=sharedAsset asset=a", { kind: "sharedAsset", assetId: "a" }],
             [
                 "owner=storyAction blueprint=b mode=value",
                 { kind: "storyAction", blueprintId: "b", mode: "value" },
