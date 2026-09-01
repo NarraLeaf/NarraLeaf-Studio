@@ -31,6 +31,24 @@ const KINDS = ["surfaceMain", "widgetMain", "widgetValue", "componentWidgetMain"
 const OWNS_THE_FORMAT = ["blueprint/ownerKey.ts", "blueprint/ownerKey.test.ts", "blueprint/ownerKeySpelling.test.ts"];
 
 /**
+ * A key being taken apart by hand: a regular expression anchored on an owner kind and the separator.
+ *
+ * The other half of the same rule, and it was learned the hard way. The encoder guard below caught
+ * three places building a key from pieces; it could not see three more *reading* one with a pattern
+ * like `/^widgetMain:([^:]+):(.+)$/`. Those kept compiling and kept matching - they just stopped
+ * decoding, so a built-in surface's id came back still escaped. One of them then reported that
+ * surface deleted on every pass over the document, and two handed the escaped id to a remover that
+ * escaped it again, so orphaned records on that surface were looked for under a name they could not
+ * have and were never collected.
+ */
+/** The literal opening of a pattern anchored on an owner kind, e.g. `/^widgetMain:`. */
+const PARSED_OPENINGS = KINDS.map(kind => "/^" + kind + ":");
+
+function parsesAKeyByHand(source: string): boolean {
+    return PARSED_OPENINGS.some(opening => source.includes(opening));
+}
+
+/**
  * A key being built from pieces: a template literal with an interpolation, or a concatenation.
  *
  * Matches the opening only - `\`widgetMain:${` or `"widgetMain:" +` - because that is the part that
@@ -70,6 +88,19 @@ describe("owner key spelling", () => {
             .map(file => ({ file: path.relative(SRC, file).replaceAll(path.sep, "/"), text: fs.readFileSync(file, "utf-8") }))
             .filter(entry => !OWNS_THE_FORMAT.includes(entry.file))
             .filter(entry => ASSEMBLED.test(withoutCommentsAndStrings(entry.text)))
+            .map(entry => entry.file);
+
+        expect(offenders).toEqual([]);
+    });
+
+    it("is nowhere taken apart by hand either", () => {
+        // Failing here means a file is parsing an owner key with a pattern. Call
+        // `decodeBlueprintOwnerKey`, which decodes each part; a pattern cannot, and every id that
+        // contains the separator comes back wrong from one.
+        const offenders = sources(SRC)
+            .map(file => ({ file: path.relative(SRC, file).replaceAll(path.sep, "/"), text: fs.readFileSync(file, "utf-8") }))
+            .filter(entry => !OWNS_THE_FORMAT.includes(entry.file))
+            .filter(entry => parsesAKeyByHand(withoutCommentsAndStrings(entry.text)))
             .map(entry => entry.file);
 
         expect(offenders).toEqual([]);

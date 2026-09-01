@@ -27,6 +27,7 @@ import {
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintFnSignatureSnapshot } from "@shared/types/blueprint/graph";
+import { blueprintScope } from "@shared/blueprint/ownerShape";
 import {
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
@@ -328,55 +329,42 @@ export function findBlueprintFnByRef(doc: BlueprintDocument, fnRef: unknown): Bl
 // Visibility
 // ---------------------------------------------------------------------------
 
-function callerSurfaceId(caller: BlueprintOwnerRef): string | undefined {
-    switch (caller.kind) {
-        case "surfaceMain":
-        case "widgetMain":
-        // widgetValue calls with the identity of its host widget.
-        case "widgetValue":
-            return caller.surfaceId;
-        default:
-            return undefined;
-    }
-}
-
 /**
- * Scoping matrix:
- * - globalMain decls: visible to every caller. A global helper that some owners cannot reach is a
- *   helper an author has to copy, which is the thing a global one exists to stop.
- * - surfaceMain / widgetMain decls: visible only to callers on the same surface.
- * - componentWidgetMain decls: visible only inside the same component definition. A definition is
- *   instantiated wherever somebody places it, so "the same surface" is not a question that can be
- *   asked about it; the definition itself is the boundary, and it is the right one - a graph that
- *   runs once per instance is exactly where one chain gets wanted from three call sites.
+ * Scoping matrix, asked through {@link blueprintScope} because that is the question:
+ * - project decls (globalMain): visible to every caller. A global helper that some owners cannot
+ *   reach is a helper an author has to copy, which is the thing a global one exists to stop. Spelled
+ *   as one `true` rather than as a list of every caller kind - the list was one nobody knew was a
+ *   list, and a new owner would have been silently written out of the global pool.
+ * - surface decls (surfaceMain / widgetMain): visible only to callers on the same surface. A widget's
+ *   value binding is on that surface too, and calls with the identity of its host widget.
+ * - component decls (componentWidgetMain): visible only inside the same component definition. A
+ *   definition is instantiated wherever somebody places it, so "the same surface" is not a question
+ *   that can be asked about it; the definition itself is the boundary, and it is the right one - a
+ *   graph that runs once per instance is exactly where one chain gets wanted from three call sites.
+ * - story decls: the editor catalog shows all story-action fns to story-action callers. Scene-scoped
+ *   visibility is enforced at runtime by the story compiler's fn catalog, which is the only place
+ *   that knows which scene is running.
  */
 export function isBlueprintFnVisibleToOwner(
     declOwner: BlueprintOwnerRef,
     caller: BlueprintOwnerRef,
 ): boolean {
-    if (declOwner.kind === "globalMain") {
-        return (
-            caller.kind === "globalMain" ||
-            caller.kind === "surfaceMain" ||
-            caller.kind === "widgetMain" ||
-            caller.kind === "componentWidgetMain" ||
-            caller.kind === "widgetValue" ||
-            caller.kind === "storyAction"
-        );
+    const decl = blueprintScope(declOwner);
+    const from = blueprintScope(caller);
+    switch (decl.kind) {
+        case "project":
+            return true;
+        case "surface":
+            return from.kind === "surface" && from.surfaceId === decl.surfaceId;
+        case "component":
+            return from.kind === "component" && from.componentId === decl.componentId;
+        case "story":
+            return from.kind === "story";
+        default: {
+            const unscoped: never = decl;
+            return unscoped;
+        }
     }
-    if (declOwner.kind === "componentWidgetMain") {
-        return caller.kind === "componentWidgetMain" && caller.componentId === declOwner.componentId;
-    }
-    if (declOwner.kind === "surfaceMain" || declOwner.kind === "widgetMain") {
-        const surfaceId = callerSurfaceId(caller);
-        return Boolean(surfaceId) && surfaceId === declOwner.surfaceId;
-    }
-    // Story-action fns: the editor catalog shows all story-action fns to story-action callers.
-    // Scene-scoped visibility is enforced at runtime by the story compiler's fn catalog.
-    if (declOwner.kind === "storyAction") {
-        return caller.kind === "storyAction";
-    }
-    return false;
 }
 
 export function listCallableBlueprintFns(

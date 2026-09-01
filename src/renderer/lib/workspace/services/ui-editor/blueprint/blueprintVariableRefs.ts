@@ -7,6 +7,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
+import { anchorSurfaceId, blueprintContract } from "@shared/blueprint/ownerShape";
 import { translate } from "@/lib/i18n";
 import { GLOBAL_MAIN_OWNER_KEY, surfaceMainOwnerKey } from "./ownerKeys";
 
@@ -70,8 +71,15 @@ function normalizeLiteralValue(value: unknown): LiteralValue | undefined {
     }
 }
 
+/**
+ * Whether this blueprint may declare member variables.
+ *
+ * A property of how the graph is entered, not of which slot it sits in: a Blueprint Value graph is
+ * re-run whenever a binding's dependency changes, so it has no run to carry state across and its
+ * palette omits the declare node entirely.
+ */
 function blueprintSupportsDeclaredVariables(blueprint: Blueprint): boolean {
-    return blueprint.owner.kind !== "widgetValue";
+    return blueprintContract(blueprint.owner).invocation !== "valueBinding";
 }
 
 function listBlueprintGraphNodes(blueprint: Blueprint): BlueprintGraphNode[] {
@@ -210,15 +218,15 @@ function pushGroup(out: VariableGroupInput[], used: Set<string>, group: Variable
     out.push(group);
 }
 
+/**
+ * The surface whose page variables this blueprint can see, falling back to the caller's.
+ *
+ * The fallback carries the owners that are not anchored on a surface at all - the project blueprint,
+ * a component definition's, a story row's - for which the editor supplies the surface it is being
+ * viewed from, if any.
+ */
 function resolveCurrentSurfaceId(blueprint: Blueprint, fallback?: string): string | undefined {
-    if (
-        blueprint.owner.kind === "surfaceMain" ||
-        blueprint.owner.kind === "widgetMain" ||
-        blueprint.owner.kind === "widgetValue"
-    ) {
-        return blueprint.owner.surfaceId;
-    }
-    return fallback;
+    return anchorSurfaceId(blueprint.owner) ?? fallback;
 }
 
 function currentBlueprintScope(blueprint: Blueprint): { kind: BlueprintVariableScopeKind; label: string } {

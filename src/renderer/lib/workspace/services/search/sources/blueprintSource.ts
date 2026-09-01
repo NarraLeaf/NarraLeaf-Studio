@@ -8,7 +8,8 @@ import { UIGraphService } from "../../ui-editor/UIGraphService";
 import { UIDocumentService } from "../../ui-editor/UIDocumentService";
 import { BlueprintNodeCatalogService } from "../../ui-editor/BlueprintNodeCatalogService";
 import { VariableRegistryService } from "../../variables/VariableRegistryService";
-import { parseBlueprintOwnerKey } from "../blueprintOwnerKey";
+import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { anchorComponentId, anchorElementId, anchorSurfaceId, blueprintAnchor } from "@shared/blueprint/ownerShape";
 import type { SearchIndexEntry } from "../searchIndexModel";
 import type { SearchSource } from "../searchSource";
 
@@ -244,14 +245,17 @@ export function extractBlueprintEntries(
  * actually locates it.
  */
 function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): string | undefined {
-    const owner = parseBlueprintOwnerKey(ownerKey);
+    const owner = decodeBlueprintOwnerKey(ownerKey);
     if (!owner) {
         return undefined;
     }
-    if (owner.ownerKind === "globalMain") {
+    // The two positions that are their own label: neither has a surface, a component or an element
+    // to name, so nothing below would find anything to print.
+    const anchor = blueprintAnchor(owner);
+    if (anchor.kind === "project") {
         return translate("blueprint.owner.global" as TranslationKey);
     }
-    if (owner.ownerKind === "storyAction") {
+    if (anchor.kind === "storyRow") {
         return translate("blueprint.owner.storyAction" as TranslationKey);
     }
     let document;
@@ -261,20 +265,23 @@ function resolveBlueprintOwnerLabel(ctx: WorkspaceContext, ownerKey: string): st
         return undefined;
     }
     const parts: string[] = [];
-    if (owner.surfaceId) {
-        const surface = document.surfaces.find(candidate => candidate.id === owner.surfaceId);
+    const surfaceId = anchorSurfaceId(owner);
+    if (surfaceId) {
+        const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
         if (surface?.name) {
             parts.push(surface.name);
         }
     }
-    if (owner.componentId) {
-        const component = (document.components ?? []).find(candidate => candidate.id === owner.componentId);
+    const componentId = anchorComponentId(owner);
+    if (componentId) {
+        const component = (document.components ?? []).find(candidate => candidate.id === componentId);
         if (component?.name) {
             parts.push(component.name);
         }
     }
-    if (owner.elementId) {
-        const element = document.elements[owner.elementId];
+    const elementId = anchorElementId(owner);
+    if (elementId) {
+        const element = document.elements[elementId];
         const name = element?.name || element?.type;
         if (name) {
             parts.push(name);

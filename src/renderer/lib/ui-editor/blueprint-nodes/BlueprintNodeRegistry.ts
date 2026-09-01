@@ -23,7 +23,6 @@ import {
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
-import { isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES,
@@ -32,9 +31,9 @@ import {
     type BlueprintNodeDef,
     type BlueprintNodeEditorCatalogEntry,
     type BlueprintPaletteContext,
-    HOST_API_OWNER_KINDS,
 } from "./types";
 import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
+import { blueprintContract, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 
 type BlueprintNodeGraphContextDef = Pick<
     BlueprintNodeDef,
@@ -244,7 +243,12 @@ export function isBlueprintNodeAllowedInGraphContext(
     }
     // Ahead of the scope, and independent of it: a node that needs the host API needs it in every
     // owner, including the magic-element path below, which clears `scope` on purpose.
-    if (def.requiresHostApi && !HOST_API_OWNER_KINDS.includes(ctx.owner.kind)) {
+    //
+    // Asked as a contract question rather than against a list of owner kinds, because that is what
+    // it is: a story call runs inside a compiled NLR `Script` with a narrow adapter, and everything
+    // else gets the whole host API. The list said the same thing by naming the five kinds that are
+    // not story calls, which meant a new owner position had to be remembered here.
+    if (def.requiresHostApi && blueprintContract(ctx.owner).invocation === "storyCall") {
         return false;
     }
     if (!matchesBlueprintNodeScope(def, ctx)) {

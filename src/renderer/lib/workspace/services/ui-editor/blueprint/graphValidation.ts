@@ -6,6 +6,7 @@ import type {
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { translate } from "@/lib/i18n";
@@ -142,9 +143,15 @@ function isExecInputEdge(
     return entry.pins.some(pin => pin.id === edge.to.port && pin.kind === "input" && pin.semantic === "exec");
 }
 
-/** True for a story condition blueprint whose Return Value must be typed boolean. */
+/**
+ * True for a blueprint whose Return Value must be typed boolean.
+ *
+ * Asked as a contract rather than as "storyAction with mode condition", because what the check is
+ * about is what the caller does with the value - a condition is the one slot whose return is tested
+ * as a branch.
+ */
 function isStoryConditionOwner(owner: BlueprintOwnerRef | undefined): boolean {
-    return owner?.kind === "storyAction" && owner.mode === "condition";
+    return owner !== undefined && blueprintContract(owner).returns === "boolean";
 }
 
 /**

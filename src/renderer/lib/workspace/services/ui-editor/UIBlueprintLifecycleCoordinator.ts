@@ -11,6 +11,7 @@ import {
 } from "./blueprint/ownerKeys";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { uiOwningSurfaceIds } from "@shared/live/uiParts";
+import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 
 /**
  * Keeps local instance BlueprintDocument (in uigraphs.json) aligned with UIDocument surfaces and widgets.
@@ -50,9 +51,12 @@ export class UIBlueprintLifecycleCoordinator
 
         const bpDoc = localBp.getBlueprintDocument();
         for (const key of [...Object.keys(bpDoc.ownerRecords)]) {
-            const m = /^surfaceMain:(.+)$/.exec(key);
-            if (m && !surfaceIds.has(m[1])) {
-                localBp.removeSurfaceAndWidgetOwners(m[1]);
+            // Decoded rather than matched with a pattern. Every part of an owner key is escaped, so a
+            // built-in surface - whose id contains the separator - comes back from a regex still
+            // escaped, never matches a real surface id, and is reported deleted on every pass.
+            const owner = decodeBlueprintOwnerKey(key);
+            if (owner?.kind === "surfaceMain" && !surfaceIds.has(owner.surfaceId)) {
+                localBp.removeSurfaceAndWidgetOwners(owner.surfaceId);
             }
         }
 
@@ -96,13 +100,16 @@ export class UIBlueprintLifecycleCoordinator
         }
 
         for (const key of [...Object.keys(localBp.getBlueprintDocument().ownerRecords)]) {
-            const m = /^widgetMain:([^:]+):(.+)$/.exec(key);
-            if (m && !validWidgetKeys.has(key)) {
-                localBp.removeWidgetMain(m[1], m[2]);
+            // Decoded, for the reason above and for a sharper one: these ids are handed straight
+            // back to a remover that re-encodes them. An id taken off an escaped key and escaped a
+            // second time names nothing, so an orphaned record on a built-in surface was never
+            // collected - it was looked for under a name it could not have.
+            const owner = decodeBlueprintOwnerKey(key);
+            if (owner?.kind === "widgetMain" && !validWidgetKeys.has(key)) {
+                localBp.removeWidgetMain(owner.surfaceId, owner.elementId);
             }
-            const cm = /^componentWidgetMain:([^:]+):(.+)$/.exec(key);
-            if (cm && !validComponentWidgetKeys.has(key)) {
-                localBp.removeComponentWidgetMain(cm[1], cm[2]);
+            if (owner?.kind === "componentWidgetMain" && !validComponentWidgetKeys.has(key)) {
+                localBp.removeComponentWidgetMain(owner.componentId, owner.elementId);
             }
             const widgetValue = decodeWidgetValueOwnerKey(key);
             if (widgetValue && !validWidgetValueKeys.has(key)) {

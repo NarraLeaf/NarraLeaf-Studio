@@ -84,6 +84,7 @@ import type {
     BlueprintPrivateOwnerRecord,
 } from "@shared/types/blueprint/document";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import { anchorComponentId, anchorElementId } from "@shared/blueprint/ownerShape";
 import type { UITemplateSurfacePlacement } from "@shared/types/uiTemplateRegistry";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import {
@@ -2505,8 +2506,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const blueprintIdMap: Record<string, string> = {};
             if (sourceBlueprintDocument) {
                 for (const [blueprintId, blueprint] of Object.entries(sourceBlueprintDocument.blueprints)) {
-                    const owner = blueprint.owner;
-                    if (owner.kind === "componentWidgetMain" && owner.componentId === source.id) {
+                    if (anchorComponentId(blueprint.owner) === source.id) {
                         blueprintIdMap[blueprintId] = uuidService.generate();
                     }
                 }
@@ -2562,11 +2562,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (sourceBlueprintDocument) {
                 for (const [oldBlueprintId, newBlueprintId] of Object.entries(blueprintIdMap)) {
                     const sourceBlueprint = sourceBlueprintDocument.blueprints[oldBlueprintId];
-                    const owner = sourceBlueprint?.owner;
-                    if (!sourceBlueprint || owner?.kind !== "componentWidgetMain") {
+                    if (!sourceBlueprint || anchorComponentId(sourceBlueprint.owner) === null) {
                         continue;
                     }
-                    const newElementId = elementIdMap[owner.elementId];
+                    // Naming a component and hanging off one of its elements are one anchor
+                    // position, so this is never null past the guard above - the type cannot say so.
+                    const oldElementId = anchorElementId(sourceBlueprint.owner);
+                    const newElementId = oldElementId ? elementIdMap[oldElementId] : undefined;
                     if (!newElementId) {
                         continue;
                     }
@@ -3218,11 +3220,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         localBp?.applyBlueprintMutation(bpDoc => {
             for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
                 const sourceBp = bpDoc.blueprints[oldBpId];
-                const owner = sourceBp?.owner;
-                if (!sourceBp || owner?.kind !== "componentWidgetMain" || owner.componentId !== source.id) {
+                if (!sourceBp || anchorComponentId(sourceBp.owner) !== source.id) {
                     continue;
                 }
-                const newElementId = idMap[owner.elementId];
+                const oldElementId = anchorElementId(sourceBp.owner);
+                const newElementId = oldElementId ? idMap[oldElementId] : undefined;
                 if (!newElementId) {
                     continue;
                 }
@@ -3760,11 +3762,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             localBp.applyBlueprintMutation(bpDoc => {
                 for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
                     const sourceBp = bpDoc.blueprints[oldBpId];
-                    const owner = sourceBp?.owner;
-                    if (!sourceBp || owner?.kind !== "componentWidgetMain" || owner.componentId !== component.id) {
+                    if (!sourceBp || anchorComponentId(sourceBp.owner) !== component.id) {
                         continue;
                     }
-                    const newElementId = idMap[owner.elementId];
+                    const oldElementId = anchorElementId(sourceBp.owner);
+                    const newElementId = oldElementId ? idMap[oldElementId] : undefined;
                     if (!newElementId) {
                         continue;
                     }

@@ -79,6 +79,7 @@ import {
 } from "./blueprint/ownerKeys";
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -774,7 +775,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (!ownerRef) {
             throw new RendererError(`Invalid private owner key: ${ownerKey}`);
         }
-        if (ownerRef.kind === "widgetValue" && frontend === "typescript") {
+        // Which frontends a slot admits follows from how it is entered: a value binding is re-run
+        // whenever a dependency changes, and only the visual graph has a palette cut down to nodes
+        // that are safe to re-run.
+        if (blueprintContract(ownerRef).invocation === "valueBinding" && frontend === "typescript") {
             throw new RendererError("Blueprint Value only supports visual blueprints");
         }
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);

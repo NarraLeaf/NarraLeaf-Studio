@@ -301,39 +301,38 @@ export type BlueprintNodeDef = BlueprintNodeDeclaration & {
     /**
      * This node reaches the blueprint host API, so it may only appear where a host serves one.
      *
-     * Set at registration for whole families rather than per node (see `HOST_API_OWNER_KINDS`),
-     * and deliberately NOT expressed as a {@link BlueprintNodeScope}: a scope answers "which
-     * owners and which widget types", and `resolveEffectiveBlueprintNodePins` reads the mere
-     * PRESENCE of one as "this is the widget-scoped variant, so hide the element pin". Writing
-     * this restriction as a scope therefore stripped the element pin off every magic-element
-     * node in the catalogue.
+     * Set at registration for whole families rather than per node, and answered as a contract
+     * question - a story call runs inside a compiled NLR `Script` with a narrow adapter, and
+     * everything else gets the whole host API.
+     *
+     * Still not a {@link BlueprintNodeScope}, but the old reason has gone: a scope used to be read
+     * elsewhere as "this is the widget-scoped variant, so hide the element pin", so expressing this
+     * as one stripped the element pin off every magic-element node in the catalogue. That coupling
+     * was removed. What remains is that a scope names owners and widget types, and this names
+     * neither - it is a property of how the graph is called.
      */
     requiresHostApi?: boolean;
     execute: BlueprintNodeExecuteFn;
 };
 
 /**
- * Owner kinds whose runtime hands the graph the whole blueprint host API.
+ * A Story Action Blueprint gets a narrow host adapter, and that is why `requiresHostApi` exists.
  *
- * A Story Action Blueprint's is deliberately not one of them. It runs inside a compiled NLR
- * `Script`, and `buildStoryActionHostAdapter` gives it `persistence` and the story's own variable
- * stores - no `navigation`, no `game`, no `widget`, no `sound`. Every node that reaches for one of
- * those throws on the first property access, and the throw goes nowhere: a story action is
- * fire-and-forget (`void run(...).catch(console.error)`) and its graph runs without a debug trace,
- * so nothing reaches the issues panel, the lint report or the game log. The author sees a row that
- * silently did nothing.
+ * It runs inside a compiled NLR `Script`, and `buildStoryActionHostAdapter` gives it `persistence`
+ * and the story's own variable stores - no `navigation`, no `game`, no `widget`, no `sound`. Every
+ * node that reaches for one of those throws on the first property access, and the throw goes
+ * nowhere: a story action is fire-and-forget (`void run(...).catch(console.error)`) and its graph
+ * runs without a debug trace, so nothing reaches the issues panel, the lint report or the game log.
+ * The author sees a row that silently did nothing.
  *
  * The fix is to keep those nodes out of the story's palette rather than to widen the adapter: a
  * story row that navigates would be a second way to leave a scene, competing with the rows that
  * already say so (`/jump`, `/ending`, `/quit`), and it could not block on the result anyway.
+ *
+ * This used to be a list of the five owner kinds that are *not* story calls, which meant a new
+ * owner position had to be remembered in it. `BlueprintNodeRegistry` asks
+ * `blueprintContract(owner).invocation` instead, which is the fact the list was spelling out.
  */
-export const HOST_API_OWNER_KINDS: readonly BlueprintNodeScopeOwnerKind[] = [
-    "globalMain",
-    "surfaceMain",
-    "widgetMain",
-    "widgetValue",
-    "componentWidgetMain",
-];
 
 /** Context for palette filtering in the editor */
 /** Declared widget UI event slots from WidgetModule.logicApi.events (optional per-slot head override). */
