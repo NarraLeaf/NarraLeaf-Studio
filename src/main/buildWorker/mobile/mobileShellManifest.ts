@@ -32,16 +32,15 @@ export type MobileShellOrientation = "landscape" | "portrait" | "auto";
  * entry document paints, so the native window, the document and the game agree
  * on the first frame instead of flashing white.
  *
- * `contentKey` is the opaque token the shell hands to its decoder; it is present
- * only when the payload was protected at repack time, and absent for a plain
- * build. One shell template serves both. The field is optional, so a shell that
- * predates it simply ignores it — the schema version does not change.
+ * There is deliberately no key in here. The shell reads an optional `contentKey` and, finding
+ * none, serves the payload verbatim - which is the only state Studio writes now. A key this
+ * file carried was a key every copy of the game handed out, and the payload it opened was
+ * sealed the same way in every build. The schema version does not change for its absence.
  */
 export type MobileShellConfigV1 = {
     schemaVersion: number;
     orientation: MobileShellOrientation;
     backgroundColor: string;
-    contentKey?: string;
 };
 
 export type ShellPlaceholderIdentity = {

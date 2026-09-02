@@ -200,6 +200,62 @@ describe("UIStore panel ordering", () => {
 
         expect(idsByPosition(store, PanelPosition.Left)).toEqual(["b", "a", "c"]);
     });
+
+    it("resets a position to the static order and forgets the override", () => {
+        const store = new UIStore();
+        store.registerPanel(panel("a", PanelPosition.Left, 10));
+        store.registerPanel(panel("b", PanelPosition.Left, 20));
+        store.registerPanel(panel("right-b", PanelPosition.Right, 20));
+        store.registerPanel(panel("right-a", PanelPosition.Right, 10));
+        store.setPanelOrder(PanelPosition.Left, ["b", "a"]);
+        store.setPanelOrder(PanelPosition.Right, ["right-b", "right-a"]);
+
+        const orders: string[][] = [];
+        store.getEvents().on("panelOrderChanged", ({ position, order }) => {
+            if (position === PanelPosition.Left) orders.push(order);
+        });
+
+        store.resetPanelOrder(PanelPosition.Left);
+
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["a", "b"]);
+        // The override is gone rather than emptied, so nothing is persisted for this dock.
+        expect(store.getPanelOrder()[PanelPosition.Left]).toBeUndefined();
+        // Subscribers hear it as an empty order, which is how the layout drops its stored copy.
+        expect(orders).toEqual([[]]);
+        // Other docks keep their override.
+        expect(idsByPosition(store, PanelPosition.Right)).toEqual(["right-b", "right-a"]);
+    });
+
+    it("reports the default order of a dock regardless of the override in force", () => {
+        const store = new UIStore();
+        store.registerPanel(panel("b", PanelPosition.Left, 20));
+        store.registerPanel(panel("a", PanelPosition.Left, 10));
+        store.registerPanel(panel("right-a", PanelPosition.Right, 10));
+        store.setPanelOrder(PanelPosition.Left, ["b", "a"]);
+
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["b", "a"]);
+        expect(store.getDefaultPanelOrder(PanelPosition.Left)).toEqual(["a", "b"]);
+        expect(store.getDefaultPanelOrder(PanelPosition.Right)).toEqual(["right-a"]);
+    });
+
+    it("breaks static-order ties by registration sequence, so a reset does not keep a drag", () => {
+        const store = new UIStore();
+        store.registerPanel(panel("first", PanelPosition.Left, 10));
+        store.registerPanel(panel("second", PanelPosition.Left, 10));
+        store.registerPanel(panel("third", PanelPosition.Left, 10));
+        store.setPanelOrder(PanelPosition.Left, ["third", "first", "second"]);
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["third", "first", "second"]);
+
+        store.resetPanelOrder(PanelPosition.Left);
+
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["first", "second", "third"]);
+        expect(store.getDefaultPanelOrder(PanelPosition.Left)).toEqual(["first", "second", "third"]);
+
+        // Re-registering (a plugin reload) keeps the original sequence number.
+        store.unregisterPanel("first");
+        store.registerPanel(panel("first", PanelPosition.Left, 10));
+        expect(idsByPosition(store, PanelPosition.Left)).toEqual(["first", "second", "third"]);
+    });
 });
 
 describe("UIStore panel visibility", () => {

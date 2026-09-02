@@ -19,6 +19,7 @@ import {
     gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
     isSealedShellFile,
+    RUNTIME_HOST_FILE_PREFIXES,
 } from "@shared/utils/gameRuntimeBundle";
 import { applyPackDelta, PACK_DELTA_VERSION, type PackDelta } from "@shared/utils/packDelta";
 import { dlcAttachesToBuild } from "@shared/types/dlc";
@@ -26,17 +27,6 @@ import { dlcDirectoryCandidates, isDlcFileName } from "@shared/utils/dlcDelivery
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 import { computeStoryContentHashes } from "@shared/utils/storyContentHash";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
-
-// Runtime files served from the store are limited to the author-supplied code
-// the pack carries - bundled plugin entries and puppet backends; the pack and
-// assets have their own request hosts. Anchoring on these prefixes keeps the
-// runtime host from reaching other store entries by path.
-/**
- * Entry prefixes the runtime host may serve out of a sealed store. `scripts/` is the author's
- * compiled script blueprints, which the game imports by URL - a sealed build carries them here
- * because the page's policy admits nothing but a URL this scheme serves.
- */
-const RUNTIME_STORE_FILE_PREFIXES = ["plugins/", "puppet/", "scripts/"] as const;
 
 /**
  * Byte budget for store entry reads kept in memory. The game engine drops and
@@ -288,7 +278,7 @@ class SealedRuntimeResources implements RuntimeResources {
          * files are three exact names rather than a prefix, so widening this does
          * not widen anything else. */
         const reachable = isSealedShellFile(name)
-            || RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix));
+            || RUNTIME_HOST_FILE_PREFIXES.some(prefix => name.startsWith(prefix));
         if (!reachable || !this.reader.has(name)) {
             return null;
         }
@@ -601,7 +591,7 @@ class PatchedRuntimeResources implements RuntimeResources {
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {
         const name = gameRuntimeBundleRuntimeEntry(pathname);
-        if (RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix))) {
+        if (RUNTIME_HOST_FILE_PREFIXES.some(prefix => name.startsWith(prefix))) {
             const found = this.resolve(name, true);
             if (found) {
                 return this.read(found, name);

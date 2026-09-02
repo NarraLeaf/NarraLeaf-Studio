@@ -309,6 +309,11 @@ export class UIStore {
         // Remove existing panel with same id
         this.state.panels = this.state.panels.filter(p => p.id !== panel.id);
         this.state.panels.push(panel as PanelDefinition<any>);
+        // First registration wins the sequence number, so a plugin that unregisters and registers
+        // again on reload keeps its place among panels with the same static `order`.
+        if (!this.panelSequence.has(panel.id)) {
+            this.panelSequence.set(panel.id, this.panelSequence.size);
+        }
         // Sort by user-defined order (if any), falling back to the static `order` field
         this.sortPanels();
         // Set default visibility
@@ -361,9 +366,30 @@ export class UIStore {
     };
 
     /**
+     * Registration sequence per panel id, the final tie-break of the static order. Without it two
+     * panels with the same `order` (or none) would sort by whatever sequence they happened to be in,
+     * so dropping an override would leave them where the drag put them and the "default" order
+     * would depend on history rather than on the registrations.
+     */
+    private readonly panelSequence = new Map<string, number>();
+
+    /**
+     * The static ordering of two panels in the same dock area: the `order` field, then registration
+     * sequence. This is what a dock shows when the user has never reordered it, and what a reset
+     * returns it to.
+     */
+    private compareStaticOrder(a: PanelDefinition, b: PanelDefinition): number {
+        const byOrder = (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+        if (byOrder !== 0) {
+            return byOrder;
+        }
+        return (this.panelSequence.get(a.id) ?? 0) - (this.panelSequence.get(b.id) ?? 0);
+    }
+
+    /**
      * Sort `state.panels` in place: grouped by position, then by the user-defined order override
-     * for that position (if present), falling back to the static `order` field. Panels not listed
-     * in an override are appended after the listed ones, keeping their `order`-based sequence.
+     * for that position (if present), falling back to the static order. Panels not listed in an
+     * override are appended after the listed ones, keeping their static sequence.
      */
     private sortPanels(): void {
         const rank = (position: string) => UIStore.POSITION_RANK[position] ?? Number.MAX_SAFE_INTEGER;
@@ -383,8 +409,19 @@ export class UIStore {
                     return oa - ob;
                 }
             }
-            return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+            return this.compareStaticOrder(a, b);
         });
+    }
+
+    /**
+     * The ids a dock area would show with no user-defined ordering, in static order. Lets a rail
+     * tell whether a reset would change anything before offering one.
+     */
+    public getDefaultPanelOrder(position: PanelPosition): string[] {
+        return this.state.panels
+            .filter(panel => panel.position === position)
+            .sort((a, b) => this.compareStaticOrder(a, b))
+            .map(panel => panel.id);
     }
 
     /**
@@ -395,6 +432,19 @@ export class UIStore {
         this.state.panelOrder = { ...this.state.panelOrder, [position]: [...orderedIds] };
         this.sortPanels();
         this.events.emit("panelOrderChanged", { position, order: [...orderedIds] });
+        this.events.emit("stateChanged", { panels: [...this.state.panels] });
+    }
+
+    /**
+     * Drop the user-defined ordering for a dock area so its panels fall back to their static
+     * order. Subscribers see it as an order change with an empty list, which is also what the
+     * persisted setting stores for "nothing overridden".
+     */
+    public resetPanelOrder(position: PanelPosition): void {
+        const { [position]: _dropped, ...rest } = this.state.panelOrder;
+        this.state.panelOrder = rest;
+        this.sortPanels();
+        this.events.emit("panelOrderChanged", { position, order: [] });
         this.events.emit("stateChanged", { panels: [...this.state.panels] });
     }
 
