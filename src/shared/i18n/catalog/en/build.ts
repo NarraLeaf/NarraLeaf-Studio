@@ -337,6 +337,7 @@ export const build = {
             + "{targetPlatform} target on a {targetPlatform} machine.",
         "encryption-key-unavailable": "Asset protection is on, but its key could not be read.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
+        "mobile-unprotected": "Asset protection does not apply to Android or iOS packages; their files ship unprotected.",
         "progress-carry-unsupported":
             "{blueprints} carries progress between editions, and a {platform} build refuses it. Both nodes take "
             + "their failure branch.",

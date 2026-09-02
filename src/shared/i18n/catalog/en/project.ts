@@ -484,8 +484,8 @@ export const project = {
             sidecarNote: "A program a plugin ships runs outside the game process and is not covered by the allowlist.",
         },
         encryptAssetsTitle: "Encrypt assets",
-        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
-        encryptAssetsWebHint: "Web builds always ship without asset protection.",
+        encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed desktop builds. Does not affect Dev Mode.",
+        encryptAssetsWebHint: "Web, Android and iOS builds always ship without asset protection.",
         // The whole Signing group in one line. Every signable platform gets a row, whether or not this
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.

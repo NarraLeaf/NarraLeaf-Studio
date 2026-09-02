@@ -901,7 +901,7 @@ export const help = {
                 "With asset protection enabled, the images, audio, story text and plugin code inside a packaged game "
                 + "are encrypted, and so are the player's saves. Dev Mode is unaffected.\n"
                 + "\n"
-                + "- Web builds always ship without it.\n"
+                + "- Web, Android and iOS builds always ship without it.\n"
                 + "- It prevents the files from being opened with ordinary tools. Reading them from the running "
                 + "game is still possible.\n"
                 + "- The other switch on this page decides whether the game may use the network.",
