@@ -63,7 +63,6 @@ describe("working set policy", () => {
         // drop their work with no message anywhere.
         expect(isVersioned("assets/content/dist/panel.png")).toBe(true);
         expect(isVersioned("editor/story/cache/notes.json")).toBe(true);
-        expect(isVersioned("scripts/node_modules/pkg/index.js")).toBe(true);
 
         // These names are owned by a tool or the OS and are never content, so depth
         // is irrelevant - a `.git` checkout dropped inside `assets/` is still not
@@ -71,6 +70,23 @@ describe("working set policy", () => {
         expect(isVersioned("assets/vendor/.git/HEAD")).toBe(false);
         expect(isVersioned("assets/screenshots/.DS_Store")).toBe(false);
         expect(isVersioned("nested/project/.nlstudio/editor.json")).toBe(false);
+        // A dependency tree is one of those names, and this is the path that made it one: the
+        // author's own `npm install` for their scripts lands here, not at the project root.
+        expect(isVersioned("scripts/node_modules/pkg/index.js")).toBe(false);
+        expect(isVersioned("node_modules/pkg/index.js")).toBe(false);
+    });
+
+    it("versions the author's scripts, and not what is generated or installed beside them", () => {
+        // The point of the directory: these are the author's files, and losing them to an
+        // exclusion aimed at their dependencies would be the worst outcome here.
+        expect(isVersioned("scripts/title.ts")).toBe(true);
+        expect(isVersioned("scripts/menus/pause.js")).toBe(true);
+        expect(isVersioned("scripts/package.json")).toBe(true);
+        // Generated, and rewritten whenever a name it mentions changes.
+        expect(isVersioned("scripts/.narraleaf/project.d.ts")).toBe(false);
+        // Generated too, but versioned on purpose: it is written once, it barely changes, and a
+        // clone that has not been opened in Studio yet still resolves its types with it.
+        expect(isVersioned("scripts/tsconfig.json")).toBe(true);
     });
 
     it("reads either path separator the same way", () => {
@@ -91,14 +107,15 @@ describe("working set policy", () => {
         // because that is precisely what decides whether they match at depth.
         expect(patterns).toEqual([
             "/dist/",
-            "/node_modules/",
             "/editor/cache/",
             "/editor/assets/remote/",
+            "/scripts/.narraleaf/",
             ".lore",
             ".nlstudio",
             ".git",
             ".DS_Store",
             "Thumbs.db",
+            "node_modules",
             `*${ATOMIC_WRITE_TEMP_SUFFIX}`,
         ]);
 

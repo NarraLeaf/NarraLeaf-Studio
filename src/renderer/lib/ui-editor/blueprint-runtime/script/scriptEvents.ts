@@ -383,6 +383,51 @@ export type ScriptEventHandler<Self extends ScriptSelf, E extends ScriptEventId>
     event: ScriptEventPayload<E>,
 ) => void | Promise<void>;
 
+// ---------------------------------------------------------------------------
+// What an author writes
+// ---------------------------------------------------------------------------
+
+/**
+ * The names an author annotates a handler with.
+ *
+ * A script's handlers are named exports - `export function onMouseClick(...)` - so each one states
+ * its own types, and these are what it states them as. The module types below describe the
+ * namespace those exports add up to; nothing has to be written in that shape.
+ *
+ * Two forms, because the two ways of writing a function want different things:
+ *
+ *     export function onSliderValueChanged(ctx: WidgetCtx<"nl.slider">, event: ScriptEvent<"sliderValueChanged">) {}
+ *
+ *     export const onSliderValueChanged: WidgetHandler<"nl.slider", "sliderValueChanged"> = (ctx, event) => {};
+ *
+ * The first is a declaration and annotates each parameter; the second annotates the whole function
+ * once and infers both. The generated half of the declarations (B3) narrows the widget type per
+ * element, so a real project's script names the element rather than its type.
+ */
+export type ScriptEvent<E extends ScriptEventId> = ScriptEventPayload<E>;
+
+export type GlobalCtx = GameScriptContext<{ kind: "project" }>;
+export type SurfaceCtx = GameScriptContext<SurfaceSelf>;
+export type WidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ElementSelf<W>>;
+export type ComponentWidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ComponentElementSelf<W>>;
+
+export type GlobalHandler<E extends (typeof SCRIPT_EVENTS_BY_ANCHOR)["project"][number]> = ScriptEventHandler<
+    { kind: "project" },
+    E
+>;
+export type SurfaceHandler<E extends (typeof SCRIPT_EVENTS_BY_ANCHOR)["surface"][number]> = ScriptEventHandler<
+    SurfaceSelf,
+    E
+>;
+export type WidgetHandler<
+    W extends ScriptWidgetType,
+    E extends (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number],
+> = ScriptEventHandler<ElementSelf<W>, E>;
+export type ComponentWidgetHandler<
+    W extends ScriptWidgetType,
+    E extends Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>,
+> = ScriptEventHandler<ComponentElementSelf<W>, E>;
+
 /** A module's optional named exports, one per event the slot admits. */
 export type ScriptEventExports<Self extends ScriptSelf, E extends ScriptEventId> = {
     [K in E as ScriptEventExportName<K>]?: ScriptEventHandler<Self, K>;

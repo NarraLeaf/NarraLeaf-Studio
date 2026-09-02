@@ -50,12 +50,17 @@ import { ATOMIC_WRITE_TEMP_PATTERN, ATOMIC_WRITE_TEMP_SUFFIX } from "@shared/uti
 const ROOT_EXCLUDED_DIRECTORIES: readonly string[] = [
     /** Build output. */
     "dist",
-    /** Dependencies of the project's own scripts; restorable from a manifest. */
-    "node_modules",
     /** Thumbnails and other derived artefacts, rebuilt on demand. */
     "editor/cache",
     /** Locally cached copies of remote assets; the reference is versioned, not the copy. */
     "editor/assets/remote",
+    /**
+     * Declarations generated for the author's scripts: the host API, and this project's own ids as
+     * literal types. Rewritten whenever a name they mention changes, so versioning them would put a
+     * generated diff in the history of every rename. Studio writes them again when the project
+     * opens, so a fresh clone type-checks without them having been carried.
+     */
+    "scripts/.narraleaf",
 ];
 
 /**
@@ -74,6 +79,17 @@ const EXCLUDED_NAMES: ReadonlySet<string> = new Set([
     ".git",
     ".DS_Store",
     "Thumbs.db",
+    /**
+     * A dependency tree, wherever it sits. Owned by a package manager and restorable from the
+     * manifest beside it, so it is never the author's content no matter where it turns up.
+     *
+     * Unanchored, unlike the ordinary words above, and the distinction is the whole point of the
+     * two lists: `dist` and `cache` are plausible names for a folder of the author's own, while
+     * nobody names an asset folder `node_modules`. It was anchored to the root until scripts
+     * arrived, and the author's install lands in `scripts/node_modules` - so anchored, the first
+     * `npm install` in a versioned project committed every byte of every dependency.
+     */
+    "node_modules",
 ]);
 
 /**
