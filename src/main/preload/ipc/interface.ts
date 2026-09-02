@@ -449,6 +449,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        onControlStartStory: (
+            handler: (payload: {
+                token: number;
+                storyId: string;
+                sceneId: string;
+                startBlockId?: string;
+                snapshotId?: string;
+            }) => void,
+        ) => ipcClient.onMessage(IPCEventType.devModeControlStartStory, handler),
         onControlError: (handler: (payload: { message: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
         onConsoleLog: (handler: (payload: DevModeConsoleLogPayload) => void) =>

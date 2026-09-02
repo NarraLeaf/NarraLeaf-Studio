@@ -18,7 +18,7 @@ import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex, StoryLiteralValue } from "./story";
 
 export type DevModeEntry =
     | {
@@ -264,6 +264,21 @@ export type DevModeStartStoryRequest = {
     startBlockId?: string;
     /** Scene Snapshot (变量快照) whose variable overrides seed the launch. */
     snapshotId?: string;
+    /**
+     * Variable values lifted off a running game, laid over the launch's own stage walk.
+     *
+     * Set only by a hot reload resuming where the player was: the walk reconstructs what the values
+     * would be had the story been played from the top down one path, and these are what they
+     * actually were. Applied after the walk and after any Scene Snapshot, because they are the later
+     * state - re-seeding either over them would rewind the player.
+     *
+     * Storage keys, the way the compiler names namespace entries, not variable ids. Persistent
+     * values are absent by design: they outlive the run, so a reload has nothing to restore.
+     */
+    resume?: {
+        sceneVariables: Record<string, StoryLiteralValue>;
+        savedVariables: Record<string, StoryLiteralValue>;
+    };
 };
 
 export type DevModeBundle = {
@@ -291,6 +306,20 @@ export type DevModeBundle = {
      */
     endingSurfaceId?: string;
     revision: number;
+    /**
+     * How many times an asset file has changed since the session that produced this bundle started.
+     *
+     * A reload bumps {@link revision} whatever it was about; this only moves when a file under the
+     * project's `assets/` directory did. The Dev Mode window resolves the whole asset library to URLs
+     * before it compiles a story, which is the most expensive step of a reload, and those URLs stay
+     * valid for exactly as long as no asset file moves - a grant token is derived from a file's path,
+     * size and modification time. So two bundles carrying the same count can share one pass, and an
+     * author editing dialogue does not pay for the library on every save.
+     *
+     * Absent from a bundle no watched session produced (a build, a preview, a test): those resolve
+     * once and never reload, so they have nothing to compare.
+     */
+    assetRevision?: number;
     timestamp: string;
     ui: {
         uidoc: UIDocument;

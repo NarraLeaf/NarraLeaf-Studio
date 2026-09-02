@@ -257,6 +257,9 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     return {
         bundleId: context.bundleId,
         revision: context.revision,
+        // Only when the host counts them. A host that never reloads has nothing to say here, and a
+        // zero would read as "no asset has ever changed", which is a claim rather than a silence.
+        ...(context.assetRevision === undefined ? {} : { assetRevision: context.assetRevision }),
         timestamp: new Date().toISOString(),
         // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
         // empty list would be a different claim.

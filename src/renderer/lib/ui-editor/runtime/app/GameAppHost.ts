@@ -203,6 +203,28 @@ export type GameAppHost = {
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
     bootAction: GameAppBootAction;
+    /**
+     * A story the host wants started NOW, replacing whatever is playing.
+     *
+     * Dev Mode's row play control, pressed while its window is already open: the window is kept and
+     * the run restarts in place rather than the whole window being rebuilt around a new
+     * {@link bootAction}. It arrives together with the recompiled bundle the launch was made from,
+     * so the app that acts on it is already holding the documents the author just edited.
+     *
+     * `token` rises with each request, and only a request whose token has not been acted on starts a
+     * run - so a re-render, a StrictMode double-invoke or a bundle that arrives twice cannot start
+     * the same story twice. Omitted by hosts that never relaunch in place (the packaged game, the
+     * story preview): for them, a launch is a boot.
+     */
+    launchRequest?: {
+        token: number;
+        storyId: string;
+        sceneId: string;
+        /** Row to enter at (row-precise "play from here"); omitted = the scene start. */
+        startBlockId?: string;
+        /** Scene Snapshot whose variable values seed the launch; omitted = declared defaults. */
+        snapshotId?: string;
+    };
     persistenceAdapter: BlueprintPersistentStoreAdapter | null;
     onDebugEvent?: (event: BlueprintDebugEvent) => void;
     /**
