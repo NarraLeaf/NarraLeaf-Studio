@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { fileURLToPath } from "url";
 import { collectScriptRefs, compileProjectScripts } from "./scriptCompiler";
 
 /**
@@ -15,6 +16,16 @@ import { collectScriptRefs, compileProjectScripts } from "./scriptCompiler";
  */
 
 let projectPath: string;
+
+/** Where the compiled modules go; a real directory, because they are real files now. */
+function outputDir(): { directory: string } {
+    return { directory: path.join(projectPath, ".nlstudio", "dev-mode", "scripts") };
+}
+
+/** The compiled module's text, read back from the file the compiler wrote. */
+async function compiledText(url: string | undefined): Promise<string> {
+    return url ? fs.readFile(fileURLToPath(url), "utf-8") : "";
+}
 
 beforeEach(async () => {
     projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nl-scripts-"));
@@ -73,10 +84,10 @@ describe("compiling script blueprints", () => {
             "export function onAppBoot() { return n; }",
         ].join("\n"));
 
-        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/wrong.ts" }));
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/wrong.ts" }), outputDir());
 
         expect(compiled["bp-1"].diagnostics).toBeUndefined();
-        expect(compiled["bp-1"].code).toContain("onAppBoot");
+        expect(await compiledText(compiled["bp-1"].url)).toContain("onAppBoot");
     });
 
     it("bundles what the author imported", async () => {
@@ -86,9 +97,9 @@ describe("compiling script blueprints", () => {
             "export function onAppBoot() { return greeting; }",
         ].join("\n"));
 
-        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/main.ts" }));
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/main.ts" }), outputDir());
 
-        expect(compiled["bp-1"].code).toContain("from the helper");
+        expect(await compiledText(compiled["bp-1"].url)).toContain("from the helper");
     });
 
     it("erases the type-only import of the declarations, which resolve to no package", async () => {
@@ -99,30 +110,27 @@ describe("compiling script blueprints", () => {
             "export function onAppBoot(ctx: GlobalCtx) { return ctx; }",
         ].join("\n"));
 
-        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/typed.ts" }));
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/typed.ts" }), outputDir());
 
         expect(compiled["bp-1"].diagnostics).toBeUndefined();
-        expect(compiled["bp-1"].code).not.toContain("@narraleaf/script");
+        expect(await compiledText(compiled["bp-1"].url)).not.toContain("@narraleaf/script");
     });
 
     it("reports a file that will not compile, and keeps compiling the others", async () => {
         await writeScript("scripts/broken.ts", "export function onAppBoot( {");
         await writeScript("scripts/fine.ts", "export function onAppBoot() {}");
 
-        const compiled = await compileProjectScripts(
-            projectPath,
-            documentWith({ "bp-broken": "scripts/broken.ts", "bp-fine": "scripts/fine.ts" }),
-        );
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-broken": "scripts/broken.ts", "bp-fine": "scripts/fine.ts" }), outputDir());
 
         // One dead handler and a message naming the file, not a project that will not open.
-        expect(compiled["bp-broken"].code).toBeUndefined();
+        expect(compiled["bp-broken"].url).toBeUndefined();
         expect(compiled["bp-broken"].diagnostics?.[0].message).toContain("scripts/broken.ts");
-        expect(compiled["bp-fine"].code).toContain("onAppBoot");
+        expect(await compiledText(compiled["bp-fine"].url)).toContain("onAppBoot");
     });
 
     it("reports a missing file rather than throwing", async () => {
-        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/gone.ts" }));
-        expect(compiled["bp-1"].code).toBeUndefined();
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/gone.ts" }), outputDir());
+        expect(compiled["bp-1"].url).toBeUndefined();
         expect(compiled["bp-1"].diagnostics?.[0].severity).toBe("error");
     });
 
@@ -130,24 +138,31 @@ describe("compiling script blueprints", () => {
         // The document is the author's file and its paths are theirs to write, so a path that is
         // not a script is refused here rather than handed to a bundler pointed at the project root.
         for (const ref of ["editor/story/index.json", "scripts/node_modules/pkg/index.js", "../outside.ts"]) {
-            const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": ref }));
-            expect(compiled["bp-1"].code, ref).toBeUndefined();
+            const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": ref }), outputDir());
+            expect(compiled["bp-1"].url, ref).toBeUndefined();
             expect(compiled["bp-1"].diagnostics?.[0].message, ref).toContain("not a script");
         }
     });
 
     it("compiles one file once, however many blueprints name it", async () => {
         await writeScript("scripts/shared.ts", "export function onAppBoot() {}");
-        const compiled = await compileProjectScripts(
-            projectPath,
-            documentWith({ "bp-1": "scripts/shared.ts", "bp-2": "scripts/shared.ts" }),
-        );
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/shared.ts", "bp-2": "scripts/shared.ts" }), outputDir());
         // The same module object, so two blueprints pointing at one script share its module-level
         // state - which is what an author reading one file would expect.
         expect(compiled["bp-1"]).toBe(compiled["bp-2"]);
     });
 
+    it("refuses every script when the host has nowhere to serve them from", async () => {
+        // A URL is the only way a script reaches a page: every host's Content-Security-Policy
+        // refuses `blob:` and `data:`, and the shipped one refuses `unsafe-eval` too. A caller that
+        // names no output directory therefore gets refusals rather than modules nothing can import.
+        await writeScript("scripts/a.ts", "export function onAppBoot() {}");
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/a.ts" }));
+        expect(compiled["bp-1"].url).toBeUndefined();
+        expect(compiled["bp-1"].diagnostics?.[0].message).toContain("cannot serve");
+    });
+
     it("does nothing at all for a project with no scripts", async () => {
-        expect(await compileProjectScripts(projectPath, documentWith({}))).toEqual({});
+        expect(await compileProjectScripts(projectPath, documentWith({}), outputDir())).toEqual({});
     });
 });

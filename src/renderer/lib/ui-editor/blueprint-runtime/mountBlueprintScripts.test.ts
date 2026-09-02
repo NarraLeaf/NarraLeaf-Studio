@@ -15,9 +15,9 @@ import {
  * runs before any of this; once it has, a script gets the same host API a visual graph on the same
  * slot gets.
  *
- * The loader is injected here because the real one makes a blob URL and imports it, and this suite
- * runs in Node. What is under test is the wiring either way: which module a blueprint id resolves
- * to, and which export an event name reaches.
+ * The loader is injected here because the real one imports a URL the host wrote, and this suite runs
+ * in Node with no such host. What is under test is the wiring either way: which module a blueprint
+ * id resolves to, and which export an event name reaches.
  */
 
 afterEach(() => {
@@ -25,10 +25,10 @@ afterEach(() => {
 });
 
 function fakeLoader(modules: Record<string, Record<string, unknown>>) {
-    return async (code: string) => {
-        const module = modules[code];
+    return async (url: string) => {
+        const module = modules[url];
         if (!module) {
-            throw new Error(`no module for ${code}`);
+            throw new Error(`no module for ${url}`);
         }
         return module;
     };
@@ -38,9 +38,9 @@ describe("mounting compiled scripts", () => {
     it("reaches the export whose name follows from the event id", async () => {
         const onMouseClick = () => undefined;
         await mountCompiledScripts(
-            { "bp-1": { scriptRef: "scripts/title.ts", code: "MODULE_A" } },
+            { "bp-1": { scriptRef: "scripts/title.ts", url: "file:///a.mjs" } },
             undefined,
-            fakeLoader({ MODULE_A: { onMouseClick } }),
+            fakeLoader({ "file:///a.mjs": { onMouseClick } }),
         );
 
         // `mouseClick` -> `onMouseClick`, by the one rule both sides ask for.
@@ -54,9 +54,9 @@ describe("mounting compiled scripts", () => {
     it("reaches the default export, which is how a story row is entered", async () => {
         const handler = () => undefined;
         await mountCompiledScripts(
-            { "bp-story": { scriptRef: "scripts/intro.ts", code: "MODULE_B" } },
+            { "bp-story": { scriptRef: "scripts/intro.ts", url: "file:///b.mjs" } },
             undefined,
-            fakeLoader({ MODULE_B: { default: handler } }),
+            fakeLoader({ "file:///b.mjs": { default: handler } }),
         );
         expect(resolveScriptDefault("bp-story")).toBe(handler);
     });
@@ -75,7 +75,7 @@ describe("mounting compiled scripts", () => {
     it("reports a module that throws while it loads, naming the author's file", async () => {
         const reported: string[] = [];
         await mountCompiledScripts(
-            { "bp-throws": { scriptRef: "scripts/boom.ts", code: "MISSING" } },
+            { "bp-throws": { scriptRef: "scripts/boom.ts", url: "file:///missing.mjs" } },
             (blueprintId, scriptRef, message) => reported.push(`${blueprintId} ${scriptRef} ${message}`),
             fakeLoader({}),
         );
@@ -88,14 +88,14 @@ describe("mounting compiled scripts", () => {
         const first = () => undefined;
         const second = () => undefined;
         await mountCompiledScripts(
-            { "bp-1": { scriptRef: "scripts/a.ts", code: "A" } },
+            { "bp-1": { scriptRef: "scripts/a.ts", url: "file:///first.mjs" } },
             undefined,
-            fakeLoader({ A: { onInit: first } }),
+            fakeLoader({ "file:///first.mjs": { onInit: first } }),
         );
         await mountCompiledScripts(
-            { "bp-2": { scriptRef: "scripts/b.ts", code: "B" } },
+            { "bp-2": { scriptRef: "scripts/b.ts", url: "file:///second.mjs" } },
             undefined,
-            fakeLoader({ B: { onInit: second } }),
+            fakeLoader({ "file:///second.mjs": { onInit: second } }),
         );
 
         // Dev Mode reloads on every save; a mount that added rather than replaced would leave the

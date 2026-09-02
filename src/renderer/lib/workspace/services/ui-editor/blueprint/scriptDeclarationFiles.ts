@@ -33,7 +33,12 @@ import {
     type ScriptSurfaceFacts,
 } from "@shared/project/scriptDeclarations";
 import { SCRIPT_API_DECLARATIONS } from "@shared/project/scriptApiDeclarations.generated";
-import { SCRIPTS_DIR, SCRIPTS_TSCONFIG_FILE, renderScriptsTsconfig } from "@shared/project/scriptsDirectory";
+import {
+    SCRIPTS_DIR,
+    SCRIPTS_GENERATED_DIR,
+    SCRIPTS_TSCONFIG_FILE,
+    renderScriptsTsconfig,
+} from "@shared/project/scriptsDirectory";
 import type { UIDocument, UIElementId } from "@shared/types/ui-editor/document";
 import { UIDocumentService } from "../UIDocumentService";
 import { Services, type WorkspaceContext } from "../../services";
@@ -121,6 +126,11 @@ export async function writeScriptDeclarations(context: WorkspaceContext): Promis
         [SCRIPT_API_DECLARATIONS_PATH, SCRIPT_API_DECLARATIONS],
         [PROJECT_DECLARATIONS_PATH, renderProjectDeclarations(collectScriptProjectFacts(context))],
     ];
+
+    // The generated directory, before anything is written into it: the write path creates a file
+    // but not the folders above it, so without this the tsconfig lands (its folder exists) and the
+    // two declarations silently do not.
+    await fs.createDir(context.project.resolve([SCRIPTS_DIR, SCRIPTS_GENERATED_DIR]));
 
     let allWritten = true;
     for (const [relative, content] of files) {

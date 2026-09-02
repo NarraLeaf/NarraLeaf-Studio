@@ -128,7 +128,12 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // The author's scripts, bundled. A failure here is carried as a diagnostic on the blueprint
     // rather than thrown: a script that will not compile is one dead handler, and the rest of the
     // game still has to run - the type check is a lint and the build never depends on one.
-    const scripts = await compileProjectScripts(context.projectPath, localBlueprints);
+    // Under `.nlstudio/`, which version control and a project export both exclude, beside the rest
+    // of what a Dev Mode run produces. A `file:` URL is what the Dev Mode document's policy admits;
+    // a packaged build writes the same modules into the pack and names them by its own scheme.
+    const scripts = await compileProjectScripts(context.projectPath, localBlueprints, {
+        directory: path.join(context.projectPath, ".nlstudio", "dev-mode", "scripts"),
+    });
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
     // project has. See `DevModeBundleLoadContext.includedDlc`.
     const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;

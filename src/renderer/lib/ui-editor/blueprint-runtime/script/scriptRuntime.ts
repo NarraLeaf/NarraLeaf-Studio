@@ -32,7 +32,7 @@ import type { GameScriptContext, ScriptListRow, ScriptSelf, ScriptWidgetType } f
 type MountedScript = { scriptRef: string; module: Record<string, unknown> };
 
 /**
- * Mounted modules by blueprint id, and the blob URLs holding them.
+ * Mounted modules by blueprint id, and the URLs they came from.
  *
  * On `globalThis` because Dev Mode replaces the whole bundle on a reload and the dispatcher is
  * reached from several module instances; a module-local map would be one per copy.
@@ -49,37 +49,29 @@ function state(): ScriptMountState {
     return globalThis.__NL_BP_SCRIPTS__;
 }
 
-/** What a bundle carries for each script blueprint. */
-export type CompiledScriptEntry = { scriptRef: string; code?: string };
+/** What a bundle carries for each script blueprint: where its compiled module was written. */
+export type CompiledScriptEntry = { scriptRef: string; url?: string };
 
 /**
  * Mount every compiled script, replacing whatever was mounted before.
- *
- * Every previous blob URL is revoked first: Dev Mode reloads on each save, and a session that
- * reloads a hundred times would otherwise hold a hundred copies of every script for as long as the
- * window is open.
  */
 export async function mountCompiledScripts(
     scripts: Readonly<Record<string, CompiledScriptEntry>> | undefined,
     onError: (blueprintId: string, scriptRef: string, message: string) => void = () => undefined,
     // Injected so a test can mount without a blob URL, the way the puppet runtime build takes its
     // bundler. The default is the real thing: a module, imported.
-    loadModule: (code: string) => Promise<Record<string, unknown>> = importAsModule,
+    loadModule: (url: string) => Promise<Record<string, unknown>> = importAsModule,
 ): Promise<void> {
-    const previous = state();
-    for (const url of previous.urls) {
-        URL.revokeObjectURL(url);
-    }
     const next: ScriptMountState = { modules: {}, urls: [] };
 
     for (const [blueprintId, entry] of Object.entries(scripts ?? {})) {
-        if (typeof entry?.code !== "string") {
+        if (typeof entry?.url !== "string") {
             // Already reported as a compile diagnostic by whatever produced the bundle. Its
             // blueprint simply listens to nothing.
             continue;
         }
         try {
-            const module = await loadModule(entry.code);
+            const module = await loadModule(entry.url);
             next.modules[blueprintId] = { scriptRef: entry.scriptRef, module };
         } catch (error) {
             // A module that throws while it is being evaluated - a top-level statement that failed.
@@ -92,23 +84,27 @@ export async function mountCompiledScripts(
 }
 
 /**
- * Turn module text into a module: a blob URL, imported.
+ * Import the compiled module the host wrote and named.
  *
- * The URL is remembered so the next mount can revoke it. Dev Mode reloads on every save, and a
- * session that reloaded a hundred times would otherwise hold a hundred copies of every script for
- * as long as the window is open.
+ * A plain dynamic import of a URL, because that is the only way a script can be loaded at all. The
+ * Dev Mode document's `script-src` is `'self' app: file: ...` and the shipped runtime's is `'self'
+ * <scheme>: 'nonce-...'`; neither admits `blob:` or `data:`, and the shipped one does not carry
+ * `unsafe-eval` either, so module text held in memory has no way into a page. Loading a blob was
+ * the first thing tried here and the policy refused every script - worth stating, because the
+ * refusal names the blob URL and so names nothing an author would recognise.
+ *
+ * The query is cache-busting. Dev Mode reloads on every save and rewrites the file in place, and a
+ * second import of the same URL answers from the module map with the previous revision's code - so
+ * the author's edit would appear not to have taken.
  */
-async function importAsModule(code: string): Promise<Record<string, unknown>> {
-    const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+async function importAsModule(url: string): Promise<Record<string, unknown>> {
+    const versioned = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
     state().urls.push(url);
-    return (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
+    return (await import(/* @vite-ignore */ versioned)) as Record<string, unknown>;
 }
 
-/** Drop every mounted script. Used when a session ends, so its blobs do not outlive it. */
+/** Drop every mounted script, so a session's modules do not outlive it. */
 export function unmountCompiledScripts(): void {
-    for (const url of state().urls) {
-        URL.revokeObjectURL(url);
-    }
     globalThis.__NL_BP_SCRIPTS__ = { modules: {}, urls: [] };
 }
 

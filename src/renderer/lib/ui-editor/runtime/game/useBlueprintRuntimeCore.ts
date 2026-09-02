@@ -55,7 +55,6 @@ export function useBlueprintRuntimeCore(
             setSession(null);
             return;
         }
-        mountBlueprintCompiledScripts(bundle);
         const debugSession = debuggerEnabled ? new BlueprintDebugSession() : null;
         if (debugSession) {
             setBlueprintDebugController(debugSession);
@@ -73,8 +72,21 @@ export function useBlueprintRuntimeCore(
         const unsubscribeDebug = onDebugEvent
             ? nextSession.debug.subscribeEvents(onDebugEvent)
             : () => undefined;
-        setSession(nextSession);
+
+        // The session is published only once the author's scripts are loaded, because publishing it
+        // is what lets the surfaces mount and start dispatching. Loading a module is asynchronous,
+        // so a session published first would run every `Init` against a registry that is still
+        // empty - the handler would simply not be found, with nothing anywhere reporting why. That
+        // is what happened the first time this was driven for real.
+        let cancelled = false;
+        void mountBlueprintCompiledScripts(bundle).then(() => {
+            if (!cancelled) {
+                setSession(nextSession);
+            }
+        });
+
         return () => {
+            cancelled = true;
             unsubscribeDebug();
             // Uninstall before cancelling: a suspended execution must not be able to re-enter a
             // session that is going away, and disposing releases every gate it is holding.

@@ -253,6 +253,21 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const saveSchema = ctx.services.get<SaveSchemaService>(Services.SaveSchema);
         await depend([fs, project, uuid, graph, registry, saveSchema]);
 
+        // The declarations, refreshed for a project that already has scripts. Written on open
+        // rather than only when one is created, because the point of the project half is that
+        // renaming something in Studio turns the script that used the old name into an error the
+        // author sees - which only holds if the file is rewritten after the rename.
+        //
+        // Not awaited, and its failure is swallowed by design: a project whose declarations could
+        // not be written is still one the author can edit and still one that builds, since the type
+        // check is a lint rather than a build step. Blocking the open on it would trade the whole
+        // project for completion in one folder.
+        if (this.hasScriptBlueprints()) {
+            void writeScriptDeclarations(ctx).catch(error => {
+                console.warn("[blueprint] could not write script declarations", error);
+            });
+        }
+
         // The stacks live in HistoryService; re-shape its "some stack changed" event into the
         // blueprint-shaped one this service's subscribers already listen for.
         this.unsubscribeHistory?.();
@@ -268,6 +283,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 });
             }
         });
+    }
+
+    /** Whether anything in this project is a script blueprint, and so needs declarations. */
+    private hasScriptBlueprints(): boolean {
+        return Object.values(this.getBlueprintDocument().blueprints ?? {})
+            .some(blueprint => blueprint.program.kind === "scriptModule");
     }
 
     private history(): HistoryService {

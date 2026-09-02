@@ -312,12 +312,15 @@ export type DevModeBundle = {
         /**
          * The author's compiled script blueprints, by blueprint id.
          *
-         * Module text rather than a path: the runtime that imports these has no filesystem of the
-         * project - a packaged game does not ship `scripts/` - so what travels is the bundle esbuild
-         * produced. An entry with no `code` failed to compile and carries the reason; its blueprint
-         * simply does not listen, and the rest of the game runs.
+         * A URL rather than the module text, because every host has a Content-Security-Policy and
+         * none of them admits a script from `blob:` or `data:` - the shipped runtime's `script-src`
+         * carries neither those nor `unsafe-eval`. What each host does admit is a URL it serves, so
+         * a compiled script is written to disk and named here, exactly as a plugin's entry is.
+         *
+         * An entry with no `url` failed to compile and carries the reason; its blueprint simply does
+         * not listen, and the rest of the game runs.
          */
-        scripts?: Record<string, { scriptRef: string; code?: string; diagnostics?: BlueprintDiagnostic[] }>;
+        scripts?: Record<string, { scriptRef: string; url?: string; diagnostics?: BlueprintDiagnostic[] }>;
         /**
          * What one save slot carries besides the engine's own record, baked from
          * `editor/save-schema.json`. In pin order, so the write node and the read node grow the same

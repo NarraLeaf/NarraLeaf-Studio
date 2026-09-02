@@ -17,18 +17,29 @@
  * game with one dead handler and a message naming the file, not a project that will not open.
  */
 
+import fs from "fs/promises";
 import path from "path";
+import { pathToFileURL } from "url";
 import type { BlueprintDocument, BlueprintDiagnostic } from "@shared/types/blueprint/document";
 import { isScriptSourcePath } from "@shared/project/scriptsDirectory";
 
 type EsbuildModule = typeof import("esbuild");
 
-/** One compiled script, as the bundle carries it. */
+/**
+ * One compiled script, as the bundle carries it.
+ *
+ * A **URL rather than the text**, and that is not a preference. Every host that runs a game has a
+ * Content-Security-Policy, and none of them admits a script from a `blob:` or a `data:` URL - the
+ * shipped runtime's `script-src` is `'self' <scheme>: 'nonce-…'` and does not even carry
+ * `unsafe-eval`. What both hosts do admit is a URL they serve: a file for Dev Mode, whose policy
+ * allows `file:`, and the pack's own scheme for a packaged game. So a compiled script is written to
+ * disk and named, exactly as a plugin's entry is.
+ */
 export type CompiledScriptModule = {
     /** The file it came from, for a message that names something the author can open. */
     scriptRef: string;
-    /** ESM text, ready to be imported. Absent when the compile failed. */
-    code?: string;
+    /** Where the compiled module was written, as a URL the host can import. Absent when it failed. */
+    url?: string;
     diagnostics?: BlueprintDiagnostic[];
 };
 
@@ -63,6 +74,14 @@ function failure(scriptRef: string, message: string): CompiledScriptModule {
 export async function compileProjectScripts(
     projectPath: string,
     document: BlueprintDocument | undefined,
+    /**
+     * Where the compiled modules are written, and how they are named to the host that imports them.
+     *
+     * Dev Mode writes into the project's own `.nlstudio/` - which version control and an export both
+     * exclude - and names them as `file:` URLs, which its policy admits. A packaged build writes
+     * them into the pack and names them by the pack's scheme.
+     */
+    output?: { directory: string; toUrl?: (filePath: string) => string },
     // Injected so a test can compile without resolving the real bundler, matching how the puppet
     // runtime build takes it.
     loadEsbuild: () => Promise<EsbuildModule> = () => import("esbuild"),
@@ -72,11 +91,23 @@ export async function compileProjectScripts(
         return {};
     }
 
+    if (!output) {
+        // Nowhere to put them, so nothing can be imported. Said once rather than per script.
+        return Object.fromEntries(
+            [...refs].map(([blueprintId, scriptRef]) => [
+                blueprintId,
+                failure(scriptRef, "This host cannot serve compiled scripts."),
+            ]),
+        );
+    }
+
     const esbuild = await loadEsbuild();
+    await fs.mkdir(output.directory, { recursive: true });
+    const toUrl = output.toUrl ?? (filePath => pathToFileURL(filePath).toString());
     const byRef = new Map<string, CompiledScriptModule>();
 
     for (const scriptRef of new Set(refs.values())) {
-        byRef.set(scriptRef, await compileOne(esbuild, projectPath, scriptRef));
+        byRef.set(scriptRef, await compileOne(esbuild, projectPath, scriptRef, output.directory, toUrl));
     }
 
     const out: CompiledScripts = {};
@@ -90,6 +121,8 @@ async function compileOne(
     esbuild: EsbuildModule,
     projectPath: string,
     scriptRef: string,
+    outputDirectory: string,
+    toUrl: (filePath: string) => string,
 ): Promise<CompiledScriptModule> {
     // The document is the author's and its paths are theirs to write, so a path that is not a
     // script in this project is refused here rather than handed to a bundler with a project root.
@@ -121,7 +154,12 @@ async function compileOne(
         if (typeof code !== "string") {
             return failure(scriptRef, `${scriptRef} produced no output.`);
         }
-        return { scriptRef, code };
+        // Named after the source rather than after a blueprint id, so a stack trace in the game's
+        // console names something the author can open. Two blueprints on one file share it.
+        const outputName = `${scriptRef.replace(/[\/]/g, "_").replace(/\.(ts|js)$/, "")}.mjs`;
+        const outputPath = path.join(outputDirectory, outputName);
+        await fs.writeFile(outputPath, code, "utf-8");
+        return { scriptRef, url: toUrl(outputPath) };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return failure(scriptRef, `${scriptRef} could not be compiled: ${message}`);
