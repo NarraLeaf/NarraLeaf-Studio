@@ -392,6 +392,17 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentBundleRef = useRef(bundle);
     currentBundleRef.current = bundle;
     /**
+     * Whether the bundle a piece of work started under is still the one this app is showing.
+     *
+     * A restart that began under an older bundle has been overtaken - by a newer save, or by a
+     * launch the author asked for while the last one was still mounting - and everything it now
+     * finds missing is missing because the newer one took the environment over. Reported as a
+     * failure it reads as a defect; reported as supersession it reads as what it is.
+     */
+    const bundleSuperseded = useCallback((revision: number, bundleId: string): boolean => (
+        currentBundleRef.current.bundleId !== bundleId || currentBundleRef.current.revision !== revision
+    ), []);
+    /**
      * A script blueprint that will not run, as an issue the author can read.
      *
      * `interface` rather than `compile`: the origin says where the failure belongs, and every one of
@@ -4696,14 +4707,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             try {
                 await startStoryInGame(request, { forceReinit: true });
             } catch (err) {
-                if (err instanceof NlrSessionSupersededError) {
+                if (err instanceof NlrSessionSupersededError || bundleSuperseded(bundle.revision, bundle.bundleId)) {
+                    // Two launches within a couple of seconds - a play control pressed again while
+                    // the last press was still mounting. The newer one owns the environment and is
+                    // putting the author's row on screen; this one has nothing left to enter.
                     host.log("info", `[${host.id}] launch superseded by a newer bundle revision`);
                     return;
                 }
                 reportFailure(err, { prefix: `[${host.id}] launch failed: ` });
             }
         })();
-    }, [bundle.revision, host, reportFailure, startStoryInGame]);
+    }, [bundle.bundleId, bundle.revision, bundleSuperseded, host, reportFailure, startStoryInGame]);
 
     useEffect(() => {
         if (activeStoryRevisionRef.current === null) {
@@ -4758,6 +4772,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                     }
                     const compiled = await compileStoryRequest(compileRequest);
                     await mountNlrSession(compiled, { storyRequest: launchRequest });
+                    // The mount reset the play head with the environment it belonged to, but the
+                    // player did not restart - they are being put back where they were. Handing the
+                    // history back is what lets the NEXT edit fall back to a row they had actually
+                    // played, instead of to the top of the scene.
+                    if (target && target.kind !== "entry") {
+                        playHead.seedTrail(resumeState?.position.trail ?? []);
+                    }
                     if (wasEntered) {
                         await enterMountedGame();
                     }
@@ -4765,11 +4786,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                     await startEmptyNlrEnvironment();
                 }
             } catch (err) {
-                if (err instanceof NlrSessionSupersededError) {
+                if (err instanceof NlrSessionSupersededError || bundleSuperseded(bundle.revision, bundle.bundleId)) {
                     // Another revision landed while this restart was in flight and has taken the
                     // environment over. Expected when saves arrive in quick succession — and more
                     // often now that a mount also waits for the stage to warm — so it is not a
-                    // failure to report.
+                    // failure to report. The revision test catches the tail of the same thing: the
+                    // overtaken restart can get as far as entering, and find the environment it was
+                    // going to enter already replaced.
                     host.log("info", `[${host.id}] NLR hot reload restart superseded by a newer bundle revision`);
                     return;
                 }
@@ -4777,12 +4800,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         })();
     }, [
+        bundle.bundleId,
         bundle.revision,
+        bundleSuperseded,
         captureStoryResumeState,
         compileStoryRequest,
         enterMountedGame,
         host,
         mountNlrSession,
+        playHead,
         resolveRunningStoryDocument,
         startEmptyNlrEnvironment,
     ]);

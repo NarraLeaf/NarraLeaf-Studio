@@ -264,4 +264,25 @@ describe("the trail of rows a run has played", () => {
 
         expect([...playHead.trail()]).toEqual([]);
     });
+
+    it("takes a run's history back after a hot reload replaced the environment", () => {
+        // The mount resets everything the old environment owned, but the player did not restart -
+        // and the next edit needs rows they had actually played to fall back to.
+        const playHead = createPlayHead(() => [{ staticId: "s-9", blockId: "r9" }]);
+        playHead.reset();
+
+        playHead.seedTrail(["r1", "r2", "r3"]);
+        playHead.observe("s-9");
+
+        expect([...playHead.trail()]).toEqual(["r1", "r2", "r3", "r9"]);
+    });
+
+    it("holds a seeded history to the same bound", () => {
+        const playHead = createPlayHead(() => []);
+        playHead.seedTrail(Array.from({ length: PLAY_HEAD_TRAIL_LIMIT + 5 }, (_, index) => `r-${index}`));
+
+        const trail = playHead.trail();
+        expect(trail).toHaveLength(PLAY_HEAD_TRAIL_LIMIT);
+        expect(trail[trail.length - 1]).toBe(`r-${PLAY_HEAD_TRAIL_LIMIT + 4}`);
+    });
 });

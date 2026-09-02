@@ -57,6 +57,15 @@ export type PlayHead = {
      * the bound holds a real span of story rather than one row a thousand times.
      */
     trail(): readonly string[];
+    /**
+     * Put a run's history back after the environment under it was replaced.
+     *
+     * A hot reload mounts a new session, which resets this one along with everything else the old
+     * environment owned - but the PLAYER did not restart, and the reload puts them back where they
+     * were. Without the history they came with, the first edit after a reload has nothing earlier to
+     * fall back to and sends them to the top of the scene.
+     */
+    seedTrail(rows: readonly string[]): void;
     /** Forget the run. Called wherever a session is torn down or replaced. */
     reset(): void;
 };
@@ -108,6 +117,9 @@ export function createPlayHead(readBindings: () => readonly PlayHeadActionBindin
         actionId: () => currentActionId,
         blockId: () => named(currentActionId) ?? lastNamedBlockId,
         trail: () => trail,
+        seedTrail(rows) {
+            trail = rows.slice(Math.max(0, rows.length - PLAY_HEAD_TRAIL_LIMIT));
+        },
         reset() {
             currentActionId = null;
             lastNamedBlockId = undefined;
