@@ -471,6 +471,15 @@ function resolveAnchor(
     return ast.data[line.anchorId] ?? null;
 }
 
+/**
+ * The row a line hangs under, or null with the reason it has none.
+ *
+ * Two very different mistakes reach here, and telling them apart is the whole value of the message:
+ * a line indented under a row that cannot hold children, and a line indented SEVERAL levels past
+ * the one before it. The second is the ordinary slip - four spaces where two were meant, or six
+ * where four were - and reporting it as "that row takes no children" sends the reader to inspect a
+ * row that is perfectly capable of holding one.
+ */
 function parentFor(
     line: StoryFileLine,
     openAt: (StoryBlock | null)[],
@@ -483,11 +492,22 @@ function parentFor(
     if (parent) {
         return parent;
     }
+    // How deep this line could legally have gone: one level past the deepest row still open.
+    let deepest = -1;
+    for (let depth = 0; depth < openAt.length; depth += 1) {
+        if (openAt[depth]) {
+            deepest = depth;
+        }
+    }
+    const allowed = deepest + 1;
     diagnostics.push(
         errorAt(
             "compile.bad_indent",
-            "This line is indented under a row that takes no children. Two spaces per level, and only a "
-                + "condition, a branch, a loop, a group, a menu or an option holds rows.",
+            allowed > 0 && line.depth > allowed
+                ? `This line is indented ${line.depth} levels and the row above it opens ${allowed}. `
+                    + "Indentation goes one level at a time, two spaces each."
+                : "This line is indented under a row that takes no children. Two spaces per level, and only a "
+                    + "condition, a branch, a loop, a group, a menu or an option holds rows.",
             line.lineNumber,
         ),
     );
