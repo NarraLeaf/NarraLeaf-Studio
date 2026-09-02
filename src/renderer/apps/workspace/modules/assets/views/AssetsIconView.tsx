@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, DragEvent, useMemo, useRef, useState, useEffe
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ASSET_CATEGORY_ORDER, AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
-import { FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
+import { AlertCircle, FolderPlus, Folder, Link, Upload, ChevronLeft } from "lucide-react";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
 import { iconViewRowOrder } from "../state/assetRowOrder";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
@@ -111,6 +111,7 @@ export function AssetsIconView({
         draggedAssetSet,
         publishRowOrder,
         assetSetReveal,
+        unreadableCategories,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
@@ -421,6 +422,16 @@ export function AssetsIconView({
                                 </div>
                             </header>
 
+                            {/* A section whose file could not be read draws this instead of a grid. It
+                                is the one section with nothing in it that has something to say: the
+                                grid is empty because the file was not readable, not because there is
+                                nothing in it, and the file itself is untouched. */}
+                            {unreadableCategories.has(category) && (
+                                <div className="mt-2 flex items-start gap-1.5 text-xs text-danger">
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t("assets.unreadable.category")}</span>
+                                </div>
+                            )}
                             {/* An empty category prints nothing under its header. The header's own import
                                 buttons are the way in; a sentence saying there is nothing here is the
                                 thing this deliberately omits. */}

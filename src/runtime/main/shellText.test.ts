@@ -48,6 +48,17 @@ describe("what it says", () => {
         expect(new Set(said).size).toBe(3);
     });
 
+    it("tells the two forms of a preview apart, in every language", () => {
+        // Which one is running decides whether an asset has a file path and which runtime files can
+        // be read at all, so a title that named neither would leave the author to guess.
+        for (const tags of [["en"], ["zh"], ["ja"]]) {
+            const text = resolveShellText(tags);
+            expect(text.previewTitle("Tiny Shadows", false)).toContain("Tiny Shadows");
+            expect(text.previewTitle("Tiny Shadows", true)).toContain("Tiny Shadows");
+            expect(text.previewTitle("Tiny Shadows", true)).not.toBe(text.previewTitle("Tiny Shadows", false));
+        }
+    });
+
     it("offers both answers to a hung window, in the same language", () => {
         const text = resolveShellText(["zh-CN"]);
         expect(text.hangKeepWaiting).toBe("继续等待");

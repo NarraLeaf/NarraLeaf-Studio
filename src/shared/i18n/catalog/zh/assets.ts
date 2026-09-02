@@ -69,6 +69,11 @@ export const assets = {
         one: "{count} 项",
         other: "{count} 项",
     },
+    unreadable: {
+        category: "该类别无法读取，文件保持原样",
+        notSaved: "当前不保存该类别的改动",
+        notSavedDetail: "无法读取 {file}，没有内容被覆盖",
+    },
     overview: {
         loading: "正在读取资产库…",
         failed: "无法读取资产库",

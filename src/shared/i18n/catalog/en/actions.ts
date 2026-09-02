@@ -32,6 +32,13 @@ export const actions = {
             // is, and DLC are what is beside it.
             runWithDlc: "Run with DLC",
             dlcCount: "{active} of {total}",
+        // Whether a preview of this project holds its content the way a protected build does. Only
+        // offered where the project protects its assets; off unless this machine turns it on.
+        previewAsShipped: "Preview as shipped",
+        previewAsShippedDetail: "Preview runs the protected form players receive, and takes longer to start.",
+        // The same choice on the Run button, so a preview that seals is never mistaken for an
+        // ordinary one.
+        asShipped: "As shipped",
         // Clears the save slots and persistent data a run leaves behind, for when the author's own
         // game poisons that state and crashes on launch. Dev Mode and Preview keep theirs apart, so
         // the submenu resets one without touching the other.

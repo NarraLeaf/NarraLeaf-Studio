@@ -262,6 +262,12 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (segments[0] === "editor" && segments[1] === "assets" && segments[2] === "remote") {
         return true;
     }
+    // Who is editing this project right now, which is a fact about one machine and one moment. An
+    // export carrying it would arrive at the recipient claiming to be open in somebody else's
+    // Studio, and stay that way until the claim aged out.
+    if (segments[0] === ".nlstudio" && segments[1] === "session.lock" && segments.length === 2) {
+        return true;
+    }
     if (
         segments[0] === ".nlstudio" &&
         (segments[1] === "cache" ||

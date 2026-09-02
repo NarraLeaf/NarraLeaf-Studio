@@ -107,6 +107,21 @@ export const assets = {
         other: "{count} items",
     },
     /**
+     * A category whose metadata file is on disk and could not be read.
+     *
+     * Both strings exist because such a section would otherwise be indistinguishable from an empty
+     * one, and the two are opposites: the section is empty because the file could not be read, and
+     * the file still holds every asset in it. `category` is what the section draws in place of its
+     * rows. `notSaved` is the notice raised when an edit reaches that section, whose write is
+     * refused for as long as the file cannot be read - the wording follows the status bar's own
+     * refusal notices, which say the same thing about a frozen workspace.
+     */
+    unreadable: {
+        category: "This category could not be read. Its file is unchanged.",
+        notSaved: "Changes are not being saved",
+        notSavedDetail: "{file} could not be read. Nothing is written over it.",
+    },
+    /**
      * The read-only asset overview page. "Actual" and "If trimmed" are load-bearing: a build still
      * packages the whole assets directory, and nothing on this page changes that - so no string
      * here may read as though reference-based trimming were in effect, or as though the second

@@ -469,6 +469,11 @@ export const workspace = {
         errorOpenFailed: "无法打开该文件夹：{error}",
         notAProjectTitle: "此文件夹不是 NarraLeaf 项目",
         notAProjectDetail: "未找到 .nlproj 文件",
+        // 项目归先打开它的那个 NarraLeaf Studio 所有，直到它放开为止。关于另一个会话只写设备与时间，
+        // 因为只有这两项是作者能据以行动的。
+        projectLockedTitle: "该项目已在另一个 NarraLeaf Studio 中打开",
+        projectLockedHere: "本机自 {time} 起打开，关闭后可重试",
+        projectLockedElsewhere: "{host} 自 {time} 起打开，在该设备上关闭后可重试",
         openLauncher: "打开启动器",
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
@@ -704,6 +709,8 @@ export const workspace = {
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",
+                // 不是文档存储：作者正打开编辑的那一行，其内容尚未写入文档。
+                openEditors: "正在编辑的行",
             },
         },
         // 重读工作树：磁盘上的内容不再是编辑器显示的内容（解除冻结、恢复版本）。正常情况下作者
@@ -840,6 +847,9 @@ export const workspace = {
             // 这个界面绝不自己发起。
             nothingToCommit: "自上个版本以来没有变更",
             closingWithApp: "Studio 正在关闭，重启后再试",
+            // 另一个程序打开着该项目的版本历史，通常是第二个 Studio，或终端里未退出的 lore 命令。
+            // 编辑不受影响，只有版本历史暂时不可用。
+            repositoryLocked: "另一个程序打开着该项目的版本历史，关闭后才能在此使用版本",
             commitBeforeSync: "从服务器获取之前先提交版本",
             branchDiverged: "本项目与服务器都有新的版本，先获取服务器的版本再发送",
             changesUnknown: "未检查",

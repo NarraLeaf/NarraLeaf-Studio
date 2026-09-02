@@ -52,18 +52,26 @@ process.on('unhandledRejection', (reason, promise) => {
  * "one bad IPC handler" turns into "the project file it later wrote is wrong" - so this reports and
  * terminates instead.
  *
- * `crash()` logs (the file sink means the reason survives the exit), shows the user an error box
- * rather than a window that silently vanishes, and exits. The re-entrancy guard is because the
- * reporting path can itself throw: without it, a failure inside `crash()` re-enters here forever.
+ * `crash()` logs (the file sink means the reason survives the exit), gives the open workspaces a
+ * bounded chance to write out what they had not written yet, shows the user an error box rather
+ * than a window that silently vanishes, and exits. The re-entrancy guard is `crash()`'s own: the
+ * reporting path can itself throw, and the flush it now waits for means further failures arrive
+ * while the first one is still being handled. Ending the process here on the second one would cut
+ * that flush short, which is exactly the work it exists to save.
  */
-let handlingFatalError = false;
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
-    if (handlingFatalError) {
-        process.exit(1);
-    }
-    handlingFatalError = true;
     app.crash(error instanceof Error ? error : new Error(String(error)));
+});
+
+// The one teardown an exit that skips `before-quit` still reaches: a fatal error, a command-line
+// build carrying an exit code, anything else that calls exit() outright. Every project this Studio
+// took stays claimed until somebody works out that this process is gone, and while that recovers on
+// its own (the claim names a process id, and a dead one is taken over), leaving the file behind
+// turns the next ordinary open into a takeover that has to be explained. Synchronous because there
+// is no event loop left to await on.
+process.on('exit', () => {
+    app.getProjectSessionLockManager().releaseAllSync();
 });
 
 // macOS hands a double-clicked document over here and nowhere else - the path never appears in
@@ -152,6 +160,11 @@ app.whenReady().then(async () => {
         if (named && teardown.releaseVersionControl) {
             void app.getVcsManager().closeProject(named).catch((error) => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
+            });
+        }
+        if (named && teardown.releaseSessionLock) {
+            void app.getProjectSessionLockManager().release(named).catch((error) => {
+                app.logger.warn("[Project] Failed to release the session lock on window close", error);
             });
         }
         // A launch that went straight into a project keeps the home screen hidden behind it, and

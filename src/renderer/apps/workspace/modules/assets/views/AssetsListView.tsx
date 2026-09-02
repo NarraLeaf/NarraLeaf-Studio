@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
+import { AlertCircle, Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
@@ -80,6 +80,7 @@ export function AssetsListView({
         draggedAssetSet,
         showContextMenu,
         publishRowOrder,
+        unreadableCategories,
     } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
@@ -226,6 +227,16 @@ export function AssetsListView({
                             }}
                             onContextMenu={(e) => e.preventDefault()}
                         >
+                            {/* A section whose file could not be read draws this instead of rows. It
+                                is the one section with no rows that has something to say: the rows
+                                are missing because the file was not readable, not because there are
+                                none, and the file itself is untouched. */}
+                            {unreadableCategories.has(category) && (
+                                <div className="flex items-start gap-1.5 px-3 py-2 text-xs text-danger">
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{t("assets.unreadable.category")}</span>
+                                </div>
+                            )}
                             {/* An empty category prints nothing. The accordion header's import buttons
                                 are the way in; announcing the absence is not information. */}
                             {rows.length > 0 && (openItems.includes(category) ? (

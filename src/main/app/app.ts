@@ -38,6 +38,7 @@ import { ConfirmQuitManager } from "./application/managers/confirmQuit";
 import { TrayManager } from "./application/managers/trayManager";
 import { UpdateManager } from "./application/managers/updateManager";
 import { SpellcheckManager } from "./application/managers/spellcheck/spellcheckManager";
+import { ProjectSessionLockManager } from "./application/managers/projectSessionLockManager";
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
@@ -235,6 +236,12 @@ export class App extends BaseApp {
 
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
+        // One project, one Studio - across profiles and machines, which is the half neither the
+        // single-instance lock nor `openProject`'s own dedupe can see. See its header.
+        this.projectSessionLockManager = new ProjectSessionLockManager({
+            userDataDir: this.getUserDataDir(),
+            logger: this.logger,
+        });
         // Everything is read through a function rather than captured: this constructor runs before
         // Electron is ready, and `getCacheRootDir` has no answer until it is.
         this.spellcheckManager = new SpellcheckManager({
@@ -278,6 +285,19 @@ export class App extends BaseApp {
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
     private readonly spellcheckManager: SpellcheckManager;
+    private readonly projectSessionLockManager: ProjectSessionLockManager;
+
+    /**
+     * Which projects this Studio has taken, and the claim it left in each of them.
+     *
+     * Read by the workspace's own startup as well as by {@link openProject}: the window asks again
+     * before it reads a document, because a lock taken when the window was built is a lock this
+     * process is already holding and the answer costs nothing, while a Retry on the error screen
+     * has to be able to ask afresh.
+     */
+    public getProjectSessionLockManager(): ProjectSessionLockManager {
+        return this.projectSessionLockManager;
+    }
 
     /** Studio's own spellchecker: the downloaded dictionaries, and each window's project words. */
     public getSpellcheckManager(): SpellcheckManager {
@@ -860,6 +880,12 @@ export class App extends BaseApp {
             await this.getVcsManager().dispose().catch(error => {
                 this.logger.warn('Failed to close version control before quit:', error);
             });
+            // Last, because until this point the projects are still being written to and the claim
+            // is what says so. Giving them up is what lets the next Studio open them without
+            // having to decide that this one is gone.
+            await this.projectSessionLockManager.releaseAll().catch(error => {
+                this.logger.warn('Failed to release the project session locks before quit:', error);
+            });
         })();
         const deadline = new Promise<void>(resolve => setTimeout(resolve, deadlineMs));
         await Promise.race([teardown, deadline]);
@@ -1367,6 +1393,22 @@ export class App extends BaseApp {
         );
     }
 
+    /**
+     * The pending writes a crash can still settle: one per workspace that is still on screen.
+     *
+     * The same debt the quit path drains, through the same per-window IPC, because it is the same
+     * debt - auto-save is debounced, so at any instant there is an edit that has been typed and not
+     * written. What differs is that a crash ends the process with `exit()`, which runs none of
+     * `drainForShutdown`; without this, a fatal error in the main process discarded those edits
+     * without ever asking the windows for them.
+     *
+     * Thunks rather than promises so that nothing starts until the crash sequence is ready to bound
+     * the wait, and so the set of windows is read at the moment of the crash rather than earlier.
+     */
+    protected override collectPendingSaveFlushes(): readonly (() => Promise<unknown>)[] {
+        return this.liveWorkspaceWindows().map(window => () => this.flushWorkspacePendingSaves(window));
+    }
+
     /** Flush every open workspace concurrently. Used on the way out of the app. */
     public async flushAllWorkspacesPendingSaves(): Promise<void> {
         const workspaces = this.liveWorkspaceWindows();
@@ -1822,6 +1864,22 @@ export class App extends BaseApp {
             return existing;
         }
 
+        // Before a window exists, which is what makes this the gate rather than a check: everything
+        // that reads or writes this project's files does so from a window, and there is not one yet.
+        //
+        // A refusal does not stop the open. The window still comes up and says which machine has
+        // the project, because "nothing happened when I asked for my project" is the one outcome
+        // worse than being told why. It is the window's own startup that puts the error screen up
+        // (see `workspaceProjectPreflight`), and it asks this manager again to do it - so Retry on
+        // that screen is a fresh claim rather than a reload of a stale answer.
+        const claim = await this.projectSessionLockManager.acquire(projectPath);
+        if (!claim.ok) {
+            this.logger.info(
+                "[Project] Not opening", projectPath,
+                "for editing: it is already open in another NarraLeaf Studio on", claim.holder.hostname,
+            );
+        }
+
         const key = normalizeProjectPath(projectPath);
         const pending = this.projectOpenings.get(key);
         // A replacement loads out of sight and takes the screen only once its project has answered:
@@ -1862,6 +1920,14 @@ export class App extends BaseApp {
             this.projectOpenings.set(key, launch);
             void launch.catch(() => void 0).finally(() => {
                 this.projectOpenings.delete(key);
+            });
+            // A launch that threw leaves no window, so the `window-closed` release below never
+            // runs and the claim would outlive the attempt - a project this Studio could not open
+            // and now refuses to open anywhere else, for the rest of the session.
+            void launch.catch(() => {
+                if (!this.hasLiveWindowForProject(projectPath)) {
+                    void this.projectSessionLockManager.release(projectPath);
+                }
             });
         }
 

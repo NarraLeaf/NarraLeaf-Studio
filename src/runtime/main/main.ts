@@ -854,6 +854,21 @@ async function readPack(): Promise<GameRuntimePackV1> {
     return packPromise;
 }
 
+/**
+ * What the window is called: the game's name, and for a preview which of its two forms this is.
+ *
+ * A shipped game is only ever the project's name. A preview is the author's own window and can be
+ * either of two artifacts - loose files, or the same sealed store a protected build ships - and
+ * those differ in what an asset can be asked for and in which runtime files can be read at all. The
+ * title is where that is legible; a preview that had opened without saying so would send an author
+ * looking for the difference in their project.
+ */
+function gameWindowTitle(pack: GameRuntimePackV1): string {
+    return pack.mode === "preview"
+        ? shellText().previewTitle(pack.project.name, shellSealed)
+        : pack.project.name;
+}
+
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     const design = resolveInitialWindowSize(pack);
     windowConfig = normalizeWindowConfiguration(pack.bundle?.window);
@@ -888,8 +903,9 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
         || (packDebuggable(pack) && hasDebuggingSwitch(startupArguments(), process.platform));
+    const windowTitle = gameWindowTitle(pack);
     const win = new BrowserWindow({
-        title: pack.project.name,
+        title: windowTitle,
         // The design size is the STAGE, not the window: Electron's width/height are the outer size,
         // so without this a 1920x1080 project was drawn into a client area a title bar shorter than
         // it asked for and scaled to about 0.97 on the display it was made for.
@@ -932,7 +948,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             ],
         },
     });
-    win.setTitle(pack.project.name);
+    win.setTitle(windowTitle);
     windowDesign = design;
     /*
      * The frame, and then the geometry again.

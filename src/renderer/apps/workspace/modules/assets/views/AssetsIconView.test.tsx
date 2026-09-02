@@ -59,10 +59,11 @@ function clip(index: number): Asset {
     };
 }
 
-function Harness({ onRender, library = [], assetTransfers = {} }: {
+function Harness({ onRender, library = [], assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
     onRender?: () => void;
     library?: Asset[];
     assetTransfers?: Readonly<Record<string, number>>;
+    unreadableCategories?: ReadonlySet<AssetCategory>;
 }) {
     const [pathIds, setPathIds] = useState<string[]>([]);
     const [toolbarCenter, setToolbarCenter] = useState<AssetsIconViewToolbarCenter | null>(null);
@@ -108,6 +109,7 @@ function Harness({ onRender, library = [], assetTransfers = {} }: {
         compactToolbar: true,
         setAssetsIconToolbarCenter: setToolbarCenter,
         mediaSupport: new Map(),
+        unreadableCategories,
         handleConvertMedia: () => undefined,
         assetClaims: {},
         assetTransfers,

@@ -281,6 +281,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceJoinLive, data => handler(data.joinLive)),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
+        acquireSessionLock: () =>
+            ipcClient.invoke(IPCEventType.workspaceAcquireSessionLock, {}),
         openProjectFolder: () =>
             ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
