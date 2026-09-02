@@ -1,18 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
+import { DECLARED_DEFAULTS_ENTRY } from "../../story-snapshots/storySnapshotSelection";
 import type { StoryBlockId, StoryId, StorySceneId } from "@shared/types/story";
 import { launchStoryRowInDevMode, resolveLaunchSnapshotId } from "./storyRowLaunch";
 
 /**
  * What a story row's play control sends to Dev Mode.
  *
- * The case worth a test is the scene that has no Scene Snapshot, because the first version of this
- * refused to launch there: it opened the snapshot panel and raised a warning instead, so the control
- * did nothing on the first press and the author had to author a snapshot before it would play. A
- * launch with no snapshot is now an ordinary launch, and `snapshotId` is simply absent from it.
+ * Two things are being held down here. The first is that a scene with no Scene Snapshot launches at
+ * all: the original version refused, opening the snapshot panel and raising a warning instead, so
+ * the control did nothing on the first press and the author had to author a snapshot before it would
+ * play. The second is that a scene WITH snapshots launches under the one the panel shows selected
+ * and under no other - a list that quietly selected the first would put a stale set of values behind
+ * the control with nothing on screen having said so.
  *
- * The assertions are therefore two-sided on purpose - the request that goes out AND the two things
- * that must not happen (no panel revealed, nothing written to the story document).
+ * The assertions are two-sided on purpose: the request that goes out, and the two things that must
+ * not happen (no panel revealed, nothing written to the story document).
  */
 
 const STORY_ID = "chapter-one" as StoryId;
@@ -50,17 +53,20 @@ function buildContext(snapshots: { id: string; name: string }[], selected?: stri
 
 describe("resolveLaunchSnapshotId", () => {
     it("has no answer for a scene that holds no snapshots", () => {
-        expect(resolveLaunchSnapshotId([], undefined)).toBeUndefined();
-        expect(resolveLaunchSnapshotId([], "deleted")).toBeUndefined();
+        expect(resolveLaunchSnapshotId([], DECLARED_DEFAULTS_ENTRY)).toBeUndefined();
     });
 
     it("uses the author's selection", () => {
         expect(resolveLaunchSnapshotId([{ id: "a" }, { id: "b" }], "b")).toBe("b");
     });
 
-    it("falls back to the first when the selection names a snapshot that is gone", () => {
-        expect(resolveLaunchSnapshotId([{ id: "a" }, { id: "b" }], "removed")).toBe("a");
-        expect(resolveLaunchSnapshotId([{ id: "a" }, { id: "b" }], undefined)).toBe("a");
+    it("applies none for the declared-defaults entry, whatever the scene holds", () => {
+        expect(resolveLaunchSnapshotId([{ id: "a" }, { id: "b" }], DECLARED_DEFAULTS_ENTRY)).toBeUndefined();
+    });
+
+    it("applies none when the selection names a snapshot that is gone", () => {
+        // Not the first snapshot: the deleted one's replacement is the entry the panel now shows.
+        expect(resolveLaunchSnapshotId([{ id: "a" }, { id: "b" }], "removed")).toBeUndefined();
     });
 });
 
@@ -83,7 +89,7 @@ describe("launchStoryRowInDevMode", () => {
         expect(createSceneSnapshot).not.toHaveBeenCalled();
     });
 
-    it("carries the selected snapshot when the scene has one", () => {
+    it("carries the selected snapshot when the author has picked one", () => {
         const { context, launch } = buildContext(
             [{ id: "morning", name: "Morning" }, { id: "night", name: "Night" }],
             "night",
@@ -94,11 +100,22 @@ describe("launchStoryRowInDevMode", () => {
         expect(launch).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: "night" }));
     });
 
-    it("carries the first snapshot when the author has selected none", () => {
+    it("carries no snapshot when the author has picked none, even though the scene holds some", () => {
         const { context, launch } = buildContext([{ id: "morning", name: "Morning" }]);
 
         launchStoryRowInDevMode({ context, storyId: STORY_ID, sceneId: SCENE_ID, blockId: BLOCK_ID });
 
-        expect(launch).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: "morning" }));
+        expect(launch).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: undefined }));
+    });
+
+    it("carries no snapshot once the author selects the declared-defaults entry back", () => {
+        const { context, launch } = buildContext(
+            [{ id: "morning", name: "Morning" }],
+            DECLARED_DEFAULTS_ENTRY,
+        );
+
+        launchStoryRowInDevMode({ context, storyId: STORY_ID, sceneId: SCENE_ID, blockId: BLOCK_ID });
+
+        expect(launch).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: undefined }));
     });
 });

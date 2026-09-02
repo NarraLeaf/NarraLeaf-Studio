@@ -229,8 +229,8 @@ export const help = {
                 + "them.\n"
                 + "\n"
                 + "- A snapshot belongs to one scene and gives every variable in its scope a starting value.\n"
-                + "- A snapshot is optional. Starting from a row without one uses the declared values.\n"
-                + "- A row start uses the snapshot selected in the Scene Snapshots panel.\n"
+                + "- A snapshot is optional. The snapshot list starts with Defaults, which applies none.\n"
+                + "- A row start uses the entry selected in the Scene Snapshots panel.\n"
                 + "- Snapshots do not affect the finished game.",
         },
         dictionary: {
