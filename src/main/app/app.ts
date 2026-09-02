@@ -1662,6 +1662,17 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
+        // Every project that gets a window is on the trust ledger from here on. One Studio never
+        // saw arrives as "opened" and waits for the author; one named to `--build` is the
+        // operator's own choice and is vouched for in their name (see `PROJECT_TRUST_ON_ARRIVAL`).
+        // Recorded in the one place a workspace window comes into being, so nothing reaches a
+        // window unrecorded and absence-means-distrusted has nothing left to guess about.
+        const arrivedAt = new Date().toISOString();
+        if (props.commandLineBuild) {
+            this.projectTrustManager.recordArrival(props.projectPath, "command-line", arrivedAt);
+        } else {
+            this.projectTrustManager.recordArrival(props.projectPath, "opened", arrivedAt);
+        }
         // Before the document loads, which is what `blockDistrusted` requires: a request made
         // while the first frame is coming up is still a request. A distrusted project reaches
         // nothing remote from its own window - not through fetch, not through an <img>, not

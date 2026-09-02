@@ -136,6 +136,14 @@ Whichever route it came from, a target that could carry a signature and has no c
 commit; a command line has nobody to show, so the acceptance has to be stated with
 `--build-allow-unsigned`.
 
+## Trust
+
+A project Studio did not create cannot run until it is trusted, and a build runs the project's
+code. Naming a project to `--build` counts as trusting it: the folder is recorded on this machine's
+profile as trusted by the operator, and it appears under Trusted projects in Settings like a project
+trusted there by hand. A project already waiting on that page is trusted by the same invocation;
+remove it there to return it to waiting.
+
 ## Settings a build reads
 
 A build reads a few machine-level settings — which Electron mirror to download from, where the

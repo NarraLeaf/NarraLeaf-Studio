@@ -349,7 +349,7 @@ export const settings = {
         },
         projectTrust: {
             label: "Trusted projects",
-            description: "Projects that arrived from a package or a remote source, and whether they may run.",
+            description: "Projects that Studio did not create, and whether they may run.",
         },
         cacheInventory: {
             label: "Cached files",
@@ -493,15 +493,19 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "Reading…",
-            empty: "No project has arrived from a package or a remote source.",
+            empty: "Every project opened so far was created by Studio.",
             waiting: "Waiting for a decision",
             granted: "Trusted",
             trust: "Trust",
             remove: "Remove",
-            removeNote: "Removing a project takes effect the next time it is opened.",
+            appliesNote: "Changes take effect the next time the project is opened.",
             origin: {
                 package: "From a package",
                 remote: "From a remote source",
+                opened: "Opened from a folder",
+                created: "Created by Studio",
+                recent: "Opened before",
+                commandLine: "From the command line",
             },
         },
         cache: {

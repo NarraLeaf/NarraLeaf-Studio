@@ -46,6 +46,7 @@ import {
     TeamUnsubscribeHandler,
 } from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
+import { ProjectWizardCreatedHandler } from "./handlers/projectWizardCreatedAction";
 import {
     ProjectWizardSelectPackageHandler,
     WorkspaceExportProjectPackageHandler,
@@ -258,6 +259,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectWizardSelectDirectoryHandler(),
         new ProjectWizardSelectPackageHandler(),
         new ProjectWizardGetDefaultDirectoryHandler(),
+        new ProjectWizardCreatedHandler(),
 
         // Workspace handlers
         new WorkspaceLaunchHandler(),

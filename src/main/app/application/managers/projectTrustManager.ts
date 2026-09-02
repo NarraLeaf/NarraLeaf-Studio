@@ -2,7 +2,9 @@ import path from "path";
 import { UserDataNamespace } from "@shared/types/constants";
 import {
     isProjectTrusted,
-    type ProjectImportOrigin,
+    PROJECT_TRUST_LEDGER_VERSION,
+    PROJECT_TRUST_ON_ARRIVAL,
+    type ProjectTrustOrigin,
     type ProjectTrustRecord,
     type ProjectTrustTable,
 } from "@shared/types/projectTrust";
@@ -12,18 +14,23 @@ import type { PersistentStateConfig } from "@shared/types/persistentState";
 
 interface ProjectTrustState extends Record<string, any> {
     "project.trust": ProjectTrustTable;
+    "project.trust.version": number;
 }
 
 const DEFAULT_STATE: ProjectTrustState = {
     "project.trust": {},
+    "project.trust.version": 0,
 };
+
+/** A row as the first version of the ledger wrote it, before it said who vouched or when it was met. */
+type LegacyProjectTrustRecord = Partial<ProjectTrustRecord> & { importedAt?: string };
 
 /**
  * A normalized key followed by each of its ancestors, nearest first, stopping short of the root.
  *
  * Splits on both separators because {@link normalizeProjectPath} writes `\` on Windows and leaves
  * `/` alone elsewhere, and this manager is tested under both rules on one machine. An empty key
- * yields nothing, which is how an unusable path stays "nobody imported it".
+ * yields nothing, which is how an unusable path stays a project nobody vouched for.
  */
 function selfAndAncestors(key: string): string[] {
     const keys: string[] = [];
@@ -40,7 +47,7 @@ function selfAndAncestors(key: string): string[] {
 }
 
 /**
- * Which projects arrived from elsewhere, and which of those the author has since trusted.
+ * Which projects may run: the ones Studio wrote, and the ones the author has vouched for.
  *
  * # Why this lives in the main process
  *
@@ -60,13 +67,14 @@ function selfAndAncestors(key: string): string[] {
  * It is emphatically *not* stored inside the project. The project is the thing being judged; a mark
  * it could edit is a mark it could remove.
  *
- * # The one honest weakness
+ * # Absence means distrusted
  *
- * Absence means trusted, so losing this file turns previously-distrusted projects into trusted
- * ones. That follows from recording only external arrivals rather than distrusting everything
- * unlisted, and it is the accepted cost of not asking about every project the author already has.
- * It is also why {@link recordImport} never silently drops a write: an arrival that fails to record
- * is a project that will be trusted forever after.
+ * A project with no row does not run. Losing this file, moving a folder, or opening a project by a
+ * route nobody recorded all land on the safe side, at the price of the author vouching once more.
+ * The first version of the ledger had it the other way round - only external arrivals were
+ * recorded, and everything unlisted ran - which is why {@link initialize} migrates: the projects the
+ * author already had in their recent list are vouched for by Studio on the way up, so an upgrade
+ * does not turn their own work into a list of questions.
  */
 export class ProjectTrustManager {
     private readonly state: PersistentState<ProjectTrustState>;
@@ -80,8 +88,43 @@ export class ProjectTrustManager {
         this.state = new PersistentState(config);
     }
 
-    public initialize(): Promise<void> {
+    /**
+     * Bring a ledger written by an earlier Studio up to the current shape.
+     *
+     * `rememberedProjects` is the recent-projects list. A ledger below the current version comes
+     * from a Studio in which an unlisted project ran, so the projects the author was working in
+     * are vouched for by Studio as the version turns - once, and only for paths that have no row
+     * yet. Rows the author already decided keep their decision and learn who made it.
+     */
+    public initialize(
+        rememberedProjects: () => readonly { path: string }[] = () => [],
+        now: string = new Date().toISOString(),
+    ): Promise<void> {
+        const version = this.state.getItem("project.trust.version") ?? 0;
+        if (version < PROJECT_TRUST_LEDGER_VERSION) {
+            this.migrate(rememberedProjects(), now);
+            this.state.setItem("project.trust.version", PROJECT_TRUST_LEDGER_VERSION);
+        }
         return Promise.resolve();
+    }
+
+    private migrate(remembered: readonly { path: string }[], now: string): void {
+        const table = this.table();
+        for (const [key, row] of Object.entries(table as Record<string, LegacyProjectTrustRecord>)) {
+            const trustedAt = row.trustedAt ?? null;
+            table[key] = {
+                path: row.path ?? key,
+                displayPath: row.displayPath ?? key,
+                origin: row.origin ?? "opened",
+                seenAt: row.seenAt ?? row.importedAt ?? now,
+                trustedAt,
+                vouchedBy: row.vouchedBy ?? (trustedAt !== null ? "author" : null),
+            };
+        }
+        this.write(table);
+        for (const project of remembered) {
+            this.recordArrival(project.path, "recent", now);
+        }
     }
 
     private table(): ProjectTrustTable {
@@ -92,20 +135,10 @@ export class ProjectTrustManager {
         this.state.setItem("project.trust", table);
     }
 
-    /**
-     * The record governing a project, or `undefined` when Studio never saw it arrive.
-     *
-     * The project's own row when it has one, else the nearest ancestor's. An arrival is a tree,
-     * not a path: a package or a clone can carry a second project folder inside the first, and an
-     * author told to "open the inner folder" would otherwise be opening it with no row at all -
-     * which, under absence-means-trusted, is a project from outside that Studio trusts. Whatever
-     * the author decided about the tree applies to everything in it, so trusting the outer project
-     * trusts the inner one too, and withdrawing that trust withdraws it from both.
-     */
-    public getRecord(projectPath: string): ProjectTrustRecord | undefined {
-        const table = this.table();
-        for (const key of selfAndAncestors(normalizeProjectPath(projectPath))) {
-            const record = table[key];
+    /** The row for exactly this key, or the nearest ancestor's. */
+    private governing(table: ProjectTrustTable, key: string): ProjectTrustRecord | undefined {
+        for (const candidate of selfAndAncestors(key)) {
+            const record = table[candidate];
             if (record) {
                 return record;
             }
@@ -114,45 +147,93 @@ export class ProjectTrustManager {
     }
 
     /**
+     * The record governing a project, or `undefined` when Studio never met it.
+     *
+     * The project's own row when it has one, else the nearest ancestor's. An arrival is a tree,
+     * not a path: a package or a clone can carry a second project folder inside the first, and an
+     * author told to "open the inner folder" is opening the same arrival. Whatever the author
+     * decided about the tree applies to everything in it - trusting the outer project trusts the
+     * inner one too, and withdrawing that trust withdraws it from both.
+     */
+    public getRecord(projectPath: string): ProjectTrustRecord | undefined {
+        return this.governing(this.table(), normalizeProjectPath(projectPath));
+    }
+
+    /**
      * Whether this project may cause effects.
      *
-     * The question every gate asks. Keep it total: a path that normalizes to nothing is a path
-     * nobody imported, and refusing it would break opening projects rather than protect anything.
+     * The question every gate asks. A path that normalizes to nothing is not a project anybody
+     * vouched for, and answers no like any other absence.
      */
     public isTrusted(projectPath: string): boolean {
         return isProjectTrusted(this.getRecord(projectPath));
     }
 
     /**
-     * Remember that a project arrived from outside, leaving it distrusted.
+     * Studio has met a project by this route; put it on the ledger.
      *
-     * Called by every route that brings a project in from elsewhere. Re-recording an arrival for a
-     * path that is already trusted does **not** revoke that trust: re-importing over a folder the
-     * author vouched for is not new evidence about the author's intent, and silently distrusting
-     * their working project would read as Studio breaking.
+     * Called by every route that brings a project to a window. What the row says depends on the
+     * origin - see `PROJECT_TRUST_ON_ARRIVAL`: a package, a clone or a folder Studio never saw
+     * waits for the author, while a project Studio wrote, remembered from before the ledger, or
+     * was told to build from the command line is vouched for on arrival.
+     *
+     * A project that already has a row keeps its decision. Meeting it again is not new evidence
+     * about the author's intent, and silently distrusting the project they are working in would
+     * read as Studio breaking. The one exception is an arrival the author vouches through - a
+     * command-line build - which grants a row still waiting, because that arrival *is* their
+     * decision; Studio's own vouches never override a row it has already met, so a project the
+     * author left waiting stays waiting however it is met again. The origin is kept too, unless
+     * the row only said "opened" and the arrival says something more specific.
+     *
+     * Opening a folder inside a tree that already has a row adds nothing: the ancestor's row
+     * governs it. A package or a clone landing inside a trusted tree does get a row of its own,
+     * because it is somebody else's code however trusted its surroundings are.
+     *
+     * Returns whether the ledger changed. Never drops a write silently: an arrival that fails to
+     * record is a project that does not run, which is the safe side, but the caller may want to
+     * know.
      */
-    public recordImport(projectPath: string, origin: ProjectImportOrigin, now: string): void {
+    public recordArrival(projectPath: string, origin: ProjectTrustOrigin, now: string): boolean {
         const key = normalizeProjectPath(projectPath);
         if (!key) {
-            return;
+            return false;
         }
         const table = this.table();
-        const existing = table[key];
+        const voucher = PROJECT_TRUST_ON_ARRIVAL[origin];
+        const own = table[key];
+        if (own) {
+            if (voucher === "author" && own.trustedAt === null) {
+                table[key] = { ...own, trustedAt: now, vouchedBy: voucher };
+                this.write(table);
+                return true;
+            }
+            if (own.origin === "opened" && origin !== "opened") {
+                table[key] = { ...own, origin };
+                this.write(table);
+                return true;
+            }
+            return false;
+        }
+        if (origin === "opened" && this.governing(table, key)) {
+            return false;
+        }
         table[key] = {
             path: key,
             displayPath: projectPath,
             origin,
-            importedAt: existing?.importedAt ?? now,
-            trustedAt: existing?.trustedAt ?? null,
+            seenAt: now,
+            trustedAt: voucher === null ? null : now,
+            vouchedBy: voucher,
         };
         this.write(table);
+        return true;
     }
 
     /**
-     * The author vouches for this project.
+     * The author vouches for this project, from Settings.
      *
-     * A no-op for a project with no record: it was already trusted, and inventing a row for it
-     * would put a project the author wrote into the settings list of things they had to vouch for.
+     * Only for a project with a row of its own: the Settings page offers rows, and a grant for a
+     * path nobody recorded would be a vouch for something Studio has not met.
      */
     public grantTrust(projectPath: string, now: string): boolean {
         const key = normalizeProjectPath(projectPath);
@@ -161,7 +242,7 @@ export class ProjectTrustManager {
         if (!existing) {
             return false;
         }
-        table[key] = { ...existing, trustedAt: now };
+        table[key] = { ...existing, trustedAt: now, vouchedBy: "author" };
         this.write(table);
         return true;
     }
@@ -169,8 +250,8 @@ export class ProjectTrustManager {
     /**
      * Take the trust back, from the settings list.
      *
-     * Clears the grant and **keeps the arrival**, which is what makes the next launch distrusted
-     * rather than indistinguishable from a project the author wrote themselves.
+     * Clears the grant and **keeps the row**, so the project returns to waiting and the author has
+     * somewhere to change their mind again.
      */
     public revokeTrust(projectPath: string): boolean {
         const key = normalizeProjectPath(projectPath);
@@ -179,21 +260,21 @@ export class ProjectTrustManager {
         if (!existing || existing.trustedAt === null) {
             return false;
         }
-        table[key] = { ...existing, trustedAt: null };
+        table[key] = { ...existing, trustedAt: null, vouchedBy: null };
         this.write(table);
         return true;
     }
 
     /**
-     * Drop an arrival that left nothing behind.
+     * Drop a row for an arrival that left nothing behind.
      *
-     * For the routes that record before they copy - the safe order, since a copy that lands
-     * unrecorded is a project trusted by accident - when the copy then fails without writing a
+     * For the routes that record before they copy - the safe order, since a copy that finished
+     * unrecorded would be a project Studio never met - when the copy then fails without writing a
      * byte. A row for an empty folder would sit in the settings list as a project waiting for a
      * decision that no folder exists to receive. Whether the folder is empty is the caller's to
      * check; this only forgets.
      */
-    public forgetImport(projectPath: string): boolean {
+    public forgetArrival(projectPath: string): boolean {
         const key = normalizeProjectPath(projectPath);
         const table = this.table();
         if (!key || !table[key]) {
@@ -204,17 +285,22 @@ export class ProjectTrustManager {
         return true;
     }
 
-    /** Every project the author has vouched for, newest grant first - the settings list. */
+    /**
+     * Every project the author vouched for, newest grant first - the settings list.
+     *
+     * Studio's own vouches are not in it. The page is a list of the author's decisions, and a
+     * project they created or were already working in is not one they made.
+     */
     public listTrusted(): ProjectTrustRecord[] {
         return Object.values(this.table())
-            .filter(record => record.trustedAt !== null)
+            .filter(record => record.trustedAt !== null && record.vouchedBy === "author")
             .sort((a, b) => (b.trustedAt ?? "").localeCompare(a.trustedAt ?? ""));
     }
 
-    /** Every arrival still awaiting a decision. */
+    /** Every project still waiting for a decision, newest first. */
     public listDistrusted(): ProjectTrustRecord[] {
         return Object.values(this.table())
             .filter(record => record.trustedAt === null)
-            .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+            .sort((a, b) => b.seenAt.localeCompare(a.seenAt));
     }
 }

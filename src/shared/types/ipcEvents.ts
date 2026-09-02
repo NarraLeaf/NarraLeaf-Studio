@@ -217,6 +217,7 @@ export enum IPCEventType {
     projectWizardSelectDirectory = "projectWizard.selectDirectory",
     projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
+    projectWizardCreated = "projectWizard.created",
     
     workspaceLaunch = "workspace.launch",
     workspaceOpenRecent = "workspace.openRecent",
@@ -1992,6 +1993,23 @@ export type IPCProjectWizardEvents = {
         data: {},
         response: {
             dir: string;
+        };
+    };
+    /**
+     * The wizard reports a project it has just written, so it opens as Studio's own.
+     *
+     * Answered for the wizard window only, and only for a folder that window was granted to write
+     * and that now holds a project: the row this creates vouches for the project, and a vouch is
+     * the one thing a window showing project content must never be able to send.
+     */
+    [IPCEventType.projectWizardCreated]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            recorded: boolean;
         };
     };
 };

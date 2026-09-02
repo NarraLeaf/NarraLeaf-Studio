@@ -1118,7 +1118,8 @@ export class BaseApp {
         this.menuManager.initialize();
         this.storageManager.initialize();
         this.pluginPermissionManager.initialize();
-        this.projectTrustManager.initialize();
+        // The recent list is what the migration vouches for when the ledger turns fail-closed.
+        void this.projectTrustManager.initialize(() => this.globalState.recentlyOpened.list());
         this.pluginManager.initialize();
         // Feed plugin language packs into the locale registry and rebuild the
         // native menu once they resolve (best-effort; never blocks startup).

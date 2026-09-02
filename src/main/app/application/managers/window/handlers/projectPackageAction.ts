@@ -178,11 +178,11 @@ export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.p
  * Unpack a package into a folder, with the folder on the trust ledger before a byte of it lands.
  *
  * The order is the point. A project unpacked from somebody else's file ships executable code - a
- * puppet backend is `import()`ed the moment anything shows a model - and the only thing standing
- * between opening it and running it is its row in the ledger. Recording after the copy left a
- * window in which the copy was on disk and the row was not, and a copy that finished unrecorded
- * would be a project trusted by accident. Recording first closes that: whatever else fails, the
- * folder is distrusted from before it has contents.
+ * puppet backend is `import()`ed the moment anything shows a model - and the row is what says it
+ * is somebody else's. Recording after the copy left a window in which the copy was on disk and
+ * the row was not; a copy that finished unrecorded would be met later as a mere folder rather
+ * than as an import. Recording first closes that: whatever else fails, the folder is known for
+ * what it is from before it has contents.
  *
  * Two consequences are handled here. The folder has to be empty for the unpack to start, so the
  * row is only written when it is - recording first must never mark something the author already
@@ -197,13 +197,13 @@ async function unpackAsArrival(
 ): ReturnType<typeof readProjectPackageInto> {
     const recorded = await directoryHoldsNothing(targetDir);
     if (recorded) {
-        trust.recordImport(targetDir, "package", new Date().toISOString());
+        trust.recordArrival(targetDir, "package", new Date().toISOString());
     }
     try {
         return await readProjectPackageInto(packagePath, targetDir);
     } catch (error) {
         if (recorded && await directoryHoldsNothing(targetDir)) {
-            trust.forgetImport(targetDir);
+            trust.forgetArrival(targetDir);
         }
         throw error;
     }

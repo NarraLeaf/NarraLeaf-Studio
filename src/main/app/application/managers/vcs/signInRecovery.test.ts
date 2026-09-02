@@ -101,8 +101,8 @@ function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
         }),
         getUserDataDir: () => "D:/userData",
         projectTrustManager: {
-            recordImport: (path: string, origin: string) => { recordedImports.push({ path, origin }); },
-            forgetImport: (path: string) => {
+            recordArrival: (path: string, origin: string) => { recordedImports.push({ path, origin }); },
+            forgetArrival: (path: string) => {
                 const index = recordedImports.findIndex((row) => row.path === path);
                 if (index >= 0) recordedImports.splice(index, 1);
             },

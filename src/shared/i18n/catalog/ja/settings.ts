@@ -343,7 +343,7 @@ export const settings = {
         },
         projectTrust: {
             label: "信頼済みプロジェクト",
-            description: "パッケージまたはリモートソースから取り込んだプロジェクトと、実行を許可するかどうか。",
+            description: "Studio が作成していないプロジェクトと、実行を許可するかどうか。",
         },
         cacheInventory: {
             label: "キャッシュしたファイル",
@@ -451,15 +451,19 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "読み込み中…",
-            empty: "パッケージやリモートソースから取り込んだプロジェクトはない。",
+            empty: "これまでに開いたプロジェクトはすべて Studio が作成したもの。",
             waiting: "未処理",
             granted: "信頼済み",
             trust: "信頼する",
             remove: "解除",
-            removeNote: "解除は次にそのプロジェクトを開いたときに反映される。",
+            appliesNote: "変更は次にそのプロジェクトを開いたときに反映される。",
             origin: {
                 package: "パッケージから",
                 remote: "リモートソースから",
+                opened: "フォルダーから開いた",
+                created: "Studio が作成",
+                recent: "以前に開いた",
+                commandLine: "コマンドラインから",
             },
         },
         cache: {

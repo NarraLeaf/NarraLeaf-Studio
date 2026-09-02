@@ -237,6 +237,11 @@ export interface RendererPreloadedInterface {
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
     /** Pick the `.nlspkg` an import unpacks; the chosen file becomes readable to this window. */
     selectProjectPackage(): Promise<RequestStatus<{ dest: string | null }>>;
+    /**
+     * Report a project the wizard has just written, so it opens as Studio's own rather than
+     * waiting for the author to trust it. Answered for the wizard window only.
+     */
+    registerCreatedProject(projectPath: string): Promise<RequestStatus<{ recorded: boolean }>>;
 
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
@@ -400,7 +405,7 @@ export interface RendererPreloadedInterface {
 
     // Project trust
     /**
-     * Whether a project that arrived from elsewhere may cause effects, and the author's answer.
+     * Whether a project may cause effects, and the author's answer.
      *
      * Reading is a courtesy to the interface - it is how a control stops being offered. The
      * refusals themselves are in main, beside the operations they refuse, because the code being

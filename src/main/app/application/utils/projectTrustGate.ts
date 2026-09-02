@@ -52,8 +52,7 @@ export type DistrustedOperation = typeof DISTRUSTED_OPERATIONS[number];
 
 export function projectDistrustedMessage(operation: DistrustedOperation): string {
     return `The ${operation} is unavailable because this project is not trusted. `
-        + "It arrived from outside this machine, and Studio does not run code from a project until "
-        + "you say so. Trust it under Settings to continue.";
+        + "Studio does not run a project it did not create until you trust it under Settings.";
 }
 
 /**

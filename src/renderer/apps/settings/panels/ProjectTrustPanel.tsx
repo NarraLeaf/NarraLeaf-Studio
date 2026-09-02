@@ -2,23 +2,29 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Button, FieldLabel } from "@/lib/components/elements";
-import type { ProjectImportOrigin, ProjectTrustRecord } from "@shared/types/projectTrust";
+import type { ProjectTrustOrigin, ProjectTrustRecord } from "@shared/types/projectTrust";
 import type { TranslationKey } from "@shared/i18n";
 
-const ORIGIN_LABELS: Record<ProjectImportOrigin, TranslationKey> = {
+const ORIGIN_LABELS: Record<ProjectTrustOrigin, TranslationKey> = {
     package: "settings.data.projectTrust.origin.package",
     remote: "settings.data.projectTrust.origin.remote",
+    opened: "settings.data.projectTrust.origin.opened",
+    created: "settings.data.projectTrust.origin.created",
+    recent: "settings.data.projectTrust.origin.recent",
+    "command-line": "settings.data.projectTrust.origin.commandLine",
 };
 
 /**
- * The projects that arrived from elsewhere, and which of them the author has vouched for.
+ * The projects Studio did not create, and which of them the author has vouched for.
  *
- * Only external arrivals appear. A project the author created has no row here and never needed one,
- * so this list is short by design - it is not an inventory of everything Studio has opened.
+ * Studio's own projects never appear: they are trusted from the moment the wizard writes them, and
+ * the author is not asked about their own work. What is listed is every other project Studio has
+ * met - opened from a folder, unpacked from a package, cloned from a server - either waiting for a
+ * decision or trusted by the author, here or by naming it to a command-line build.
  *
- * Removing a grant does not touch a window already open on that project. Trust is read once when a
- * workspace starts, so the change lands on the next launch; the row says so rather than leaving the
- * author to discover it.
+ * A decision does not touch a window already open on that project. Trust is read once when a
+ * workspace starts, so the change lands on the project's next open; the note under the lists says
+ * so rather than leaving the author to discover it.
  */
 export function ProjectTrustPanel() {
     const { t } = useTranslation();
@@ -87,11 +93,11 @@ export function ProjectTrustPanel() {
                 <div className="flex flex-col gap-1">
                     <FieldLabel>{t("settings.data.projectTrust.granted")}</FieldLabel>
                     {trusted.map(record => row(record, false))}
-                    <p className="px-2 text-2xs text-fg-subtle">
-                        {t("settings.data.projectTrust.removeNote")}
-                    </p>
                 </div>
             )}
+            <p className="px-2 text-2xs text-fg-subtle">
+                {t("settings.data.projectTrust.appliesNote")}
+            </p>
         </div>
     );
 }

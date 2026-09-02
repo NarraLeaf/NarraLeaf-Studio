@@ -334,7 +334,7 @@ export const settings = {
         },
         projectTrust: {
             label: "受信任的项目",
-            description: "从项目包或远程源引入的项目，以及它们是否可以运行。",
+            description: "非 Studio 创建的项目，以及它们是否可以运行。",
         },
         cacheInventory: {
             label: "缓存文件",
@@ -432,15 +432,19 @@ export const settings = {
     data: {
         projectTrust: {
             loading: "读取中…",
-            empty: "没有从项目包或远程源引入的项目。",
+            empty: "目前打开过的项目均由 Studio 创建。",
             waiting: "等待处理",
             granted: "已信任",
             trust: "信任",
             remove: "移除",
-            removeNote: "移除后在下次打开该项目时生效。",
+            appliesNote: "更改在下次打开该项目时生效。",
             origin: {
                 package: "来自项目包",
                 remote: "来自远程源",
+                opened: "从文件夹打开",
+                created: "由 Studio 创建",
+                recent: "此前打开过",
+                commandLine: "来自命令行",
             },
         },
         cache: {

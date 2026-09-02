@@ -2725,14 +2725,14 @@ export class VcsManager extends Manager {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
             // On the trust ledger before the copy rather than after it, for the reason the package
-            // import records first: a working tree that lands unrecorded is somebody else's code
-            // trusted by accident, and a clone carries a puppet backend that Studio `import()`s as
-            // soon as anything shows a model. The destination has to be empty for the clone to
-            // start, so the row cannot mark anything the author already had there; a clone that
-            // fails without writing anything takes the row back below.
+            // import records first: a working tree that lands unrecorded would be met later as a
+            // mere folder rather than as somebody else's code, and a clone carries a puppet backend
+            // that Studio `import()`s as soon as anything shows a model. The destination has to be
+            // empty for the clone to start, so the row cannot mark anything the author already had
+            // there; a clone that fails without writing anything takes the row back below.
             const recorded = await directoryHoldsNothing(root);
             if (recorded) {
-                this.app.projectTrustManager.recordImport(root, "remote", new Date().toISOString());
+                this.app.projectTrustManager.recordArrival(root, "remote", new Date().toISOString());
             }
             let cloned: { branch: string; fileCount: number };
             try {
@@ -2748,7 +2748,7 @@ export class VcsManager extends Manager {
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
             } catch (error) {
                 if (recorded && await directoryHoldsNothing(root)) {
-                    this.app.projectTrustManager.forgetImport(root);
+                    this.app.projectTrustManager.forgetArrival(root);
                 }
                 // Logged here because nothing else does: the handler turns this into a
                 // refusal the wizard prints, and a clone that failed used to leave the log
