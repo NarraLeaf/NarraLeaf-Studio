@@ -96,7 +96,6 @@ import type { BlueprintFlowNodeData } from "../flow/components/BlueprintFlowNode
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import { ScriptBlueprintPane } from "../ts/ScriptBlueprintPane";
-import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type {
@@ -134,7 +133,7 @@ import {
     readBlueprintElementRefParams,
 } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
-import { PanelsTopLeft, SquareArrowOutUpRight } from "lucide-react";
+import { FileCode2, PanelsTopLeft, SquareArrowOutUpRight } from "lucide-react";
 import {
     clearElementBindingCompletion,
     readElementBindingCompletion,
@@ -676,6 +675,25 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // when the blueprint is deleted (avoids an early return between the hooks below).
     const bp = doc.blueprints[payload.blueprintId]!;
 
+    /**
+     * A script tab says "Script", and wears a file glyph rather than the graph one.
+     *
+     * Set here rather than by whoever opened the tab: the openers - quick open, search, the surface
+     * list, a restored session - know a blueprint id and not which of the two it holds, and the
+     * answer only arrives once the document is read. A tab's blueprint id never changes (switching
+     * the active revision opens a different tab), so this runs once per tab.
+     */
+    const isScriptProgram = bp.program.kind === "scriptModule";
+    useEffect(() => {
+        if (!isScriptProgram) {
+            return;
+        }
+        uiService.editor.update(tabId, {
+            title: t("blueprint.script.tabTitle"),
+            icon: <FileCode2 className="w-4 h-4" />,
+        });
+    }, [isScriptProgram, t, tabId, uiService]);
+
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
         anchorElementId(bp.owner) !== null && payload.elementId
@@ -1050,9 +1068,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             // Carried across so closing the window puts back the tab that was here, name included -
             // this editor is opened under several names (the blueprint's own, the widget it belongs
             // to), and re-deriving one would rename it on the way back.
-            title: findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId) ?? t("blueprint.tab.title"),
+            title:
+                findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId)
+                ?? t(isScriptProgram ? "blueprint.script.tabTitle" : "blueprint.tab.title"),
         });
-    }, [detachBlueprint, isDetachedHost, payload, t, tabId, uiService]);
+    }, [detachBlueprint, isDetachedHost, isScriptProgram, payload, t, tabId, uiService]);
 
     /**
      * Middle click on the title row detaches, matching the control beside it.
@@ -2110,8 +2130,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                             className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
                             title={contextTitle}
                         >
-                            <span className="text-sm font-semibold text-fg">TypeScript</span>
-                            <BlueprintFrontendBadge kind="typescript" />
+                            <span className="text-sm font-semibold text-fg">{t("blueprint.script.tabTitle")}</span>
                             <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
                         </div>
                     }

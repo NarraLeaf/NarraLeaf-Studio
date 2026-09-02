@@ -152,6 +152,11 @@ export const devMode = {
         openWorkspace: "工作区",
         cannotOpen: "无法从预览中打开该蓝图",
         openFailed: "无法打开蓝图",
+        scriptLoaded: "已加载",
+        scriptNotLoaded: "未加载",
+        scriptExports: "导出：{names}",
+        scriptCalls: "此处会调用：{names}",
+        scriptExportsNone: "没有任何导出",
     },
     output: {
         logLevel: "日志级别",

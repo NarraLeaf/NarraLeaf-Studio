@@ -64,8 +64,6 @@ export const assets = {
         font: "字体",
         model: "模型",
         other: "其他",
-        /** Not an asset category: this project's own scripts, listed beside them. */
-        blueprint: "蓝图",
     },
     itemCount: {
         one: "{count} 项",

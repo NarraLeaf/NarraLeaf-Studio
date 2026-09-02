@@ -245,11 +245,22 @@ export const blueprint = {
         // A revision nobody named. Numbered by its place in the list rather than spelled with its
         // id, which is a UUID and names nothing an author can recognize.
         unnamed: "Revision {index}",
-        newTypeScript: "New TypeScript revision",
-        newVisual: "New Visual revision",
+        rowMenu: "More",
+        /** Removing a revision never removes a file: the disk owns a script from the moment it exists. */
+        delete: "Delete revision",
+        deleteScript: "Delete revision (the file stays)",
+        deleteOnly: "A slot keeps its last revision.",
+        newScript: "New script",
+        newBlueprint: "New blueprint",
     },
+    /**
+     * What a revision is written in, and the whole of the distinction an author has to hold: a
+     * blueprint is a graph on a canvas, a script is a TypeScript file they own. Neither word is
+     * ever used for the other.
+     */
     frontend: {
-        visual: "Visual",
+        visual: "Blueprint",
+        script: "Script",
     },
     literal: {
         string: "String",
@@ -427,11 +438,17 @@ export const blueprint = {
          */
         openFolder: "Open scripts folder",
         missing: "This file is missing.",
+        /** Re-pointing a script, which is also how a file renamed outside Studio is reconnected. */
+        changeFile: "Use another file",
+        changeFileEmpty: "No other file under scripts/",
         /** Monaco's own read-only tooltip says the editor is read only. This says where writing happens. */
         readOnly: "Scripts are edited in your own editor.",
-        /** The blueprints section of the asset browser. */
-        sectionEmpty: "No scripts yet. A TypeScript blueprint creates one.",
-        unbound: "Not used by any blueprint",
+        /** The section heading in the panel where a project's own files are listed. */
+        sectionTitle: "Scripts",
+        /** The tab a script opens in. A script is not a blueprint and is never titled as one. */
+        tabTitle: "Script",
+        sectionEmpty: "No scripts yet. Open the logic of a page or a component and choose New script.",
+        unbound: "Nothing runs this file",
         boundTo: "Runs as {name}",
         boundToMany: "Runs as {name} and {count} more",
     },

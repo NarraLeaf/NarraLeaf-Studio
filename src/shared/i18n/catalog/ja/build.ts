@@ -446,7 +446,7 @@ export const build = {
      * 何かを取り除くバリアントにしか出ないので、どの行もバリアントを名指す。
      */
     contentBlockedStartStory: "{location} のゲーム開始ノードは、実行中にシーンを決める。インスペクタでシーンを選ぶか、{variant} のバリアントで開始しうるシーンを列挙する",
-    contentBlockedScript: "ブループリント {location} は TypeScript で書かれていて、どのシーンでも開始できる。{variant} のバリアントで開始しうるシーンを列挙する",
+    contentBlockedScript: "スクリプト {location} はどのシーンでも開始できる。{variant} のバリアントで開始しうるシーンを列挙する",
     contentBlockedPlugin: "{location} プラグインはどのシーンでも開始できる。{variant} のバリアントで開始しうるシーンを列挙する",
     contentBlockedSummary: {
         other: "ビルドを中止：{variant} のビルドが読めないシーンを開始しうるものが {count} 件ある。コンソールを見る",

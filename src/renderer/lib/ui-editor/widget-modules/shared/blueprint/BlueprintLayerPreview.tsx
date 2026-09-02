@@ -1,5 +1,6 @@
 import "@xyflow/react/dist/style.css";
 import { memo, useId } from "react";
+import { FileCode2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import {
     BLUEPRINT_COMMENT_COLORS,
@@ -229,12 +230,20 @@ export function BlueprintLayerPreview({
                 </ReactFlow>
             </ReactFlowProvider>
             {!hasLayer || !hasNodes ? (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xs text-fg-subtle">
-                    {!hasLayer
-                        ? t("widgetChrome.blueprint.noBlueprint")
-                        : model?.emptyReason === "noLayer"
-                          ? t("widgetChrome.blueprint.noLayer")
-                          : t("widgetChrome.blueprint.emptyLayer")}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-2xs text-fg-subtle">
+                    {model?.emptyReason === "script" ? (
+                        <>
+                            <FileCode2 className="h-4 w-4 text-fg-muted" />
+                            <span className="max-w-full truncate font-mono text-fg-muted">{model.scriptFileName}</span>
+                            <span>{t("blueprint.frontend.script")}</span>
+                        </>
+                    ) : !hasLayer ? (
+                        t("widgetChrome.blueprint.noBlueprint")
+                    ) : model?.emptyReason === "noLayer" ? (
+                        t("widgetChrome.blueprint.noLayer")
+                    ) : (
+                        t("widgetChrome.blueprint.emptyLayer")
+                    )}
                 </div>
             ) : null}
             {model?.graphName ? (

@@ -301,8 +301,11 @@ export const documentDiff = {
         blueprintRemoved: "ブループリントを削除（ノード {nodes} 件）",
         blueprintChanged: "ブループリントを変更",
         blueprintRenamed: "名前を変更",
-        /** TypeScript のブループリント。プログラム全体が 1 つのソース。 */
-        blueprintSource: "コードを変更",
+        /** スクリプトがどのファイルを指すか。中身はディスク側にあり、この文書には入らない。 */
+        blueprintSource: "スクリプトのファイルが変わった",
+        scriptAdded: "スクリプトを追加",
+        scriptRemoved: "スクリプトを削除",
+        scriptChanged: "スクリプトを変更",
         blueprintField: "{field} を変更",
         graphAdded: "グラフを追加（ノード {nodes} 件）",
         graphRemoved: "グラフを削除（ノード {nodes} 件）",
