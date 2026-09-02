@@ -992,7 +992,9 @@ describe("bundleAssembler script blueprints", () => {
         await writeFile(
             path.join(projectPath, "editor", "ui", "uigraphs.json"),
             JSON.stringify({
-                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                // The graph document's own format version, not the interface document's: the
+                // assembler refuses a `uigraphs.json` claiming a version newer than it reads.
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
                 blueprintDocument: {
                     schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                     blueprints: { [script.id]: script },
