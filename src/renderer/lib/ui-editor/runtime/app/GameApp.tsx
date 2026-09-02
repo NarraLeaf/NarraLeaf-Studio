@@ -159,6 +159,7 @@ import {
 import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import { buildGameHostApiOptions, type GameHostCapabilities } from "./gameHostApiOptions";
+import { createFocusMuteController, type FocusMuteOutput } from "./focusMute";
 import {
     createGameUiSlotComponents,
     createLiveGameUiCallbacks,
@@ -933,6 +934,38 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         hostRef.current = host;
     }, [host]);
+
+    /**
+     * Whether the game's window is the one the player is working in.
+     *
+     * A ref rather than state because nothing this component draws depends on it: what reads it is
+     * the output gate below, at the moment something asks it to re-decide. Starts true, which is
+     * what a game that has not heard otherwise should assume - the alternative is a title that
+     * silences itself before it has been told anything.
+     */
+    const windowFocusedRef = useRef(true);
+    /**
+     * The gate that "mute when unfocused" opens and shuts, built once for the life of this app.
+     *
+     * It reaches the engine through a ref rather than a captured game, because a session is torn
+     * down and rebuilt underneath it (a reload, a language restart) and the gate is a fact about
+     * the window rather than about any one game.
+     */
+    const focusMute = useMemo(() => createFocusMuteController({
+        output: () => {
+            const audio = nlrLiveGameRef.current?.getGameState()?.audioManager as FocusMuteOutput | undefined;
+            return audio && typeof audio.setGlobalVolume === "function" ? audio : null;
+        },
+        log: (level, message) => hostRef.current.log(level, message),
+    }), []);
+    /**
+     * Re-decide the gate. Set while a game is running; null when there is none to be quiet.
+     *
+     * Held in a ref so the focus subscription and the preference subscription - which are rebuilt
+     * on entirely different things - can both reach the current one without either of them being a
+     * dependency of the other.
+     */
+    const applyFocusMuteRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         widgetPatchesByScopeRef.current = widgetPatchesByScope;
@@ -3551,6 +3584,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             onNetworkFetch: host.networkFetch,
             onMovePointer: host.movePointer,
             onOpenExternal: host.openExternal,
+            onSaveScreenshot: host.saveScreenshot,
+            onOpenScreenshotsFolder: host.openScreenshotsFolder,
+            onIsWindowFocused: host.isWindowFocused,
+            // Not a preference and not the host's: the output gate this app holds, read by the one
+            // sound that is not on a gain node. See the mute effect above and `focusMute`.
+            onGetAudioOutputGain: focusMute.getGain,
             onExportProgress: exportProgressInGame,
             onImportProgress: importProgressInGame,
             onStorageDurability: host.storageDurability,
@@ -3593,6 +3632,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.setWindowScale,
         host.getWindowSize,
         host.setWindowSize,
+        host.saveScreenshot,
+        host.openScreenshotsFolder,
+        host.isWindowFocused,
+        focusMute,
         showLayer,
         hideLayer,
         hideLayerGroup,
@@ -5040,6 +5083,151 @@ export function GameApp(props: GameAppProps): ReactNode {
                 surfaceId: activeSurface.id,
                 runtimeScopeId: hostAdapterBundle.runtimeScopeId,
                 eventName: "windowFullscreenChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).catch(err => host.log("error", normalizeError(err)));
+        });
+    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+
+    /**
+     * The window gaining or losing the player's attention, as a fact this app keeps.
+     *
+     * Separate from the blueprint dispatch below because the two want different things: a graph
+     * only wants to hear about a change while there is a surface to run it on, and the output gate
+     * wants to know at all times - including while the game is still booting, which is exactly when
+     * a player who launched it and went to read something else is not listening.
+     *
+     * The shell is the source, so the answer is the same one in Dev Mode, in a preview and in the
+     * build: the window's, from the process that owns it. A host with no window omits both, and the
+     * value stays at "focused", which is what a panel drawn inside Studio honestly is.
+     */
+    useEffect(() => {
+        if (!host.subscribeWindowFocusChanged) {
+            return;
+        }
+        let disposed = false;
+        const set = (isFocused: boolean) => {
+            if (disposed || windowFocusedRef.current === isFocused) {
+                return;
+            }
+            windowFocusedRef.current = isFocused;
+            applyFocusMuteRef.current?.();
+        };
+        // Seeded as well as subscribed: a surface opened while the player was already in another
+        // window produces no event, and a game that waited for one would play on at full volume
+        // until they came back and left again.
+        void Promise.resolve(host.isWindowFocused?.() ?? true)
+            .then(set)
+            .catch(() => undefined);
+        const unsubscribe = host.subscribeWindowFocusChanged(set);
+        return () => {
+            disposed = true;
+            unsubscribe();
+        };
+    }, [host]);
+
+    /**
+     * "Go quiet while I am in another window": the player's preference, applied.
+     *
+     * Re-decided on every preference change as well as on every focus change, because the engine
+     * writes the player's master volume onto the same output whenever `globalVolume` moves - see
+     * `focusMute`, which is where the whole of that arrangement is written down.
+     *
+     * The announcement is the mixer's own listener set rather than the blueprint event stream: what
+     * has to hear this is the `nl.video` widget, whose element is on no gain node and therefore
+     * follows the gate by arithmetic. Nothing an author wrote has changed, so nothing an author
+     * wrote should fire.
+     */
+    useEffect(() => {
+        const game = nlrSession?.game;
+        if (!game) {
+            return;
+        }
+        // Loosened for the reason the skip controller loosens it: `muteOnWindowBlur` is Studio's own
+        // preference riding in the engine's store, so the typed accessor would refuse the key.
+        const preference = (game as {
+            preference?: { getPreference?: (key: string) => unknown };
+        }).preference;
+        let announcing = false;
+        const announce = () => {
+            // The listener set contains this effect's own re-decide, which would answer "nothing
+            // moved" and stop - but only after a second pass over every video on screen.
+            if (announcing) {
+                return;
+            }
+            announcing = true;
+            try {
+                for (const listener of [...preferenceListenersRef.current]) {
+                    listener();
+                }
+            } finally {
+                announcing = false;
+            }
+        };
+        const apply = () => {
+            const enabled = preference?.getPreference?.("muteOnWindowBlur") === true;
+            if (focusMute.update({ enabled, focused: windowFocusedRef.current })) {
+                announce();
+            }
+        };
+        applyFocusMuteRef.current = apply;
+        apply();
+        const unsubscribe = subscribeGamePreferences(apply);
+        return () => {
+            applyFocusMuteRef.current = null;
+            unsubscribe();
+            // Never across a teardown. The engine reads its output back into the master volume
+            // preference when its player mounts, so a zero left here would be taken for the volume
+            // the player chose - and then saved.
+            if (focusMute.release()) {
+                announce();
+            }
+        };
+    }, [focusMute, nlrSession, subscribeGamePreferences]);
+
+    // The same transitions, as the `On Window Focus Changed` head. Shaped exactly like the
+    // fullscreen dispatch above and owned by the host in the same way, so the two ambient window
+    // events reach a graph by one route.
+    useEffect(() => {
+        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeWindowFocusChanged) {
+            return;
+        }
+        return host.subscribeWindowFocusChanged(isFocused => {
+            const eventPayload = { isFocused };
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            void dispatchGlobalBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
+                eventName: "windowFocusChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            }).then(() => dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFocusChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).then(() => dispatchWidgetsBlueprintEvent({
+                document: bundle.ui.uidoc,
+                blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFocusChanged",
                 eventPayload,
                 hostAdapter: hostAdapterBundle.hostAdapter,
                 debug: core.debug,

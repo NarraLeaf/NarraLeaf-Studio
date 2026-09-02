@@ -13,6 +13,7 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL,
     GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
@@ -86,6 +87,8 @@ import {
     writeGameProgressFile,
     type GameProgressEnvironment,
 } from "@shared/utils/gameProgressFile";
+import { BLUEPRINT_SCREENSHOTS_DIR_NAME } from "@shared/types/blueprint/screenshot";
+import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
 import { buildGameMenuTemplate } from "./gameMenu";
@@ -1102,6 +1105,17 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     };
     win.on("enter-full-screen", emitFullscreen(true));
     win.on("leave-full-screen", emitFullscreen(false));
+    // The same shape for the window gaining and losing the player's attention, feeding
+    // `On Window Focus Changed` and the "mute when unfocused" preference. From the window rather
+    // than from the page's own focus events, so what the game hears is what the player did to the
+    // window - and so Dev Mode, a preview and this build all hear it from the same kind of place.
+    const emitWindowFocus = (isFocused: boolean) => () => {
+        if (!win.isDestroyed()) {
+            win.webContents.send(GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL, isFocused);
+        }
+    };
+    win.on("focus", emitWindowFocus(true));
+    win.on("blur", emitWindowFocus(false));
     installWindowCrashHandling(win, {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
@@ -1747,6 +1761,31 @@ function registerRuntimeIpc(): void {
     ipcMain.handle("runtime:menu:set", (_event, model: unknown) => {
         applyGameMenu(normalizeGameMenuModel(model));
     });
+    ipcMain.handle("runtime:window:isFocused", () => mainWindow?.isFocused() === true);
+    /*
+     * The Save Screenshot family.
+     *
+     * Here because this is the process that can do it: `capturePage` is the window's, and the
+     * directory is one only this side knows - `screenshots/` beside the player's saves, so a
+     * screenshot lands wherever the author said player files go, travels with a game moved to
+     * another drive, and is somewhere a player looking for one would look. Nothing about the path
+     * comes from the renderer.
+     */
+    const screenshotsDir = () => path.join(playerFilesDir, BLUEPRINT_SCREENSHOTS_DIR_NAME);
+    ipcMain.handle("runtime:screenshot:save", async () => {
+        const win = mainWindow;
+        if (!win || win.isDestroyed()) {
+            return { outcome: "failed" as const, path: null, error: "There is no window to capture." };
+        }
+        return writeScreenshotFile({
+            directory: screenshotsDir(),
+            capture: async () => (await win.webContents.capturePage()).toPNG(),
+        });
+    });
+    ipcMain.handle("runtime:screenshot:openFolder", () => openScreenshotsFolder({
+        directory: screenshotsDir(),
+        openPath: directory => shell.openPath(directory),
+    }));
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {
         mainWindow?.setFullScreen(fullscreen === true);

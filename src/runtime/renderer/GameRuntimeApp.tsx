@@ -1,6 +1,11 @@
 import type { GameMenuModel } from "@shared/types/gameMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
+import {
+    SCREENSHOT_UNSUPPORTED_MESSAGE,
+    type BlueprintOpenScreenshotsResult,
+    type BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
@@ -768,6 +773,39 @@ function GameRuntimeSession() {
         return bridge?.onCloseRequested(listener) ?? (() => undefined);
     }, [bridge]);
 
+    /**
+     * Whether the player is looking at this game right now.
+     *
+     * Optional-chained like the rest of the window family because the shell is loaded from the
+     * game's own files: a patched game can be running a preload that predates this, and a game that
+     * cannot ask is a game that is being looked at.
+     */
+    const isWindowFocused = useCallback(async (): Promise<boolean> => {
+        return (await bridge?.isWindowFocused?.()) !== false;
+    }, [bridge]);
+
+    const subscribeWindowFocusChanged = useCallback((listener: (isFocused: boolean) => void): (() => void) => {
+        return bridge?.onWindowFocusChanged?.(listener) ?? (() => undefined);
+    }, [bridge]);
+
+    /**
+     * A picture of the frame, and the folder those go in.
+     *
+     * Gated on the shell saying it can, rather than on the method being there: the web export has
+     * both methods and neither ability, and a host that offered them anyway would put a screenshot
+     * button on a page where it can only ever apologise. Absent here, the node reports that the
+     * platform has none - which is the same thing the author saw in Dev Mode's `Failed` branch.
+     */
+    const saveScreenshot = useCallback(async (): Promise<BlueprintScreenshotResult> => {
+        return (await bridge?.saveScreenshot?.())
+            ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
+    }, [bridge]);
+
+    const openScreenshotsFolder = useCallback(async (): Promise<BlueprintOpenScreenshotsResult> => {
+        return (await bridge?.openScreenshotsFolder?.())
+            ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
+    }, [bridge]);
+
     /*
      * The menu bar, when this shell has one.
      *
@@ -836,7 +874,11 @@ function GameRuntimeSession() {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            isWindowFocused,
+            subscribeWindowFocusChanged,
             subscribeCloseRequested,
+            // Present only where the shell can really take one; see `saveScreenshot` above.
+            ...(bridge?.capabilities?.screenshot ? { saveScreenshot, openScreenshotsFolder } : {}),
             // Present only when the shell really has a bar: see the host's own note on why an
             // absent pair is the answer rather than a pair that does nothing.
             ...(bridge?.menu ? { setApplicationMenu, subscribeMenuCommand } : {}),
@@ -875,6 +917,10 @@ function GameRuntimeSession() {
         setWindowSize,
         setFullscreen,
         subscribeFullscreenChanged,
+        isWindowFocused,
+        subscribeWindowFocusChanged,
+        saveScreenshot,
+        openScreenshotsFolder,
         subscribeCloseRequested,
         setApplicationMenu,
         subscribeMenuCommand,

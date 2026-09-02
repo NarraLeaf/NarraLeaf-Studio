@@ -12,6 +12,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
@@ -57,6 +58,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_MUTE_ON_WINDOW_BLUR,
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
@@ -318,6 +320,21 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "read", "text", "unread", "dialog"],
+    },
+    {
+        // Studio's own, like the row above. The gate it moves is the host's (`focusMute`): the
+        // game's whole output, silenced while its window is not the one the player is working in
+        // and put back exactly as it was when they come back.
+        key: "muteOnWindowBlur",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_MUTE_ON_WINDOW_BLUR,
+        getterDisplayName: "Get Mute When Unfocused",
+        setterDisplayName: "Set Mute When Unfocused",
+        pinId: "muteOnWindowBlur",
+        pinLabel: "Mute When Unfocused",
+        valueType: "boolean",
+        defaultValue: false,
+        keywords: ["game", "preference", "mute", "focus", "blur", "window", "audio", "silence", "background"],
     },
     {
         // The run, not the step. `Skip` advances one line; this holds the key down, and clearing it

@@ -108,6 +108,17 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.
 /** Entry for application window fullscreen transitions (entered or left fullscreen). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.event.head.fullscreenChanged" as const;
 /**
+ * Entry for the window gaining or losing focus - the player alt-tabbed away, or came back.
+ *
+ * One event with a boolean rather than a pair of heads, because every use of it is a pair: pause
+ * here, resume there. Two heads would be two graphs to keep in step, and the shape that goes wrong
+ * is one of them being wired and the other forgotten.
+ *
+ * Deliberately not the widget `Focus`/`Blur` heads next door: those are about which element on the
+ * page has the keyboard, and they fire while the window is perfectly focused.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED = "blueprint.event.head.windowFocusChanged" as const;
+/**
  * Entry for an application window close request (the user asked to close the window: native close
  * box, OS shortcut, etc.). The close is held open while the dispatch runs and then proceeds; the
  * dispatch shares one event control, and running `Keep Window Open`
@@ -180,6 +191,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
 ]);
@@ -1048,6 +1060,19 @@ export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO = "blueprint.app.movePointerTo"
 export const BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT = "blueprint.app.movePointerToElement" as const;
 export const BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL = "blueprint.app.openExternal" as const;
 
+/**
+ * A picture of the frame the player is looking at, and the folder the pictures land in.
+ *
+ * Desktop only, and the pair is deliberate: "where did it go" is the question a screenshot button
+ * raises the moment it works, and a game that can take one but not show the player where it went
+ * has answered half of it.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT = "blueprint.app.saveScreenshot" as const;
+export const BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER = "blueprint.app.openScreenshotsFolder" as const;
+
+/** Whether the game's window is the one the player is working in right now. */
+export const BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED = "blueprint.app.isWindowFocused" as const;
+
 /** Inspector param holding the picked address; read only when the `url` pin is unwired. */
 export const BLUEPRINT_EXTERNAL_LINK_PARAM_URL = "url";
 
@@ -1275,6 +1300,15 @@ export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSki
  */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT = "blueprint.game.getSkipReadText" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSkipReadText" as const;
+
+/**
+ * "Go quiet while the player is in another window." Another of Studio's own preferences, and the
+ * behaviour behind it is the host's output gate rather than anything the engine does - see
+ * `focusMute`. The pair is here so that a settings screen can draw the row the same way it draws
+ * every other one.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR = "blueprint.game.getMuteOnWindowBlur" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_MUTE_ON_WINDOW_BLUR = "blueprint.game.setMuteOnWindowBlur" as const;
 
 /**
  * "Skipping is running." The held skip key, as a value a graph can read and write.

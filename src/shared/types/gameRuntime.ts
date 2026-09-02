@@ -1,5 +1,6 @@
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
+import type { BlueprintOpenScreenshotsResult, BlueprintScreenshotResult } from "./blueprint/screenshot";
 import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
@@ -44,6 +45,14 @@ export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
 export const GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL = "runtime:fullscreen:changed" as const;
+/**
+ * Main -> renderer push when the window gains or loses the player's attention.
+ *
+ * From the main process rather than from the page's own `focus`/`blur`, which are a different
+ * question with a different answer: a window whose title bar is being dragged, or whose developer
+ * tools have the keyboard, is one the player is plainly still in and the page is plainly not.
+ */
+export const GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL = "runtime:window:focusChanged" as const;
 /** Main -> renderer push naming the menu item the player picked. */
 export const GAME_RUNTIME_MENU_COMMAND_CHANNEL = "runtime:menu:command" as const;
 /**
@@ -878,6 +887,27 @@ export type GameRuntimePreloadBridge = {
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
+     * Whether this shell's window is the one the player is working in.
+     *
+     * Every shell answers honestly and differently: a desktop window asks the process that owns it,
+     * and a page asks whether it is visible and has focus. Which is why this is here rather than
+     * behind {@link capabilities} - nobody has to fake it.
+     */
+    isWindowFocused(): Promise<boolean>;
+    /** Subscribe to that changing. Returns an unsubscribe function. */
+    onWindowFocusChanged(listener: (isFocused: boolean) => void): () => void;
+    /**
+     * Write a picture of the frame the player is looking at, and say where it went.
+     *
+     * Absent behaviour rather than an absent method, reported through {@link capabilities}.
+     * `screenshot`: the desktop shell captures its window and writes beside the player's saves; the
+     * web export can do neither and answers a `failed` result the graph branches on. The caller
+     * never names the file - see `@shared/types/blueprint/screenshot`.
+     */
+    saveScreenshot(): Promise<BlueprintScreenshotResult>;
+    /** Show the player the folder those go in. Inert on the same shell, for the same reason. */
+    openScreenshotsFolder(): Promise<BlueprintOpenScreenshotsResult>;
+    /**
      * Register a handler consulted when the user asks to close the window. The main process holds
      * the close open until every registered handler resolves, and closes only if all of them
      * answered `true` — any single `false` cancels it. Handlers accumulate rather than replace, so
@@ -899,6 +929,12 @@ export type GameRuntimePreloadBridge = {
          * page is the window and no script may resize it.
          */
         windowScale: boolean;
+        /**
+         * Whether {@link saveScreenshot} can ever write a file. False on the web export, which has
+         * no window to picture and nowhere to leave one; a game reads the absence and offers no
+         * screenshot button there rather than offering one that apologises.
+         */
+        screenshot: boolean;
     };
     /**
      * Claim this shell's one game session, before the game reads or writes anything.

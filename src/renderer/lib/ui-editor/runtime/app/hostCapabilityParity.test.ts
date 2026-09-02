@@ -229,6 +229,12 @@ const STORY_PREVIEW_ABSENT: readonly string[] = [
     "onNetworkFetch",
     "onMovePointer",
     "onOpenExternal",
+    // No window to picture and nowhere to keep the file; no window to be behind, either, so the
+    // panel reads as focused and nothing gates its output.
+    "onSaveScreenshot",
+    "onOpenScreenshotsFolder",
+    "onIsWindowFocused",
+    "onGetAudioOutputGain",
     // No preference store and no locale of its own; the panel follows the editor.
     "onSubscribeGamePreferences",
     "onLocaleChanged",

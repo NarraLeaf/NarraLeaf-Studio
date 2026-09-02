@@ -1,5 +1,13 @@
-import { screen, type BrowserWindow } from "electron";
-import { AppHost, AppProtocol } from "@shared/types/constants";
+import path from "path";
+import { screen, shell, type BrowserWindow } from "electron";
+import { AppHost, AppProtocol, UserDataNamespace } from "@shared/types/constants";
+import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
+import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
+import { devModeProjectDirectoryName } from "./devModeSaveAction";
 import {
     fitInside,
     fittingWindowScales,
@@ -71,6 +79,76 @@ export class DevModeFullscreenSetHandler extends IPCHandler<IPCEventType.devMode
             window.exitFullScreen();
         }
         return this.success();
+    }
+}
+
+/**
+ * Whether the Dev Mode window has the author's attention.
+ *
+ * Asked here rather than in the page, and the difference is the point: `document.hasFocus()` says
+ * no while Studio's own developer tools hold the keyboard, and an author testing a blur handler
+ * with the console open would be testing it against a window they never left. The packaged game
+ * asks its own main process the same question.
+ */
+export class DevModeWindowFocusGetHandler extends IPCHandler<IPCEventType.devModeWindowFocusGet> {
+    readonly name = IPCEventType.devModeWindowFocusGet;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<{ isFocused: boolean }> {
+        return this.success({ isFocused: window.win.isFocused() });
+    }
+}
+
+/**
+ * Where a Dev Mode window's screenshots go: the author's Dev Mode data, one folder per project.
+ *
+ * Not inside the project, for the reason the Dev Mode saves are not: this is the author's own
+ * testing output rather than content, and a project directory that grew a PNG every time a
+ * screenshot button was pressed is a project directory nobody could commit. Named by the same
+ * per-project function the saves use, so "reset this project's player data" reaches all of it.
+ */
+function screenshotsDirectory(window: AppWindow, projectRef: DevModeSaveProjectRef): string {
+    return path.join(
+        window.app.storageManager.getNamespacePath(UserDataNamespace.DevModeScreenshots),
+        devModeProjectDirectoryName(projectRef),
+    );
+}
+
+/**
+ * The `Save Screenshot` node, against the Dev Mode window's own web contents.
+ *
+ * Written through the same helper the packaged game writes through, so an author who takes a
+ * screenshot here gets the same file, named the same way, in a folder laid out the same way as the
+ * one a player would get. What differs is the directory, and only the directory.
+ */
+export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devModeScreenshotSave> {
+    readonly name = IPCEventType.devModeScreenshotSave;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectRef }: IPCEvents[IPCEventType.devModeScreenshotSave]["data"],
+    ): Promise<RequestStatus<BlueprintScreenshotResult>> {
+        return this.tryUse(async () => writeScreenshotFile({
+            directory: screenshotsDirectory(window, projectRef),
+            capture: async () => (await window.win.webContents.capturePage()).toPNG(),
+        }));
+    }
+}
+
+export class DevModeScreenshotOpenFolderHandler
+    extends IPCHandler<IPCEventType.devModeScreenshotOpenFolder> {
+    readonly name = IPCEventType.devModeScreenshotOpenFolder;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectRef }: IPCEvents[IPCEventType.devModeScreenshotOpenFolder]["data"],
+    ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>> {
+        return this.tryUse(async () => openScreenshotsFolder({
+            directory: screenshotsDirectory(window, projectRef),
+            openPath: directory => shell.openPath(directory),
+        }));
     }
 }
 

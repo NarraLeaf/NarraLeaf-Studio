@@ -312,6 +312,46 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { url: "" },
             output: { outcome: "opened", error: null },
         },
+        /**
+         * Write a picture of the frame the player is looking at.
+         *
+         * Where it goes is the shell's answer and never the caller's: a game that could name the
+         * file could write anywhere the player's account can. Desktop only - a page in a browser
+         * has no window to capture from outside it and nowhere to leave a file - and the absence is
+         * reported as a `failed` result the graph branches on, not as an exception.
+         */
+        saveScreenshot: {
+            capabilityId: "navigation.saveScreenshot",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: { outcome: "saved", path: null, error: null },
+        },
+        /** Show the player where those pictures are. Beside the one above, and absent beside it. */
+        openScreenshotsFolder: {
+            capabilityId: "navigation.openScreenshotsFolder",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: { outcome: "opened", path: null, error: null },
+        },
+        /**
+         * Whether this game's window is the one the player is working in.
+         *
+         * A read, but an asynchronous one: on every desktop shell the window belongs to another
+         * process, and the answer a renderer could give on its own is a second, quietly different
+         * one. `On Window Focus Changed` is the same fact arriving rather than being asked for.
+         */
+        isWindowFocused: {
+            capabilityId: "navigation.isWindowFocused",
+            purity: "pure",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: true,
+        },
     },
     /**
      * Surfaces stacked over the page lane, rather than replacing it.

@@ -21,6 +21,14 @@ export enum UserDataNamespace {
     Authorization = "authorization",
     BlueprintPersistence = "blueprint-persistence",
     DevModeSaves = "dev-mode-saves",
+    /**
+     * Pictures the `Save Screenshot` node took in a Dev Mode window, one subdirectory per project.
+     *
+     * Beside the Dev Mode saves rather than inside the project: they are the author's own testing
+     * output, not content, and a project directory that filled with PNGs every time a screenshot
+     * button was pressed would be a project directory nobody could commit.
+     */
+    DevModeScreenshots = "dev-mode-screenshots",
     /** Cache of the pictures picked as a custom workspace background, named by content hash. */
     Backgrounds = "backgrounds",
     /**

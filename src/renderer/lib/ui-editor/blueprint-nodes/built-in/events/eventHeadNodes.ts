@@ -19,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -73,6 +74,13 @@ const PIN_BUTTON: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "integer",
     label: "Button",
+};
+const PIN_IS_WINDOW_FOCUSED: BlueprintNodePinDef = {
+    id: "isFocused",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Is Focused",
 };
 const PIN_KEY: BlueprintNodePinDef = {
     id: "key",
@@ -262,6 +270,7 @@ const GAME_PREFERENCE_HEAD_OPTIONS: { value: string; label: string }[] = [
     { value: "skip", label: "Skip" },
     { value: "skipping", label: "Skipping" },
     { value: "skipReadText", label: "Skip Read Text" },
+    { value: "muteOnWindowBlur", label: "Mute When Unfocused" },
     { value: "showDialog", label: "Show Dialog" },
     { value: "gameSpeed", label: "Game Speed" },
     { value: "cps", label: "Sentence Speed (CPS)" },
@@ -775,6 +784,34 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         // window), so the palette offers it wherever the widget logic API lists the slot.
         scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
         pins: [THEN_PIN, PIN_IS_FULLSCREEN],
+        execute: eventHeadExecute,
+    },
+    {
+        /**
+         * The player alt-tabbed away, or came back.
+         *
+         * One head with a boolean rather than an `On Blur` and an `On Focus`, because every use of
+         * it is a pair - stop this here, start it again there - and two heads is two graphs that
+         * can fall out of step. It is also not the widget `Focus`/`Blur` heads: those are about
+         * which control on the page has the keyboard and fire while the window is perfectly in
+         * front.
+         *
+         * One source per shell, so the three behave alike: the desktop shells hear it from their
+         * window, which means it also fires for a window sent behind by something the game never
+         * saw, and the web export hears the page's own visibility and focus.
+         */
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
+        displayName: "On Window Focus Changed",
+        category: "Events",
+        keywords: ["window", "focus", "blur", "unfocus", "background", "foreground", "alt", "tab", "app"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        // Ambient window event, offered where `On Fullscreen Changed` is offered and for its
+        // reason: a widget listens too, because a control that pauses its own animation while the
+        // player is elsewhere is a widget's business rather than the page's.
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: [THEN_PIN, PIN_IS_WINDOW_FOCUSED],
         execute: eventHeadExecute,
     },
     {

@@ -31,6 +31,8 @@
 
 import {
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+    BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
@@ -412,6 +414,11 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // `Open Link` leaves by `failed` when the address is not one this build declared, or when the
     // player's machine has nothing to open it with - the two the node lets an author branch on.
     [BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL]: { in: ["in"], out: ["next", "failed"] },
+    // The screenshot pair takes `Open Link`'s shape for `Open Link`'s reason: the picture was
+    // written or it was not, and whether this platform has no capture at all or the disk refused
+    // the file is on a data pin. The author's answer to both is the same apology.
+    [BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT]: { in: ["in"], out: ["next", "failed"] },
+    [BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER]: { in: ["in"], out: ["next", "failed"] },
     // The Move Mouse pair is `Open Link`'s shape for the same reason: the cursor went there or it
     // did not, and whether the host has no cursor support or the system refused the move is on a
     // data pin rather than in a third branch nobody could act on differently.

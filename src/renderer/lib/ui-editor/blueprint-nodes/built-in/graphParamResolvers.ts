@@ -164,6 +164,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
@@ -1570,6 +1571,7 @@ const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string 
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING]: { portId: "skipping", key: "skipping" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT]: { portId: "skipReadText", key: "skipReadText" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR]: { portId: "muteOnWindowBlur", key: "muteOnWindowBlur" },
     // The one row whose port is not named after its preference: the node reads `Is Dialog Shown`,
     // and the three nodes that write the same value are named for the act rather than the key.
     [BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN]: { portId: "isShown", key: "showDialog" },
