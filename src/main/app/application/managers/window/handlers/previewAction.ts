@@ -1,5 +1,6 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -12,7 +13,11 @@ export class PreviewLaunchHandler extends IPCHandler<IPCEventType.previewLaunch>
         { projectPath, entry }: IPCEvents[IPCEventType.previewLaunch]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.previewLaunch]["response"]>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getPreviewManager().launch(projectPath, entry);
+            // The window's project, not the payload's. A preview runs the project's code, so which
+            // project that is has to be the one this window was opened on - the rule a build and a
+            // Dev Mode launch already follow, and the one the trust gate behind this assumes.
+            const status = await window.getApp().getPreviewManager()
+                .launch(requireWindowProject(window, projectPath), entry);
             return { status };
         });
     }
