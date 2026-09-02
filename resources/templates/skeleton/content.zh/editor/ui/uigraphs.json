@@ -21617,8 +21617,8 @@
         },
         "bindings": {}
       },
-      "f6ce7fbc-6a23-419e-b473-1d884352b0bf": {
-        "id": "f6ce7fbc-6a23-419e-b473-1d884352b0bf",
+      "8851c0ef-c54d-4399-b032-9d380e2a6130": {
+        "id": "8851c0ef-c54d-4399-b032-9d380e2a6130",
         "name": "静音开",
         "owner": {
           "kind": "widgetMain",
@@ -21631,11 +21631,11 @@
           "kind": "graph",
           "graphs": {
             "eventIds": [
-              "c7830507-cc1c-4f97-b130-0631a07c0189"
+              "5b0dddaf-9d21-4cd3-8161-f35251fe645d"
             ],
             "events": {
-              "c7830507-cc1c-4f97-b130-0631a07c0189": {
-                "id": "c7830507-cc1c-4f97-b130-0631a07c0189",
+              "5b0dddaf-9d21-4cd3-8161-f35251fe645d": {
+                "id": "5b0dddaf-9d21-4cd3-8161-f35251fe645d",
                 "name": "图层 1",
                 "graph": {
                   "nodes": {
@@ -21838,8 +21838,8 @@
         },
         "bindings": {}
       },
-      "216e1287-aa30-4ef2-86d1-56a68b6fd941": {
-        "id": "216e1287-aa30-4ef2-86d1-56a68b6fd941",
+      "5337fa5c-6699-4b8e-892d-d16611474c2c": {
+        "id": "5337fa5c-6699-4b8e-892d-d16611474c2c",
         "name": "静音关",
         "owner": {
           "kind": "widgetMain",
@@ -21852,11 +21852,11 @@
           "kind": "graph",
           "graphs": {
             "eventIds": [
-              "90ea2824-771f-48ea-8fa2-0a32e5e468d5"
+              "03bf596d-fbc7-4250-a970-5e5479743c73"
             ],
             "events": {
-              "90ea2824-771f-48ea-8fa2-0a32e5e468d5": {
-                "id": "90ea2824-771f-48ea-8fa2-0a32e5e468d5",
+              "03bf596d-fbc7-4250-a970-5e5479743c73": {
+                "id": "03bf596d-fbc7-4250-a970-5e5479743c73",
                 "name": "图层 1",
                 "graph": {
                   "nodes": {
@@ -23599,15 +23599,15 @@
         ]
       },
       "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:config-mute-on": {
-        "activeBlueprintId": "f6ce7fbc-6a23-419e-b473-1d884352b0bf",
+        "activeBlueprintId": "8851c0ef-c54d-4399-b032-9d380e2a6130",
         "privateBlueprintIds": [
-          "f6ce7fbc-6a23-419e-b473-1d884352b0bf"
+          "8851c0ef-c54d-4399-b032-9d380e2a6130"
         ]
       },
       "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:config-mute-off": {
-        "activeBlueprintId": "216e1287-aa30-4ef2-86d1-56a68b6fd941",
+        "activeBlueprintId": "5337fa5c-6699-4b8e-892d-d16611474c2c",
         "privateBlueprintIds": [
-          "216e1287-aa30-4ef2-86d1-56a68b6fd941"
+          "5337fa5c-6699-4b8e-892d-d16611474c2c"
         ]
       }
     },
@@ -23615,6 +23615,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-02T22:59:54.847Z"
+    "updatedAt": "2026-09-02T23:52:00.693Z"
   }
 }
