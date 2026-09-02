@@ -135,8 +135,14 @@ const SYNTHETIC_OWNERS: Record<BlueprintOwnerRef["kind"], BlueprintOwnerRef> = {
     storyAction: { kind: "storyAction", blueprintId: "blueprint" },
 };
 
-/** Every owner kind a blueprint can belong to, in the order `--owner` offers them. */
-export const BLUEPRINT_OWNER_KINDS = Object.keys(SYNTHETIC_OWNERS) as BlueprintOwnerRef["kind"][];
+/**
+ * Every owner kind a blueprint can belong to, in the order `--owner` offers them.
+ *
+ * Re-exported from the `owner=` grammar rather than derived from {@link SYNTHETIC_OWNERS} beside it.
+ * Both records are keyed by the union, so neither can miss a kind - but two lists is still two
+ * things to read, and the grammar is the one the reader, the compiler and the printer all consult.
+ */
+export { BLUEPRINT_OWNER_KINDS } from "./dsl/ownerGrammar";
 
 /** Every graph kind a node can declare. */
 export const BLUEPRINT_GRAPH_KINDS: BlueprintGraphKind[] = ["event", "function", "macro"];

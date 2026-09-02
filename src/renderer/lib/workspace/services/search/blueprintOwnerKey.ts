@@ -22,7 +22,10 @@ export type ParsedBlueprintOwnerKey = {
 
 export function parseBlueprintOwnerKey(ownerKey: string): ParsedBlueprintOwnerKey | null {
     const owner = decodeBlueprintOwnerKey(ownerKey);
-    switch (owner?.kind) {
+    if (!owner) {
+        return null;
+    }
+    switch (owner.kind) {
         case "globalMain":
             return { ownerKind: "globalMain" };
         case "surfaceMain":
@@ -42,7 +45,12 @@ export function parseBlueprintOwnerKey(ownerKey: string): ParsedBlueprintOwnerKe
             // The story blueprint is its own key, so there is no surface or element to carry; the
             // jump target resolves the row from the blueprint itself.
             return { ownerKind: "storyAction" };
-        default:
-            return null;
+        default: {
+            // An owner kind added without an arm here would otherwise return null, and a null owner
+            // is "this hit has nowhere to go" - so every blueprint of the new kind would be found by
+            // search and refuse to open.
+            const unreachable: never = owner;
+            return unreachable;
+        }
     }
 }

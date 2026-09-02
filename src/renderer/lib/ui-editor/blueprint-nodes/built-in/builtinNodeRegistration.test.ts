@@ -42,6 +42,24 @@ describe("built-in blueprint node registration", () => {
         expect(listExportedNodeArrays().length).toBeGreaterThan(0);
     });
 
+    it("declares no node that is both pure and latent", () => {
+        // `isPure` and `isLatent` are two booleans describing one three-state fact: a node computes
+        // a value (pure), does something (effectful), or does something and the caller waits
+        // (latent). The fourth state the pair can spell means nothing, and the two validators that
+        // read them would disagree about it - a function graph refuses latent nodes, a value graph
+        // wants pure ones, and a node claiming both would be admitted by one and refused by the
+        // other for the same reason.
+        //
+        // Measured across the catalogue: 338 pure, 231 latent, 74 plain effectful, and none both.
+        // Folding the pair into one field would touch every node definition in sixty-odd files and
+        // change nothing an author sees, so the illegal state is held off by this instead.
+        const both = allBuiltinBlueprintNodes
+            .filter(def => def.isPure && def.isLatent)
+            .map(def => def.type);
+
+        expect(both).toEqual([]);
+    });
+
     it("includes every exported node array in allBuiltinBlueprintNodes", () => {
         const registeredTypes = new Set(allBuiltinBlueprintNodes.map(def => def.type));
         const missing = listExportedNodeArrays().flatMap(([name, defs]) => {
