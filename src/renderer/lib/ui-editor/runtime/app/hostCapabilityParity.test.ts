@@ -254,6 +254,25 @@ describe("Dev Mode and the shipped game are the same host", () => {
         expect(runtime.length, "the packaged runtime host was not read").toBeGreaterThan(400);
     });
 
+    it("names the window-reflex capabilities in both hosts", () => {
+        // The two assertions below derive their lists from the type, which is what makes them keep
+        // working as capabilities are added. It also means a capability the type stopped declaring
+        // would silently stop being required of anyone. These four are the ones a player reaches by
+        // doing something to the WINDOW rather than to the game - alt-tabbing away, pressing a
+        // screenshot button - which is exactly the shape that has been present in Dev Mode and
+        // absent in the build before, so they are named here as well as derived.
+        for (const member of [
+            "isWindowFocused",
+            "subscribeWindowFocusChanged",
+            "saveScreenshot",
+            "openScreenshotsFolder",
+        ]) {
+            expect(optional, `GameAppHost no longer declares ${member}`).toContain(member);
+            expect(sets(devMode, member), `the Dev Mode host no longer sets ${member}`).toBe(true);
+            expect(sets(runtime, member), `the packaged game no longer sets ${member}`).toBe(true);
+        }
+    });
+
     it("gives the Dev Mode window every capability the shipped game has", () => {
         const missing = optional
             .filter(member => sets(runtime, member) && !sets(devMode, member))

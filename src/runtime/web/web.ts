@@ -13,6 +13,7 @@ import {
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { SCREENSHOT_UNSUPPORTED_MESSAGE } from "@shared/types/blueprint/screenshot";
+import { createWindowFocusTracker } from "./windowFocus";
 import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
 import { installBrowserGestureGuards } from "./browserGestures";
 import { installScreenWakeLock } from "./screenWakeLock";
@@ -159,6 +160,22 @@ const screenWakeLock = installScreenWakeLock({
     },
 });
 
+// A page is the window here, so "is the player looking at us" is three browser signals for two
+// facts. See `windowFocus` for how they collapse into one change.
+const windowFocus = createWindowFocusTracker({
+    read: () => document.visibilityState !== "hidden" && document.hasFocus(),
+    subscribe: listener => {
+        document.addEventListener("visibilitychange", listener);
+        window.addEventListener("focus", listener);
+        window.addEventListener("blur", listener);
+        return () => {
+            document.removeEventListener("visibilitychange", listener);
+            window.removeEventListener("focus", listener);
+            window.removeEventListener("blur", listener);
+        };
+    },
+});
+
 const bridge: GameRuntimePreloadBridge = {
     readPack,
     assetUrl,
@@ -217,25 +234,8 @@ const bridge: GameRuntimePreloadBridge = {
     // count as away - a game muted on blur should be quiet in a background tab as well as behind
     // another application - and `visibilitychange` is the only one of the two a mobile browser
     // reliably fires when the player switches apps.
-    isWindowFocused: async () => document.visibilityState !== "hidden" && document.hasFocus(),
-    onWindowFocusChanged: listener => {
-        let last = document.visibilityState !== "hidden" && document.hasFocus();
-        const handler = () => {
-            const next = document.visibilityState !== "hidden" && document.hasFocus();
-            if (next !== last) {
-                last = next;
-                listener(next);
-            }
-        };
-        document.addEventListener("visibilitychange", handler);
-        window.addEventListener("focus", handler);
-        window.addEventListener("blur", handler);
-        return () => {
-            document.removeEventListener("visibilitychange", handler);
-            window.removeEventListener("focus", handler);
-            window.removeEventListener("blur", handler);
-        };
-    },
+    isWindowFocused: async () => windowFocus.isFocused(),
+    onWindowFocusChanged: listener => windowFocus.onChange(listener),
     // A page cannot picture the window it is inside, and a file it produced would be a download the
     // player has to accept and then find. Reported rather than faked: `capabilities.screenshot` is
     // false below, so a game can leave the button out, and the node's own `Failed` branch runs for
