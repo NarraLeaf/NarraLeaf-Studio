@@ -84,6 +84,9 @@ const SESSION = {
     signedInAt: 0,
 };
 
+/** What the trust ledger was asked to record, so a clone's arrival can be asserted rather than stubbed. */
+const recordedImports: { path: string; origin: string }[] = [];
+
 function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
     const noop = () => undefined;
     const state = new Map<string, unknown>([["versionControl.serverSessions", sessions]]);
@@ -94,6 +97,9 @@ function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
             set: (key: string, value: unknown) => { state.set(key, value); },
         }),
         getUserDataDir: () => "D:/userData",
+        projectTrustManager: {
+            recordImport: (path: string, origin: string) => { recordedImports.push({ path, origin }); },
+        },
     } as unknown as BaseApp;
 }
 
@@ -102,6 +108,7 @@ beforeEach(() => {
     lore.missing.count = 0;
     lore.wrote.length = 0;
     lore.writeFails.value = false;
+    recordedImports.length = 0;
     lore.signIn.mockReset().mockResolvedValue({
         authUrl: "", remoteOrigin: "", account: {}, signedInAt: 0,
     });
@@ -211,6 +218,11 @@ describe("the address a clone came from", () => {
         // After the release, for the reason `setRemote` closes the session first: the backend
         // reads this file when it opens a store.
         expect(lore.calls.indexOf("writeRemote")).toBeGreaterThan(lore.calls.indexOf("release"));
+        // A clone is somebody else's working tree, so it arrives distrusted like any other import.
+        // Recorded once, for the copy, and marked as having come from a server rather than a file.
+        expect(recordedImports).toHaveLength(1);
+        expect(recordedImports[0]!.origin).toBe("remote");
+        expect(recordedImports[0]!.path.replace(/\\/g, "/")).toContain("driftwood");
     });
 
     it("is not written for a clone that failed, which has no copy to write it into", async () => {
@@ -219,6 +231,8 @@ describe("the address a clone came from", () => {
         await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
             .rejects.toThrow(/No token stored/);
         expect(lore.wrote).toHaveLength(0);
+        // Nor is anything recorded as having arrived: there is no copy on disk to distrust.
+        expect(recordedImports).toHaveLength(0);
     });
 
     it("does not turn a clone that worked into one that failed", async () => {
