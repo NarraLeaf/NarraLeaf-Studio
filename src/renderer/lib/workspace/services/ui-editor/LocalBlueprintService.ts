@@ -81,6 +81,7 @@ import {
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
+import { writeScriptDeclarations } from "./blueprint/scriptDeclarationFiles";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { anchorElementId, blueprintContract } from "@shared/blueprint/ownerShape";
 import {
@@ -794,6 +795,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         // blueprint pointing at a file that does not exist, which is the dangling state the model
         // allows for a file the author deleted - and reporting it as that would blame them for a
         // write of ours that failed.
+        // The declarations first: an author who opens the new file wants completion in it, and the
+        // project half is only current as of the last time this ran.
+        if (frontend === "typescript") {
+            await writeScriptDeclarations(this.getContext());
+        }
         const scriptRef = frontend === "typescript" ? await this.createStarterScriptFile(ownerRef, name) : null;
         this.applyBlueprintEdit({ blueprintId: id, ownerKey }, doc => {
             const blueprint =

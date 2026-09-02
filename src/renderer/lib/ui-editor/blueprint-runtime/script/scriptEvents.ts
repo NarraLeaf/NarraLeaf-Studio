@@ -84,6 +84,9 @@ import type {
 import type {
     GameScriptContext,
     ScriptSelf,
+    StoryScriptContext,
+    StorySyncScriptContext,
+    ValueScriptContext,
     ScriptWidgetType,
     StoryActionHandler,
     StoryConditionHandler,
@@ -407,6 +410,11 @@ export type ScriptEventHandler<Self extends ScriptSelf, E extends ScriptEventId>
 export type ScriptEvent<E extends ScriptEventId> = ScriptEventPayload<E>;
 
 export type GlobalCtx = GameScriptContext<{ kind: "project" }>;
+/** A story row's context. The synchronous modes get {@link StorySyncCtx} instead. */
+export type StoryCtx = StoryScriptContext;
+export type StorySyncCtx = StorySyncScriptContext;
+/** A value binding's context: the host API's reads, and nothing that waits. */
+export type ValueCtx = ValueScriptContext;
 export type SurfaceCtx = GameScriptContext<SurfaceSelf>;
 export type WidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ElementSelf<W>>;
 export type ComponentWidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ComponentElementSelf<W>>;
