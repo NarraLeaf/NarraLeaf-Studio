@@ -390,6 +390,9 @@ function broadcastReload(target = 'all') {
         // at runtime; 7zip-bin computes the path to its 7za executable from its
         // own __dirname, so bundled it points at the bundle directory and the
         // extractor the content codec's toolchain unpack needs is not there.
+        // That last one is corrected in code now, by
+        // src/main/buildWorker/sevenZipBinary.ts, so this entry is a tidiness
+        // rather than the thing that makes the unpack work.
         // Keep this list in sync with build-main.js.
         external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
         sourcemap: true,
