@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
 import { devModeScreenEffectQuality, screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import { AppWindow } from "../appWindow";
@@ -56,15 +57,19 @@ export class StudioTasksPrebakeWeatherHandler extends IPCHandler<IPCEventType.st
         { projectPath, specs }: IPCEvents[IPCEventType.studioTasksPrebakeWeather]["data"],
     ): RequestStatus<IPCEvents[IPCEventType.studioTasksPrebakeWeather]["response"]> {
         if (projectPath) {
+            // Baking reads the project's stories and spawns ffmpeg over its clips, so the project
+            // has to be the window's own: a renderer free to name one would be free to have some
+            // other project read and encoded on its behalf.
+            const projectRoot = requireWindowProject(window, projectPath);
             void window.getApp().getWeatherBakeManager().ensure({
-                projectRoot: projectPath,
+                projectRoot,
                 specs,
                 priority: "idle",
                 // Whatever Dev Mode will ask for, because being ready for it is the only reason this
                 // exists. See `devModeScreenEffectQuality`.
                 quality: devModeScreenEffectQuality(window.getApp()),
                 threads: screenEffectBakeThreads(window.getApp()),
-                claim: { owner: WeatherBakeOwner.prebake(projectPath), attempt: crypto.randomUUID() },
+                claim: { owner: WeatherBakeOwner.prebake(projectRoot), attempt: crypto.randomUUID() },
             });
         }
         return this.success({});

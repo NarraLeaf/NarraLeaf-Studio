@@ -510,8 +510,8 @@ export const workspace = {
         panelMenu: {
             hideItem: "隐藏此项目",
             collapseItem: "折叠到折叠项",
-            resetOrder: "恢复默认顺序",
-            resetOrderDisabled: "当前已是默认顺序",
+            resetLayout: "恢复默认布局",
+            resetLayoutDisabled: "当前已是默认布局",
         },
         // 左侧导轨的折叠项：一个图标代表被折叠进去的面板，点击后在导轨旁展开列表。
         panelGroup: {

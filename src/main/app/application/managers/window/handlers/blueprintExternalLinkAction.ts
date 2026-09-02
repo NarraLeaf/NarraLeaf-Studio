@@ -26,6 +26,7 @@ import {
     type BlueprintOpenExternalResult,
     type ExternalLinkDeclaringPlugin,
 } from "@shared/types/blueprint/externalLink";
+import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -34,10 +35,16 @@ export class BlueprintExternalLinkOpenHandler extends IPCHandler<IPCEventType.bl
     readonly type = IPCMessageType.request;
 
     public async handle(
-        _window: AppWindow,
+        window: AppWindow,
         data: IPCEvents[IPCEventType.blueprintExternalLinkOpen]["data"],
     ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>> {
         try {
+            // Handing an address to the system browser is the project reaching an address it
+            // chose, by way of the author's machine. A distrusted project does not get to.
+            const distrusted = refuseDistrustedWindow(window, "external link");
+            if (distrusted) {
+                throw new Error(distrusted);
+            }
             return this.success({ result: await openCoreLink(data.request.url) });
         } catch (err) {
             return this.failed(err);
@@ -68,6 +75,10 @@ export class BlueprintExternalLinkOpenForPluginHandler
         data: IPCEvents[IPCEventType.blueprintExternalLinkOpenForPlugin]["data"],
     ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>> {
         try {
+            const distrusted = refuseDistrustedWindow(window, "external link");
+            if (distrusted) {
+                throw new Error(distrusted);
+            }
             let plugins: readonly ExternalLinkDeclaringPlugin[] = [];
             try {
                 // Enabled plugins only, which `listRuntimePlugins` already restricts to: a disabled

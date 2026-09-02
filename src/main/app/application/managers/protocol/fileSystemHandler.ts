@@ -8,6 +8,7 @@ import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { decodeTextBytes, encodeTextBytes, resolveTextEncodingId } from "../../../../utils/textCodec";
 import { decodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import { FileStorageBatchEntry, FileStorageInfo, StorageManager } from "../storageManager";
+import { INERT_CONTENT_TYPE, isExecutableContentType, type ProjectCodePolicy } from "./executableContent";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
     private rules: ProtocolRule[] = [];
@@ -118,6 +119,13 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
 /**
  * Protocol handler for file system hash-based operations
  * Handles requests to app://fs/{hash} URLs
+ *
+ * Serving bytes is also the last place a project's code passes through the main process before a
+ * renderer runs it: a puppet backend is `import()`ed from one of these URLs, and an import needs
+ * the response to say it is JavaScript. So this handler asks, per response, whether the window the
+ * grant belongs to may run what its project supplied - see {@link contentTypeHeaders} - which puts
+ * the execution gate in the process that holds the trust ledger rather than in the renderer that
+ * wants the code.
  */
 /**
  * How many of a batch's files are written at once.
@@ -132,11 +140,14 @@ const BATCH_WRITE_CONCURRENCY = 8;
 
 export class FileSystemHashHandler implements ProtocolHandler {
     private logger: Logger;
+    /** Files already reported as served inert, so a bundle fetched a hundred times logs once. */
+    private readonly inertFilesLogged = new Set<string>();
 
     constructor(
         public readonly scheme: string,
         public readonly privileges: ProtocolScheme["privileges"],
         private readonly storageManager: StorageManager,
+        private readonly codePolicy: ProjectCodePolicy,
     ) {
         this.logger = new Logger("FileSystemHashHandler");
     }
@@ -229,6 +240,33 @@ export class FileSystemHashHandler implements ProtocolHandler {
     }
 
     /**
+     * The `Content-Type` a response carries, and the one case where it is not the file's own.
+     *
+     * A grant serves bytes the renderer asked for by path, and for most types the renderer only
+     * displays them. JavaScript, WebAssembly and HTML are the exceptions: served with their own
+     * type they are *run* - a module `import()` of the URL, a script tag, a frame. Whether the
+     * window may run what the project supplied is the project-trust question, and it is asked
+     * here, in the process that holds the ledger, rather than trusted to the renderer that wants
+     * the code. A refused file is still served, as plain text with sniffing off, so a distrusted
+     * project stays readable and editable while an `import()` of it fails on the type the way it
+     * would for any text file.
+     */
+    private contentTypeHeaders(
+        storageInfo: FileStorageInfo,
+        filePath: string,
+        contentType: string,
+    ): Record<string, string> {
+        if (!isExecutableContentType(contentType) || this.codePolicy.mayRunProjectCode(storageInfo.ownerWebContentsId)) {
+            return { "Content-Type": contentType };
+        }
+        if (!this.inertFilesLogged.has(filePath)) {
+            this.inertFilesLogged.add(filePath);
+            this.logger.warn("Served as inert text because the window's project is not trusted: " + filePath);
+        }
+        return { "Content-Type": INERT_CONTENT_TYPE, "X-Content-Type-Options": "nosniff" };
+    }
+
+    /**
      * Serve one file from inside a directory grant.
      *
      * Never consumes the grant: the whole point of a bundle is that many files are read through the
@@ -264,7 +302,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
         return {
             statusCode: 200,
             headers: {
-                "Content-Type": getMimeType(filePath),
+                ...this.contentTypeHeaders(storageInfo, filePath, getMimeType(filePath)),
                 // Same reasoning as a session grant: the hash is minted per resolve, so cached bytes
                 // cannot outlive the record they belong to.
                 "Cache-Control": "private, max-age=3600"
@@ -299,11 +337,11 @@ export class FileSystemHashHandler implements ProtocolHandler {
             this.storageManager.cleanup(hash);
         }
 
-        const mimeType = getMimeType(storageInfo.path);
+        const mimeType = storageInfo.raw ? "application/octet-stream" : getMimeType(storageInfo.path);
         return {
             statusCode: 200,
             headers: {
-                "Content-Type": storageInfo.raw ? "application/octet-stream" : mimeType,
+                ...this.contentTypeHeaders(storageInfo, storageInfo.path, mimeType),
                 // Session-lived grants back engine assets that get re-fetched on
                 // scene changes: let the renderer's HTTP cache absorb repeats.
                 // The hash URL is unique per grant (each re-resolve mints a new

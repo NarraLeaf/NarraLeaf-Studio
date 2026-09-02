@@ -576,9 +576,9 @@ export const workspace = {
         panelMenu: {
             hideItem: "Hide this item",
             collapseItem: "Collapse into group",
-            resetOrder: "Reset to default order",
+            resetLayout: "Reset to default layout",
             // Hover text of the greyed-out reset row.
-            resetOrderDisabled: "Already in the default order.",
+            resetLayoutDisabled: "Already in the default layout.",
         },
         // The left rail's collapse group: one icon standing in for the panels folded behind it,
         // which unfolds into a flyout listing them.

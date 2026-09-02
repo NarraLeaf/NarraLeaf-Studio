@@ -423,7 +423,7 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
             // back is the one sentence a compile diagnostic can carry.
             return { success: false, error: outcome.failures.get(key) ?? "The weather could not be produced" };
         }
-        const hash = window.app.storageManager.allocateHash(clipPath, true, "read");
+        const hash = window.app.storageManager.allocateHash(clipPath, true, "read", window.getWebContents().id);
         // A freshly allocated grant is `allocated`, and the protocol handler serves only `ready` -
         // every other allocator marks it after checking the file, and skipping it here yields a URL
         // that looks correct everywhere (the element carries it, the log shows the request arriving)

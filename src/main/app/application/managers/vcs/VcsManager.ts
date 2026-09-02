@@ -47,6 +47,7 @@ import {
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
 import { getVcsAvailability, requireVcsBackend, type VcsBackend } from "./backend";
+import { directoryHoldsNothing } from "../../utils/directoryHoldsNothing";
 // Type-only: erased at compile time, so no Lore module is reachable from here
 // at load time. See backend.ts for why that matters.
 import type { LoreGlobals, LoreHex, StoreHandle } from "./lore";
@@ -2723,6 +2724,16 @@ export class VcsManager extends Manager {
         return this.serialize(root, async () => {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
+            // On the trust ledger before the copy rather than after it, for the reason the package
+            // import records first: a working tree that lands unrecorded would be met later as a
+            // mere folder rather than as somebody else's code, and a clone carries a puppet backend
+            // that Studio `import()`s as soon as anything shows a model. The destination has to be
+            // empty for the clone to start, so the row cannot mark anything the author already had
+            // there; a clone that fails without writing anything takes the row back below.
+            const recorded = await directoryHoldsNothing(root);
+            if (recorded) {
+                this.app.projectTrustManager.recordArrival(root, "remote", new Date().toISOString());
+            }
             let cloned: { branch: string; fileCount: number };
             try {
                 cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
@@ -2735,11 +2746,10 @@ export class VcsManager extends Manager {
                     { repositoryUrl, onProgress: options.onProgress },
                 ));
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
-                // A clone is somebody else's working tree, and a working tree can carry a puppet
-                // backend that Studio `import()`s as soon as anything shows a model. Recorded
-                // inside the try, after the copy is on disk and before anything can open it.
-                this.app.projectTrustManager.recordImport(root, "remote", new Date().toISOString());
             } catch (error) {
+                if (recorded && await directoryHoldsNothing(root)) {
+                    this.app.projectTrustManager.forgetArrival(root);
+                }
                 // Logged here because nothing else does: the handler turns this into a
                 // refusal the wizard prints, and a clone that failed used to leave the log
                 // with no line at all - the one place somebody looks when the sentence on

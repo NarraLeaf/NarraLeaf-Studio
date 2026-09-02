@@ -1,7 +1,7 @@
 import type { App } from "@/app/app";
 import type { AppWindow } from "../managers/window/appWindow";
-import { WindowAppType } from "@shared/types/window";
 import type { ProjectTrustManager } from "../managers/projectTrustManager";
+import { windowProjectPath } from "./windowProject";
 import { emitWorkspaceConsoleLog } from "./workspaceConsole";
 
 /**
@@ -44,6 +44,8 @@ export const DISTRUSTED_OPERATIONS = [
     "media inspection",
     "media conversion",
     "remote asset download",
+    "network request",
+    "external link",
     /**
      * Launching the author's editor on the project's scripts folder.
      *
@@ -58,8 +60,7 @@ export type DistrustedOperation = typeof DISTRUSTED_OPERATIONS[number];
 
 export function projectDistrustedMessage(operation: DistrustedOperation): string {
     return `The ${operation} is unavailable because this project is not trusted. `
-        + "It arrived from outside this machine, and Studio does not run code from a project until "
-        + "you say so. Trust it under Settings to continue.";
+        + "Studio does not run a project it did not create until you trust it under Settings.";
 }
 
 /**
@@ -109,15 +110,15 @@ export function refuseDistrustedOperation(
  * read one of those would be asking the caller whether the caller is allowed.
  *
  * A window with no project - the launcher, settings - is not governed by project trust at all, and
- * answers null.
+ * answers null. Workspace and Dev Mode windows both have one. A Dev Mode window only ever opens on
+ * a project that was trusted when it launched, and the ledger is read again here rather than
+ * remembered from then, so a grant the author has since withdrawn is honoured on the window's next
+ * request rather than on its next launch.
  */
 export function refuseDistrustedWindow(
     window: AppWindow,
     operation: DistrustedOperation,
 ): string | null {
-    if (window.getWindowType() !== WindowAppType.Workspace) {
-        return null;
-    }
-    const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps().projectPath;
+    const projectPath = windowProjectPath(window);
     return projectPath ? refuseDistrustedOperation(window.getApp(), projectPath, operation) : null;
 }

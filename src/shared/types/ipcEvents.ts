@@ -218,6 +218,7 @@ export enum IPCEventType {
     projectWizardSelectDirectory = "projectWizard.selectDirectory",
     projectWizardSelectPackage = "projectWizard.selectPackage",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
+    projectWizardCreated = "projectWizard.created",
     
     workspaceLaunch = "workspace.launch",
     workspaceOpenRecent = "workspace.openRecent",
@@ -2017,6 +2018,23 @@ export type IPCProjectWizardEvents = {
             dir: string;
         };
     };
+    /**
+     * The wizard reports a project it has just written, so it opens as Studio's own.
+     *
+     * Answered for the wizard window only, and only for a folder that window was granted to write
+     * and that now holds a project: the row this creates vouches for the project, and a vouch is
+     * the one thing a window showing project content must never be able to send.
+     */
+    [IPCEventType.projectWizardCreated]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            recorded: boolean;
+        };
+    };
 };
 
 export type IPCWorkspaceEvents = {
@@ -2331,7 +2349,14 @@ export type IPCWorkspaceEvents = {
             record: ProjectTrustRecord | null;
         };
     };
-    /** The author vouches for a project that arrived from elsewhere. */
+    /**
+     * The author vouches for a project that arrived from elsewhere.
+     *
+     * Answered for the Settings window only, as are the revoke and the list below. The workspace
+     * is where a project's content is shown and, once trusted, where its code runs; a grant taken
+     * from there would let the thing being judged answer the question. The status bar sends the
+     * author to Settings instead.
+     */
     [IPCEventType.projectTrustGrant]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,

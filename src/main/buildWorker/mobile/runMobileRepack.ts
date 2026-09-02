@@ -1,7 +1,7 @@
 import { constants as bufferConstants } from "buffer";
 import fs from "fs/promises";
-import { createReadStream } from "fs";
 import path from "path";
+import { packBuffer } from "@narraleaf/bindings";
 import { readKeystore } from "./keystoreReader";
 import { buildAab } from "./buildAab";
 import { signJar } from "./jarSigning";
@@ -14,6 +14,7 @@ import {
     type ApkSigningIdentity,
 } from "./signingIdentity";
 import type { ZipEntrySource } from "./zipWriter";
+import { countBuildStep } from "../stepProgress";
 import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
 /**
@@ -80,26 +81,38 @@ async function collectSiteFiles(sourceDir: string): Promise<SiteFile[]> {
 }
 
 /**
- * Turn the collected site files into repack entries. Files stream through untouched: the mobile
- * packages ship the compiled site in the clear, exactly as the web export does.
+ * Turn the collected site files into repack entries, each sealed into the container the mobile
+ * shells read their payload from.
  *
- * They used to be sealed under a key written into `shell-config.json` for the shell's decoder.
- * A key the package carries is a key every copy of it hands out, and the scheme was the same in
- * every build - so one tool written against one game opened all of them, while the build had
- * told the author their content was protected. A protection that only holds until somebody
- * writes that tool once is not one, and the build says so instead (see the `mobile-unprotected`
- * preflight finding).
+ * The container is the format a mobile package keeps its content in, and nothing more: the key
+ * that opens it travels inside the same package (in `shell-config.json`, which the repackers
+ * write outside wwwRoot and leave plain, because the shell needs it to bootstrap), so it is not
+ * asset protection and nothing in the build calls it that. It is applied to every mobile build,
+ * whatever the project's protection switch says, the way the pack format is applied to every
+ * desktop build. All-or-nothing: the shell assumes everything under wwwRoot is in the container,
+ * so the index override below goes in too.
  */
-async function siteEntries(files: SiteFile[], indexHtmlOverride: string): Promise<SiteEntry[]> {
-    const entries: SiteEntry[] = files.map(file => ({
-        relativePath: file.relativePath,
-        source: { kind: "stream", size: file.size, open: () => createReadStream(file.absolutePath) },
-    }));
+async function siteEntries(
+    files: SiteFile[],
+    indexHtmlOverride: string,
+    contentKey: string,
+): Promise<SiteEntry[]> {
+    const entries: SiteEntry[] = [];
+    // A read and a seal of every file in the game, which is minutes for a voiced project, so the
+    // bar counts it.
+    const counted = countBuildStep(files.length, "file");
+    for (const file of files) {
+        // One file at a time. The package is assembled in memory anyway (see MAX_PAYLOAD_BYTES), so
+        // this holds one plaintext file beyond that, not the whole payload at once.
+        const data = packBuffer(await fs.readFile(file.absolutePath), contentKey);
+        entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
+        counted.advance();
+    }
     // The mobile entry document replaces the web one in the payload only; the
     // shared staging-web dir on disk stays exactly what the web target ships.
     const overrideEntry: SiteEntry = {
         relativePath: "index.html",
-        source: { kind: "buffer", data: Buffer.from(indexHtmlOverride, "utf8") },
+        source: { kind: "buffer", data: packBuffer(Buffer.from(indexHtmlOverride, "utf8"), contentKey) },
     };
     const index = entries.findIndex(entry => entry.relativePath === "index.html");
     if (index >= 0) {
@@ -107,6 +120,7 @@ async function siteEntries(files: SiteFile[], indexHtmlOverride: string): Promis
     } else {
         entries.push(overrideEntry);
     }
+    counted.end();
     return entries;
 }
 
@@ -181,8 +195,9 @@ export async function runMobileRepack(
     const artifacts: string[] = [];
     const files = await collectSiteFiles(job.sourceDir);
     await fs.mkdir(outputDir, { recursive: true });
-    // Built once and shared by both platforms; the bytes are identical.
-    const www = await siteEntries(files, job.indexHtmlOverride);
+    // Built once and shared by both platforms: sealing the payload twice would be wasted work, and
+    // the bytes are identical anyway.
+    const www = await siteEntries(files, job.indexHtmlOverride, job.contentKey);
 
     if (job.android) {
         const { android } = job;

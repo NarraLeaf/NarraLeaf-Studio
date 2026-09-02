@@ -144,6 +144,15 @@ export class ProjectService {
                 await this.enableVersionControl(basePath);
             }
 
+            // Studio wrote this project, so it opens as Studio's own rather than waiting for the
+            // author to vouch for it under Settings. Before the hand-off, because the launcher
+            // opens the path the moment this window closes. A refusal is not a failed creation -
+            // the files are on disk - so it is logged and the project opens as one to be trusted.
+            const registered = await getInterface().registerCreatedProject(basePath);
+            if (!registered.success) {
+                console.warn("[Wizard] Project created, but not registered as Studio's own:", registered.error);
+            }
+
             // Both go back with the path because the caller may still have work to do on this
             // project once the window is gone - sending it to a server is the case that put
             // them there - and by then they are inside a MessagePack file. The app id is not

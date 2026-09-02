@@ -4,6 +4,7 @@ import { existsSync, readdirSync } from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { wrapPackKey } from "@narraleaf/bindings";
 import { validateMobileShellManifest } from "./mobileShellManifest";
 import { runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
@@ -85,14 +86,17 @@ async function buildApk(signing?: GameBuildWorkerAndroidSigning): Promise<string
     await fs.mkdir(path.join(sourceDir, "assets"), { recursive: true });
     await fs.writeFile(path.join(sourceDir, "assets", "bgm.ogg"), Buffer.alloc(64 * 1024, 9));
 
+    // The container's key, as the manager mints one per build; the shell reads it from shell-config.
+    const contentKey = wrapPackKey(Buffer.alloc(32, 1));
     const job: GameBuildWorkerMobileJob = {
         sourceDir,
+        contentKey,
         templateManifest,
         productName: "Oracle Game",
         appDirBaseName: "Oracle Game",
         orientation: "landscape",
         indexHtmlOverride: "<!doctype html><title>mobile</title>",
-        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
+        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000", contentKey }),
         android: {
             templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
             outputs: { apk: "oracle.apk" },

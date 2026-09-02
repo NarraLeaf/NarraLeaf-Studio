@@ -1,26 +1,36 @@
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
+import { PROJECT_TRUST_ON_ARRIVAL } from "@shared/types/projectTrust";
 
 /**
- * The declared arrival kinds and the routes that actually record one, held against each other.
+ * The declared origins and the routes that record one, held against each other.
  *
- * Distrust is armed by recording an arrival, so a route that brings a project in from elsewhere and
- * forgets to record it produces a project that is trusted forever - silently, and in exactly the
- * case the mode exists for. No test can know what a future import route looks like, so this cannot
- * catch that on its own. What it can do is keep the two halves honest: every declared origin has a
- * writer, every writer names a declared origin, and the list of writing sites is spelled out here
- * so that adding or removing one is a visible diff rather than a change nobody reviews.
+ * Absence means distrusted, so a route that forgets to record an arrival produces a project that
+ * does not run - the safe side, and one the author notices. What this file guards is the other
+ * half: the origins that *vouch* on arrival. A route recording `created`, `recent` or
+ * `command-line` trusts a project without asking, so the sites allowed to write each are named
+ * here, and a new writer, a removed one, or an origin nothing declares is a visible diff rather
+ * than a change nobody reviews.
  */
 
 const MAIN_ROOT = path.resolve(__dirname, "../../..");
 const TYPES_FILE = path.resolve(__dirname, "../../../../shared/types/projectTrust.ts");
 
-/** Every site that arms distrust, named rather than discovered, so removing one fails here. */
-const EXPECTED_RECORDING_SITES = [
-    "app/application/managers/vcs/VcsManager.ts",
-    "app/application/managers/window/handlers/projectPackageAction.ts",
-] as const;
+/** Every site that records an arrival, and the origins it is allowed to record. */
+const EXPECTED_RECORDING_SITES: Record<string, readonly string[]> = {
+    // Every workspace window: a folder Studio never saw waits, a command-line build is the
+    // operator's own decision.
+    "app/app.ts": ["command-line", "opened"],
+    // The migration: the author's recent list, vouched for once as the ledger turns fail-closed.
+    "app/application/managers/projectTrustManager.ts": ["recent"],
+    "app/application/managers/vcs/VcsManager.ts": ["remote"],
+    "app/application/managers/window/handlers/projectPackageAction.ts": ["package"],
+    // The wizard reporting a project it has just written - the one route that vouches for a
+    // project on a renderer's word, which is why the handler checks the window, the grant and
+    // the folder before it records.
+    "app/application/managers/window/handlers/projectWizardCreatedAction.ts": ["created"],
+};
 
 function walk(dir: string, out: string[] = []): string[] {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -36,7 +46,7 @@ function walk(dir: string, out: string[] = []): string[] {
 
 function declaredOrigins(): string[] {
     const source = fs.readFileSync(TYPES_FILE, "utf-8");
-    const union = source.slice(source.indexOf("export type ProjectImportOrigin"));
+    const union = source.slice(source.indexOf("export type ProjectTrustOrigin"));
     const body = union.slice(0, union.indexOf(";"));
     return [...body.matchAll(/\|\s*"([a-z-]+)"/g)].map(match => match[1]).sort();
 }
@@ -46,21 +56,35 @@ function recordingSites(): Map<string, string[]> {
     const found = new Map<string, string[]>();
     for (const file of walk(MAIN_ROOT)) {
         const source = fs.readFileSync(file, "utf-8");
-        const origins = [...source.matchAll(/recordImport\([^)]*?,\s*"([a-z-]+)"/gs)].map(match => match[1]);
+        const origins = [...source.matchAll(/recordArrival\([^)]*?,\s*"([a-z-]+)"/gs)].map(match => match[1]);
         if (origins.length > 0) {
-            found.set(path.relative(MAIN_ROOT, file).replaceAll(path.sep, "/"), origins.sort());
+            found.set(path.relative(MAIN_ROOT, file).replaceAll(path.sep, "/"), [...new Set(origins)].sort());
         }
     }
     return found;
 }
 
 describe("project trust origins", () => {
-    it("declares at least one kind", () => {
-        expect(declaredOrigins().length).toBeGreaterThan(0);
+    it("declares every origin the arrival table decides for, and no other", () => {
+        expect(declaredOrigins()).toEqual(Object.keys(PROJECT_TRUST_ON_ARRIVAL).sort());
     });
 
-    it("records an arrival from exactly the sites named here", () => {
-        expect([...recordingSites().keys()].sort()).toEqual([...EXPECTED_RECORDING_SITES].sort());
+    it("vouches on arrival for exactly the origins that are somebody's explicit decision", () => {
+        // Studio's own work, the author's existing work, and a project named at a keyboard. A
+        // fourth entry here is a route that trusts a project without asking - review it.
+        const vouching = Object.entries(PROJECT_TRUST_ON_ARRIVAL)
+            .filter(([, voucher]) => voucher !== null)
+            .map(([origin, voucher]) => `${origin}:${voucher}`)
+            .sort();
+        expect(vouching).toEqual(["command-line:author", "created:studio", "recent:studio"]);
+    });
+
+    it("records arrivals from exactly the sites named here, with exactly the origins named", () => {
+        const sites = Object.fromEntries([...recordingSites()].sort());
+        const expected = Object.fromEntries(
+            Object.entries(EXPECTED_RECORDING_SITES).map(([file, origins]) => [file, [...origins].sort()]).sort(),
+        );
+        expect(sites).toEqual(expected);
     });
 
     it("never records an origin the type does not declare", () => {

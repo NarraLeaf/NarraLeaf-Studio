@@ -76,7 +76,7 @@ describe("model bundle directory grants", () => {
             await fs.writeFile(target, Buffer.from(`bytes:${relative}`));
         }
         storageManager = new StorageManager({ logger: { error: vi.fn(), warn: vi.fn() } } as any);
-        handler = new FileSystemHashHandler("app", {}, storageManager);
+        handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
     });
 
     afterEach(async () => {
@@ -152,7 +152,7 @@ describe("model bundle directory grants", () => {
     it("404s a bundle path asked of an ordinary single-file grant", async () => {
         // Serving the file and ignoring the trailing path would make a broken sibling reference look
         // like it had resolved.
-        const fileHash = storageManager.allocateHash(path.join(root, "Hiyori.moc3"), true, "read");
+        const fileHash = storageManager.allocateHash(path.join(root, "Hiyori.moc3"), true, "read", 7);
         storageManager.updateStatus(fileHash, "ready");
         expect((await handler.handle(makeRequest(`app://fs/${fileHash}/Hiyori.moc3`))).statusCode).toBe(404);
     });

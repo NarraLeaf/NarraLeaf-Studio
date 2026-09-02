@@ -1,5 +1,6 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -20,7 +21,12 @@ export class GameTestLaunchHandler extends IPCHandler<IPCEventType.gameTestLaunc
         // compile) travels as a successful call carrying `{ok:false, reason}`, never as an IPC
         // error: the caller is a test that has to put the reason in its own report, and an IPC
         // failure loses everything but the message.
-        return this.tryUse(() => window.getApp().getGameTestManager().launch(request));
+        return this.tryUse(() => window.getApp().getGameTestManager().launch({
+            ...request,
+            // The window's project, not the payload's - see `PreviewLaunchHandler`, which starts
+            // the same process for the same reason.
+            projectPath: requireWindowProject(window, request.projectPath),
+        }));
     }
 }
 

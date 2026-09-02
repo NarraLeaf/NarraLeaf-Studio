@@ -974,7 +974,7 @@ export const AppSettings: AppSettingDefinition[] = [
         panel: "projectTrust",
         label: "Trusted projects",
         labelKey: "settings.items.projectTrust.label",
-        description: "Projects that arrived from a package or a remote source, and whether they may run.",
+        description: "Projects that Studio did not create, and whether they may run.",
         descriptionKey: "settings.items.projectTrust.description",
         defaultValue: null,
     },

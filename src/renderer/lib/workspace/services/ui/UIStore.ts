@@ -350,6 +350,36 @@ export class UIStore {
         this.setPanelVisibility(panelId, visible);
     }
 
+    /**
+     * Put every panel of a dock area back to the visibility it registered with, so nothing in that
+     * dock is hidden by a choice the author has since forgotten making.
+     *
+     * Deliberately silent on `panelVisibilityChanged`: that event means "the author asked for this
+     * panel", and the dock answers it by opening the panel and expanding the sidebar. Restoring
+     * several at once would run that once per panel and leave the author looking at whichever one
+     * came last, instead of at the panel they had open. The rails read visibility off `stateChanged`
+     * and update either way.
+     */
+    public resetPanelVisibility(position: PanelPosition): void {
+        let changed = false;
+        for (const panel of this.state.panels) {
+            if (panel.position !== position) {
+                continue;
+            }
+            changed = changed || this.state.panelVisibility[panel.id] === false;
+            // Mirror what registration does: a panel is listed as visible unless it asked not to be,
+            // and one that did is simply absent from the map (which the rails read as visible too).
+            if (panel.defaultVisible !== false) {
+                this.state.panelVisibility[panel.id] = true;
+            } else {
+                delete this.state.panelVisibility[panel.id];
+            }
+        }
+        if (changed) {
+            this.events.emit("stateChanged", { panelVisibility: { ...this.state.panelVisibility } });
+        }
+    }
+
     public getPanels(): PanelDefinition[] {
         return [...this.state.panels];
     }

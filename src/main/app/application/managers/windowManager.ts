@@ -66,4 +66,15 @@ export class WindowManager {
     public getWindowByWebContents(sender: Electron.WebContents): AppWindow | undefined {
         return this.byWebContentsId.get(sender.id);
     }
+
+    /**
+     * The window behind a webContents id, or undefined once it has been unregistered.
+     *
+     * By id rather than by `WebContents` for the callers that only ever held the id: a storage
+     * grant remembers the number of the window it was minted for, and the protocol handler that
+     * serves it has to find that window again to ask what its project is allowed to do.
+     */
+    public getWindowByWebContentsId(webContentsId: number): AppWindow | undefined {
+        return this.byWebContentsId.get(webContentsId);
+    }
 }

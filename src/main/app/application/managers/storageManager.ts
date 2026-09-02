@@ -48,7 +48,14 @@ export interface FileStorageInfo {
      * re-fetching evicted assets on scene changes in Dev Mode).
      */
     lifetime?: FileStorageLifetime;
-    /** webContents id whose destruction revokes this grant (session lifetime only). */
+    /**
+     * webContents id of the window this grant was minted for.
+     *
+     * Set on every grant. Its destruction revokes the grant, and the protocol handler reads it to
+     * decide whether the bytes may be served as something the window would execute - a question
+     * answered by that window's project, which an anonymous grant could not be asked. Optional in
+     * the type only because promoted and re-keyed grants copy it from the record they replace.
+     */
     ownerWebContentsId?: number;
     /**
      * When set, this grant covers N files written together through one `PUT`, and `path` is only the
@@ -105,11 +112,23 @@ export class StorageManager extends Manager {
     }
 
     /**
-     * Allocate a unique hash for file operations
+     * Allocate a unique hash for file operations.
+     *
+     * Every grant names the window it was minted for. That is what lets the protocol handler ask
+     * whether the bytes it is about to serve may run as code in that window - a question answered
+     * by the project the window has open, and one an anonymous grant cannot be asked. It is also
+     * what revokes the grant when the window goes: a one-shot token the renderer never spent used
+     * to outlive its window, which was harmless only because nobody else could guess it.
      */
-    public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: FsTextEncoding): string {
+    public allocateHash(
+        path: string,
+        raw: boolean,
+        operation: FileSystemAccessMode,
+        ownerWebContentsId: number,
+        encoding?: FsTextEncoding,
+    ): string {
         const hash = crypto.randomBytes(32).toString("base64url");
-        this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
+        this.storage.set(hash, { path, raw, operation, encoding, status: "allocated", ownerWebContentsId });
         return hash;
     }
 
@@ -121,7 +140,7 @@ export class StorageManager extends Manager {
      * (see `PrivilegedFsCallHandler`), and this records them in order so the protocol handler can
      * bind payload `i` to entry `i` without the renderer naming a path again.
      */
-    public allocateWriteBatchHash(entries: FileStorageBatchEntry[]): string {
+    public allocateWriteBatchHash(entries: FileStorageBatchEntry[], ownerWebContentsId: number): string {
         const hash = crypto.randomBytes(32).toString("base64url");
         this.storage.set(hash, {
             path: entries[0]?.path ?? "",
@@ -129,6 +148,7 @@ export class StorageManager extends Manager {
             operation: "write",
             status: "allocated",
             batch: entries,
+            ownerWebContentsId,
         });
         return hash;
     }
@@ -368,8 +388,9 @@ export class StorageManager extends Manager {
         this.runtimeFileSystemGrants.delete(key);
         this.stopSecurityScopedResources(this.runtimeSecurityScopedResourceStops.get(key) ?? []);
         this.runtimeSecurityScopedResourceStops.delete(key);
-        // Session-lived hash grants die with the window that consumed them, so a
-        // closed Dev Mode session cannot leave repeatable-read tokens behind.
+        // Every hash grant dies with the window it was minted for: a closed Dev Mode session
+        // cannot leave repeatable-read tokens behind, and a one-shot token the renderer never
+        // spent does not outlive its window either.
         for (const [hash, info] of this.storage) {
             if (info.ownerWebContentsId === key) {
                 this.storage.delete(hash);

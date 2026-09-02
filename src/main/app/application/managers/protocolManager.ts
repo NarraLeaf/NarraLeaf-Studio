@@ -1,6 +1,7 @@
 import { protocol } from "electron";
 import { FileSystemHandler, FileSystemHashHandler } from "./protocol/fileSystemHandler";
 import { PluginApiHandler, PluginEntryHandler } from "./protocol/pluginHandler";
+import { createProjectCodePolicy } from "./protocol/projectCodePolicy";
 import { APP_SCHEME_PRIVILEGES, ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
@@ -159,7 +160,8 @@ export class ProtocolManager implements IProtocolManager {
         const fsHashHandler = new FileSystemHashHandler(
             AppProtocol,
             APP_SCHEME_PRIVILEGES,
-            this.app.storageManager
+            this.app.storageManager,
+            createProjectCodePolicy(this.app),
         );
         this.registerHandler(fsHashHandler);
 

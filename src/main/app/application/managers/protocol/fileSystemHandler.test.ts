@@ -80,7 +80,7 @@ describe("FileSystemHashHandler grant lifetimes", () => {
         storageManager = new StorageManager({
             logger: { error: vi.fn(), warn: vi.fn() },
         } as any);
-        handler = new FileSystemHashHandler("app", {}, storageManager);
+        handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
     });
 
     afterEach(async () => {
@@ -88,7 +88,7 @@ describe("FileSystemHashHandler grant lifetimes", () => {
     });
 
     function allocateReadyReadHash(): string {
-        const hash = storageManager.allocateHash(filePath, true, "read");
+        const hash = storageManager.allocateHash(filePath, true, "read", 1);
         storageManager.updateStatus(hash, "ready");
         return hash;
     }
@@ -130,7 +130,7 @@ describe("FileSystemHashHandler grant lifetimes", () => {
     });
 
     it("never promotes write grants or unknown hashes to session lifetime", () => {
-        const writeHash = storageManager.allocateHash(filePath, true, "write");
+        const writeHash = storageManager.allocateHash(filePath, true, "write", 1);
         storageManager.updateStatus(writeHash, "ready");
 
         expect(storageManager.promoteToSessionRead(writeHash, 42)).toBe(false);
@@ -164,12 +164,12 @@ describe("FileSystemHashHandler grant lifetimes", () => {
         expect(stable).not.toBe(hash);
         expect((await handler.handle(makeRequest(hash))).statusCode).toBe(404);
 
-        const writeHash = storageManager.allocateHash(filePath, true, "write");
+        const writeHash = storageManager.allocateHash(filePath, true, "write", 1);
         storageManager.updateStatus(writeHash, "ready");
         await expect(storageManager.stabilizeSessionRead(writeHash, 42)).resolves.toBeNull();
         await expect(storageManager.stabilizeSessionRead("missing-hash", 42)).resolves.toBeNull();
 
-        const goneHash = storageManager.allocateHash(path.join(tempDir, "not-here.png"), true, "read");
+        const goneHash = storageManager.allocateHash(path.join(tempDir, "not-here.png"), true, "read", 1);
         await expect(storageManager.stabilizeSessionRead(goneHash, 42)).resolves.toBeNull();
     });
 });
@@ -189,7 +189,7 @@ describe("FileSystemHashHandler batched writes", () => {
         storageManager = new StorageManager({
             logger: { error: vi.fn(), warn: vi.fn() },
         } as any);
-        handler = new FileSystemHashHandler("app", {}, storageManager);
+        handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
     });
 
     afterEach(async () => {
@@ -197,7 +197,7 @@ describe("FileSystemHashHandler batched writes", () => {
     });
 
     function grant(entries: { path: string; raw: boolean; encoding?: string }[]): string {
-        const hash = storageManager.allocateWriteBatchHash(entries as never);
+        const hash = storageManager.allocateWriteBatchHash(entries as never, 1);
         storageManager.updateStatus(hash, "ready");
         return hash;
     }
@@ -276,5 +276,101 @@ describe("FileSystemHashHandler batched writes", () => {
     it("refuses a GET against a batched write grant", async () => {
         const hash = grant([{ path: path.join(tempDir, "nope.json"), raw: true }]);
         expect((await handler.handle(makeRequest(hash))).statusCode).toBe(405);
+    });
+});
+
+/**
+ * The execution gate. A puppet backend is `import()`ed from one of these URLs, and the import only
+ * succeeds if the response says it is JavaScript - so whether a window may run what its project
+ * supplied is decided here, per response, by asking the policy about the grant's owner.
+ */
+describe("FileSystemHashHandler and the code a window may run", () => {
+    let tempDir: string;
+    let storageManager: StorageManager;
+    /** Windows the policy vouches for; every other owner is refused. */
+    const trustedWindows = new Set<number>();
+    let handler: FileSystemHashHandler;
+
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-code-"));
+        await fs.writeFile(path.join(tempDir, "index.js"), "export default 1;");
+        await fs.writeFile(path.join(tempDir, "page.html"), "<script>1</script>");
+        await fs.writeFile(path.join(tempDir, "model.json"), "{}");
+        await fs.writeFile(path.join(tempDir, "asset.png"), Buffer.from("png"));
+        storageManager = new StorageManager({
+            logger: { error: vi.fn(), warn: vi.fn() },
+        } as any);
+        trustedWindows.clear();
+        handler = new FileSystemHashHandler("app", {}, storageManager, {
+            mayRunProjectCode: owner => owner !== undefined && trustedWindows.has(owner),
+        });
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    function textGrant(name: string, owner: number): string {
+        const hash = storageManager.allocateHash(path.join(tempDir, name), false, "read", owner, "utf-8");
+        storageManager.updateStatus(hash, "ready");
+        return hash;
+    }
+
+    it("serves a trusted window's script as JavaScript", async () => {
+        trustedWindows.add(1);
+        const response = await handler.handle(makeRequest(textGrant("index.js", 1)));
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["Content-Type"]).toMatch(/javascript/);
+        expect(response.headers["X-Content-Type-Options"]).toBeUndefined();
+    });
+
+    it("serves a distrusted window's script as text a page cannot run", async () => {
+        // The bytes still arrive - a distrusted project stays readable and editable - but under a
+        // type no `import()` accepts and with sniffing off, so a classic script tag cannot guess
+        // its way past the type either.
+        const response = await handler.handle(makeRequest(textGrant("index.js", 2)));
+        expect(response.statusCode).toBe(200);
+        expect(String(response.data)).toBe("export default 1;");
+        expect(response.headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+        expect(response.headers["X-Content-Type-Options"]).toBe("nosniff");
+    });
+
+    it("treats a page the same way", async () => {
+        const response = await handler.handle(makeRequest(textGrant("page.html", 2)));
+        expect(response.headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+    });
+
+    it("leaves a distrusted window's data and images as they are", async () => {
+        // Turning these inert would break the asset panel for no gain: nothing runs a JSON file
+        // or an image, and the project is meant to stay readable.
+        expect((await handler.handle(makeRequest(textGrant("model.json", 2)))).headers["Content-Type"]).toMatch(/json/);
+        const image = storageManager.allocateHash(path.join(tempDir, "asset.png"), true, "read", 2);
+        storageManager.updateStatus(image, "ready");
+        expect((await handler.handle(makeRequest(image))).headers["Content-Type"]).toBe("application/octet-stream");
+    });
+
+    it("asks per response, so a grant withdrawn since the URL was minted is honoured", async () => {
+        trustedWindows.add(1);
+        const hash = textGrant("index.js", 1);
+        storageManager.promoteToSessionRead(hash, 1);
+        expect((await handler.handle(makeRequest(hash))).headers["Content-Type"]).toMatch(/javascript/);
+
+        trustedWindows.delete(1);
+        expect((await handler.handle(makeRequest(hash))).headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+    });
+
+    it("applies to every file inside a directory grant", async () => {
+        await fs.mkdir(path.join(tempDir, "bundle"));
+        await fs.writeFile(path.join(tempDir, "bundle", "runtime.js"), "1");
+        await fs.writeFile(path.join(tempDir, "bundle", "model.moc3"), Buffer.from([1, 2, 3]));
+        const hash = storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 2);
+
+        const script = await handler.handle(makeRequest(`${hash}/runtime.js`));
+        expect(script.headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+        // The model's own type survives: the runtime that would branch on it is the thing being
+        // refused, and a trusted window's bundle is unaffected either way.
+        const model = await handler.handle(makeRequest(`${hash}/model.moc3`));
+        expect(model.statusCode).toBe(200);
+        expect(model.headers["Content-Type"]).not.toBe("text/plain; charset=utf-8");
     });
 });

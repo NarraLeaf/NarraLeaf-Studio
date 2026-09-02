@@ -105,6 +105,7 @@ describe("privileged requestWriteBatch", () => {
         const window = {
             win: {},
             getWindowType: () => WindowAppType.Workspace,
+            getWebContents: () => ({ id: 1 }),
             app: {
                 storageManager: {
                     allocateWriteBatchHash: (entries: unknown[]) => {
@@ -200,6 +201,7 @@ describe("privileged requestReadMany", () => {
         const window = {
             win: {},
             getWindowType: () => WindowAppType.Workspace,
+            getWebContents: () => ({ id: 1 }),
             app: {
                 storageManager: {
                     allocateHash: (target: string) => {
