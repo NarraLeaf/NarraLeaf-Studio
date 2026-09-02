@@ -105,6 +105,11 @@ export const assets = {
     itemCount: {
         other: "{count} 件",
     },
+    unreadable: {
+        category: "この区分は読み込めなかった。ファイルは変わっていない",
+        notSaved: "この区分の変更は保存されていない",
+        notSavedDetail: "{file} を読めなかった。上書きもしていない",
+    },
     /**
      * 読み取り専用のアセット概要ページ。「実際」と「切り詰めた場合」は要となる語。ビルドは
      * いまも assets ディレクトリ全体をパッケージしていて、このページは何も変えない。だから

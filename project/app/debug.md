@@ -77,10 +77,11 @@ node project/app/debug.js anomalies
 
 This is the one to reach for when a project opens and is simply *wrong* — the
 assets are gone, a scene is empty, a plugin is missing — with nothing in either
-log to say why. Those load paths mostly do not throw: a corrupt asset shard is
-set aside and replaced with `{}`, a story that will not parse is left unloaded,
-a plugin that throws is skipped. Each decision is locally reasonable and none of
-them is visible. They are all recorded here, with the raw error and the file.
+log to say why. Those load paths mostly do not throw: an asset shard that will
+not parse is left on disk and its category latched read-only, a story that will
+not parse is left unloaded, a plugin that throws is skipped. Each decision is
+locally reasonable and none of them is visible. They are all recorded here, with
+the raw error and the file.
 
 Raw JSON (for scripting):
 

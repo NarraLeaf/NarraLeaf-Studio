@@ -52,17 +52,15 @@ process.on('unhandledRejection', (reason, promise) => {
  * "one bad IPC handler" turns into "the project file it later wrote is wrong" - so this reports and
  * terminates instead.
  *
- * `crash()` logs (the file sink means the reason survives the exit), shows the user an error box
- * rather than a window that silently vanishes, and exits. The re-entrancy guard is because the
- * reporting path can itself throw: without it, a failure inside `crash()` re-enters here forever.
+ * `crash()` logs (the file sink means the reason survives the exit), gives the open workspaces a
+ * bounded chance to write out what they had not written yet, shows the user an error box rather
+ * than a window that silently vanishes, and exits. The re-entrancy guard is `crash()`'s own: the
+ * reporting path can itself throw, and the flush it now waits for means further failures arrive
+ * while the first one is still being handled. Ending the process here on the second one would cut
+ * that flush short, which is exactly the work it exists to save.
  */
-let handlingFatalError = false;
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
-    if (handlingFatalError) {
-        process.exit(1);
-    }
-    handlingFatalError = true;
     app.crash(error instanceof Error ? error : new Error(String(error)));
 });
 
