@@ -1367,6 +1367,22 @@ export class App extends BaseApp {
         );
     }
 
+    /**
+     * The pending writes a crash can still settle: one per workspace that is still on screen.
+     *
+     * The same debt the quit path drains, through the same per-window IPC, because it is the same
+     * debt - auto-save is debounced, so at any instant there is an edit that has been typed and not
+     * written. What differs is that a crash ends the process with `exit()`, which runs none of
+     * `drainForShutdown`; without this, a fatal error in the main process discarded those edits
+     * without ever asking the windows for them.
+     *
+     * Thunks rather than promises so that nothing starts until the crash sequence is ready to bound
+     * the wait, and so the set of windows is read at the moment of the crash rather than earlier.
+     */
+    protected override collectPendingSaveFlushes(): readonly (() => Promise<unknown>)[] {
+        return this.liveWorkspaceWindows().map(window => () => this.flushWorkspacePendingSaves(window));
+    }
+
     /** Flush every open workspace concurrently. Used on the way out of the app. */
     public async flushAllWorkspacesPendingSaves(): Promise<void> {
         const workspaces = this.liveWorkspaceWindows();
