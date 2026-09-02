@@ -4,7 +4,7 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
-import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings";
+import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME, wrapPackKey } from "@narraleaf/bindings";
 import { App } from "@/app/app";
 import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import { electronBuilderCacheRoot } from "../storage/cacheInventory";
@@ -1970,9 +1970,9 @@ export class GameBuildManager {
             throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
         }
         // Only a desktop package seals its payload. The web export cannot (its files are served
-        // over HTTP by nature), and the mobile packages ship that same site: the only key they
-        // could carry is one every copy hands out, which is no protection at all. Both are
-        // reported to the author below rather than quietly built as if they were covered.
+        // over HTTP by nature), and the mobile packages keep that same site in a container whose
+        // key ships inside them, which is a format rather than a protection. Both are reported to
+        // the author below rather than quietly built as if they were covered.
         const encryptionKey = desktopTargets.length > 0
             ? await this.resolveEncryptionKey(projectPath, projectConfig)
             : undefined;
@@ -2003,7 +2003,7 @@ export class GameBuildManager {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: "asset protection does not apply to Android or iOS packages; their files ship unprotected",
+                message: "asset protection does not apply to Android or iOS packages",
             });
         }
         this.ensureNotCancelled(session);
@@ -3071,12 +3071,20 @@ export class GameBuildManager {
         });
         const { identity, site } = input;
         const orientation = readMobileOrientation(input.projectConfig);
+        // The key the payload container is sealed under. Fresh per build and kept nowhere, because
+        // nothing later needs it: the shell reads it from shell-config.json, in the same package as
+        // the payload it opens - which is also why the container is a format rather than a
+        // protection. Independent of the project's protection switch: every mobile build is packed
+        // this way, as every desktop build is packed into its own format.
+        const contentKey = wrapPackKey(crypto.randomBytes(32));
         const shellConfig: MobileShellConfigV1 = {
             schemaVersion: template.manifest.shellConfigSchemaVersion,
             orientation,
             // Same pre-boot background the entry document paints, so the native
             // window and the document agree on the first frame.
             backgroundColor: resolveGameRuntimeInitialBackgroundColor(site.pack),
+            // Plain in the bootstrap file, which is what the shell reads before it can decode.
+            contentKey,
         };
         // The mobile shells serve the compiled web site, so its icon files are
         // already staged; the entry document just has to reference the ones
@@ -3086,6 +3094,7 @@ export class GameBuildManager {
 
         const job: GameBuildWorkerMobileJob = {
             sourceDir: site.appDir,
+            contentKey,
             templateManifest: template.manifest,
             productName: identity.productName,
             appDirBaseName: identity.artifactBaseName,
