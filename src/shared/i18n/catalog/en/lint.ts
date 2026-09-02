@@ -302,6 +302,13 @@ export const lint = {
             description: "A Save Game node that will run with a declared save field left empty",
             message: "{field} is empty, so this save is written with its default instead",
         },
+        blueprintRequiredInputUnwired: {
+            title: "Empty input",
+            description: "A node that will run with a required input left unconnected",
+            // Names the node and the pin: the locator column points at the blueprint, and the node
+            // behind it is a generated id nothing on the interface shows.
+            message: "{node} has nothing connected to {pin}",
+        },
         blueprintStartSceneForeign: {
             title: "Scene from another story",
             description: "A Start Game node whose scene is not in the story it names",

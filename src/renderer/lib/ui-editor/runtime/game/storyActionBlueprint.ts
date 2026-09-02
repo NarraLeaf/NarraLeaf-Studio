@@ -31,6 +31,11 @@ import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { isScriptMounted, resolveScriptDefault } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
+import type {
+    StoryScriptContext,
+    StorySyncScriptContext,
+} from "@/lib/ui-editor/blueprint-runtime/script/scriptContext";
 
 const MAX_STORY_FN_CALL_DEPTH = 32;
 
@@ -100,16 +105,11 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
         input.onDiagnostic?.("Story Action Blueprint not found; the action was skipped.");
         return null;
     }
+    if (bp.program.kind === "scriptModule") {
+        return compileStoryActionScriptModule(input, bp.name, bp.program.scriptRef);
+    }
     if (bp.program.kind !== "graph") {
-        // Named, because the author reached this by pressing a button Studio offered them and the
-        // old wording ("not a graph blueprint") described our types rather than what happened to
-        // their row. A story row runs a graph; the TypeScript frontend is entered from the
-        // interface, and this slot has no way in yet. Switching the active revision back to a
-        // visual one is the whole of what they can do about it.
-        const what = bp.program.kind === "scriptModule"
-            ? `runs ${bp.program.scriptRef}, and a story row cannot run a TypeScript blueprint`
-            : "is not a graph blueprint";
-        input.onDiagnostic?.(`"${bp.name}" ${what}; this action was skipped.`);
+        input.onDiagnostic?.(`"${bp.name}" is neither a blueprint nor a script; this action was skipped.`);
         return null;
     }
 
@@ -129,6 +129,87 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
 }
 
 /**
+ * A story row whose logic is a script: its default export, run with the story context.
+ *
+ * The same `Script.execute` shape a graph compiles to, so the row behaves identically from NLR's
+ * side - the cleaner included, which aborts the signal the handler was given when the player undoes,
+ * loads or interrupts. The export is resolved when the row runs rather than when it is compiled,
+ * because Dev Mode remounts modules on every save and a handler captured here would be the one from
+ * before the author's edit.
+ */
+function compileStoryActionScriptModule(
+    input: CompileStoryActionScriptInput,
+    name: string,
+    scriptRef: string,
+): unknown {
+    return Script.execute((ctx: ScriptCtx) => {
+        const abort = new AbortController();
+        const handler = resolveScriptDefault(input.blueprintId);
+        if (!handler) {
+            reportMissingDefaultExport(input, name, scriptRef, "this action was skipped");
+            return () => undefined;
+        }
+        const storyCtx = buildStoryScriptContext(input, ctx, abort.signal);
+        void Promise.resolve(handler(storyCtx)).catch(error => {
+            if (!isBlueprintGraphExecutionCancelledError(error)) {
+                console.error("[storyActionBlueprint] script error", error);
+            }
+        });
+        return () => abort.abort();
+    });
+}
+
+/**
+ * The context a story script is handed: the story's own two variable stores, app persistence, and
+ * the signal that is aborted when the row is undone.
+ *
+ * Assembled from the same accessors the graph's `Get Scene Var` and `Get Persistent` nodes reach, so
+ * the two frontends can do the same things from a row and no more.
+ */
+function buildStoryScriptContext(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+    signal: AbortSignal,
+): StoryScriptContext {
+    const access = buildStoryVariableAccess(input, ctx);
+    const persistence = input.persistence;
+    const unavailable = () => {
+        throw new Error("This game has no persistence bridge, so ctx.persistent cannot be read here");
+    };
+    return {
+        self: { kind: "storyRow" },
+        scene: access.sceneVar,
+        saved: access.savedVar,
+        persistent: {
+            get: async (storageKey: string) => (persistence ? persistence.get(storageKey) : unavailable()),
+            set: async (storageKey: string, value: unknown) => {
+                if (!persistence) {
+                    unavailable();
+                    return;
+                }
+                assertSerializable(value);
+                await persistence.set(storageKey, value);
+            },
+        },
+        signal,
+    };
+}
+
+/**
+ * The synchronous half of that context, for an inline value and for a condition.
+ *
+ * No `persistent` and no `signal`: both are evaluated where the story asks for the value and cannot
+ * wait, which is the same rule that keeps a latent node out of their graphs.
+ */
+function buildStorySyncScriptContext(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+): StorySyncScriptContext {
+    const access = buildStoryVariableAccess(input, ctx);
+    return { self: { kind: "storyRow" }, scene: access.sceneVar, saved: access.savedVar };
+}
+
+/**
  * Evaluate a Story Action Blueprint's "On Call" graph SYNCHRONOUSLY and return its captured Return
  * Value. Used for inline text interpolation, where a NarraLeaf-React dynamic `Word` must produce a
  * value in the same tick and cannot await. Inline blueprints are restricted to synchronous nodes at
@@ -138,6 +219,9 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
  */
 export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionScriptInput, ctx: ScriptCtx): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
+    if (bp?.program.kind === "scriptModule") {
+        return evaluateStoryScriptValueSync(input, ctx, bp.name, bp.program.scriptRef);
+    }
     if (!bp || bp.program.kind !== "graph") {
         return undefined;
     }
@@ -165,17 +249,74 @@ export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionS
     return lastReturn;
 }
 
+/**
+ * A value or a condition written as a script: its default export, called for what it returns.
+ *
+ * A returned promise is refused rather than rendered. Both callers put the answer somewhere that
+ * cannot wait - a word being drawn, a branch being tested - and `String(aPromise)` would put
+ * "[object Promise]" on screen and take the branch, which is the shape of bug that teaches an author
+ * the wrong thing about their own code.
+ */
+function evaluateStoryScriptValueSync(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+    name: string,
+    scriptRef: string,
+): unknown {
+    const handler = resolveScriptDefault(input.blueprintId);
+    if (!handler) {
+        reportMissingDefaultExport(input, name, scriptRef, "nothing was evaluated");
+        return undefined;
+    }
+    const value = handler(buildStorySyncScriptContext(input, ctx));
+    if (value instanceof Promise) {
+        input.onDiagnostic?.(
+            `"${name}" is evaluated where the story cannot wait, so ${scriptRef} must return a value rather than a promise.`,
+        );
+        return undefined;
+    }
+    return value;
+}
+
+/**
+ * Why there was nothing to run, told apart.
+ *
+ * A module that never mounted failed to compile or threw while it was being evaluated, and that was
+ * already reported against the file where it happened - saying "no default export" as well would be
+ * a second, wrong diagnosis of one problem. A module that did mount and exports no default is the
+ * author's spelling, and only then is it worth a line.
+ */
+function reportMissingDefaultExport(
+    input: CompileStoryActionScriptInput,
+    name: string,
+    scriptRef: string,
+    outcome: string,
+): void {
+    if (!isScriptMounted(input.blueprintId)) {
+        return;
+    }
+    input.onDiagnostic?.(
+        `"${name}" exports no default from ${scriptRef}, which is how a story row enters a script; ${outcome}.`,
+    );
+}
+
 type StorableNamespaceLike = {
     get: (key: string) => unknown;
     set: (key: string, value: unknown) => unknown;
     has: (key: string) => boolean;
 };
 
-function buildStoryActionHostAdapter(
+/**
+ * The story's two variable stores, by variable id.
+ *
+ * Shared by the graph's host adapter and by a script's ctx so both frontends read and write the same
+ * values through the same defaulting and the same serialization check - a second copy of this would
+ * be a second answer to "what is this variable worth".
+ */
+function buildStoryVariableAccess(
     input: CompileStoryActionScriptInput,
     ctx: ScriptCtx,
-    signal: AbortSignal,
-): UIHostAdapter {
+): { sceneVar: StoryVariableRuntimeAccess; savedVar: StoryVariableRuntimeAccess } {
     const sceneNamespace = () => ctx.storable.getNamespace(sceneLocalNamespaceName(input.nlrScene));
     const savedNamespace = () => ctx.storable.getNamespace(input.savedNamespace);
 
@@ -207,6 +348,15 @@ function buildStoryActionHostAdapter(
         },
     };
 
+    return { sceneVar, savedVar };
+}
+
+function buildStoryActionHostAdapter(
+    input: CompileStoryActionScriptInput,
+    ctx: ScriptCtx,
+    signal: AbortSignal,
+): UIHostAdapter {
+    const { sceneVar, savedVar } = buildStoryVariableAccess(input, ctx);
     const persistence = input.persistence;
     const hostApi = persistence
         ? {

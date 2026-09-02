@@ -68,6 +68,7 @@ export const HELP_TOPIC_IDS = [
     "inputActionsInBlueprints",
     "uiComponents",
     "blueprints",
+    "scripts",
     "uiBindings",
     "networkNodes",
     "spellcheck",
@@ -332,7 +333,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "blueprints",
         section: "interface",
         shortcuts: ["blueprint.copy", "blueprint.paste", "blueprint.undo"],
-        related: ["uiBindings", "uiSurfaces", "storyVariables"],
+        related: ["scripts", "uiBindings", "uiSurfaces", "storyVariables"],
+    },
+    {
+        id: "scripts",
+        section: "interface",
+        related: ["blueprints", "uiSurfaces", "storyVariables"],
     },
     {
         id: "uiBindings",

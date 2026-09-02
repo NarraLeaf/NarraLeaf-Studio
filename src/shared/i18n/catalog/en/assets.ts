@@ -101,8 +101,6 @@ export const assets = {
         font: "Fonts",
         model: "Models",
         other: "Other",
-        /** Not an asset category: this project's own scripts, listed beside them. */
-        blueprint: "Blueprints",
     },
     itemCount: {
         one: "{count} item",

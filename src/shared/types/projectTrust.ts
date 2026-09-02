@@ -134,5 +134,16 @@ export function isProjectTrusted(record: ProjectTrustRecord | undefined | null):
     return record !== undefined && record !== null && record.trustedAt !== null;
 }
 
+/** What the trust prompt window is opened on: the project it asks about, as the author would name it. */
+export type ProjectTrustPromptProps = {
+    projectPath: string;
+    /** The project's own name from its configuration, or the folder name when it has none. */
+    projectName: string;
+    origin: ProjectTrustOrigin;
+};
+
+/** The prompt window's answer; `null` when it was closed without one, which the host reads as no. */
+export type ProjectTrustPromptResult = { trusted: boolean } | null;
+
 /** The reason a distrusted project gives when it refuses something, for logs and diagnostics. */
 export const PROJECT_DISTRUSTED_REASON = "project-distrusted" as const;

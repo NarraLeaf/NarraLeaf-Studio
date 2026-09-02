@@ -42,6 +42,7 @@ import { devMode } from "./devMode";
 import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
 import { serverTrust } from "./serverTrust";
+import { projectTrust } from "./projectTrust";
 import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
@@ -93,6 +94,7 @@ export const en = {
     developer,
     pluginPermission,
     serverTrust,
+    projectTrust,
     plugins,
     dialogs,
     defaultDoc,

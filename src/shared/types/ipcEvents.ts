@@ -245,6 +245,7 @@ export enum IPCEventType {
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
     projectTrustList = "projectTrust.list",
+    projectTrustPrompt = "projectTrust.prompt",
     workspaceLiveIntentTaken = "workspace.liveIntentTaken",
     workspaceJoinLive = "workspace.joinLive",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
@@ -2372,9 +2373,8 @@ export type IPCWorkspaceEvents = {
     /**
      * Take a grant back, from the settings list.
      *
-     * Does not affect a window already open on it. Trust is read once when a workspace starts, the
-     * same way recovery mode is, so revoking takes effect on the next launch - which is what makes
-     * "remove the folder and open it again" something an author can reason about.
+     * A workspace open on the project reloads, and a preview or Dev Mode session it was running
+     * stops: what the author just said no to is the project's code running.
      */
     [IPCEventType.projectTrustRevoke]: {
         type: IPCMessageType.request,
@@ -2394,6 +2394,21 @@ export type IPCWorkspaceEvents = {
         response: {
             trusted: ProjectTrustRecord[];
             distrusted: ProjectTrustRecord[];
+        };
+    };
+    /**
+     * A workspace asking to have the trust question put for its own project.
+     *
+     * No payload: the project is the window's, and the answer is not the window's either. The host
+     * raises the prompt in a window of its own, writes the grant if the author agrees, reloads the
+     * workspace, and answers with what the ledger now says.
+     */
+    [IPCEventType.projectTrustPrompt]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: {
+            trusted: boolean;
         };
     };
     /**

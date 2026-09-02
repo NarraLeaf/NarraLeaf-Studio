@@ -263,7 +263,7 @@ export function AssetsListView({
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
             {/* Last, and passed in rather than built here: the project's scripts are not in the
-                asset library, and this view is about the library. See `BlueprintScriptsSection`. */}
+                asset library, and this view is about the library. See `ProjectScriptsSection`. */}
             {trailingSection}
         </Accordion>
     );

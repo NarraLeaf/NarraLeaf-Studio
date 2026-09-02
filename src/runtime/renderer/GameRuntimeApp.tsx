@@ -14,6 +14,7 @@ import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRenderer
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { BLUEPRINT_INPUT_MISSING_MESSAGE_KEY } from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
@@ -551,11 +552,22 @@ function GameRuntimeSession() {
         }
         if (event.type === "execution.error") {
             bridge.log("error", event.message);
+        } else if (event.type === "node.input_missing") {
+            // The one thing a player's log can say about "the button did nothing": which page, which
+            // node, which pin. Named in the English the catalogue declares - the map that localizes a
+            // node title is Studio's and is not in this bundle - which is also what an author reading
+            // the log will find the node under.
+            const surface = pack?.bundle.ui.uidoc.surfaces.find(item => item.id === event.surfaceId);
+            const sentence = translate(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                node: event.nodeName,
+                pin: event.pinLabel,
+            });
+            bridge.log("warning", surface ? `${surface.name}: ${sentence}` : sentence);
         } else if (event.type === "devtools.log") {
             const level = event.level === "error" || event.level === "warning" ? event.level : "info";
             bridge.log(level, event.message);
         }
-    }, [bridge]);
+    }, [bridge, pack]);
 
     const log = useCallback<GameAppHost["log"]>((level, message) => {
         bridge?.log(level, message);
