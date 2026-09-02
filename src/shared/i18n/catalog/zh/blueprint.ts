@@ -243,6 +243,7 @@ export const blueprint = {
         deleteOnly: "至少要保留一个修订版本。",
         newScript: "新建脚本",
         newBlueprint: "新建蓝图",
+        useExisting: "使用已有文件",
     },
     frontend: {
         visual: "蓝图",

@@ -826,7 +826,19 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
-    public async createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string> {
+    /**
+     * Add a revision to a slot: a blueprint, a new script, or an existing file.
+     *
+     * `existingScriptRef` is how a file that is already in the project reaches a slot. Nothing is
+     * written for it - the file is the author's, and a starter written over it would destroy work -
+     * so the only act is the document edit that points at it. One file may be pointed at from
+     * several slots; the scripts panel says how many.
+     */
+    public async createSiblingPrivateBlueprintForOwnerKey(
+        ownerKey: string,
+        frontend: BlueprintFrontendKind,
+        options?: { existingScriptRef?: string },
+    ): Promise<string> {
         const ownerRef = parsePrivateOwnerKeyToRef(ownerKey);
         if (!ownerRef) {
             throw new RendererError(`Invalid private owner key: ${ownerKey}`);
@@ -849,7 +861,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         if (frontend === "typescript") {
             await writeScriptDeclarations(this.getContext());
         }
-        const scriptRef = frontend === "typescript" ? await this.createStarterScriptFile(ownerRef, name) : null;
+        const scriptRef =
+            frontend === "typescript"
+                ? options?.existingScriptRef ?? (await this.createStarterScriptFile(ownerRef, name))
+                : null;
         this.applyBlueprintEdit({ blueprintId: id, ownerKey }, doc => {
             const blueprint =
                 scriptRef !== null

@@ -243,6 +243,7 @@ export const blueprint = {
         deleteOnly: "リビジョンは最低 1 つ残る。",
         newScript: "新規スクリプト",
         newBlueprint: "新規ブループリント",
+        useExisting: "既存のファイルを使う",
     },
     frontend: {
         visual: "ブループリント",

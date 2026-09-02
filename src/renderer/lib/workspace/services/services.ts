@@ -931,7 +931,11 @@ interface ILocalBlueprintService extends IService {
      * succeeded - a blueprint pointing at a file that was never written would be indistinguishable
      * from one whose file the author deleted.
      */
-    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string>;
+    createSiblingPrivateBlueprintForOwnerKey(
+        ownerKey: string,
+        frontend: BlueprintFrontendKind,
+        options?: { existingScriptRef?: string },
+    ): Promise<string>;
     deletePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
     setBlueprintScriptRef(blueprintId: string, scriptRef: string): void;
 }

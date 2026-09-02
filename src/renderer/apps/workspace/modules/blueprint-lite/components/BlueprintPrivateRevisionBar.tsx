@@ -1,8 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
-import { walkProjectScripts } from "@/lib/workspace/services/ui-editor/blueprint/projectScripts";
+import {
+    scriptBindingsByRef,
+    walkProjectScripts,
+} from "@/lib/workspace/services/ui-editor/blueprint/projectScripts";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { blueprintContract } from "@shared/blueprint/ownerShape";
 import { useTranslation } from "@/lib/i18n";
@@ -13,6 +16,9 @@ import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem
 import { useWorkspace } from "../../../context";
 import { BlueprintFrontendBadge } from "./BlueprintFrontendBadge";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
+
+/** The menu id that stands for "attach a file" rather than for one of the rows. */
+const ATTACH_MENU = "\u0000attach";
 
 type Props = {
     blueprint: Blueprint;
@@ -46,26 +52,57 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     const allowScriptRevision = blueprintContract(blueprint.owner).invocation !== "valueBinding";
 
     /**
-     * Every source under `scripts/`, read when a row's menu is opened rather than on mount.
+     * Every source under `scripts/`, read once when this bar mounts.
      *
-     * The list is only ever needed by "use another file", and reading the folder on every render of
-     * a panel that is drawn beside the canvas would be a directory walk per keystroke.
+     * Both offers need it - re-pointing a script, and attaching a file that is already there - and
+     * the folder is small enough that reading it when a blueprint is opened costs nothing an author
+     * would notice.
      */
+    useEffect(() => {
+        if (!isInitialized || !context) {
+            return;
+        }
+        let cancelled = false;
+        const fs = context.services.get<FileSystemService>(Services.FileSystem);
+        void walkProjectScripts(async relative => {
+            const result = await fs.list(context.project.resolve(relative.split("/")));
+            return result.ok ? result.data : null;
+        }).then(files => {
+            if (!cancelled) {
+                setScriptFiles(files);
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [context, isInitialized]);
+
     const openRowMenu = useCallback(
         (event: React.MouseEvent, blueprintId: string) => {
             setMenuFor(blueprintId);
             showMenu(event);
-            if (!isInitialized || !context) {
-                return;
-            }
-            const fs = context.services.get<FileSystemService>(Services.FileSystem);
-            void walkProjectScripts(async relative => {
-                const result = await fs.list(context.project.resolve(relative.split("/")));
-                return result.ok ? result.data : null;
-            }).then(setScriptFiles);
         },
-        [context, isInitialized, showMenu],
+        [showMenu],
     );
+
+    /**
+     * Files nothing points at.
+     *
+     * The offer to attach one exists because a file can arrive in the project without Studio: an
+     * author writes it in their editor, or renames one and leaves the old reference dangling. Only
+     * unused files are offered - a file two slots run is a legitimate arrangement, but not one to
+     * fall into by picking from a list.
+     */
+    const unusedScriptFiles = useMemo(() => {
+        const bound = scriptBindingsByRef(doc);
+        return scriptFiles.filter(ref => !bound.has(ref));
+    }, [doc, scriptFiles]);
+
+    const attachExisting = (scriptRef: string) => {
+        void localBp
+            .createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript", { existingScriptRef: scriptRef })
+            .then(newId => onReopenRevision?.(newId));
+    };
 
     const rowMenuItems = (blueprintId: string): ContextMenuDef => {
         const target = doc.blueprints[blueprintId];
@@ -156,6 +193,19 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         {t("blueprint.revisions.newScript")}
                     </button>
                 ) : null}
+                {allowScriptRevision && unusedScriptFiles.length > 0 ? (
+                    <button
+                        type="button"
+                        className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+                        {...freeze.writes()}
+                        onClick={event => {
+                            setMenuFor(ATTACH_MENU);
+                            showMenu(event);
+                        }}
+                    >
+                        {t("blueprint.revisions.useExisting")}
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
@@ -170,7 +220,19 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 </button>
             </div>
             {menuState.visible && menuFor ? (
-                <ContextMenu items={rowMenuItems(menuFor)} position={menuState.position} onClose={hideMenu} />
+                <ContextMenu
+                    items={
+                        menuFor === ATTACH_MENU
+                            ? unusedScriptFiles.map(ref => ({
+                                  id: ref,
+                                  label: ref,
+                                  onClick: () => attachExisting(ref),
+                              }))
+                            : rowMenuItems(menuFor)
+                    }
+                    position={menuState.position}
+                    onClose={hideMenu}
+                />
             ) : null}
         </div>
     );

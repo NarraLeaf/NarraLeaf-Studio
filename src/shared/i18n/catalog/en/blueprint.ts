@@ -252,6 +252,7 @@ export const blueprint = {
         deleteOnly: "A slot keeps its last revision.",
         newScript: "New script",
         newBlueprint: "New blueprint",
+        useExisting: "Use an existing file",
     },
     /**
      * What a revision is written in, and the whole of the distinction an author has to hold: a
