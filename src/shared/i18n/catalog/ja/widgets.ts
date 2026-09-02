@@ -7,7 +7,7 @@ export const widgets = {
         interaction: "操作",
     },
     blueprint: {
-        controlLabel: "コントロールのブループリント",
+        controlLabel: "コンポーネントロジック",
     },
     appearance: {
         title: "外観",

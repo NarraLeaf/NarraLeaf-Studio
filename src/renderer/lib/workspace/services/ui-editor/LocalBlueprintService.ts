@@ -941,7 +941,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument).getDocument();
         const elementId = anchorElementId(owner);
         if (elementId) {
-            const element = uidoc.elements[elementId];
+            // A component's own elements are not in the document's element table - each definition
+            // holds its own - so a component element looked up there alone answers nothing, and
+            // every script written inside a component was called "Logic".
+            const element =
+                owner.kind === "componentWidgetMain"
+                    ? uidoc.components?.find(component => component.id === owner.componentId)?.elements[elementId]
+                    : uidoc.elements[elementId];
             const named = element?.name?.trim();
             if (named) {
                 return named;

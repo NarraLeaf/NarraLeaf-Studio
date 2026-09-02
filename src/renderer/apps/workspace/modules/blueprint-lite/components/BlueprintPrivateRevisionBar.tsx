@@ -14,6 +14,7 @@ import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/componen
 import { Services } from "@/lib/workspace/services/services";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { useWorkspace } from "../../../context";
+import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
 import { BlueprintFrontendBadge } from "./BlueprintFrontendBadge";
 import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 
@@ -43,6 +44,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     // Making a sibling revision writes the blueprint document. Switching which existing revision is
     // active writes too - it is what the game runs - so both are off; the list itself stays readable.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    const blueprintRevision = useBlueprintDocumentRevision();
     const ownerKey = ownerRefToIndexKey(blueprint.owner);
     const doc = localBp.getBlueprintDocument();
     const rec = doc.ownerRecords[ownerKey];
@@ -52,37 +54,36 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     const allowScriptRevision = blueprintContract(blueprint.owner).invocation !== "valueBinding";
 
     /**
-     * Every source under `scripts/`, read once when this bar mounts.
+     * Every source under `scripts/`.
      *
-     * Both offers need it - re-pointing a script, and attaching a file that is already there - and
-     * the folder is small enough that reading it when a blueprint is opened costs nothing an author
-     * would notice.
+     * Both offers need it - re-pointing a script, and attaching a file that is already there. Read
+     * when this bar appears, again whenever the document moves (making a script writes a file, and
+     * removing a revision leaves one behind), and again when a menu opens, which is the only moment
+     * a file that arrived from the author's own editor can be noticed.
      */
-    useEffect(() => {
+    const refreshScriptFiles = useCallback(async () => {
         if (!isInitialized || !context) {
             return;
         }
-        let cancelled = false;
         const fs = context.services.get<FileSystemService>(Services.FileSystem);
-        void walkProjectScripts(async relative => {
+        const files = await walkProjectScripts(async relative => {
             const result = await fs.list(context.project.resolve(relative.split("/")));
             return result.ok ? result.data : null;
-        }).then(files => {
-            if (!cancelled) {
-                setScriptFiles(files);
-            }
         });
-        return () => {
-            cancelled = true;
-        };
+        setScriptFiles(files);
     }, [context, isInitialized]);
+
+    useEffect(() => {
+        void refreshScriptFiles();
+    }, [refreshScriptFiles, blueprintRevision]);
 
     const openRowMenu = useCallback(
         (event: React.MouseEvent, blueprintId: string) => {
             setMenuFor(blueprintId);
             showMenu(event);
+            void refreshScriptFiles();
         },
-        [showMenu],
+        [refreshScriptFiles, showMenu],
     );
 
     /**
@@ -201,6 +202,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         onClick={event => {
                             setMenuFor(ATTACH_MENU);
                             showMenu(event);
+                            void refreshScriptFiles();
                         }}
                     >
                         {t("blueprint.revisions.useExisting")}

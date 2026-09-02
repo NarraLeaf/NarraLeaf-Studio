@@ -676,23 +676,27 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const bp = doc.blueprints[payload.blueprintId]!;
 
     /**
-     * A script tab says "Script", and wears a file glyph rather than the graph one.
+     * A script tab is named after the slot it fills and wears a file glyph rather than the graph one.
      *
      * Set here rather than by whoever opened the tab: the openers - quick open, search, the surface
      * list, a restored session - know a blueprint id and not which of the two it holds, and the
-     * answer only arrives once the document is read. A tab's blueprint id never changes (switching
-     * the active revision opens a different tab), so this runs once per tab.
+     * answer only arrives once the document is read.
+     *
+     * The name rather than the word "Script": two scripts open at once are two tabs, and a strip of
+     * tabs all reading "Script" names none of them. The glyph and the editor's own header carry
+     * which of the two this is.
      */
     const isScriptProgram = bp.program.kind === "scriptModule";
+    const scriptTabTitle = bp.name.trim();
     useEffect(() => {
         if (!isScriptProgram) {
             return;
         }
         uiService.editor.update(tabId, {
-            title: t("blueprint.script.tabTitle"),
+            title: scriptTabTitle || t("blueprint.script.tabTitle"),
             icon: <FileCode2 className="w-4 h-4" />,
         });
-    }, [isScriptProgram, t, tabId, uiService]);
+    }, [isScriptProgram, scriptTabTitle, t, tabId, uiService]);
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
@@ -2119,11 +2123,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         return (
             <div
                 className="h-full min-h-0"
-                data-help-topic="scripts"
                 onMouseDownCapture={focusBlueprintEditor}
                 onFocusCapture={focusBlueprintEditor}
             >
                 <BlueprintEditorLayout
+                    kind="script"
                     headerActions={detachAction}
                     onHeaderAuxClick={onHeaderAuxClick}
                     header={
