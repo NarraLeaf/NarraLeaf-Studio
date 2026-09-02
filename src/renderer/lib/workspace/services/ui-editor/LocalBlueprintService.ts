@@ -83,7 +83,7 @@ import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 import { writeScriptDeclarations } from "./blueprint/scriptDeclarationFiles";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { anchorElementId, blueprintContract } from "@shared/blueprint/ownerShape";
+import { anchorElementId, anchorSurfaceId, blueprintContract } from "@shared/blueprint/ownerShape";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -92,6 +92,7 @@ import {
     getActiveBlueprintId,
     parsePrivateOwnerKeyToRef,
     registerPrivateBlueprintAsActive,
+    removePrivateBlueprint,
     setPrivateOwnerActive,
 } from "./blueprint/ownerRecords";
 
@@ -795,6 +796,36 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
+    /**
+     * Remove one revision of a slot, leaving any file it pointed at on disk.
+     *
+     * Undoable, like every other edit to this document - which matters here more than elsewhere,
+     * because the thing being removed may be the only reference to a file the author has been
+     * writing in.
+     */
+    public deletePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void {
+        this.applyBlueprintEdit({ blueprintId, ownerKey }, doc => {
+            removePrivateBlueprint(doc, ownerKey, blueprintId);
+        });
+    }
+
+    /**
+     * Point a script at a different file.
+     *
+     * The one way a `scriptRef` can change after it is written. Without it a file renamed in the
+     * author's own editor left the slot dangling for good: the panel said the file was missing and
+     * offered nothing to do about it.
+     */
+    public setBlueprintScriptRef(blueprintId: string, scriptRef: string): void {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "scriptModule") {
+                throw new RendererError(`Not a script: ${blueprintId}`);
+            }
+            bp.program = { kind: "scriptModule", scriptRef };
+        });
+    }
+
     public async createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string> {
         const ownerRef = parsePrivateOwnerKeyToRef(ownerKey);
         if (!ownerRef) {
@@ -808,10 +839,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const id = uuid.generate();
-        const name =
-            frontend === "typescript"
-                ? `Script ${id.slice(0, 6)}`
-                : `Blueprint ${id.slice(0, 6)}`;
+        const name = this.unusedBlueprintName(ownerRef, ownerKey);
         // The file first, and the blueprint only if it was written. The other order leaves a
         // blueprint pointing at a file that does not exist, which is the dangling state the model
         // allows for a file the author deleted - and reporting it as that would blame them for a
@@ -842,7 +870,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      */
     private async createStarterScriptFile(owner: BlueprintOwnerRef, name: string): Promise<string> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const scriptRef = this.unusedScriptRef(name);
+        const scriptRef = this.unusedScriptRef(name, this.widgetTypeOfOwner(owner));
         const absolute = this.getContext().project.resolve(scriptRef.split("/"));
         const written = await fs.writeFileNoFollowOrCreate(
             absolute,
@@ -862,19 +890,84 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     /**
+     * What a new blueprint or script is called: the slot it fills.
+     *
+     * The old name was six characters of its own UUID, which names nothing an author can recognise
+     * and - for a script - was then baked into a filename they open in their own editor. The slot
+     * has a name already: the control, the page, or the project. Two revisions of one slot count up
+     * rather than colliding, so the revision list never shows the same word twice.
+     */
+    private unusedBlueprintName(owner: BlueprintOwnerRef, ownerKey: string): string {
+        const base = this.slotName(owner);
+        const taken = new Set(
+            this.listPrivateBlueprintIdsForOwnerKey(ownerKey)
+                .map(id => this.getBlueprintDocument().blueprints[id]?.name)
+                .filter((name): name is string => typeof name === "string"),
+        );
+        if (!taken.has(base)) {
+            return base;
+        }
+        for (let index = 2; ; index += 1) {
+            const candidate = `${base} ${index}`;
+            if (!taken.has(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /**
+     * The author's own word for where this blueprint sits.
+     *
+     * Their name for the element or the page wherever there is one; otherwise the position itself.
+     * English, like every other default this document stores - a blueprint name is authored data
+     * that travels with the project, not an interface string that follows the reader's language.
+     */
+    private slotName(owner: BlueprintOwnerRef): string {
+        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        const elementId = anchorElementId(owner);
+        if (elementId) {
+            const element = uidoc.elements[elementId];
+            const named = element?.name?.trim();
+            if (named) {
+                return named;
+            }
+            // `nl.button` reads as "Button": the type is the only thing an unnamed element has, and
+            // its prefix is ours rather than anything the author wrote.
+            const type = element?.type?.split(".").pop();
+            return type ? type.charAt(0).toUpperCase() + type.slice(1) : "Logic";
+        }
+        const surfaceId = anchorSurfaceId(owner);
+        if (surfaceId) {
+            const named = uidoc.surfaces.find(surface => surface.id === surfaceId)?.name?.trim();
+            if (named) {
+                return named;
+            }
+        }
+        if (owner.kind === "storyAction") {
+            return owner.mode === "condition" ? "Condition" : owner.mode === "value" ? "Value" : "Story action";
+        }
+        return owner.kind === "globalMain" ? "App" : "Logic";
+    }
+
+    /**
      * A path under `scripts/` that no blueprint already points at.
      *
      * Named after the blueprint rather than after its id: the author opens this file in their own
      * editor, and a filename is as much interface as a title bar is. Two blueprints with one name
      * count up rather than colliding.
      */
-    private unusedScriptRef(name: string): string {
+    private unusedScriptRef(name: string, widgetType?: string): string {
         const taken = new Set(
             Object.values(this.getBlueprintDocument().blueprints ?? {})
                 .map(bp => (bp.program.kind === "scriptModule" ? bp.program.scriptRef : null))
                 .filter((ref): ref is string => typeof ref === "string"),
         );
-        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "script";
+        // A name written in a script the filename cannot carry - most of them - slugs to nothing.
+        // The widget type is the next most specific thing that is always ASCII, and beats numbering
+        // every such file `script-2.ts`.
+        const slugify = (value: string) =>
+            value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+        const slug = slugify(name) || slugify(widgetType?.split(".").pop() ?? "") || "script";
         let candidate = `${SCRIPTS_DIR}/${slug}.ts`;
         for (let index = 2; taken.has(candidate); index += 1) {
             candidate = `${SCRIPTS_DIR}/${slug}-${index}.ts`;

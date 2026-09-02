@@ -932,6 +932,8 @@ interface ILocalBlueprintService extends IService {
      * from one whose file the author deleted.
      */
     createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string>;
+    deletePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
+    setBlueprintScriptRef(blueprintId: string, scriptRef: string): void;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {
