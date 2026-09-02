@@ -22,6 +22,7 @@ import type {
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import type {
     GameProgressExportRequest,
     GameProgressExportResult,
@@ -311,6 +312,7 @@ export enum IPCEventType {
     gameBuildReadLastRun = "gameBuild.readLastRun",
     gameBuildRevealOutput = "gameBuild.revealOutput",
     projectOpenScript = "project.openScript",
+    projectListScriptEditors = "project.listScriptEditors",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -936,27 +938,48 @@ export type IPCEvents = {
         response: void;
     };
     /**
-     * Open one of the project's own script files in whatever the author edits with.
+     * Open the project's scripts folder in whatever the author edits with.
      *
      * Studio deliberately has no script editor - `<project>/scripts/` is the one directory the disk
      * owns, and a second writer over those bytes is what that boundary exists to prevent - so
      * "open it where you edit it" is the honest affordance.
      *
+     * The **folder**, with the file passed alongside it, because a script type-checks against the
+     * tsconfig and declarations that sit in that folder: an editor opened on one file resolves
+     * neither, and underlines the author's first line.
+     *
      * Two guards, and both are needed. The project must be the window's own, so this cannot reach
      * another project's files; and the path must be one `isScriptSourcePath` accepts, so it cannot
      * reach anything but a `.ts` or `.js` file under `scripts/`, dependencies excluded. The
      * renderer therefore names a file the author already has open in Studio, never an arbitrary
-     * path.
+     * path - and it names the target by id, never by command line.
      */
     [IPCEventType.projectOpenScript]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
             projectPath: string;
-            /** Project-relative, always under `scripts/`. */
-            scriptRef: string;
+            /** Project-relative, always under `scripts/`. Absent to open the folder alone. */
+            scriptRef?: string;
+            /**
+             * A detected editor's id, or `reveal` / `system`. Absent means the file manager, which
+             * is the one target that works with nothing installed.
+             */
+            target?: ScriptOpenTargetId;
         },
         response: void;
+    };
+    /**
+     * Which editors this machine can open the scripts folder in.
+     *
+     * Probed in the main process because only it can look at PATH. The answer is a list of ids and
+     * display names; the renderer never learns a command line, and cannot ask for one.
+     */
+    [IPCEventType.projectListScriptEditors]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: ExternalScriptEditor[];
     };
     /**
      * Check every remembered project against the disk and report the ones that are gone.

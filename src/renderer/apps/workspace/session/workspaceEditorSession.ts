@@ -1,4 +1,4 @@
-import { FileText, Image, Music, PanelsTopLeft, User } from "lucide-react";
+import { FileCode2, FileText, Image, Music, PanelsTopLeft, User } from "lucide-react";
 import { createElement, type ReactNode } from "react";
 import type { EditorGroup, EditorLayout, EditorTabDefinition } from "@/apps/workspace/registry/types";
 import { createWelcomeTab } from "@/apps/workspace/modules/welcome/openWelcomeTab";
@@ -22,6 +22,9 @@ import { isTextEditableAsset } from "@/apps/workspace/modules/assets/editors/tex
 // The id prefix lives apart from the component so `trySerializeTab` can recognise a text tab
 // without the session module depending on Monaco to do it.
 import { TEXT_EDITOR_TAB_PREFIX, getTextEditorTabId } from "@/apps/workspace/modules/assets/editors/text/textEditorTabId";
+import { ScriptPreviewEditor } from "@/apps/workspace/modules/blueprint-lite/ts/ScriptPreviewEditor";
+import { SCRIPT_PREVIEW_TAB_PREFIX, getScriptPreviewTabId } from "@/apps/workspace/modules/blueprint-lite/ts/scriptPreviewTabId";
+import { isScriptSourcePath } from "@shared/project/scriptsDirectory";
 import { StorySceneEditorTab } from "@/apps/workspace/modules/story/scene-editor/StorySceneEditorTab";
 import {
     getStorySceneEditorTabId,
@@ -91,6 +94,8 @@ export type SerializedTabContent =
     | { kind: "assetImage"; assetId: string; title: string }
     | { kind: "assetAudio"; assetId: string; title: string }
     | { kind: "assetText"; assetId: string; title: string }
+    /** A read-only look at one of the project's scripts. The ref is the whole of what it needs. */
+    | { kind: "blueprintScript"; scriptRef: string; title: string }
     | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload }
     | { kind: "storyMotion"; title: string; payload: StoryMotionEditorPayload };
 
@@ -294,6 +299,13 @@ function serializeTabContent(tab: EditorTabDefinition): SerializedTabContent | n
         }
         return { kind: "assetText", assetId, title: tab.title };
     }
+    if (tab.id.startsWith(SCRIPT_PREVIEW_TAB_PREFIX)) {
+        const scriptRef = tab.id.slice(SCRIPT_PREVIEW_TAB_PREFIX.length);
+        if (!scriptRef) {
+            return null;
+        }
+        return { kind: "blueprintScript", scriptRef, title: tab.title };
+    }
     if (tab.id.startsWith(STORY_SCENE_TAB_PREFIX) && isStorySceneEditorPayload(tab.payload)) {
         return { kind: "storyScene", title: tab.title, payload: tab.payload };
     }
@@ -389,6 +401,16 @@ function isSerializedTab(value: unknown): value is SerializedTab {
         kind === "assetText" &&
         typeof o.assetId === "string" &&
         o.assetId.length > 0 &&
+        typeof o.title === "string"
+    ) {
+        return true;
+    }
+    if (
+        kind === "blueprintScript" &&
+        typeof o.scriptRef === "string" &&
+        // The same predicate the host applies before it opens anything: a hand-edited session file
+        // must not be able to name a path outside `scripts/`.
+        isScriptSourcePath(o.scriptRef) &&
         typeof o.title === "string"
     ) {
         return true;
@@ -535,6 +557,11 @@ function storyIcon(): ReactNode {
 /** Same glyph the open path gives a text tab, so a restored tab is indistinguishable. */
 function textIcon(): ReactNode {
     return createElement(FileText, { className: "w-4 h-4" });
+}
+
+/** Same glyph the blueprints section gives a script preview, for the same reason. */
+function scriptIcon(): ReactNode {
+    return createElement(FileCode2, { className: "w-4 h-4" });
 }
 
 /**
@@ -698,6 +725,18 @@ function buildTabDefinitionContent(ctx: WorkspaceContext, entry: SerializedTab):
             component: TextEditor,
             closable: true,
             payload: { asset },
+        };
+    }
+    if (entry.kind === "blueprintScript") {
+        // No existence check: the disk owns `scripts/`, so a file that is gone is a state the tab
+        // itself draws (and can be refreshed out of), not a reason to drop the tab silently.
+        return {
+            id: getScriptPreviewTabId(entry.scriptRef),
+            title: entry.title,
+            icon: scriptIcon(),
+            component: ScriptPreviewEditor,
+            closable: true,
+            payload: { scriptRef: entry.scriptRef },
         };
     }
     if (entry.kind === "storyScene") {

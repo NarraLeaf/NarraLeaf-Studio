@@ -1,6 +1,7 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
+import { BLUEPRINT_SCRIPTS_SECTION_ID, BlueprintScriptsSection } from "./BlueprintScriptsSection";
 import { AlertCircle, Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
@@ -248,6 +249,9 @@ export function AssetsListView({
                     </AccordionItem>
                 );
             })}
+            {/* Last, and outside the category map on purpose: the project's scripts are not in the
+                asset library. See `BlueprintScriptsSection`. */}
+            <BlueprintScriptsSection open={openItems.includes(BLUEPRINT_SCRIPTS_SECTION_ID)} />
             {!hasAnyItems && (
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}

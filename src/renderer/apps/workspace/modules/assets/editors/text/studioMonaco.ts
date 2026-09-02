@@ -22,6 +22,13 @@ import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js";
+// The author's own scripts, for the read-only preview of a script blueprint. The *basic* language
+// is the whole point: it is a Monarch grammar that colours tokens on the main thread, not the
+// TypeScript language service, which is a worker this window cannot spawn. So the preview highlights
+// and never type-checks - and it must not, because the type check belongs to the editor the author
+// has the folder open in, where it can see their `node_modules`.
+import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
+import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
 import { getInterface } from "@/lib/app/bridge";
 import {
     normalizeTextEditorExtension,

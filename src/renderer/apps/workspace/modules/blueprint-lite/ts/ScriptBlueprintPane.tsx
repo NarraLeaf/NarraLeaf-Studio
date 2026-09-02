@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { FileCode2, SquareArrowOutUpRight } from "lucide-react";
-import { getInterface } from "@/lib/app/bridge";
+import { useEffect, useState } from "react";
+import { FileCode2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { ScriptOpenMenu } from "./ScriptOpenMenu";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 
@@ -23,6 +23,10 @@ type Props = {
  * This replaced a textarea that edited the source inside the document. Nothing that textarea wrote
  * ever ran - no module was ever mounted from one - so what removing it costs is the ability to type
  * into a blueprint that did nothing.
+ *
+ * Reading it is a different question from editing it, and the answer is the read-only preview the
+ * asset browser's Blueprints section opens (`ScriptPreviewEditor`). The pane an author reaches from
+ * inside the blueprint editor stays the file name and a way out to their own tools.
  */
 export function ScriptBlueprintPane({ context, scriptRef }: Props) {
     const { t } = useTranslation();
@@ -45,10 +49,6 @@ export function ScriptBlueprintPane({ context, scriptRef }: Props) {
         };
     }, [context, scriptRef]);
 
-    const openInEditor = useCallback(() => {
-        void getInterface().app.openScript(projectPath, scriptRef);
-    }, [projectPath, scriptRef]);
-
     return (
         <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 border border-edge bg-surface-sunken p-6">
             <FileCode2 className="h-6 w-6 text-fg-muted" aria-hidden />
@@ -57,14 +57,7 @@ export function ScriptBlueprintPane({ context, scriptRef }: Props) {
                 <span className="max-w-full truncate font-mono text-xs text-fg">{scriptRef}</span>
             </div>
             {missing ? <span className="text-2xs text-danger">{t("blueprint.script.missing")}</span> : null}
-            <button
-                type="button"
-                className="flex items-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-2.5 py-1.5 text-2xs text-fg hover:bg-fill"
-                onClick={openInEditor}
-            >
-                <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-                {t("blueprint.script.open")}
-            </button>
+            <ScriptOpenMenu projectPath={projectPath} scriptRef={scriptRef} />
         </div>
     );
 }

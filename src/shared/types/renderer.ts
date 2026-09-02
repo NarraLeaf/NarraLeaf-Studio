@@ -1,5 +1,6 @@
 import type { ProjectTrustRecord } from "./projectTrust";
 import type { ProjectSessionLockOutcome } from "./projectSession";
+import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
@@ -513,13 +514,17 @@ export interface RendererPreloadedInterface {
         /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /**
-         * Hand one of the project's own scripts to whatever the author edits with.
+         * Hand the project's scripts folder to whatever the author edits with.
          *
          * Studio has no script editor: `<project>/scripts/` is the one directory the disk owns, and
-         * a second writer over those bytes is what that boundary exists to prevent. The host
-         * refuses any project but this window's and any path but a script under `scripts/`.
+         * a second writer over those bytes is what that boundary exists to prevent. The folder is
+         * what is opened - a script resolves its types from the tsconfig and declarations in it -
+         * with the file passed alongside so the editor lands on it. The host refuses any project but
+         * this window's, any path but a script under `scripts/`, and any target but one it offered.
          */
-        openScript(projectPath: string, scriptRef: string): Promise<RequestStatus<void>>;
+        openScript(projectPath: string, scriptRef?: string, target?: ScriptOpenTargetId): Promise<RequestStatus<void>>;
+        /** Which editors this machine can open that folder in. Reads PATH; opens nothing. */
+        listScriptEditors(): Promise<RequestStatus<ExternalScriptEditor[]>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         /** Each remembered project's own app icon as a `data:` URL. Projects without one are absent. */
