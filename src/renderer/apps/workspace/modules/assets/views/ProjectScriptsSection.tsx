@@ -95,7 +95,7 @@ export function ProjectScriptsSection({ open }: { open: boolean }) {
         <AccordionItem
             id={PROJECT_SCRIPTS_SECTION_ID}
             icon={<FileCode2 className="w-4 h-4" />}
-            headerProps={{ "data-asset-category": PROJECT_SCRIPTS_SECTION_ID }}
+            headerProps={{ "data-asset-category": PROJECT_SCRIPTS_SECTION_ID, "data-help-topic": "scripts" }}
             title={
                 <span className="flex items-center gap-1.5">
                     <span>{t("blueprint.script.sectionTitle")}</span>

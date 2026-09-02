@@ -2119,6 +2119,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         return (
             <div
                 className="h-full min-h-0"
+                data-help-topic="scripts"
                 onMouseDownCapture={focusBlueprintEditor}
                 onFocusCapture={focusBlueprintEditor}
             >
