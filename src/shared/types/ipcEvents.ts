@@ -2308,7 +2308,14 @@ export type IPCWorkspaceEvents = {
             record: ProjectTrustRecord | null;
         };
     };
-    /** The author vouches for a project that arrived from elsewhere. */
+    /**
+     * The author vouches for a project that arrived from elsewhere.
+     *
+     * Answered for the Settings window only, as are the revoke and the list below. The workspace
+     * is where a project's content is shown and, once trusted, where its code runs; a grant taken
+     * from there would let the thing being judged answer the question. The status bar sends the
+     * author to Settings instead.
+     */
     [IPCEventType.projectTrustGrant]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
