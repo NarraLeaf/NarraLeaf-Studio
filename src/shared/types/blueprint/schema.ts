@@ -23,12 +23,18 @@
  * owner. It is a version rather than a silent read because a leftover is not inert: every owner
  * switch in the codebase is exhaustive over `BlueprintOwnerRef`, so one that no longer has an arm
  * falls off the end of the key encoder and reaches the document validator as `[object Object]`.
+ * v13: a script blueprint holds the PATH of the author's file under `scripts/` rather than its
+ * text. The text was never Studio's to hold - a document service that keeps a copy writes it back
+ * over an edit made in the author's own editor - and the inline form never ran: nothing mounted
+ * those modules, so the shipped "New TypeScript" button produced a blueprint that did nothing. The
+ * migration writes each one's text out to a file and points the blueprint at it, so no typing is
+ * lost even though none of it ever executed.
  *
  * The ladder that reads these stops at `BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION`. The versions
  * named above it are kept as the record of what each one changed; the ones below are history only,
  * and a document at one of them is refused. See `@shared/blueprint/migrateBlueprintDocument`.
  */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 12 as const;
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 13 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 

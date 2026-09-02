@@ -370,6 +370,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         revealRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
+        /** Hand one of the project's own scripts to whatever the author edits with. */
+        openScript: (projectPath: string, scriptRef: string) =>
+            ipcClient.invoke(IPCEventType.projectOpenScript, { projectPath, scriptRef }) as Promise<RequestStatus<void>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         recentProjectIcons: () =>

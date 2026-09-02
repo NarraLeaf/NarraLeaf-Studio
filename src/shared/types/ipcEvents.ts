@@ -306,6 +306,7 @@ export enum IPCEventType {
     gameBuildReadPatchBaseline = "gameBuild.readPatchBaseline",
     gameBuildReadLastRun = "gameBuild.readLastRun",
     gameBuildRevealOutput = "gameBuild.revealOutput",
+    projectOpenScript = "project.openScript",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -927,6 +928,29 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {
             path: string;
+        },
+        response: void;
+    };
+    /**
+     * Open one of the project's own script files in whatever the author edits with.
+     *
+     * Studio deliberately has no script editor - `<project>/scripts/` is the one directory the disk
+     * owns, and a second writer over those bytes is what that boundary exists to prevent - so
+     * "open it where you edit it" is the honest affordance.
+     *
+     * Two guards, and both are needed. The project must be the window's own, so this cannot reach
+     * another project's files; and the path must be one `isScriptSourcePath` accepts, so it cannot
+     * reach anything but a `.ts` or `.js` file under `scripts/`, dependencies excluded. The
+     * renderer therefore names a file the author already has open in Studio, never an arbitrary
+     * path.
+     */
+    [IPCEventType.projectOpenScript]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            /** Project-relative, always under `scripts/`. */
+            scriptRef: string;
         },
         response: void;
     };

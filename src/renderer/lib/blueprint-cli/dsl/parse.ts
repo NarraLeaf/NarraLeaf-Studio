@@ -471,12 +471,15 @@ function applyBlueprintKey(
         case "id":
             blueprint.id = typeof raw === "string" ? raw : undefined;
             return;
+        case "script":
+            blueprint.script = typeof raw === "string" ? raw : undefined;
+            return;
         default:
             fail(
                 line,
                 "dsl.unknown_blueprint_field",
                 `"${key}" is not a blueprint field.`,
-                "Known: id, meta, bindings, fields, functions. Node params must follow a node declaration.",
+                "Known: id, script, meta, bindings, fields, functions. Node params must follow a node declaration.",
             );
     }
 }

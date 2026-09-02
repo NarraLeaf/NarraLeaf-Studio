@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeCanonicalJson } from "../documents/canonicalJson";
 import type { BlueprintDocument, BlueprintGraphIndex } from "../types/blueprint/document";
+import { LEGACY_INLINE_SCRIPT_META_KEY } from "../types/blueprint/document";
 import { listBlueprintEventIds, listBlueprintFunctionIds } from "./blueprintEventOrder";
 import {
     BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -251,5 +252,99 @@ describe("migrateBlueprintDocumentToLatest (v11 to v12 shared asset removal)", (
 
         expect(Object.keys(migrated.ownerRecords)).toEqual(["globalMain"]);
         expect(migrated.ownerRecords.globalMain.privateBlueprintIds).toEqual(["bp"]);
+    });
+});
+
+describe("migrateBlueprintDocumentToLatest (v12 to v13 script references)", () => {
+    function inlineScript(id: string, name: string, code: string): Record<string, unknown> {
+        return {
+            id,
+            name,
+            owner: { kind: "globalMain" },
+            frontend: "typescript",
+            programKind: "scriptModule",
+            program: { kind: "scriptModule", source: { language: "typescript", code } },
+        };
+    }
+
+    function documentWith(blueprints: Record<string, unknown>, schemaVersion = 12): unknown {
+        return JSON.parse(JSON.stringify({ schemaVersion, ownerRecords: {}, blueprints }));
+    }
+
+    it("points a script blueprint at a file named after it, keeping the text for whoever writes it", () => {
+        const migrated = migrateBlueprintDocumentToLatest(
+            documentWith({ a: inlineScript("a", "Quit Game", "export function onMouseClick() {}") }),
+        );
+
+        const blueprint = migrated.blueprints.a;
+        expect(blueprint.program).toEqual({ kind: "scriptModule", scriptRef: "scripts/quit-game.ts" });
+        // The text never ran - nothing mounted these modules - but the editor accepted typing, so
+        // it is carried to the one open that can write it to disk rather than dropped.
+        expect(blueprint.meta?.[LEGACY_INLINE_SCRIPT_META_KEY]).toBe("export function onMouseClick() {}");
+        expect(migrated.schemaVersion).toBe(BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("names a file rather than a UUID, and counts up when two blueprints share a name", () => {
+        const migrated = migrateBlueprintDocumentToLatest(
+            documentWith({
+                a: inlineScript("2f0c9a1e-0000-4000-8000-000000000001", "Quit", "a"),
+                b: inlineScript("2f0c9a1e-0000-4000-8000-000000000002", "Quit", "b"),
+                // A name with nothing usable in it still has to produce a filename.
+                c: inlineScript("2f0c9a1e-0000-4000-8000-000000000003", "!!!", "c"),
+            }),
+        );
+
+        const refs = Object.values(migrated.blueprints).map(bp =>
+            bp.program.kind === "scriptModule" ? bp.program.scriptRef : null);
+        expect(refs).toEqual(["scripts/quit.ts", "scripts/quit-2.ts", "scripts/script.ts"]);
+        // A filename is as much interface as a title bar is.
+        for (const ref of refs) {
+            expect(ref).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
+        }
+    });
+
+    it("carries no text for a blueprint the author never typed in", () => {
+        const migrated = migrateBlueprintDocumentToLatest(documentWith({ a: inlineScript("a", "Empty", "") }));
+        expect(migrated.blueprints.a.meta?.[LEGACY_INLINE_SCRIPT_META_KEY]).toBeUndefined();
+    });
+
+    it("leaves a document that is already at v13 exactly as it is", () => {
+        const current = documentWith(
+            {
+                a: {
+                    id: "a",
+                    name: "Quit",
+                    owner: { kind: "globalMain" },
+                    frontend: "typescript",
+                    programKind: "scriptModule",
+                    program: { kind: "scriptModule", scriptRef: "scripts/menus/quit.ts" },
+                },
+            },
+            BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        );
+        const before = encodeCanonicalJson(current as Record<string, unknown>);
+
+        const migrated = migrateBlueprintDocumentToLatest(current);
+
+        // Running the pass again would re-derive the path from the name and move the author's file
+        // out from under their reference - so the version gate is what makes it safe, not the pass.
+        expect(encodeCanonicalJson(migrated as unknown as Record<string, unknown>)).toEqual(before);
+    });
+
+    it("leaves graph blueprints alone", () => {
+        const migrated = migrateBlueprintDocumentToLatest(
+            documentWith({
+                g: {
+                    id: "g",
+                    name: "Visual",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                },
+            }),
+        );
+        expect(migrated.blueprints.g.program.kind).toBe("graph");
+        expect(migrated.blueprints.g.meta).toBeUndefined();
     });
 });

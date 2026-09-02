@@ -59,10 +59,7 @@ function scriptBlueprint(id: string, name: string): Blueprint {
         programKind: "scriptModule",
         program: {
             kind: "scriptModule",
-            source: {
-                language: "typescript",
-                code: "",
-            },
+            scriptRef: "scripts/widget.ts",
         },
         members: {
             variables: {},

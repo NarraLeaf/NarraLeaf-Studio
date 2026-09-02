@@ -19,7 +19,9 @@
  *
  * A document below the floor is refused by name rather than half-read.
  */
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, LegacyInlineScriptSource } from "@shared/types/blueprint/document";
+import { LEGACY_INLINE_SCRIPT_META_KEY } from "@shared/types/blueprint/document";
+import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { captureBlueprintDocumentEventOrder, captureBlueprintDocumentFunctionOrder } from "./blueprintEventOrder";
 import { decodeLegacyBlueprintOwnerKey, encodeBlueprintOwnerKey } from "./ownerKey";
@@ -67,6 +69,9 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
         if (sv < SHARED_ASSET_REMOVED_VERSION) {
             dropSharedAssetOwners(doc);
         }
+        if (sv < SCRIPT_REF_VERSION) {
+            moveInlineScriptsToFiles(doc);
+        }
         return doc;
     }
     throw new Error(
@@ -94,6 +99,67 @@ const OWNER_KEY_ESCAPING_VERSION = 11;
  * paying for the scan on every read would be the shape the four ungated param rewrites had.
  */
 const SHARED_ASSET_REMOVED_VERSION = 12;
+
+/**
+ * The version at which a script blueprint started holding a path instead of its text.
+ *
+ * Gated like the two above. This pass reads `program.source` and writes `program.scriptRef`, and a
+ * document already at v13 has no `source` to read - so on a current document it would find nothing
+ * and cost a scan, which is the shape the four ungated param rewrites had.
+ */
+const SCRIPT_REF_VERSION = 13;
+
+/**
+ * Turn each inline script into a file reference, keeping the text for whoever can write a file.
+ *
+ * **Nothing here is lost, and nothing here ever ran.** The inline form was a prototype: no mounted
+ * module ever backed it, so every "New TypeScript" blueprint an author made did nothing at all when
+ * their game ran. But the button was shipped and its editor accepted typing, so the text may be
+ * real work even though it never executed - which is why this converts rather than dropping, the
+ * way the shared-asset pass above could.
+ *
+ * The text cannot be written from here: a migration is pure, and it runs in a main-process read as
+ * well as in the renderer. So it parks it on the blueprint's `meta` and the service that opens the
+ * project writes the file, which is how the variable registry seed at v9 was done for the same
+ * reason.
+ *
+ * The path is derived from the blueprint's NAME rather than its id. An author opens this file in
+ * their own editor, and a filename is as much interface as a title bar is - `scripts/quit.ts`, not
+ * a UUID. Collisions are resolved by counting, so two blueprints called "Quit" become `quit.ts` and
+ * `quit-2.ts`.
+ */
+function moveInlineScriptsToFiles(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints)) {
+        return;
+    }
+    const taken = new Set<string>();
+    for (const blueprint of Object.values(doc.blueprints) as Blueprint[]) {
+        const program = blueprint?.program as unknown;
+        if (!isRecord(program) || program.kind !== "scriptModule") {
+            continue;
+        }
+        const source = isRecord(program.source) ? (program.source as unknown as LegacyInlineScriptSource) : undefined;
+        const scriptRef = uniqueScriptPath(blueprint?.name, taken);
+        blueprint.program = { kind: "scriptModule", scriptRef };
+        if (typeof source?.code === "string" && source.code.length > 0) {
+            blueprint.meta = { ...(blueprint.meta ?? {}), [LEGACY_INLINE_SCRIPT_META_KEY]: source.code };
+        }
+    }
+}
+
+/** `Quit Game` -> `scripts/quit-game.ts`, counting up rather than colliding. */
+function uniqueScriptPath(name: unknown, taken: Set<string>): string {
+    const slug = typeof name === "string"
+        ? name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40)
+        : "";
+    const base = slug || "script";
+    let candidate = base;
+    for (let index = 2; taken.has(candidate); index += 1) {
+        candidate = `${base}-${index}`;
+    }
+    taken.add(candidate);
+    return `${SCRIPTS_DIR}/${candidate}.ts`;
+}
 
 /**
  * Drop the blueprints and owner records left behind by the shared blueprint asset.

@@ -396,7 +396,7 @@ function nodesOf(ir: Record<string, unknown>): Record<string, Record<string, unk
 
 function sourceOf(blueprint: Record<string, unknown>): unknown {
     const program = blueprint?.program;
-    return isJsonObject(program) ? program.source : undefined;
+    return isJsonObject(program) ? program.scriptRef : undefined;
 }
 
 function positionOf(node: Record<string, unknown>): unknown {

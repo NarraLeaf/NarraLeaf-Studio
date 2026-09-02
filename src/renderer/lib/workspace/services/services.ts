@@ -914,11 +914,8 @@ interface ILocalBlueprintService extends IService {
         updater: (ir: BlueprintGraphIr) => void,
         options?: { mergeKey?: string; mergeWindowMs?: number },
     ): void;
-    updateScriptModuleSource(
-        blueprintId: string,
-        code: string,
-        options?: { mergeKey?: string; mergeWindowMs?: number },
-    ): void;
+    /** Where a script blueprint's file is. There is no setter for its text; the file is the author's. */
+    getScriptRef(blueprintId: string): string | null;
     getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     planSubtreeDuplicateBlueprintRemap(input: {
         surfaceId: string;
@@ -928,8 +925,14 @@ interface ILocalBlueprintService extends IService {
     /** Private owner slot keys: globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId>. */
     listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[];
     setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
-    /** Adds a new blueprint revision for the owner; becomes active; prior blueprints stay in the record. */
-    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): string;
+    /**
+     * Adds a new blueprint revision for the owner; becomes active; prior blueprints stay in the record.
+     *
+     * Asynchronous because a script revision writes a file first and is only created if that
+     * succeeded - a blueprint pointing at a file that was never written would be indistinguishable
+     * from one whose file the author deleted.
+     */
+    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string>;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {

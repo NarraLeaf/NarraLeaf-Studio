@@ -357,7 +357,7 @@ describe("scanStoryEntryPoints", () => {
             owner: { kind: "globalMain" },
             frontend: "typescript",
             programKind: "scriptModule",
-            program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+            program: { kind: "scriptModule", scriptRef: "scripts/title.ts" },
         } as Blueprint;
 
         expect([...blueprintGraphCarriers([script])]).toEqual([]);

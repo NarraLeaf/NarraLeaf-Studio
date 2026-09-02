@@ -403,9 +403,10 @@ export const blueprint = {
         unnamedInputAction: "未命名操作",
         missingInputAction: "操作已缺失",
     },
-    tsPane: {
-        importHint: "允许的导入：\"narraleaf-studio\"",
-        sourceLabel: "TypeScript 蓝图源代码",
+    script: {
+        fileLabel: "脚本文件",
+        open: "在编辑器中打开",
+        missing: "文件不存在。",
     },
     tool: {
         select: "选择工具",

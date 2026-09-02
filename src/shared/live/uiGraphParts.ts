@@ -10,7 +10,6 @@ import type {
     BlueprintGraphIr,
     BlueprintGraphNode,
     BlueprintPrivateOwnerRecord,
-    TypeScriptBlueprintSource,
 } from "@shared/types/blueprint/document";
 import type { UIGraph, UIGraphDocument, UIGraphId } from "@shared/types/ui-editor/graph";
 
@@ -48,10 +47,16 @@ import type { UIGraph, UIGraphDocument, UIGraphId } from "@shared/types/ui-edito
 /** One graph slot's record with its IR taken off - its id, its name, its own metadata. */
 export type LiveGraphSlotShell = Omit<BlueprintEventGraph, "graph"> & Omit<BlueprintFunctionGraph, "graph">;
 
-/** A blueprint's program with the graph bodies taken off. Script modules travel whole. */
+/**
+ * A blueprint's program with the graph bodies taken off.
+ *
+ * A script module has no body to take off: it holds the path of a file in `scripts/`, and that file
+ * is not part of this document. A session shares the reference; the file itself travels the way any
+ * other file in the project does.
+ */
 export type LiveBlueprintProgramShell =
     | { kind: "graph"; graphs: Omit<BlueprintGraphIndex, "events" | "functions"> }
-    | { kind: "scriptModule"; source: TypeScriptBlueprintSource };
+    | { kind: "scriptModule"; scriptRef: string };
 
 /** A blueprint's record without its graphs. See the note on {@link LiveUIGraphParts}. */
 export type LiveBlueprintShell = Omit<Blueprint, "program"> & { program: LiveBlueprintProgramShell };
@@ -318,7 +323,7 @@ function applySlots(
  */
 function mergeShell(previous: Blueprint | undefined, shell: LiveBlueprintShell): Blueprint {
     if (shell.program.kind === "scriptModule") {
-        return { ...shell, program: { kind: "scriptModule", source: shell.program.source } };
+        return { ...shell, program: { kind: "scriptModule", scriptRef: shell.program.scriptRef } };
     }
     const held = previous?.program.kind === "graph" ? previous.program.graphs : undefined;
     return {
@@ -625,7 +630,7 @@ function shellsOf(document: BlueprintDocument | undefined): Record<string, LiveB
 
 function shellOfBlueprint(blueprint: Blueprint): LiveBlueprintShell {
     if (blueprint.program.kind === "scriptModule") {
-        return { ...blueprint, program: { kind: "scriptModule", source: blueprint.program.source } };
+        return { ...blueprint, program: { kind: "scriptModule", scriptRef: blueprint.program.scriptRef } };
     }
     const { events: _events, functions: _functions, ...graphs } = blueprint.program.graphs;
     return { ...blueprint, program: { kind: "graph", graphs } };
