@@ -27,6 +27,7 @@ import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents"
 import type { BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
 import { readProjectNetworkSettings } from "../../devMode/devModeNetworkPolicy";
+import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -45,6 +46,14 @@ export class BlueprintNetworkFetchHandler extends IPCHandler<IPCEventType.bluepr
             // channel refuses to consider is not a request that failed, and the node's error branch
             // is for servers that did not answer.
             const projectPath = requireWindowProject(window, data.projectPath);
+            // A distrusted project reaches nothing: not through its own renderer, which the session
+            // hook cuts off, and not through this channel, which exists to issue requests from
+            // outside that cage. Refused as an IPC failure for the reason a mismatch is - it is
+            // not a request that failed, it is one this channel will not consider.
+            const distrusted = refuseDistrustedWindow(window, "network request");
+            if (distrusted) {
+                throw new Error(distrusted);
+            }
             const { allowHttp, allowlist } = await readProjectNetworkSettings(projectPath);
             // `check` because this process can follow the chain itself, which is what makes the
             // allowlist a statement about where the bytes came from rather than about what was

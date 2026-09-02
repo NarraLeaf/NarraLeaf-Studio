@@ -22,6 +22,9 @@ vi.mock("@shared/utils/blueprintNetworkFetch", () => ({ executeBlueprintNetworkF
 // nothing here installs them; the reader this file is about touches no Electron at all.
 vi.mock("electron", () => ({ session: { defaultSession: undefined }, net: { request: vi.fn() } }));
 
+// The trust gate says where it refused in the workspace console; that window does not exist here.
+vi.mock("../../../utils/workspaceConsole", () => ({ emitWorkspaceConsoleLog: vi.fn() }));
+
 const { NETWORK_POLICY_ALLOWLIST, NETWORK_POLICY_ANY } = await import("@shared/types/networkAllowlist");
 const { WINDOW_PROJECT_MISMATCH_CODE } = await import("@shared/types/window");
 const { encodeProjectConfig } = await import("@shared/utils/nlproj");
@@ -53,9 +56,13 @@ async function writeProject(name: string, network: unknown): Promise<string> {
     return dir;
 }
 
-/** A window carrying the props the main process wrote when it opened a project. */
-function windowWith(props: unknown): AppWindowLike {
-    return { getProps: () => props } as unknown as AppWindowLike;
+/**
+ * A window carrying the props the main process wrote when it opened a project, on an app whose
+ * trust ledger vouches for every project unless a case says otherwise.
+ */
+function windowWith(props: unknown, options: { trusted?: boolean } = {}): AppWindowLike {
+    const app = { projectTrustManager: { isTrusted: () => options.trusted ?? true } };
+    return { getProps: () => props, getApp: () => app } as unknown as AppWindowLike;
 }
 
 function fetchOf(projectPath: string): FetchData {
@@ -130,6 +137,19 @@ describe("BlueprintNetworkFetchHandler", () => {
         const result = await handler.handle(windowWith({ onboarding: true }), fetchOf(mine));
 
         expect(result.success).toBe(false);
+        expect(executeBlueprintNetworkFetch).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The window's own project, and still refused: it is one the author has not vouched for. The
+     * renderer's own requests are cut at the session; this channel issues them from main, outside
+     * that cut, and would otherwise be the one route a distrusted project has to the network.
+     */
+    it("refuses a window whose own project is not trusted", async () => {
+        const result = await handler.handle(windowWith({ projectPath: mine }, { trusted: false }), fetchOf(mine));
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("not trusted");
         expect(executeBlueprintNetworkFetch).not.toHaveBeenCalled();
     });
 

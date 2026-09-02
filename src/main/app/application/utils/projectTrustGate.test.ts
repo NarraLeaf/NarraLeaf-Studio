@@ -88,6 +88,18 @@ describe("refusing a window", () => {
         expect(refuseDistrustedWindow(window, "remote asset download")).toBeNull();
     });
 
+    it("refuses a Dev Mode window whose project has since lost its trust", () => {
+        // Dev Mode only ever opens on a trusted project, so this is a window the author trusted
+        // and then withdrew the grant from in Settings. The ledger is read per request, so the
+        // withdrawal lands on the next thing the window asks for rather than on its relaunch.
+        const window = windowDouble({
+            type: WindowAppType.DevMode,
+            projectPath: "D:/games/theirs",
+            trusted: false,
+        });
+        expect(refuseDistrustedWindow(window, "network request")).toContain("not trusted");
+    });
+
     it("does not govern a window that has no project", () => {
         // The launcher and the settings window are not opened on a project, so there is nothing for
         // project trust to have an opinion about. Refusing them would break Studio's own surfaces.
