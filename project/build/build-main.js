@@ -55,7 +55,9 @@ const { rootDir, isDev } = require('./utils');
         // electron-builder stays a real node_modules require: its module tree
         // reads template/resource files relative to itself at runtime. 7zip-bin
         // (already in electron-builder's closure) resolves its bundled 7za.exe
-        // relative to its own __dirname, so it must not be inlined either.
+        // relative to its own __dirname; Studio's own callers go through
+        // sevenZipBinary.ts instead, but electron-builder reads the package
+        // directly and has no such correction, so it stays external for its sake.
         // @narraleaf/bindings is a native addon: it loads a platform-specific
         // binary by path, so it must resolve from node_modules, not be bundled
         // (same reason the artifact compile worker keeps it external).
@@ -114,10 +116,13 @@ const { rootDir, isDev } = require('./utils');
         // 7zip-bin for a third version of the same reason, and it is the one that
         // was found the hard way: it computes the path to its executable from its
         // own __dirname, so bundled it points at wherever the bundle happens to
-        // live and the extractor is simply not there. The packaging worker has
-        // kept it external all along; this worker needed it once it started
-        // unpacking a toolchain, and the symptom was a protected build quietly
-        // shipping the weaker codec because the compiler "could not be obtained".
+        // live and the extractor is simply not there.
+        //   Keeping it out of the bundle is no longer what makes that work.
+        // src/main/buildWorker/sevenZipBinary.ts rebuilds the path from where the
+        // package resolves to, so a bundle that inlines it still finds the
+        // executable - which is what the main bundle above does. The entry stays
+        // because there is no reason to inline a module that is only read for one
+        // string, not because the list is load-bearing.
         external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
         sourcemap: isDev(),
         minify: !isDev(),

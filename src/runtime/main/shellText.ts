@@ -37,6 +37,15 @@ interface ShellStrings {
     windowStopped: string;
     /** `{reason}`, `{exitCode}` - handed to the crash page, which is all that survives the death. */
     displayProcessExited: string;
+    /**
+     * `{name}` - window title of a preview running loose files, the everyday fast path.
+     *
+     * The one entry here an author reads rather than a player: a preview window is a game window,
+     * and without this the two forms of it are indistinguishable from the taskbar.
+     */
+    previewTitle: string;
+    /** `{name}` - window title of a preview that seals its content the way a shipped build does. */
+    previewAsShippedTitle: string;
 }
 
 const STRINGS: Record<ShellLocale, ShellStrings> = {
@@ -49,6 +58,8 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         logAt: "The report is in {path}",
         windowStopped: "The game window stopped working ({reason}).",
         displayProcessExited: "The game's display process exited: {reason} (exit code {exitCode})",
+        previewTitle: "{name} · Preview",
+        previewAsShippedTitle: "{name} · Preview as shipped",
     },
     zh: {
         hangMessage: "游戏未响应",
@@ -59,6 +70,8 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         logAt: "报告位于 {path}",
         windowStopped: "游戏窗口已停止工作（{reason}）",
         displayProcessExited: "游戏的显示进程已退出：{reason}（退出码 {exitCode}）",
+        previewTitle: "{name} · 预览",
+        previewAsShippedTitle: "{name} · 按出货方式预览",
     },
     ja: {
         hangMessage: "ゲームが応答しない",
@@ -69,6 +82,8 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         logAt: "レポートは {path} にある",
         windowStopped: "ゲームウィンドウが停止した（{reason}）",
         displayProcessExited: "ゲームの表示プロセスが終了した：{reason}（終了コード {exitCode}）",
+        previewTitle: "{name} · プレビュー",
+        previewAsShippedTitle: "{name} · 出荷どおりのプレビュー",
     },
 };
 
@@ -82,6 +97,8 @@ export interface ShellText {
     logAt(path: string): string;
     windowStopped(reason: string): string;
     displayProcessExited(reason: string, exitCode: number): string;
+    /** The window title for a preview of `name`, saying which of the two forms it is running. */
+    previewTitle(name: string, asShipped: boolean): string;
 }
 
 function fill(template: string, params: Record<string, string>): string {
@@ -109,5 +126,7 @@ export function resolveShellText(tags: readonly string[]): ShellText {
         windowStopped: reason => fill(strings.windowStopped, { reason }),
         displayProcessExited: (reason, exitCode) =>
             fill(strings.displayProcessExited, { reason, exitCode: String(exitCode) }),
+        previewTitle: (name, asShipped) =>
+            fill(asShipped ? strings.previewAsShippedTitle : strings.previewTitle, { name }),
     };
 }
