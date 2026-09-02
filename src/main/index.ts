@@ -64,6 +64,16 @@ process.on('uncaughtException', (error) => {
     app.crash(error instanceof Error ? error : new Error(String(error)));
 });
 
+// The one teardown an exit that skips `before-quit` still reaches: a fatal error, a command-line
+// build carrying an exit code, anything else that calls exit() outright. Every project this Studio
+// took stays claimed until somebody works out that this process is gone, and while that recovers on
+// its own (the claim names a process id, and a dead one is taken over), leaving the file behind
+// turns the next ordinary open into a takeover that has to be explained. Synchronous because there
+// is no event loop left to await on.
+process.on('exit', () => {
+    app.getProjectSessionLockManager().releaseAllSync();
+});
+
 // macOS hands a double-clicked document over here and nowhere else - the path never appears in
 // argv - and it does so BEFORE `ready`, which is why this is registered at module scope rather
 // than beside the other listeners below. `openLaunchRequest` holds anything that arrives this
@@ -150,6 +160,11 @@ app.whenReady().then(async () => {
         if (named && teardown.releaseVersionControl) {
             void app.getVcsManager().closeProject(named).catch((error) => {
                 app.logger.warn("[Vcs] Failed to release session on window close", error);
+            });
+        }
+        if (named && teardown.releaseSessionLock) {
+            void app.getProjectSessionLockManager().release(named).catch((error) => {
+                app.logger.warn("[Project] Failed to release the session lock on window close", error);
             });
         }
         // A launch that went straight into a project keeps the home screen hidden behind it, and

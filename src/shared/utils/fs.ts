@@ -120,6 +120,36 @@ export class Fs {
     }
 
     /**
+     * Create `path` with `data`, and say whether this call is the one that created it.
+     *
+     * `data: true` means the file was not there and now is; `data: false` means something else was
+     * already at that path and nothing was written. Both are successes, because the question this
+     * verb answers is "did I get it", and only one caller can.
+     *
+     * This is the primitive a lock file needs and the one neither neighbour provides.
+     * {@link ensureRegularFile} performs the same `wx` create but reports nothing about which branch
+     * it took, so two processes calling it both come away believing they wrote the file; the atomic
+     * writers replace whatever is there, which for a lock is precisely the failure. The exclusivity
+     * is the filesystem's `O_EXCL`, so it holds between processes rather than only within one.
+     *
+     * Not atomic in the crash sense, deliberately: the payload is a few hundred bytes of JSON, and a
+     * temp-and-rename would have to replace the target, which is the guarantee being asked for here.
+     */
+    public static createFileExclusive(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<boolean>> {
+        return (async () => {
+            try {
+                await fs.writeFile(path, data, {encoding, flag: "wx"});
+                return {ok: true as const, data: true} satisfies FsRequestResult<boolean, true>;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+                    return {ok: true as const, data: false} satisfies FsRequestResult<boolean, true>;
+                }
+                return {ok: false, error: this.createError(error)} satisfies FsRequestResult<boolean, false>;
+            }
+        })();
+    }
+
+    /**
      * Atomically write a file that must already exist as a plain, unlinked regular file.
      *
      * The `lstat` gate in front of the write is a **rejection contract**, not a safety property:

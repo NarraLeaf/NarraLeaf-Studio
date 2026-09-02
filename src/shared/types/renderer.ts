@@ -1,4 +1,5 @@
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { ProjectSessionLockOutcome } from "./projectSession";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
@@ -330,6 +331,14 @@ export interface RendererPreloadedInterface {
          * when the workspace actually came up.
          */
         setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /**
+         * Take this window's project for this Studio, or find out which one already has it.
+         *
+         * Answered from the window's own props, so it needs no argument and cannot be pointed
+         * anywhere else. A refusal means this window may not write anything belonging to the
+         * project - not a normalised document, not an auto-save, not a checkpoint.
+         */
+        acquireSessionLock(): Promise<RequestStatus<ProjectSessionLockOutcome>>;
         /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
         liveIntentTaken(): Promise<RequestStatus<void>>;
         /**
