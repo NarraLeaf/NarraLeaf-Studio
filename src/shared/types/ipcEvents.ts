@@ -268,6 +268,7 @@ export enum IPCEventType {
     devModeGetStatus = "devMode.getStatus",
     devModePayloadUpdate = "devMode.payload.update",
     devModeControlReload = "devMode.control.reload",
+    devModeControlStartStory = "devMode.control.startStory",
     devModeControlError = "devMode.control.error",
     devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
@@ -2708,6 +2709,26 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: {
             revision: number;
+        },
+        response: never;
+    };
+    /**
+     * Start this story now, in the Dev Mode window that is already open.
+     *
+     * The row play control in the story editor pressed while Dev Mode is running: the window is kept
+     * and the run restarts in place. Sent immediately before the bundle it was compiled against, so
+     * the window acts on the documents the author has just saved rather than on the ones it was
+     * showing. `token` rises per session so a request cannot be acted on twice.
+     */
+    [IPCEventType.devModeControlStartStory]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            token: number;
+            storyId: string;
+            sceneId: string;
+            startBlockId?: string;
+            snapshotId?: string;
         },
         response: never;
     };

@@ -639,6 +639,17 @@ export interface RendererPreloadedInterface {
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
+        /**
+         * Start this story in the window that is already open, replacing whatever is playing. Sent
+         * immediately before the bundle it was compiled against; `token` rises per request.
+         */
+        onControlStartStory(handler: (payload: {
+            token: number;
+            storyId: string;
+            sceneId: string;
+            startBlockId?: string;
+            snapshotId?: string;
+        }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;
         onConsoleLog(handler: (payload: DevModeConsoleLogPayload) => void): AppEventToken;
         onBlueprintDebugEvent(handler: (event: BlueprintDebugEvent) => void): AppEventToken;

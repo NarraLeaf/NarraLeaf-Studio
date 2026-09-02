@@ -3,7 +3,7 @@ import { DevTools, Story } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
-import { createPlayHead, type PlayHeadActionBinding } from "./playHead";
+import { createPlayHead, PLAY_HEAD_TRAIL_LIMIT, type PlayHeadActionBinding } from "./playHead";
 
 function narrationBlock(id: string, value: string): StoryBlock {
     return {
@@ -201,5 +201,88 @@ describe("the play head against a table that moves", () => {
         expect(
             compiled.actionIdBindings.every(binding => DevTools.getStaticId(binding.action) === binding.staticId),
         ).toBe(true);
+    });
+});
+
+describe("the trail of rows a run has played", () => {
+    it("keeps them in the order they were played", () => {
+        const playHead = createPlayHead(() => [
+            { staticId: "s-1", blockId: "r1" },
+            { staticId: "s-2", blockId: "r2" },
+            { staticId: "s-3", blockId: "r3" },
+        ]);
+
+        // Interleaved with the engine's own machinery, which names no row: only the rows land.
+        playHead.observe("s-1");
+        playHead.observe("a-0");
+        playHead.observe("s-2");
+        playHead.observe("a-1");
+        playHead.observe("s-3");
+
+        expect([...playHead.trail()]).toEqual(["r1", "r2", "r3"]);
+    });
+
+    it("collapses a row that keeps reporting itself, so the window holds real span", () => {
+        // A row expands into a chain and a loop re-enters it; without this the bound would be spent
+        // on one id repeated, and the reload would have nothing earlier to fall back to.
+        const playHead = createPlayHead(() => [
+            { staticId: "s-1", blockId: "r1" },
+            { staticId: "s-1b", blockId: "r1" },
+            { staticId: "s-2", blockId: "r2" },
+        ]);
+
+        playHead.observe("s-1");
+        playHead.observe("s-1b");
+        playHead.observe("s-2");
+        playHead.observe("s-1");
+
+        expect([...playHead.trail()]).toEqual(["r1", "r2", "r1"]);
+    });
+
+    it("holds at most the bound, keeping the most recent rows", () => {
+        const bindings = Array.from({ length: PLAY_HEAD_TRAIL_LIMIT + 10 }, (_, index) => ({
+            staticId: `s-${index}`,
+            blockId: `r-${index}`,
+        }));
+        const playHead = createPlayHead(() => bindings);
+        for (const binding of bindings) {
+            playHead.observe(binding.staticId);
+        }
+
+        const trail = playHead.trail();
+        expect(trail).toHaveLength(PLAY_HEAD_TRAIL_LIMIT);
+        expect(trail[trail.length - 1]).toBe(`r-${bindings.length - 1}`);
+        expect(trail[0]).toBe("r-10");
+    });
+
+    it("forgets it with the run", () => {
+        const playHead = createPlayHead(() => [{ staticId: "s-1", blockId: "r1" }]);
+        playHead.observe("s-1");
+        expect([...playHead.trail()]).toEqual(["r1"]);
+
+        playHead.reset();
+
+        expect([...playHead.trail()]).toEqual([]);
+    });
+
+    it("takes a run's history back after a hot reload replaced the environment", () => {
+        // The mount resets everything the old environment owned, but the player did not restart -
+        // and the next edit needs rows they had actually played to fall back to.
+        const playHead = createPlayHead(() => [{ staticId: "s-9", blockId: "r9" }]);
+        playHead.reset();
+
+        playHead.seedTrail(["r1", "r2", "r3"]);
+        playHead.observe("s-9");
+
+        expect([...playHead.trail()]).toEqual(["r1", "r2", "r3", "r9"]);
+    });
+
+    it("holds a seeded history to the same bound", () => {
+        const playHead = createPlayHead(() => []);
+        playHead.seedTrail(Array.from({ length: PLAY_HEAD_TRAIL_LIMIT + 5 }, (_, index) => `r-${index}`));
+
+        const trail = playHead.trail();
+        expect(trail).toHaveLength(PLAY_HEAD_TRAIL_LIMIT);
+        expect(trail[trail.length - 1]).toBe(`r-${PLAY_HEAD_TRAIL_LIMIT + 4}`);
     });
 });
