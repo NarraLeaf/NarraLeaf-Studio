@@ -498,7 +498,7 @@ export const settings = {
             granted: "Trusted",
             trust: "Trust",
             remove: "Remove",
-            appliesNote: "Changes take effect the next time the project is opened.",
+            reloadNote: "A project that is open reloads when its trust changes.",
             origin: {
                 package: "From a package",
                 remote: "From a remote source",

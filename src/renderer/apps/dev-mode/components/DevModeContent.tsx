@@ -964,7 +964,7 @@ export function DevModeContent(props: DevModeContentProps) {
      * the Issues panel is where they are told something is wrong right now.
      */
     const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
-        const issue = blueprintDebugEventIssue(event);
+        const issue = blueprintDebugEventIssue(event, t);
         if (issue) {
             reportIssue(issue);
         }
@@ -976,7 +976,7 @@ export function DevModeContent(props: DevModeContentProps) {
         } catch (error) {
             console.warn("[DevMode] failed to forward blueprint debug event", error);
         }
-    }, [projectPath, reportIssue]);
+    }, [projectPath, reportIssue, t]);
     useEffect(() => {
         setRuntimeIssues([]);
         setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);

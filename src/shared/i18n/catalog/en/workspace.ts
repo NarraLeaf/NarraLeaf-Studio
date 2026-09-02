@@ -676,11 +676,11 @@ export const workspace = {
         // The bottom status strip. Signals only show while meaningful (running/ building/dirty).
         statusBar: {
             // Shown only while the project has not been trusted. It states the standing
-            // fact and goes to the page that changes it; a tooltip on a greyed control is
+            // fact and raises the question that changes it; a tooltip on a greyed control is
             // not enough on its own, because an author who never hovers never learns why.
             distrusted: {
                 label: "Not trusted",
-                tooltip: "This project cannot run until it is trusted. Open Settings to trust it.",
+                tooltip: "This project cannot run until it is trusted. Click to trust it.",
             },
             // Mode names for the unified run-status cell, which reads "<mode> | <phase>" and tints
             // the whole bar with the theme colour while any mode runs.
@@ -839,7 +839,7 @@ export const workspace = {
         // author learns what an untrusted project looks like once. It names the way out
         // rather than the reason, because the reason is on the Settings page it points at.
         distrust: {
-            unavailable: "Unavailable until this project is trusted. Trust it in Settings to run it.",
+            unavailable: "Unavailable until this project is trusted. Click Not trusted in the status bar to trust it.",
             // A few controls cannot be greyed - the play arrow that appears on a story row while
             // the pointer is over it is one - so pressing them says this instead. The sentence is
             // the one above, so distrust reads the same whichever way an author meets it.

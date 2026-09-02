@@ -36,6 +36,34 @@ export function parsePrivateOwnerKeyToRef(ownerKey: string): BlueprintOwnerRef |
 }
 
 /**
+ * Drop one of a slot's revisions.
+ *
+ * The record keeps a list and one active id, so removing the active one has to choose a successor:
+ * the revision before it, which is the one an author was looking at before they made this. The last
+ * revision is not removable here - callers refuse it - because the slot's record is what a value
+ * binding is addressed through, and a slot with no record is a binding pointing at nothing.
+ *
+ * A script's file is never touched. Studio wrote it once and the disk owns it from then on; an
+ * author who wants it gone deletes it themselves, and until they do it is listed as a file nothing
+ * runs.
+ */
+export function removePrivateBlueprint(doc: BlueprintDocument, ownerKey: string, blueprintId: string): void {
+    const rec = doc.ownerRecords[ownerKey];
+    const index = rec?.privateBlueprintIds.indexOf(blueprintId) ?? -1;
+    if (!rec || index < 0) {
+        return;
+    }
+    if (rec.privateBlueprintIds.length <= 1) {
+        throw new Error(`Cannot remove the only revision of ${ownerKey}`);
+    }
+    rec.privateBlueprintIds.splice(index, 1);
+    delete doc.blueprints[blueprintId];
+    if (rec.activeBlueprintId === blueprintId) {
+        rec.activeBlueprintId = rec.privateBlueprintIds[Math.max(0, index - 1)] ?? rec.privateBlueprintIds[0]!;
+    }
+}
+
+/**
  * Add or refresh a private blueprint as the active one for this owner slot.
  */
 export function registerPrivateBlueprintAsActive(

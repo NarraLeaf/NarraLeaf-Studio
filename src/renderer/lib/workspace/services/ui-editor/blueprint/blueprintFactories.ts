@@ -13,6 +13,11 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { GLOBAL_MAIN_OWNER_KEY, ownerRefToIndexKey } from "./ownerKeys";
+import {
+    scriptEventExportNamesForOwner,
+    scriptOwnerUsesDefaultExport,
+} from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
+import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 
 const DEFAULT_GLOBAL_BOOT_LAYER_ID = "global";
 const DEFAULT_GLOBAL_BOOT_LAYER_NAME = "Global";
@@ -40,14 +45,33 @@ export function emptyMemberIndex(): BlueprintMemberIndex {
 export const SCRIPT_TYPES_MODULE = "@narraleaf/script";
 
 /**
- * The file a new script blueprint starts as.
+ * The two lines at the top of every starter file.
  *
- * One handler, named the way every handler is named, and the event chosen so it exists wherever
- * this blueprint sits: `onInit` for a widget - every widget type has it - `onSurfaceInit` for a
- * page, `onAppBoot` for the project, and the default export for a story row, which has no others.
+ * They answer the only two questions the file itself cannot: where to open it, and what to call the
+ * functions in it. Opening the single file resolves no types - the tsconfig and the declarations sit
+ * beside it in the folder - and an export named anything the runtime does not look for is simply
+ * never called, which from inside the editor looks exactly like working code.
+ */
+function starterHeader(owner: BlueprintOwnerRef, widgetType: string | undefined): string[] {
+    const names = scriptOwnerUsesDefaultExport(owner)
+        ? ["default"]
+        : scriptEventExportNamesForOwner(owner, widgetType);
+    return [
+        `// Open the whole ${SCRIPTS_DIR}/ folder in your editor - types resolve from the files beside this one.`,
+        `// Called from here: ${names.join(", ")}`,
+        "",
+    ];
+}
+
+/**
+ * The file a new script starts as.
  *
- * Written once, when the blueprint is created, and never rewritten: from that moment the file is
- * the author's. See `@shared/project/scriptsDirectory`.
+ * One handler, named the way every handler is named, and the event chosen so it exists wherever this
+ * script sits: `onInit` for a widget - every widget type has it - `onSurfaceInit` for a page,
+ * `onAppBoot` for the project, and the default export for a story row, which has no others.
+ *
+ * Written once, when the script is created, and never rewritten: from that moment the file is the
+ * author's. See `@shared/project/scriptsDirectory`.
  */
 export function renderStarterScript(params: {
     owner: BlueprintOwnerRef;
@@ -55,9 +79,11 @@ export function renderStarterScript(params: {
     widgetType?: string;
 }): string {
     const widget = params.widgetType ?? "nl.container";
+    const header = starterHeader(params.owner, params.widgetType);
     switch (params.owner.kind) {
         case "globalMain":
             return [
+                ...header,
                 `import type { GlobalCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
                 "export function onAppBoot(ctx: GlobalCtx): void {",
@@ -67,6 +93,7 @@ export function renderStarterScript(params: {
             ].join("\n");
         case "surfaceMain":
             return [
+                ...header,
                 `import type { SurfaceCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
                 "export function onSurfaceInit(ctx: SurfaceCtx): void {",
@@ -76,6 +103,7 @@ export function renderStarterScript(params: {
             ].join("\n");
         case "componentWidgetMain":
             return [
+                ...header,
                 `import type { ComponentWidgetCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
                 `export function onInit(ctx: ComponentWidgetCtx<"${widget}">): void {`,
@@ -83,8 +111,34 @@ export function renderStarterScript(params: {
                 "}",
                 "",
             ].join("\n");
+        // A story row enters its script through the default export, and what that export must be
+        // differs by mode: an action may wait, while a value and a condition are evaluated where the
+        // story cannot - so theirs return rather than await.
         case "storyAction":
+            if (params.owner.mode === "condition") {
+                return [
+                    ...header,
+                    `import type { StorySyncCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                    "",
+                    "export default function (ctx: StorySyncCtx): boolean {",
+                    '    return ctx.saved.get("visitedIntro") === true;',
+                    "}",
+                    "",
+                ].join("\n");
+            }
+            if (params.owner.mode === "value") {
+                return [
+                    ...header,
+                    `import type { StorySyncCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                    "",
+                    "export default function (ctx: StorySyncCtx): string {",
+                    '    return String(ctx.scene.get("playerName") ?? "");',
+                    "}",
+                    "",
+                ].join("\n");
+            }
             return [
+                ...header,
                 `import type { StoryCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
                 "export default async function (ctx: StoryCtx): Promise<void> {",
@@ -94,6 +148,7 @@ export function renderStarterScript(params: {
             ].join("\n");
         default:
             return [
+                ...header,
                 `import type { WidgetCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
                 `export function onInit(ctx: WidgetCtx<"${widget}">): void {`,
