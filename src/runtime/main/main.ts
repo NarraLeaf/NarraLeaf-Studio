@@ -65,7 +65,7 @@ import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
 } from "@shared/utils/pluginRuntimeApiModule";
-import { resolveModelBundleKey, resolveRuntimeStaticPath } from "./runtimeProtocol";
+import { resolveModelBundleKey, resolveRuntimeHostFile, resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
 import {
@@ -1424,24 +1424,31 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
         try {
             if (url.hostname === "runtime") {
                 const pathname = decodeURIComponent(url.pathname);
-                // Bundled runtime files come from the store; anything the store
-                // does not hold falls back to a loose read from the app dir. The
-                // document goes through the same door as the rest now that a
-                // protected build keeps it there too - it just has the CSP put
-                // into it on the way out.
-                const wanted = isIndexDocument(pathname) ? "index.html" : trimLeadingSlashes(pathname);
-                const bundled = await runtimeResources().readRuntimeFile(wanted);
+                // The document goes through the same door as the rest now that a protected build
+                // keeps it there too - it just has the CSP put into it on the way out.
                 if (isIndexDocument(pathname)) {
+                    const bundled = await runtimeResources().readRuntimeFile("index.html");
                     return serveIndexDocument(
-                        bundled ?? await fs.readFile(resolveRuntimeStaticPath(appDir, pathname)),
+                        bundled ?? await fs.readFile(resolveRuntimeStaticPath(appDir, "index.html")),
                         allowHttp,
                         allowlist,
                     );
                 }
-                if (bundled) {
-                    return serveBytes(bundled, getMimeType(pathname));
+                // Only what the page loads by URL - the shell's two bundles and the code the pack
+                // carries - is answered here, from the store when the build is sealed and from the
+                // app directory otherwise. The app directory also holds the store, the file beside
+                // it, the codec and the loaders Electron opens itself; none of those is a page
+                // resource, and a request for one is refused whatever the page meant to do with
+                // the bytes.
+                const wanted = resolveRuntimeHostFile(pathname);
+                if (!wanted) {
+                    return new Response("Not found", { status: 404 });
                 }
-                return serveFile(resolveRuntimeStaticPath(appDir, pathname));
+                const bundled = await runtimeResources().readRuntimeFile(wanted);
+                if (bundled) {
+                    return serveBytes(bundled, getMimeType(wanted));
+                }
+                return serveFile(resolveRuntimeStaticPath(appDir, wanted));
             }
             if (url.hostname === "pack") {
                 return serveBytes(await runtimeResources().readPack(), "application/json");
@@ -1651,15 +1658,6 @@ function isIndexDocument(pathname: string): boolean {
 }
 
 /** Serve the runtime document with the gated Content-Security-Policy injected. */
-/** Drop the leading slashes a protocol path arrives with; a store entry has none. */
-function trimLeadingSlashes(pathname: string): string {
-    let at = 0;
-    while (at < pathname.length && pathname[at] === "/") {
-        at += 1;
-    }
-    return pathname.slice(at);
-}
-
 async function serveIndexDocument(
     document: Buffer,
     allowHttp: boolean,

@@ -432,8 +432,8 @@ export const project = {
             sidecarNote: "插件附带的程序在游戏进程之外运行，不受该白名单约束",
         },
         encryptAssetsTitle: "加密资产",
-        encryptAssetsDescription: "在打包及预览构建中加密资产、插件代码与剧本数据，不影响开发模式",
-        encryptAssetsWebHint: "Web 构建始终不加密资产",
+        encryptAssetsDescription: "在桌面端的打包及预览构建中加密资产、插件代码与剧本数据，不影响开发模式",
+        encryptAssetsWebHint: "Web、Android 与 iOS 构建始终不加密资产",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据。证书与密码仅保存在本机，项目中仅记录所选凭据",

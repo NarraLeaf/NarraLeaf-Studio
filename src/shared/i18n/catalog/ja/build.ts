@@ -315,6 +315,7 @@ export const build = {
             + "{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
         "encryption-key-unavailable": "アセットの保護が有効だが、その鍵を読めなかった",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
+        "mobile-unprotected": "Android と iOS のパッケージにアセットの保護は効かない。そのファイル群は保護されずに配布される",
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
             + "どちらのノードも失敗の枝に進む",
