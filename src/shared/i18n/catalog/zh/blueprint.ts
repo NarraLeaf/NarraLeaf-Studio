@@ -406,7 +406,15 @@ export const blueprint = {
     script: {
         fileLabel: "脚本文件",
         open: "在编辑器中打开",
+        openIn: "在 {editor} 中打开",
+        reveal: "在文件管理器中显示",
+        openFolder: "打开脚本目录",
         missing: "文件不存在。",
+        readOnly: "脚本在你自己的编辑器中修改。",
+        sectionEmpty: "本工程还没有脚本。新建 TypeScript 蓝图会创建一个。",
+        unbound: "没有蓝图使用该脚本",
+        boundTo: "作为 {name} 运行",
+        boundToMany: "作为 {name} 等 {count} 项运行",
     },
     tool: {
         select: "选择工具",

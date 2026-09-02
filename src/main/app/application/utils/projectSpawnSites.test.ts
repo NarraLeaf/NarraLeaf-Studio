@@ -66,6 +66,10 @@ const SPAWN_SITES: Record<string, { kind: Classification; why: string }> = {
         kind: "gated",
         why: "7za extracting the C toolchain, inside a build; never reached without one",
     },
+    "app/application/managers/window/handlers/externalScriptEditors.ts": {
+        kind: "gated",
+        why: "the author's editor, on this project's scripts folder; refused in ProjectOpenScriptHandler",
+    },
     "app/application/managers/build/macSigningIdentity.ts": {
         kind: "not-project-scoped",
         why: "asks the machine which signing identities it holds; no project involved",

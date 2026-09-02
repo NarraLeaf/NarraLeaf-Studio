@@ -417,7 +417,23 @@ export const blueprint = {
     script: {
         fileLabel: "Script file",
         open: "Open in editor",
+        /** {editor} is the editor's own name, which is the same in every locale. */
+        openIn: "Open in {editor}",
+        reveal: "Show in file manager",
+        /**
+         * The folder rather than the file, in every target. A script resolves its types from the
+         * tsconfig and declarations that sit beside it, so an editor opened on one file resolves
+         * neither.
+         */
+        openFolder: "Open scripts folder",
         missing: "This file is missing.",
+        /** Monaco's own read-only tooltip says the editor is read only. This says where writing happens. */
+        readOnly: "Scripts are edited in your own editor.",
+        /** The blueprints section of the asset browser. */
+        sectionEmpty: "No scripts yet. A TypeScript blueprint creates one.",
+        unbound: "Not used by any blueprint",
+        boundTo: "Runs as {name}",
+        boundToMany: "Runs as {name} and {count} more",
     },
     tool: {
         select: "Select tool",

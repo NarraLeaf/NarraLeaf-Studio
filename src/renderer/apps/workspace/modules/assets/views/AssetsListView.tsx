@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent } from "react";
+import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, Dispatch, SetStateAction, DragEvent, ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { AlertCircle, Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
@@ -48,6 +48,14 @@ interface AssetsListViewProps {
     disableAnimation: boolean;
     /** The panel's scroller. Each section windows its rows against it. */
     scrollElement: HTMLElement | null;
+    /**
+     * Drawn after the library's own sections, inside the same accordion.
+     *
+     * The scripts section goes here rather than being built in this file: it reads the workspace
+     * rather than the library, and this view is the library's. Passing it in keeps that seam where
+     * the difference is, and keeps this component renderable from a test with no workspace at all.
+     */
+    trailingSection?: ReactNode;
 }
 
 export function AssetsListView({
@@ -62,6 +70,7 @@ export function AssetsListView({
     onOpenChange,
     disableAnimation,
     scrollElement,
+    trailingSection,
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
     // The library's own scope: the three buttons this header carries are import, link and new
@@ -248,9 +257,14 @@ export function AssetsListView({
                     </AccordionItem>
                 );
             })}
+            {/* Above the trailing section, not below it: this line is about the library's own
+                sections, and under a populated scripts section it would read as describing that. */}
             {!hasAnyItems && (
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
+            {/* Last, and passed in rather than built here: the project's scripts are not in the
+                asset library, and this view is about the library. See `BlueprintScriptsSection`. */}
+            {trailingSection}
         </Accordion>
     );
 }

@@ -2226,21 +2226,32 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 onMemberPanelCollapsedChange={setMemberPanelCollapsed}
                 onMemberPanelFocusContainedChange={setMemberPanelFocusContained}
                 memberTree={
-                    <BlueprintMemberTree
-                        blueprint={bp}
-                        blueprintId={payload.blueprintId}
-                        blueprintDocumentRevision={revision}
-                        graphView={editor.graphView}
-                        diagnostics={diagnostics}
-                        localBp={localBp}
-                        surfaceId={payload.surfaceId}
-                        widgetElementType={widgetElement?.type}
-                        variableGroupOpenState={memberPanelState.variableGroupOpen}
-                        onVariableGroupOpenChange={setVariableGroupOpen}
-                        onSelectLayer={selectEventGraph}
-                        onAddLayer={onAddEvent}
-                        onDeleteLayer={onDeleteLayer}
-                    />
+                    <div className="flex min-h-0 flex-col gap-3">
+                        <BlueprintMemberTree
+                            blueprint={bp}
+                            blueprintId={payload.blueprintId}
+                            blueprintDocumentRevision={revision}
+                            graphView={editor.graphView}
+                            diagnostics={diagnostics}
+                            localBp={localBp}
+                            surfaceId={payload.surfaceId}
+                            widgetElementType={widgetElement?.type}
+                            variableGroupOpenState={memberPanelState.variableGroupOpen}
+                            onVariableGroupOpenChange={setVariableGroupOpen}
+                            onSelectLayer={selectEventGraph}
+                            onAddLayer={onAddEvent}
+                            onDeleteLayer={onDeleteLayer}
+                        />
+                        {/* On a graph as well as on a script, and that was the whole gap: this bar
+                            used to render only in the script branch above, so the offer to write a
+                            slot in TypeScript appeared only inside a blueprint that already was one.
+                            Nothing in the interface could make the first. */}
+                        <BlueprintPrivateRevisionBar
+                            blueprint={bp}
+                            localBp={localBp}
+                            onReopenRevision={reopenRevision}
+                        />
+                    </div>
                 }
                 canvas={canvas}
                 diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}

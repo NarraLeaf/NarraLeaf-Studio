@@ -101,7 +101,15 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
         return null;
     }
     if (bp.program.kind !== "graph") {
-        input.onDiagnostic?.("Story Action Blueprint is not a graph blueprint; the action was skipped.");
+        // Named, because the author reached this by pressing a button Studio offered them and the
+        // old wording ("not a graph blueprint") described our types rather than what happened to
+        // their row. A story row runs a graph; the TypeScript frontend is entered from the
+        // interface, and this slot has no way in yet. Switching the active revision back to a
+        // visual one is the whole of what they can do about it.
+        const what = bp.program.kind === "scriptModule"
+            ? `runs ${bp.program.scriptRef}, and a story row cannot run a TypeScript blueprint`
+            : "is not a graph blueprint";
+        input.onDiagnostic?.(`"${bp.name}" ${what}; this action was skipped.`);
         return null;
     }
 

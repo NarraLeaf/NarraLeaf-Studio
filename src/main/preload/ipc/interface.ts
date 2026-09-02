@@ -8,6 +8,7 @@ import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceClos
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
+import type { ExternalScriptEditor, ScriptOpenTargetId } from "@shared/types/scriptEditors";
 import type {
     GameProgressExportRequest,
     GameProgressExportResult,
@@ -372,9 +373,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appRemoveRecentProject, { path }) as Promise<RequestStatus<void>>,
         revealRecentProject: (path: string) =>
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
-        /** Hand one of the project's own scripts to whatever the author edits with. */
-        openScript: (projectPath: string, scriptRef: string) =>
-            ipcClient.invoke(IPCEventType.projectOpenScript, { projectPath, scriptRef }) as Promise<RequestStatus<void>>,
+        /**
+         * Hand the project's scripts folder to whatever the author edits with.
+         *
+         * The folder, with the file alongside it - a script resolves its types from the folder. See
+         * `projectScriptAction.ts`.
+         */
+        openScript: (projectPath: string, scriptRef?: string, target?: ScriptOpenTargetId) =>
+            ipcClient.invoke(IPCEventType.projectOpenScript, { projectPath, scriptRef, target }) as Promise<RequestStatus<void>>,
+        /** Which editors this machine can open that folder in. */
+        listScriptEditors: () =>
+            ipcClient.invoke(IPCEventType.projectListScriptEditors, {}) as Promise<RequestStatus<ExternalScriptEditor[]>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
         recentProjectIcons: () =>

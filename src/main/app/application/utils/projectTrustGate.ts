@@ -46,6 +46,14 @@ export const DISTRUSTED_OPERATIONS = [
     "remote asset download",
     "network request",
     "external link",
+    /**
+     * Launching the author's editor on the project's scripts folder.
+     *
+     * A child process started on the project's behalf, which is what puts it in this list. The file
+     * manager is deliberately not here: `shell.showItemInFolder` starts nothing of ours, and looking
+     * at a project's files is exactly what an author does before deciding to trust it.
+     */
+    "script editor",
 ] as const;
 
 export type DistrustedOperation = typeof DISTRUSTED_OPERATIONS[number];

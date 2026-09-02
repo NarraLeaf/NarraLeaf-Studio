@@ -88,6 +88,7 @@ import {
     useBlueprintRuntimeCore,
     type BlueprintRuntimeCore,
 } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
+import type { BlueprintScriptIssue } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
 import {
     executeLifecycleCommands,
     SurfaceLifecycleOrchestrator,
@@ -383,11 +384,25 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const currentBundleRef = useRef(bundle);
     currentBundleRef.current = bundle;
+    /**
+     * A script blueprint that will not run, as an issue the author can read.
+     *
+     * `interface` rather than `compile`: the origin says where the failure belongs, and every one of
+     * these belongs to a widget or a page rather than to a story row. Stable across renders because
+     * the mount effect depends on it - see `useBlueprintRuntimeCore`.
+     */
+    const reportScriptIssue = useCallback(
+        (issue: BlueprintScriptIssue) => {
+            host.reportIssue?.({ level: "error", message: issue.message, origin: "interface" });
+        },
+        [host.reportIssue],
+    );
     const core = useBlueprintRuntimeCore(bundle, {
         persistenceAdapter: host.persistenceAdapter,
         onDebugEvent: host.onDebugEvent,
         debuggerEnabled: host.debuggerEnabled,
         disposeMessage: host.disposeMessage,
+        onScriptIssue: reportScriptIssue,
     });
     // Runtime plugins reach story variables and the player's language through the
     // blueprint runtime, so those capabilities only become real once it exists.

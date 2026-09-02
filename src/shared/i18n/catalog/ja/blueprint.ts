@@ -408,7 +408,15 @@ export const blueprint = {
     script: {
         fileLabel: "スクリプトファイル",
         open: "エディターで開く",
+        openIn: "{editor} で開く",
+        reveal: "ファイルマネージャーで表示",
+        openFolder: "スクリプトフォルダーを開く",
         missing: "ファイルが見つかりません。",
+        readOnly: "スクリプトの編集は各自のエディターで行います。",
+        sectionEmpty: "このプロジェクトにはまだスクリプトがありません。TypeScript ブループリントを作成すると生成されます。",
+        unbound: "どのブループリントからも使用されていません",
+        boundTo: "{name} として実行",
+        boundToMany: "{name} ほか {count} 件として実行",
     },
     tool: {
         select: "選択ツール",

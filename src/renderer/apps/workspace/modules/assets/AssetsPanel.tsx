@@ -54,6 +54,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
+import { BLUEPRINT_SCRIPTS_SECTION_ID, BlueprintScriptsSection } from "./views/BlueprintScriptsSection";
 
 export type AssetViewMode = "list" | "icons" | "overview";
 
@@ -108,7 +109,16 @@ interface AssetsPanelState {
 }
 
 const DEFAULT_ASSET_CATEGORY_OPEN_ITEMS = [AssetCategory.Image];
-const ASSET_CATEGORY_IDS = new Set<string>(ASSET_CATEGORY_ORDER);
+/**
+ * Which accordion ids may be remembered as open.
+ *
+ * The asset categories, plus the scripts section - which is not a category and never will be. A
+ * script is not in the asset library: it has no id, no metadata shard and no place in an asset set,
+ * because the disk owns `scripts/` and Studio only reads it. What it shares with a category is the
+ * place an author looks for the project's files, which is why it sits in this panel and nowhere in
+ * `AssetCategory`.
+ */
+const ASSET_CATEGORY_IDS = new Set<string>([...ASSET_CATEGORY_ORDER, BLUEPRINT_SCRIPTS_SECTION_ID]);
 
 function filterKnownAssetCategoryIds(ids: string[] | undefined): string[] {
     if (!Array.isArray(ids)) {
@@ -1289,6 +1299,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
                             disableAnimation={disableAccordionAnimation}
                             scrollElement={listScrollElement}
+                            trailingSection={
+                                <BlueprintScriptsSection open={effectiveOpenItems.includes(BLUEPRINT_SCRIPTS_SECTION_ID)} />
+                            }
                         />
                     ) : (
                         <AssetsIconView
