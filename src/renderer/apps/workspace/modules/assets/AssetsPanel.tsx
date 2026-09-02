@@ -54,7 +54,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
-import { BLUEPRINT_SCRIPTS_SECTION_ID } from "./views/BlueprintScriptsSection";
+import { BLUEPRINT_SCRIPTS_SECTION_ID, BlueprintScriptsSection } from "./views/BlueprintScriptsSection";
 
 export type AssetViewMode = "list" | "icons" | "overview";
 
@@ -1299,6 +1299,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             onOpenChange={(next) => setCategoryOpenItems(filterKnownAssetCategoryIds(next))}
                             disableAnimation={disableAccordionAnimation}
                             scrollElement={listScrollElement}
+                            trailingSection={
+                                <BlueprintScriptsSection open={effectiveOpenItems.includes(BLUEPRINT_SCRIPTS_SECTION_ID)} />
+                            }
                         />
                     ) : (
                         <AssetsIconView

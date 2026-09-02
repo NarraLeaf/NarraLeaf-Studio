@@ -25,6 +25,7 @@ import { SCRIPTS_DIR, isScriptSourcePath } from "@shared/project/scriptsDirector
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { ExternalScriptEditor } from "@shared/types/scriptEditors";
+import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -82,6 +83,13 @@ export class ProjectOpenScriptHandler extends IPCHandler<IPCEventType.projectOpe
 
             if (!isKnownExternalScriptEditor(target)) {
                 throw new Error(`Unknown editor: ${target}`);
+            }
+            // Only the editors are gated. Starting a program on the project's behalf is what a
+            // distrusted project does not get; the two targets above start nothing of ours, and
+            // reading somebody else's files is what an author does before trusting them.
+            const distrusted = refuseDistrustedWindow(window, "script editor");
+            if (distrusted) {
+                throw new Error(distrusted);
             }
             await openFolderInExternalEditor({ editorId: target, directory, file });
         });

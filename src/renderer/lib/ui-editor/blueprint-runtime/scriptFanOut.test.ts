@@ -9,6 +9,10 @@ import {
 } from "./BlueprintDispatcher";
 import { DebugBridge } from "./DebugBridge";
 import { mountCompiledScripts, unmountCompiledScripts } from "./script/scriptRuntime";
+import {
+    surfaceMainOwnerKey,
+    widgetMainOwnerKey,
+} from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 
 /**
@@ -59,11 +63,13 @@ function blueprintDocument(): BlueprintDocument {
     return {
         blueprints: { "bp-widget": widget, "bp-surface": surface },
         ownerRecords: {
-            [`widgetMain:${SURFACE_ID}:${BUTTON_ID}`]: {
+            // Spelled through the helpers, never by hand: the key format is one function's business
+            // and a fixture that restates it stops testing the thing that produces it.
+            [widgetMainOwnerKey(SURFACE_ID, BUTTON_ID)]: {
                 privateBlueprintIds: ["bp-widget"],
                 activeBlueprintId: "bp-widget",
             },
-            [`surfaceMain:${SURFACE_ID}`]: {
+            [surfaceMainOwnerKey(SURFACE_ID)]: {
                 privateBlueprintIds: ["bp-surface"],
                 activeBlueprintId: "bp-surface",
             },
