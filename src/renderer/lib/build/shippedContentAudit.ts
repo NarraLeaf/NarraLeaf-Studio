@@ -111,7 +111,16 @@ export async function collectStoryAssetDemands(pack: GameRuntimePackV1): Promise
                     localization: pack.bundle.localization
                         ? { ...pack.bundle.localization, getLocale: () => locale }
                         : undefined,
-                    voice: pack.bundle.voice,
+                    // Wrapped the way the localization bundle above is: the compiler asks a voice
+                    // bundle which language is playing, and the pack's bundle is data with no such
+                    // getter. Handing it over bare threw `getVoiceLocale is not a function` for
+                    // every project that has any voice at all, which this pass reports as a story
+                    // that could not be read back - so the build was refused. Which language it
+                    // answers with does not change what the pass finds: every language's clips are
+                    // resolved regardless, and that resolution is what records the demands.
+                    voice: pack.bundle.voice
+                        ? { ...pack.bundle.voice, getVoiceLocale: () => locale }
+                        : undefined,
                     audioClips: pack.bundle.audio?.clips,
                     audioTracks: pack.bundle.audio?.tracks,
                     resolveAssetUrl: (assetId: string) => {
