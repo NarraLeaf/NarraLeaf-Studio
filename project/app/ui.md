@@ -96,6 +96,7 @@ nl.switch
     onAnyBroadcast           interaction blueprint.event.head.onAnyBroadcast
     onBroadcast              interaction blueprint.event.head.onBroadcast
     windowFullscreenChanged  interaction blueprint.event.head.fullscreenChanged
+    windowFocusChanged       interaction blueprint.event.head.windowFocusChanged
 
   commands (Call Widget Command)
     setVisible  Set visible
