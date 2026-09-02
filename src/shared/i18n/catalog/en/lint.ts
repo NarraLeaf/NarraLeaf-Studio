@@ -419,6 +419,12 @@ export const lint = {
     message: {
         ruleFailed: "{rule} could not run",
         storyLoadFailed: "{story} could not be opened",
+        /**
+         * Beside the line above and ahead of it, because it is the one reason a story will not open
+         * that says nothing about the story. Without the two versions an author reads their own
+         * file's name next to a failure and looks for the mistake in their script.
+         */
+        storyTooOld: "{story} is in story format v{version}, and this Studio opens v{minimum} and later",
     },
     category: {
         assets: "Assets",

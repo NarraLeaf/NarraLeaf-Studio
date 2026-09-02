@@ -402,6 +402,7 @@ export const lint = {
     message: {
         ruleFailed: "{rule} を実行できなかった",
         storyLoadFailed: "{story} を開けなかった",
+        storyTooOld: "{story} はストーリー形式 v{version}、このバージョンの Studio が開けるのは v{minimum} 以降",
     },
     category: {
         assets: "アセット",

@@ -18,7 +18,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import { getSelectedSnapshotId, setSelectedSnapshotId } from "./storySnapshotSelection";
+import { DECLARED_DEFAULTS_ENTRY, getSelectedSnapshotId, setSelectedSnapshotId } from "./storySnapshotSelection";
 import type {
     StoryDocument,
     StoryLiteralValue,
@@ -188,20 +188,27 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
         return document.scenes[sceneId]?.sceneSnapshots ?? [];
     }, [document, sceneId]);
 
-    // Keep the selection valid as the scene changes (payload.sceneId) or snapshots are added/removed,
-    // preferring the author's last choice for this scene (shared with the row ▶ launcher).
+    /**
+     * Keep the selection valid as the scene changes (payload.sceneId) or snapshots are added and
+     * removed, preferring the author's last choice for this scene (shared with the row ▶ launcher).
+     *
+     * Anything that is not a snapshot this scene holds settles on the declared-defaults entry, which
+     * covers a scene with no snapshots, a scene whose selected snapshot has just been deleted, and a
+     * scene the author has never chosen for. No snapshot is ever selected on their behalf: one
+     * applies its values once it has been picked, and a list that quietly picked the first would put
+     * a stale set of values behind the play control with nothing on screen having said so.
+     */
     useEffect(() => {
         setSelectedId(current => {
             if (current && snapshots.some(snapshot => snapshot.id === current)) return current;
             const saved = panelStateService && storyId && sceneId
                 ? getSelectedSnapshotId(panelStateService, storyId, sceneId)
-                : undefined;
-            if (saved && snapshots.some(snapshot => snapshot.id === saved)) return saved;
-            return snapshots[0]?.id ?? null;
+                : DECLARED_DEFAULTS_ENTRY;
+            return saved && snapshots.some(snapshot => snapshot.id === saved) ? saved : DECLARED_DEFAULTS_ENTRY;
         });
     }, [snapshots, sceneId, panelStateService, storyId]);
 
-    // Publish the selection so the tab's launcher uses the same snapshot the dropdown shows.
+    // Publish the selection so the tab's launcher uses the same entry the dropdown shows.
     useEffect(() => {
         if (panelStateService && storyId && sceneId && selectedId) {
             setSelectedSnapshotId(panelStateService, storyId, sceneId, selectedId);
@@ -264,9 +271,17 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
         ],
         [t],
     );
+    /**
+     * The declared-defaults entry heads the list, and is the only one there for a scene with no
+     * snapshots. Its label is the word the Dev Mode runtime panel already uses for the same choice
+     * (`devMode.runtime.snapshotDefault`) - one choice worded two ways would read as two.
+     */
     const snapshotOptions: SelectOption[] = useMemo(
-        () => snapshots.map(snapshot => ({ value: snapshot.id, label: snapshot.name })),
-        [snapshots],
+        () => [
+            { value: DECLARED_DEFAULTS_ENTRY, label: t("storySnapshot.defaults") },
+            ...snapshots.map(snapshot => ({ value: snapshot.id, label: snapshot.name })),
+        ],
+        [snapshots, t],
     );
 
     const addSnapshot = useCallback(() => {
@@ -288,19 +303,16 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface">
             <div className="flex items-center gap-1.5 border-b border-edge px-3 py-2.5">
-                {snapshots.length > 0 ? (
-                    <Select
-                        options={snapshotOptions}
-                        value={selectedId ?? ""}
-                        onChange={value => setSelectedId(String(value))}
-                        size="sm"
-                        className="min-w-0 flex-1"
-                    />
-                ) : (
-                    // No snapshots: no picker, and nothing in its place. The Add button at the end of
-                    // this same row is the way to make the first one.
-                    <span className="min-w-0 flex-1" />
-                )}
+                {/* Always drawn, including for a scene with no snapshots: the list is what says
+                    which values a launch from a row will start on, and that question has an answer
+                    before the first snapshot exists. */}
+                <Select
+                    options={snapshotOptions}
+                    value={selectedId ?? DECLARED_DEFAULTS_ENTRY}
+                    onChange={value => setSelectedId(String(value))}
+                    size="sm"
+                    className="min-w-0 flex-1"
+                />
                 {selected ? (
                     <button
                         type="button"
@@ -356,9 +368,12 @@ export function StorySnapshotPanel({ payload }: PanelComponentProps<StorySnapsho
                     )}
                 </div>
             ) : (
+                // The declared-defaults entry. It has no values to edit, so the body states what a
+                // launch under it does rather than showing an empty table - and it says the same
+                // thing whether or not the scene has snapshots, because it does the same thing.
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-xs text-fg-subtle">
                     <Camera className="h-5 w-5" />
-                    {t("storySnapshot.getStarted")}
+                    {t("storySnapshot.defaultsDetail")}
                 </div>
             )}
         </div>

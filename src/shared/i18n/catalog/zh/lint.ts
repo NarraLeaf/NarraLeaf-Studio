@@ -398,6 +398,7 @@ export const lint = {
     message: {
         ruleFailed: "{rule} 未能运行",
         storyLoadFailed: "{story} 无法打开",
+        storyTooOld: "{story} 使用 v{version} 版故事格式，当前版本的 Studio 可打开 v{minimum} 及以后",
     },
     category: {
         assets: "资产",

@@ -11,11 +11,18 @@ vi.mock("electron", () => ({
 }));
 
 const { GameBuildErrorCode } = await import("@shared/types/gameBuild");
+const { WINDOW_PROJECT_MISMATCH_CODE } = await import("@shared/types/window");
 
 const {
+    GameBuildCancelHandler,
     GameBuildExportPatchHandler,
+    GameBuildGetStatusHandler,
+    GameBuildPreflightHandler,
+    GameBuildReadLastRunHandler,
     GameBuildReadPatchBaselineHandler,
+    GameBuildRevealOutputHandler,
     GameBuildSelectPatchBaselineHandler,
+    GameBuildStartHandler,
 } = await import("./gameBuildAction");
 
 type AppWindowLike = Parameters<InstanceType<typeof GameBuildReadPatchBaselineHandler>["handle"]>[0];
@@ -44,6 +51,26 @@ function appDouble(gameBuildManager: unknown) {
     };
 }
 
+/**
+ * Everything the pipeline can be asked to do to a project, in the shape the handlers call it with.
+ *
+ * One double for all of them, because the point being tested is the same for each: whether the call
+ * happens at all. A refusal that still reached the manager would be no refusal.
+ */
+function pipelineDouble() {
+    // Each takes the project as its first argument, declared rather than inferred so a test can read
+    // back *which* project reached the pipeline - the point of the guard, not just that it was hit.
+    return {
+        start: vi.fn((_projectPath: string, _entry?: unknown, _request?: unknown) => ({ status: "packaging" })),
+        cancel: vi.fn((_projectPath: string) => ({ status: "cancelled" })),
+        getStatus: vi.fn((_projectPath: string) => ({ status: "idle" })),
+        preflight: vi.fn(async (_projectPath: string, _request?: unknown) => []),
+        readLastRun: vi.fn(async (_projectPath: string) => null),
+        revealLastOutput: vi.fn(async (_projectPath: string) => true),
+        exportPatch: vi.fn((_projectPath: string, _entry?: unknown, _request?: unknown) => ({ status: "preparing" })),
+    };
+}
+
 type Grant = { path: string; recursive: boolean; mode: string };
 
 /**
@@ -52,7 +79,12 @@ type Grant = { path: string; recursive: boolean; mode: string };
  * Wired end to end on purpose: the picker mints the grant and the readers ask about it, and a double
  * that stubbed both halves would agree with itself no matter which half was broken.
  */
-function makeWindow(options: { grants?: Grant[]; exportPatch?: ReturnType<typeof vi.fn> } = {}) {
+function makeWindow(options: {
+    grants?: Grant[];
+    exportPatch?: ReturnType<typeof vi.fn>;
+    /** The project this window has open, as the main process wrote it into the window's props. */
+    projectPath?: string;
+} = {}) {
     const grants: Grant[] = [...(options.grants ?? [])];
     const exportPatch = options.exportPatch ?? vi.fn(() => ({ status: "preparing" }));
     const storageManager = {
@@ -74,14 +106,36 @@ function makeWindow(options: { grants?: Grant[]; exportPatch?: ReturnType<typeof
         }),
     };
     const app = { storageManager, getGameBuildManager: () => ({ exportPatch }) };
+    const props = { projectPath: options.projectPath ?? root };
     return {
         win: {},
         app,
         getApp: () => appDouble({ exportPatch }),
+        getProps: () => props,
         __grants: grants,
         __exportPatch: exportPatch,
         __storageManager: storageManager,
     } as unknown as AppWindowLike;
+}
+
+/**
+ * A workspace window wired to a pipeline double, for the handlers that only take a project.
+ *
+ * `props` is passed through rather than derived, so a test can build the one case that matters here:
+ * a window whose props say one project while its request names another.
+ */
+function makePipelineWindow(props: unknown) {
+    const pipeline = pipelineDouble();
+    const app = { storageManager: {}, getGameBuildManager: () => pipeline };
+    return {
+        window: {
+            win: {},
+            app,
+            getApp: () => ({ ...appDouble(pipeline), getGameBuildManager: () => pipeline }),
+            getProps: () => props,
+        } as unknown as AppWindowLike,
+        pipeline,
+    };
 }
 
 function internals(window: AppWindowLike) {
@@ -300,5 +354,138 @@ describe("GameBuildSelectPatchBaselineHandler", () => {
 
         expect(selection).toMatchObject({ success: true, data: { path: null } });
         expect(internals(window).__grants).toHaveLength(0);
+    });
+});
+
+/**
+ * The other half of this file's subject: not "which folder may this window open a build *from*", but
+ * "which project may this window have compiled at all".
+ *
+ * Every handler here takes a `projectPath` from the renderer and, until the guard, handed it to the
+ * pipeline unexamined. That project is supposed to be the window's own - the renderer only holds the
+ * string because it read it back out of its own window props - so the whole of the exposure is that
+ * nothing said so. Table-driven because the six doors are one pipeline: a guard on some of them is
+ * a guard on none, and a table is what makes a new door an obviously missing row.
+ */
+describe("a build handler acts on the window's own project", () => {
+    /** The project the window has open, and a second one it does not. */
+    let mine: string;
+    let theirs: string;
+
+    beforeEach(() => {
+        mine = path.join(root, "mine");
+        theirs = path.join(root, "theirs");
+    });
+
+    const doors = [
+        {
+            name: "start",
+            run: (window: AppWindowLike, projectPath: string) =>
+                new GameBuildStartHandler().handle(window, { projectPath, entry: {} as never, request: {} as never }),
+            called: (pipeline: ReturnType<typeof pipelineDouble>) => pipeline.start,
+        },
+        {
+            name: "cancel",
+            run: (window: AppWindowLike, projectPath: string) =>
+                new GameBuildCancelHandler().handle(window, { projectPath }),
+            called: (pipeline: ReturnType<typeof pipelineDouble>) => pipeline.cancel,
+        },
+        {
+            name: "getStatus",
+            run: (window: AppWindowLike, projectPath: string) =>
+                new GameBuildGetStatusHandler().handle(window, { projectPath }),
+            called: (pipeline: ReturnType<typeof pipelineDouble>) => pipeline.getStatus,
+        },
+        {
+            name: "preflight",
+            run: (window: AppWindowLike, projectPath: string) =>
+                new GameBuildPreflightHandler().handle(window, { projectPath, request: {} as never }),
+            called: (pipeline: ReturnType<typeof pipelineDouble>) => pipeline.preflight,
+        },
+        {
+            name: "readLastRun",
+            run: (window: AppWindowLike, projectPath: string) =>
+                new GameBuildReadLastRunHandler().handle(window, { projectPath }),
+            called: (pipeline: ReturnType<typeof pipelineDouble>) => pipeline.readLastRun,
+        },
+        {
+            name: "revealOutput",
+            run: (window: AppWindowLike, projectPath: string) =>
+                new GameBuildRevealOutputHandler().handle(window, { projectPath }),
+            called: (pipeline: ReturnType<typeof pipelineDouble>) => pipeline.revealLastOutput,
+        },
+    ] as const;
+
+    for (const door of doors) {
+        /**
+         * The hole this closes. `theirs` is a project the window never opened; without the check the
+         * pipeline is handed it and compiles, cancels, polls or reveals it on the renderer's say-so.
+         */
+        it(`${door.name} refuses a project this window does not have open`, async () => {
+            const { window, pipeline } = makePipelineWindow({ projectPath: mine });
+
+            const result = await door.run(window, theirs);
+
+            expect(result.success).toBe(false);
+            expect(door.called(pipeline)).not.toHaveBeenCalled();
+        });
+
+        /**
+         * A guard that refuses the author's own build would be worse than the hole it closes, so the
+         * ordinary call is asserted at every door too - and asserted through to the pipeline, because
+         * a handler that answered success while calling nothing would pass a weaker test.
+         */
+        it(`${door.name} lets the window's own project through`, async () => {
+            const { window, pipeline } = makePipelineWindow({ projectPath: mine });
+
+            const result = await door.run(window, mine);
+
+            expect(result.success).toBe(true);
+            // The project the pipeline receives is the window's own string, not the caller's: two
+            // spellings of one project are two session keys, so which one crosses is not cosmetic.
+            expect(door.called(pipeline).mock.calls[0][0]).toBe(mine);
+        });
+
+        /**
+         * A window with no project of its own - the launcher, settings, the wizard - has nothing a
+         * payload could agree with, so it may not name a project here at all.
+         */
+        it(`${door.name} refuses a window that has no project open`, async () => {
+            const { window, pipeline } = makePipelineWindow({ onboarding: true });
+
+            const result = await door.run(window, mine);
+
+            expect(result.success).toBe(false);
+            expect(door.called(pipeline)).not.toHaveBeenCalled();
+        });
+
+        /** Identifiable rather than merely refused, for the reason the baseline refusal gives. */
+        it(`${door.name} names the refusal with a code`, async () => {
+            const { window } = makePipelineWindow({ projectPath: mine });
+
+            const result = await door.run(window, theirs);
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        });
+    }
+
+    /**
+     * The patch export carries two paths and they are checked differently, so it gets its own case:
+     * the baseline is a folder the author picked and is judged by a grant, while the project is
+     * judged by the window. Guarding the baseline alone - which is where this file started - left
+     * the project beside it open.
+     */
+    it("exportPatch refuses a project this window does not have open", async () => {
+        const window = makeWindow({ projectPath: mine, grants: [readGrant(picked)] });
+
+        const result = await new GameBuildExportPatchHandler().handle(window, {
+            projectPath: theirs,
+            entry: {} as never,
+            request: { baselineAppDir: picked } as never,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(internals(window).__exportPatch).not.toHaveBeenCalled();
     });
 });
