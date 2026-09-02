@@ -8,7 +8,7 @@ import {
     QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
 } from "@shared/constants/quit";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
-import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
+import { WindowAppType, WindowCloseResults, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
@@ -24,6 +24,7 @@ import { VcsManager } from "./application/managers/vcs/VcsManager";
 import { TeamManager } from "./application/managers/team/TeamManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { readProjectConfigFromDir } from "./application/utils/projectConfigFile";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import {
     LaunchOpenLookup,
@@ -1624,6 +1625,103 @@ export class App extends BaseApp {
     }
 
     /**
+     * Put a project on the trust ledger for the window about to open on it.
+     *
+     * One Studio never saw arrives as "opened" and waits for the author; one named to `--build` is
+     * the operator's own choice and is vouched for in their name (see `PROJECT_TRUST_ON_ARRIVAL`).
+     * Called before the trust question is put and again where a window comes into being, so
+     * nothing reaches a window unrecorded and absence-means-distrusted has nothing to guess about.
+     */
+    private recordProjectArrival(projectPath: string, commandLine: boolean): void {
+        const arrivedAt = new Date().toISOString();
+        if (commandLine) {
+            this.projectTrustManager.recordArrival(projectPath, "command-line", arrivedAt);
+        } else {
+            this.projectTrustManager.recordArrival(projectPath, "opened", arrivedAt);
+        }
+    }
+
+    /**
+     * Put the trust question to the author in a window of its own, and record what they said.
+     *
+     * The prompt is a Studio window, not the workspace: the workspace renders the project's content
+     * and is the one surface that must never be able to answer this. Modal over the window that
+     * asked when that window is on screen, and on its own otherwise - a launcher held back for a
+     * `--project` start is not something to hang a modal on.
+     *
+     * A yes is the author's grant, written here. A no, or a window closed without answering, leaves
+     * the project waiting, and the question is put again the next time it opens.
+     */
+    public async askProjectTrust(asker: AppWindow, projectPath: string): Promise<boolean> {
+        const config = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const configuredName = typeof config?.name === "string" ? config.name.trim() : "";
+        const props: WindowProps[WindowAppType.ProjectTrustPrompt] = {
+            projectPath,
+            projectName: configuredName || path.basename(projectPath),
+            origin: this.projectTrustManager.getRecord(projectPath)?.origin ?? "opened",
+        };
+        const parent = !asker.isClosed() && asker.win.isVisible() ? asker : null;
+        const promptWindow = await this.launchProjectTrustPrompt(parent, props);
+        parent?.addChild(promptWindow);
+        const trusted = await new Promise<boolean>(resolve => {
+            promptWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ProjectTrustPrompt]) => {
+                resolve(result?.trusted === true);
+            });
+        });
+        if (trusted) {
+            this.projectTrustManager.grantTrust(projectPath, new Date().toISOString());
+            this.logger.info("[Trust] Author vouched for", projectPath, "when asked");
+        } else {
+            this.logger.info("[Trust] Author left", projectPath, "waiting");
+        }
+        return trusted;
+    }
+
+    /**
+     * Carry a change of trust to the windows already open on the project.
+     *
+     * Trust is read once when a workspace boots - the run controls, the status bar, the loader that
+     * refuses a puppet and the cut on the session all settle then - so a window that has booted
+     * reloads to read it again, with its pending saves flushed first as before any other reload
+     * this process starts. Withdrawing trust also stops what the project is doing: a preview or a
+     * Dev Mode session started while it was trusted is the project's code running, which is the
+     * thing the author just said no to.
+     */
+    public async applyProjectTrustChange(projectPath: string, trusted: boolean): Promise<void> {
+        if (!trusted) {
+            await this.getDevModeManager().stop(projectPath).catch(error => {
+                this.logger.warn("[Trust] Could not stop Dev Mode after trust was withdrawn:", error);
+            });
+            await this.getPreviewManager().stop(projectPath).catch(error => {
+                this.logger.warn("[Trust] Could not stop the preview after trust was withdrawn:", error);
+            });
+        }
+        const key = normalizeProjectPath(projectPath);
+        for (const window of this.windowManager.getWindows()) {
+            if (window.isClosed() || window.getWindowType() !== WindowAppType.Workspace) {
+                continue;
+            }
+            const workspace = window as AppWindow<WindowAppType.Workspace>;
+            if (normalizeProjectPath(workspace.getProps().projectPath) !== key) {
+                continue;
+            }
+            const webContentsId = workspace.getWebContents().id;
+            if (trusted) {
+                devModeNetworkPolicy.releaseDistrusted(webContentsId);
+            } else {
+                devModeNetworkPolicy.blockDistrusted(webContentsId);
+                workspace.onClose(() => devModeNetworkPolicy.releaseDistrusted(webContentsId));
+            }
+            await this.flushWorkspacePendingSaves(workspace);
+            this.logger.info(
+                "[Trust] Reloading the workspace on", projectPath,
+                trusted ? "- the project is now trusted" : "- the project is no longer trusted",
+            );
+            workspace.reload();
+        }
+    }
+
+    /**
      * Build a workspace window.
      *
      * `options.show === false` covers two different windows, and `deferredShow` is what tells them
@@ -1662,17 +1760,10 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
-        // Every project that gets a window is on the trust ledger from here on. One Studio never
-        // saw arrives as "opened" and waits for the author; one named to `--build` is the
-        // operator's own choice and is vouched for in their name (see `PROJECT_TRUST_ON_ARRIVAL`).
-        // Recorded in the one place a workspace window comes into being, so nothing reaches a
-        // window unrecorded and absence-means-distrusted has nothing left to guess about.
-        const arrivedAt = new Date().toISOString();
-        if (props.commandLineBuild) {
-            this.projectTrustManager.recordArrival(props.projectPath, "command-line", arrivedAt);
-        } else {
-            this.projectTrustManager.recordArrival(props.projectPath, "opened", arrivedAt);
-        }
+        // Every project that gets a window is on the trust ledger from here on. `openProject`
+        // recorded it before putting the question; this covers the launches that do not pass
+        // through there, so nothing reaches a window unrecorded.
+        this.recordProjectArrival(props.projectPath, Boolean(props.commandLineBuild));
         // Before the document loads, which is what `blockDistrusted` requires: a request made
         // while the first frame is coming up is still a request. A distrusted project reaches
         // nothing remote from its own window - not through fetch, not through an <img>, not
@@ -1893,6 +1984,15 @@ export class App extends BaseApp {
 
         const key = normalizeProjectPath(projectPath);
         const pending = this.projectOpenings.get(key);
+        // On the ledger before the question, and the question before the window. A project Studio
+        // never met is asked about here, over the window the author is looking at, and whatever
+        // they answer the project opens - trusted, or as one to browse. Not for a build with nobody
+        // at the screen, which vouches for itself, and not for a project somebody already has
+        // coming up: its question was put when they asked.
+        this.recordProjectArrival(projectPath, Boolean(options.commandLineBuild));
+        if (!pending && !options.background && !options.commandLineBuild && !this.projectTrustManager.isTrusted(projectPath)) {
+            await this.askProjectTrust(opener, projectPath);
+        }
         // A replacement loads out of sight and takes the screen only once its project has answered:
         // the author asked for this window to become another project, and a second window appearing
         // over the first and the first closing out from under it is the one thing that does not read
@@ -2226,6 +2326,48 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.PluginPermissionPrompt));
+
+        return window;
+    }
+
+    /**
+     * Raise the window that asks whether a project is trusted.
+     *
+     * The same shape as the server-trust prompt below: a small modal child of whoever asked,
+     * holding one question and two answers. `parent` is null when no window is on screen to be
+     * modal to, and the prompt then stands on its own.
+     */
+    async launchProjectTrustPrompt(
+        parent: AppWindow | null,
+        props: WindowProps[WindowAppType.ProjectTrustPrompt],
+    ): Promise<AppWindow<WindowAppType.ProjectTrustPrompt>> {
+        const config: WindowConfig<WindowAppType.ProjectTrustPrompt> = {
+            windowType: WindowAppType.ProjectTrustPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                ...(parent ? { modal: true, parent: parent.win } : {}),
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: 340,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+            },
+        };
+        const window = new AppWindow<WindowAppType.ProjectTrustPrompt>(this, config, props);
+        window.setTitle("Project Trust - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ProjectTrustPrompt));
 
         return window;
     }

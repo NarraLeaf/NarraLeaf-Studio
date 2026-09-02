@@ -148,6 +148,7 @@ export const blueprint = {
             contextValueReturnHint: " 値を返すノードはブループリント値のグラフにしか置けない",
             contextListItemHint: " このノードは自分が並んでいるリストの行を読むが、ここには行がない",
             noRuntime: "ノード「{node}」：型「{type}」に対応する実装がない",
+            inputMissing: "「{node}」の「{pin}」に何も接続されていない",
             unknownType: "ノード「{node}」：不明な型「{type}」。プラグインが未インストールか無効になっている可能性がある",
             variableIdInvalid: "ノード「{node}」：変数を選ぶ",
             persistentVariableIdInvalid: "ノード「{node}」：永続変数を選ぶ",

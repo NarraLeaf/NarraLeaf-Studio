@@ -148,6 +148,7 @@ export const blueprint = {
             contextValueReturnHint: "返回值仅属于蓝图值图",
             contextListItemHint: "该节点读取它所在的列表行，而此处没有任何列表行",
             noRuntime: "节点“{node}”：类型“{type}”没有运行时",
+            inputMissing: "“{node}”的“{pin}”没有连接任何东西",
             unknownType: "节点“{node}”：未知类型“{type}”，其插件可能已卸载或停用",
             variableIdInvalid: "节点“{node}”：选择变量",
             persistentVariableIdInvalid: "节点“{node}”：选择持久化变量",

@@ -125,6 +125,7 @@ export type LintRuleId =
     | "ui/gesture-answered-twice"
     | "blueprint/save-field-empty"
     | "blueprint/start-scene-foreign"
+    | "blueprint/required-input-unwired"
     | "variables/undeclared"
     | "variables/unused"
     | "variables/name-collision"

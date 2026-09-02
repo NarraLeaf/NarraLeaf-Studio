@@ -154,6 +154,7 @@ export const blueprint = {
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
             contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
+            inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",
             unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",

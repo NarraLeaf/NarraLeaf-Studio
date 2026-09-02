@@ -24,6 +24,16 @@ import {
 import { listStoryEndings } from "@shared/types/story";
 import { getActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
+import {
+    blueprintNodeDisplayName,
+    listUnwiredRequiredInputPins,
+} from "../../ui-editor/blueprint-nodes/requiredInputPins";
+import {
+    collectLiveBlueprintGraphNodeIds,
+    // The same set the graph editor uses to decide whether a graph has a head at all: two answers
+    // to "where does this graph start" would put a warning on graphs the editor calls complete.
+    isBlueprintGraphEntryNode,
+} from "../../workspace/services/ui-editor/blueprint/graphLiveness";
 import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
@@ -384,22 +394,6 @@ function runFnTargetMissing(ctx: LintContext): LintFinding[] {
 // blueprint/unreachable-node and blueprint/empty-event
 // ---------------------------------------------------------------------------
 
-/**
- * A node execution can start at: an event head, a Story Action "On Call" head, an Fn head, or a
- * function graph's entry.
- *
- * The same set the graph editor uses to decide whether a graph has a head at all, deliberately: two
- * answers to "where does this graph start" would put a warning on graphs the editor calls complete.
- */
-function isGraphEntryNode(node: BlueprintGraphNode): boolean {
-    return (
-        isBlueprintEventDispatchHeadType(node.type) ||
-        isStoryActionCallHeadType(node.type) ||
-        node.type === BLUEPRINT_NODE_TYPE_FN_HEAD ||
-        node.type === BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY
-    );
-}
-
 function execPortIds(entry: BlueprintNodeEditorCatalogEntry, kind: "input" | "output"): ReadonlySet<string> {
     return new Set(entry.pins.filter(pin => pin.kind === kind && pin.semantic === "exec").map(pin => pin.id));
 }
@@ -432,7 +426,7 @@ function runUnreachableNode(ctx: LintContext): LintFinding[] {
             continue;
         }
         const nodes = site.ir.nodes ?? {};
-        const entries = Object.values(nodes).filter(isGraphEntryNode);
+        const entries = Object.values(nodes).filter(isBlueprintGraphEntryNode);
         // A graph with no entry point at all does not run *anything*; calling each of its nodes
         // unreachable would say the one problem once per node. The graph editor reports the graph.
         if (entries.length === 0) {
@@ -496,7 +490,7 @@ function runEmptyEvent(ctx: LintContext): LintFinding[] {
             continue;
         }
         const nodes = Object.values(site.ir.nodes ?? {});
-        const entries = nodes.filter(isGraphEntryNode);
+        const entries = nodes.filter(isBlueprintGraphEntryNode);
         const runsNothing =
             nodes.length === 0 ||
             (entries.length > 0 && !entries.some(entry => hasOutgoingExecEdge(site.ir, entry)));
@@ -621,7 +615,7 @@ function runSaveFieldEmpty(ctx: LintContext): LintFinding[] {
         if (saveNodes.length === 0) {
             continue;
         }
-        const entries = Object.values(nodes).filter(isGraphEntryNode);
+        const entries = Object.values(nodes).filter(isBlueprintGraphEntryNode);
         const reachable = new Set<string>();
         for (const entry of entries) {
             for (const nodeId of collectExecReachableNodeIds(site.ir, entry.id)) {
@@ -731,6 +725,59 @@ function runStartSceneForeign(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+// ---------------------------------------------------------------------------
+// blueprint/required-input-unwired
+// ---------------------------------------------------------------------------
+
+/**
+ * A node that will run with one of its required inputs left empty.
+ *
+ * The commonest form of "my button does nothing". `Set Text` with no Element still runs: the pin
+ * resolves to `undefined`, the node writes to nothing, and no error is raised anywhere. Nothing in
+ * the project could see it before this - the graph editor only checked an unwired Return Value, and
+ * the shipped game said nothing at all.
+ *
+ * Which pins count is `listUnwiredRequiredInputPins`' answer, the same one the graph editor's
+ * validator and the running game ask, so the canvas marker, this row and the Dev Mode issue cannot
+ * disagree about which pin is missing. It reads the node's own definition: a pin that legitimately
+ * runs without a value is declared `optional` there.
+ *
+ * A warning rather than an error. The node runs and the game keeps going - what is lost is the one
+ * effect this node was placed for - so it is not the "the build ships something other than what was
+ * written" standing that `blueprint/unknown-node` and the dangling references have.
+ *
+ * Only nodes something will actually ask to work, for the reason `blueprint/save-field-empty`
+ * restricts itself the same way: an unfinished draft is already `blueprint/unreachable-node`.
+ *
+ * The node and pin are named in the English the catalogue declares them in. A rule may not build
+ * prose and so cannot reach the render-time map that localizes a node title on the canvas; the same
+ * limit `blueprint/unknown-node` names a node type under.
+ */
+function runRequiredInputUnwired(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const wired = collectWiredInputPorts(site.ir);
+        const live = collectLiveBlueprintGraphNodeIds(site.ir);
+        for (const node of Object.values(site.ir.nodes ?? {})) {
+            if (!live.has(node.id)) {
+                continue;
+            }
+            const ports = wired.get(node.id);
+            for (const pin of listUnwiredRequiredInputPins(node.type, node.params, pinId => ports?.has(pinId) === true)) {
+                findings.push({
+                    ruleId: "blueprint/required-input-unwired",
+                    messageKey: "lint.rule.blueprintRequiredInputUnwired.message" as TranslationKey,
+                    messageParams: { node: blueprintNodeDisplayName(node.type), pin: pin.label },
+                    location: blueprintLocation(site, node.id),
+                    target: blueprintNodeJumpTarget(site, node.id),
+                });
+            }
+        }
+    }
+    return findings;
+}
+
 /**
  * A node whose type the project cannot load - the plugin that defined it is uninstalled, disabled,
  * or failed to load. The graph editor already shows the node as unknown; the build has to refuse it,
@@ -828,6 +875,16 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "blueprintSaveFieldEmpty",
         run: ctx => runSaveFieldEmpty(ctx),
+    },
+    {
+        id: "blueprint/required-input-unwired",
+        category: "blueprint",
+        // A warning: the game runs, and what is lost is the one effect the node was placed for.
+        // Below the standing of a reference that names nothing, above silence - which is what the
+        // author had before.
+        defaultSeverity: "warning",
+        slug: "blueprintRequiredInputUnwired",
+        run: ctx => runRequiredInputUnwired(ctx),
     },
     {
         id: "blueprint/start-scene-foreign",
