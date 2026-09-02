@@ -251,6 +251,12 @@ export type BuildPreflightCode =
     | "encryption-key-unavailable"
     | "web-unprotected"
     /**
+     * Asset protection is on and the build has an Android or iOS target. The mobile packages carry
+     * the same site the web export does, and carry it unprotected: the only key a package could
+     * hold is one every copy of it hands out.
+     */
+    | "mobile-unprotected"
+    /**
      * The project carries progress between editions, and this target's shell cannot: a page has no
      * shared file to write, and the mobile shells serve that same page.
      */

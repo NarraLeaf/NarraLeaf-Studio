@@ -862,6 +862,9 @@ export class GameBuildManager {
         if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
         }
+        if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
+            findings.push({ code: "mobile-unprotected", severity: "warning", section: "content" });
+        }
         findings.push(...await collectProgressCarryFindings({
             projectPath: normalizedProjectPath,
             platforms: targets.map(target => target.platform),
@@ -1966,17 +1969,15 @@ export class GameBuildManager {
         if (pluginSelection.errors.length > 0) {
             throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
         }
-        // Desktop and mobile both protect their assets on the same key; the web
-        // export never does (its files are served over HTTP by nature). Resolving
-        // once here keeps the desktop and mobile paths on one key.
-        const encryptionKey = (desktopTargets.length > 0 || mobileTargets.length > 0)
+        // Only a desktop package seals its payload. The web export cannot (its files are served
+        // over HTTP by nature), and the mobile packages ship that same site: the only key they
+        // could carry is one every copy hands out, which is no protection at all. Both are
+        // reported to the author below rather than quietly built as if they were covered.
+        const encryptionKey = desktopTargets.length > 0
             ? await this.resolveEncryptionKey(projectPath, projectConfig)
             : undefined;
-        if (encryptionKey && desktopTargets.length > 0) {
+        if (encryptionKey) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; sealing pack" });
-        }
-        if (encryptionKey && mobileTargets.length > 0) {
-            this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; protecting the mobile payload" });
         }
         // The project's own key, folded against the identity this build ships under
         // so two editions never resolve to the same material. Independent of
@@ -1996,6 +1997,13 @@ export class GameBuildManager {
                 level: "info",
                 source: "Build",
                 message: "asset protection does not apply to the web export; its files ship unprotected",
+            });
+        }
+        if (mobileTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "asset protection does not apply to Android or iOS packages; their files ship unprotected",
             });
         }
         this.ensureNotCancelled(session);
@@ -2256,9 +2264,6 @@ export class GameBuildManager {
                     identity,
                     targets: mobileTargets,
                     site: webArtifact,
-                    // When set, the repack protects every payload file with this
-                    // key and writes it into shell-config for the shell's decoder.
-                    contentKey: encryptionKey,
                     signing,
                 }),
             } : {}),
@@ -3054,8 +3059,6 @@ export class GameBuildManager {
              */
             targets: GameBuildMobileTarget[];
             site: GameRuntimeArtifactCompileResult;
-            /** Opaque protection key, or undefined for a plain (unprotected) build. */
-            contentKey?: string;
             /** Credentials this build already unsealed; the mobile slots may be empty. */
             signing: ResolvedBuildSigning;
         },
@@ -3074,9 +3077,6 @@ export class GameBuildManager {
             // Same pre-boot background the entry document paints, so the native
             // window and the document agree on the first frame.
             backgroundColor: resolveGameRuntimeInitialBackgroundColor(site.pack),
-            // Present only when the payload is protected; the shell reads it to
-            // decode, and it stays plain in shell-config (the bootstrap file).
-            ...(input.contentKey ? { contentKey: input.contentKey } : {}),
         };
         // The mobile shells serve the compiled web site, so its icon files are
         // already staged; the entry document just has to reference the ones
@@ -3086,7 +3086,6 @@ export class GameBuildManager {
 
         const job: GameBuildWorkerMobileJob = {
             sourceDir: site.appDir,
-            ...(input.contentKey ? { contentKey: input.contentKey } : {}),
             templateManifest: template.manifest,
             productName: identity.productName,
             appDirBaseName: identity.artifactBaseName,

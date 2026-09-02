@@ -6,6 +6,7 @@ import {
     resolveInsideRoot,
     resolveModelBundleKey,
     resolveRuntimeAssetPath,
+    resolveRuntimeHostFile,
     resolveRuntimeStaticPath,
 } from "./runtimeProtocol";
 
@@ -177,5 +178,39 @@ describe("model bundle request resolution", () => {
         // A truncated or patched-away entry record must 404, not resolve to `{id}/undefined`.
         const reader = entryReader(null);
         await expect(resolveModelBundleKey(packWith(MODEL), `${MODEL}/`, reader.read)).resolves.toBeNull();
+    });
+});
+
+describe("runtime host file allowlist", () => {
+    it("answers the shell's bundles and the code the pack carries, however the path is spelled", () => {
+        expect(resolveRuntimeHostFile("/renderer.js")).toBe("renderer.js");
+        expect(resolveRuntimeHostFile("//renderer.css")).toBe("renderer.css");
+        expect(resolveRuntimeHostFile("/plugins/narraleaf.gallery/entry.js")).toBe("plugins/narraleaf.gallery/entry.js");
+        expect(resolveRuntimeHostFile("/puppet/live2d/index.js")).toBe("puppet/live2d/index.js");
+        expect(resolveRuntimeHostFile("/scripts/a1b2.js")).toBe("scripts/a1b2.js");
+        expect(resolveRuntimeHostFile("\\plugins\\x\\entry.js")).toBe("plugins/x/entry.js");
+        expect(resolveRuntimeHostFile("/plugins/./x//entry.js")).toBe("plugins/x/entry.js");
+    });
+
+    it("refuses everything else the app directory holds", () => {
+        // The store and its companion, the codec, the loaders Electron opens itself, a loose build's
+        // pack and its assets, and the directories that are not the page's: each is a real file a
+        // shipped game keeps beside the document, and none is a page resource.
+        for (const name of [
+            "assets.bin", "assets.map", "bindings.node", "bindings.js", "vendor.js",
+            "main.js", "main.jsc", "preload.js", "package.json", "pack.json",
+            "assets/0000.png", "sidecars/steam/achievements.exe", "platform/windows-x64/bindings.node",
+            "koffi/index.js", "icons/app.png", "", ".", "plugins", "plugins/", "scripts",
+        ]) {
+            expect(resolveRuntimeHostFile(`/${name}`), name).toBeNull();
+        }
+    });
+
+    it("judges a path after normalising it, so a prefix cannot be borrowed to climb out of it", () => {
+        expect(resolveRuntimeHostFile("/plugins/../assets.bin")).toBeNull();
+        expect(resolveRuntimeHostFile("/plugins/x/../../assets.map")).toBeNull();
+        expect(resolveRuntimeHostFile("/scripts/..\\bindings.node")).toBeNull();
+        expect(resolveRuntimeHostFile("/../plugins/x/entry.js")).toBeNull();
+        expect(resolveRuntimeHostFile("/plugins/x/../y/entry.js")).toBe("plugins/y/entry.js");
     });
 });

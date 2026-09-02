@@ -31,7 +31,7 @@ interface SidebarPanelContextMenu {
     groupPanels: PanelDefinition[];
     /** Commit a reorder of the *visible* rail ids, keeping hidden panels pinned to their slots. */
     commitReorder: (orderedVisibleIds: string[]) => void;
-    /** Open the context menu; pass a panelId to target a specific icon (adds "remove this item"). */
+    /** Open the context menu; pass a panelId to target a specific icon (adds "hide this item"). */
     openMenu: (event: React.MouseEvent, panelId?: string) => void;
     /** The rendered menu element; drop it into the selector's JSX (it portals to the body). */
     menu: React.ReactNode;
@@ -44,10 +44,11 @@ interface SidebarPanelContextMenu {
  * Right-clicking the rail — either empty space or a specific icon — opens a checklist of every
  * panel registered for that dock (rail actions like the dashboard included), each row checked when
  * its icon is currently shown. Clicking a row shows or hides that panel. When the menu is opened on
- * a specific icon, a trailing block appears: fold it into the group, or remove it outright.
+ * a specific icon, a trailing block appears: fold it into the group, or hide it.
  * Right-clicking the group's own icon instead lists everything currently folded into it, each row
  * checked; clicking one lifts it back out onto the rail. A final block, present however the menu
- * was opened, resets the dock's icon order to the registered default.
+ * was opened, resets the dock's icon order to the registered default; it is greyed out, with the
+ * reason as its hover text, while the rail is already in that order.
  *
  * The rail itself only renders {@link SidebarPanelContextMenu.railPanels}, so hidden panels drop out
  * of the strip but stay reachable through the menu, and collapsed ones move into the group's flyout.
@@ -61,6 +62,7 @@ export function useSidebarPanelContextMenu(
         getPanelsByPosition,
         reorderPanels,
         resetPanelOrder,
+        getDefaultPanelOrder,
         panelOrder,
         collapsedPanels,
         setCollapsedPanels,
@@ -102,6 +104,13 @@ export function useSidebarPanelContextMenu(
     // The dock's full slot list, group included — also the basis for splicing a drag back over the
     // entries that are not currently on the rail.
     const fullIds = groupShown ? weaveGroupSlot(panelIds, panelOrder[position]) : panelIds;
+    // The same list with no reordering at all: static panel order, group last. When the rail is
+    // already there, a reset would change nothing — including one that would only clear a stored
+    // order that happens to match — so the menu says so instead of offering a click with no effect.
+    const defaultIds = getDefaultPanelOrder(position);
+    const defaultFullIds = groupShown ? [...defaultIds, SIDEBAR_GROUP_ID] : defaultIds;
+    const orderIsDefault = fullIds.length === defaultFullIds.length
+        && fullIds.every((id, index) => id === defaultFullIds[index]);
 
     const railPanels = fullIds.flatMap(id => {
         if (id === SIDEBAR_GROUP_ID) {
@@ -144,7 +153,7 @@ export function useSidebarPanelContextMenu(
 
     if (targetPanelId === SIDEBAR_GROUP_ID) {
         // On the group itself the trailing block is its membership: every folded panel, checked,
-        // and clicking one lifts it back onto the rail. ("Remove this item" is deliberately absent
+        // and clicking one lifts it back onto the rail. ("Hide this item" is deliberately absent
         // — hiding the group would strand whatever is inside it.)
         items.push({ separator: true as const, id: "sep-group" });
         for (const panel of collapsedMembers) {
@@ -158,7 +167,7 @@ export function useSidebarPanelContextMenu(
     } else if (targetPanelId) {
         const target = allPanels.find(panel => panel.id === targetPanelId);
         if (target) {
-            items.push({ separator: true as const, id: "sep-remove" });
+            items.push({ separator: true as const, id: "sep-hide" });
             if (grouping) {
                 items.push({
                     id: "collapse-item",
@@ -167,8 +176,8 @@ export function useSidebarPanelContextMenu(
                 });
             }
             items.push({
-                id: "remove-item",
-                label: t("workspace.shell.panelMenu.removeItem"),
+                id: "hide-item",
+                label: t("workspace.shell.panelMenu.hideItem"),
                 onClick: () => setPanelVisibility(target.id, false),
             });
         }
@@ -182,6 +191,8 @@ export function useSidebarPanelContextMenu(
     items.push({
         id: "reset-order",
         label: t("workspace.shell.panelMenu.resetOrder"),
+        disabled: orderIsDefault,
+        tooltip: orderIsDefault ? t("workspace.shell.panelMenu.resetOrderDisabled") : undefined,
         onClick: () => resetPanelOrder(position),
     });
 

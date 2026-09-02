@@ -574,9 +574,11 @@ export const workspace = {
         // Right-click menu on a sidebar rail: a checklist toggling each panel icon's visibility,
         // plus shortcuts acting on the specific panel that was right-clicked.
         panelMenu: {
-            removeItem: "Remove this item",
+            hideItem: "Hide this item",
             collapseItem: "Collapse into group",
             resetOrder: "Reset to default order",
+            // Hover text of the greyed-out reset row.
+            resetOrderDisabled: "Already in the default order.",
         },
         // The left rail's collapse group: one icon standing in for the panels folded behind it,
         // which unfolds into a flyout listing them.
