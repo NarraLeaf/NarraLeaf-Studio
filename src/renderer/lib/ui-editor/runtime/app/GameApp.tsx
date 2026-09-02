@@ -186,7 +186,7 @@ import { createSessionGate } from "./sessionGate";
 import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
-import { openLaunchPersistentReader } from "./launchPersistentReader";
+import { openStoryPersistence } from "./storyPersistence";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -3279,16 +3279,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         const startBlockId = request.startBlockId?.trim() || undefined;
         const snapshotId = request.snapshotId?.trim() || undefined;
         const scene = storyDocument.scenes[sceneId];
-        // Read the persistent store before anything asks it a question. The walk that poses the
-        // stage is synchronous and the store is not, and a launch outruns the reload the bridge
-        // starts on its own - so this is what makes the pre-pose read the author's stored value
-        // rather than every persistent variable's declared default. See `openLaunchPersistentReader`.
+        // Read the persistent store before anything asks it a question, on EVERY boot: the stage
+        // walk of a row-precise launch and the compiled story itself both read persistent values
+        // synchronously, from a cache an unwaited reload fills one IPC round trip later. See
+        // `openStoryPersistence`. Every persistent read and write this boot performs goes through the
+        // object it returns; reaching past it to the bridge is the unprimed path this exists to close.
         //
-        // It has to happen HERE, above the overrides: reading the store replaces the whole cache,
-        // so an override written first would be read straight back out again.
-        const readPersistent = startBlockId && core
-            ? await openLaunchPersistentReader(core.scopeBridge)
-            : undefined;
+        // It has to happen HERE, above the overrides and above the compiled-story cache: reading
+        // the store replaces the whole cache, so an override written first would be read straight
+        // back out again, and a reused story is as entitled to a primed one as a fresh compile.
+        const storyPersistence = core ? await openStoryPersistence(core.scopeBridge) : undefined;
         // The selected Scene Snapshot's persistent overrides go in next, and still ahead of the walk,
         // because the walk reads the same store to decide which arm of a persistent condition the
         // scene took. Written after it, they would settle the story the author is about to play while
@@ -3299,7 +3299,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (startBlockId && overrides) {
             for (const [refKey, value] of Object.entries(overrides)) {
                 if (refKey.startsWith("persistent:")) {
-                    core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
+                    storyPersistence?.port.set(refKey.slice("persistent:".length), value);
                 }
             }
         }
@@ -3320,7 +3320,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // the run - and Dev Mode has the profile that holds it, so the pre-pose and the
                     // tail decide every persistent condition from one value instead of two.
                     persistentVariables: bundle.ui.persistentVariables,
-                    ...(readPersistent ? { readPersistent } : {}),
+                    ...(storyPersistence ? { readPersistent: storyPersistence.readPersistent } : {}),
                 }),
             }
             : undefined;
@@ -3374,12 +3374,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             savedVariables: bundle.ui.savedVariables,
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
-            persistence: core
-                ? {
-                      get: key => core.scopeBridge.persistenceGet(key),
-                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
-                  }
-                : undefined,
+            persistence: storyPersistence?.port,
             localization: bundle.localization && core
                 ? { ...bundle.localization, getLocale: readTextLocale }
                 : undefined,
