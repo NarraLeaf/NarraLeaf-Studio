@@ -58,6 +58,7 @@ import {
     blueprintDebugEventIssue,
     locateRuntimeIssue,
     runtimeIssueKey,
+    runtimePluginFailureIssue,
     type LocatedRuntimeIssue,
 } from "./runtimeIssueModel";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
@@ -1601,6 +1602,27 @@ export function DevModeContent(props: DevModeContentProps) {
             });
         }
     }, [bundle, reportIssue, runtimePlugins.excluded, t]);
+
+    /**
+     * Say which of the plugins this project does run failed to load.
+     *
+     * The same silence the exclusions above were reported to end, arriving by a different route: a
+     * plugin the project depends on, selected for this session, whose entry threw on import or in
+     * `setup`. Its nodes and widgets are never registered, so they draw as unknown-node stubs - the
+     * author sees a graph that has stopped working and nothing saying the plugin is why.
+     *
+     * An error rather than a warning, unlike an exclusion: an excluded plugin is a project that has
+     * not declared it, which is a state the author can be in on purpose, while an entry that threw
+     * is broken code.
+     */
+    useEffect(() => {
+        if (!bundle) {
+            return;
+        }
+        for (const failure of runtimePlugins.errors) {
+            reportIssue(runtimePluginFailureIssue(failure, t));
+        }
+    }, [bundle, reportIssue, runtimePlugins.errors, t]);
 
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {

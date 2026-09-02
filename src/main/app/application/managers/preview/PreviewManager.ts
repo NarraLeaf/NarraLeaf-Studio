@@ -347,8 +347,17 @@ export class PreviewManager {
             if (pluginSelection.fallbackAll && pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, "project has no plugin dependency table; packaging every enabled runtime plugin");
             }
-            if (pluginSelection.skippedPluginIds.length > 0) {
-                this.emitVerbose(session, `runtime plugins not packaged (unused by this project): ${pluginSelection.skippedPluginIds.join(", ")}`);
+            // One line per reason, never one line for both. "Unused by this project" is true of a
+            // plugin the dependency table does not name and false of one it names and could not
+            // resolve - and the second is a problem the author has to fix, reported here as though
+            // it were a choice they had made.
+            const notDeclared = pluginSelection.excluded.filter(entry => entry.reason === "notDeclared");
+            const unusable = pluginSelection.excluded.filter(entry => entry.reason === "unusable");
+            if (notDeclared.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (not a dependency of this project): ${notDeclared.map(entry => entry.pluginId).join(", ")}`);
+            }
+            if (unusable.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (a dependency of this project that cannot be loaded): ${unusable.map(entry => entry.pluginId).join(", ")}`);
             }
             if (pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, `packaging runtime plugin(s): ${pluginSelection.selected.map(source => source.manifest.id).join(", ")}`);

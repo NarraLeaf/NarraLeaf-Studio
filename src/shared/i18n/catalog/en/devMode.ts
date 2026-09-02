@@ -29,6 +29,11 @@ export const devMode = {
         // unknown-node stub, and a stub nobody explained is an author debugging their own graph.
         pluginNotDeclared: "{plugin} is installed but not among this project's plugin dependencies. It does not run in this session and is not included in a build. Rescan them in Project ▸ App.",
         pluginUnusable: "{plugin} is among this project's plugin dependencies and cannot be loaded. It does not run in this session and is not included in a build. Check its status in Project ▸ App.",
+        // A plugin this project does run, whose runtime entry threw. Its nodes and widgets stay
+        // unregistered and draw as the unknown-node stub, which reads as a mistake in the graph.
+        pluginEntryFailed: "{plugin} failed to load: {error}. Its blueprint nodes and widgets are not registered in this session.",
+        // The list of runtime plugins could not be read at all, so this names no plugin.
+        pluginListFailed: "The runtime plugin list could not be read: {error}. No plugin runs in this session.",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
         stack: "Stack",

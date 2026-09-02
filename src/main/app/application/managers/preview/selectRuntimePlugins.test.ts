@@ -77,7 +77,7 @@ describe("selectProjectRuntimePlugins", () => {
 
         expect(selection.errors).toEqual([]);
         expect(selection.selected.map(item => item.manifest.id)).toEqual(["acme.used"]);
-        expect(selection.skippedPluginIds).toEqual(["acme.unused"]);
+        expect(selection.excluded.map(entry => entry.pluginId)).toEqual(["acme.unused"]);
         expect(selection.fallbackAll).toBe(false);
     });
 
