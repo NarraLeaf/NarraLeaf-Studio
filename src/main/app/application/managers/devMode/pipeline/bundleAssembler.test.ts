@@ -11,6 +11,7 @@ import { DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION } from "@shared/types/saveComp
 import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import {
@@ -809,7 +810,9 @@ describe("bundleAssembler story schema", () => {
         await writeFile(
             path.join(projectPath, "editor", "ui", "uigraphs.json"),
             JSON.stringify({
-                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                // The wrapper's own version, which is not the interface document's - it has sat at
+                // 2 while the blueprint record inside it moved on its own.
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
                 blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {} },
             }),
             "utf-8",

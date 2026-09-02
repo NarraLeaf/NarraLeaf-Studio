@@ -12,10 +12,10 @@ import {
     ASSET_ARCHIVE_FILENAME,
     ARCHIVE_READER_FILENAME,
 } from "@narraleaf/bindings";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { GAME_RUNTIME_PACK_SCHEMA_VERSION, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { dlcArtifactFileName, dlcDirectoryName } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
-import { diffPack } from "@shared/utils/packDelta";
+import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { openAssetArchive } from "@narraleaf/bindings/read";
 import { BoundedBufferCache, createRuntimeResources } from "./runtimeResources";
 
@@ -463,6 +463,127 @@ describe("patched runtime resources", () => {
         } finally {
             await resources.dispose();
         }
+    });
+
+    /*
+     * A layer built by a Studio this game has never heard of.
+     *
+     * The failure it replaces was silent and complete: a delta whose operations this build cannot
+     * interpret applied as a delta of zero changes, counted as having applied, and in counting
+     * stopped the whole pack beside it from being read at all. The player installed content they
+     * had paid for, the log said it was applied, and the game was exactly as it had been.
+     *
+     * So the layer is refused whole - not its pack alone. A layer that contributed its asset bytes
+     * while its story stayed behind would leave the player with the pictures of a chapter that
+     * never arrives, which is worse than either half.
+     */
+    describe("content that needs a newer game", () => {
+        it("refuses a delta whose operations this build cannot read, and keeps its own content", async () => {
+            const material = createProjectToken();
+            const { appDir, gameRootDir, pack } = await makeApp(material, "original");
+            const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as unknown;
+            const delta = diffPack(base, { ...(base as Record<string, unknown>), marker: "from-the-future" });
+
+            await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "future.assetpatch"), { projectMaterial: material }, {
+                layer: JSON.stringify({ name: "future" }),
+                "pack.delta": JSON.stringify({ ...delta, version: PACK_DELTA_VERSION + 1 }),
+                "assets/one": "patched",
+            });
+
+            const warnings: string[] = [];
+            const refused: string[][] = [];
+            const resources = await createRuntimeResources(appDir, {
+                gameRootDir,
+                log: (level, message) => { if (level === "warning") warnings.push(message); },
+                onContentTooNew: files => refused.push([...files]),
+            });
+            try {
+                expect((await readPackOf(resources)).marker).toBe("base");
+                // Not the pack alone: the layer never joined the stack, so its bytes answer nothing.
+                expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
+                expect(warnings.join("\n")).toContain("future.assetpatch");
+                expect(warnings.join("\n")).toContain("newer version of the game");
+                // Once, with every refused file, for the host to put in front of the player.
+                expect(refused).toEqual([["future.assetpatch"]]);
+            } finally {
+                await resources.dispose();
+            }
+        });
+
+        it("refuses a whole pack from a newer build rather than becoming it", async () => {
+            const material = createProjectToken();
+            const { appDir, gameRootDir } = await makeApp(material, "original");
+            const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as Record<string, unknown>;
+
+            await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "future.assetpatch"), { projectMaterial: material }, {
+                layer: JSON.stringify({ name: "future" }),
+                pack: JSON.stringify({ ...base, schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION + 1, marker: "from-the-future" }),
+            });
+
+            const refused: string[][] = [];
+            const resources = await createRuntimeResources(appDir, {
+                gameRootDir,
+                onContentTooNew: files => refused.push([...files]),
+            });
+            try {
+                expect((await readPackOf(resources)).marker).toBe("base");
+                expect(refused).toEqual([["future.assetpatch"]]);
+            } finally {
+                await resources.dispose();
+            }
+        });
+
+        it("refuses a DLC from a newer build and reports it as not installed", async () => {
+            const material = createProjectToken();
+            const { appDir, gameRootDir } = await makeApp(material, "original");
+            const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as Record<string, unknown>;
+            const dlcFile = path.join(
+                gameRootDir,
+                dlcDirectoryName(process.platform),
+                dlcArtifactFileName("summer"),
+            );
+            await fs.mkdir(path.dirname(dlcFile), { recursive: true });
+            const writer = await createAssetOverlay(dlcFile, { projectMaterial: material, titleId: TITLE });
+            await writer.add("layer", Buffer.from(JSON.stringify({ dlc: { id: "summer", attachTo: "original" } })));
+            await writer.add("pack", Buffer.from(JSON.stringify({
+                ...base,
+                schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION + 1,
+            })));
+            await writer.finalize();
+
+            const resources = await createRuntimeResources(appDir, { gameRootDir });
+            try {
+                // "Installed" is what draws the entrance to what the player bought. A DLC this build
+                // cannot read has nothing behind that entrance, so it must not claim one.
+                expect(resources.installedDlcIds()).toEqual([]);
+            } finally {
+                await resources.dispose();
+            }
+        });
+
+        it("leaves a layer this build can read exactly as it was", async () => {
+            const material = createProjectToken();
+            const { appDir, gameRootDir } = await makeApp(material, "original");
+            const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as unknown;
+
+            await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.assetpatch"), { projectMaterial: material }, {
+                layer: JSON.stringify({ name: "fix" }),
+                "pack.delta": JSON.stringify(diffPack(base, { ...(base as Record<string, unknown>), marker: "fixed" })),
+            });
+
+            const refused: string[][] = [];
+            const resources = await createRuntimeResources(appDir, {
+                gameRootDir,
+                onContentTooNew: files => refused.push([...files]),
+            });
+            try {
+                expect((await readPackOf(resources)).marker).toBe("fixed");
+                // Never called on the ordinary path, so a host that passes it pays nothing.
+                expect(refused).toEqual([]);
+            } finally {
+                await resources.dispose();
+            }
+        });
     });
 
     it("says so when patch files are present but the build cannot read them", async () => {

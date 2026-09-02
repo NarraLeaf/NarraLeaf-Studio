@@ -45,6 +45,11 @@ import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import { translate } from "@/lib/i18n";
+import {
+    findStoryDocumentTooNewError,
+    findStoryDocumentTooOldError,
+} from "@shared/story/migrateStoryDocument";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { assertValidStoryId } from "@shared/utils/storyId";
@@ -530,11 +535,19 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 error,
                 severity: "degraded",
             });
-            // With the cause, because the message is not always the whole answer: a document below
-            // the schema floor throws a `StoryDocumentTooOldError` that names both versions, and the
-            // lint sweep turns that into a sentence an author can act on. Rewrapping the text alone
-            // would leave that reader nothing to recognise.
-            throw new RendererError(error instanceof Error ? error.message : String(error), { cause: error });
+            // With the cause, because the message is not always the whole answer: a document outside
+            // the schema ladder throws an error that names both versions, and the lint sweep turns
+            // that into a sentence an author can act on. Rewrapping the text alone would leave that
+            // reader nothing to recognise.
+            //
+            // The text itself is the ladder's English sentence for every other reader, and the
+            // author's own language for those two - `showError` prints whatever it is handed, and
+            // the numbers are the whole point of handing it anything.
+            throw new RendererError(
+                describeStoryDocumentRefusal(entry.name, error)
+                    ?? (error instanceof Error ? error.message : String(error)),
+                { cause: error },
+            );
         }
     }
 
@@ -3072,3 +3085,32 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories, `${storyId}/`);
     }
 }
+
+/**
+ * The sentence a story refused by the schema ladder gets, or null when this failure is not one.
+ *
+ * Both ends of the ladder, in the author's own language, and named the same way the lint report
+ * names them - one document, one wording, wherever the failure surfaces. Null for every other
+ * failure: a truncated write has no version to state, and the parser's own text is the better
+ * answer there.
+ */
+function describeStoryDocumentRefusal(storyName: string, error: unknown): string | null {
+    const tooOld = findStoryDocumentTooOldError(error);
+    if (tooOld) {
+        return translate("lint.message.storyTooOld", {
+            story: storyName,
+            version: tooOld.version,
+            minimum: tooOld.minimumVersion,
+        });
+    }
+    const tooNew = findStoryDocumentTooNewError(error);
+    if (tooNew) {
+        return translate("lint.message.storyTooNew", {
+            story: storyName,
+            version: tooNew.version,
+            supported: tooNew.supportedVersion,
+        });
+    }
+    return null;
+}
+

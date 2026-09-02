@@ -425,6 +425,12 @@ export const lint = {
          * file's name next to a failure and looks for the mistake in their script.
          */
         storyTooOld: "{story} is in story format v{version}, and this Studio opens v{minimum} and later",
+        /**
+         * The other end of the same ladder. Kept apart from the line above rather than worded to
+         * cover both, because the two ask opposite things of the author: an old document is theirs
+         * and this Studio has moved past it, a new one is theirs and this Studio has not caught up.
+         */
+        storyTooNew: "{story} was written by a newer NarraLeaf Studio (story format v{version}); this Studio reads up to v{supported}",
     },
     category: {
         assets: "Assets",

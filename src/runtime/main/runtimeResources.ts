@@ -11,7 +11,7 @@ import {
     type AssetArchiveReader,
     type AssetOverlayReader,
 } from "@narraleaf/bindings/read";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { newerRuntimePackSchemaVersion, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import {
     GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY,
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
@@ -20,7 +20,7 @@ import {
     gameRuntimeBundleRuntimeEntry,
     isSealedShellFile,
 } from "@shared/utils/gameRuntimeBundle";
-import { applyPackDelta, type PackDelta } from "@shared/utils/packDelta";
+import { applyPackDelta, PACK_DELTA_VERSION, type PackDelta } from "@shared/utils/packDelta";
 import { dlcAttachesToBuild } from "@shared/types/dlc";
 import { dlcDirectoryCandidates, isDlcFileName } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
@@ -349,6 +349,15 @@ export interface RuntimeResourcesOptions {
      * line without it.
      */
     explainRefusedPatches?: boolean;
+    /**
+     * Tell the player about content this build refused because it needs a newer game, by file name.
+     *
+     * Separate from {@link log} because the two answer different people. The log line is for whoever
+     * is looking at the file afterwards; this is for the player who installed something and is about
+     * to find that the game is exactly as it was. Called once, with every refused file, and only
+     * when there is one - so a host that passes it pays nothing on the ordinary path.
+     */
+    onContentTooNew?: (files: readonly string[]) => void;
 }
 
 /**
@@ -375,7 +384,31 @@ type OpenPatch = {
      * answer, and it is only ever set on a file whose edition matched this build.
      */
     dlcId?: string;
+    /**
+     * What this layer says about the pack, read when the layer was opened.
+     *
+     * Read once, at open, rather than when the pack is composed. Two things follow from that, and
+     * both are the point. A layer whose contribution this build cannot read is refused before it
+     * joins the stack, so it contributes nothing at all - not its asset bytes either, which is what
+     * makes the refusal whole rather than partial. And the entry is read exactly once per boot.
+     *
+     * Always `none` for a layer that did not prove its origin: only a proven layer may change the
+     * pack, and reading its claim would be reading a claim nothing is going to act on.
+     */
+    packContribution: PackContribution;
 };
+
+/**
+ * What one layer changes about the pack: a set of operations, a whole pack that replaces it, or
+ * nothing at all.
+ *
+ * A whole pack is what a layer built with no baseline to compare against carries, and it keeps its
+ * old meaning - it *becomes* the pack, and layers above it apply on top.
+ */
+type PackContribution =
+    | { kind: "delta"; delta: PackDelta }
+    | { kind: "whole"; pack: Record<string, unknown> }
+    | { kind: "none" };
 
 /**
  * Payload assembled from a base and the patches applied over it.
@@ -461,13 +494,10 @@ class PatchedRuntimeResources implements RuntimeResources {
         }
         let composed = 0;
         let restateStoryHash = false;
-        for (const [index, patch] of this.patches.entries()) {
-            if (!patch.proven) {
-                continue;
-            }
-            const delta = await this.readLayerDelta(patch, index);
-            if (delta) {
-                const report = applyPackDelta(pack, delta);
+        for (const patch of this.patches) {
+            const contribution = patch.packContribution;
+            if (contribution.kind === "delta") {
+                const report = applyPackDelta(pack, contribution.delta);
                 composed++;
                 restateStoryHash ||= report.touchedStory;
                 if (report.skipped.length > 0) {
@@ -480,12 +510,8 @@ class PatchedRuntimeResources implements RuntimeResources {
                 }
                 continue;
             }
-            if (!patch.reader.has(GAME_RUNTIME_BUNDLE_PACK_ENTRY)) {
-                continue;
-            }
-            const whole = parseJson(await this.read({ patch, index }, GAME_RUNTIME_BUNDLE_PACK_ENTRY));
-            if (whole) {
-                pack = whole;
+            if (contribution.kind === "whole") {
+                pack = contribution.pack;
                 composed++;
                 // A whole pack carries its own fingerprint for its own content.
                 restateStoryHash = false;
@@ -518,17 +544,6 @@ class PatchedRuntimeResources implements RuntimeResources {
             }
         }
         return Buffer.from(JSON.stringify(pack), "utf-8");
-    }
-
-    /** What this layer changes about the pack, or null when it carries no delta or an unreadable one. */
-    private async readLayerDelta(patch: OpenPatch, index: number): Promise<PackDelta | null> {
-        if (!patch.reader.has(GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY)) {
-            return null;
-        }
-        const parsed = parseJson(await this.read({ patch, index }, GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY));
-        // A delta that will not parse falls back to the whole pack beside it, which is the same file
-        // saying the same thing in the way every build before this one read it.
-        return parsed && Array.isArray((parsed as PackDelta).ops) ? parsed as unknown as PackDelta : null;
     }
 
     async readAsset(pack: GameRuntimePackV1, assetId: string): Promise<Buffer> {
@@ -636,6 +651,46 @@ type LayerDescriptor = {
         attachTo: string;
     };
 };
+
+/**
+ * What a layer says about the pack, or that this build cannot read what it says.
+ *
+ * A delta first, then a whole pack: a layer built against a baseline carries only the delta, and one
+ * built without a baseline carries the whole thing. A layer that carries both is a layer made for
+ * two generations of the game at once, and the delta is this generation's half.
+ *
+ * `tooNew` is a refusal, not a degradation, and it is the whole reason this reads the version at
+ * all. A delta whose operations this build cannot interpret used to apply as a delta of zero
+ * changes - and, because it counted as *having* applied, it also stopped the whole pack beside it
+ * from being read. The player installed content they had bought, the log said it was applied, and
+ * nothing about the game changed. The same is true of a whole pack from a newer build: read as this
+ * build's own, every field it does not know is simply absent from what plays.
+ */
+async function readPackContribution(
+    reader: AssetOverlayReader,
+): Promise<PackContribution | { kind: "tooNew" }> {
+    if (reader.has(GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY)) {
+        const parsed = parseJson(await reader.read(GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY));
+        if (parsed && typeof parsed.version === "number" && parsed.version > PACK_DELTA_VERSION) {
+            return { kind: "tooNew" };
+        }
+        if (parsed && Array.isArray((parsed as unknown as PackDelta).ops)) {
+            return { kind: "delta", delta: parsed as unknown as PackDelta };
+        }
+        // A delta that will not parse falls back to the whole pack beside it, which is the same file
+        // saying the same thing in the way every build before this one read it.
+    }
+    if (reader.has(GAME_RUNTIME_BUNDLE_PACK_ENTRY)) {
+        const parsed = parseJson(await reader.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY));
+        if (parsed && newerRuntimePackSchemaVersion(parsed) !== null) {
+            return { kind: "tooNew" };
+        }
+        if (parsed) {
+            return { kind: "whole", pack: parsed };
+        }
+    }
+    return { kind: "none" };
+}
 
 async function readLayerDescriptor(reader: AssetOverlayReader): Promise<LayerDescriptor> {
     if (!reader.has(OVERLAY_DESCRIPTOR_ENTRY)) {
@@ -789,6 +844,8 @@ async function openLayers(
     }
 
     const opened: { patch: OpenPatch; rank: number; order: number; at: number }[] = [];
+    /** Files this build refused outright, by name, for the host to put in front of the player. */
+    const refusedAsTooNew: string[] = [];
     for (const [at, entry] of found.entries()) {
         const label = path.basename(entry.file);
         try {
@@ -796,6 +853,21 @@ async function openLayers(
                 ...(build.verificationKey ? { verificationKey: build.verificationKey } : {}),
             });
             const descriptor = await readLayerDescriptor(reader);
+            const contribution = reader.proven
+                ? await readPackContribution(reader)
+                : { kind: "none" as const };
+            if (contribution.kind === "tooNew") {
+                // Refused whole, before the layer joins the stack: a layer that only half applied
+                // would leave the player with the assets of content whose story never arrived, and
+                // nothing on screen to say which half they got. One line, and the file is named.
+                options.log?.(
+                    "warning",
+                    `${entry.kind.noun} not applied: ${label} - it needs a newer version of the game`,
+                );
+                refusedAsTooNew.push(label);
+                await reader.close().catch(() => undefined);
+                continue;
+            }
             if (descriptor.dlc && !dlcAttachesToBuild(descriptor.dlc.attachTo, build.appTagId)) {
                 // Identity alone cannot catch this: two variants that override no
                 // identifier are sealed under the same material, so the file opened.
@@ -811,6 +883,7 @@ async function openLayers(
                     label: descriptor.name ? `${label} (${descriptor.name})` : label,
                     reader,
                     proven: reader.proven,
+                    packContribution: contribution,
                     ...(descriptor.dlc ? { dlcId: descriptor.dlc.id } : {}),
                 },
                 rank: entry.kind.rank,
@@ -830,6 +903,9 @@ async function openLayers(
     // Kind first, then declared order, then discovery order to break ties - so two
     // files that both say nothing stay in the order the directories were read, which
     // is the only order a player can influence.
+    if (refusedAsTooNew.length > 0) {
+        options.onContentTooNew?.(refusedAsTooNew);
+    }
     opened.sort((a, b) => (a.rank - b.rank) || (a.order - b.order) || (a.at - b.at));
     for (const entry of opened) {
         // What the patch does, not what let it do it. "files only" is the effect an author and a

@@ -71,16 +71,54 @@ export class StoryDocumentTooOldError extends Error {
 }
 
 /**
+ * The refusal a document from a newer Studio gets - the other end of the ladder, and the worse one
+ * to get wrong.
+ *
+ * A document ahead of this build cannot be migrated *down*. Read as though it were current, every
+ * field this Studio has not heard of would be dropped by the normalize pass and written back by
+ * the next save, so one visit from an older Studio would silently strip the newer one's work. The
+ * ladder used to hand such a document through untouched, which is exactly that outcome; refusing
+ * costs the author one sentence, and the sentence carries both versions as fields for the same
+ * reason the too-old one does - every reader between here and a surface rewraps the message.
+ *
+ * The workspace treats it as it treats a file that will not parse: the document is never loaded,
+ * so nothing is written to it, and the author is offered recovery mode.
+ */
+export class StoryDocumentTooNewError extends Error {
+    constructor(
+        /** The version the document on disk is written at. */
+        public readonly version: number,
+        /** The newest version this build reads - {@link STORY_DOCUMENT_SCHEMA_VERSION}. */
+        public readonly supportedVersion: number,
+    ) {
+        super(
+            `Story document schema v${version} is newer than this Studio version can read`
+            + ` (v${supportedVersion} is the newest supported)`,
+        );
+        this.name = "StoryDocumentTooNewError";
+    }
+}
+
+/**
  * The {@link StoryDocumentTooOldError} behind a failure, however many times it has been rewrapped.
  *
  * `loadStory` re-throws as a `RendererError` carrying the original as its `cause`, and a caller two
  * services away should not have to know how many wrappers are between it and the ladder.
  */
 export function findStoryDocumentTooOldError(error: unknown): StoryDocumentTooOldError | null {
+    return findInCauseChain(error, candidate => candidate instanceof StoryDocumentTooOldError);
+}
+
+/** The {@link StoryDocumentTooNewError} behind a failure; see {@link findStoryDocumentTooOldError}. */
+export function findStoryDocumentTooNewError(error: unknown): StoryDocumentTooNewError | null {
+    return findInCauseChain(error, candidate => candidate instanceof StoryDocumentTooNewError);
+}
+
+function findInCauseChain<T>(error: unknown, matches: (candidate: unknown) => candidate is T): T | null {
     const seen = new Set<unknown>();
     let current = error;
     while (current && typeof current === "object" && !seen.has(current)) {
-        if (current instanceof StoryDocumentTooOldError) {
+        if (matches(current)) {
             return current;
         }
         seen.add(current);
@@ -91,7 +129,14 @@ export function findStoryDocumentTooOldError(error: unknown): StoryDocumentTooOl
 
 export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocument {
     const version = typeof document.schemaVersion === "number" ? document.schemaVersion : 1;
-    if (version >= STORY_DOCUMENT_SCHEMA_VERSION) {
+    // Strictly newer is refused, never passed through: "at least current" used to be the test here,
+    // and it let a document from a future Studio reach the compiler and the normalize pass as if it
+    // were current - which is the one way the ladder can lose an author's work rather than refuse
+    // to read it.
+    if (version > STORY_DOCUMENT_SCHEMA_VERSION) {
+        throw new StoryDocumentTooNewError(version, STORY_DOCUMENT_SCHEMA_VERSION);
+    }
+    if (version === STORY_DOCUMENT_SCHEMA_VERSION) {
         return document;
     }
     if (version < STORY_DOCUMENT_MIN_SUPPORTED_VERSION) {

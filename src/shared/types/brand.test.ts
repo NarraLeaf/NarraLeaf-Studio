@@ -140,4 +140,23 @@ describe("migrateProjectBrandDocument", () => {
     it("reads an empty document as a fresh palette", () => {
         expect(migrateProjectBrandDocument({})).toEqual(createEmptyProjectBrandDocument());
     });
+
+    /**
+     * Migrating by normalising only works downhill. Read a document a newer Studio wrote and every
+     * field this build has not heard of is dropped, with the current version stamped over the top
+     * saying the result is what the author has - and the next save writes it. The document spec
+     * refuses one on the way in, but the spec is not the only reader: the main process reads this
+     * same file straight off disk for a preview and for a build.
+     */
+    it("refuses a document a newer Studio wrote rather than stamping over it", () => {
+        expect(() => migrateProjectBrandDocument({ schemaVersion: BRAND_SCHEMA_VERSION + 1, colors: [] }))
+            .toThrow(/newer than this Studio version can read/);
+    });
+
+    it("reads a document at this version, and one that states none", () => {
+        expect(migrateProjectBrandDocument({ schemaVersion: BRAND_SCHEMA_VERSION, colors: [] }).schemaVersion)
+            .toBe(BRAND_SCHEMA_VERSION);
+        // Absent has always meant "written before the field existed", and every build has read it.
+        expect(migrateProjectBrandDocument({ colors: [] }).schemaVersion).toBe(BRAND_SCHEMA_VERSION);
+    });
 });

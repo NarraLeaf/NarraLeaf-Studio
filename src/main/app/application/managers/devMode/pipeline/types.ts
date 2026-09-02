@@ -78,8 +78,13 @@ export type DevModeBundleLoadContext = {
     /**
      * The language a failure this assembly reports is written in.
      *
-     * Only the blueprint variant refusal uses it, and only a build ever supplies it: Dev Mode and the
-     * preview never refuse, because neither of them packages anything. Absent falls back to English.
+     * Supplied by a build, whose report and whose console are written in the author's language.
+     * Dev Mode and the preview leave it absent and get English, which is what every other line
+     * either of them prints is written in - a single translated sentence inside an English frame
+     * reads as a fault rather than as a courtesy.
+     *
+     * Two failures use it: the blueprint variant refusal, which only a package can produce, and a
+     * project document written by a newer Studio, which any host can meet.
      */
     locale?: LocaleCode;
     /**

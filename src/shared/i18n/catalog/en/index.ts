@@ -56,6 +56,7 @@ import { brand } from "./brand";
 import { dictionary } from "./dictionary";
 import { game } from "./game";
 import { crash } from "./crash";
+import { documents } from "./documents";
 
 export const en = {
     common,
@@ -106,4 +107,5 @@ export const en = {
     dictionary,
     game,
     crash,
+    documents,
 } as const;
