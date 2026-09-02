@@ -29,17 +29,93 @@ export function emptyMemberIndex(): BlueprintMemberIndex {
     };
 }
 
-const TYPESCRIPT_BLUEPRINT_DEFAULT_SOURCE = `import { events } from "narraleaf-studio";
+/**
+ * The module a script blueprint's types come from.
+ *
+ * Declared by the generated `scripts/.narraleaf/project.d.ts` rather than installed, so a script
+ * type-checks with no dependencies at all - and imported with `import type`, so esbuild erases the
+ * line and the build never looks for a package to resolve. Scoped to our own organisation because
+ * a bare name is one a real package could take out from under it.
+ */
+export const SCRIPT_TYPES_MODULE = "@narraleaf/script";
 
-events.on("mouseClick", async (ctx) => {
-  await ctx.host.devtools.log("TypeScript Blueprint");
-});
-`;
+/**
+ * The file a new script blueprint starts as.
+ *
+ * One handler, named the way every handler is named, and the event chosen so it exists wherever
+ * this blueprint sits: `onInit` for a widget - every widget type has it - `onSurfaceInit` for a
+ * page, `onAppBoot` for the project, and the default export for a story row, which has no others.
+ *
+ * Written once, when the blueprint is created, and never rewritten: from that moment the file is
+ * the author's. See `@shared/project/scriptsDirectory`.
+ */
+export function renderStarterScript(params: {
+    owner: BlueprintOwnerRef;
+    /** The element's widget type, for the owners that hang off one. */
+    widgetType?: string;
+}): string {
+    const widget = params.widgetType ?? "nl.container";
+    switch (params.owner.kind) {
+        case "globalMain":
+            return [
+                `import type { GlobalCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                "",
+                "export function onAppBoot(ctx: GlobalCtx): void {",
+                '    ctx.host.devtools.log("info", "the game booted");',
+                "}",
+                "",
+            ].join("\n");
+        case "surfaceMain":
+            return [
+                `import type { SurfaceCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                "",
+                "export function onSurfaceInit(ctx: SurfaceCtx): void {",
+                '    ctx.host.devtools.log("info", `this page is ${ctx.self.surfaceId}`);',
+                "}",
+                "",
+            ].join("\n");
+        case "componentWidgetMain":
+            return [
+                `import type { ComponentWidgetCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                "",
+                `export function onInit(ctx: ComponentWidgetCtx<"${widget}">): void {`,
+                "    ctx.vars.ready = true;",
+                "}",
+                "",
+            ].join("\n");
+        case "storyAction":
+            return [
+                `import type { StoryCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                "",
+                "export default async function (ctx: StoryCtx): Promise<void> {",
+                '    ctx.saved.set("visitedIntro", true);',
+                "}",
+                "",
+            ].join("\n");
+        default:
+            return [
+                `import type { WidgetCtx } from "${SCRIPT_TYPES_MODULE}";`,
+                "",
+                `export function onInit(ctx: WidgetCtx<"${widget}">): void {`,
+                "    ctx.vars.ready = true;",
+                "}",
+                "",
+            ].join("\n");
+    }
+}
 
-export function createTypeScriptMainBlueprint(params: {
+/**
+ * A script blueprint: the same slot a visual one fills, pointing at a file instead of holding a graph.
+ *
+ * `scriptRef` is passed in rather than derived here because deriving it needs to know which paths
+ * are already taken, and because the file has to be written in the same act - both of which belong
+ * to the service that has a filesystem.
+ */
+export function createScriptMainBlueprint(params: {
     id: string;
     name: string;
     owner: BlueprintOwnerRef;
+    scriptRef: string;
 }): Blueprint {
     return {
         id: params.id,
@@ -49,10 +125,7 @@ export function createTypeScriptMainBlueprint(params: {
         programKind: "scriptModule",
         program: {
             kind: "scriptModule",
-            source: {
-                language: "typescript",
-                code: TYPESCRIPT_BLUEPRINT_DEFAULT_SOURCE,
-            },
+            scriptRef: params.scriptRef,
         },
         members: emptyMemberIndex(),
         bindings: {},

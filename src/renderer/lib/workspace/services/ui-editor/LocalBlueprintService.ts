@@ -54,7 +54,8 @@ import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { SaveSchemaService } from "../saves/SaveSchemaService";
 import {
     createMainBlueprint,
-    createTypeScriptMainBlueprint,
+    createScriptMainBlueprint,
+    renderStarterScript,
     emptyMemberIndex,
 } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
@@ -79,7 +80,10 @@ import {
 } from "./blueprint/ownerKeys";
 import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
-import { blueprintContract } from "@shared/blueprint/ownerShape";
+import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
+import { writeScriptDeclarations } from "./blueprint/scriptDeclarationFiles";
+import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { anchorElementId, blueprintContract } from "@shared/blueprint/ownerShape";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -249,6 +253,21 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const saveSchema = ctx.services.get<SaveSchemaService>(Services.SaveSchema);
         await depend([fs, project, uuid, graph, registry, saveSchema]);
 
+        // The declarations, refreshed for a project that already has scripts. Written on open
+        // rather than only when one is created, because the point of the project half is that
+        // renaming something in Studio turns the script that used the old name into an error the
+        // author sees - which only holds if the file is rewritten after the rename.
+        //
+        // Not awaited, and its failure is swallowed by design: a project whose declarations could
+        // not be written is still one the author can edit and still one that builds, since the type
+        // check is a lint rather than a build step. Blocking the open on it would trade the whole
+        // project for completion in one folder.
+        if (this.hasScriptBlueprints()) {
+            void writeScriptDeclarations(ctx).catch(error => {
+                console.warn("[blueprint] could not write script declarations", error);
+            });
+        }
+
         // The stacks live in HistoryService; re-shape its "some stack changed" event into the
         // blueprint-shaped one this service's subscribers already listen for.
         this.unsubscribeHistory?.();
@@ -264,6 +283,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 });
             }
         });
+    }
+
+    /** Whether anything in this project is a script blueprint, and so needs declarations. */
+    private hasScriptBlueprints(): boolean {
+        return Object.values(this.getBlueprintDocument().blueprints ?? {})
+            .some(blueprint => blueprint.program.kind === "scriptModule");
     }
 
     private history(): HistoryService {
@@ -770,7 +795,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
-    public createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): string {
+    public async createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string> {
         const ownerRef = parsePrivateOwnerKeyToRef(ownerKey);
         if (!ownerRef) {
             throw new RendererError(`Invalid private owner key: ${ownerKey}`);
@@ -787,15 +812,84 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             frontend === "typescript"
                 ? `Script ${id.slice(0, 6)}`
                 : `Blueprint ${id.slice(0, 6)}`;
+        // The file first, and the blueprint only if it was written. The other order leaves a
+        // blueprint pointing at a file that does not exist, which is the dangling state the model
+        // allows for a file the author deleted - and reporting it as that would blame them for a
+        // write of ours that failed.
+        // The declarations first: an author who opens the new file wants completion in it, and the
+        // project half is only current as of the last time this ran.
+        if (frontend === "typescript") {
+            await writeScriptDeclarations(this.getContext());
+        }
+        const scriptRef = frontend === "typescript" ? await this.createStarterScriptFile(ownerRef, name) : null;
         this.applyBlueprintEdit({ blueprintId: id, ownerKey }, doc => {
             const blueprint =
-                frontend === "typescript"
-                    ? createTypeScriptMainBlueprint({ id, name, owner: ownerRef })
+                scriptRef !== null
+                    ? createScriptMainBlueprint({ id, name, owner: ownerRef, scriptRef })
                     : createMainBlueprint({ id, name, owner: ownerRef });
             doc.blueprints[id] = blueprint;
             registerPrivateBlueprintAsActive(doc, ownerKey, id, frontend);
         });
         return id;
+    }
+
+    /**
+     * Write the file a new script blueprint will point at, and answer where it went.
+     *
+     * The one moment Studio writes an author's script. From here on the file is theirs: the
+     * document holds the path, nothing holds the text, and nothing writes it again. See
+     * `@shared/project/scriptsDirectory`.
+     */
+    private async createStarterScriptFile(owner: BlueprintOwnerRef, name: string): Promise<string> {
+        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const scriptRef = this.unusedScriptRef(name);
+        const absolute = this.getContext().project.resolve(scriptRef.split("/"));
+        const written = await fs.writeFileNoFollowOrCreate(
+            absolute,
+            renderStarterScript({ owner, widgetType: this.widgetTypeOfOwner(owner) }),
+            "utf-8",
+        );
+        if (!written.ok) {
+            throw new RendererError(`Could not create ${scriptRef}: ${written.error.message}`);
+        }
+        // A refusal is reported as success - the write gate turns a frozen workspace into a no-op -
+        // so the flag is the only thing that separates "written" from "silently dropped". Creating
+        // the blueprint on a dropped write is precisely the dangling reference this order avoids.
+        if (written.refused) {
+            throw new RendererError(`Could not create ${scriptRef}: this workspace is read-only`);
+        }
+        return scriptRef;
+    }
+
+    /**
+     * A path under `scripts/` that no blueprint already points at.
+     *
+     * Named after the blueprint rather than after its id: the author opens this file in their own
+     * editor, and a filename is as much interface as a title bar is. Two blueprints with one name
+     * count up rather than colliding.
+     */
+    private unusedScriptRef(name: string): string {
+        const taken = new Set(
+            Object.values(this.getBlueprintDocument().blueprints ?? {})
+                .map(bp => (bp.program.kind === "scriptModule" ? bp.program.scriptRef : null))
+                .filter((ref): ref is string => typeof ref === "string"),
+        );
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "script";
+        let candidate = `${SCRIPTS_DIR}/${slug}.ts`;
+        for (let index = 2; taken.has(candidate); index += 1) {
+            candidate = `${SCRIPTS_DIR}/${slug}-${index}.ts`;
+        }
+        return candidate;
+    }
+
+    /** The widget type a starter script should be written against, when the owner names an element. */
+    private widgetTypeOfOwner(owner: BlueprintOwnerRef): string | undefined {
+        const elementId = anchorElementId(owner);
+        if (!elementId) {
+            return undefined;
+        }
+        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
+        return uidoc.getDocument().elements[elementId]?.type;
     }
 
     public getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary {
@@ -1541,22 +1635,17 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }, options);
     }
 
-    public updateScriptModuleSource(
-        blueprintId: string,
-        code: string,
-        options: BlueprintHistoryRecordOptions = {},
-    ): void {
-        this.applyBlueprintEdit({ blueprintId }, doc => {
-            const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "scriptModule") {
-                return;
-            }
-            bp.program.source.code = code;
-            bp.program.source.diagnostics = undefined;
-        }, {
-            mergeKey: options.mergeKey ?? `script-source:${blueprintId}`,
-            mergeWindowMs: options.mergeWindowMs ?? 1200,
-        });
+    /**
+     * Where a script blueprint's file is, or null when it is not a script blueprint.
+     *
+     * There is no matching setter for its TEXT, and that absence is the model: the file is the
+     * author's, edited in their own editor, and a service that could write it back would undo an
+     * edit made outside Studio the next time anything saved. This service moved a whole directory
+     * out of its own reach to make that impossible - see `@shared/project/scriptsDirectory`.
+     */
+    public getScriptRef(blueprintId: string): string | null {
+        const bp = this.getBlueprintDocument().blueprints?.[blueprintId];
+        return bp?.program.kind === "scriptModule" ? bp.program.scriptRef : null;
     }
 
     public getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary {

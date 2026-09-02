@@ -405,9 +405,10 @@ export const blueprint = {
         unnamedInputAction: "名前のないアクション",
         missingInputAction: "アクションが見つからない",
     },
-    tsPane: {
-        importHint: "読み込めるのは \"narraleaf-studio\" だけ",
-        sourceLabel: "TypeScript のブループリントのソース",
+    script: {
+        fileLabel: "スクリプトファイル",
+        open: "エディターで開く",
+        missing: "ファイルが見つかりません。",
     },
     tool: {
         select: "選択ツール",

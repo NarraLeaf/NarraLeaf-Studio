@@ -179,7 +179,21 @@ export type BlueprintProgram =
       }
     | {
           kind: "scriptModule";
-          source: TypeScriptBlueprintSource;
+          /**
+           * The author's file, as a project-relative path under `scripts/`.
+           *
+           * A reference rather than the text, because the text is not Studio's to hold. A script is
+           * edited in the author's own editor, and a document service that kept a copy would write
+           * that copy back over their edit the next time anything saved - which is what
+           * `<project>/scripts/` exists to prevent. See `@shared/project/scriptsDirectory`.
+           *
+           * Dangling is an ordinary state: a file the author moved or deleted leaves a reference
+           * that resolves to nothing, and that is reported as a diagnostic rather than repaired by
+           * guessing.
+           */
+          scriptRef: string;
+          /** What the last compile of {@link scriptRef} said. Absent until one has run. */
+          diagnostics?: BlueprintDiagnostic[];
       };
 
 export type BlueprintGraphIndex = {
@@ -291,13 +305,29 @@ export type BlueprintMacroGraph = {
 // TypeScript blueprint source
 // ---------------------------------------------------------------------------
 
-export type TypeScriptBlueprintSource = {
+/**
+ * A script's text, as it was stored inside the document before v13.
+ *
+ * Kept only so the migration can recognise what it is reading and hand the text to something that
+ * can write a file. Nothing current holds one: a script's text lives in `scripts/`, and the
+ * blueprint holds the path.
+ */
+export type LegacyInlineScriptSource = {
     language: "typescript";
     code: string;
     compiledModuleId?: string;
     outputPath?: string;
     diagnostics?: BlueprintDiagnostic[];
 };
+
+/**
+ * Where the migration parks the text it rescued out of a pre-v13 document, on the blueprint's own
+ * `meta`, for the one open that writes it to disk.
+ *
+ * On `meta` rather than in the program because it is not part of the model: it is a hand-off with a
+ * lifetime of one open. The service that writes the file clears it.
+ */
+export const LEGACY_INLINE_SCRIPT_META_KEY = "legacyInlineScript";
 
 // ---------------------------------------------------------------------------
 // Binding

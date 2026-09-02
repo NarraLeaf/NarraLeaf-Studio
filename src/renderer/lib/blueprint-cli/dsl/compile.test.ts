@@ -13,7 +13,9 @@ import { describe, expect, it } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import type { Blueprint } from "@shared/types/blueprint/document";
 import { compileBlueprintDocument } from "./compile";
+import { printBlueprint } from "./print";
 import { parseBlueprintText } from "./parse";
 
 registerCoreBlueprintNodes();
@@ -258,5 +260,52 @@ event E
         expect(blueprint.members?.variables).toEqual({
             v1: { id: "v1", name: "Score", valueType: "number", defaultValue: 3 },
         });
+    });
+});
+
+describe("script blueprints in a .bp file", () => {
+    it("round-trips a script blueprint instead of flattening it to an empty graph", () => {
+        const blueprint: Blueprint = {
+            id: "bp-script",
+            name: "Quit",
+            owner: { kind: "globalMain" },
+            frontend: "typescript",
+            programKind: "scriptModule",
+            program: { kind: "scriptModule", scriptRef: "scripts/quit.ts" },
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+        };
+
+        const printed = printBlueprint(blueprint);
+        // Before the `script` line existed the printer emitted nothing for this blueprint, so the
+        // file said "a blueprint with no graphs" - and applying it replaced the author's reference
+        // with an empty visual blueprint, silently.
+        expect(printed).toContain("script = scripts/quit.ts");
+
+        const compiled = compile(printed);
+        expect(compiled.errors).toEqual([]);
+        expect(compiled.blueprint.program).toEqual({ kind: "scriptModule", scriptRef: "scripts/quit.ts" });
+        expect(compiled.blueprint.frontend).toBe("typescript");
+        expect(compiled.blueprint.programKind).toBe("scriptModule");
+    });
+
+    it("refuses a file that is both a script and a graph", () => {
+        const source = [
+            'blueprint "Both" owner=globalMain',
+            '    script = "scripts/both.ts"',
+            "",
+            '    event "Layer 1"',
+            "        node blueprint.event.head.appBoot as head",
+            "",
+        ].join("\n");
+
+        expect(compile(source).diagnostics.map(d => d.code)).toContain("dsl.script_with_graphs");
+    });
+
+    it("refuses a path that is not one of this project's scripts", () => {
+        for (const bad of ["editor/story/notes.ts", "scripts/node_modules/pkg/index.js", "scripts/notes.md"]) {
+            const source = ['blueprint "Bad" owner=globalMain', `    script = ${JSON.stringify(bad)}`, ""].join("\n");
+            expect(compile(source).diagnostics.map(d => d.code), bad).toContain("dsl.script_not_a_script_path");
+        }
     });
 });

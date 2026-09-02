@@ -20,14 +20,20 @@ import {
     SCRIPT_EVENTS_BY_ANCHOR,
     SCRIPT_EVENTS_BY_WIDGET,
     scriptEventExportName,
+    type ComponentWidgetCtx,
     type ComponentWidgetScriptModule,
+    type GlobalCtx,
+    type GlobalHandler,
     type GlobalScriptModule,
+    type ScriptEvent,
     type ScriptEventId,
     type ScriptModuleFor,
     type ScriptPinKind,
     type StoryScriptModule,
+    type SurfaceCtx,
     type SurfaceScriptModule,
     type ValueScriptModule,
+    type WidgetHandler,
     type WidgetScriptModule,
 } from "./scriptEvents";
 
@@ -60,53 +66,66 @@ const moduleChecks: ModuleChecks | null = null;
 // What an author may write, and what they may not
 // ---------------------------------------------------------------------------
 
-const globalModule: GlobalScriptModule = {
-    async onAppBoot(ctx) {
-        await ctx.host.navigation.openSurface("title");
-        const noBroadcast: undefined = ctx.broadcast;
-        void noBroadcast;
-    },
-    onKeyDown(ctx, event) {
-        if (event.key === "Escape") {
-            ctx.stopPropagation();
-        }
-    },
+/**
+ * A project script, written the way an author writes one: named exports, each annotated.
+ *
+ * The handlers are declared here and gathered into the module type below, which is what a real
+ * module's namespace is. Both annotation forms appear because both are offered - a function
+ * declaration naming `ctx` and `event`, and a `const` naming the whole handler.
+ */
+async function onAppBoot(ctx: GlobalCtx): Promise<void> {
+    await ctx.host.navigation.openSurface("title");
+    const noBroadcast: undefined = ctx.broadcast;
+    void noBroadcast;
+}
+
+const onGlobalKeyDown: GlobalHandler<"keyDown"> = (ctx, event) => {
+    // The filter a graph puts on the card is a line of the author's code: one export, not two.
+    if (event.key === "Escape" && !event.ctrlKey) {
+        ctx.stopPropagation();
+    }
 };
+
+const globalModule: GlobalScriptModule = { onAppBoot, onKeyDown: onGlobalKeyDown };
 
 // @ts-expect-error a project script has nothing to click
 const globalHearsClicks: GlobalScriptModule = { onMouseClick() {} };
 
-const surfaceModule: SurfaceScriptModule = {
-    async onAction(ctx, event) {
-        if (event.actionId === "advance" && event.source === "touch") {
-            await ctx.broadcast.send("advance", { x: event.x, y: event.y });
-        }
-    },
-    onElementClick(ctx, event) {
-        void ctx.surface.isTransitioning();
-        void event.element.elementId;
-    },
+async function onAction(ctx: SurfaceCtx, event: ScriptEvent<"action">): Promise<void> {
+    if (event.actionId === "advance" && event.source === "touch") {
+        await ctx.broadcast.send("advance", { x: event.x, y: event.y });
+    }
+}
+
+function onElementClick(ctx: SurfaceCtx, event: ScriptEvent<"elementClick">): void {
+    void ctx.surface.isTransitioning();
+    void event.element.elementId;
+}
+
+const surfaceModule: SurfaceScriptModule = { onAction, onElementClick };
+
+const onSliderValueChanged: WidgetHandler<"nl.slider", "sliderValueChanged"> = async (ctx, event) => {
+    ctx.vars.previous = event.previousValue;
+    await ctx.host.widget.setTextProperties("value-label", { text: String(event.value) });
+    if (ctx.self.row) {
+        void ctx.self.row.index;
+    }
 };
 
-const sliderModule: WidgetScriptModule<"nl.slider"> = {
-    async onSliderValueChanged(ctx, event) {
-        ctx.vars.previous = event.previousValue;
-        await ctx.host.widget.setTextProperties("value-label", { text: String(event.value) });
-        if (ctx.self.row) {
-            void ctx.self.row.index;
-        }
-    },
-};
+const sliderModule: WidgetScriptModule<"nl.slider"> = { onSliderValueChanged };
 
 // @ts-expect-error a slider has no switch events
 const sliderHearsSwitch: WidgetScriptModule<"nl.slider"> = { onSwitchChanged() {} };
 
-const componentModule: ComponentWidgetScriptModule<"nl.button"> = {
-    onMouseClick(ctx) {
-        const slot: string | undefined = ctx.self.params.slot;
-        void slot;
-    },
-};
+// @ts-expect-error and naming one in an annotation is refused at the annotation
+const sliderSwitchHandler: WidgetHandler<"nl.slider", "switchChanged"> = () => {};
+
+function onComponentMouseClick(ctx: ComponentWidgetCtx<"nl.button">): void {
+    const slot: string | undefined = ctx.self.params.slot;
+    void slot;
+}
+
+const componentModule: ComponentWidgetScriptModule<"nl.button"> = { onMouseClick: onComponentMouseClick };
 
 // @ts-expect-error a component definition's script does not hear the keyboard
 const componentHearsKeys: ComponentWidgetScriptModule<"nl.button"> = { onKeyDown() {} };
@@ -162,6 +181,7 @@ const authored = [
     surfaceModule,
     sliderModule,
     sliderHearsSwitch,
+    sliderSwitchHandler,
     componentModule,
     componentHearsKeys,
     valueModule,
@@ -239,7 +259,7 @@ function eventsThePaletteOffers(owner: BlueprintOwnerRef, widgetType?: ScriptWid
 describe("script events are held to the node catalogue", () => {
     it("compiles the module shapes and the authored samples", () => {
         expect(moduleChecks).toBeNull();
-        expect(authored).toHaveLength(17);
+        expect(authored).toHaveLength(18);
     });
 
     it("maps every registered head to an event, and On Call alone to none", () => {

@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "fs/promises";
+import { pathToFileURL } from "url";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -954,5 +955,103 @@ describe("bundleAssembler story schema", () => {
             revision: 1,
         });
         expect(bundle.localization?.scenes).toEqual({ "scene-1": "Scene 1" });
+    });
+});
+
+describe("bundleAssembler script blueprints", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    /** The smallest project that holds one script blueprint on the project's own graph. */
+    async function createScriptProject(): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-script-bundle-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+        );
+        await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
+        await mkdir(path.join(projectPath, "editor", "story"), { recursive: true });
+        await mkdir(path.join(projectPath, "scripts"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uidoc.json"),
+            JSON.stringify({ schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, surfaces: [] }),
+            "utf-8",
+        );
+        const script: Blueprint = {
+            id: "bp-script",
+            name: "Boot",
+            owner: { kind: "globalMain" },
+            frontend: "typescript",
+            programKind: "scriptModule",
+            program: { kind: "scriptModule", scriptRef: "scripts/boot.ts" },
+        };
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uigraphs.json"),
+            JSON.stringify({
+                // The graph document's own format version, not the interface document's: the
+                // assembler refuses a `uigraphs.json` claiming a version newer than it reads.
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                blueprintDocument: {
+                    schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                    blueprints: { [script.id]: script },
+                    ownerRecords: { globalMain: { activeBlueprintId: script.id, privateBlueprintIds: [script.id] } },
+                },
+            }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "story", "index.json"),
+            JSON.stringify({ schemaVersion: 1, stories: [] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "scripts", "boot.ts"),
+            [
+                'import type { GlobalCtx } from "@narraleaf/script";',
+                "export function onAppBoot(ctx: GlobalCtx): void { void ctx; }",
+                "",
+            ].join("\n"),
+            "utf-8",
+        );
+        return projectPath;
+    }
+
+    it("writes Dev Mode's compiled scripts under .nlstudio and names them as file URLs", async () => {
+        const projectPath = await createScriptProject();
+        const bundle = await assembleDevModeBundleFromProjectPath({ projectPath, bundleId: "b", revision: 1 });
+
+        const entry = bundle.ui.scripts?.["bp-script"];
+        expect(entry?.scriptRef).toBe("scripts/boot.ts");
+        expect(entry?.diagnostics).toBeUndefined();
+        // A `file:` URL because that is what the Dev Mode document's policy admits, and under the
+        // project's own `.nlstudio/` because version control and an export both leave that out.
+        expect(entry?.url?.startsWith("file:///")).toBe(true);
+        const written = path.join(projectPath, ".nlstudio", "dev-mode", "scripts", "scripts_boot.mjs");
+        expect(entry?.url).toBe(pathToFileURL(written).toString());
+        expect((await readFile(written, "utf-8"))).toContain("onAppBoot");
+    });
+
+    it("writes where a build says, and names each file by the scheme the build gives", async () => {
+        const projectPath = await createScriptProject();
+        const appDir = path.join(projectPath, ".build", "app");
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            scriptOutput: {
+                directory: path.join(appDir, "scripts"),
+                toUrl: filePath => `nlgame://runtime/scripts/${path.basename(filePath)}`,
+            },
+        });
+
+        // The URL a packaged game imports: the runtime scheme's `runtime` host serves this path from
+        // the store when sealed and from the app dir otherwise. Never a `file:` URL, which the
+        // shipped page's policy refuses.
+        expect(bundle.ui.scripts?.["bp-script"]?.url).toBe("nlgame://runtime/scripts/scripts_boot.mjs");
+        expect((await readFile(path.join(appDir, "scripts", "scripts_boot.mjs"), "utf-8"))).toContain("onAppBoot");
     });
 });

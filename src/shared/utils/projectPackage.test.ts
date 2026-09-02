@@ -144,6 +144,18 @@ describe("project package paths", () => {
         expect(shouldExcludeProjectPackagePath("assets/content/ab/cd/file")).toBe(false);
     });
 
+    it("carries the author's scripts, and neither their dependencies nor what Studio generates", () => {
+        expect(shouldExcludeProjectPackagePath("scripts/title.ts")).toBe(false);
+        expect(shouldExcludeProjectPackagePath("scripts/package.json")).toBe(false);
+        expect(shouldExcludeProjectPackagePath("scripts/tsconfig.json")).toBe(false);
+        // The install lands beside the manifest, not at the project root, so the exclusion cannot
+        // be anchored there - and an export that carried it would be hundreds of megabytes the
+        // recipient's own install produces again.
+        expect(shouldExcludeProjectPackagePath("scripts/node_modules/left-pad/index.js")).toBe(true);
+        expect(shouldExcludeProjectPackagePath("node_modules/left-pad/index.js")).toBe(true);
+        expect(shouldExcludeProjectPackagePath("scripts/.narraleaf/project.d.ts")).toBe(true);
+    });
+
     it("never exports the claim that says who is editing the project", () => {
         // A fact about one machine and one moment. An export carrying it would arrive claiming to
         // be open in the sender's Studio, and stay that way until the claim aged out.

@@ -1,4 +1,6 @@
 import path from "path";
+import { pathToFileURL } from "url";
+import { compileProjectScripts } from "./scriptCompiler";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
@@ -177,6 +179,21 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
     // cannot run, so the scene it names is not an entry into any story this package holds.
     const sceneDrop = planSceneDrop(context, variant.id, Object.values(localBlueprints.blueprints ?? {}));
+    // The author's scripts, bundled. A failure here is carried as a diagnostic on the blueprint
+    // rather than thrown: a script that will not compile is one dead handler, and the rest of the
+    // game still has to run - the type check is a lint and the build never depends on one.
+    // Dev Mode's answer when the host gives none: under `.nlstudio/`, which version control and a
+    // project export both exclude, beside the rest of what a Dev Mode run produces, named as `file:`
+    // URLs because that is what the Dev Mode document's policy admits. A build says where the pack
+    // is being assembled and names the pack's own scheme.
+    const scripts = await compileProjectScripts(
+        context.projectPath,
+        localBlueprints,
+        context.scriptOutput ?? {
+            directory: path.join(context.projectPath, ".nlstudio", "dev-mode", "scripts"),
+            toUrl: filePath => pathToFileURL(filePath).toString(),
+        },
+    );
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
     // project has. See `DevModeBundleLoadContext.includedDlc`.
     const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
@@ -245,6 +262,7 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
             persistentVariables: variableTables.persistent,
             savedVariables: variableTables.saved,
             saveSchema,
+            scripts,
         },
         storyLibrary: resolvedStoryLibrary,
         localization,
@@ -267,9 +285,6 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
         brand,
         fonts,
         compiled: context.compiled,
-        blueprintCompiledScripts: context.blueprintCompiledScripts,
-        blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
-        blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
         meta: projectIdentifier ? { projectIdentifier } : undefined,
     };
 }

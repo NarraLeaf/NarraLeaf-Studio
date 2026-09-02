@@ -24,6 +24,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { SCRIPTS_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
 import { anchorComponentId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import {
     blueprintNodeRegistry,
@@ -158,13 +159,16 @@ function compileBlueprint(
         };
     }
 
+    const script = scriptRefOf(ast, eventIds, functionIds, diagnostics);
     const blueprint: Blueprint = {
         id,
         name: ast.name,
         owner,
-        frontend: "visual",
-        programKind: "graph",
-        program: { kind: "graph", graphs: { eventIds, events, functionIds, functions } },
+        frontend: script === null ? "visual" : "typescript",
+        programKind: script === null ? "graph" : "scriptModule",
+        program: script === null
+            ? { kind: "graph", graphs: { eventIds, events, functionIds, functions } }
+            : { kind: "scriptModule", scriptRef: script },
         members: {
             variables,
             fields: (ast.fields as BlueprintMemberIndex["fields"]) ?? {},
@@ -176,6 +180,46 @@ function compileBlueprint(
         blueprint.meta = ast.meta as Record<string, unknown>;
     }
     return blueprint;
+}
+
+/**
+ * The file a script blueprint runs, checked for being one.
+ *
+ * Null for an ordinary visual blueprint. A `script` line and a graph block state two different
+ * kinds of blueprint, so a file holding both is refused rather than resolved: either answer would
+ * silently discard half of what the author wrote.
+ */
+function scriptRefOf(
+    ast: BpBlueprintAst,
+    eventIds: readonly string[],
+    functionIds: readonly string[],
+    diagnostics: BpDiagnostic[],
+): string | null {
+    const script = ast.script;
+    if (script === undefined) {
+        return null;
+    }
+    if (eventIds.length > 0 || functionIds.length > 0) {
+        diagnostics.push({
+            severity: "error",
+            code: "dsl.script_with_graphs",
+            message: "A blueprint is either a script or a graph, not both.",
+            hint: "Remove the `script` line, or remove the event and function blocks.",
+            line: ast.line,
+        });
+        return null;
+    }
+    if (!isScriptSourcePath(script)) {
+        diagnostics.push({
+            severity: "error",
+            code: "dsl.script_not_a_script_path",
+            message: `"${script}" is not a script in this project.`,
+            hint: `A script is a .ts or .js file under ${SCRIPTS_DIR}/, outside ${SCRIPTS_MODULES_DIR}/.`,
+            line: ast.line,
+        });
+        return null;
+    }
+    return script;
 }
 
 /**

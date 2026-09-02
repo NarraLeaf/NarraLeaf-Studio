@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "blueprintDocument": {
-    "schemaVersion": 12,
+    "schemaVersion": 13,
     "blueprints": {
       "885e69e4-c4dd-497d-bc30-d6a4895eaf1b": {
         "id": "885e69e4-c4dd-497d-bc30-d6a4895eaf1b",

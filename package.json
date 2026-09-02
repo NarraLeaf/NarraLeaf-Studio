@@ -43,7 +43,9 @@
     "test:watch": "vitest",
     "style:ratchet": "node scripts/style-ratchet.mjs",
     "gen:skeleton-locale": "node scripts/gen-skeleton-locale.mjs",
-    "build:plugin-types": "node packages/plugin-types/build.mjs"
+    "build:plugin-types": "node packages/plugin-types/build.mjs",
+    "gen:script-api": "node scripts/gen-script-api-dts.mjs",
+    "check:script-api": "node scripts/gen-script-api-dts.mjs --check"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",

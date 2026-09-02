@@ -236,7 +236,19 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (fileName === ".ds_store" || fileName === "thumbs.db" || fileName.endsWith(PROJECT_PACKAGE_EXTENSION)) {
         return true;
     }
-    if (segments[0] === ".git" || segments[0] === "node_modules") {
+    if (segments[0] === ".git") {
+        return true;
+    }
+    // A dependency tree, wherever it sits. The author's own install for their scripts lands in
+    // `scripts/node_modules`, so matching only the project root would put every byte of every
+    // dependency into an export - and the recipient's own install would produce them again from
+    // the manifest that is carried.
+    if (segments.includes("node_modules")) {
+        return true;
+    }
+    // Declarations generated for those scripts. Written again when the recipient opens the
+    // project, and stale the moment their copy diverges.
+    if (segments[0] === "scripts" && segments[1] === ".narraleaf") {
         return true;
     }
     // The repository, not the project. An export is "here is a copy of my project", and every

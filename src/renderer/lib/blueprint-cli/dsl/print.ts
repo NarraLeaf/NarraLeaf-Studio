@@ -47,12 +47,14 @@ export function printBlueprint(blueprint: Blueprint, diagnostics: BpDiagnostic[]
         ].join(" "),
     );
 
-    if (blueprint.frontend !== "visual" || blueprint.programKind !== "graph") {
+    // Script blueprints are covered now - they print a `script` line - so only a program the format
+    // has no syntax for is worth warning about.
+    if (blueprint.program.kind !== "graph" && blueprint.program.kind !== "scriptModule") {
         diagnostics.push({
             severity: "warning",
             code: "print.not_a_graph",
-            message: `"${blueprint.name}" is a ${blueprint.programKind} blueprint; the text format only `
-                + "covers visual graphs.",
+            message: `"${blueprint.name}" is a ${blueprint.programKind} blueprint; the text format covers `
+                + "visual graphs and scripts.",
         });
     }
     if (blueprint.meta && Object.keys(blueprint.meta).length > 0) {
@@ -79,6 +81,14 @@ export function printBlueprint(blueprint: Blueprint, diagnostics: BpDiagnostic[]
         }
         parts.push(`id=${variable.id}`);
         lines.push(parts.join(" "));
+    }
+
+    if (blueprint.program.kind === "scriptModule") {
+        // Stated, so that applying what `show` printed keeps this a script blueprint. Printing
+        // nothing here would have produced a file describing a blueprint with no graphs, and
+        // applying that file is what turns one into an empty visual blueprint - the reference to
+        // the author's own file dropped without a word.
+        lines.push(`${INDENT}script = ${printValue(blueprint.program.scriptRef)}`);
     }
 
     if (blueprint.program.kind === "graph") {

@@ -162,8 +162,6 @@ describe("game runtime artifact compiler", () => {
                         surfaces: [{ id: "surface-main" }],
                     },
                 },
-                blueprintCompiledScripts: {},
-                blueprintScriptsCompileOk: true,
             },
         });
     });

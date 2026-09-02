@@ -74,6 +74,13 @@ export type BpBlueprintAst = {
     ownerFields: Record<string, string>;
     variables: BpVariableAst[];
     graphs: BpGraphAst[];
+    /**
+     * The author's file, for a script blueprint: `script = "scripts/title.ts"`.
+     *
+     * Present instead of `graphs`, never beside them. A blueprint is one or the other, and the
+     * compiler refuses a file that states both rather than picking one.
+     */
+    script?: string;
     /** Raw escape hatches for shapes the format has no syntax for. */
     meta?: unknown;
     bindings?: unknown;

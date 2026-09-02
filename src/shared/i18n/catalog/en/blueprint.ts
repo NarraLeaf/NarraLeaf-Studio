@@ -414,9 +414,10 @@ export const blueprint = {
         // Same job as the character stand-in above, for an action the project no longer declares.
         missingInputAction: "Missing action",
     },
-    tsPane: {
-        importHint: "Allowed import: \"narraleaf-studio\"",
-        sourceLabel: "TypeScript blueprint source",
+    script: {
+        fileLabel: "Script file",
+        open: "Open in editor",
+        missing: "This file is missing.",
     },
     tool: {
         select: "Select tool",

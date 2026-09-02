@@ -5,7 +5,6 @@ import { createRequire } from "module";
 import path from "path";
 import { unpackAsarPath } from "../../../../../utils/asarPath";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
-import { compileAllBlueprintScriptsForProject } from "../../devMode/compiler/blueprint/compileProjectBlueprintScripts";
 import {
     GAME_RUNTIME_PACK_SCHEMA_VERSION,
     type GameRuntimeAssetManifestEntry,
@@ -96,6 +95,7 @@ import {
     type ShippedAssetReportEntry,
 } from "@shared/types/gameBuild";
 import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
+import { GAME_RUNTIME_PROTOCOL } from "@shared/types/gameRuntime";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -478,6 +478,13 @@ export type GameRuntimeArtifactCompileResult = {
 };
 
 /**
+ * Where the author's compiled script blueprints sit inside the app dir, and the path segment the
+ * runtime scheme serves them under. One name for both, so the file that is written and the URL
+ * that names it cannot disagree.
+ */
+const COMPILED_SCRIPTS_DIR = "scripts";
+
+/**
  * Where packaged game payload goes. "loose" writes each item as its own plain
  * file under the app dir (used when protection is off). "sealed" streams every
  * item into a single consolidated store so the packed app dir exposes no
@@ -677,11 +684,6 @@ export async function compileGameRuntimeArtifact(
     const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
     const progressKey = readProgressKey(projectConfig, input.projectPath);
     const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
-    const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
-    if (!blueprintScripts.ok) {
-        const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
-        throw new Error(`Blueprint script compile failed:\n${detail}`);
-    }
     const bundleId = crypto.randomUUID();
     // Set from inside the assembly below, and read after it to decide whether the library must be
     // narrowed. A `let` rather than a return value because the assembler answers with a bundle, and
@@ -691,12 +693,19 @@ export async function compileGameRuntimeArtifact(
         projectPath: input.projectPath,
         bundleId,
         revision: 1,
-        blueprintCompiledScripts: blueprintScripts.scripts,
-        blueprintScriptsCompileOk: blueprintScripts.ok,
-        blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
         ...(input.packaging ? { packaging: true } : {}),
         ...(input.includedDlc ? { includedDlc: input.includedDlc } : {}),
+        // The author's compiled scripts go into the app dir beside everything else the page loads,
+        // and are named by the runtime's own scheme: `<scheme>://runtime/<path>` is served from the
+        // store when the build is sealed and from the loose app dir otherwise, which is the same
+        // door every other runtime file goes through. A `file:` URL - Dev Mode's answer - would be
+        // refused by the shipped page's policy, and a blob by every host's.
+        scriptOutput: {
+            directory: path.join(appDir, COMPILED_SCRIPTS_DIR),
+            toUrl: filePath =>
+                `${GAME_RUNTIME_PROTOCOL}://runtime/${COMPILED_SCRIPTS_DIR}/${encodeURIComponent(path.basename(filePath))}`,
+        },
         // The declarations, not the count. A pack that merely carries a plugin can still drop a
         // scene; one that carries a plugin able to start a story cannot.
         runtimePlugins: (input.runtimePlugins ?? []).map(plugin => ({
@@ -799,6 +808,22 @@ export async function compileGameRuntimeArtifact(
             await target.writer.add(
                 gameRuntimeBundleRuntimeEntry(fileName),
                 await fs.readFile(path.join(input.runtimeDistDir, fileName)),
+            );
+        }
+    }
+
+    // The author's compiled scripts, into the store when the build is sealed. They were written
+    // loose into the app dir by the assembly above, before a store existed to write into; a sealed
+    // runtime serves `<scheme>://runtime/scripts/...` from the store, so the loose copy is not
+    // what it would read. Every file under the directory rather than the bundle's list: two
+    // blueprints on one script share one file, and the directory is the set of files there are.
+    if (target.kind === "sealed") {
+        const scriptsDir = path.join(appDir, COMPILED_SCRIPTS_DIR);
+        const names = await fs.readdir(scriptsDir).catch(() => [] as string[]);
+        for (const name of names) {
+            await target.writer.add(
+                gameRuntimeBundleRuntimeEntry(`${COMPILED_SCRIPTS_DIR}/${name}`),
+                await fs.readFile(path.join(scriptsDir, name)),
             );
         }
     }
