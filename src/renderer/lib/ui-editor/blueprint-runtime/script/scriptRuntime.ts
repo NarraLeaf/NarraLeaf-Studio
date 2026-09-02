@@ -1,17 +1,17 @@
 /**
  * Running a script blueprint: mounting the compiled modules, and building the `ctx` a handler gets.
  *
- * The bundle carries each script as ESM text (see the Dev Mode script compiler). This turns that
- * text into a module namespace, finds the export a dispatched event calls, and assembles the context
+ * The bundle names each script by a URL the host wrote it to (see the Dev Mode script compiler).
+ * This imports that URL, finds the export a dispatched event calls, and assembles the context
  * `scriptContext.ts` describes - so what the types promised an author is what their handler is
  * handed.
  *
- * # Loaded as a module, not evaluated into this page's scope
+ * # Loaded as a module, from a URL the host serves
  *
- * Each script becomes a blob URL and is imported. That is how the puppet backend already loads the
- * author's own renderer, and it means a script is an ES module with its own scope: its top-level
- * declarations are private to it, and `import` inside it resolves against the bundle esbuild
- * produced rather than against anything here.
+ * Each script is imported as an ES module with its own scope: its top-level declarations are
+ * private to it, and `import` inside it resolves against the bundle esbuild produced rather than
+ * against anything here. It comes from a URL rather than from text because that is the only way a
+ * script gets into a page at all - see {@link importAsModule} for the two policies that decide it.
  *
  * What it is not is an isolate. A script running in Dev Mode is in Studio's renderer, which has a
  * privileged preload bridge on `window`, so a determined script could reach past `ctx`. That is a
@@ -58,8 +58,8 @@ export type CompiledScriptEntry = { scriptRef: string; url?: string };
 export async function mountCompiledScripts(
     scripts: Readonly<Record<string, CompiledScriptEntry>> | undefined,
     onError: (blueprintId: string, scriptRef: string, message: string) => void = () => undefined,
-    // Injected so a test can mount without a blob URL, the way the puppet runtime build takes its
-    // bundler. The default is the real thing: a module, imported.
+    // Injected so a test can mount with no host serving anything, the way the puppet runtime build
+    // takes its bundler. The default is the real thing: a URL, imported.
     loadModule: (url: string) => Promise<Record<string, unknown>> = importAsModule,
 ): Promise<void> {
     const next: ScriptMountState = { modules: {}, urls: [] };

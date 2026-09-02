@@ -107,4 +107,14 @@ export type DevModeBundleLoadContext = {
      */
     onAssetSetCollapse?: () => void;
     compiled?: Record<string, unknown>;
+    /**
+     * Where the author's compiled scripts are written, and how each file is named to the host that
+     * will import it.
+     *
+     * A host has to say, because a script only reaches a page through a URL that host serves - no
+     * Content-Security-Policy here admits `blob:` or `data:`. Absent means Dev Mode's answer: under
+     * the project's own `.nlstudio/`, named as `file:` URLs, which the Dev Mode document admits. A
+     * build names the pack's own scheme instead, and writes where the pack is being assembled.
+     */
+    scriptOutput?: { directory: string; toUrl: (filePath: string) => string };
 };

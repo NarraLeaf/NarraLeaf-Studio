@@ -31,7 +31,12 @@ import { resolveRuntimeAssetPath } from "./runtimeProtocol";
 // the pack carries - bundled plugin entries and puppet backends; the pack and
 // assets have their own request hosts. Anchoring on these prefixes keeps the
 // runtime host from reaching other store entries by path.
-const RUNTIME_STORE_FILE_PREFIXES = ["plugins/", "puppet/"] as const;
+/**
+ * Entry prefixes the runtime host may serve out of a sealed store. `scripts/` is the author's
+ * compiled script blueprints, which the game imports by URL - a sealed build carries them here
+ * because the page's policy admits nothing but a URL this scheme serves.
+ */
+const RUNTIME_STORE_FILE_PREFIXES = ["plugins/", "puppet/", "scripts/"] as const;
 
 /**
  * Byte budget for store entry reads kept in memory. The game engine drops and
