@@ -7,11 +7,7 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { WindowAppType } from "@shared/types/window";
-import path from "path";
-
-function pathsEqual(a: string, b: string): boolean {
-    return path.normalize(a) === path.normalize(b);
-}
+import { requireWindowProject } from "../../../utils/windowProject";
 
 export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch> {
     readonly name = IPCEventType.devModeLaunch;
@@ -179,19 +175,21 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
     }
 }
 
-/** The workspace window showing the same project as `window`, which is where an asset id is resolved. */
+/**
+ * The workspace window showing the same project as `window`, which is where an asset id is resolved.
+ *
+ * Delegates rather than walking the window list itself. `App.findWorkspaceForProject` is the lookup
+ * the one-project-one-window rule is built on and it folds two spellings of a path the way the rest
+ * of the app does; a comparison written here would be a second opinion about what "the same project"
+ * is, and a second opinion eventually disagrees. This used to compare the two props with `===`,
+ * which is the strictest disagreement available: a workspace remembered under a differently-cased
+ * path would simply not be found, and every asset in the preview would fail to resolve with
+ * "Workspace window not available".
+ */
 function findWorkspaceWindowFor(
     window: AppWindow<WindowAppType.DevMode>,
 ): AppWindow<WindowAppType.Workspace> | undefined {
-    const props = window.getProps();
-    return window.getApp().windowManager
-        .getWindows()
-        .find(
-            w =>
-                w.getWindowType() === WindowAppType.Workspace &&
-                !w.isDestroyed() &&
-                w.getProps().projectPath === props.projectPath,
-        ) as AppWindow<WindowAppType.Workspace> | undefined;
+    return window.getApp().findWorkspaceForProject(window.getProps().projectPath);
 }
 
 async function resolveDevModeAssetUrl(
@@ -325,6 +323,41 @@ export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.de
     }
 }
 
+/**
+ * The workspace window a preview is asking Studio to act in.
+ *
+ * The four handlers below are one shape - a Dev Mode window asking the workspace that has the same
+ * project open to reveal something - so the three questions they share are asked here rather than
+ * four times over: is the caller a preview at all, is the project it names its own, and is that
+ * project open in a workspace.
+ *
+ * The middle one is {@link requireWindowProject}, which is the check the rest of the main process
+ * asks. This file used to answer it with a `path.normalize` comparison of its own - a private copy
+ * of the app's identity rule that does not fold case, so on Windows `D:\Game` and `d:\game` were
+ * two projects here and one project everywhere else. It never misbehaved, because the payload is
+ * the window's own props echoed back and the two sides were therefore the same string; that is luck
+ * rather than a property, and the failure it was risking is the worse of the two available. A guard
+ * that refuses the author's own project is worse than the hole it closes.
+ *
+ * The lookup is delegated for the same reason, and answers `undefined` rather than throwing: "no
+ * workspace is open on this project" is an ordinary situation, and the four below do not all give
+ * it the same answer.
+ *
+ * Throws rather than returning a refusal so the code {@link requireWindowProject} raises travels
+ * with it - each caller catches and hands it to `failed`, which reads `error.code`. The catching
+ * cannot be left to the registry: it discards what a message handler returns and does not catch
+ * what one throws.
+ */
+function requireWorkspaceForPreview(
+    window: AppWindow,
+    named: string,
+): AppWindow<WindowAppType.Workspace> | undefined {
+    if (window.getWindowType() !== WindowAppType.DevMode) {
+        throw new Error("Invalid window");
+    }
+    return window.getApp().findWorkspaceForProject(requireWindowProject(window, named));
+}
+
 export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventType.devModeOpenBlueprintInWorkspace> {
     readonly name = IPCEventType.devModeOpenBlueprintInWorkspace;
     readonly type = IPCMessageType.request;
@@ -333,29 +366,15 @@ export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventT
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeOpenBlueprintInWorkspace]["data"],
     ): Promise<RequestStatus<void>> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
-        }
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        const props = devWindow.getProps();
-        if (!pathsEqual(props.projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
         if (data.ownerKind !== "surfaceMain" && data.ownerKind !== "widgetMain" && data.ownerKind !== "widgetValue") {
             return this.failed("Unsupported owner");
         }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.failed("No workspace for project");
         }
@@ -377,27 +396,12 @@ export class DevModeForwardBlueprintDebugEventHandler extends IPCHandler<IPCEven
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeForwardBlueprintDebugEvent]["data"],
     ): RequestStatus<never> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
-
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        const props = devWindow.getProps();
-        if (!pathsEqual(props.projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
-        }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.success(void 0 as never);
         }
@@ -415,27 +419,12 @@ export class DevModeForwardStoryRowHandler extends IPCHandler<IPCEventType.devMo
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeForwardStoryRow]["data"],
     ): RequestStatus<never> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
-
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        const props = devWindow.getProps();
-        if (!pathsEqual(props.projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
-        }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.success(void 0 as never);
         }
@@ -467,25 +456,12 @@ export class DevModeOpenStoryRowInWorkspaceHandler extends IPCHandler<IPCEventTy
         window: AppWindow,
         data: IPCEvents[IPCEventType.devModeOpenStoryRowInWorkspace]["data"],
     ): Promise<RequestStatus<void>> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Invalid window");
+        let workspaceWindow: AppWindow<WindowAppType.Workspace> | undefined;
+        try {
+            workspaceWindow = requireWorkspaceForPreview(window, data.projectPath);
+        } catch (error) {
+            return this.failed(error);
         }
-        const devWindow = window as AppWindow<WindowAppType.DevMode>;
-        if (!pathsEqual(devWindow.getProps().projectPath, data.projectPath)) {
-            return this.failed("Project mismatch");
-        }
-
-        const workspaceWindow = window
-            .getApp()
-            .windowManager.getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    !w.isClosed() &&
-                    pathsEqual(w.getProps().projectPath, data.projectPath),
-            );
-
         if (!workspaceWindow) {
             return this.failed("No workspace for project");
         }
