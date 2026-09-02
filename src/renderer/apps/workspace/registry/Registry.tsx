@@ -33,6 +33,8 @@ interface RegistryContextValue {
     getPanelsByPosition: (position: PanelPosition) => PanelDefinition[];
     /** Set the user-defined ordering for a dock area (panel ids, first shown first). */
     reorderPanels: (position: PanelPosition, orderedIds: string[]) => void;
+    /** Drop a dock area's user-defined ordering so its panels fall back to their static order. */
+    resetPanelOrder: (position: PanelPosition) => void;
     /** The raw stored ordering per dock area; may name panels this window has not registered. */
     panelOrder: Record<string, string[]>;
     /** Panel ids folded into each dock area's collapse group. */
@@ -103,6 +105,10 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
 
     const reorderPanels = useCallback((position: PanelPosition, orderedIds: string[]) => {
         uiService.getStore().setPanelOrder(position, orderedIds);
+    }, [uiService]);
+
+    const resetPanelOrder = useCallback((position: PanelPosition) => {
+        uiService.getStore().resetPanelOrder(position);
     }, [uiService]);
 
     const setCollapsedPanels = useCallback((position: PanelPosition, panelIds: string[]) => {
@@ -259,6 +265,7 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 unregisterPanel,
                 getPanelsByPosition,
                 reorderPanels,
+                resetPanelOrder,
                 panelOrder,
                 collapsedPanels,
                 setCollapsedPanels,

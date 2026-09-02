@@ -18,12 +18,16 @@ export const SIDEBAR_GROUP_ID = "narraleaf-studio:sidebar-group";
  * Panels that start out folded into the group.
  *
  * Applied only when the user has no persisted member list at all, so emptying the group stays
- * empty across restarts instead of springing back to these three.
+ * empty across restarts instead of springing back to these. The set is the panels an author
+ * reaches for late in a project, if at all: voice, localization, the gallery, the menu bar and
+ * the plugin list; the story, assets and characters stay out on the rail.
  */
 export const DEFAULT_COLLAPSED_PANEL_IDS: readonly string[] = [
     "narraleaf-studio:voice",
     "narraleaf-studio:localization",
+    "narraleaf-studio:plugins",
     "narraleaf.gallery.panel",
+    "narraleaf.menu-bar.panel",
 ];
 
 /**
