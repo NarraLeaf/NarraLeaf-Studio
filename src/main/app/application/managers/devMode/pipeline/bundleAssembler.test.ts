@@ -21,6 +21,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     loadAutoSaveConfiguration,
+    loadEndingSurfaceId,
     loadLanguageChangeConfiguration,
     loadGameVersion,
     loadSaveCompatibilityConfiguration,
@@ -172,6 +173,60 @@ describe("bundleAssembler auto save", () => {
  * build that never opened the setting still has to behave one way rather than none, and the way it
  * behaves has to be the one every build had before the setting existed.
  */
+/**
+ * The page a session ends on.
+ *
+ * Read here rather than left to the packaged build, which is the whole point: the page an author
+ * writes for the end of their story used to be reachable only by packaging one, because Dev Mode
+ * had no answer for it and a story that ran off the end simply stopped where it was.
+ */
+describe("bundleAssembler ending surface", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(document: unknown): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-ending-test-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+        );
+        if (document !== undefined) {
+            await mkdir(path.join(projectPath, "editor"), { recursive: true });
+            await writeFile(path.join(projectPath, "editor", "app-tags.json"), JSON.stringify(document));
+        }
+        return projectPath;
+    }
+
+    it("is blank for a project that named no page", async () => {
+        expect(await loadEndingSurfaceId(await createProject(undefined), APP_TAG_ID_RELEASE)).toBe("");
+    });
+
+    it("takes the project's own choice for the release build", async () => {
+        const projectPath = await createProject({ endingSurfaceId: "surface-credits", tags: [] });
+        expect(await loadEndingSurfaceId(projectPath, APP_TAG_ID_RELEASE)).toBe("surface-credits");
+    });
+
+    it("takes the variant's override, because a demo does not end where the full game does", async () => {
+        const projectPath = await createProject({
+            endingSurfaceId: "surface-credits",
+            tags: [{ id: "demo", name: "Demo", overrides: {}, endingSurfaceId: "surface-thanks" }],
+        });
+        expect(await loadEndingSurfaceId(projectPath, "demo")).toBe("surface-thanks");
+        expect(await loadEndingSurfaceId(projectPath, APP_TAG_ID_RELEASE)).toBe("surface-credits");
+    });
+
+    it("leaves a session with no ending page rather than refusing to assemble", async () => {
+        const projectPath = await createProject(undefined);
+        await mkdir(path.join(projectPath, "editor"), { recursive: true });
+        await writeFile(path.join(projectPath, "editor", "app-tags.json"), "{ not json");
+        expect(await loadEndingSurfaceId(projectPath, APP_TAG_ID_RELEASE)).toBe("");
+    });
+});
+
 describe("bundleAssembler language change configuration", () => {
     const tempDirs: string[] = [];
 
