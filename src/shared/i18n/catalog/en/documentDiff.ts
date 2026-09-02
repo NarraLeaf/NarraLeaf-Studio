@@ -324,8 +324,11 @@ export const documentDiff = {
         blueprintRemoved: "Blueprint removed ({nodes} nodes)",
         blueprintChanged: "Blueprint changed",
         blueprintRenamed: "Renamed",
-        /** A TypeScript blueprint, whose whole program is one file. */
-        blueprintSource: "Code changed",
+        /** Which file a script runs. Its text lives on disk and is not part of this document. */
+        blueprintSource: "Script file changed",
+        scriptAdded: "Script added",
+        scriptRemoved: "Script removed",
+        scriptChanged: "Script changed",
         blueprintField: "{field} changed",
         graphAdded: "Graph added ({nodes} nodes)",
         graphRemoved: "Graph removed ({nodes} nodes)",

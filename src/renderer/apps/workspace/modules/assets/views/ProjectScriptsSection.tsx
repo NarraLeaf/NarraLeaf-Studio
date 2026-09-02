@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, FileCode2, RefreshCw } from "lucide-react";
 import { AccordionItem } from "@/lib/components/elements/Accordion";
 import { useTranslation } from "@/lib/i18n";
+import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -23,7 +24,7 @@ import { ScriptPreviewEditor } from "../../blueprint-lite/ts/ScriptPreviewEditor
  * The accordion id. Also the handle verification uses to find the section on screen, the way every
  * asset category carries `data-asset-category`.
  */
-export const BLUEPRINT_SCRIPTS_SECTION_ID = "blueprint-scripts";
+export const PROJECT_SCRIPTS_SECTION_ID = "project-scripts";
 
 /**
  * The project's scripts, in the panel an author already opens to see what the project holds.
@@ -40,7 +41,7 @@ export const BLUEPRINT_SCRIPTS_SECTION_ID = "blueprint-scripts";
  * `AssetType` would have made every importer, validator and packer answer for a thing none of them
  * can carry.
  */
-export function BlueprintScriptsSection({ open }: { open: boolean }) {
+export function ProjectScriptsSection({ open }: { open: boolean }) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
@@ -92,12 +93,12 @@ export function BlueprintScriptsSection({ open }: { open: boolean }) {
 
     return (
         <AccordionItem
-            id={BLUEPRINT_SCRIPTS_SECTION_ID}
+            id={PROJECT_SCRIPTS_SECTION_ID}
             icon={<FileCode2 className="w-4 h-4" />}
-            headerProps={{ "data-asset-category": BLUEPRINT_SCRIPTS_SECTION_ID }}
+            headerProps={{ "data-asset-category": PROJECT_SCRIPTS_SECTION_ID, "data-help-topic": "scripts" }}
             title={
                 <span className="flex items-center gap-1.5">
-                    <span>{t("assets.categories.blueprint")}</span>
+                    <span>{t("blueprint.script.sectionTitle")}</span>
                     <span className="text-xs text-fg-subtle">{tn("assets.itemCount", entries.length)}</span>
                 </span>
             }
@@ -160,7 +161,7 @@ export function BlueprintScriptsSection({ open }: { open: boolean }) {
                                         }
                                         className="shrink-0 rounded-sm px-1.5 py-0.5 text-2xs text-fg-muted opacity-0 transition-opacity hover:bg-fill hover:text-fg group-hover/script:opacity-100"
                                     >
-                                        {t("blueprint.header.title")}
+                                        {t(ownerLabelKey(entry.boundTo[0]!.owner.kind))}
                                     </button>
                                 )}
                                 {projectPath && <ScriptOpenMenu projectPath={projectPath} scriptRef={entry.scriptRef} compact />}

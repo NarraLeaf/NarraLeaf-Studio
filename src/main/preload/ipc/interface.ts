@@ -330,6 +330,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         revoke: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectTrustRevoke, { projectPath }),
         list: () => ipcClient.invoke(IPCEventType.projectTrustList, {}),
+        prompt: () => ipcClient.invoke(IPCEventType.projectTrustPrompt, {}),
     },
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
@@ -461,6 +462,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        onControlStartStory: (
+            handler: (payload: {
+                token: number;
+                storyId: string;
+                sceneId: string;
+                startBlockId?: string;
+                snapshotId?: string;
+            }) => void,
+        ) => ipcClient.onMessage(IPCEventType.devModeControlStartStory, handler),
         onControlError: (handler: (payload: { message: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
         onConsoleLog: (handler: (payload: DevModeConsoleLogPayload) => void) =>

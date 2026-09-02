@@ -4824,6 +4824,57 @@ describe("stage object references", () => {
         });
 
         /**
+         * The shape that reads as a false alarm and is not one.
+         *
+         * A character row's `objectName` is the stage key, and a row without one keys on the
+         * character's id - so an entrance with no stage name and a later row carrying the cast name
+         * address two different objects, however plainly they name the same character. The row
+         * compiles to nothing and the appearance change never happens, which is exactly what the
+         * diagnostic says, and a reader who mistook this for over-strict analysis would remove the
+         * one sentence pointing at the row.
+         *
+         * The value gets there through an editor, never through a command: nothing an author types
+         * writes a character stage name for them.
+         */
+        it("reports a row naming the cast when the entrance keyed on the character", async () => {
+            const compiled = await compile({
+                enter: characterRow("enter", "enter", "char-alice"),
+                face: actionBlock("face", {
+                    action: "character",
+                    operation: "expression",
+                    characterId: "char-alice",
+                    objectName: "Alice",
+                }),
+            }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([
+                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+            ]);
+        });
+
+        it("acts on the portrait when the entrance carries the same stage name", async () => {
+            // The other half of the rule: a stage name is fine, it just has to be the same one on
+            // both rows. This is what the shape above would have been had anything written it twice.
+            const compiled = await compile({
+                enter: actionBlock("enter", {
+                    action: "character",
+                    operation: "enter",
+                    characterId: "char-alice",
+                    objectName: "Alice",
+                }),
+                face: actionBlock("face", {
+                    action: "character",
+                    operation: "expression",
+                    characterId: "char-alice",
+                    objectName: "Alice",
+                }),
+            }, ALICE);
+
+            expect(compiled.diagnostics).toEqual([]);
+            expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["Alice"]);
+        });
+
+        /**
          * The trap the split had to avoid: a puppet character is filed in `puppets`, not in `images`,
          * so a lookup that read only the image table would report every row on an entered puppet.
          */

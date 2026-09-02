@@ -19,8 +19,8 @@ import { useWorkspace } from "../context";
  * on every launch, including the overwhelming majority of projects the author wrote themselves, to
  * spare a flicker in the rare case. Nothing can be *started* in that window either way.
  *
- * The answer never changes afterwards: trust is settled when a workspace starts, and revoking a
- * grant takes effect on the project's next launch.
+ * The answer never changes within one load: trust is settled when a workspace starts, and a change
+ * of trust reloads the window rather than being pushed into it.
  */
 export function useProjectDistrusted(): boolean {
     const { context } = useWorkspace();

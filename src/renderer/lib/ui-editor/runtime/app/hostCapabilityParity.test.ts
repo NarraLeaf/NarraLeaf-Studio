@@ -143,6 +143,10 @@ const DEV_MODE_ONLY: Readonly<Record<string, string>> = {
     prewarmStoryAssetUrls:
         "Resolving the whole asset library in one round trip. Dev Mode asks another window and pays "
         + "for the trip; the packaged game reads its own pack and has nothing to prepare.",
+    launchRequest:
+        "Start this story now, at this row, in the window that is already open. It exists because "
+        + "the author pressed a play control in the editor beside it; a shipped game is started by "
+        + "being opened, so a launch there is a boot and there is nobody to ask for another one.",
     surfacesBeforeStoryBoot:
         "Draw the interface before the story is warm. A shipped game holds its loading screen until "
         + "the opening scene is warm, which is what makes Start Game instant; Dev Mode trades that "

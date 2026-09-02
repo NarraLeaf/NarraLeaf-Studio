@@ -13,6 +13,7 @@
  * which is the half that was missing.
  */
 import { describe, expect, it } from "vitest";
+import { createTranslator } from "@shared/i18n";
 import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
@@ -36,6 +37,9 @@ import {
     type StoryRowBundle,
 } from "@/apps/dev-mode/components/runtimeIssueModel";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
+
+/** The window decides the language; a test says which one so its assertions can quote sentences. */
+const translator = createTranslator("en");
 
 const SURFACE_ID = "quick-menu";
 const BUTTON_ID = "auto-button";
@@ -186,7 +190,7 @@ describe("a blueprint failure on a Game UI slot surface", () => {
         // stream ended at an IPC forward and the panel said "Nothing has failed".
         let issues: readonly LocatedRuntimeIssue[] = [];
         events.forEach((event, index) => {
-            const reported = blueprintDebugEventIssue(event);
+            const reported = blueprintDebugEventIssue(event, translator.t);
             if (reported) {
                 issues = appendRuntimeIssue(issues, locateRuntimeIssue(issueBundle, reported, `issue-${index}`));
             }
@@ -194,8 +198,9 @@ describe("a blueprint failure on a Game UI slot surface", () => {
 
         // One entry, not one per emit: the executor reports the failing node and the dispatcher
         // reports the same failure again on its way out, and an author has one problem either way.
-        expect(issues).toHaveLength(1);
-        expect(issues[0]).toMatchObject({
+        const errors = issues.filter(issue => issue.level === "error");
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatchObject({
             level: "error",
             message: HOST_FAILURE,
             origin: "interface",
@@ -204,6 +209,27 @@ describe("a blueprint failure on a Game UI slot surface", () => {
             location: null,
             surface: { surfaceId: SURFACE_ID, surfaceName: "Quick Menu" },
         });
+    });
+
+    it("names the node and the pin when a required input has nothing wired to it", async () => {
+        // The fixture's Set Auto Forward has no Auto Forward pin wired - which is the other half of
+        // "the button did nothing", and was silent everywhere before this event existed.
+        const events = await clickAutoButtonOnSlotSurface();
+
+        const reports = events.filter(event => event.type === "node.input_missing");
+        // Once per node per run, not once per emit: a graph that runs the node again says nothing new.
+        expect(reports).toHaveLength(1);
+        expect(reports[0]).toMatchObject({
+            nodeId: "setAuto",
+            nodeName: "Set Auto Forward",
+            pinLabel: "Auto Forward",
+            surfaceId: SURFACE_ID,
+        });
+
+        const issue = blueprintDebugEventIssue(reports[0], translator.t);
+        expect(issue).toMatchObject({ level: "warning", origin: "interface", surfaceId: SURFACE_ID });
+        expect(issue?.message).toContain("Set Auto Forward");
+        expect(issue?.message).toContain("Auto Forward");
     });
 
     it("keeps two surfaces failing the same way apart", () => {

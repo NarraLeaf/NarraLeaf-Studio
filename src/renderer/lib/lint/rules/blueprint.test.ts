@@ -10,7 +10,10 @@ import {
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
@@ -1243,3 +1246,154 @@ describe("blueprint/start-scene-foreign", () => {
         expect(findings).toEqual([]);
     });
 });
+
+describe("blueprint/required-input-unwired", () => {
+    /** `On Element Click -> <node>`, so the node under test is one something will run. */
+    function graphWith(
+        node: { id: string; type: string; params?: Record<string, unknown> },
+        extra?: { nodes?: BlueprintGraphIr["nodes"]; edges?: BlueprintGraphIr["edges"] },
+    ): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                ...(extra?.nodes ?? {}),
+                [node.id]: node,
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: node.id, port: "in" } },
+                ...(extra?.edges ?? []),
+            ],
+        };
+    }
+
+    it("is a warning by default", () => {
+        expect(rule("blueprint/required-input-unwired").defaultSeverity).toBe("warning");
+    });
+
+    it("names the node and the pin nobody wired", async () => {
+        const findings = await run(
+            "blueprint/required-input-unwired",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: {
+                        onClick: graphWith({
+                            id: "setText",
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
+                            params: { text: "Hello" },
+                        }),
+                    },
+                }),
+            }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageParams).toEqual({ node: "Set Text", pin: "Element" });
+        expect(findings[0].location).toMatchObject({ kind: "blueprint", nodeId: "setText" });
+    });
+
+    it("says nothing when the pin is wired", async () => {
+        const findings = await run(
+            "blueprint/required-input-unwired",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: {
+                        onClick: graphWith(
+                            { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Hello" } },
+                            {
+                                nodes: {
+                                    ref: {
+                                        id: "ref",
+                                        type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                                        params: { [ELEMENT_REF_PARAM_ELEMENT_ID]: "label" },
+                                    },
+                                },
+                                edges: [
+                                    { from: { nodeId: "ref", port: "element" }, to: { nodeId: "setText", port: "element" } },
+                                ],
+                            },
+                        ),
+                    },
+                }),
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a pin the card carries a value for, nor about an optional one", async () => {
+        const findings = await run(
+            "blueprint/required-input-unwired",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: {
+                        // Log's Value is filled in; Play Sound takes every one of its pins from the
+                        // inspector when unwired and declares them optional.
+                        onClick: graphWith({ id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: { value: "" } }),
+                        onPlay: graphWith({ id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params: {} }),
+                    },
+                }),
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("leaves a draft nothing reaches alone", async () => {
+        const findings = await run(
+            "blueprint/required-input-unwired",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: {
+                        onClick: {
+                            nodes: {
+                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK, params: {} },
+                                setText: { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: {} },
+                            },
+                            edges: [],
+                        },
+                    },
+                }),
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports the shipped skeleton clean, and says so only because it can report", async () => {
+        // A zero here is exactly what a rule that checks nothing produces, so the same corpus is run
+        // twice: once as it ships, and once with one Element edge cut.
+        const document = skeletonBlueprintDocument();
+        expect(await run("blueprint/required-input-unwired", createTestLintContext({ blueprintDocument: document }))).toEqual([]);
+
+        const damaged = JSON.parse(JSON.stringify(document)) as BlueprintDocument;
+        const cut = cutOneElementEdge(damaged);
+        expect(cut).toBe(true);
+        const findings = await run("blueprint/required-input-unwired", createTestLintContext({ blueprintDocument: damaged }));
+        expect(findings.length).toBeGreaterThan(0);
+    });
+});
+
+/** The blueprint document the skeleton project template ships with. */
+function skeletonBlueprintDocument(): BlueprintDocument {
+    const file = path.join(__dirname, "..", "..", "..", "..", "..", "resources", "templates", "skeleton", "content", "editor", "ui", "uigraphs.json");
+    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { blueprintDocument: BlueprintDocument };
+    return raw.blueprintDocument;
+}
+
+/** Remove the first edge feeding an `element` pin, and say whether there was one. */
+function cutOneElementEdge(document: BlueprintDocument): boolean {
+    for (const blueprint of Object.values(document.blueprints)) {
+        if (blueprint.program.kind !== "graph") {
+            continue;
+        }
+        for (const graph of Object.values(blueprint.program.graphs.events ?? {})) {
+            const edges = graph.graph?.edges ?? [];
+            const index = edges.findIndex(edge => edge.to.port === "element");
+            if (index >= 0) {
+                edges.splice(index, 1);
+                return true;
+            }
+        }
+    }
+    return false;
+}

@@ -196,6 +196,17 @@ export const devMode = {
         openWorkspace: "Workspace",
         cannotOpen: "This blueprint cannot be opened from preview.",
         openFailed: "Unable to open blueprint.",
+        /**
+         * A script's row, expanded. "Loaded" is the whole of what can go wrong before a handler is
+         * reached: a script that failed to compile or threw while it was being evaluated has no
+         * module, and every event it declares silently does nothing.
+         */
+        scriptLoaded: "Loaded",
+        scriptNotLoaded: "Not loaded",
+        /** What the file exports, against what this position actually calls. */
+        scriptExports: "Exports: {names}",
+        scriptCalls: "Called here: {names}",
+        scriptExportsNone: "Exports nothing",
     },
     output: {
         logLevel: "Log Level",

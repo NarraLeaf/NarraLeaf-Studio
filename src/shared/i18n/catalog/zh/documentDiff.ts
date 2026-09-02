@@ -257,8 +257,11 @@ export const documentDiff = {
         blueprintRemoved: "删除蓝图（{nodes} 个节点）",
         blueprintChanged: "蓝图改动",
         blueprintRenamed: "改名",
-        /** TypeScript 蓝图，整个程序就是一份代码。 */
-        blueprintSource: "代码改动",
+        /** 脚本指向哪个文件。文件内容在磁盘上，不属于这份文档。 */
+        blueprintSource: "脚本文件改变",
+        scriptAdded: "新增脚本",
+        scriptRemoved: "删除脚本",
+        scriptChanged: "脚本改动",
         blueprintField: "{field} 改动",
         graphAdded: "新增图（{nodes} 个节点）",
         graphRemoved: "删除图（{nodes} 个节点）",

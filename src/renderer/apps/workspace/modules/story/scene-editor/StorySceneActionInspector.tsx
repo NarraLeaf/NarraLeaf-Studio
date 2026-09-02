@@ -22,7 +22,7 @@ import type {
     StoryVariableValueType,
 } from "@shared/types/story";
 import {
-    characterStageName,
+    authoredCharacterStageName,
     declarationDefaultForType,
     isStoryExpressionEvaluable,
     layerActionTargetRef,
@@ -2068,34 +2068,37 @@ function CharacterActionEditor(props: {
     ];
     const selectedCharacter = getCharacterById(props.characters, payload.characterId);
 
+    /**
+     * Picking the character changes who the row is about, and nothing else - the stage name is left
+     * exactly as it was found, including left absent.
+     *
+     * It used to be auto-filled from the profile, and that is how a row comes to address a stage
+     * object nothing put there. `objectName` is not a caption: it IS the key the portrait is
+     * registered under, and a character row that carries no name keys on the character's id
+     * instead. So a row given the cast name stopped answering to the same key as the row that
+     * brought the character on stage, and the compiler was right to say it had nothing to act on -
+     * the appearance change simply never happened, on a row whose stage-name field looked empty.
+     */
     const updateCharacter = useCallback((characterIdValue: string | number) => {
         const characterId = String(characterIdValue) || undefined;
-        const nextCharacter = getCharacterById(props.characters, characterId);
-        const previousName = getCharacterById(props.characters, payload.characterId)?.profile.getName();
-        // Auto-fill the stage name with the character's name, unless the author set a custom one.
-        const autofill = !payload.objectName || payload.objectName === previousName || payload.objectName === payload.characterId;
-        const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
-        onChange({ ...payload, characterId, objectName, pose: undefined, tags: undefined });
-    }, [onChange, payload, props.characters]);
+        onChange({ ...payload, characterId, pose: undefined, tags: undefined });
+    }, [onChange, payload]);
 
     /**
-     * The name later commands use to reach this character on stage. Two things put a value in there
-     * without anyone typing it: the bare block's literal `"character"`, and the auto-fill from the
-     * profile above. Neither is authored content, so neither prints as a value — they show as a
-     * placeholder, and only a name the author actually chose reads as one.
+     * The name later rows use to reach this character on stage, shown exactly when the stage is
+     * actually keyed on it — `authoredCharacterStageName` is that one rule read backwards, so the
+     * field cannot say "no stage name" about a value the compiler is keying on.
      *
-     * "Is this authored?" is `characterStageName`'s question, not a second opinion: that rule
-     * discards `"character"` and keys on the id instead, so a stage key that is not the trimmed
-     * text means the text was never a name.
+     * The one thing that puts a value in there without anyone typing it is the bare block's literal
+     * `"character"`, which the rule discards in favour of the character's id. It shows as the
+     * placeholder rather than as a value, because it is not a name anyone chose.
      *
      * Display only. Whatever the payload already carries stays exactly as it is, and typing still
-     * writes exactly what was typed.
+     * writes exactly what was typed — including clearing it, which is how a row that inherited a
+     * stage name it should never have had gets back to keying on the character.
      */
     const derivedObjectName = selectedCharacter?.profile.getName() ?? "";
-    const authoredObjectName = (payload.objectName ?? "").trim();
-    const objectNameIsDerived = !authoredObjectName
-        || authoredObjectName === derivedObjectName
-        || characterStageName(payload.characterId, payload.objectName) !== authoredObjectName;
+    const authoredObjectName = authoredCharacterStageName(payload);
 
     // The free numeric channel. Its own arm rather than a third `PuppetChannelControl` because it is
     // the one that is not a single name: a map of ids to numbers, each with the range the model gave.
@@ -2194,7 +2197,7 @@ function CharacterActionEditor(props: {
                 />
                 <TextField
                     label={t("storyInspector.character.objectName")}
-                    value={objectNameIsDerived ? "" : payload.objectName ?? ""}
+                    value={authoredObjectName}
                     placeholder={derivedObjectName}
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />

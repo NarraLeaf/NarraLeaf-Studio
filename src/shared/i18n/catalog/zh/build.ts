@@ -406,7 +406,7 @@ export const build = {
         other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
     contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。在检查器中选定场景，或在 {variant} 变体中列出其可开始的场景",
-    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
+    contentBlockedScript: "脚本 {location} 可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedPlugin: "{location} 插件可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedSummary: {
         one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",

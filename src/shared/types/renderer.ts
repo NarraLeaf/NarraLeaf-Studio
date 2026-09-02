@@ -422,12 +422,18 @@ export interface RendererPreloadedInterface {
             record: ProjectTrustRecord | null;
         }>>;
         grant(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
-        /** Takes effect on the project's next launch, not on a window already open on it. */
+        /** A workspace open on the project reloads, and what the project was running stops. */
         revoke(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
         list(): Promise<RequestStatus<{
             trusted: ProjectTrustRecord[];
             distrusted: ProjectTrustRecord[];
         }>>;
+        /**
+         * Put the trust question for this window's own project, in a window of Studio's own. The
+         * host writes the grant and reloads this window if the author agrees; the answer is what
+         * the ledger says afterwards.
+         */
+        prompt(): Promise<RequestStatus<{ trusted: boolean }>>;
     };
 
     // App
@@ -650,6 +656,17 @@ export interface RendererPreloadedInterface {
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
+        /**
+         * Start this story in the window that is already open, replacing whatever is playing. Sent
+         * immediately before the bundle it was compiled against; `token` rises per request.
+         */
+        onControlStartStory(handler: (payload: {
+            token: number;
+            storyId: string;
+            sceneId: string;
+            startBlockId?: string;
+            snapshotId?: string;
+        }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;
         onConsoleLog(handler: (payload: DevModeConsoleLogPayload) => void): AppEventToken;
         onBlueprintDebugEvent(handler: (event: BlueprintDebugEvent) => void): AppEventToken;

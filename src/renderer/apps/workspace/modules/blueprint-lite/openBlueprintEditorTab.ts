@@ -36,7 +36,7 @@ export function createBlueprintEntryEditorTab(
     };
     return {
         id: tabId,
-        title: target.title ?? "Visual Blueprint",
+        title: target.title ?? "Blueprint",
         icon: blueprintEntryTabIcon(),
         component: BlueprintEntryTab,
         payload,

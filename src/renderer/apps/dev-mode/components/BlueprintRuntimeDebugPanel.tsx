@@ -27,6 +27,8 @@ import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { SAFE_AREA_PRESETS } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import { SAFE_AREA_FAMILY_LABELS } from "@/apps/workspace/modules/ui-editor/editors/SurfacePreviewFramesMenu";
 import { blueprintWidgetElementId, listDevModeBlueprints } from "./blueprintDebugPanelModel";
+import { scriptEventExportNamesForOwner } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
+import { isScriptMounted, listScriptExportedFunctionNames } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
 import { formatDebugValue } from "./debugValueFormat";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
 
@@ -422,10 +424,21 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                             </div>
                                             {expanded ? (
                                                 <div className="mt-1 ml-5 space-y-0.5 text-2xs text-fg-subtle">
-                                                    <div>
-                                                        {bp.programKind} · {bp.frontend}
-                                                    </div>
-                                                    {memberCountsLine(bp)}
+                                                    {bp.program.kind === "scriptModule" ? (
+                                                        <ScriptRowDetail
+                                                            blueprint={bp}
+                                                            widgetType={
+                                                                widgetElementId
+                                                                    ? uiDocument.elements[widgetElementId]?.type
+                                                                    : undefined
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            <div>{t("blueprint.frontend.visual")}</div>
+                                                            <div>{memberCountsLine(bp)}</div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             ) : null}
                                         </li>
@@ -580,6 +593,43 @@ function buildStudioOpenPayload(
         };
     }
     return null;
+}
+
+/**
+ * What a script row says when it is opened: the file, whether it is loaded, and the two lists whose
+ * disagreement is the whole of "why did nothing happen".
+ *
+ * A handler is reached only when the module loaded *and* exports the name this position calls. Both
+ * halves were invisible: a compile that failed and a name spelled `onClik` looked identical from
+ * here, which is to say they looked like nothing at all.
+ */
+function ScriptRowDetail({ blueprint, widgetType }: { blueprint: Blueprint; widgetType?: string }): ReactNode {
+    const { t } = useTranslation();
+    if (blueprint.program.kind !== "scriptModule") {
+        return null;
+    }
+    const loaded = isScriptMounted(blueprint.id);
+    const exported = loaded ? listScriptExportedFunctionNames(blueprint.id) : [];
+    const called = scriptEventExportNamesForOwner(blueprint.owner, widgetType);
+    return (
+        <>
+            <div className="truncate font-mono text-fg-muted">{blueprint.program.scriptRef}</div>
+            <div className={loaded ? undefined : "text-warning"}>
+                {t("blueprint.frontend.script")} ·{" "}
+                {loaded ? t("devMode.blueprints.scriptLoaded") : t("devMode.blueprints.scriptNotLoaded")}
+            </div>
+            {loaded ? (
+                <div className="break-words">
+                    {exported.length === 0
+                        ? t("devMode.blueprints.scriptExportsNone")
+                        : t("devMode.blueprints.scriptExports", { names: exported.join(", ") })}
+                </div>
+            ) : null}
+            {called.length > 0 ? (
+                <div className="break-words">{t("devMode.blueprints.scriptCalls", { names: called.join(", ") })}</div>
+            ) : null}
+        </>
+    );
 }
 
 function memberCountsLine(bp: Blueprint): string {
