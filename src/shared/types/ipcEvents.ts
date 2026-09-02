@@ -37,6 +37,7 @@ import type {
     PluginInstallResult,
     PluginListItem,
     RuntimePluginDescriptor,
+    RuntimePluginExclusion,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
@@ -3401,6 +3402,13 @@ export type IPCPluginManagerEvents = {
         data: {},
         response: {
             plugins: RuntimePluginDescriptor[];
+            /**
+             * Enabled runtime plugins this project does not run, and why. A Dev
+             * Mode session is told so it can say it: the same selection decides
+             * what a build carries, and a plugin dropped without a word is an
+             * author watching a node do nothing.
+             */
+            excluded: RuntimePluginExclusion[];
         };
     };
     [IPCEventType.pluginReportLoadError]: {

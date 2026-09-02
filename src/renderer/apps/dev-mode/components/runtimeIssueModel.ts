@@ -175,6 +175,12 @@ export type LocatedRuntimeIssue = {
      * `stack`: a story failure has no surface to report and should not carry an empty field saying so.
      */
     surface?: SurfaceLocation;
+    /**
+     * The plugin it is about, for an issue that is about one. Carried through rather than resolved
+     * here: unlike a block id or a surface id, a plugin name needs no document to read it against -
+     * whoever reported the issue already had it.
+     */
+    pluginName?: string;
 };
 
 /**
@@ -241,9 +247,11 @@ export function countRuntimeIssues(issues: readonly LocatedRuntimeIssue[]): {
  * is a new entry, so an acknowledgement keyed on entries would be undone a frame after it was made.
  */
 function issueKey(
-    issue: Pick<LocatedRuntimeIssue, "level" | "message"> & { blockId?: string; surfaceId?: string },
+    issue: Pick<LocatedRuntimeIssue, "level" | "message" | "pluginName">
+        & { blockId?: string; surfaceId?: string },
 ): string {
-    return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.surfaceId ?? ""}\u0000${issue.message}`;
+    return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.surfaceId ?? ""}`
+        + `\u0000${issue.pluginName ?? ""}\u0000${issue.message}`;
 }
 
 /** That identity, for a located issue — the form every caller outside this file has. */
@@ -294,5 +302,6 @@ export function locateRuntimeIssue(
         ...(issue.stack ? { stack: issue.stack } : {}),
         location: locateStoryBlock(bundle, issue.blockId),
         ...(surface ? { surface } : {}),
+        ...(issue.pluginName ? { pluginName: issue.pluginName } : {}),
     };
 }

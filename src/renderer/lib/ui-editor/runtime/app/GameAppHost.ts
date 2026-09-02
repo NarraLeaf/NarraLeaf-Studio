@@ -36,8 +36,11 @@ export type GameAppLogLevel = "info" | "warning" | "error";
  *  - `interface`: a Game UI blueprint threw. It has no story row at all — the author was not writing
  *    a story when they wrote it — so the place it names is a SURFACE (see
  *    {@link GameAppRuntimeIssue.surfaceId}) and the row fields stay empty.
+ *  - `plugin`: something about a plugin, rather than about anything the author wrote. The place it
+ *    names is the plugin (see {@link GameAppRuntimeIssue.pluginName}); there is no row and no
+ *    surface, because the fact is about the session rather than about a drawing in it.
  */
-export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface";
+export type GameAppIssueOrigin = "compile" | "playHead" | "session" | "interface" | "plugin";
 
 /**
  * A runtime failure with its authored origin attached. See {@link GameAppHost.reportIssue}.
@@ -59,6 +62,15 @@ export type GameAppRuntimeIssue = {
      * which surface it was running and nothing about what the author named it.
      */
     surfaceId?: string;
+    /**
+     * The plugin this is about, by the name its manifest gives it — the third kind of place a
+     * failure can have, and the only one a `plugin` issue has.
+     *
+     * A name rather than an id, unlike the two fields above, and for the reason they are ids: what
+     * is reported is what the reporter knows. A row and a surface are named by a document the host
+     * has to look them up in; a plugin arrives already carrying the name its author gave it.
+     */
+    pluginName?: string;
     /** The underlying stack, when there was one. Kept for the cases a location cannot explain. */
     stack?: string;
 };

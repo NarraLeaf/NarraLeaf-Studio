@@ -1495,6 +1495,36 @@ export function DevModeContent(props: DevModeContentProps) {
     // Failed plugins are logged and skipped; they never block the game.
     const runtimePlugins = useDevModeRuntimePlugins(rendererRegistry, pluginHost);
 
+    /**
+     * Say which plugins this project leaves out, and why.
+     *
+     * The session runs the set a build carries, which means a plugin the project does not depend on
+     * does not run here either - and the only thing an author would otherwise see is the node they
+     * placed drawn as an unknown-node stub. The report names the plugin and the panel this is fixed
+     * from, because the fix is a dependency rescan and not anything in the graph.
+     *
+     * Waits for the bundle: reports are located against it, and the plugin list is answered before
+     * the payload arrives about as often as after it.
+     */
+    useEffect(() => {
+        if (!bundle) {
+            return;
+        }
+        for (const entry of runtimePlugins.excluded) {
+            reportIssue({
+                level: "warning",
+                origin: "plugin",
+                pluginName: entry.pluginName,
+                message: t(
+                    entry.reason === "unusable"
+                        ? "devMode.issues.pluginUnusable"
+                        : "devMode.issues.pluginNotDeclared",
+                    { plugin: entry.pluginName },
+                ),
+            });
+        }
+    }, [bundle, reportIssue, runtimePlugins.excluded, t]);
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {
             return null;

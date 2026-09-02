@@ -3,18 +3,29 @@ import { getInterface } from "@/lib/app/bridge";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import type { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
+import type { RuntimePluginExclusion } from "@shared/types/plugins";
 
 export type DevModeRuntimePluginsState = {
     /** True once every runtime plugin entry finished loading (or failed). */
     ready: boolean;
     /** Plugin ids whose runtime entry failed to load, with messages. */
     errors: Array<{ pluginId: string; error: string }>;
+    /**
+     * Enabled runtime plugins this project does not run, with the reason.
+     *
+     * The main process decides this with the function a build decides it with,
+     * so what runs here is what a build carries. It is reported rather than
+     * merely applied: the nodes of an excluded plugin degrade to the unknown-node
+     * stub, and a stub with nothing said about it is an author looking for a bug
+     * in their graph.
+     */
+    excluded: RuntimePluginExclusion[];
 };
 
 /**
- * Loads the runtime entries of enabled plugins into the Dev Mode window
- * before the game boots. A failing plugin never blocks the game: its nodes
- * simply stay unregistered and the error is logged.
+ * Loads the runtime entries of the plugins this project runs into the Dev Mode
+ * window before the game boots. A failing plugin never blocks the game: its
+ * nodes simply stay unregistered and the error is logged.
  *
  * loadRuntimePlugins caches per plugin id+version+entry, so StrictMode
  * double-invocation and Dev Mode live reloads never run setup twice.
@@ -23,7 +34,7 @@ export function useDevModeRuntimePlugins(
     rendererRegistry: ElementRendererRegistry,
     pluginHost: RuntimePluginHostController,
 ): DevModeRuntimePluginsState {
-    const [state, setState] = useState<DevModeRuntimePluginsState>({ ready: false, errors: [] });
+    const [state, setState] = useState<DevModeRuntimePluginsState>({ ready: false, errors: [], excluded: [] });
 
     useEffect(() => {
         let disposed = false;
@@ -50,6 +61,7 @@ export function useDevModeRuntimePlugins(
                     setState({
                         ready: true,
                         errors: loadResults.flatMap(item => item.ok ? [] : [{ pluginId: item.pluginId, error: item.error }]),
+                        excluded: result.data.excluded,
                     });
                 }
             } catch (error) {
@@ -61,6 +73,7 @@ export function useDevModeRuntimePlugins(
                             pluginId: "*",
                             error: error instanceof Error ? error.message : String(error),
                         }],
+                        excluded: [],
                     });
                 }
             }

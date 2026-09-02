@@ -30,7 +30,7 @@ import {
     hostSidecarPlatformKey,
     resolvePreviewRunnerBinaryForApp,
 } from "../preview/PreviewManager";
-import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
+import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -852,7 +852,7 @@ export class GameTestManager {
             version: plugin.manifest.version,
             enabled: plugin.enabled,
         }));
-        return selectRuntimePluginsForPack({
+        return selectProjectRuntimePlugins({
             dependencies: projectConfig?.dependencies,
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,

@@ -21,6 +21,14 @@ export const devMode = {
         // A Game UI blueprint failed. It has no story row - the author was drawing an interface, not
         // writing a scene - so the place it names is the surface they drew.
         onSurface: "On {surface}",
+        // The third kind of place a report has: a plugin, for something true of the session rather
+        // than of a row or a drawing.
+        onPlugin: "Plugin {plugin}",
+        // Which plugins run is decided the way a build decides it, so a plugin the project does not
+        // depend on does not run here either. Said rather than merely done: its nodes degrade to the
+        // unknown-node stub, and a stub nobody explained is an author debugging their own graph.
+        pluginNotDeclared: "{plugin} is installed but not among this project's plugin dependencies. It does not run in this session and is not included in a build. Rescan them in Project ▸ App.",
+        pluginUnusable: "{plugin} is among this project's plugin dependencies and cannot be loaded. It does not run in this session and is not included in a build. Check its status in Project ▸ App.",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
         stack: "Stack",

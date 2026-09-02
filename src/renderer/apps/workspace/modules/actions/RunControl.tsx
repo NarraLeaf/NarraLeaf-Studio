@@ -464,7 +464,7 @@ export function RunControl() {
      * Refresh the plugin dependency table before a run.
      *
      * Which plugin runtime entries go into the pack is decided from that table (see
-     * `selectRuntimePluginsForPack`), and until now only a build, an export, or a visit to the
+     * `selectProjectRuntimePlugins`), and until now only a build, an export, or a visit to the
      * Project panel ever refreshed it. So the first run after an author added the row that USES a
      * plugin - a plugin blueprint node, a plugin story action - ran a game the plugin was not in,
      * and the feature simply did not happen with nothing on screen to say why.
