@@ -150,17 +150,30 @@ describe("project package paths", () => {
         expect(shouldExcludeProjectPackagePath(".nlstudio/session.lock")).toBe(true);
     });
 
-    it("excludes the repository and Studio's own state, but not the project's", () => {
-        expect(shouldExcludeProjectPackagePath(".lore/store/fragments/00/ab")).toBe(true);
+    it("excludes the whole of Studio's working directory, whatever is named in it", () => {
+        // Not a list of the subdirectories that exist today. One of those lists is how the Dev Mode
+        // revision snapshots - written to `.nlstudio/devmode`, excluded as `.nlstudio/dev-mode` -
+        // ended up inside every package an author ever exported. The prefix is the rule, so a
+        // directory added later is excluded before anyone has to remember it.
         expect(shouldExcludeProjectPackagePath(".nlstudio/services/panel_state.json")).toBe(true);
         expect(shouldExcludeProjectPackagePath(".nlstudio/preview/main/index.js")).toBe(true);
         expect(shouldExcludeProjectPackagePath(".nlstudio/preview/userData/saves/1.save")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/devmode/revisions/d59feba37af3fbb9/editor/ui/uidoc.json")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/quarantine/2026-09-02T00-00-00/assets/assets.metadata.image.json")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/test/main/index.js")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/editor.json")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/whatever-comes-next/file")).toBe(true);
+    });
+
+    it("excludes the repository, but not the project's own service stores", () => {
+        expect(shouldExcludeProjectPackagePath(".lore/store/fragments/00/ab")).toBe(true);
         // The ignore policy travels with the project: it is small, and it is right about this
         // project wherever the project ends up.
         expect(shouldExcludeProjectPackagePath(".loreignore")).toBe(false);
         // Service stores that ARE project content stayed in the versioned tree, and an export
         // without the character table would be an export of a different project.
         expect(shouldExcludeProjectPackagePath("editor/services/character.json")).toBe(false);
-        expect(shouldExcludeProjectPackagePath(".nlstudio/plugins/example/index.js")).toBe(false);
+        // A folder an author named after Studio's own, anywhere but the root, is theirs.
+        expect(shouldExcludeProjectPackagePath("assets/.nlstudio/note.txt")).toBe(false);
     });
 });

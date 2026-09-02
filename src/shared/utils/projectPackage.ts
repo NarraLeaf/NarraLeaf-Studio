@@ -262,33 +262,25 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (segments[0] === "editor" && segments[1] === "assets" && segments[2] === "remote") {
         return true;
     }
-    // Who is editing this project right now, which is a fact about one machine and one moment. An
-    // export carrying it would arrive at the recipient claiming to be open in somebody else's
-    // Studio, and stay that way until the claim aged out.
-    if (segments[0] === ".nlstudio" && segments[1] === "session.lock" && segments.length === 2) {
-        return true;
-    }
-    if (
-        segments[0] === ".nlstudio" &&
-        (segments[1] === "cache" ||
-            segments[1] === "tmp" ||
-            segments[1] === "temp" ||
-            segments[1] === "dev-mode" ||
-            segments[1] === "build" ||
-            // What Dev Mode and the preview runner compiled, plus the throwaway save files the
-            // author made while testing. Sits beside `build` and `dev-mode` in every other
-            // respect, and was the largest thing in the one project where this was measured -
-            // half a gigabyte of output the recipient's first preview would write again.
-            segments[1] === "preview" ||
-            // Studio's own state, not the project's: panel layout, notification history, recent
-            // colours. It moved here out of `editor/services/` when version control needed a line
-            // between "the author's project" and "how this window was arranged" - and an export
-            // that carried it would rearrange the recipient's window to match the sender's.
-            // The service stores that ARE project content (the character table, plugin stores)
-            // live elsewhere; the classification is `shared/vcs/serviceStores.ts`.
-            segments[1] === "services" ||
-            segments[1] === "dist")
-    ) {
+    // Studio's own working directory for this project, whole. Version control already draws the
+    // line in exactly this place - `.nlstudio` is in `@shared/vcs/workingSet`'s excluded names, at
+    // any depth - and an export is the same question asked of a different destination: what of this
+    // is the project, and what of it is one machine's account of having opened the project.
+    //
+    // The answer is that none of it is the project. What is under here is who has the project open
+    // right now (`session.lock`), what Dev Mode and the preview runner compiled and the throwaway
+    // saves made while testing (`preview/`, `test/`, `build/`), the snapshots a Dev Mode session
+    // materialises to run a past revision (`devmode/revisions/`), bytes set aside from a document
+    // that would not parse (`quarantine/`), how this window was arranged (`services/`), and scratch
+    // space measured in seconds (`convert/`, `tmp/`). The recipient's own Studio writes every one of
+    // them again, about their machine rather than the sender's.
+    //
+    // Named directories were listed here one at a time until a spelling drifted: the snapshots are
+    // written to `.nlstudio/devmode` and the list said `.nlstudio/dev-mode`, so every package
+    // carried a full copy of the project's documents at whatever revision the author last ran.
+    // `revisionSnapshot.test.ts` holds the writer's own path against this predicate for that reason;
+    // excluding the directory whole is what makes the next such directory right by default.
+    if (segments[0] === ".nlstudio") {
         return true;
     }
 
