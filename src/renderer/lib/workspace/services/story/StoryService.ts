@@ -2233,7 +2233,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
             return null;
         }
         const plan = planSceneSplit(source, atBlockId);
-        if (!plan) {
+        // Ties are a refusal, not a warning: the caller lists them, and a split written
+        // anyway would leave the second half naming a stage object, a label or a variable
+        // the first half kept. See {@link StorySceneSplitPlan.ties}.
+        if (!plan || plan.ties.length > 0) {
             return null;
         }
         const now = new Date().toISOString();

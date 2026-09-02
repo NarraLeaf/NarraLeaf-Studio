@@ -1291,6 +1291,8 @@ export const story = {
                 other: "已将 {count} 行移动到 {scene}",
             },
             jumpAdded: "已添加跳转",
+            refused: "该行之后的行仍然依赖此前的内容",
+            refusedDetail: "该行之后仍在使用：{names}",
         },
         mergeScenes: {
             confirm: "将“{merged}”合并到“{surviving}”？",

@@ -1496,6 +1496,11 @@ export const story = {
             },
             // Appended to the line above when the first half would otherwise have ended the game.
             jumpAdded: "jump added",
+            // A scene holds the stage, the labels and the scene variables, and a jump between
+            // scenes empties all three - so what the second half would still be asking the first
+            // half for is named, and the split is refused until those rows move.
+            refused: "The rows after this one still need what comes before it",
+            refusedDetail: "Still in use after this row: {names}",
         },
         mergeScenes: {
             confirm: "Merge \"{merged}\" into \"{surviving}\"?",

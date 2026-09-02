@@ -3541,7 +3541,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!storyService || !storyId || !sceneId || !scene || !document || !uiService) {
             return;
         }
-        if (!planSceneSplit(scene, blockId)) {
+        const plan = planSceneSplit(scene, blockId);
+        if (!plan) {
+            return;
+        }
+        // Refused rather than written and then reported. A scene is where the engine keeps the
+        // stage, the labels and the scene variables, so anything the second half still needs from
+        // the first would resolve to nothing the moment the two are separate scenes - and the author
+        // would find out from a build, not from the gesture they just made.
+        if (plan.ties.length > 0) {
+            await uiService.showAlert(
+                translate("story.structuralOps.splitScene.refused"),
+                translate("story.structuralOps.splitScene.refusedDetail", {
+                    names: plan.ties.map(tie => tie.label).join(", "),
+                }),
+            );
             return;
         }
         const name = await createInputDialog(uiService).show({

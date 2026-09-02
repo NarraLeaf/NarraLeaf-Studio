@@ -1,5 +1,9 @@
 import {
+    declaredStageObject,
+    isStoryDeclarationBlock,
     listSceneBlocksInDocumentOrder,
+    listSceneLabels,
+    stageObjectReference,
     listSceneIdsInDocumentOrder,
     type StoryBlock,
     type StoryBlockId,
@@ -97,6 +101,14 @@ export function moveBlocksToScene(
 // Splitting a scene
 // ---------------------------------------------------------------------------
 
+/** Something one half of a split would need from the other half, named as the author knows it. */
+export type StorySceneCutTie = {
+    /** Which kind of thing spans the cut; picks the sentence that lists it. */
+    kind: "stageObject" | "label" | "variable";
+    /** What the author would look for: an object's stage name, a label, a variable's name. */
+    label: string;
+};
+
 export type StorySceneSplitPlan = {
     /** Rows from the cut to the end of the scene, in document order. Never empty. */
     movingRootIds: StoryBlockId[];
@@ -108,6 +120,17 @@ export type StorySceneSplitPlan = {
      * or the second half becomes unreachable and the story ends early.
      */
     needsJump: boolean;
+    /**
+     * What the two halves still share. Non-empty means the split is refused.
+     *
+     * A scene is where the engine keeps the stage, the labels and the scene-scoped variables, and a
+     * jump between scenes empties all three: the stage is unloaded, `/goto` cannot leave a scene,
+     * and `Scene.local` is re-initialised on entry. So a row after the cut that names something
+     * introduced before it would still be there - and would name nothing. Refusing is what makes
+     * "split" a safe operation: it either leaves playback exactly as it was, or it says which rows
+     * have to move first.
+     */
+    ties: StorySceneCutTie[];
 };
 
 /**
@@ -127,7 +150,86 @@ export function planSceneSplit(scene: StoryScene, atBlockId: StoryBlockId): Stor
         return null;
     }
     const staying = scene.rootBlockIds.slice(0, index);
-    return { movingRootIds, needsJump: !endsWithTransfer(scene, staying) };
+    return {
+        movingRootIds,
+        needsJump: !endsWithTransfer(scene, staying),
+        ties: collectCutTies(scene, staying, movingRootIds),
+    };
+}
+
+/**
+ * Everything the rows after the cut would still be asking the rows before it for.
+ *
+ * Only that direction. A row before the cut that names something declared after it is already
+ * wrong today - the compiler reports a forward reference - so a split does not make it worse, and
+ * refusing on it would refuse a split that fixes nothing.
+ */
+function collectCutTies(
+    scene: StoryScene,
+    stayingRootIds: readonly StoryBlockId[],
+    movingRootIds: readonly StoryBlockId[],
+): StorySceneCutTie[] {
+    const staying = blocksUnder(scene, stayingRootIds);
+    const moving = blocksUnder(scene, movingRootIds);
+    const ties: StorySceneCutTie[] = [];
+    const seen = new Set<string>();
+    const add = (kind: StorySceneCutTie["kind"], label: string) => {
+        const key = `${kind}:${label}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            ties.push({ kind, label });
+        }
+    };
+
+    const declaredBefore = new Map<string, string>();
+    for (const block of staying) {
+        const declaration = declaredStageObject(block);
+        if (declaration) {
+            declaredBefore.set(`${declaration.kind}:${declaration.name}`, declaration.label);
+        }
+    }
+    const labelsBefore = new Set(listSceneLabels(scene)
+        .filter(label => staying.some(block => block.id === label.blockId))
+        .map(label => label.name));
+    const variablesBefore = staying
+        .filter(isStoryDeclarationBlock)
+        .filter(block => block.payload.scope === "scene")
+        .map(block => ({ id: block.id, name: block.payload.name }));
+
+    for (const block of moving) {
+        const reference = stageObjectReference(scene, block);
+        for (const kind of reference?.kinds ?? []) {
+            const label = declaredBefore.get(`${kind}:${reference!.name}`);
+            if (label) {
+                add("stageObject", label);
+            }
+        }
+        if (block.kind === "control" && block.payload.control === "goto" && labelsBefore.has(block.payload.targetLabel)) {
+            add("label", block.payload.targetLabel);
+        }
+        for (const variable of variablesBefore) {
+            // The block id doubles as the variable id (schema v6), so the id appearing anywhere in
+            // a payload is that variable and nothing else.
+            if (containsString(block.payload, variable.id)) {
+                add("variable", variable.name);
+            }
+        }
+    }
+    return ties;
+}
+
+/** Every block in the given roots' subtrees, roots included. */
+function blocksUnder(scene: StoryScene, rootIds: readonly StoryBlockId[]): StoryBlock[] {
+    const blocks: StoryBlock[] = [];
+    for (const rootId of rootIds) {
+        for (const id of subtreeIds(scene, rootId)) {
+            const block = scene.blocks[id];
+            if (block) {
+                blocks.push(block);
+            }
+        }
+    }
+    return blocks;
 }
 
 /**

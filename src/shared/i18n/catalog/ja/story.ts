@@ -1348,6 +1348,8 @@ export const story = {
                 other: "{count} 行を {scene} へ移動した",
             },
             jumpAdded: "ジャンプを追加",
+            refused: "この行より後の行が、それより前の内容を必要としている",
+            refusedDetail: "この行より後で使用中：{names}",
         },
         mergeScenes: {
             confirm: "「{merged}」を「{surviving}」に結合しますか？",

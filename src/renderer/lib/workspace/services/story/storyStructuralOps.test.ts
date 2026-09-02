@@ -152,7 +152,7 @@ describe("planSceneSplit", () => {
     it("asks for a jump when the first half would run off its own end", () => {
         const scene0 = scene("a", "A", [narration("r1", "one"), narration("r2", "two"), narration("r3", "three")]);
         const plan = planSceneSplit(scene0, "r2");
-        expect(plan).toEqual({ movingRootIds: ["r2", "r3"], needsJump: true });
+        expect(plan).toEqual({ movingRootIds: ["r2", "r3"], needsJump: true, ties: [] });
     });
 
     it("asks for none when the first half already hands control on", () => {
@@ -165,6 +165,54 @@ describe("planSceneSplit", () => {
         tail.disabled = true;
         const scene0 = scene("a", "A", [narration("r1", "one"), tail, narration("r3", "three")]);
         expect(planSceneSplit(scene0, "r3")?.needsJump).toBe(true);
+    });
+
+    it("names a stage object the second half would be left addressing", () => {
+        const show: StoryBlock = {
+            id: "show", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "image", operation: "create", objectName: "poster", assetId: "a1" },
+        };
+        const hide: StoryBlock = {
+            id: "hide", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "image", operation: "hide", objectName: "poster" },
+        };
+        const scene0 = scene("a", "A", [show, narration("r1", "one"), hide]);
+
+        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "stageObject", label: "poster" }]);
+        // Cut after the row that addresses it and nothing spans the cut any more.
+        expect(planSceneSplit(scene0, "hide")?.ties).toEqual([{ kind: "stageObject", label: "poster" }]);
+        expect(planSceneSplit(scene0, "show")?.ties).toEqual([]);
+    });
+
+    it("names a label a `/goto` after the cut would no longer reach", () => {
+        const label: StoryBlock = {
+            id: "label", parentId: null, childrenIds: [], kind: "control",
+            payload: { control: "label", name: "start" },
+        };
+        const goto: StoryBlock = {
+            id: "goto", parentId: null, childrenIds: [], kind: "control",
+            payload: { control: "goto", targetLabel: "start" },
+        };
+        const scene0 = scene("a", "A", [label, narration("r1", "one"), goto]);
+
+        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "label", label: "start" }]);
+        expect(planSceneSplit(scene0, "label")?.ties).toEqual([]);
+    });
+
+    it("names a scene variable the second half would find undeclared", () => {
+        const declaration: StoryBlock = {
+            id: "var", parentId: null, childrenIds: [], kind: "declaration",
+            payload: { scope: "scene", name: "Gold", valueType: "number", storageKey: "var" },
+        };
+        const setter: StoryBlock = {
+            id: "set", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "scene", variableId: "var" }, value: 1 },
+        };
+        const scene0 = scene("a", "A", [declaration, narration("r1", "one"), setter]);
+
+        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "variable", label: "Gold" }]);
+        expect(planSceneSplit(scene0, "declaration" as StoryBlockId)?.ties).toBeUndefined();
+        expect(planSceneSplit(scene0, "var")?.ties).toEqual([]);
     });
 
     it("refuses a row that is not at the top level", () => {
