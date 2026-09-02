@@ -302,6 +302,49 @@ describe("UIStore panel visibility", () => {
         expect(events).toEqual([false]);
         expect(store.getPanelVisibility().p).toBe(false);
     });
+
+    it("puts a dock's panels back to their registered visibility, leaving other docks alone", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("seeded"));
+        store.registerPanel(hidablePanel("unseeded", false));
+        store.registerPanel({
+            id: "right", title: "right", icon: null, position: PanelPosition.Right, component: DummyTab,
+        });
+        store.setPanelVisibility("seeded", false);
+        store.setPanelVisibility("unseeded", false);
+        store.setPanelVisibility("right", false);
+
+        // No per-panel event: that one means "open this panel", and firing it here would take the
+        // author off whatever they had open.
+        const seededEvents = recordVisibilityEvents(store, "seeded");
+        const stateChanges: Array<Record<string, boolean>> = [];
+        store.getEvents().on("stateChanged", changes => {
+            if (changes.panelVisibility) stateChanges.push(changes.panelVisibility);
+        });
+        store.resetPanelVisibility(PanelPosition.Left);
+
+        expect(store.getPanelVisibility().seeded).toBe(true);
+        // Back to unseeded, exactly as registration left it — the rails read that as visible too.
+        expect(store.getPanelVisibility().unseeded).toBeUndefined();
+        expect(seededEvents).toEqual([]);
+        expect(stateChanges).toHaveLength(1);
+        // Another dock's panel is untouched.
+        expect(store.getPanelVisibility().right).toBe(false);
+    });
+
+    it("says nothing when a dock has nothing hidden", () => {
+        const store = new UIStore();
+        store.registerPanel(hidablePanel("p"));
+        let announced = false;
+        store.getEvents().on("stateChanged", changes => {
+            if (changes.panelVisibility) announced = true;
+        });
+
+        store.resetPanelVisibility(PanelPosition.Left);
+
+        expect(announced).toBe(false);
+        expect(store.getPanelVisibility().p).toBe(true);
+    });
 });
 
 describe("UIStore editor group splitting", () => {

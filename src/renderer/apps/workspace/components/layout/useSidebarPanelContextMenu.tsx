@@ -9,7 +9,12 @@ import { useTranslation } from "@/lib/i18n";
 import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { mergeVisibleRailOrder } from "./sidebarPanelOrder";
-import { SIDEBAR_GROUP_ID, weaveGroupSlot } from "./sidebarPanelGroup";
+import {
+    DEFAULT_COLLAPSED_PANEL_IDS,
+    isRailLayoutDefault,
+    SIDEBAR_GROUP_ID,
+    weaveGroupSlot,
+} from "./sidebarPanelGroup";
 
 interface SidebarPanelContextMenuOptions {
     /**
@@ -47,8 +52,9 @@ interface SidebarPanelContextMenu {
  * a specific icon, a trailing block appears: fold it into the group, or hide it.
  * Right-clicking the group's own icon instead lists everything currently folded into it, each row
  * checked; clicking one lifts it back out onto the rail. A final block, present however the menu
- * was opened, resets the dock's icon order to the registered default; it is greyed out, with the
- * reason as its hover text, while the rail is already in that order.
+ * was opened, puts the whole rail back to its default layout — order, hidden panels and collapse
+ * group together; it is greyed out, with the reason as its hover text, while the rail is already
+ * in that state.
  *
  * The rail itself only renders {@link SidebarPanelContextMenu.railPanels}, so hidden panels drop out
  * of the strip but stay reachable through the menu, and collapsed ones move into the group's flyout.
@@ -63,6 +69,7 @@ export function useSidebarPanelContextMenu(
         reorderPanels,
         resetPanelOrder,
         getDefaultPanelOrder,
+        resetPanelVisibility,
         panelOrder,
         collapsedPanels,
         setCollapsedPanels,
@@ -104,13 +111,23 @@ export function useSidebarPanelContextMenu(
     // The dock's full slot list, group included — also the basis for splicing a drag back over the
     // entries that are not currently on the rail.
     const fullIds = groupShown ? weaveGroupSlot(panelIds, panelOrder[position]) : panelIds;
-    // The same list with no reordering at all: static panel order, group last. When the rail is
-    // already there, a reset would change nothing — including one that would only clear a stored
-    // order that happens to match — so the menu says so instead of offering a click with no effect.
+
+    // What a reset would leave behind: static panel order, nothing hidden, the group back to its
+    // out-of-the-box membership and sitting last. With the rail already there a reset would change
+    // nothing — including one that would only clear a stored order that happens to match — so the
+    // menu says so instead of offering a click with no visible effect.
+    const defaultCollapsedIds = grouping ? DEFAULT_COLLAPSED_PANEL_IDS : [];
     const defaultIds = getDefaultPanelOrder(position);
-    const defaultFullIds = groupShown ? [...defaultIds, SIDEBAR_GROUP_ID] : defaultIds;
-    const orderIsDefault = fullIds.length === defaultFullIds.length
-        && fullIds.every((id, index) => id === defaultFullIds[index]);
+    // Everything is visible after a reset, so the group earns a slot as long as one of its default
+    // members is registered in this window at all.
+    const defaultGroupShown = defaultCollapsedIds.some(id => panelIds.includes(id));
+    const layoutIsDefault = isRailLayoutDefault({
+        railIds: fullIds,
+        defaultRailIds: defaultGroupShown ? [...defaultIds, SIDEBAR_GROUP_ID] : defaultIds,
+        hiddenIds: allPanels.filter(panel => !isVisible(panel)).map(panel => panel.id),
+        collapsedIds,
+        defaultCollapsedIds,
+    });
 
     const railPanels = fullIds.flatMap(id => {
         if (id === SIDEBAR_GROUP_ID) {
@@ -140,6 +157,15 @@ export function useSidebarPanelContextMenu(
     const setCollapsed = useCallback((ids: string[]) => {
         setCollapsedPanels(position, ids);
     }, [position, setCollapsedPanels]);
+
+    // Undo everything the author can do to this rail from here: the drag order, the panels switched
+    // off, and the collapse group's membership. Anything left over would make the row a half-reset
+    // whose remainder the author has no way to name.
+    const resetLayout = useCallback(() => {
+        resetPanelOrder(position);
+        resetPanelVisibility(position);
+        setCollapsedPanels(position, grouping ? [...DEFAULT_COLLAPSED_PANEL_IDS] : []);
+    }, [grouping, position, resetPanelOrder, resetPanelVisibility, setCollapsedPanels]);
 
     // Drive the click off the *displayed* checked state, not the store's blind toggle: clicking a
     // checked row always hides, an unchecked row always shows. (A blind toggle flips an unseeded
@@ -184,16 +210,14 @@ export function useSidebarPanelContextMenu(
     }
 
     // The rail's own housekeeping sits last, in its own block: it acts on the whole dock rather
-    // than on one row, so it must not read as part of the checklist above it. Only the order is
-    // reset — hidden panels stay hidden and the group keeps its members, since those are choices
-    // about what is shown, not where.
+    // than on one row, so it must not read as part of the checklist above it.
     items.push({ separator: true as const, id: "sep-reset" });
     items.push({
-        id: "reset-order",
-        label: t("workspace.shell.panelMenu.resetOrder"),
-        disabled: orderIsDefault,
-        tooltip: orderIsDefault ? t("workspace.shell.panelMenu.resetOrderDisabled") : undefined,
-        onClick: () => resetPanelOrder(position),
+        id: "reset-layout",
+        label: t("workspace.shell.panelMenu.resetLayout"),
+        disabled: layoutIsDefault,
+        tooltip: layoutIsDefault ? t("workspace.shell.panelMenu.resetLayoutDisabled") : undefined,
+        onClick: resetLayout,
     });
 
     const menu = (

@@ -57,3 +57,45 @@ export function weaveGroupSlot(panelIds: string[], persistedOrder: string[] | un
     }
     return [...panelIds.slice(0, insertAt), SIDEBAR_GROUP_ID, ...panelIds.slice(insertAt)];
 }
+
+/** A dock's rail state, as the menu sees it, against what a reset would put back. */
+export interface RailLayoutState {
+    /** Rail slots in their current sequence, the collapse group's own entry included. */
+    railIds: string[];
+    /** The same slots as a reset would leave them. */
+    defaultRailIds: string[];
+    /** Ids of the dock's panels the author has hidden. */
+    hiddenIds: string[];
+    /** Ids currently folded into the collapse group. */
+    collapsedIds: readonly string[];
+    /** Ids a reset would fold into it. */
+    defaultCollapsedIds: readonly string[];
+}
+
+/**
+ * Whether a dock's rail is exactly what a reset would produce — order, hidden panels and collapse
+ * group all three. It answers the menu's question "would resetting change anything", which is what
+ * keeps the reset row from being a click with no visible effect.
+ *
+ * Collapse membership is compared as a set: which panels are folded away is the author's choice,
+ * the sequence they are stored in is not.
+ */
+export function isRailLayoutDefault({
+    railIds,
+    defaultRailIds,
+    hiddenIds,
+    collapsedIds,
+    defaultCollapsedIds,
+}: RailLayoutState): boolean {
+    if (hiddenIds.length > 0) {
+        return false;
+    }
+    if (railIds.length !== defaultRailIds.length || railIds.some((id, index) => id !== defaultRailIds[index])) {
+        return false;
+    }
+    if (collapsedIds.length !== defaultCollapsedIds.length) {
+        return false;
+    }
+    const defaults = new Set(defaultCollapsedIds);
+    return collapsedIds.every(id => defaults.has(id));
+}
