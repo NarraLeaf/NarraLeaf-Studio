@@ -296,7 +296,7 @@ export const build = {
             + "请在 {targetPlatform} 机器上构建该目标",
         "encryption-key-unavailable": "资产保护已开启，但无法取得密钥",
         "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
-        "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效，其文件以明文发布",
+        "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效",
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",

@@ -14,8 +14,9 @@ though NarraLeaf Studio itself is. Only this protection layer is kept closed.
 - The files inside your Studio project are **never changed**. Protection applies
   only to the output that ships to players.
 - Only the desktop packages (Windows, macOS, Linux) are protected. The web export
-  is served over HTTP and cannot be, and the Android and iOS packages carry that
-  same site, so they ship in the clear as well. The build says so whenever
+  is served over HTTP and cannot be. The Android and iOS packages keep their
+  content in Studio's own container, but that is a packaging format rather than
+  protection: the package carries what opens it. The build says so whenever
   protection is on and one of those targets is selected.
 
 ## Why it exists
