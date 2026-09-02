@@ -4739,15 +4739,15 @@ export function GameApp(props: GameAppProps): ReactNode {
                         resume: resumeState,
                         document: resolveRunningStoryDocument(),
                     });
-                    const compiled = await compileStoryRequest(compileRequest);
-                    await mountNlrSession(compiled, { storyRequest: launchRequest });
-                    if (wasEntered) {
-                        await enterMountedGame();
-                    }
-                    // Said only once the run is actually back on screen, and only when the reload
-                    // could not put the author where they were. A relocation inside the scene they
-                    // are reading is visible to them; being sent back to the story entry is not, and
-                    // a restart nobody explained reads as the reload having lost their place.
+                    // Said before the restart rather than after it, so that a reload which then fails
+                    // for its own reasons still explains the relocation - the two lines together are
+                    // what the author needs, and a notice held behind a successful mount is exactly
+                    // the one that goes missing when something else goes wrong.
+                    //
+                    // Only when the reload could not put the author where they were. A relocation
+                    // inside the scene they are reading is visible to them; being sent back to the
+                    // story entry is not, and a restart nobody explained reads as the reload having
+                    // lost their place.
                     const notice = target ? storyResumeNotice(target) : null;
                     if (notice) {
                         const level = target?.kind === "entry" ? "warning" : "info";
@@ -4755,6 +4755,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                         if (level === "warning") {
                             host.reportIssue?.({ level, message: notice, origin: "session" });
                         }
+                    }
+                    const compiled = await compileStoryRequest(compileRequest);
+                    await mountNlrSession(compiled, { storyRequest: launchRequest });
+                    if (wasEntered) {
+                        await enterMountedGame();
                     }
                 } else {
                     await startEmptyNlrEnvironment();

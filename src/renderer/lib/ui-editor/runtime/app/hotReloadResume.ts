@@ -130,7 +130,17 @@ export function buildStoryResumeLaunch(params: {
     }
     const target = resolveStoryResumeTarget(resume.position, document);
     if (target.kind === "entry") {
-        return { launchRequest: request, compileRequest: request, target };
+        // The scene the run was launched at is the one that has gone, so re-asking for it would only
+        // fail the compile - "start from the beginning" has to mean the story's own entry scene. A
+        // document that names none, or no document at all, leaves nothing better than the request.
+        const entrySceneId = document?.entrySceneId;
+        return entrySceneId && entrySceneId !== request.sceneId
+            ? {
+                launchRequest: { storyId: request.storyId, sceneId: entrySceneId },
+                compileRequest: { storyId: request.storyId, sceneId: entrySceneId },
+                target,
+            }
+            : { launchRequest: request, compileRequest: request, target };
     }
     const launchRequest: DevModeStartStoryRequest = {
         storyId: request.storyId,

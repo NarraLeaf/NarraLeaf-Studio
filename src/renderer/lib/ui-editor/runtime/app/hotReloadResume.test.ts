@@ -157,9 +157,12 @@ describe("the launch a reload enters through", () => {
         expect(built.compileRequest.snapshotId).toBeUndefined();
     });
 
-    it("hands back the original launch, unchanged, when the scene is gone", () => {
+    it("starts the story's own entry scene when the scene is gone", () => {
+        // Not the request it was launched with: that names the scene that has just been deleted, so
+        // re-asking for it would fail the compile rather than restart anything.
         const document = documentWith(["r1"]);
         delete (document.scenes as Record<string, unknown>)["scene-1"];
+        (document as { entrySceneId?: string }).entrySceneId = "scene-2";
 
         const built = buildStoryResumeLaunch({
             request,
@@ -167,9 +170,20 @@ describe("the launch a reload enters through", () => {
             document,
         });
 
-        expect(built.launchRequest).toBe(request);
+        expect(built.launchRequest).toEqual({ storyId: "story-1", sceneId: "scene-2" });
         expect(built.compileRequest.resume).toBeUndefined();
         expect(built.target).toEqual({ kind: "entry", reason: "sceneMissing" });
+    });
+
+    it("keeps the original launch when there is no entry scene to fall back to", () => {
+        const built = buildStoryResumeLaunch({
+            request,
+            resume: resumeState({ sceneId: "scene-1", blockId: "r1", trail: ["r1"] }),
+            document: undefined,
+        });
+
+        expect(built.launchRequest).toBe(request);
+        expect(built.target).toEqual({ kind: "entry", reason: "storyMissing" });
     });
 
     it("carries no values into a scene start, which has no pre-pose to lay them on", () => {
