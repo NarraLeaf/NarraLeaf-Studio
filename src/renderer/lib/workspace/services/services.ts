@@ -325,7 +325,6 @@ interface IFileSystemService extends IService {
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     /** Write or create, without the write grant. See `BaseFileSystemService.writeFileNoFollowOrCreate`. */
     writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
-    recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
     deleteDir(path: string): Promise<FsRequestResult<void>>;

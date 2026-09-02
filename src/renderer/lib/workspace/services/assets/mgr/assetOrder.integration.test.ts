@@ -62,7 +62,6 @@ const filesystemService = {
     writeFileNoFollow: (p: string, data: string, encoding: BufferEncoding) => Fs.writeFileNoFollow(p, data, encoding),
     writeFileNoFollowOrCreate: (p: string, data: string, encoding: BufferEncoding) => Fs.writeFileNoFollowOrCreate(p, data, encoding),
     ensureRegularFile: (p: string, data: string, encoding: BufferEncoding) => Fs.ensureRegularFile(p, data, encoding),
-    recoverCorruptedJsonFile: (p: string, replacement: string, encoding: BufferEncoding) => Fs.recoverCorruptedJsonFile(p, replacement, encoding),
     isFileExists: (p: string) => Fs.isFileExists(p),
     async readJSON<T>(p: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
         const result = await Fs.read(p, encoding);

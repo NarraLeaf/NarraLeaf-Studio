@@ -117,8 +117,6 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }),
             writeFileNoFollowOrCreate: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollowOrCreate", path, data, encoding }),
-            recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
-                invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }),
             createDir: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "createDir", path }),
             deleteFile: (actor: PrivilegedActor, path: string) =>
@@ -217,7 +215,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         requestWriteRaw: (path: string) => ipcClient.invoke(IPCEventType.fsRequestWrite, { path, raw: true }),
         ensureRegularFile: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsEnsureRegularFile, { path, data, encoding }),
         writeFileNoFollow: (path: string, data: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsWriteFileNoFollow, { path, data, encoding }),
-        recoverCorruptedJsonFile: (path: string, replacement: string, encoding: BufferEncoding = "utf-8") => ipcClient.invoke(IPCEventType.fsRecoverCorruptedJsonFile, { path, replacement, encoding }),
         createDir: (path: string) => ipcClient.invoke(IPCEventType.fsCreateDir, { path }),
         deleteFile: (path: string) => ipcClient.invoke(IPCEventType.fsDeleteFile, { path }),
         deleteDir: (path: string) => ipcClient.invoke(IPCEventType.fsDeleteDir, { path }),

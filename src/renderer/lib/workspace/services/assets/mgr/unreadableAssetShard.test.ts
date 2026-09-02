@@ -119,9 +119,6 @@ function createHarness(files: Record<string, string> = {}) {
             copies.push({ from, to });
             return { ok: true as const, data: undefined };
         },
-        async recoverCorruptedJsonFile(path: string, replacement: string) {
-            return record(path, replacement);
-        },
     };
 
     const context = {

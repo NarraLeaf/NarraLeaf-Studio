@@ -62,7 +62,6 @@ export type PrivilegedFileSystemCall =
      * surface is one more thing a plugin can be written against forever.
      */
     | { operation: "writeFileNoFollowOrCreate"; path: string; data: string; encoding?: BufferEncoding }
-    | { operation: "recoverCorruptedJsonFile"; path: string; replacement: string; encoding?: BufferEncoding }
     | { operation: "createDir"; path: string }
     | { operation: "deleteFile"; path: string }
     | { operation: "deleteDir"; path: string }

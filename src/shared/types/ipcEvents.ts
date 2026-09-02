@@ -194,7 +194,6 @@ export enum IPCEventType {
     fsRequestWrite = "fs.requestWrite",
     fsEnsureRegularFile = "fs.ensureRegularFile",
     fsWriteFileNoFollow = "fs.writeFileNoFollow",
-    fsRecoverCorruptedJsonFile = "fs.recoverCorruptedJsonFile",
     fsCreateDir = "fs.createDir",
     fsDeleteFile = "fs.deleteFile",
     fsDeleteDir = "fs.deleteDir",
@@ -1769,16 +1768,6 @@ export type IPCFsEvents = {
         data: {
             path: string;
             data: string;
-            encoding?: BufferEncoding;
-        },
-        response: FsRequestResult<void>;
-    };
-    [IPCEventType.fsRecoverCorruptedJsonFile]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            path: string;
-            replacement: string;
             encoding?: BufferEncoding;
         },
         response: FsRequestResult<void>;

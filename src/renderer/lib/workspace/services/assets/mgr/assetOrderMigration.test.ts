@@ -110,9 +110,6 @@ function createHarness(files: Record<string, string> = {}) {
         async writeFileNoFollowOrCreate(path: string, data: string) {
             return record(path, data);
         },
-        async recoverCorruptedJsonFile(path: string, replacement: string) {
-            return record(path, replacement);
-        },
     };
 
     const context = {

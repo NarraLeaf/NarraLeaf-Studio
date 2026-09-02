@@ -16,7 +16,7 @@ import {
 import { AppUpdateCheckHandler, AppUpdateDownloadHandler, AppUpdateGetStateHandler, AppUpdateInstallHandler } from "./handlers/updateAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsDirectorySizeHandler, FsRequestReadHandler, FsRequestReadDirHandler, FsRequestWriteHandler,
-    FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
+    FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
     FsSelectFileHandler, FsSelectDirectoryHandler, FsGrantFileAccessHandler, FsHashHandler,
@@ -420,7 +420,6 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new FsRequestWriteHandler(),
         new FsEnsureRegularFileHandler(),
         new FsWriteFileNoFollowHandler(),
-        new FsRecoverCorruptedJsonFileHandler(),
         new FsCreateDirHandler(),
         new FsDeleteFileHandler(),
         new FsDeleteDirHandler(),
