@@ -156,7 +156,7 @@ import {
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
-import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
+import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import type {
     GameBuildWorkerAndroidSigning,
     GameBuildWorkerConfig,
@@ -3484,7 +3484,7 @@ export class GameBuildManager {
             version: plugin.manifest.version,
             enabled: plugin.enabled,
         }));
-        return selectRuntimePluginsForPack({
+        return selectProjectRuntimePlugins({
             dependencies: projectConfig?.dependencies,
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,

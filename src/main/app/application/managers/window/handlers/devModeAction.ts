@@ -1,4 +1,11 @@
+import { screen, type BrowserWindow } from "electron";
 import { AppHost, AppProtocol } from "@shared/types/constants";
+import {
+    fitInside,
+    fittingWindowScales,
+    roomForStage,
+    type WindowBox,
+} from "@shared/utils/windowGeometry";
 import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
 import { devModeScreenEffectQuality, screenEffectBakeThreads } from "../../weather/screenEffectQuality";
@@ -62,6 +69,110 @@ export class DevModeFullscreenSetHandler extends IPCHandler<IPCEventType.devMode
             window.enterFullScreen();
         } else {
             window.exitFullScreen();
+        }
+        return this.success();
+    }
+}
+
+/**
+ * How much bigger this window is than the page inside it: the platform's own frame.
+ *
+ * Measured rather than assumed, for the reason the shipped shell measures it: it is not small, it
+ * differs by platform, theme and display scaling, and a constant here would make a window that
+ * exactly filled the desktop one title bar too tall.
+ */
+function windowFrame(win: BrowserWindow): { width: number; height: number } {
+    const [outerWidth, outerHeight] = win.getSize();
+    const [contentWidth, contentHeight] = win.getContentSize();
+    return {
+        width: Math.max(0, outerWidth - contentWidth),
+        height: Math.max(0, outerHeight - contentHeight),
+    };
+}
+
+/**
+ * What a stage of this size would cost the display, once both frames are counted.
+ *
+ * Two of them here where a packaged game has one: the platform's around the window, and Studio's
+ * around the stage - the top bar, the debug drawer, whatever else this window draws. A game asks
+ * about the stage, so both have to come off the display before deciding what fits.
+ */
+function stageRoom(win: BrowserWindow, chrome: { width: number; height: number }): WindowBox {
+    const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
+    const frame = windowFrame(win);
+    return roomForStage(workArea, {
+        width: frame.width + Math.max(0, chrome.width),
+        height: frame.height + Math.max(0, chrome.height),
+    });
+}
+
+/**
+ * The stage sizes worth offering, measured against the display this window is on.
+ *
+ * The same question a packaged game's shell answers, answered with the same function: which
+ * multiples of the design size the screen has room for. An author reading the size row of their own
+ * configuration screen in Dev Mode reads the list a player would get on this machine.
+ */
+export class DevModeWindowScaleOptionsHandler extends IPCHandler<IPCEventType.devModeWindowScaleOptions> {
+    readonly name = IPCEventType.devModeWindowScaleOptions;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { design, chrome }: IPCEvents[IPCEventType.devModeWindowScaleOptions]["data"],
+    ): RequestStatus<{ scales: number[] }> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("The Dev Mode window can only be sized by itself");
+        }
+        return this.success({ scales: fittingWindowScales(design, stageRoom(window.win, chrome)) });
+    }
+}
+
+/**
+ * Put the stage at a size in pixels, by sizing the window around it.
+ *
+ * Full screen and maximised are left first, and the window is re-centred only when the new size
+ * would hang off the display: both are what the shipped shell does, and for the same reasons - a
+ * window sized underneath either would spring back the moment the player left it, and a position
+ * the author chose is worth keeping while it is still reachable.
+ */
+export class DevModeWindowSetStageSizeHandler extends IPCHandler<IPCEventType.devModeWindowSetStageSize> {
+    readonly name = IPCEventType.devModeWindowSetStageSize;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        { width, height, chrome }: IPCEvents[IPCEventType.devModeWindowSetStageSize]["data"],
+    ): RequestStatus<void> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("The Dev Mode window can only be sized by itself");
+        }
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+            return this.failed("A stage size has to be two positive numbers");
+        }
+        const win = window.win;
+        if (win.isDestroyed()) {
+            return this.success();
+        }
+        if (win.isFullScreen()) {
+            win.setFullScreen(false);
+        }
+        if (win.isMaximized()) {
+            win.unmaximize();
+        }
+        const stage = fitInside({ width, height }, stageRoom(win, chrome));
+        win.setContentSize(
+            stage.width + Math.max(0, Math.round(chrome.width)),
+            stage.height + Math.max(0, Math.round(chrome.height)),
+        );
+        const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
+        const bounds = win.getBounds();
+        const fits = bounds.x >= workArea.x
+            && bounds.y >= workArea.y
+            && bounds.x + bounds.width <= workArea.x + workArea.width
+            && bounds.y + bounds.height <= workArea.y + workArea.height;
+        if (!fits) {
+            win.center();
         }
         return this.success();
     }

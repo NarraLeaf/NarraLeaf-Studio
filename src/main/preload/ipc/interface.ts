@@ -415,6 +415,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getWindowScaleOptions: (
+            design: { width: number; height: number },
+            chrome: { width: number; height: number },
+        ) =>
+            ipcClient.invoke(IPCEventType.devModeWindowScaleOptions, { design, chrome }) as Promise<RequestStatus<{ scales: number[] }>>,
+        setStageSize: (
+            width: number,
+            height: number,
+            chrome: { width: number; height: number },
+        ) =>
+            ipcClient.invoke(IPCEventType.devModeWindowSetStageSize, { width, height, chrome }) as Promise<RequestStatus<void>>,
         getFullscreen: () =>
             ipcClient.invoke(IPCEventType.devModeFullscreenGet, {}) as Promise<RequestStatus<{ isFullscreen: boolean }>>,
         setFullscreen: (fullscreen: boolean) =>

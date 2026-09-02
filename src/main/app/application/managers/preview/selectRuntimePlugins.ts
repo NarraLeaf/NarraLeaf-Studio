@@ -1,22 +1,42 @@
 /**
- * Selects which plugin runtime entries ship inside a game pack and statically
- * validates the project's plugin blueprint node usage against them.
+ * Which plugin runtime entries a project runs, and a static check of the plugin
+ * blueprint node / widget types it uses against them.
  *
  * The project dependency table (machine-derived, embedded in the .nlproj
- * manifest) is the authority on what the project actually uses. Packing rule:
- * hard dependencies ship; enabled-but-unused plugins do not. Validation rule:
- * every blueprint node / widget type the project uses must have a shipping
+ * manifest) is the authority on what the project actually uses. Selection rule:
+ * hard dependencies run; enabled-but-unused plugins do not. Validation rule:
+ * every blueprint node / widget type the project uses must have a selected
  * plugin that declares it in manifest contributes - otherwise the pack build
  * fails instead of the node/widget silently failing on a player's machine.
+ *
+ * ## One answer, not one per host
+ *
+ * A build, a preview, a test run and a Dev Mode session all ask the same
+ * question, so they all ask this function. Dev Mode used to answer it for
+ * itself, by loading every enabled runtime plugin - which made it the only
+ * place where a plugin the project never declared still worked. An author who
+ * dropped a plugin's node into a graph without the dependency table catching up
+ * saw it run in Dev Mode and saw it die, silently, in the build. The whole
+ * point of Dev Mode is that what happens there is what a player gets.
  */
 
+import type {
+    NormalizedPluginManifestV2,
+    RuntimePluginExclusion,
+    RuntimePluginExclusionReason,
+} from "@shared/types/plugins";
 import type { ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { resolveDependencies, type InstalledPluginInfo } from "@shared/utils/resolveDependencies";
 import type { GameRuntimePluginSource } from "./compiler/gameRuntimeArtifactCompiler";
 
-export type RuntimePluginPackSelection = {
-    selected: GameRuntimePluginSource[];
-    /** Enabled runtime plugins excluded because the project does not depend on them. */
+/** The only thing selection reads off a candidate; a pack source and a Dev Mode descriptor both have it. */
+export type RuntimePluginCandidate = { manifest: NormalizedPluginManifestV2 };
+
+export type RuntimePluginSelection<T extends RuntimePluginCandidate> = {
+    selected: T[];
+    /** Enabled runtime plugins left out, with the reason each one was left out. */
+    excluded: RuntimePluginExclusion[];
+    /** The ids of {@link excluded}, for a one-line log. */
     skippedPluginIds: string[];
     /** Fail-the-build problems, human-readable. */
     errors: string[];
@@ -27,17 +47,21 @@ export type RuntimePluginPackSelection = {
     fallbackAll: boolean;
 };
 
-export function selectRuntimePluginsForPack(input: {
+/** The selection a pack is built from. */
+export type RuntimePluginPackSelection = RuntimePluginSelection<GameRuntimePluginSource>;
+
+export function selectProjectRuntimePlugins<T extends RuntimePluginCandidate>(input: {
     dependencies: ProjectDependencyTable | undefined;
     /** Enabled plugins with a runtime entry, from PluginManager. */
-    available: GameRuntimePluginSource[];
+    available: T[];
     /** Every installed plugin (for version-compatibility resolution). */
     installed: InstalledPluginInfo[];
-}): RuntimePluginPackSelection {
+}): RuntimePluginSelection<T> {
     const { dependencies, available, installed } = input;
     if (!dependencies) {
         return {
             selected: [...available],
+            excluded: [],
             skippedPluginIds: [],
             errors: [],
             fallbackAll: true,
@@ -49,7 +73,9 @@ export function selectRuntimePluginsForPack(input: {
     const statusById = new Map(resolution.entries.map(entry => [entry.dependency.id, entry]));
 
     const errors: string[] = [];
-    const selected: GameRuntimePluginSource[] = [];
+    const selected: T[] = [];
+    /** Ids the table depends on and selection still refused, so the reason is not read as "unused". */
+    const unusable = new Set<string>();
 
     for (const dependency of dependencies.plugins) {
         if (!dependency.hard) {
@@ -59,13 +85,13 @@ export function selectRuntimePluginsForPack(input: {
             {
                 kindLabel: "blueprint node(s)",
                 used: dependency.usedBy.blueprintNode ?? [],
-                declaredOf: (source: GameRuntimePluginSource) => source.manifest.contributes.blueprintNodes,
+                declaredOf: (source: T) => source.manifest.contributes.blueprintNodes,
                 contributesKey: "contributes.blueprintNodes",
             },
             {
                 kindLabel: "widget(s)",
                 used: dependency.usedBy.widget ?? [],
-                declaredOf: (source: GameRuntimePluginSource) => source.manifest.contributes.widgets,
+                declaredOf: (source: T) => source.manifest.contributes.widgets,
                 contributesKey: "contributes.widgets",
             },
         ].filter(requirement => requirement.used.length > 0);
@@ -73,6 +99,7 @@ export function selectRuntimePluginsForPack(input: {
         const entry = statusById.get(dependency.id);
 
         if (entry?.suppressed) {
+            unusable.add(dependency.id);
             for (const requirement of requirements) {
                 const detail = entry.status === "missing"
                     ? "is not installed"
@@ -109,6 +136,8 @@ export function selectRuntimePluginsForPack(input: {
             }
             if (valid) {
                 selected.push(source);
+            } else {
+                unusable.add(dependency.id);
             }
             continue;
         }
@@ -121,9 +150,24 @@ export function selectRuntimePluginsForPack(input: {
     }
 
     const selectedIds = new Set(selected.map(source => source.manifest.id));
-    const skippedPluginIds = available
+    const excluded: RuntimePluginExclusion[] = available
         .filter(source => !selectedIds.has(source.manifest.id))
-        .map(source => source.manifest.id);
+        .map(source => {
+            const reason: RuntimePluginExclusionReason = unusable.has(source.manifest.id)
+                ? "unusable"
+                : "notDeclared";
+            return {
+                pluginId: source.manifest.id,
+                pluginName: source.manifest.name || source.manifest.id,
+                reason,
+            };
+        });
 
-    return { selected, skippedPluginIds, errors, fallbackAll: false };
+    return {
+        selected,
+        excluded,
+        skippedPluginIds: excluded.map(entry => entry.pluginId),
+        errors,
+        fallbackAll: false,
+    };
 }

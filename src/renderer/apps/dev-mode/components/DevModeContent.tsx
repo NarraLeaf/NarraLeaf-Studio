@@ -64,6 +64,8 @@ import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
 import { resolveDevModeViewportSize } from "./devModeViewport";
+import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
+import { currentWindowScale, scaledDesign } from "@shared/utils/windowGeometry";
 import { createDevModePuppetHost, listDevModePuppetBackendModules } from "../devModePuppetHost";
 import { registerDevModePuppetHost } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
 
@@ -1310,6 +1312,81 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, [projectPath]);
 
+    /**
+     * The box the stage is fitted into, and what Studio draws around it.
+     *
+     * The window is Studio's: its content is a top bar, whatever the debug drawer is taking, and
+     * the stage in what is left. A game asking to be sized is asking about the stage, so every
+     * answer here is about this box - `Get Window Size` reports it, `Set Window Size` sets it, and
+     * the main process is told what to add back before it sizes the window.
+     *
+     * Read on demand rather than observed. Nothing here runs on a frame budget (these are blueprint
+     * calls), the drawer changes the box while the author works, and a measurement kept in state
+     * would be one render behind the thing it is describing.
+     */
+    const stageAreaRef = useRef<HTMLDivElement | null>(null);
+    const readStageArea = useCallback((): { width: number; height: number } | null => {
+        const rect = stageAreaRef.current?.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            return null;
+        }
+        return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    }, []);
+    const readStudioChrome = useCallback((): { width: number; height: number } => {
+        const area = readStageArea();
+        if (!area) {
+            return { width: 0, height: 0 };
+        }
+        return {
+            width: Math.max(0, Math.round(window.innerWidth - area.width)),
+            height: Math.max(0, Math.round(window.innerHeight - area.height)),
+        };
+    }, [readStageArea]);
+
+    /**
+     * The design size a scale step is a multiple of: the entry surface's, as the shipped shell
+     * takes it. A surface of some other size letterboxes inside the result, there as here.
+     */
+    const designSize = useMemo(
+        () => (surface ? { width: surface.designSize.width, height: surface.designSize.height } : null),
+        [surface],
+    );
+
+    const getWindowScaleOptions = useCallback(async (): Promise<number[]> => {
+        if (!designSize) {
+            return [];
+        }
+        const result = await getInterface().devMode.getWindowScaleOptions(designSize, readStudioChrome());
+        if (!result.success) {
+            throw new Error(result.error ?? "Get Window Scale Options failed");
+        }
+        return result.data.scales;
+    }, [designSize, readStudioChrome]);
+
+    const getWindowSize = useCallback(async (): Promise<{ width: number; height: number }> => {
+        return readStageArea() ?? designSize ?? { width: 0, height: 0 };
+    }, [designSize, readStageArea]);
+
+    const setWindowSize = useCallback(async (width: number, height: number): Promise<void> => {
+        const result = await getInterface().devMode.setStageSize(width, height, readStudioChrome());
+        if (!result.success) {
+            throw new Error(result.error ?? "Set Window Size failed");
+        }
+    }, [readStudioChrome]);
+
+    const getWindowScale = useCallback(async (): Promise<number> => {
+        const area = readStageArea();
+        return area && designSize ? currentWindowScale(designSize, area) : WINDOW_SCALE_DESIGN;
+    }, [designSize, readStageArea]);
+
+    const setWindowScale = useCallback(async (scale: number): Promise<void> => {
+        if (!designSize || !Number.isFinite(scale) || scale <= 0) {
+            return;
+        }
+        const size = scaledDesign(designSize, scale);
+        await setWindowSize(size.width, size.height);
+    }, [designSize, setWindowSize]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         const result = await getInterface().devMode.getFullscreen();
         if (!result.success) {
@@ -1495,6 +1572,36 @@ export function DevModeContent(props: DevModeContentProps) {
     // Failed plugins are logged and skipped; they never block the game.
     const runtimePlugins = useDevModeRuntimePlugins(rendererRegistry, pluginHost);
 
+    /**
+     * Say which plugins this project leaves out, and why.
+     *
+     * The session runs the set a build carries, which means a plugin the project does not depend on
+     * does not run here either - and the only thing an author would otherwise see is the node they
+     * placed drawn as an unknown-node stub. The report names the plugin and the panel this is fixed
+     * from, because the fix is a dependency rescan and not anything in the graph.
+     *
+     * Waits for the bundle: reports are located against it, and the plugin list is answered before
+     * the payload arrives about as often as after it.
+     */
+    useEffect(() => {
+        if (!bundle) {
+            return;
+        }
+        for (const entry of runtimePlugins.excluded) {
+            reportIssue({
+                level: "warning",
+                origin: "plugin",
+                pluginName: entry.pluginName,
+                message: t(
+                    entry.reason === "unusable"
+                        ? "devMode.issues.pluginUnusable"
+                        : "devMode.issues.pluginNotDeclared",
+                    { plugin: entry.pluginName },
+                ),
+            });
+        }
+    }, [bundle, reportIssue, runtimePlugins.excluded, t]);
+
     const host = useMemo<GameAppHost | null>(() => {
         if (!bundle || !surface) {
             return null;
@@ -1504,6 +1611,10 @@ export function DevModeContent(props: DevModeContentProps) {
             bundle,
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
+            // As the assembly resolved it for the variant this session runs as, which is the same
+            // read a pack makes. A session that ends where the build ends is the point: the page an
+            // author wrote for the end of their story is otherwise only reachable by packaging one.
+            endingSurfaceId: bundle.endingSurfaceId,
             // What the assembly says it carried, which for a Dev Mode run is exactly what the
             // author ticked in Run - none of them until they do. The fallback is for a bundle
             // assembled by a host that named no selection at all (a test, an older session): it
@@ -1531,6 +1642,11 @@ export function DevModeContent(props: DevModeContentProps) {
             listPuppetBackendModules,
             quitApplication,
             restartApplication,
+            getWindowScaleOptions,
+            getWindowScale,
+            setWindowScale,
+            getWindowSize,
+            setWindowSize,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -1546,6 +1662,11 @@ export function DevModeContent(props: DevModeContentProps) {
         bootAction,
         bundle,
         getFullscreen,
+        getWindowScaleOptions,
+        getWindowScale,
+        setWindowScale,
+        getWindowSize,
+        setWindowSize,
         log,
         networkFetch,
         movePointer,
@@ -1623,7 +1744,10 @@ export function DevModeContent(props: DevModeContentProps) {
         });
         return (
             <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-                <div className="min-h-0 min-w-0 flex-1">
+                {/* The box the stage is fitted into, and the one the window-size capabilities
+                    answer for. Measured from here rather than from the frame inside it: this is the
+                    element whose size the drawer and the top bar actually decide. */}
+                <div className="min-h-0 min-w-0 flex-1" ref={stageAreaRef}>
                     <StageViewportFrame
                         designSize={viewportSize}
                         onRenderScaleChange={value => handleAspectUpdate({ scale: value })}

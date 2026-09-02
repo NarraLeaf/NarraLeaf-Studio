@@ -27,7 +27,7 @@ import { resolveRunVariant } from "../../utils/runVariant";
 import { resolvePreviewAsShipped } from "../../utils/previewAsShipped";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
-import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
+import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
@@ -492,7 +492,7 @@ export class PreviewManager {
             version: plugin.manifest.version,
             enabled: plugin.enabled,
         }));
-        return selectRuntimePluginsForPack({
+        return selectProjectRuntimePlugins({
             dependencies: projectConfig?.dependencies,
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,

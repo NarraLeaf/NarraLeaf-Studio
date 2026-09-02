@@ -70,6 +70,8 @@ import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAct
 import {
     DevModeFullscreenGetHandler,
     DevModeFullscreenSetHandler,
+    DevModeWindowScaleOptionsHandler,
+    DevModeWindowSetStageSizeHandler,
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
@@ -296,6 +298,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeGetStatusHandler(),
         new DevModeFullscreenGetHandler(),
         new DevModeFullscreenSetHandler(),
+        new DevModeWindowScaleOptionsHandler(),
+        new DevModeWindowSetStageSizeHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),

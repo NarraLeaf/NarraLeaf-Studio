@@ -52,6 +52,8 @@ import {
     appTagMechanismKey,
     isBuiltinAppTagId,
     RELEASE_APP_TAG,
+    resolveAppTag,
+    resolveAppTagEndingSurface,
     type AppTagMechanismRef,
 } from "@shared/types/appTag";
 import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
@@ -110,6 +112,7 @@ import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { VOICE_DOCUMENT_SCHEMA_VERSION } from "@shared/types/voice";
 import { localizeProjectDocumentRefusal, rethrowIfTooNew } from "../../../utils/projectDocumentGate";
+import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
 /**
@@ -224,6 +227,7 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     const brand = await loadProjectBrand(context.projectPath);
     const fonts = await loadProjectFonts(context.projectPath);
     const saveSchema = await loadSaveSchemaTable(context.projectPath);
+    const endingSurfaceId = await loadEndingSurfaceId(context.projectPath, variant.id);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -231,6 +235,9 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
         // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
         // empty list would be a different claim.
         ...(carriedDlc ? { installedDlc: [...carriedDlc] } : {}),
+        // Only when the project named one. Blank and absent mean the same thing to a host, and an
+        // empty string in the bundle would read as a surface id that could not be resolved.
+        ...(endingSurfaceId ? { endingSurfaceId } : {}),
         ui: {
             uidoc,
             uigraphs,
@@ -1244,6 +1251,27 @@ export async function loadWindowConfiguration(projectPath: string): Promise<Wind
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeWindowConfiguration(app?.window);
+}
+
+/**
+ * The page this session ends on, resolved for the variant it is assembled as.
+ *
+ * The same read the pack compiler makes, from the same document, so a story that falls off the end
+ * lands on the same page in Dev Mode as in a build - and an author can see the page they authored
+ * for it without packaging one. Per variant for the reason the addresses are: the demo's ending is
+ * not the full game's, and one story document produces both.
+ *
+ * A document that will not parse leaves the session with no ending page rather than failing the
+ * assembly: this is one field of a bundle, and a session that will not start over it is worse than
+ * a story that stops where it always used to. Exported for tests.
+ */
+export async function loadEndingSurfaceId(projectPath: string, appTagId: string): Promise<string> {
+    try {
+        const document = await readProjectAppTagDocumentFromDir(projectPath);
+        return resolveAppTagEndingSurface(resolveAppTag(document.tags, appTagId), document.endingSurfaceId).value;
+    } catch {
+        return "";
+    }
 }
 
 /**

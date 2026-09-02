@@ -16,6 +16,10 @@ export const devMode = {
         atLine: "第 {line} 行 · {scene}",
         inScene: "位于 {scene}",
         onSurface: "位于界面 {surface}",
+        // See the English catalog: the third kind of place, and why an excluded plugin is named.
+        onPlugin: "插件 {plugin}",
+        pluginNotDeclared: "{plugin} 已安装，但不在本项目的插件依赖中；本次会话与构建都不包含它。在「项目 ▸ 应用」中重新扫描依赖表",
+        pluginUnusable: "{plugin} 在本项目的插件依赖中，但无法载入；本次会话与构建都不包含它。在「项目 ▸ 应用」中查看它的状态",
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         stack: "调用栈",
