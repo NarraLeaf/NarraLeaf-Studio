@@ -5,7 +5,6 @@ import { createRequire } from "module";
 import path from "path";
 import { unpackAsarPath } from "../../../../../utils/asarPath";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
-import { compileAllBlueprintScriptsForProject } from "../../devMode/compiler/blueprint/compileProjectBlueprintScripts";
 import {
     GAME_RUNTIME_PACK_SCHEMA_VERSION,
     type GameRuntimeAssetManifestEntry,
@@ -677,11 +676,6 @@ export async function compileGameRuntimeArtifact(
     const endingSurfaceId = await readEndingSurfaceId(input.projectPath, input.appTag?.id);
     const progressKey = readProgressKey(projectConfig, input.projectPath);
     const pluginConfig = await readPluginConfigSource(input.projectPath, input.appTag?.id);
-    const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
-    if (!blueprintScripts.ok) {
-        const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
-        throw new Error(`Blueprint script compile failed:\n${detail}`);
-    }
     const bundleId = crypto.randomUUID();
     // Set from inside the assembly below, and read after it to decide whether the library must be
     // narrowed. A `let` rather than a return value because the assembler answers with a bundle, and
@@ -691,9 +685,6 @@ export async function compileGameRuntimeArtifact(
         projectPath: input.projectPath,
         bundleId,
         revision: 1,
-        blueprintCompiledScripts: blueprintScripts.scripts,
-        blueprintScriptsCompileOk: blueprintScripts.ok,
-        blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
         ...(input.packaging ? { packaging: true } : {}),
         ...(input.includedDlc ? { includedDlc: input.includedDlc } : {}),

@@ -107,7 +107,4 @@ export type DevModeBundleLoadContext = {
      */
     onAssetSetCollapse?: () => void;
     compiled?: Record<string, unknown>;
-    blueprintCompiledScripts?: Record<string, string>;
-    blueprintScriptsCompileOk?: boolean;
-    blueprintScriptsCompileErrors?: string[];
 };

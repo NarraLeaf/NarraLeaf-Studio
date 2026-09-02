@@ -1,4 +1,5 @@
 import path from "path";
+import { compileProjectScripts } from "./scriptCompiler";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
@@ -124,6 +125,10 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
     // cannot run, so the scene it names is not an entry into any story this package holds.
     const sceneDrop = planSceneDrop(context, variant.id, Object.values(localBlueprints.blueprints ?? {}));
+    // The author's scripts, bundled. A failure here is carried as a diagnostic on the blueprint
+    // rather than thrown: a script that will not compile is one dead handler, and the rest of the
+    // game still has to run - the type check is a lint and the build never depends on one.
+    const scripts = await compileProjectScripts(context.projectPath, localBlueprints);
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
     // project has. See `DevModeBundleLoadContext.includedDlc`.
     const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
@@ -188,6 +193,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             persistentVariables: variableTables.persistent,
             savedVariables: variableTables.saved,
             saveSchema,
+            scripts,
         },
         storyLibrary: resolvedStoryLibrary,
         localization,
@@ -210,9 +216,6 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         brand,
         fonts,
         compiled: context.compiled,
-        blueprintCompiledScripts: context.blueprintCompiledScripts,
-        blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
-        blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
         meta: projectIdentifier ? { projectIdentifier } : undefined,
     };
 }
