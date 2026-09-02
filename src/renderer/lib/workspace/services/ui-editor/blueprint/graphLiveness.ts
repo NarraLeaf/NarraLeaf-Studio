@@ -44,6 +44,9 @@ export function isBlueprintGraphEntryNode(node: BlueprintGraphNode): boolean {
  *    are already live - one pass, because a chain of value nodes is walked to its far end.
  */
 export function collectLiveBlueprintGraphNodeIds(ir: BlueprintGraphIr): ReadonlySet<string> {
+    // Once for the whole walk: the catalogue is what says which of a node's pins carry data, and
+    // asking for it per node would re-run the registration sweep once per edge followed.
+    registerCoreBlueprintNodes();
     const nodes = ir.nodes ?? {};
     const edges = ir.edges ?? [];
     const entries = Object.values(nodes).filter(isBlueprintGraphEntryNode);
@@ -86,7 +89,6 @@ function dataInputPortIdsOf(node: BlueprintGraphNode | undefined): ReadonlySet<s
         return null;
     }
     try {
-        registerCoreBlueprintNodes();
         const entry = blueprintNodeRegistry.resolveCatalogEntryForNode(node.type, node.params);
         return new Set(
             entry.pins.filter(pin => pin.kind === "input" && pin.semantic === "data").map(pin => pin.id),
