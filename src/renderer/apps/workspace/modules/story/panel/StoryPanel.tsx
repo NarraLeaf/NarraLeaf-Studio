@@ -18,6 +18,9 @@ import { useRegistry } from "../../../registry";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import type { PanelComponentProps } from "../../types";
 import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEditorTabs";
+import { mergeStoryScenes } from "../storyStructuralGestures";
+import { sceneNeighbours } from "@/lib/workspace/services/story/storyStructuralOps";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId";
 import { storyDocumentFreezeScope } from "../scene-editor/storySceneReadOnly";
@@ -165,6 +168,14 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return null;
         }
         return context.services.get<UIService>(Services.UI);
+    }, [context, isInitialized]);
+
+    // Only a merge reads it, and only to find out whether a graph still names the scene about to go.
+    const blueprintService = useMemo(() => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        return context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     }, [context, isInitialized]);
 
     const dlcService = useMemo(() => {
@@ -637,6 +648,31 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         }
     }, [selectedStoryId, storyService, uiService, t]);
 
+    /**
+     * Put a scene together with the one before or after it.
+     *
+     * Offered here rather than in the scene editor because merging is a scene operation: the pair is
+     * read off the outline, and the undo step belongs on the project stack the outline's Ctrl+Z
+     * reaches. Whichever end the author reached from, the earlier scene survives - so the editor
+     * that has to close is the later one, whether or not it is the row that was clicked.
+     */
+    const handleMergeScene = useCallback(async (scene: StoryScene, side: "next" | "previous") => {
+        if (!storyService || !uiService || !selectedStoryId) {
+            return;
+        }
+        const removedSceneId = await mergeStoryScenes({
+            storyService,
+            uiService,
+            ...(blueprintService ? { blueprintService } : {}),
+            storyId: selectedStoryId,
+            sceneId: scene.id,
+            side,
+        });
+        if (removedSceneId) {
+            closeStorySceneEditorTabs(uiService, selectedStoryId, [removedSceneId]);
+        }
+    }, [blueprintService, selectedStoryId, storyService, uiService]);
+
     const handleSetEntryScene = useCallback((scene: StoryScene) => {
         if (!storyService || !selectedStoryId) {
             return;
@@ -754,6 +790,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
 
     const buildSceneContextMenu = useCallback((scene: StoryScene): ContextMenuDef => {
         const isEntry = document?.entrySceneId === scene.id;
+        // A scene at either end of the story has only one side to merge towards; the other row is
+        // greyed rather than hidden, so the pair reads as one choice with a side that is unavailable.
+        const neighbours = document
+            ? sceneNeighbours(document, scene.id)
+            : { previousSceneId: null, nextSceneId: null };
         return [
             {
                 id: "open-scene",
@@ -814,6 +855,22 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
             {
+                id: "merge-with-next-scene",
+                label: t("story.rowMenu.mergeWithNext"),
+                ...outlineStructure.menuRow(!neighbours.nextSceneId),
+                onClick: () => {
+                    void handleMergeScene(scene, "next");
+                },
+            },
+            {
+                id: "merge-into-previous-scene",
+                label: t("story.rowMenu.mergeIntoPrevious"),
+                ...outlineStructure.menuRow(!neighbours.previousSceneId),
+                onClick: () => {
+                    void handleMergeScene(scene, "previous");
+                },
+            },
+            {
                 id: "delete-scene",
                 label: t("common.delete"),
                 ...outlineStructure.menuRow(),
@@ -822,7 +879,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, outlineStructure, selectedStoryId, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document, freeze, handleDeleteScene, handleMergeScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, outlineStructure, selectedStoryId, t]);
 
     const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
         {

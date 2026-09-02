@@ -24,6 +24,10 @@ export const characters = {
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
         deleteCharacterConfirm: "删除角色“{name}”",
+        renameSpokenRowsConfirm: {
+            other: "同时重命名以“{name}”作为说话人的 {count} 行？",
+        },
+        renameSpokenRowsDetail: "这些行携带的是名称而非角色，将改为“{name}”",
         deleteCharacterDetail: "对白保留名称，引用该角色的舞台行将失去指向",
         deleteGroupConfirm: "删除分组“{name}”",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
@@ -31,6 +35,7 @@ export const characters = {
     // 这两个删除留下的撤销步骤叫什么（"撤销 删除角色 Hiyori"）。
     history: {
         deleteCharacter: "删除角色 {name}",
+        renameCharacter: "重命名角色 {name}",
         deleteGroup: "删除分组 {name}",
     },
     create: {

@@ -1256,6 +1256,33 @@ export function collectRowsSpokenBy(document: StoryDocument, characterId: string
 }
 
 /**
+ * Every dialogue row in a document spoken by a bare name, matched exactly.
+ *
+ * The twin of {@link collectRowsSpokenBy} on the other arm of the speaker payload. Rows that carry a
+ * `characterId` are excluded even when their leftover `speakerName` matches: the character is what
+ * they speak as, and the name they would show follows it.
+ */
+export function collectRowsSpokenByName(document: StoryDocument, speakerName: string): StoryDialogueRowRef[] {
+    const target = speakerName.trim();
+    const rows: StoryDialogueRowRef[] = [];
+    if (!target) {
+        return rows;
+    }
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            if (block.payload.characterId || block.payload.speakerName?.trim() !== target) {
+                continue;
+            }
+            rows.push({ sceneId: scene.id, blockId: block.id });
+        }
+    }
+    return rows;
+}
+
+/**
  * Make the given rows speak as a bare name, dropping whatever character they were bound to.
  *
  * This is what a character's deletion leaves behind. The line reads in the player's dialogue box
