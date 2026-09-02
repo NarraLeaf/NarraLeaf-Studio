@@ -1,3 +1,4 @@
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import { RendererError, throwException } from "@shared/utils/error";
 import {
     DirEntry,
@@ -10,6 +11,7 @@ import { BaseFileSystemService } from "../services/core/FileSystem";
 
 export const WorkspaceStartupErrorKind = {
     MissingProjectConfig: "missing-project-config",
+    ProjectLocked: "project-locked",
 } as const;
 
 export type WorkspaceStartupErrorKind = typeof WorkspaceStartupErrorKind[keyof typeof WorkspaceStartupErrorKind];
@@ -23,6 +25,27 @@ export class WorkspaceStartupError extends RendererError {
         super(message);
         this.name = "WorkspaceStartupError";
     }
+}
+
+/**
+ * The project is open in another NarraLeaf Studio.
+ *
+ * Carries the other session so the screen can name it. The message on the error itself is only for
+ * a log and a support bundle: what the author reads is composed where there is a translator.
+ */
+export class ProjectLockedError extends WorkspaceStartupError {
+    constructor(projectPath: string, public readonly holder: ProjectSessionHolder) {
+        super(
+            WorkspaceStartupErrorKind.ProjectLocked,
+            projectPath,
+            `This project is open in another NarraLeaf Studio on ${holder.hostname}.`,
+        );
+        this.name = "ProjectLockedError";
+    }
+}
+
+export function isProjectLockedError(error: Error): error is ProjectLockedError {
+    return error instanceof ProjectLockedError;
 }
 
 export interface WorkspaceProjectPreflightIssue {
@@ -94,7 +117,30 @@ async function prepareForOpenMerge(projectPath: string): Promise<void> {
     }
 }
 
+/**
+ * Claim the project for this Studio, and refuse to start if another one holds it.
+ *
+ * **First, before the folder is even read as a project.** Every service in the workspace loads a
+ * whole document into memory and writes it back whole, so two Studios on one project is the later
+ * save erasing the earlier one with nothing on screen to say so. The window that loses this is the
+ * one that must not read-modify-write anything - no normalised document, no checkpoint, no
+ * auto-save - and refusing here is what keeps all of them from ever running.
+ *
+ * A claim that cannot be made at all - the window answered nothing, the call failed - lets the
+ * project open. This gate exists to stop a *second* editor, and a project nobody can open because
+ * one message did not come back is a worse failure than the one being prevented.
+ */
+async function claimProjectSession(projectPath: string): Promise<void> {
+    const result = await getInterface().workspace.acquireSessionLock();
+    if (!result.success || result.data.ok) {
+        return;
+    }
+    throw new ProjectLockedError(projectPath, result.data.holder);
+}
+
 export async function ensureWorkspaceProjectCanStart(projectPath: string): Promise<void> {
+    await claimProjectSession(projectPath);
+
     const entries = throwException(await BaseFileSystemService.list(projectPath));
     const dirEntries = entries.map<DirEntry>((entry) => ({
         name: entry.name,

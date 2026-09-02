@@ -1,4 +1,4 @@
-import { MissingProjectConfigScreen } from "./components";
+import { MissingProjectConfigScreen, ProjectLockedScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceClosingOverlay } from "./components/WorkspaceClosingOverlay";
 import { WorkspaceOpeningOverlay } from "./components/WorkspaceOpeningOverlay";
@@ -19,7 +19,7 @@ import { DetachedEditorsHost } from "./detached/DetachedEditorsHost";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
-import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
+import { isProjectLockedError, isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 import { CommandLineBuildHost } from "./CommandLineBuildHost";
 
 /**
@@ -73,6 +73,12 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
 
     // Show error screen if initialization failed
     if (error) {
+        // Ahead of the generic screen because this window is not broken: the project it was opened
+        // on belongs to another NarraLeaf Studio for as long as that one holds it, and nothing here
+        // may write to it in the meantime. Retry is a fresh claim, which is why it is still offered.
+        if (isProjectLockedError(error)) {
+            return <ProjectLockedScreen holder={error.holder} onRetry={retry} />;
+        }
         if (isWorkspaceStartupError(error) && error.kind === WorkspaceStartupErrorKind.MissingProjectConfig) {
             return <MissingProjectConfigScreen projectPath={error.projectPath} />;
         }

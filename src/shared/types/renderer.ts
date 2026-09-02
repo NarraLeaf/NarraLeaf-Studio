@@ -1,4 +1,5 @@
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { ProjectSessionLockOutcome } from "./projectSession";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
@@ -58,6 +59,7 @@ import type {
     PluginInstallResult,
     PluginListItem,
     RuntimePluginDescriptor,
+    RuntimePluginExclusion,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
@@ -329,6 +331,14 @@ export interface RendererPreloadedInterface {
          * when the workspace actually came up.
          */
         setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /**
+         * Take this window's project for this Studio, or find out which one already has it.
+         *
+         * Answered from the window's own props, so it needs no argument and cannot be pointed
+         * anywhere else. A refusal means this window may not write anything belonging to the
+         * project - not a normalised document, not an auto-save, not a checkpoint.
+         */
+        acquireSessionLock(): Promise<RequestStatus<ProjectSessionLockOutcome>>;
         /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
         liveIntentTaken(): Promise<RequestStatus<void>>;
         /**
@@ -592,6 +602,22 @@ export interface RendererPreloadedInterface {
         stop(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         reload(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /**
+         * The stage inside the Dev Mode window, sized the way a packaged game sizes its own.
+         *
+         * `chrome` is the window's content minus the box the stage is drawn into, which only the
+         * renderer can measure - the window is Studio's, and what Studio draws around the stage is
+         * not part of what a game is asking about.
+         */
+        getWindowScaleOptions(
+            design: { width: number; height: number },
+            chrome: { width: number; height: number },
+        ): Promise<RequestStatus<{ scales: number[] }>>;
+        setStageSize(
+            width: number,
+            height: number,
+            chrome: { width: number; height: number },
+        ): Promise<RequestStatus<void>>;
         /** Fullscreen state of the Dev Mode window itself. */
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
@@ -1282,7 +1308,11 @@ export interface RendererPreloadedInterface {
         uninstall(pluginId: string): Promise<RequestStatus<void>>;
         revoke(pluginId: string): Promise<RequestStatus<PluginListItem>>;
         getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
-        getRuntimePlugins(): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>>;
+        getRuntimePlugins(): Promise<RequestStatus<{
+            plugins: RuntimePluginDescriptor[];
+            /** Enabled runtime plugins this project leaves out, and why. */
+            excluded: RuntimePluginExclusion[];
+        }>>;
         reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
         getLocaleContributions(): Promise<RequestStatus<{ contributions: LocaleContribution[] }>>;
         onLocalesChanged(handler: (change: { version: number }) => void): AppEventToken;

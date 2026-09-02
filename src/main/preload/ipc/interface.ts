@@ -281,6 +281,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.workspaceJoinLive, data => handler(data.joinLive)),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
+        acquireSessionLock: () =>
+            ipcClient.invoke(IPCEventType.workspaceAcquireSessionLock, {}),
         openProjectFolder: () =>
             ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
@@ -416,6 +418,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeReload, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
         getStatus: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.devModeGetStatus, { projectPath }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getWindowScaleOptions: (
+            design: { width: number; height: number },
+            chrome: { width: number; height: number },
+        ) =>
+            ipcClient.invoke(IPCEventType.devModeWindowScaleOptions, { design, chrome }) as Promise<RequestStatus<{ scales: number[] }>>,
+        setStageSize: (
+            width: number,
+            height: number,
+            chrome: { width: number; height: number },
+        ) =>
+            ipcClient.invoke(IPCEventType.devModeWindowSetStageSize, { width, height, chrome }) as Promise<RequestStatus<void>>,
         getFullscreen: () =>
             ipcClient.invoke(IPCEventType.devModeFullscreenGet, {}) as Promise<RequestStatus<{ isFullscreen: boolean }>>,
         setFullscreen: (fullscreen: boolean) =>

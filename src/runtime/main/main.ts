@@ -17,6 +17,8 @@ import {
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
     DEFAULT_GAME_CRASH_POLICY,
+    GAME_RUNTIME_PACK_SCHEMA_VERSION,
+    newerRuntimePackSchemaVersion,
     normalizeGameCrashPolicy,
     type GameCrashPolicy,
     type GameRuntimePackV1,
@@ -493,8 +495,28 @@ void app.whenReady().then(async () => {
         // A build made to be inspected says why a patch was refused; a shipped one names the file
         // and stops, because the reason describes how a patch is bound to its build.
         explainRefusedPatches: shellMode !== "production" || shellDebuggable,
+        // Content the player installed that this build cannot read. Told to them rather than only
+        // logged: the game is about to run exactly as it did before, and "nothing happened" is the
+        // one answer they cannot act on.
+        onContentTooNew: reportContentTooNew,
     });
     const pack = await readPack();
+    // The game's own content, from inside its own archive, written by a Studio this build does not
+    // understand. Nothing here can be trusted to build a window from - the crash screen is drawn by
+    // the pack's own bundle - so this is the native box and a clean exit, which is the same last
+    // resort a crash loop ends at.
+    const packVersion = newerRuntimePackSchemaVersion(pack);
+    if (packVersion !== null) {
+        logRuntime(
+            "error",
+            `refusing to start: game content schema v${packVersion} is newer than this build reads`
+            + ` (v${GAME_RUNTIME_PACK_SCHEMA_VERSION})`,
+        );
+        reportFatalRuntimeError(shellText().contentTooNew);
+        isQuitting = true;
+        app.quit();
+        return;
+    }
     if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
         // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
         // rewritten shell manifest does not get past on the platforms that validate one.
@@ -684,6 +706,26 @@ process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
  *
  * Wrapped whole. A failure to report a fatal error must not become a second fatal error.
  */
+/**
+ * Tell the player that a patch or a DLC beside the game needs a newer version of it.
+ *
+ * The same box a fatal error uses, and for the same reason: it needs no window, and this fires
+ * while the game is still starting. It is not fatal, though - the game runs on its own content
+ * exactly as it did - so it says which files did nothing and then gets out of the way.
+ *
+ * The files are named because that is what the player can act on. Why the build cannot read them is
+ * not: a version number in front of somebody who installed a file is a fact about the game, not
+ * about anything they can change.
+ */
+function reportContentTooNew(files: readonly string[]): void {
+    try {
+        const text = shellText();
+        dialog.showErrorBox(gameDisplayName(), `${text.contentTooNew}\n\n${text.contentNotApplied(files)}`);
+    } catch {
+        /* No window server, or a dialog that refused. The layer reader has already logged each file. */
+    }
+}
+
 function reportFatalRuntimeError(headline: string): void {
     try {
         const text = shellText();
@@ -812,6 +854,21 @@ async function readPack(): Promise<GameRuntimePackV1> {
     return packPromise;
 }
 
+/**
+ * What the window is called: the game's name, and for a preview which of its two forms this is.
+ *
+ * A shipped game is only ever the project's name. A preview is the author's own window and can be
+ * either of two artifacts - loose files, or the same sealed store a protected build ships - and
+ * those differ in what an asset can be asked for and in which runtime files can be read at all. The
+ * title is where that is legible; a preview that had opened without saying so would send an author
+ * looking for the difference in their project.
+ */
+function gameWindowTitle(pack: GameRuntimePackV1): string {
+    return pack.mode === "preview"
+        ? shellText().previewTitle(pack.project.name, shellSealed)
+        : pack.project.name;
+}
+
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     const design = resolveInitialWindowSize(pack);
     windowConfig = normalizeWindowConfiguration(pack.bundle?.window);
@@ -846,8 +903,9 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
         || (packDebuggable(pack) && hasDebuggingSwitch(startupArguments(), process.platform));
+    const windowTitle = gameWindowTitle(pack);
     const win = new BrowserWindow({
-        title: pack.project.name,
+        title: windowTitle,
         // The design size is the STAGE, not the window: Electron's width/height are the outer size,
         // so without this a 1920x1080 project was drawn into a client area a title bar shorter than
         // it asked for and scaled to about 0.97 on the display it was made for.
@@ -890,7 +948,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             ],
         },
     });
-    win.setTitle(pack.project.name);
+    win.setTitle(windowTitle);
     windowDesign = design;
     /*
      * The frame, and then the geometry again.

@@ -24,8 +24,10 @@ import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArt
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
+import { resolvePreviewAsShipped } from "../../utils/previewAsShipped";
+import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
-import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
+import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
@@ -38,6 +40,11 @@ type PreviewSession = {
     controlToken: string;
     process: ChildProcess | null;
     watcher: FSWatcher | null;
+    /**
+     * `mtimeMs:size` per watched file, as of the last event this project's watch accepted. Carried
+     * across relaunches rather than rebuilt with the session - see {@link PreviewManager.launchNow}.
+     */
+    fileIdentities: Map<string, string>;
     reloadTimer: ReturnType<typeof setTimeout> | null;
     artifact: GameRuntimeArtifactCompileResult | null;
 };
@@ -62,6 +69,18 @@ type PreviewLaunchAttempt = {
     abandonWeatherBake: (() => void) | null;
     session: PreviewSession | null;
 };
+
+/**
+ * Whether a preview seals its content, and why not when it does not.
+ *
+ * The two "no" answers are kept apart because only one of them is a choice: a project with asset
+ * protection off has nothing to seal, while a project with it on is running loose files because this
+ * machine asked for the fast path, and that is worth saying on the console.
+ */
+type PreviewSealing =
+    | { kind: "unprotected" }
+    | { kind: "loose-by-choice" }
+    | { kind: "sealed"; key: string };
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 /** How long to wait before re-dialling a control socket that is not listening yet. */
@@ -303,6 +322,11 @@ export class PreviewManager {
             controlToken: crypto.randomBytes(32).toString("hex"),
             process: null,
             watcher: null,
+            // Handed on from the session this launch replaces, because a relaunch is exactly when
+            // this matters: compiling copies every asset the preview ships, which moves their access
+            // times, and a watch that had learnt nothing yet would take each of those events as an
+            // edit and relaunch again.
+            fileIdentities: previous?.fileIdentities ?? new Map(),
             reloadTimer: null,
             artifact: null,
         };
@@ -329,10 +353,13 @@ export class PreviewManager {
             if (pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, `packaging runtime plugin(s): ${pluginSelection.selected.map(source => source.manifest.id).join(", ")}`);
             }
-            const encryptionKey = await this.resolveEncryptionKey(normalizedProjectPath);
-            if (encryptionKey) {
+            const sealing = await this.resolveSealing(normalizedProjectPath);
+            if (sealing.kind === "sealed") {
                 this.emitVerbose(session, "asset protection enabled; encrypting pack");
+            } else if (sealing.kind === "loose-by-choice") {
+                this.emitVerbose(session, "asset protection enabled; running loose files (Preview as shipped is off)");
             }
+            const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(attempt);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), normalizedProjectPath);
@@ -465,7 +492,7 @@ export class PreviewManager {
             version: plugin.manifest.version,
             enabled: plugin.enabled,
         }));
-        return selectRuntimePluginsForPack({
+        return selectProjectRuntimePlugins({
             dependencies: projectConfig?.dependencies,
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,
@@ -473,17 +500,38 @@ export class PreviewManager {
     }
 
     /**
-     * Resolve the pack key for this project, or undefined when asset protection
-     * is off. Preview runs the same path Production will.
+     * How this preview holds its content: sealed in a protected store, or as loose files.
+     *
+     * Two questions, answered in order. The project decides whether protection exists at all; the
+     * machine decides whether *this* preview rehearses it. Nothing else in the compile is touched,
+     * so a sealed preview is the artifact a protected production build produces - same store, same
+     * empty manifest, same runtime-file whitelist, same codec - and a loose one is the artifact an
+     * unprotected build produces.
+     *
+     * # Why the second question exists
+     *
+     * The store has no way to replace one entry, so a sealed preview re-seals every asset on every
+     * launch: measured on a real-size project at around six seconds hot against under two loose, for
+     * an artifact nobody receives. Paying that for each run of a story edit is the cost of rehearsing
+     * a shipped path the author is not shipping yet.
+     *
+     * It is not free to skip, either, which is why this is a switch rather than a rule. A sealed
+     * store behaves differently by construction in three ways an author only meets once: an asset
+     * has no file path, a runtime file outside the store's allowed names cannot be read, and the
+     * manifest is empty so everything resolves by id. Left off for a whole project, those three
+     * surface for the first time in a shipped build.
      */
-    private async resolveEncryptionKey(projectPath: string): Promise<string | undefined> {
+    private async resolveSealing(projectPath: string): Promise<PreviewSealing> {
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const enabled =
             (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
         if (!enabled) {
-            return undefined;
+            return { kind: "unprotected" };
         }
-        return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
+        if (!resolvePreviewAsShipped(this.app.getGlobalState(), projectPath)) {
+            return { kind: "loose-by-choice" };
+        }
+        return { kind: "sealed", key: await resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath) };
     }
 
     private async stopSession(session: PreviewSession): Promise<void> {
@@ -575,11 +623,25 @@ export class PreviewManager {
                 assetsRoot,
             ],
             // See DevModeManager: the atomic writer's scratch siblings are not project changes.
-            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN },
+            // `alwaysStat` so `watchedFileChanged` has a modification time and a size to compare;
+            // without it every reported change would have to be taken at face value, and the compile
+            // this watch belongs to reads every asset in the project.
+            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN, alwaysStat: true },
         );
-        session.watcher.on("add", file => this.scheduleRelaunch(session, "add", file));
-        session.watcher.on("change", file => this.scheduleRelaunch(session, "change", file));
-        session.watcher.on("unlink", file => this.scheduleRelaunch(session, "unlink", file));
+        session.watcher.on("add", (file, stats) => {
+            rememberWatchedFile(session.fileIdentities, file, stats);
+            this.scheduleRelaunch(session, "add", file);
+        });
+        session.watcher.on("change", (file, stats) => {
+            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
+                return;
+            }
+            this.scheduleRelaunch(session, "change", file);
+        });
+        session.watcher.on("unlink", file => {
+            session.fileIdentities.delete(file);
+            this.scheduleRelaunch(session, "unlink", file);
+        });
     }
 
     private scheduleRelaunch(session: PreviewSession, event: string, file: string): void {

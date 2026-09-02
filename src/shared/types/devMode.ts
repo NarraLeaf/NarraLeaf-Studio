@@ -281,6 +281,15 @@ export type DevModeBundle = {
      * places for it to be wrong.
      */
     installedDlc?: readonly string[];
+    /**
+     * The surface to show when the running story falls off the end, resolved for the variant this
+     * bundle was assembled as - the same answer the pack compiler writes into a pack.
+     *
+     * Carried so a Dev Mode session ends where a build ends. Absent, or blank, is a project that
+     * named no page: the story stops and the stage stays where it is, which is what every session
+     * did before this existed.
+     */
+    endingSurfaceId?: string;
     revision: number;
     timestamp: string;
     ui: {

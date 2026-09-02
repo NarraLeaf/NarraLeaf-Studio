@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackageCheck, PackagePlus, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
@@ -17,6 +17,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import type { ProjectDlc } from "@shared/types/dlc";
@@ -76,6 +77,16 @@ const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
  * reasoning is on `runDlc.ts`, which reads this very key on the main process side.
  */
 const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
+/**
+ * Whether a preview of this project seals its content the way a shipped build does, bucketed by
+ * project.
+ *
+ * Off unless this machine says otherwise, which is why the key holds only the projects that turned
+ * it on. A machine habit for the same reason the two above are: what it decides is how long every
+ * preview of the afternoon takes, and that is a fact about one author's session. `previewAsShipped.ts`
+ * reads this very key on the main process side.
+ */
+const PREVIEW_AS_SHIPPED_SETTINGS_KEY = "ui.previewAsShippedByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
@@ -176,6 +187,15 @@ export function RunControl() {
     const resetCloseTimerRef = useRef<number | null>(null);
     /** The ids ticked on, as the setting stores them. An id the project lost is left alone here. */
     const [dlcOn, setDlcOn] = useState<readonly string[]>([]);
+    const [previewAsShipped, setPreviewAsShipped] = useState(false);
+    /**
+     * Whether the project protects its assets at all, followed live.
+     *
+     * The row below is only offered where it decides something: with protection off there is one
+     * form of a preview, and a switch between it and itself is a control that cannot do anything -
+     * the same rule the edition row follows for a project with no variants.
+     */
+    const [assetsProtected, setAssetsProtected] = useState(false);
 
     // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
     // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
@@ -273,6 +293,39 @@ export function RunControl() {
             }
         });
         return () => token?.cancel();
+    }, [context]);
+
+    // Whether a preview of this project rehearses the shipped form, from the same store the main
+    // process reads.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const read = (value: unknown) => {
+            const record = value && typeof value === "object" && !Array.isArray(value)
+                ? value as Record<string, unknown>
+                : {};
+            setPreviewAsShipped(record[projectKey] === true);
+        };
+        read(settings.getSync(PREVIEW_AS_SHIPPED_SETTINGS_KEY));
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === PREVIEW_AS_SHIPPED_SETTINGS_KEY) {
+                read(change.value);
+            }
+        });
+        return () => token?.cancel();
+    }, [context]);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const project = context.services.get<ProjectService>(Services.Project);
+        const read = () => setAssetsProtected(project.getSecurityConfiguration().encryptAssets);
+        read();
+        return project.onConfigChanged(read);
     }, [context]);
 
     useEffect(() => {
@@ -464,7 +517,7 @@ export function RunControl() {
      * Refresh the plugin dependency table before a run.
      *
      * Which plugin runtime entries go into the pack is decided from that table (see
-     * `selectRuntimePluginsForPack`), and until now only a build, an export, or a visit to the
+     * `selectProjectRuntimePlugins`), and until now only a build, an export, or a visit to the
      * Project panel ever refreshed it. So the first run after an author added the row that USES a
      * plugin - a plugin blueprint node, a plugin story action - ran a game the plugin was not in,
      * and the feature simply did not happen with nothing on screen to say why.
@@ -811,6 +864,28 @@ export function RunControl() {
         // several clicks, and closing after each would make the author reopen it every time.
     }, [context, dlcOn]);
 
+    const togglePreviewAsShipped = useCallback((): void => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const current = settings.getSync(PREVIEW_AS_SHIPPED_SETTINGS_KEY);
+        const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
+            ? { ...current as Record<string, unknown> }
+            : {};
+        const next = !previewAsShipped;
+        if (next) {
+            record[projectKey] = true;
+        } else {
+            // Deleted rather than stored as false, so "runs the fast path" and "never chose" are one
+            // state - the same rule the edition and DLC choices follow.
+            delete record[projectKey];
+        }
+        void settings.set(PREVIEW_AS_SHIPPED_SETTINGS_KEY, record);
+        setPreviewAsShipped(next);
+    }, [context, previewAsShipped]);
+
     /**
      * Clear the save slots and persistent data a mode leaves behind.
      *
@@ -885,11 +960,18 @@ export function RunControl() {
     // only thing it could add is a count - and a count is not what the face is for: the face says
     // what this run IS, and every run is the game with whatever the author asked for beside it.
     // The menu row states the count where it can be read against the list it counts.
+    //
+    // "Preview as shipped" rides here for the same reason and on the same terms: it decides what the
+    // artifact IS, and it is off by default, so a preview that seals - and takes several times as
+    // long doing it - must not be indistinguishable from an ordinary one. Only under Preview: it
+    // says nothing about a Dev Mode run.
     const runLabel = testActive
         ? t("test.statusBar.label")
-        : selectedVariant
-            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
-            : t(meta.labelKey);
+        : [
+            t(meta.labelKey),
+            ...(selectedVariant ? [selectedVariant.name] : []),
+            ...(mode === "preview" && assetsProtected && previewAsShipped ? [t("actions.run.asShipped")] : []),
+        ].join(" · ");
 
     return (
         <div className="relative flex items-center" ref={menuRef}>
@@ -985,12 +1067,18 @@ export function RunControl() {
                             );
                         })}
 
+                        {/* The rule that separates the run modes from the rows that say what a run
+                            IS. Drawn once for the group rather than by whichever row happens to come
+                            first, because which of them is there depends on the project. */}
+                        {(variants.length > 0 || dlcs.length > 0 || assetsProtected) && (
+                            <div className="my-1 mx-2 h-px bg-fill-strong" />
+                        )}
+
                         {/* Which edition the three run entries above assemble as. Only where there is
                             something to pick: a project with no variant of its own has one answer, and
                             a row offering it would be a control that cannot do anything. */}
                         {variants.length > 0 && (
                             <>
-                                <div className="my-1 mx-2 h-px bg-fill-strong" />
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -1040,15 +1128,11 @@ export function RunControl() {
                             rule between them, because the two rows answer one question together -
                             what this run IS. Only where the project ships some.
 
-                            The rule appears only when there is no edition row above, where it is what
-                            keeps DLC off the run modes.
-
                             Multi-select, so the row states a count rather than a name: "1 of 3" is
                             the only summary of a set that does not grow with it. None are on until an
                             author ticks one - a run is the game a player bought. */}
                         {dlcs.length > 0 && (
                             <>
-                                {variants.length === 0 && <div className="my-1 mx-2 h-px bg-fill-strong" />}
                                 <button
                                     type="button"
                                     role="menuitem"
@@ -1092,6 +1176,42 @@ export function RunControl() {
                                     );
                                 })}
                             </>
+                        )}
+
+                        {/* How a preview holds this project's protected content. Off, a preview runs
+                            loose files and starts in about a second; on, it seals the store exactly
+                            as a protected build does and takes several times as long, which is what
+                            makes an asset with no file path or a runtime file outside the store show
+                            up here rather than after shipping. Only where the project protects its
+                            assets: with protection off there is one form of a preview, and offering
+                            a switch between it and itself would be a control that cannot do
+                            anything. Two lines because the choice is a trade an author has to be
+                            able to read, unlike the pickers above, which state a name. */}
+                        {assetsProtected && (
+                            <button
+                                type="button"
+                                role="menuitemcheckbox"
+                                aria-checked={previewAsShipped}
+                                data-run-preview-as-shipped=""
+                                onClick={togglePreviewAsShipped}
+                                className={cn(
+                                    "flex w-full cursor-default items-start gap-2 px-3 py-2 text-sm transition-colors",
+                                    previewAsShipped ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                )}
+                            >
+                                <span className="flex h-5 w-4 items-center justify-center">
+                                    <PackageCheck className="h-4 w-4" />
+                                </span>
+                                <span className="flex-1 text-left">
+                                    <span className="block whitespace-nowrap leading-5">
+                                        {t("actions.run.previewAsShipped")}
+                                    </span>
+                                    <span className="mt-0.5 block max-w-56 text-xs leading-4 text-fg-subtle">
+                                        {t("actions.run.previewAsShippedDetail")}
+                                    </span>
+                                </span>
+                                <span className="w-3 pt-0.5">{previewAsShipped && <Check className="h-3 w-3" />}</span>
+                            </button>
                         )}
 
                         <div className="my-1 mx-2 h-px bg-fill-strong" />

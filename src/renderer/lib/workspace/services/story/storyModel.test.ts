@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryExpr, StoryLibraryIndex, StoryVariableRef } from "@shared/types/story";
 import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
-import { findStoryDocumentTooOldError, StoryDocumentTooOldError } from "@shared/story/migrateStoryDocument";
+import {
+    findStoryDocumentTooNewError,
+    findStoryDocumentTooOldError,
+    StoryDocumentTooNewError,
+    StoryDocumentTooOldError,
+} from "@shared/story/migrateStoryDocument";
 import {
     bindRowsToCharacter,
     collectInvalidBlocks,
@@ -979,6 +984,32 @@ describe("story document migration ladder", () => {
         expect(findStoryDocumentTooOldError(new Error("wrapped", { cause: thrown }))).toBe(thrown);
         expect((thrown as StoryDocumentTooOldError).version).toBe(17);
         expect((thrown as StoryDocumentTooOldError).minimumVersion).toBe(STORY_DOCUMENT_MIN_SUPPORTED_VERSION);
+    });
+
+    /**
+     * The other end of the ladder, and the end where being wrong costs the author their work.
+     *
+     * A document above the current version used to be handed straight through: read as if it were
+     * current, the normalize pass drops every field this build has not heard of and the next save
+     * writes that back. One visit from an older Studio was enough to strip a newer one's work, with
+     * nothing on screen having said a field was lost.
+     */
+    it("refuses a document from a newer Studio rather than reading it as current", () => {
+        let thrown: unknown;
+        try {
+            normalizeStoryDocument(docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION + 1), "2026-07-16T00:00:00.000Z");
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(StoryDocumentTooNewError);
+        expect(findStoryDocumentTooNewError(new Error("wrapped", { cause: thrown }))).toBe(thrown);
+        expect((thrown as StoryDocumentTooNewError).version).toBe(STORY_DOCUMENT_SCHEMA_VERSION + 1);
+        expect((thrown as StoryDocumentTooNewError).supportedVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    it("reads a document at the current version untouched", () => {
+        expect(() => normalizeStoryDocument(docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION), "2026-07-16T00:00:00.000Z"))
+            .not.toThrow();
     });
 
     /**

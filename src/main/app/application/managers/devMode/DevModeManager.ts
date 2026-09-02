@@ -3,7 +3,6 @@ import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared
 import path from "path";
 import crypto from "crypto";
 import chokidar, { FSWatcher } from "chokidar";
-import type { Stats } from "fs";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
@@ -17,6 +16,7 @@ import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
+import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -50,21 +50,6 @@ type DevModeSession = {
     pendingError: string | null;
     reloadTimer: ReturnType<typeof setTimeout> | null;
 };
-
-/**
- * What a watched file looks like right now, or null when the watcher reported no stats.
- *
- * The pair an author can change. A directory watch also reports a last-access-time update as a
- * change, and NTFS updates access times by default, so *reading* a file looks exactly like editing
- * one. The running game reads the assets it preloads and a preview build copies every asset it
- * ships, so a session that was doing nothing but running kept scheduling reloads of itself -
- * measured at around nine seconds each on a medium project.
- */
-export function watchedFileIdentity(stats?: Pick<Stats, "mtimeMs" | "size">): string | null {
-    return stats && typeof stats.mtimeMs === "number" && typeof stats.size === "number"
-        ? `${stats.mtimeMs}:${stats.size}`
-        : null;
-}
 
 export class DevModeManager {
     /**
@@ -527,11 +512,11 @@ export class DevModeManager {
             },
         );
         session.watcher.on("add", (file, stats) => {
-            this.rememberFileIdentity(session, file, stats);
+            rememberWatchedFile(session.fileIdentities, file, stats);
             this.scheduleReload(session, "add", file);
         });
         session.watcher.on("change", (file, stats) => {
-            if (!this.fileContentChanged(session, file, stats)) {
+            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
                 return;
             }
             this.scheduleReload(session, "change", file);
@@ -540,35 +525,6 @@ export class DevModeManager {
             session.fileIdentities.delete(file);
             this.scheduleReload(session, "unlink", file);
         });
-    }
-
-    private rememberFileIdentity(session: DevModeSession, file: string, stats?: Stats): void {
-        const identity = watchedFileIdentity(stats);
-        if (identity) {
-            session.fileIdentities.set(file, identity);
-        }
-    }
-
-    /**
-     * Whether a `change` event is about the file's contents rather than about when it was last read.
-     *
-     * The directory watch reports a last-access-time update as a change, and NTFS updates access
-     * times by default - so every asset the running game preloads, and every asset a preview build
-     * copies, came back as "the project changed". What decides instead is the pair the author can
-     * actually change: an edit moves the modification time or the size, and reading the file moves
-     * neither.
-     *
-     * A file whose identity is unknown (no stats, or one this watch has not seen before) counts as
-     * changed. Missing a real edit is a stale game; an extra reload is a slow one.
-     */
-    private fileContentChanged(session: DevModeSession, file: string, stats?: Stats): boolean {
-        const identity = watchedFileIdentity(stats);
-        if (!identity) {
-            return true;
-        }
-        const previous = session.fileIdentities.get(file);
-        session.fileIdentities.set(file, identity);
-        return previous !== identity;
     }
 
     private scheduleReload(session: DevModeSession, event: string, file: string): void {

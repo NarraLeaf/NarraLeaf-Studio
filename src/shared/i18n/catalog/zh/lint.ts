@@ -399,6 +399,7 @@ export const lint = {
         ruleFailed: "{rule} 未能运行",
         storyLoadFailed: "{story} 无法打开",
         storyTooOld: "{story} 使用 v{version} 版故事格式，当前版本的 Studio 可打开 v{minimum} 及以后",
+        storyTooNew: "{story} 由更新版本的 NarraLeaf Studio 写入（v{version} 版故事格式），当前版本的 Studio 最高读到 v{supported}",
     },
     category: {
         assets: "资产",

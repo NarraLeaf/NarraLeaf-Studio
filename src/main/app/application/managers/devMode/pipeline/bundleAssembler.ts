@@ -54,6 +54,8 @@ import {
     appTagMechanismKey,
     isBuiltinAppTagId,
     RELEASE_APP_TAG,
+    resolveAppTag,
+    resolveAppTagEndingSurface,
     type AppTagMechanismRef,
 } from "@shared/types/appTag";
 import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
@@ -95,16 +97,67 @@ import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSumm
 import { Fs } from "@shared/utils/fs";
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import { refuseNewerProjectDocument, type ProjectDocumentGate } from "@shared/documents/newerSchema";
+import { CHARACTER_STORE_VERSION } from "@shared/characters/characterStoreModel";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { ASSET_SET_SCHEMA_VERSION } from "@shared/types/assetSet";
+import { AUDIO_TRACK_SCHEMA_VERSION } from "@shared/types/audioTrack";
+import { BRAND_SCHEMA_VERSION } from "@shared/types/brand";
+import { LOCALIZATION_DOCUMENT_SCHEMA_VERSION, LOCALIZATION_KEYS_SCHEMA_VERSION } from "@shared/types/localization";
+import { SAVE_SCHEMA_VERSION } from "@shared/types/saveSchema";
+import {
+    STORY_ANIMATION_SCHEMA_VERSION,
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+} from "@shared/types/story";
+import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
+import { VOICE_DOCUMENT_SCHEMA_VERSION } from "@shared/types/voice";
+import { localizeProjectDocumentRefusal, rethrowIfTooNew } from "../../../utils/projectDocumentGate";
+import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
 /**
  * Assemble a DevModeBundle by reading `editor/ui/uidoc.json` and `uigraphs.json` from disk.
+ *
+ * The wrapper exists for one failure: a project file a newer Studio wrote. Every read below refuses
+ * one rather than normalizing it away - see `@shared/documents/newerSchema` for why that is worse
+ * than stopping - and the refusal is a value carrying the file, its version and this build's, with
+ * no prose. Here is where the language is known, so here is where it becomes a sentence. Every host
+ * of this assembly prints the message of what it catches, so translating once at the boundary
+ * reaches the Dev Mode console, the Dev Mode failure screen, the build report and the command-line
+ * build's exit alike.
  */
 export async function assembleDevModeBundleFromProjectPath(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
+    try {
+        return await assembleBundle(context);
+    } catch (error) {
+        throw localizeProjectDocumentRefusal(error, context.locale);
+    }
+}
+
+async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
     const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
-    const uidoc = await readJsonFile<UIDocument>(uidocPath);
-    const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath);
+    const uidoc = await readJsonFile<UIDocument>(uidocPath, {
+        kind: "uiDocument",
+        subject: relativeSubject(context.projectPath, uidocPath),
+        supportedVersion: UI_DOCUMENT_SCHEMA_VERSION,
+    });
+    const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath, {
+        kind: "uiGraphs",
+        subject: relativeSubject(context.projectPath, uigraphsPath),
+        supportedVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+    });
+    // The blueprint document is a field of the graphs file rather than a file of its own, so it
+    // carries its own version and needs its own gate: `migrateBlueprintDocumentToLatest` refuses a
+    // version outside its band, but the sentence it throws names the floor, which for a document
+    // from the future is the wrong number to put in front of an author.
+    refuseNewerProjectDocument(uigraphsRaw?.blueprintDocument, {
+        kind: "blueprints",
+        subject: relativeSubject(context.projectPath, uigraphsPath),
+        supportedVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+    });
     const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
     const fold = { tagName: variant.name };
     // Where the variant stops being a label and starts deciding bytes, the blueprint half of what
@@ -191,6 +244,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const brand = await loadProjectBrand(context.projectPath);
     const fonts = await loadProjectFonts(context.projectPath);
     const saveSchema = await loadSaveSchemaTable(context.projectPath);
+    const endingSurfaceId = await loadEndingSurfaceId(context.projectPath, variant.id);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -198,6 +252,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
         // empty list would be a different claim.
         ...(carriedDlc ? { installedDlc: [...carriedDlc] } : {}),
+        // Only when the project named one. Blank and absent mean the same thing to a host, and an
+        // empty string in the bundle would read as a surface id that could not be resolved.
+        ...(endingSurfaceId ? { endingSurfaceId } : {}),
         ui: {
             uidoc,
             uigraphs,
@@ -232,26 +289,50 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     };
 }
 
-async function readOptionalJsonFile<T>(filePath: string): Promise<T | undefined> {
+/**
+ * What a refusal calls a file: its path inside the project.
+ *
+ * The project's own directory is not part of it. An author is being told which of *their* files
+ * this is, and the absolute path is both longer than the answer and specific to the machine.
+ */
+function relativeSubject(projectPath: string, filePath: string): string {
+    return path.relative(projectPath, filePath).split(path.sep).join("/");
+}
+
+/**
+ * `gate` is what stops a document a newer Studio wrote from reaching the normalizers below.
+ *
+ * Checked here, between the parse and the first reader, because that is the only point where the
+ * document is still exactly what is on disk: one line further on a normalizer has already dropped
+ * whatever it did not recognise, and nothing downstream can tell that from a file that never had it.
+ */
+async function readOptionalJsonFile<T>(filePath: string, gate?: ProjectDocumentGate): Promise<T | undefined> {
     const result = await Fs.read(filePath, "utf-8");
     if (!result.ok) {
         return undefined;
     }
-    try {
-        return JSON.parse(result.data) as T;
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
+    const parsed = parseJsonFile(filePath, result.data);
+    if (gate) {
+        refuseNewerProjectDocument(parsed, gate);
     }
+    return parsed as T;
 }
 
-async function readJsonFile<T>(filePath: string): Promise<T> {
+async function readJsonFile<T>(filePath: string, gate?: ProjectDocumentGate): Promise<T> {
     const result = await Fs.read(filePath, "utf-8");
     if (!result.ok) {
         throw new Error(result.error?.message ?? `Failed to read ${filePath}`);
     }
+    const parsed = parseJsonFile(filePath, result.data);
+    if (gate) {
+        refuseNewerProjectDocument(parsed, gate);
+    }
+    return parsed as T;
+}
+
+function parseJsonFile(filePath: string, text: string): unknown {
     try {
-        return JSON.parse(result.data) as T;
+        return JSON.parse(text) as unknown;
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
@@ -274,7 +355,11 @@ async function loadVariableRuntimeTables(
     projectPath: string,
 ): Promise<{ persistent: PersistentVariableRuntimeTable; saved: SavedVariableRuntimeTable }> {
     const registryPath = path.join(projectPath, "editor", "variables.json");
-    const raw = await readOptionalJsonFile<unknown>(registryPath);
+    const raw = await readOptionalJsonFile<unknown>(registryPath, {
+        kind: "variables",
+        subject: relativeSubject(projectPath, registryPath),
+        supportedVersion: VARIABLE_REGISTRY_SCHEMA_VERSION,
+    });
     if (raw) {
         const registry = migrateVariableRegistryToLatest(raw);
         return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
@@ -293,7 +378,12 @@ async function loadVariableRuntimeTables(
  * the empty table plus a lint error does not.
  */
 async function loadSaveSchemaTable(projectPath: string): Promise<SaveSchemaRuntimeTable> {
-    const raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "save-schema.json"));
+    const schemaPath = path.join(projectPath, "editor", "save-schema.json");
+    const raw = await readOptionalJsonFile<unknown>(schemaPath, {
+        kind: "saveSchema",
+        subject: relativeSubject(projectPath, schemaPath),
+        supportedVersion: SAVE_SCHEMA_VERSION,
+    });
     return raw ? listSaveSchemaFields(migrateSaveSchemaToLatest(raw)) : [];
 }
 
@@ -461,7 +551,11 @@ async function loadStoryLibrary(
     carriedDlc: ReadonlySet<string> | null,
 ): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
-    const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
+    const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath, {
+        kind: "storyIndex",
+        subject: relativeSubject(projectPath, indexPath),
+        supportedVersion: STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+    });
     if (!index) {
         return undefined;
     }
@@ -489,7 +583,13 @@ async function loadStoryLibrary(
         // plays and grades nothing, a `/transform` preset that never moves its sprite. The editor
         // migrates on load, but a document is only rewritten when the author edits it, so "opened the
         // project once" is not enough and cannot be made enough.
-        const document = migrateStoryDocumentToLatest(await readJsonFile<StoryDocument>(documentPath));
+        // Named by the story's own name rather than by its path: the path is made of an id, and an
+        // id is not something to put in front of an author.
+        const document = migrateStoryDocumentToLatest(await readJsonFile<StoryDocument>(documentPath, {
+            kind: "story",
+            subject: entry.name || entry.id,
+            supportedVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        }));
         if (document.id !== entry.id) {
             throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
         }
@@ -745,10 +845,16 @@ function describeAssetSetProblem(
 
 /** The sets the project declares. Absent or unreadable is "no sets", which changes nothing. */
 async function loadAssetSets(projectPath: string): Promise<AssetSet[]> {
+    const setsPath = path.join(projectPath, "editor", "asset-sets.json");
     let raw: unknown;
     try {
-        raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "asset-sets.json"));
-    } catch {
+        raw = await readOptionalJsonFile<unknown>(setsPath, {
+            kind: "assetSets",
+            subject: relativeSubject(projectPath, setsPath),
+            supportedVersion: ASSET_SET_SCHEMA_VERSION,
+        });
+    } catch (error) {
+        rethrowIfTooNew(error);
         return [];
     }
     return raw ? normalizeProjectAssetSets(raw).sets : [];
@@ -872,9 +978,14 @@ export async function loadGameAudio(projectPath: string): Promise<GameAudioBundl
 async function loadProjectAudioTracks(projectPath: string): Promise<ProjectAudioTrack[]> {
     const tracksPath = path.join(projectPath, "editor", "audio-tracks.json");
     try {
-        const raw = await readOptionalJsonFile<unknown>(tracksPath);
+        const raw = await readOptionalJsonFile<unknown>(tracksPath, {
+            kind: "audioTracks",
+            subject: relativeSubject(projectPath, tracksPath),
+            supportedVersion: AUDIO_TRACK_SCHEMA_VERSION,
+        });
         return migrateProjectAudioTrackDocument(raw ?? {}).tracks;
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         return normalizeProjectAudioTracks([]);
     }
 }
@@ -892,7 +1003,12 @@ function storyDocumentRelativePath(storyId: string): string {
 
 async function loadStoryAnimations(projectPath: string): Promise<Record<string, StoryAnimationAsset>> {
     const indexPath = path.join(projectPath, "editor", "story", "animations", "index.json");
-    const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath);
+    const animationGate = (filePath: string): ProjectDocumentGate => ({
+        kind: "storyAnimation",
+        subject: relativeSubject(projectPath, filePath),
+        supportedVersion: STORY_ANIMATION_SCHEMA_VERSION,
+    });
+    const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath, animationGate(indexPath));
     if (!index) {
         return {};
     }
@@ -904,7 +1020,7 @@ async function loadStoryAnimations(projectPath: string): Promise<Record<string, 
         }
         seen.add(entry.id);
         const animationPath = path.join(projectPath, "editor", "story", "animations", `${entry.id}.json`);
-        const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath);
+        const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath, animationGate(animationPath));
         if (!animation || animation.id !== entry.id) {
             continue;
         }
@@ -915,7 +1031,14 @@ async function loadStoryAnimations(projectPath: string): Promise<Record<string, 
 
 async function loadCharacterSummaries(projectPath: string): Promise<DevModeCharacterSummary[]> {
     const storePath = path.join(projectPath, "editor", "services", "character.json");
-    const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath);
+    // The character store versions itself as `version`, not `schemaVersion`: it predates the
+    // convention, and reading the usual field here would gate nothing at all.
+    const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath, {
+        kind: "characters",
+        subject: relativeSubject(projectPath, storePath),
+        supportedVersion: CHARACTER_STORE_VERSION,
+        field: "version",
+    });
     const characters = Array.isArray(store?.characters) ? store.characters : [];
     return mapCharacterStoreEntriesToSummaries(characters);
 }
@@ -975,10 +1098,14 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
         }
         let raw: unknown;
         try {
-            raw = await readOptionalJsonFile<unknown>(
-                path.join(projectPath, "editor", "localization", `${locale.code}.json`),
-            );
-        } catch {
+            const tablePath = path.join(projectPath, "editor", "localization", `${locale.code}.json`);
+            raw = await readOptionalJsonFile<unknown>(tablePath, {
+                kind: "localization",
+                subject: relativeSubject(projectPath, tablePath),
+                supportedVersion: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
+            });
+        } catch (error) {
+            rethrowIfTooNew(error);
             continue;
         }
         if (!raw) {
@@ -997,9 +1124,12 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
     }
     let keys: Record<string, string> | undefined;
     try {
-        const rawKeys = await readOptionalJsonFile<unknown>(
-            path.join(projectPath, "editor", "localization", "keys.json"),
-        );
+        const keysPath = path.join(projectPath, "editor", "localization", "keys.json");
+        const rawKeys = await readOptionalJsonFile<unknown>(keysPath, {
+            kind: "localizationKeys",
+            subject: relativeSubject(projectPath, keysPath),
+            supportedVersion: LOCALIZATION_KEYS_SCHEMA_VERSION,
+        });
         if (rawKeys) {
             const keysDocument = normalizeLocalizationKeysDocument(rawKeys);
             const entries = Object.entries(keysDocument.keys);
@@ -1007,7 +1137,8 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
                 keys = Object.fromEntries(entries.map(([name, definition]) => [name, definition.sourceText]));
             }
         }
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         // Broken keys file degrades to no named keys.
     }
     return {
@@ -1037,10 +1168,14 @@ export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundl
     for (const locale of voice.voicedLocales) {
         let raw: unknown;
         try {
-            raw = await readOptionalJsonFile<unknown>(
-                path.join(projectPath, "editor", "voice", `${locale.code}.json`),
-            );
-        } catch {
+            const tablePath = path.join(projectPath, "editor", "voice", `${locale.code}.json`);
+            raw = await readOptionalJsonFile<unknown>(tablePath, {
+                kind: "voice",
+                subject: relativeSubject(projectPath, tablePath),
+                supportedVersion: VOICE_DOCUMENT_SCHEMA_VERSION,
+            });
+        } catch (error) {
+            rethrowIfTooNew(error);
             continue;
         }
         if (!raw) {
@@ -1134,6 +1269,27 @@ export async function loadWindowConfiguration(projectPath: string): Promise<Wind
 }
 
 /**
+ * The page this session ends on, resolved for the variant it is assembled as.
+ *
+ * The same read the pack compiler makes, from the same document, so a story that falls off the end
+ * lands on the same page in Dev Mode as in a build - and an author can see the page they authored
+ * for it without packaging one. Per variant for the reason the addresses are: the demo's ending is
+ * not the full game's, and one story document produces both.
+ *
+ * A document that will not parse leaves the session with no ending page rather than failing the
+ * assembly: this is one field of a bundle, and a session that will not start over it is worse than
+ * a story that stops where it always used to. Exported for tests.
+ */
+export async function loadEndingSurfaceId(projectPath: string, appTagId: string): Promise<string> {
+    try {
+        const document = await readProjectAppTagDocumentFromDir(projectPath);
+        return resolveAppTagEndingSurface(resolveAppTag(document.tags, appTagId), document.endingSurfaceId).value;
+    } catch {
+        return "";
+    }
+}
+
+/**
  * Load the frame rate screen effects are baked at from `.nlproj` `app.vfx`. Dense like the ones
  * above, and load-bearing rather than informational: this is what the running game computes a clip
  * id from, and the packer computed the ids it shipped from the same file. Exported for tests.
@@ -1193,9 +1349,10 @@ export async function loadPlayerPreferences(projectPath: string): Promise<Player
 export async function loadProjectBrand(projectPath: string): Promise<BrandColor[]> {
     const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
     try {
-        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        const raw = await readOptionalJsonFile<unknown>(brandPath, BRAND_GATE);
         return migrateProjectBrandDocument(raw ?? {}).colors;
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         return normalizeProjectBrandColors([]);
     }
 }
@@ -1212,12 +1369,23 @@ export async function loadProjectBrand(projectPath: string): Promise<BrandColor[
 export async function loadProjectFonts(projectPath: string): Promise<ProjectFontEntry[]> {
     const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
     try {
-        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        const raw = await readOptionalJsonFile<unknown>(brandPath, BRAND_GATE);
         return migrateProjectBrandDocument(raw ?? {}).fonts;
-    } catch {
+    } catch (error) {
+        rethrowIfTooNew(error);
         return [];
     }
 }
+
+/**
+ * The design document is read twice - once for its colours, once for its fonts - and both reads
+ * refuse the same file at the same version, so they state it once.
+ */
+const BRAND_GATE: ProjectDocumentGate = {
+    kind: "brand",
+    subject: BRAND_DOCUMENT_PATH,
+    supportedVersion: BRAND_SCHEMA_VERSION,
+};
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {
     try {

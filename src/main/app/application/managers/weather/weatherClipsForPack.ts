@@ -1,7 +1,13 @@
 import path from "path";
 import { Logger } from "@shared/utils/logger";
-import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import { refuseNewerProjectDocument, type ProjectDocumentGate } from "@shared/documents/newerSchema";
+import {
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+    type StoryDocument,
+    type StoryLibraryIndex,
+} from "@shared/types/story";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { Fs } from "@shared/utils/fs";
 import { isValidStoryId } from "@shared/utils/storyId";
 import { normalizeVfxConfiguration, type VfxConfiguration } from "@shared/types/vfx";
@@ -70,7 +76,14 @@ export async function bakeWeatherClipsForPack(
     // A preview and a build of the same project are two asks, and both want their clips.
     const claim: StudioTaskClaim = { owner: WeatherBakeOwner.pack(), attempt: "1" };
     options.onStart?.(() => manager.abandon(claim));
-    const uidoc = await readJson<UIDocument>(path.join(projectPath, "editor", "ui", "uidoc.json"));
+    const uidoc = await readJson<UIDocument>(
+        path.join(projectPath, "editor", "ui", "uidoc.json"),
+        {
+            kind: "uiDocument",
+            subject: "editor/ui/uidoc.json",
+            supportedVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        },
+    );
     const specs = collectWeatherSpecs(
         await readStories(projectPath),
         uidoc ?? undefined,
@@ -112,7 +125,14 @@ export async function bakeWeatherClipsForPack(
  * still reaches the row.
  */
 async function readStories(projectPath: string): Promise<StoryDocument[]> {
-    const index = await readJson<StoryLibraryIndex>(path.join(projectPath, "editor", "story", "index.json"));
+    const index = await readJson<StoryLibraryIndex>(
+        path.join(projectPath, "editor", "story", "index.json"),
+        {
+            kind: "storyIndex",
+            subject: "editor/story/index.json",
+            supportedVersion: STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+        },
+    );
     const entries = Array.isArray(index?.stories) ? index.stories : [];
     const stories: StoryDocument[] = [];
     const seen = new Set<string>();
@@ -123,6 +143,11 @@ async function readStories(projectPath: string): Promise<StoryDocument[]> {
         seen.add(entry.id);
         const document = await readJson<StoryDocument>(
             path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json"),
+            {
+                kind: "story",
+                subject: entry.name || entry.id,
+                supportedVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+            },
         );
         if (document?.id === entry.id) {
             stories.push(document);
@@ -153,14 +178,25 @@ async function readVfxConfiguration(projectPath: string): Promise<VfxConfigurati
 }
 
 /** Null for anything that is not there or will not parse: a project with no stories asks for no clips. */
-async function readJson<T>(filePath: string): Promise<T | null> {
+/**
+ * `gate` refuses a document a newer Studio wrote, between the parse and the first reader.
+ *
+ * Everything else here degrades to `null`, which is right for a file that is absent or damaged: a
+ * missing story is a story this check has nothing to say about. A document from the future is the
+ * opposite - it reads as a valid document with fields silently missing, so the answer would be
+ * wrong rather than absent. That one is thrown, and it stops the build.
+ */
+async function readJson<T>(filePath: string, gate: ProjectDocumentGate): Promise<T | null> {
     const result = await Fs.read(filePath, "utf-8");
     if (!result.ok) {
         return null;
     }
+    let parsed: unknown;
     try {
-        return JSON.parse(result.data) as T;
+        parsed = JSON.parse(result.data);
     } catch {
         return null;
     }
+    refuseNewerProjectDocument(parsed, gate);
+    return parsed as T;
 }

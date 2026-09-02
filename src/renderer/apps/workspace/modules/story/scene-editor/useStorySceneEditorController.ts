@@ -30,6 +30,7 @@ import type { PanelStateService } from "@/lib/workspace/services/core/PanelState
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
+import type { SaveStatusService } from "@/lib/workspace/services/autosave/SaveStatusService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -109,6 +110,24 @@ const STORY_EDITOR_HISTORY_LIMIT = 100;
 const STORY_EDITOR_PAGE_ROWS = 10;
 const DRAG_SELECT_AUTO_SCROLL_EDGE_PX = 64;
 const DRAG_SELECT_AUTO_SCROLL_MAX_SPEED = 18;
+/**
+ * When the words in an open row are copied into the document: after this long without a keystroke.
+ *
+ * Short enough that it lands in the pause between two phrases, which is where the author is not
+ * looking at the caret - a document write fans out to the tab and re-lists the scene's rows, and
+ * measured on a 400-row scene that is tens of milliseconds. Long enough that it does not fire
+ * between the letters of a word.
+ */
+const STORY_TEXT_SETTLE_QUIET_MS = 400;
+/**
+ * ...and after this long regardless, measured from the first keystroke of the run.
+ *
+ * A pure quiet period is pushed out by every character, so an author typing steadily for a minute
+ * would have written nothing - the defect `DebouncedSaver` was given a ceiling to fix, and this
+ * scheduler has the same two halves for the same reason. This one bounds how old the words in the
+ * field can be; the quiet period above is what makes that almost never the binding constraint.
+ */
+const STORY_TEXT_SETTLE_MAX_MS = 2_000;
 
 type StorySceneHistoryState = {
     scene: StoryScene;
@@ -173,6 +192,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [context, isInitialized]);
     /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
     const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
+    /**
+     * Where this editor says it is holding words the story document has not been told about, so a
+     * window close or a Dev Mode launch writes the line that is still in the field. See
+     * `settleOpenEditors`.
+     */
+    const saveStatusService = useMemo(() => (context && isInitialized ? context.services.get<SaveStatusService>(Services.SaveStatus) : null), [context, isInitialized]);
     /** What a puppet character's model says it contains - the source of every motion / expression / skin the editor offers. */
     const puppetDescriptionService = useMemo(() => (context && isInitialized ? context.services.get<PuppetDescriptionService>(Services.PuppetDescription) : null), [context, isInitialized]);
     // When on, a leading "@" in an insert slot is rewritten to "/" so it opens the action creator -
@@ -421,6 +446,62 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      */
     const textDraftRef = useRef<{ blockId: StoryBlockId; value: string; rich?: StoryRichRun[] } | null>(null);
     /**
+     * The pending "move the open row's words into the document" timers, and the settle they run.
+     *
+     * The draft above made a keystroke cost nothing, and left the words with nowhere to go until
+     * the field closed: everything else in this editor is on disk within a second of being typed,
+     * and the line being typed was on disk only if the author happened to click away. Closing the
+     * tab or the window threw it away with no sign that anything had been dropped.
+     *
+     * So the draft is not the last word on the row any more, only the fastest one. It is copied
+     * into the document a moment after the typing stops (see `armTextSettle`), and the auto-save takes
+     * it from there - which is the whole point: after a settle there is nothing special about this
+     * row, and the "unsaved changes" readout in the status bar is telling the truth about it.
+     *
+     * The settle itself is rebuilt every render (it reads the scene), so the timer calls it through
+     * a ref rather than closing over the one that existed when the timer was armed.
+     */
+    const settleQuietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const settleCeilingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const settleTextDraftRef = useRef<() => void>(() => {});
+    /**
+     * Whether the open row has already left its undo step.
+     *
+     * An edit session is one Ctrl+Z whether it settles nine times or none, so the checkpoint goes in
+     * front of the FIRST write the session makes and nothing after it records another. Cleared
+     * wherever the draft is re-seeded below, because that is precisely where one session ends and
+     * the next begins.
+     */
+    const textHistoryRecordedRef = useRef(false);
+    const cancelTextSettle = useCallback(() => {
+        if (settleQuietTimerRef.current !== null) {
+            clearTimeout(settleQuietTimerRef.current);
+            settleQuietTimerRef.current = null;
+        }
+        if (settleCeilingTimerRef.current !== null) {
+            clearTimeout(settleCeilingTimerRef.current);
+            settleCeilingTimerRef.current = null;
+        }
+    }, []);
+    /**
+     * Note a keystroke: settle when the typing stops, or when the ceiling runs out, whichever comes
+     * first. The quiet period is re-armed by every character; the ceiling is not, so it measures
+     * from the first keystroke of the run rather than the last.
+     */
+    const armTextSettle = useCallback(() => {
+        const fire = () => {
+            cancelTextSettle();
+            settleTextDraftRef.current();
+        };
+        if (settleQuietTimerRef.current !== null) {
+            clearTimeout(settleQuietTimerRef.current);
+        }
+        settleQuietTimerRef.current = setTimeout(fire, STORY_TEXT_SETTLE_QUIET_MS);
+        if (settleCeilingTimerRef.current === null) {
+            settleCeilingTimerRef.current = setTimeout(fire, STORY_TEXT_SETTLE_MAX_MS);
+        }
+    }, [cancelTextSettle]);
+    /**
      * The keyboard cursor is on the "add a row" line that sits just past the last row, reached by
      * arrowing Down off the bottom. It is a position with no row behind it (activeBlockId is null
      * while it holds focus), so Enter there opens a fresh insert slot — the same as clicking it.
@@ -470,6 +551,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         textDraftRef.current = editorMode.kind === "text"
             ? { blockId: editorMode.blockId, value: editorMode.value, rich: editorMode.rich }
             : null;
+        // A settle armed for the row that just closed would run against a draft that is no longer
+        // its own, and the undo receipt belongs to one edit session rather than to the editor.
+        cancelTextSettle();
+        textHistoryRecordedRef.current = false;
         // `caret` moves without the words changing, and re-seeding on it would undo a draft mid-edit.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editorMode.kind, editorMode.kind === "text" ? editorMode.blockId : null]);
@@ -508,10 +593,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         draft.value = value;
         draft.rich = rich;
+        // The one thing a keystroke does beyond writing this ref: start the clock that moves the
+        // words into the document, if it is not already running. See `armTextSettle`.
+        armTextSettle();
         // Nothing about a live session happens here. A row is held for as long as its box is open
         // rather than for as long as somebody is typing into it, so keystrokes have nothing to say
         // about the claim — see `useStoryRowClaimHold` for why that distinction is load-bearing.
-    }, []);
+    }, [armTextSettle]);
 
     /**
      * A freeze that lands while a row is open for editing closes the editor, discarding the draft.
@@ -529,12 +617,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         slotDiscardedRef.current = true;
         insertDraftRef.current = "";
+        // Same argument for the open row's settle: it is a write, and a write is exactly what a
+        // freeze exists to stop. Left armed it would fire a moment after the editor closed and put
+        // the discarded keystrokes into the in-memory scene, which the thaw's re-read would then
+        // throw away - a change with a window in which it was visible and never a way to keep it.
+        cancelTextSettle();
         // A `Ctrl+Shift+V` pressed just before the freeze landed has no paste left to be consumed by,
         // so the flag would sit here and turn the first paste after the thaw plain. Belt to the
         // tab's braces (its `onKeyDown` is freeze-wrapped, so no new flag can be set while frozen).
         plainPasteRequestedRef.current = false;
         setEditorMode(current => (current.kind === "text" || current.kind === "insert" ? { kind: "idle" } : current));
-    }, [frozen]);
+    }, [cancelTextSettle, frozen]);
 
     /**
      * The same answer, readable from inside an `await`.
@@ -1360,7 +1453,62 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         return changed;
     }, [liveSessionService, recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
 
+    /**
+     * One undo step per edit session, wherever in it the first write happens.
+     *
+     * The row is now written by two callers - the settle below and the commit under it - and either
+     * can be the first. Recording per write would put a Ctrl+Z between every pause in a sentence.
+     */
+    const recordTextEditHistoryOnce = useCallback(() => {
+        if (textHistoryRecordedRef.current) {
+            return;
+        }
+        textHistoryRecordedRef.current = true;
+        recordHistory();
+    }, [recordHistory]);
+
+    /**
+     * Put the words that are in the open row into the document, and leave the row open.
+     *
+     * This is `commitTextEdit` without the "and close the field" half, which is the whole of the
+     * difference: it changes nothing the author can see. The field is a `contentEditable` that
+     * renders its content once on mount and owns its DOM from then on, so the write underneath it
+     * moves neither the caret nor the selection, and the row's own undo stack is untouched.
+     *
+     * Called on a timer while typing, on the way out of the editor, and by the workspace flush.
+     */
+    const settleTextDraft = useCallback(() => {
+        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        // Half-converted kana are the input method's working copy, not the author's line. Writing
+        // them would put a candidate in the document and an undo step in front of a conversion the
+        // author has not finished - so wait, and let the end of the composition arm the next one.
+        if (textInputRef.current?.isComposing()) {
+            armTextSettle();
+            return;
+        }
+        const block = scene.blocks[editorMode.blockId];
+        if (!block) {
+            return;
+        }
+        // The same preference `commitTextEdit` makes below, for the same reason: a popover edit can
+        // be in the DOM before it has reached the draft.
+        const liveRuns = textInputRef.current?.getRuns();
+        const draft = readTextDraft(editorMode.blockId);
+        const value = liveRuns ? richRunsToPlain(liveRuns) : draft?.value ?? editorMode.value;
+        const rich = liveRuns ?? draft?.rich ?? editorMode.rich;
+        const payload = updateTextPayload(block, value, rich);
+        if (!payload || JSON.stringify(block.payload) === JSON.stringify(payload)) {
+            return;
+        }
+        recordTextEditHistoryOnce();
+        storyService.updateBlock(storyId, sceneId, editorMode.blockId, payload);
+    }, [armTextSettle, editorMode, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, storyId, storyService]);
+    settleTextDraftRef.current = settleTextDraft;
+
     const commitTextEdit = useCallback(() => {
+        cancelTextSettle();
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
             setEditorMode({ kind: "idle" });
             return;
@@ -1379,11 +1527,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
                 setEditorMode({ kind: "idle" });
                 return;
             }
-            recordHistory();
+            // Once per session, not once per commit: a settle may already have left the checkpoint
+            // this edit undoes to, and a second one here would cost the author a wasted Ctrl+Z.
+            recordTextEditHistoryOnce();
             storyService.updateBlock(storyId, sceneId, editorMode.blockId, payload);
         }
         setEditorMode({ kind: "idle" });
-    }, [editorMode, readTextDraft, recordHistory, scene, sceneId, storyId, storyService]);
+    }, [cancelTextSettle, editorMode, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, storyId, storyService]);
 
     const createBlock = useCallback((kind: ActionCommandId, initialText = "", characterId?: string): StoryBlock | null => {
         if (!uuidService) {
@@ -1806,7 +1956,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // so when that sibling is filtered out, don't demote and fall through to delete-and-step-back.
             const previousSibling = findPreviousSibling(scene, id);
             if (previousSibling && rowIndexById.has(previousSibling.id)) {
-                recordHistory();
+                recordTextEditHistoryOnce();
                 storyService.deleteBlock(storyId, sceneId, id);
                 // A blank line above is already the undecided line this rung would open, so the caret
                 // goes INTO it rather than stacking a second empty line under it. That is what deleting
@@ -1828,7 +1978,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const currentIndex = rowIndexById.get(id);
         const previous = currentIndex !== undefined ? visibleRows[currentIndex - 1] : undefined;
-        recordHistory();
+        recordTextEditHistoryOnce();
         storyService.deleteBlock(storyId, sceneId, id);
         if (previous) {
             setActiveBlockId(previous.block.id);
@@ -1844,7 +1994,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
-    }, [editorMode, focusRoot, openRowForEditing, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
+    }, [editorMode, focusRoot, openRowForEditing, recordTextEditHistoryOnce, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
 
     // Enter while editing a text row: commit and open a new row that continues the same kind - narration
     // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
@@ -1876,7 +2026,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             handleBackspaceAtEmptyStart();
             return;
         }
-        recordHistory();
+        // The session's one checkpoint, whether it was left here or by an earlier settle: an Enter
+        // that ends a line is part of writing that line, and undoing it should take back both.
+        recordTextEditHistoryOnce();
         const updatedPayload = updateTextPayload(currentBlock, value, rich);
         if (updatedPayload) {
             storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
@@ -1890,7 +2042,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         insertBlock(block, currentBlock.id, false, { recordHistory: false });
         setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
-    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, readTextDraft, recordHistory, scene, sceneId, startInsertAfter, storyId, storyService]);
+    }, [commitTextEdit, createBlock, editorMode, handleBackspaceAtEmptyStart, insertBlock, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, startInsertAfter, storyId, storyService]);
 
     // Arrow navigation across the row boundary while editing text. The current line is committed first;
     // landing on a text row re-opens it for editing (caret at the near edge), landing on an action row
@@ -2064,6 +2216,39 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             startInsertAfter(block.id, true);
         }
     }, [createBlock, editorMode, insertBlock, slashAtAlias, startInsertAfter]);
+
+    /**
+     * Everything this editor is holding that no document has been told about yet.
+     *
+     * Two surfaces take typing and both keep it to themselves until something asks: the open row
+     * (the settle above) and the open insert slot, whose prose has always been landed by leaving it
+     * - `commitNarrationFromInsert` is what a blur runs, and it is deliberately the one that
+     * refuses to land a half-typed command line as narration.
+     *
+     * Run wherever leaving is not a blur, and blur is the only thing this editor used to have:
+     *
+     *  - **Unmount.** Closing the tab removes the field from the document, and Chromium fires no
+     *    blur for an element that is deleted while it has focus - so a tab closed mid-sentence took
+     *    the sentence with it, and nothing anywhere said a line had been dropped.
+     *  - **The workspace flush.** Closing the window, quitting, and launching Dev Mode all ask the
+     *    renderer to write out everything it owes; see `SaveStatusService.registerPendingEdit`.
+     */
+    const settleOpenEditors = useCallback(() => {
+        settleTextDraft();
+        commitNarrationFromInsert(false);
+    }, [commitNarrationFromInsert, settleTextDraft]);
+    const settleOpenEditorsRef = useRef(settleOpenEditors);
+    settleOpenEditorsRef.current = settleOpenEditors;
+
+    // Through a ref, because these two run once for the life of the editor and the settle they must
+    // run is the one built by the last render, not the first.
+    useEffect(() => () => settleOpenEditorsRef.current(), []);
+    useEffect(() => {
+        if (!saveStatusService) {
+            return;
+        }
+        return saveStatusService.registerPendingEdit(() => settleOpenEditorsRef.current());
+    }, [saveStatusService]);
 
     const handleInsertValueChange = useCallback((value: string) => {
         const previous = insertDraftRef.current;

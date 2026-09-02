@@ -1,6 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -37,6 +38,7 @@ import type {
     PluginInstallResult,
     PluginListItem,
     RuntimePluginDescriptor,
+    RuntimePluginExclusion,
     WorkspacePluginDescriptor,
 } from "./plugins";
 import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
@@ -237,6 +239,7 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    workspaceAcquireSessionLock = "workspace.acquireSessionLock",
     projectTrustQuery = "projectTrust.query",
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
@@ -278,6 +281,8 @@ export enum IPCEventType {
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
     devModeDataReset = "devMode.data.reset",
+    devModeWindowScaleOptions = "devMode.window.scaleOptions",
+    devModeWindowSetStageSize = "devMode.window.setStageSize",
     devModeFullscreenGet = "devMode.fullscreen.get",
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
@@ -2280,6 +2285,22 @@ export type IPCWorkspaceEvents = {
         response: void;
     };
     /**
+     * Take this window's project for this Studio, or find out which one already has it.
+     *
+     * Asked once more from inside the window, after `App.openProject` has already asked on its
+     * behalf, and both are load-bearing: main's is what makes the claim before any window exists,
+     * and this one is what a Retry on the error screen re-asks. A project this process already
+     * holds answers immediately and touches no disk.
+     *
+     * The project is the window's own, never a path in the message.
+     */
+    [IPCEventType.workspaceAcquireSessionLock]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: ProjectSessionLockOutcome;
+    };
+    /**
      * Whether this project may cause effects, asked of the only process that can answer.
      *
      * The renderer never decides this. A project's own code runs in a renderer - a puppet backend
@@ -2557,6 +2578,43 @@ export type IPCDevModeEvents = {
             bundle: DevModeBundle;
         },
         response: never;
+    };
+    /**
+     * The stage sizes this Dev Mode window has room to offer, for `Get Window Scale Options`.
+     *
+     * The window belongs to Studio, so what a game asks about - the stage - is the window's content
+     * minus whatever Studio draws around it. Only the renderer can measure that, so it sends it as
+     * `chrome`; this side adds the frame the platform draws and the work area of the display the
+     * window is on, and answers with the arithmetic a packaged game's shell answers with.
+     */
+    [IPCEventType.devModeWindowScaleOptions]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The entry surface's design size: the coordinate space a scale step is a multiple of. */
+            design: { width: number; height: number };
+            /** Window content minus the box the stage is drawn into, in CSS pixels. */
+            chrome: { width: number; height: number };
+        },
+        response: {
+            scales: number[];
+        };
+    };
+    /**
+     * Size the stage inside this Dev Mode window, for `Set Window Scale` and `Set Window Size`.
+     *
+     * In pixels of stage, not of window, so the number a graph asks for is the number the author
+     * sees the stage drawn at - the same thing the request means in a packaged game.
+     */
+    [IPCEventType.devModeWindowSetStageSize]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            width: number;
+            height: number;
+            chrome: { width: number; height: number };
+        },
+        response: void;
     };
     [IPCEventType.devModeFullscreenGet]: {
         type: IPCMessageType.request,
@@ -3425,6 +3483,13 @@ export type IPCPluginManagerEvents = {
         data: {},
         response: {
             plugins: RuntimePluginDescriptor[];
+            /**
+             * Enabled runtime plugins this project does not run, and why. A Dev
+             * Mode session is told so it can say it: the same selection decides
+             * what a build carries, and a plugin dropped without a word is an
+             * author watching a node do nothing.
+             */
+            excluded: RuntimePluginExclusion[];
         };
     };
     [IPCEventType.pluginReportLoadError]: {

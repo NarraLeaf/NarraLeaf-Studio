@@ -205,6 +205,13 @@ function RuntimeIssueEntry(props: {
                         <span className="font-medium">
                             {t("devMode.issues.onSurface", { surface: issue.surface.surfaceName })}
                         </span>
+                    ) : issue.pluginName ? (
+                        // The third kind of place: the plugin itself. Located for the same reason a
+                        // surface is - the author can act on the name - so it reads as a heading and
+                        // not as a failure to find one.
+                        <span className="font-medium">
+                            {t("devMode.issues.onPlugin", { plugin: issue.pluginName })}
+                        </span>
                     ) : (
                         <span className="font-medium opacity-80">{t("devMode.issues.noLocation")}</span>
                     )}

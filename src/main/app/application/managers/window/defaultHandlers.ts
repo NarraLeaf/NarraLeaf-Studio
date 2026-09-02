@@ -66,11 +66,13 @@ import {
     ProjectTrustRevokeHandler,
     ProjectTrustListHandler,
 } from "./handlers/projectTrustAction";
-import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineBuildHandler, WorkspaceSetRecoveryModeHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineBuildHandler, WorkspaceSetRecoveryModeHandler, WorkspaceAcquireSessionLockHandler, WorkspaceLiveIntentTakenHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
     DevModeFullscreenSetHandler,
+    DevModeWindowScaleOptionsHandler,
+    DevModeWindowSetStageSizeHandler,
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
@@ -279,6 +281,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new WorkspaceExportConsoleLogsHandler(),
         new WorkspaceMenuSyncHandler(),
         new WorkspaceSetRecoveryModeHandler(),
+        new WorkspaceAcquireSessionLockHandler(),
         new ProjectTrustQueryHandler(),
         new ProjectTrustGrantHandler(),
         new ProjectTrustRevokeHandler(),
@@ -297,6 +300,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeGetStatusHandler(),
         new DevModeFullscreenGetHandler(),
         new DevModeFullscreenSetHandler(),
+        new DevModeWindowScaleOptionsHandler(),
+        new DevModeWindowSetStageSizeHandler(),
         new DevModeOpenBlueprintInWorkspaceHandler(),
         new DevModeForwardBlueprintDebugEventHandler(),
         new DevModeForwardStoryRowHandler(),

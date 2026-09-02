@@ -56,6 +56,7 @@ import {
     type ExperimentalState,
 } from "@shared/types/experimental";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
+import { createCrashSequence, type CrashSaveOutcome, type CrashSequence } from "./crashSequence";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
 import { getMainTranslator } from "./i18n";
@@ -119,6 +120,12 @@ export class BaseApp {
     private quitting: boolean = false;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
+    /**
+     * The fatal error being handled, if one is. Non-null is the whole of the re-entrancy guard in
+     * {@link crash}: the failure that got here is usually still happening, and the handling is now
+     * asynchronous, so more of them arrive while the first is still writing the windows out.
+     */
+    private crashSequence: CrashSequence | null = null;
     private debugServer: StudioDebugServer | null = null;
     /**
      * Cleared by the first workspace window that asks for the experimental notice, so the warning
@@ -635,48 +642,91 @@ export class BaseApp {
      * Everything here is written so that failing to ask still exits. The prompt reads global state
      * for the language and talks to the window server, both of which can be exactly what has just
      * broken, so a failure anywhere in it falls through to the same exit.
+     *
+     * What happens *before* the prompt is the windows writing out whatever they had not written
+     * yet; see `crashSequence`. That makes the exit asynchronous, which is why this returns as soon
+     * as the sequence has been handed the failure rather than when the process ends.
      */
     public crash(error: string | Error): void {
-        const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-        this.logger.error("[App] Fatal error, terminating:", message);
-        try {
-            if (this.electronApp.isReady()) {
-                if (this.askToRestartAfterCrash(message)) {
-                    this.electronApp.relaunch();
-                }
-            } else {
-                console.error(message);
-            }
-        } catch (promptError) {
-            console.error(message);
-            console.error("Failed to report the fatal error:", promptError);
-        } finally {
-            this.electronApp.exit(1);
+        // Latched before anything that can fail, the logger included. Whatever throws below comes
+        // back through the process-level `uncaughtException` handler and into this method again,
+        // and a second sequence would restart the wait the first one is already serving out.
+        // `console.error` rather than the logger: the logger writes to a file sink, and a sink that
+        // has just thrown would send this straight back here.
+        if (this.crashSequence) {
+            console.error("A further fatal error while the first one was being handled:", error);
+            return;
         }
+
+        const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+        this.crashSequence = createCrashSequence({
+            pendingSaveFlushes: () => this.collectPendingSaveFlushes(),
+            askToRestart: (outcome) => {
+                if (!this.electronApp.isReady()) {
+                    // No window server, so no dialog to put up - and no window that could have been
+                    // holding an unwritten edit either.
+                    console.error(message);
+                    return false;
+                }
+                return this.askToRestartAfterCrash(message, outcome);
+            },
+            relaunch: () => this.electronApp.relaunch(),
+            exit: () => this.electronApp.exit(1),
+            warn: (text, warnError) => {
+                if (warnError === undefined) {
+                    this.logger.warn(`[App] ${text}`);
+                } else {
+                    this.logger.warn(`[App] ${text}`, warnError);
+                }
+            },
+        });
+        this.logger.error("[App] Fatal error, terminating:", message);
+        this.crashSequence.begin();
+    }
+
+    /**
+     * The pending writes a crash still has a chance of settling, one thunk per window that owes any.
+     *
+     * Empty here: this class knows the windows but not what is inside them. `App` overrides it with
+     * the open workspaces, which are the only windows holding work that has not reached the disk.
+     */
+    protected collectPendingSaveFlushes(): readonly (() => Promise<unknown>)[] {
+        return [];
     }
 
     /**
      * The native prompt behind {@link crash}. Returns whether to come back up.
      *
-     * Synchronous, because the process is on its way out and there is nothing left to await in.
-     * Only the first line of the failure is shown: the rest is a stack trace, which belongs in the
-     * log this names rather than wrapped across a message box.
+     * Synchronous, because by this point the process is on its way out and there is nothing left to
+     * await in. Only the first line of the failure is shown: the rest is a stack trace, which
+     * belongs in the log this names rather than wrapped across a message box.
+     *
+     * The line about unwritten changes reuses the crash screen's own wording rather than restating
+     * it: an author who sees both must not be told two different things about whether their last
+     * edits survived.
      */
-    private askToRestartAfterCrash(message: string): boolean {
+    private askToRestartAfterCrash(message: string, outcome: CrashSaveOutcome): boolean {
         const logsDir = path.join(this.getUserDataDir(), "logs");
         const headline = message.split("\n", 1)[0] ?? message;
         let title = `${APP_DISPLAY_NAME}: Fatal Error`;
         let body = headline;
+        let saveLine = outcome === "saved"
+            ? "Unsaved changes were written to disk."
+            : "Unsaved changes could not be written to disk.";
         let detail = `The report is in ${logsDir}.`;
         let buttons = ["Restart", "Quit"];
         try {
             const { t } = getMainTranslator(this);
             title = t("crash.fatal.title");
             body = `${t("crash.fatal.message")}\n\n${headline}`;
+            saveLine = outcome === "saved" ? t("crash.screen.saved") : t("crash.screen.saveFailed");
             detail = t("crash.fatal.detail", { path: logsDir });
             buttons = [t("crash.fatal.restart"), t("crash.fatal.quit")];
         } catch (translationError) {
             this.logger.warn("[App] Could not translate the fatal error prompt:", translationError);
+        }
+        if (outcome !== "none") {
+            detail = `${saveLine}\n\n${detail}`;
         }
 
         const choice = dialog.showMessageBoxSync({

@@ -9,15 +9,16 @@ import type {
     PluginInstallResult,
     PluginListItem,
     RuntimePluginDescriptor,
+    RuntimePluginExclusion,
     WorkspacePluginDescriptor,
 } from "@shared/types/plugins";
 import type { PluginRegistryFetchResult } from "@shared/types/pluginRegistry";
 import type { LocaleContribution } from "@shared/i18n";
 import { downloadAndExtract, fetchRegistryIndex, resolveRegistryUrl } from "../../pluginRegistryClient";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
-import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { satisfiesRange } from "@shared/utils/semver";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
+import { selectProjectRuntimePlugins } from "../../preview/selectRuntimePlugins";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
@@ -173,13 +174,19 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
     readonly name = IPCEventType.pluginRuntimeList;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>> {
+    public async handle(window: AppWindow): Promise<RequestStatus<{
+        plugins: RuntimePluginDescriptor[];
+        excluded: RuntimePluginExclusion[];
+    }>> {
         if (window.getWindowType() !== WindowAppType.DevMode) {
             return this.failed("Runtime plugins can only be requested by Dev Mode windows");
         }
         const plugins = await window.app.pluginManager.listRuntimePlugins();
-        const allowed = await this.filterSuppressed(window, plugins);
-        return this.success({ plugins: await this.attachRuntimeData(window, allowed) });
+        const selection = await this.selectForProject(window, plugins);
+        return this.success({
+            plugins: await this.attachRuntimeData(window, selection.selected),
+            excluded: selection.excluded,
+        });
     }
 
     /**
@@ -216,35 +223,43 @@ export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRunt
     }
 
     /**
-     * Mirror the workspace's per-project dependency suppression: a plugin whose
-     * installed version is incompatible with what the project was authored
-     * against must not execute in that project's Dev Mode session either.
-     * Resolution failures never block the session - suppression is best-effort.
+     * The plugins this project runs, decided the way a build decides it.
+     *
+     * The same function and the same three inputs the pack compiler uses, so a
+     * Dev Mode session and a built game carry one set. Dev Mode used to take
+     * every enabled runtime plugin and only drop the version-suppressed ones,
+     * which made it the only place a plugin the project never declared still
+     * worked: the author saw their node run here and saw nothing at all in the
+     * build, with no message on either side.
+     *
+     * Best-effort, as the suppression it replaces was: a project path that
+     * cannot be read leaves the session with every enabled plugin rather than
+     * with none, which is the same fallback an unscanned project gets.
      */
-    private async filterSuppressed(
+    private async selectForProject(
         window: AppWindow,
         plugins: RuntimePluginDescriptor[],
-    ): Promise<RuntimePluginDescriptor[]> {
+    ): Promise<{ selected: RuntimePluginDescriptor[]; excluded: RuntimePluginExclusion[] }> {
         const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
         if (typeof projectPath !== "string" || !projectPath.trim()) {
-            return plugins;
+            return { selected: plugins, excluded: [] };
         }
         try {
             const projectConfig = await readProjectConfigFromDir(projectPath);
-            const table = projectConfig?.dependencies;
-            if (!table || table.plugins.length === 0) {
-                return plugins;
-            }
             const installed = (await window.app.pluginManager.listPlugins()).map(plugin => ({
                 id: plugin.pluginId,
                 version: plugin.manifest.version,
                 enabled: plugin.enabled,
             }));
-            const suppressed = new Set(resolveDependencies(table, installed).suppressedPluginIds);
-            return plugins.filter(descriptor => !suppressed.has(descriptor.plugin.id));
+            const selection = selectProjectRuntimePlugins({
+                dependencies: projectConfig?.dependencies,
+                available: plugins,
+                installed,
+            });
+            return { selected: selection.selected, excluded: selection.excluded };
         } catch (error) {
-            console.warn("[PluginRuntimeListHandler] dependency suppression skipped:", error);
-            return plugins;
+            console.warn("[PluginRuntimeListHandler] runtime plugin selection skipped:", error);
+            return { selected: plugins, excluded: [] };
         }
     }
 }

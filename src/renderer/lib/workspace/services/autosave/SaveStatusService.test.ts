@@ -252,4 +252,37 @@ describe("SaveStatusService while the workspace is frozen", () => {
 
         expect(close).toHaveBeenCalledWith("toast-1");
     });
+
+    // An editor with a field open is the one holder of project data no saver knows about: the words
+    // are in the field, and the document they belong to has not been told. Everything that writes
+    // the workspace out - a window close, a quit, a Dev Mode launch - has to ask the editors first,
+    // or it writes every document except the line somebody is in the middle of typing.
+    describe("edits an open editor is still holding", () => {
+        it("settles them, and stops when the editor deregisters", async () => {
+            const { service } = await makeHarness();
+            const settle = vi.fn();
+
+            const deregister = service.registerPendingEdit(settle);
+            service.settlePendingEdits();
+            expect(settle).toHaveBeenCalledTimes(1);
+
+            deregister();
+            service.settlePendingEdits();
+            expect(settle).toHaveBeenCalledTimes(1);
+        });
+
+        it("does not let one editor's failure keep the others from settling", async () => {
+            const { service, log } = await makeHarness();
+            const broken = vi.fn(() => { throw new Error("scene is gone"); });
+            const working = vi.fn();
+            service.registerPendingEdit(broken);
+            service.registerPendingEdit(working);
+
+            // Never throws: the callers block a window close on this, and a window that will not
+            // close is a worse answer than a line that did not settle.
+            expect(() => service.settlePendingEdits()).not.toThrow();
+            expect(working).toHaveBeenCalledTimes(1);
+            expect(log).toHaveBeenCalled();
+        });
+    });
 });

@@ -1330,6 +1330,10 @@ function describeFailure(thrown: unknown): VersionFailure {
             return { text: translate("workspace.shell.versionControl.unavailable.installation"), tone: "failure" };
         case VcsErrorCode.ShuttingDown:
             return { text: translate("workspace.shell.versionControl.closingWithApp"), tone: "failure" };
+        case VcsErrorCode.RepositoryLocked:
+            // The backend has no sentence for this at all - from its side the open simply has not
+            // returned yet - so the only words there are for it are these.
+            return { text: translate("workspace.shell.versionControl.repositoryLocked"), tone: "failure" };
         case VcsErrorCode.UncommittedChanges:
             return { text: translate("workspace.shell.versionControl.commitBeforeSync"), tone: "failure" };
         case VcsErrorCode.BranchDiverged:

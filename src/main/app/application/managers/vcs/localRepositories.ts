@@ -14,10 +14,11 @@ import type { VcsLocalRepository } from "@shared/types/vcs";
  *
  * **Nothing here opens a repository, and that is not a preference.** Lore's lock is
  * exclusive and BLOCKING: opening a store another process already holds does not fail, it
- * never returns - no error, no CPU - and every later call against that project queues
- * behind it for the life of the process. A sweep over the whole recent list is exactly the
- * shape of call that would take out every project an author has open. So this reads two
- * plain files and closes them.
+ * never returns - no error, no CPU. `VcsManager` bounds how long it *waits* on such a call
+ * (see `STORE_OPEN_TIMEOUT_MS`), but nothing can take back the thread the call is sitting
+ * on, and those come from the libuv pool that `fs` reads from. A sweep over the whole
+ * recent list is exactly the shape of call that would take every one of them. So this
+ * reads two plain files and closes them.
  *
  * A project that cannot be read this way - no repository, an unreadable file, a half
  * written one - is reported with no id rather than left out. It is still a project the

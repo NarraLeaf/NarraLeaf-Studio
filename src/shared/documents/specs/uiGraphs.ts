@@ -1,3 +1,4 @@
+import {BLUEPRINT_DOCUMENT_SCHEMA_VERSION} from "@shared/types/blueprint/schema";
 import {UI_GRAPH_DOCUMENT_SCHEMA_VERSION, type UIGraphDocument} from "@shared/types/ui-editor/graph";
 import {defineDocumentSpec} from "../registry";
 import {isJsonObject, rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
@@ -33,6 +34,7 @@ export const uiGraphsSpec = defineDocumentSpec<UIGraphDocument>({
         // Studio is refused on that number too, or the comparison would read fields it does not
         // have the meaning of.
         if (isJsonObject(record.blueprintDocument)) {
+            rejectNewerSchema(record.blueprintDocument, context, BLUEPRINT_DOCUMENT_SCHEMA_VERSION);
             requireOptionalMap(record.blueprintDocument, "blueprints", context);
             requireOptionalMap(record.blueprintDocument, "ownerRecords", context);
         }

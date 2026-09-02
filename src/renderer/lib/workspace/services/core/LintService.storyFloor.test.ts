@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { STORY_DOCUMENT_MIN_SUPPORTED_VERSION } from "@shared/story/migrateStoryDocument";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { AssetType } from "../assets/assetTypes";
 import { ReferenceService } from "../references/ReferenceService";
 import { StoryService } from "../story/StoryService";
@@ -137,7 +138,7 @@ async function findingsFor(readJSON: () => Promise<unknown>): Promise<LintReport
     return (service as unknown as { contextFindings: LintReportEntry[] }).contextFindings;
 }
 
-describe("LintService and the story schema floor", () => {
+describe("LintService and the story schema ladder", () => {
     it("names both versions when a document is older than the floor", async () => {
         const findings = await findingsFor(async () => ({ ok: true, data: belowFloorDocument() }));
 
@@ -152,6 +153,34 @@ describe("LintService and the story schema floor", () => {
             minimum: STORY_DOCUMENT_MIN_SUPPORTED_VERSION,
         });
         expect(findings[0].severity).toBe("error");
+    });
+
+    it("names both versions when a document is newer than this build", async () => {
+        const findings = await findingsFor(async () => ({
+            ok: true,
+            data: { ...belowFloorDocument(), schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION + 2 },
+        }));
+
+        expect(findings).toHaveLength(1);
+        // Its own line rather than the too-old one reworded. The two situations ask opposite things
+        // of the author, and a document from the future is the one where reading it would be worse
+        // than refusing: every field this build has not heard of would be gone on the next save.
+        expect(findings[0].messageKey).toBe("lint.message.storyTooNew");
+        expect(findings[0].messageParams).toEqual({
+            story: "Skeleton",
+            version: STORY_DOCUMENT_SCHEMA_VERSION + 2,
+            supported: STORY_DOCUMENT_SCHEMA_VERSION,
+        });
+        expect(findings[0].severity).toBe("error");
+    });
+
+    it("opens a document at the current version without a finding", async () => {
+        const findings = await findingsFor(async () => ({
+            ok: true,
+            data: { ...belowFloorDocument(), schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION },
+        }));
+
+        expect(findings).toEqual([]);
     });
 
     it("keeps the general wording for a failure that is not about the version", async () => {

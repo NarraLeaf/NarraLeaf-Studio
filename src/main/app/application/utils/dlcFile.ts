@@ -1,8 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
 import { DLC_DOCUMENT_PATH } from "@shared/documents/specs";
+import { refuseNewerProjectDocument } from "@shared/documents/newerSchema";
 import {
     createEmptyDlcDocument,
+    DLC_SCHEMA_VERSION,
     migrateProjectDlcDocument,
     type ProjectDlc,
     type ProjectDlcDocument,
@@ -38,11 +40,21 @@ export async function readProjectDlcDocumentFromDir(
         }
         throw error;
     }
+    let parsed: unknown;
     try {
-        return migrateProjectDlcDocument(JSON.parse(raw));
+        parsed = JSON.parse(raw);
     } catch (error) {
         throw new Error(
             `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
         );
     }
+    // Between the parse and the migrator, which stamps the current version over whatever it read:
+    // a document a newer Studio wrote would come back looking like this build's own, and the DLC
+    // fields this build has never heard of would be gone from every package made from it.
+    refuseNewerProjectDocument(parsed, {
+        kind: "dlc",
+        subject: DLC_DOCUMENT_PATH,
+        supportedVersion: DLC_SCHEMA_VERSION,
+    });
+    return migrateProjectDlcDocument(parsed);
 }

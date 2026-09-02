@@ -9,7 +9,7 @@ import type {
 } from "@shared/live/ops";
 import type { TeamTransferProblem, TeamTransferState } from "@shared/types/teamTransfer";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FsRequestResult } from "@shared/types/os";
+import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { RendererError } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -21,7 +21,7 @@ import { ImageService } from "../assets/ImageService";
 import { JSONService } from "../assets/JSONService";
 import { ModelService } from "../assets/ModelService";
 import { AssetOrderManager } from "../assets/mgr/AssetOrderManager";
-import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
+import { AssetsMetadataManager, type UnreadableAssetShard } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type CreateLocalBundleAssetOptions, type ImportFromPathsOptions } from "../assets/mgr/LocalAssetsManager";
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
@@ -406,6 +406,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     /** Categories whose `assets.order.<category>.json` is behind the shards it orders. */
     private dirtyOrderCategories = new Set<AssetCategory>();
     private assetsMetadataInitializing = false;
+    /**
+     * Shards whose refused write has already been announced. One notice per shard per library:
+     * every later edit to the same section is refused for the same reason, and a sticky toast per
+     * keystroke would bury the one that says why.
+     */
+    private refusedUnreadableShardWrites = new Set<AssetType>();
     private assetTrash: AssetTrash | null = null;
     /**
      * Open while a group cascade is running; see `deleteGroupWithHistory`. Non-null means
@@ -1430,8 +1436,16 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const metadataManager = this.assetsMetadataManager;
         const groupManager = this.groupAssetsManager;
         const orderManager = this.assetOrderManager;
-        const categories = Array.from(this.dirtyOrderCategories);
-        this.dirtyOrderCategories.clear();
+        // A section whose shard could not be read keeps its order file as well. The file lists
+        // every row of the section, and the rows this open cannot see are exactly the ones a write
+        // now would drop from it; the debt stays queued, like a refused write's, and the next open
+        // that reads the shard settles it.
+        const categories = Array.from(this.dirtyOrderCategories).filter(category =>
+            !ASSET_CATEGORY_TYPES[category].some(type => metadataManager.isShardUnreadable(type)),
+        );
+        for (const category of categories) {
+            this.dirtyOrderCategories.delete(category);
+        }
 
         const results = await Promise.all(categories.map(async category => ({
             category,
@@ -1483,6 +1497,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         const assetsMetadataManager = new AssetsMetadataManager(this, ctx);
         this.assetsMetadataManager = assetsMetadataManager;
+        // A new library, so a new set of shards to have said something about.
+        this.refusedUnreadableShardWrites.clear();
         this.assetsMetadataInitializing = true;
         try {
             await assetsMetadataManager.init();
@@ -1553,6 +1569,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.assetOrderManager = order;
         this.assetsMetadataManager = metadata;
         this.groupAssetsManager = groups;
+        this.refusedUnreadableShardWrites.clear();
         this.dirtyTypes.clear();
         this.dirtyOrderCategories.clear();
         // Thumbnails are keyed by asset id and cached outside the working set, so a restored asset
@@ -1578,6 +1595,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             throw new RendererError("Assets metadata manager not initialized");
         }
         return this.assetsMetadataManager;
+    }
+
+    /**
+     * The shards this library found on disk and could not read, by type. Empty before the library
+     * is up and for a healthy one; what the assets panel reads to say a section is unreadable
+     * rather than empty.
+     */
+    public getUnreadableAssetShards(): ReadonlyMap<AssetType, UnreadableAssetShard> {
+        return this.assetsMetadataManager?.getUnreadableShards() ?? new Map();
     }
 
     public getGroupAssetsManager(): GroupAssetsManager {
@@ -1837,12 +1863,58 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     private async writeAssetsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
-        const metadata = this.getAssetsMetadataManager().getAssets();
+        const metadataManager = this.getAssetsMetadataManager();
+
+        // The one write that must never happen: the record for this type is empty because the file
+        // could not be read, not because it is, and `{}` written here replaces the author's
+        // library with nothing. Answered as a failure so the debt stays queued (see
+        // `flushPendingWrites`), and said once on screen so the edit that was just refused is not
+        // mistaken for one that landed.
+        const unreadable = metadataManager.getUnreadableShards().get(type);
+        if (unreadable) {
+            this.reportRefusedUnreadableShardWrite(unreadable);
+            return {
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.INVALID_JSON,
+                    message: `${unreadable.path} could not be read (${unreadable.reason}); refusing to write over it`,
+                },
+            };
+        }
+
+        const metadata = metadataManager.getAssets();
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const data = JSON.stringify(metadata[type]);
 
         return await filesystemService.writeFileNoFollow(this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)), data, "utf-8");
+    }
+
+    /**
+     * Tell the author that an edit to a section whose shard could not be read is not on disk.
+     *
+     * Sticky, like `SaveStatusService`'s notice for a write that failed, because it is the same
+     * fact - the change is not saved - and a toast that retired itself would leave a workspace that
+     * looks saved. Reported here rather than through the write observer because no write was
+     * attempted; the observer's vocabulary is "this path failed", and a refusal is not a failure.
+     * Not in recovery mode, where there is no UI service and the freeze already stands in front.
+     */
+    private reportRefusedUnreadableShardWrite(shard: UnreadableAssetShard): void {
+        console.warn(`[AssetsService] refusing to write ${shard.path}: ${shard.reason}`);
+        if (this.refusedUnreadableShardWrites.has(shard.type)) {
+            return;
+        }
+        this.refusedUnreadableShardWrites.add(shard.type);
+        try {
+            const file = shard.path.split(/[\\/]/).pop() ?? shard.path;
+            this.getContext().services.get<UIService>(Services.UI).notifications.showSticky({
+                type: NotificationType.Error,
+                message: translate("assets.unreadable.notSaved"),
+                detail: translate("assets.unreadable.notSavedDetail", { file }),
+            });
+        } catch {
+            // No UI service in this window. The console line above is the record.
+        }
     }
 
     public async createGroup(

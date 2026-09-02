@@ -29,6 +29,36 @@ describe("what it says", () => {
         }
     });
 
+    /**
+     * A patch or a DLC this build cannot read. The player installed something and the game is about
+     * to be exactly as it was, so the one sentence they get has to arrive in their own language and
+     * has to name the files - which is the half they can act on.
+     */
+    it("names the content it did not apply, in every language", () => {
+        for (const tags of [["en"], ["zh"], ["ja"]]) {
+            const text = resolveShellText(tags);
+            expect(text.contentTooNew.trim().length).toBeGreaterThan(0);
+            expect(text.contentNotApplied(["summer_DLC.pak", "fix.assetpatch"]))
+                .toContain("summer_DLC.pak");
+            expect(text.contentNotApplied(["summer_DLC.pak", "fix.assetpatch"]))
+                .toContain("fix.assetpatch");
+        }
+        // Three different sentences, not one sentence stated three times.
+        const said = [["en"], ["zh"], ["ja"]].map(tags => resolveShellText(tags).contentTooNew);
+        expect(new Set(said).size).toBe(3);
+    });
+
+    it("tells the two forms of a preview apart, in every language", () => {
+        // Which one is running decides whether an asset has a file path and which runtime files can
+        // be read at all, so a title that named neither would leave the author to guess.
+        for (const tags of [["en"], ["zh"], ["ja"]]) {
+            const text = resolveShellText(tags);
+            expect(text.previewTitle("Tiny Shadows", false)).toContain("Tiny Shadows");
+            expect(text.previewTitle("Tiny Shadows", true)).toContain("Tiny Shadows");
+            expect(text.previewTitle("Tiny Shadows", true)).not.toBe(text.previewTitle("Tiny Shadows", false));
+        }
+    });
+
     it("offers both answers to a hung window, in the same language", () => {
         const text = resolveShellText(["zh-CN"]);
         expect(text.hangKeepWaiting).toBe("继续等待");

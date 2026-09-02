@@ -346,6 +346,22 @@ export class VcsShuttingDownError extends Error {
 }
 
 /**
+ * Something else has this project's repository open, and the wait for it was given up.
+ *
+ * See {@link STORE_OPEN_TIMEOUT_MS} for what the wait costs and why it is bounded. Named rather
+ * than anonymous so the interface can say the situation in the reader's language: the backend
+ * produces no message at all for it, because from its point of view nothing failed.
+ */
+export class VcsRepositoryLockedError extends Error {
+    readonly code = VcsErrorCode.RepositoryLocked;
+
+    constructor(root: string) {
+        super(`Another program is holding this project's version history: ${root}`);
+        this.name = "VcsRepositoryLockedError";
+    }
+}
+
+/**
  * Characters no path handed to this layer may contain.
  *
  * NUL everywhere: it terminates a C string, so a path carrying one means something different
@@ -406,12 +422,27 @@ function projectKey(projectPath: string): string {
 /**
  * How long a store may take to open before the log says something.
  *
- * Not a timeout: waiting is the CORRECT behaviour when another process holds the repository, and
- * the wait ends the moment that process lets go (measured at 16 seconds in one case, §4.12).
- * Failing instead would turn a recoverable wait into a refusal. But a wait with nothing said is how
- * this presents to an author - a spinner that never stops - so the wait announces itself.
+ * Below {@link STORE_OPEN_TIMEOUT_MS}, so this only ever fires for an open that is slow rather than
+ * blocked - a cold disk, a large repository - and the blocked case is reported by the deadline
+ * instead of by a warning nobody would connect to it.
  */
-const SLOW_STORE_OPEN_MS = 5_000;
+const SLOW_STORE_OPEN_MS = 1_000;
+
+/**
+ * How long an open may wait for the repository lock before it is refused.
+ *
+ * The lock is exclusive and BLOCKING (§4.12): an open against a repository something else holds
+ * does not fail, it never returns - and because every call is a koffi `async` call on the libuv
+ * thread pool, four of them stop the main process from reading ANY file, `fs` being on that same
+ * pool. That is how "another Studio has this project" used to present: a workspace stuck on
+ * "Opening project…", a window that could not be closed, and nothing anywhere saying why.
+ *
+ * So the wait is bounded and the refusal is Studio's. Short, because it is not a queue worth
+ * standing in: version control is optional, every caller on the open path already treats a failure
+ * as "this project has no repository today", and a project whose history is held by something else
+ * is one to open and edit rather than one to sit in front of.
+ */
+const STORE_OPEN_TIMEOUT_MS = 2_000;
 
 /**
  * How many revision comparisons one session keeps.
@@ -526,11 +557,16 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Open a store, and say so in the log if it is taking long enough to be a lock wait.
+     * Open a store, announcing a slow open and refusing a blocked one.
      *
-     * See {@link SLOW_STORE_OPEN_MS} for why this warns rather than gives up. The message names the
-     * only thing that can cause it - something else holding the repository - because an author whose
-     * `lore` CLI is open in a terminal has an action available and no other way to learn of it.
+     * The open itself cannot be cancelled - it is an FFI call on a worker thread, and nothing this
+     * side of it can take that thread back - so what the deadline ends is *waiting* on it, not the
+     * call. The abandoned call is still adopted: if the other process eventually lets go and the
+     * open finally succeeds, the handle that arrives is closed and the repository released, because
+     * a store nobody holds a reference to is a lock this process would keep for the rest of its
+     * life. That is the leak `sessionFor`'s own comment describes, arriving by a different route.
+     *
+     * See {@link STORE_OPEN_TIMEOUT_MS} for the bound and why it is short.
      */
     private async openStoreAnnouncingDelay(
         backend: VcsBackend,
@@ -540,12 +576,36 @@ export class VcsManager extends Manager {
         const slow = setTimeout(() => {
             this.app.logger.warn(
                 "[Vcs] Still waiting to open", root,
-                "- another process is holding this repository. Lore's lock is exclusive and blocks"
-                + " rather than failing, so this call resumes as soon as that process lets go.",
+                "- another process is holding this repository.",
             );
         }, SLOW_STORE_OPEN_MS);
+
+        let abandoned = false;
+        const pending = backend.openStore(globals, root);
+        // Attached before the race, so a handle that arrives after the deadline has somewhere to be
+        // given back rather than being dropped on the floor.
+        void pending.then(
+            (store) => {
+                if (!abandoned) return;
+                this.app.logger.info("[Vcs] Releasing the store for", root, "- nothing waits for it any more.");
+                void backend.closeStore(globals, store).catch(() => undefined);
+                void backend.releaseRepository(globals).catch(() => undefined);
+            },
+            () => undefined,
+        );
+
+        const deadline = new Promise<never>((_, reject) => {
+            // The flag is set in the timer rather than in a catch further out, so an open that
+            // lands in the same turn as the deadline cannot slip through between the two and leave
+            // its handle unreleased.
+            setTimeout(() => {
+                abandoned = true;
+                reject(new VcsRepositoryLockedError(root));
+            }, STORE_OPEN_TIMEOUT_MS).unref?.();
+        });
+
         try {
-            return await backend.openStore(globals, root);
+            return await Promise.race([pending, deadline]);
         } finally {
             clearTimeout(slow);
         }

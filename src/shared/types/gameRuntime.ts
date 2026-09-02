@@ -16,6 +16,30 @@ import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
 
 export const GAME_RUNTIME_PACK_SCHEMA_VERSION = 2 as const;
+
+/**
+ * The schema version a pack claims when it is one this build does not read, or null when the pack
+ * is readable.
+ *
+ * A pack from a newer Studio can reach an older game in one way: as a patch or a DLC dropped
+ * beside it, made by a Studio that has since changed what a pack holds. Read as though it were
+ * current, whatever the newer format carries would be missing from what plays, with nothing to
+ * say so - a scene that ends early, a page whose widgets are gone. So a shipped game asks this of
+ * its base pack and of every layer before reading either, and refuses the one that answers.
+ *
+ * Only a number strictly greater than the build's own is refused. A pack that states no version
+ * was written before packs stated one, and every build reads it as it always has.
+ */
+export function newerRuntimePackSchemaVersion(pack: unknown): number | null {
+    if (!pack || typeof pack !== "object" || Array.isArray(pack)) {
+        return null;
+    }
+    const version = (pack as { schemaVersion?: unknown }).schemaVersion;
+    return typeof version === "number" && Number.isFinite(version) && version > GAME_RUNTIME_PACK_SCHEMA_VERSION
+        ? version
+        : null;
+}
+
 export const GAME_RUNTIME_BRIDGE_KEY = "__NLS_GAME_RUNTIME__" as const;
 export const GAME_RUNTIME_PROTOCOL = "nlgame" as const;
 /** Main -> renderer push when the window enters or leaves fullscreen. */
