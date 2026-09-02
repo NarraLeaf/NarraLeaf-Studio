@@ -24,7 +24,11 @@ import type { StudioTaskProgress } from "@shared/types/studioTask";
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
-import { collectBlueprintNetworkNodes, collectBlueprintPointerNodes } from "@/lib/lint/rules";
+import {
+    collectBlueprintNetworkNodes,
+    collectBlueprintPointerNodes,
+    collectBlueprintScreenshotNodes,
+} from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
 export { nonRedundantLintLocation };
@@ -1075,19 +1079,25 @@ export class BuildService extends Service<BuildService> {
             // guess at - and a warning is the last thing that should stop a build.
             return;
         }
-        const blueprints = new Set(collectBlueprintPointerNodes(document).map(site => site.blueprintName));
-        if (blueprints.size === 0) {
-            return;
-        }
         const consoleService = this.tryGetConsole();
-        for (const blueprint of blueprints) {
-            consoleService?.log(
-                BUILD_CONSOLE_CHANNEL,
-                "warning",
-                translate("build.pointerNodeUnsupported", { blueprint, platforms: nonDesktop.join(", ") }),
-                { source: BUILD_CONSOLE_SOURCE },
-            );
-        }
+        const warn = (blueprintNames: Set<string>, key: "build.pointerNodeUnsupported" | "build.screenshotNodeUnsupported") => {
+            for (const blueprint of blueprintNames) {
+                consoleService?.log(
+                    BUILD_CONSOLE_CHANNEL,
+                    "warning",
+                    translate(key, { blueprint, platforms: nonDesktop.join(", ") }),
+                    { source: BUILD_CONSOLE_SOURCE },
+                );
+            }
+        };
+        warn(new Set(collectBlueprintPointerNodes(document).map(site => site.blueprintName)), "build.pointerNodeUnsupported");
+        // The screenshot pair takes the cursor family's treatment for the cursor family's reason: a
+        // web or mobile build of a project that offers a screenshot button is a legitimate thing to
+        // ship, and the button reports the platform has none rather than pretending.
+        warn(
+            new Set(collectBlueprintScreenshotNodes(document).map(site => site.blueprintName)),
+            "build.screenshotNodeUnsupported",
+        );
     }
 
     private runNetworkGate(

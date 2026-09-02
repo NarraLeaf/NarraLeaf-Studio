@@ -384,6 +384,17 @@ export class DevModeManager {
         };
         window.win.on("enter-full-screen", forwardFullscreen(true));
         window.win.on("leave-full-screen", forwardFullscreen(false));
+        // The same, for the window gaining and losing the author's attention: it feeds the
+        // `On Window Focus Changed` head and the "mute when unfocused" preference. From the window
+        // rather than from the page, so what a Dev Mode session hears is what the packaged game
+        // hears - Studio's own developer tools taking the keyboard is not the author going away.
+        const forwardWindowFocus = (isFocused: boolean) => () => {
+            if (!window.isClosed() && !window.isDestroyed()) {
+                window.sendIpcEvent(IPCEventType.devModeWindowFocusChanged, { isFocused });
+            }
+        };
+        window.win.on("focus", forwardWindowFocus(true));
+        window.win.on("blur", forwardWindowFocus(false));
 
         // Give the game's blueprints a chance to intercept a user-initiated window close (native
         // close box, OS shortcut) via the `On Window Close Requested` head. Swallow the close, ask

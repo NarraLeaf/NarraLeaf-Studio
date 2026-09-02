@@ -4,6 +4,7 @@ import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
+    GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL,
     GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
@@ -13,6 +14,10 @@ import {
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
 import type { GameMenuModel } from "@shared/types/gameMenu";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
 import {
     GAME_RUNTIME_TEST_COMMAND_CHANNEL,
@@ -218,6 +223,24 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             ipcRenderer.off(GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL, handler);
         };
     },
+    // The window's own focus, asked of and pushed by the process that owns it. Deliberately not the
+    // page's `focus`/`blur`: those also fire for a window whose developer tools took the keyboard,
+    // which is a window the player is plainly still in.
+    isWindowFocused: () => ipcRenderer.invoke("runtime:window:isFocused") as Promise<boolean>,
+    onWindowFocusChanged: (listener: (isFocused: boolean) => void) => {
+        const handler = (_event: unknown, isFocused: boolean) => {
+            listener(isFocused === true);
+        };
+        ipcRenderer.on(GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL, handler);
+        return () => {
+            ipcRenderer.off(GAME_RUNTIME_WINDOW_FOCUS_CHANGED_CHANNEL, handler);
+        };
+    },
+    // The capture and the file are both the main process's; nothing about the path is decided here.
+    saveScreenshot: () =>
+        ipcRenderer.invoke("runtime:screenshot:save") as Promise<BlueprintScreenshotResult>,
+    openScreenshotsFolder: () =>
+        ipcRenderer.invoke("runtime:screenshot:openFolder") as Promise<BlueprintOpenScreenshotsResult>,
     onCloseRequested: (listener: () => boolean | Promise<boolean>) => {
         closeRequestedListeners.add(listener);
         return () => {
@@ -247,7 +270,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             };
         },
     },
-    capabilities: { closeRequested: true, windowScale: true },
+    capabilities: { closeRequested: true, windowScale: true, screenshot: true },
     /*
      * Saves here are files in this game's user-data directory. Nothing reclaims them: no quota, no
      * eviction, no seven-day rule - which is the difference the web export has to report and this

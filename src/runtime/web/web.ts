@@ -12,6 +12,8 @@ import {
     resolvePluginExternalLinkAmong,
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import { SCREENSHOT_UNSUPPORTED_MESSAGE } from "@shared/types/blueprint/screenshot";
+import { createWindowFocusTracker } from "./windowFocus";
 import { packNetworkAllowlist } from "@shared/types/networkAllowlist";
 import { installBrowserGestureGuards } from "./browserGestures";
 import { installScreenWakeLock } from "./screenWakeLock";
@@ -158,6 +160,22 @@ const screenWakeLock = installScreenWakeLock({
     },
 });
 
+// A page is the window here, so "is the player looking at us" is three browser signals for two
+// facts. See `windowFocus` for how they collapse into one change.
+const windowFocus = createWindowFocusTracker({
+    read: () => document.visibilityState !== "hidden" && document.hasFocus(),
+    subscribe: listener => {
+        document.addEventListener("visibilitychange", listener);
+        window.addEventListener("focus", listener);
+        window.addEventListener("blur", listener);
+        return () => {
+            document.removeEventListener("visibilitychange", listener);
+            window.removeEventListener("focus", listener);
+            window.removeEventListener("blur", listener);
+        };
+    },
+});
+
 const bridge: GameRuntimePreloadBridge = {
     readPack,
     assetUrl,
@@ -211,13 +229,34 @@ const bridge: GameRuntimePreloadBridge = {
         document.addEventListener("fullscreenchange", handler);
         return () => document.removeEventListener("fullscreenchange", handler);
     },
+    // The page is the window here, so "is the player looking at us" is two questions the browser
+    // answers separately: a hidden tab, and a visible one the player has clicked away from. Both
+    // count as away - a game muted on blur should be quiet in a background tab as well as behind
+    // another application - and `visibilitychange` is the only one of the two a mobile browser
+    // reliably fires when the player switches apps.
+    isWindowFocused: async () => windowFocus.isFocused(),
+    onWindowFocusChanged: listener => windowFocus.onChange(listener),
+    // A page cannot picture the window it is inside, and a file it produced would be a download the
+    // player has to accept and then find. Reported rather than faked: `capabilities.screenshot` is
+    // false below, so a game can leave the button out, and the node's own `Failed` branch runs for
+    // one that does not.
+    saveScreenshot: async () => ({
+        outcome: "failed" as const,
+        path: null,
+        error: SCREENSHOT_UNSUPPORTED_MESSAGE,
+    }),
+    openScreenshotsFolder: async () => ({
+        outcome: "failed" as const,
+        path: null,
+        error: SCREENSHOT_UNSUPPORTED_MESSAGE,
+    }),
     // The browser owns tab/window closing and won't let a page reliably intercept it (beforeunload
     // is synchronous and heavily restricted), so there is no host-driven close request on the web:
     // registering a handler is a no-op and the blueprint close event simply never fires here.
     onCloseRequested: () => () => undefined,
     // Says out loud what the no-op above implies, so callers gate on it instead of registering a
     // handler that can never run (runtime plugins surface it as events.available("closeRequested")).
-    capabilities: { closeRequested: false, windowScale: false },
+    capabilities: { closeRequested: false, windowScale: false, screenshot: false },
     // Two tabs of one export share one IndexedDB. See `sessionLock`.
     claimSession: () => sessionClaimPromise,
     // What the browser said when this page asked to keep the player's data. See `storageDurability`.

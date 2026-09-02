@@ -17,6 +17,10 @@ import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { getInterface } from "@/lib/app/bridge";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
@@ -1481,6 +1485,49 @@ export function DevModeContent(props: DevModeContentProps) {
         });
     }, []);
 
+    /**
+     * Whether this window has the author's attention.
+     *
+     * Asked of the main process, which is what makes the answer here the answer a packaged game
+     * gives: `document.hasFocus()` is false while Studio's own developer tools hold the keyboard,
+     * and an author with the console open has not gone anywhere.
+     */
+    const isWindowFocused = useCallback(async (): Promise<boolean> => {
+        const result = await getInterface().devMode.getWindowFocused();
+        if (!result.success) {
+            throw new Error(result.error ?? "Is Window Focused failed");
+        }
+        return result.data.isFocused;
+    }, []);
+
+    const subscribeWindowFocusChanged = useCallback((listener: (isFocused: boolean) => void): (() => void) => {
+        const token = getInterface().devMode.onWindowFocusChanged(({ isFocused }) => listener(isFocused));
+        return () => token.cancel();
+    }, []);
+
+    /**
+     * The screenshot pair, against this window's own web contents.
+     *
+     * The project is what travels, never a path: the main process puts the file in this project's
+     * Dev Mode data, so an author testing a screenshot button gets a real file in a real folder and
+     * "reset this project's player data" takes it away again.
+     */
+    const saveScreenshot = useCallback(async (): Promise<BlueprintScreenshotResult> => {
+        const result = await getInterface().devMode.saveScreenshot(await awaitProjectRef());
+        if (!result.success) {
+            return { outcome: "failed", path: null, error: result.error ?? "Save Screenshot failed" };
+        }
+        return result.data;
+    }, [awaitProjectRef]);
+
+    const openScreenshotsFolder = useCallback(async (): Promise<BlueprintOpenScreenshotsResult> => {
+        const result = await getInterface().devMode.openScreenshotsFolder(await awaitProjectRef());
+        if (!result.success) {
+            return { outcome: "failed", path: null, error: result.error ?? "Open Screenshots Folder failed" };
+        }
+        return result.data;
+    }, [awaitProjectRef]);
+
     // Runtime plugin capability backends for the Dev Mode window. Built once and kept stable:
     // plugin setup captures these objects, and they have to outlive every bundle revision and
     // in-window relaunch.
@@ -1688,6 +1735,10 @@ export function DevModeContent(props: DevModeContentProps) {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            isWindowFocused,
+            subscribeWindowFocusChanged,
+            saveScreenshot,
+            openScreenshotsFolder,
             subscribeCloseRequested,
             networkFetch,
             movePointer,
@@ -1726,6 +1777,10 @@ export function DevModeContent(props: DevModeContentProps) {
         saveStore,
         setFullscreen,
         subscribeFullscreenChanged,
+        isWindowFocused,
+        subscribeWindowFocusChanged,
+        saveScreenshot,
+        openScreenshotsFolder,
         subscribeCloseRequested,
         surface,
     ]);

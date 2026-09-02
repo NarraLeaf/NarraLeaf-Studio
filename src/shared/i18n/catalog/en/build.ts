@@ -543,6 +543,7 @@ export const build = {
      */
     networkNodeDisallowed: "{blueprint} makes a network request, which this project does not allow.",
     pointerNodeUnsupported: "{blueprint} moves the mouse cursor, which does not work on {platforms}.",
+    screenshotNodeUnsupported: "{blueprint} saves screenshots, which does not work on {platforms}.",
     networkSummary: {
         one: "Build stopped: {count} network node cannot run. Change the network policy in project settings, or remove the node.",
         other: "Build stopped: {count} network nodes cannot run. Change the network policy in project settings, or remove the nodes.",

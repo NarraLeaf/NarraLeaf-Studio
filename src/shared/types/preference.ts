@@ -59,6 +59,7 @@ export const PLAYER_PREFERENCE_KEYS = [
     "voiceVolume",
     "voiceEndMode",
     "voiceFadeDuration",
+    "muteOnWindowBlur",
 ] as const;
 
 export type PlayerPreferenceKey = typeof PLAYER_PREFERENCE_KEYS[number];
@@ -98,6 +99,8 @@ export type PlayerPreferences = {
     voiceEndMode: VoiceEndMode;
     /** Fade length in milliseconds when `voiceEndMode` is `fade`. */
     voiceFadeDuration: number;
+    /** Silence the game's whole output while its window is not the one the player is working in. */
+    muteOnWindowBlur: boolean;
 };
 
 /**
@@ -261,6 +264,19 @@ export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, Playe
         max: 10000,
         display: { unit: "ms", control: "field" },
     },
+    /**
+     * Off by default, and the default is what makes it allowed to be here at all.
+     *
+     * This module holds what an author owns the starting point of, and the rule beside it is that a
+     * preference is for what an author cannot build themselves. This one they could: the focus
+     * event and the volume nodes are both in the catalogue, and the graph is four nodes. It is here
+     * anyway, once, because those four nodes are four nodes about the *window* rather than about
+     * the game, and no author should have to learn what a window is to answer "be quiet when I tab
+     * away". Off by default means a project that ignores it behaves exactly as it did.
+     *
+     * It is the one exception. Anything else that an author could wire belongs in a graph.
+     */
+    muteOnWindowBlur: { key: "muteOnWindowBlur", kind: "boolean", defaultValue: false },
 };
 
 /**
@@ -283,6 +299,7 @@ export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
     voiceVolume: 1,
     voiceEndMode: "stop",
     voiceFadeDuration: 0,
+    muteOnWindowBlur: false,
 };
 
 /**
@@ -310,7 +327,15 @@ export const PLAYER_PREFERENCE_GROUPS: readonly {
     { id: "skipping", keys: ["skip", "skipReadText", "skipDelay", "skipInterval"] },
     {
         id: "audio",
-        keys: ["globalVolume", "bgmVolume", "soundVolume", "voiceVolume", "voiceEndMode", "voiceFadeDuration"],
+        keys: [
+            "globalVolume",
+            "bgmVolume",
+            "soundVolume",
+            "voiceVolume",
+            "voiceEndMode",
+            "voiceFadeDuration",
+            "muteOnWindowBlur",
+        ],
     },
 ];
 

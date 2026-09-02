@@ -263,6 +263,13 @@ const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.fullscreenChanged"],
     },
+    {
+        id: "windowFocusChanged",
+        displayName: "Window focus changed",
+        description: "Fires when the application window gains or loses the player's attention.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.windowFocusChanged"],
+    },
 ];
 
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [

@@ -31,6 +31,8 @@
 
 import {
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+    BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
@@ -176,6 +178,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.getAutoForwardDelay", "blueprint.game.getSkipping",
     "blueprint.game.getTextRevealDuration",
     "blueprint.game.getSkipDelay", "blueprint.game.getSkipInterval", "blueprint.game.getSkipReadText",
+    "blueprint.game.getMuteOnWindowBlur",
     "blueprint.game.getSoundVolume", "blueprint.game.getSpeakerAvatar", "blueprint.game.getSpeakerColor",
     "blueprint.game.getTrackVolume", "blueprint.game.getVoiceEndMode",
     "blueprint.game.getVoiceFadeDuration", "blueprint.game.getVoiceVolume",
@@ -239,7 +242,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
  * and the shape the fold walks straight through.
  */
 const STEP_NODE_TYPES: readonly string[] = [
-    "blueprint.app.getFullscreen", "blueprint.app.getWindowScale",
+    "blueprint.app.getFullscreen", "blueprint.app.isWindowFocused", "blueprint.app.getWindowScale",
     "blueprint.app.getWindowScaleOptions", "blueprint.app.getWindowSize",
     "blueprint.app.keepWindowOpen", "blueprint.app.setFullscreen", "blueprint.app.setWindowScale",
     "blueprint.app.setWindowSize", "blueprint.broadcast.send",
@@ -300,7 +303,8 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.setAutoForwardDelay", "blueprint.game.setSkipping",
     "blueprint.game.setTextRevealDuration",
     "blueprint.game.setSkip", "blueprint.game.setSkipDelay", "blueprint.game.setSkipInterval",
-    "blueprint.game.setSkipReadText", "blueprint.game.setSoundVolume", "blueprint.game.setTrackVolume",
+    "blueprint.game.setSkipReadText", "blueprint.game.setMuteOnWindowBlur",
+    "blueprint.game.setSoundVolume", "blueprint.game.setTrackVolume",
     "blueprint.game.setVoiceEndMode", "blueprint.game.setVoiceFadeDuration",
     "blueprint.game.setVoiceVolume", "blueprint.game.showDialog", "blueprint.game.skip",
     "blueprint.game.toggleDialogDisplay", "blueprint.image.clearImageAsset", "blueprint.image.setCropRect",
@@ -346,6 +350,7 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.appBoot", "blueprint.event.head.beforeSurfaceExit", "blueprint.event.head.blur",
     "blueprint.event.head.elementClick", "blueprint.event.head.elementFlush", "blueprint.event.head.flush",
     "blueprint.event.head.focus", "blueprint.event.head.fullscreenChanged",
+    "blueprint.event.head.windowFocusChanged",
     "blueprint.event.head.gameReady", "blueprint.event.head.init", "blueprint.event.head.itemClick",
     "blueprint.event.head.itemHover", "blueprint.event.head.itemRender", "blueprint.event.head.keyDown",
     "blueprint.event.head.keyUp", "blueprint.event.head.listItemRefresh", "blueprint.event.head.mouseClick",
@@ -412,6 +417,11 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // `Open Link` leaves by `failed` when the address is not one this build declared, or when the
     // player's machine has nothing to open it with - the two the node lets an author branch on.
     [BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL]: { in: ["in"], out: ["next", "failed"] },
+    // The screenshot pair takes `Open Link`'s shape for `Open Link`'s reason: the picture was
+    // written or it was not, and whether this platform has no capture at all or the disk refused
+    // the file is on a data pin. The author's answer to both is the same apology.
+    [BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT]: { in: ["in"], out: ["next", "failed"] },
+    [BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER]: { in: ["in"], out: ["next", "failed"] },
     // The Move Mouse pair is `Open Link`'s shape for the same reason: the cursor went there or it
     // did not, and whether the host has no cursor support or the system refused the move is on a
     // data pin rather than in a third branch nobody could act on differently.

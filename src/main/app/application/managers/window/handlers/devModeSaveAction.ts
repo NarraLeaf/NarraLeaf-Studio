@@ -35,6 +35,16 @@ function projectNamespaceSource(projectRef: DevModeSaveProjectRef): string {
     return `path:${path.resolve(projectPath)}`;
 }
 
+/**
+ * The per-project directory name every Dev Mode store uses, from the identity the window has.
+ *
+ * Exported because the screenshot store shares it: two directories named differently for the same
+ * project would mean "reset this project's player data" cleared one of them.
+ */
+export function devModeProjectDirectoryName(projectRef: DevModeSaveProjectRef): string {
+    return projectDirectoryName(projectRef);
+}
+
 function projectDirectoryName(projectRef: DevModeSaveProjectRef): string {
     const hash = crypto.createHash("sha256").update(projectNamespaceSource(projectRef)).digest("hex").slice(0, 32);
     return `project-${hash}`;

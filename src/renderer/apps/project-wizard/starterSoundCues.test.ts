@@ -197,7 +197,12 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
         button,
         clip: "ui-confirm",
     })),
-    ...["Save", "Load", "Config", "Text", "Sound", "All text", "Read only", "On", "Off"].map(button => ({
+    ...[
+        "Save", "Load", "Config", "Text", "Sound", "All text", "Read only", "On", "Off",
+        // The sound page's own pair, named apart from the fullscreen pair above because two
+        // buttons on one screen cannot both be called On.
+        "Mute on", "Mute off",
+    ].map(button => ({
         page: "Config",
         button,
         clip: "ui-confirm",

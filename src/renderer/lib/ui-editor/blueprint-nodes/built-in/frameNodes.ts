@@ -10,6 +10,9 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+    BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+    BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
@@ -509,6 +512,101 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 nextPort: result.outcome === "opened" ? "next" : "failed",
                 outputValues: { error: result.error },
             };
+        },
+    },
+    {
+        /**
+         * A picture of the frame the player is looking at, kept as a file.
+         *
+         * Nothing is passed in and a path comes back, which is the whole of the design: where a
+         * game may write is a fact about the installation rather than about the graph, so the shell
+         * answers it. The packaged desktop game writes beside the player's saves; Dev Mode writes
+         * into the author's Dev Mode data, so an author testing this sees a real file in a real
+         * folder rather than a node that quietly does nothing.
+         *
+         * `Failed` covers a platform with no screenshots at all and a disk that refused the write,
+         * with `Error` saying which - one branch because the author's answer to both is the same,
+         * and a branch nobody can act on differently is a branch that never runs.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+        displayName: "Save Screenshot",
+        category: "App",
+        keywords: ["screenshot", "capture", "picture", "photo", "png", "save", "image", "snap", "window"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "failed", kind: "output", semantic: "exec", label: "Failed" },
+            { id: "path", kind: "output", semantic: "data", valueType: "string", label: "Path" },
+            { id: "error", kind: "output", semantic: "data", valueType: "string", label: "Error" },
+        ],
+        async execute(ctx) {
+            const result = await requireHostApi(ctx).navigation.saveScreenshot();
+            return {
+                nextPort: result.outcome === "saved" ? "next" : "failed",
+                outputValues: { path: result.path ?? "", error: result.error },
+            };
+        },
+    },
+    {
+        /**
+         * The folder those pictures are in, opened in the player's file manager.
+         *
+         * Beside `Save Screenshot` because "where did it go" is the next question a screenshot
+         * button raises, and the path the node above returns is a string a player cannot click.
+         * Opens the folder even when it is empty - it is created on the way - so a settings screen
+         * can offer the row before the player has taken one.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+        displayName: "Open Screenshots Folder",
+        category: "App",
+        keywords: ["screenshot", "folder", "directory", "open", "reveal", "explorer", "finder", "files"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "failed", kind: "output", semantic: "exec", label: "Failed" },
+            { id: "path", kind: "output", semantic: "data", valueType: "string", label: "Path" },
+            { id: "error", kind: "output", semantic: "data", valueType: "string", label: "Error" },
+        ],
+        async execute(ctx) {
+            const result = await requireHostApi(ctx).navigation.openScreenshotsFolder();
+            return {
+                nextPort: result.outcome === "opened" ? "next" : "failed",
+                outputValues: { path: result.path ?? "", error: result.error },
+            };
+        },
+    },
+    {
+        /**
+         * Whether the game's window is the one the player is working in right now.
+         *
+         * The paired read for `On Window Focus Changed`: the head says when it changed, this says
+         * what it is - which is what a graph that runs for some other reason needs, and what a
+         * surface opened while the player was already away has to ask.
+         *
+         * True wherever the shell has no window to be behind, so a graph written against this never
+         * silences itself somewhere it cannot tell.
+         */
+        type: BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED,
+        displayName: "Is Window Focused",
+        category: "App",
+        keywords: ["window", "focus", "focused", "blur", "active", "background", "foreground", "app"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            { id: "isFocused", kind: "output", semantic: "data", valueType: "boolean", label: "Is Focused" },
+        ],
+        async execute(ctx) {
+            const isFocused = await requireHostApi(ctx).navigation.isWindowFocused();
+            return { nextPort: "next", outputValues: { isFocused } };
         },
     },
     {

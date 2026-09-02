@@ -24,6 +24,15 @@
     "config.masterVolume": {
       "sourceText": "全体音量"
     },
+    "config.muteOnBlur": {
+      "sourceText": "非アクティブ時にミュート"
+    },
+    "config.muteOnBlurOff": {
+      "sourceText": "オフ"
+    },
+    "config.muteOnBlurOn": {
+      "sourceText": "オン"
+    },
     "config.secondsSuffix": {
       "sourceText": "秒"
     },

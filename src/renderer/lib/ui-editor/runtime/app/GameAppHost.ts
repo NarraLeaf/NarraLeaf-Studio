@@ -6,6 +6,10 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
+import type {
     GameProgressExportRequest,
     GameProgressExportResult,
     GameProgressImportResult,
@@ -362,6 +366,38 @@ export type GameAppHost = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     /** Subscribe to fullscreen transitions; returns an unsubscribe function. */
     subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
+    /**
+     * Whether this shell's window is the one the player is working in.
+     *
+     * Asked of the shell rather than read off the page, and on the desktop shells that means the
+     * process that owns the window: `document.hasFocus()` in a renderer and `BrowserWindow.
+     * isFocused()` in the main process are two different questions with two different answers about
+     * a window whose chrome is being dragged, and a game must not have both.
+     *
+     * Omitted by hosts with no window of their own (the story preview), where the node answers true.
+     */
+    isWindowFocused?: () => Promise<boolean>;
+    /**
+     * Subscribe to that changing; returns an unsubscribe function.
+     *
+     * Both or neither, and from the same place: a reader that says one thing and an event that says
+     * another is worse than having only one of them.
+     */
+    subscribeWindowFocusChanged?: (listener: (isFocused: boolean) => void) => () => void;
+    /**
+     * Write a picture of the frame the player is looking at, and say where it went.
+     *
+     * Every desktop shell hands this to the process that owns its window, because the capture and
+     * the file are both that process's to make. The web export declines: a page cannot picture the
+     * window it is inside, and a file it produced would be a download the player has to accept.
+     *
+     * Where the file goes is the shell's answer, never the caller's - see
+     * `@shared/types/blueprint/screenshot`. Omitted by hosts that can do neither, where the node
+     * reports the platform has no screenshots rather than throwing.
+     */
+    saveScreenshot?: () => Promise<BlueprintScreenshotResult>;
+    /** Open the folder those go in, for the same shells and omitted by the same ones. */
+    openScreenshotsFolder?: () => Promise<BlueprintOpenScreenshotsResult>;
     /**
      * Put a menu bar on this shell's window, and hear which item the player picked.
      *

@@ -20922,7 +20922,8 @@
         "e86d48d1-4c15-4bd4-8251-5cd2b9125319",
         "b15fa747-fe45-4bf2-8562-c343ac387293",
         "82b912e8-3fc1-4ac4-bfad-d99209b94167",
-        "0ebfe184-4b08-4ac7-99e8-10865f14d6b3"
+        "0ebfe184-4b08-4ac7-99e8-10865f14d6b3",
+        "config-mute-row"
       ],
       "layout": {
         "x": 660,
@@ -56183,6 +56184,1390 @@
         },
         "localizationKey": "menu.scenes"
       }
+    },
+    "config-mute-row": {
+      "id": "config-mute-row",
+      "type": "nl.container",
+      "name": "Mute row",
+      "parentId": "dd2a6fc5-4096-4982-96b4-3aeeb619f0c7",
+      "childrenIds": [
+        "config-mute-label",
+        "config-mute-on",
+        "config-mute-off",
+        "config-mute-rule"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1140,
+        "height": 63,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "layoutKind": "free",
+        "stackDirection": "vertical",
+        "stackGap": 8,
+        "stackPaddingTop": 0,
+        "stackPaddingRight": 0,
+        "stackPaddingBottom": 0,
+        "stackPaddingLeft": 0,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "scrollAxis": "y",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderRadiusTL": 0,
+        "borderRadiusTR": 0,
+        "borderRadiusBL": 0,
+        "borderRadiusBR": 0,
+        "borderRadiusLinked": true,
+        "borderColor": "nlbrand:container.border",
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "backgroundImage": "",
+        "backgroundFit": "cover",
+        "fillType": "color",
+        "fillVisible": false,
+        "fillOpacity": 1,
+        "strokeVisible": true,
+        "strokeOpacity": 1,
+        "strokeAlign": "center",
+        "strokeSide": "all",
+        "borderJoin": "miter",
+        "cornerAdvanced": false,
+        "clipContent": false,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadius",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusLinked",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundImage",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundFit",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "cover"
+                    }
+                  ]
+                },
+                {
+                  "key": "imageFill",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fillType",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "color"
+                    }
+                  ]
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeAlign",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "center"
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeSide",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "all"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderJoin",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "miter"
+                    }
+                  ]
+                },
+                {
+                  "key": "cornerAdvanced",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBackgroundBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectInnerShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectGlow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "config-mute-label": {
+      "id": "config-mute-label",
+      "type": "nl.text",
+      "name": "Mute label",
+      "parentId": "config-mute-row",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 46,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "text": "Mute when unfocused",
+        "fontSize": 25,
+        "color": "nlbrand:text.muted",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.4,
+        "fontAssetId": null,
+        "textWrapMode": "nowrap",
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "effects": {
+          "effectBlur": 0,
+          "effectBackgroundBlur": 0,
+          "effectShadow": null,
+          "effectTextShadow": null,
+          "effectInnerShadow": null,
+          "effectBlend": "",
+          "effectGlow": null,
+          "effectFilter": null
+        },
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fontAssetId",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fontSize",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 25
+                    }
+                  ]
+                },
+                {
+                  "key": "fontWeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "fontStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "normal"
+                    }
+                  ]
+                },
+                {
+                  "key": "color",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:text.muted"
+                    }
+                  ]
+                },
+                {
+                  "key": "lineHeight",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1.4
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectTextShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "config.muteOnBlur"
+      }
+    },
+    "config-mute-on": {
+      "id": "config-mute-on",
+      "type": "nl.button",
+      "name": "Mute on",
+      "parentId": "config-mute-row",
+      "childrenIds": [],
+      "layout": {
+        "x": 340,
+        "y": 0,
+        "width": 220,
+        "height": 46,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "label": "On",
+        "fontSize": 23,
+        "color": "nlbrand:text.primary",
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.2,
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillType": "color",
+        "fillOpacity": 0,
+        "fillVisible": false,
+        "backgroundFit": "cover",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "borderColor": "nlbrand:container.border",
+        "borderStyle": "solid",
+        "paddingX": 16,
+        "paddingY": 8,
+        "clipContent": true,
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.2
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.28
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "config.muteOnBlurOn"
+      }
+    },
+    "config-mute-off": {
+      "id": "config-mute-off",
+      "type": "nl.button",
+      "name": "Mute off",
+      "parentId": "config-mute-row",
+      "childrenIds": [],
+      "layout": {
+        "x": 568,
+        "y": 0,
+        "width": 220,
+        "height": 46,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "label": "Off",
+        "fontSize": 23,
+        "color": "nlbrand:text.primary",
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "lineHeight": 1.2,
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillType": "color",
+        "fillOpacity": 0,
+        "fillVisible": false,
+        "backgroundFit": "cover",
+        "borderRadius": 4,
+        "borderWidth": 1,
+        "borderColor": "nlbrand:container.border",
+        "borderStyle": "solid",
+        "paddingX": 16,
+        "paddingY": 8,
+        "clipContent": true,
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.2
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.28
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "config.muteOnBlurOff"
+      }
+    },
+    "config-mute-rule": {
+      "id": "config-mute-rule",
+      "type": "nl.container",
+      "name": "Mute rule",
+      "parentId": "config-mute-row",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 62,
+        "width": 1140,
+        "height": 1,
+        "visible": true,
+        "opacity": 1
+      },
+      "props": {
+        "layoutKind": "free",
+        "stackDirection": "vertical",
+        "stackGap": 8,
+        "stackPaddingTop": 0,
+        "stackPaddingRight": 0,
+        "stackPaddingBottom": 0,
+        "stackPaddingLeft": 0,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "scrollAxis": "y",
+        "backgroundColor": "nlbrand:surface.overlay",
+        "borderRadius": 0,
+        "borderRadiusTL": 0,
+        "borderRadiusTR": 0,
+        "borderRadiusBL": 0,
+        "borderRadiusBR": 0,
+        "borderRadiusLinked": true,
+        "borderColor": "nlbrand:container.border",
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "backgroundImage": "",
+        "backgroundFit": "cover",
+        "fillType": "color",
+        "fillVisible": true,
+        "fillOpacity": 0.5,
+        "strokeVisible": true,
+        "strokeOpacity": 1,
+        "strokeAlign": "center",
+        "strokeSide": "all",
+        "borderJoin": "miter",
+        "cornerAdvanced": false,
+        "clipContent": false,
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:surface.overlay"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadius",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusTR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBL",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusBR",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderRadiusLinked",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundImage",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundFit",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "cover"
+                    }
+                  ]
+                },
+                {
+                  "key": "imageFill",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "fillType",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "color"
+                    }
+                  ]
+                },
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.5
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeAlign",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "center"
+                    }
+                  ]
+                },
+                {
+                  "key": "strokeSide",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "all"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderJoin",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "miter"
+                    }
+                  ]
+                },
+                {
+                  "key": "cornerAdvanced",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetX",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOffsetY",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformScale",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "transformRotation",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "transformOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBackgroundBlur",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "effectShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectInnerShadow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectBlend",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": ""
+                    }
+                  ]
+                },
+                {
+                  "key": "effectGlow",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "key": "effectFilter",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
     }
   },
   "actions": {
@@ -56243,6 +57628,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-08-18T01:19:41.725Z"
+    "updatedAt": "2026-09-02T23:51:35.966Z"
   }
 }
