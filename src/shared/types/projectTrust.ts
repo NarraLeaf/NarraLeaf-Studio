@@ -8,7 +8,9 @@
  * be designed away: the Live2D and Spine licences forbid shipping their renderers, so the renderer
  * has to be the author's own file. Nor is it confined to puppets - a workspace window holds a
  * recursive read grant over the whole project and `app://fs/` types its responses by extension, so
- * any `.js` in the tree can be minted into a module URL.
+ * any `.js` in the tree can be minted into a module URL. That is why the handler behind `app://fs/`
+ * asks this ledger before it types a response as something a page would run: a distrusted
+ * project's scripts are served as text, whatever a renderer asked for.
  *
  * Opening a project you wrote yourself is therefore fine, and opening one that arrived from
  * somebody else is running their code. Distrust is what separates the two.

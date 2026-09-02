@@ -7,14 +7,15 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
  *
  * # This is not the boundary
  *
- * Main holds the ledger and main is what refuses a build, a preview, a spawn. What lives here is
- * the renderer's copy, and it exists for two things a main-side refusal cannot do: stop offering a
- * control that would be refused, and stop the renderer from doing the one dangerous thing main
- * never sees - `import()`ing a module out of the project. That import happens entirely inside the
- * renderer; no IPC crosses, so there is nothing for main to say no to.
+ * Main holds the ledger and main is what refuses a build, a preview, a spawn - and, since the
+ * `app://fs/` handler started asking the ledger before it serves anything a page would run, the
+ * `import()` of a module out of the project as well. What lives here is the renderer's copy, and
+ * it exists for what a main-side refusal cannot do well: stop offering a control that would be
+ * refused, and turn "the import failed on its MIME type" into "this project is not trusted"
+ * before the import is attempted, so the author reads a reason rather than a loader error.
  *
- * A renderer's copy of a security answer is worth having only when the thing it guards is also in
- * the renderer. Everything else must ask main.
+ * A renderer's copy of a security answer is an affordance, never the boundary. Everything that
+ * matters asks main, and main answers on its own account.
  *
  * # Memoized per path, except when the question was never answered
  *

@@ -33,7 +33,7 @@ describe("dev mode weather clip grants", () => {
         clipPath = path.join(tempDir, "snow.webm");
         await fs.writeFile(clipPath, Buffer.from("fake-webm-bytes"));
         storageManager = new StorageManager({ logger: { error: vi.fn(), warn: vi.fn() } } as any);
-        protocolHandler = new FileSystemHashHandler("app", {}, storageManager);
+        protocolHandler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
     });
 
     afterEach(async () => {

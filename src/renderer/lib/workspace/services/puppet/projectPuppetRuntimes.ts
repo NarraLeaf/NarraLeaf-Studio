@@ -123,11 +123,12 @@ export async function readPuppetRuntimeStamp(project: Porject, backend: string):
  * own directory.
  */
 export async function createPuppetBackendSource(project: Porject, backend: string): Promise<PuppetBackendModuleSource> {
-    // The one place a distrusted project is stopped from running its own code, and the reason this
-    // check is here rather than at the three call sites: this function is the only way a
-    // workspace-side backend source comes into being, and one of those callers is an offscreen
-    // probe that no gesture starts. A URL minted here is `import()`ed by `loadPuppetBackends`
-    // entirely inside the renderer - no IPC crosses, so main never gets the chance to refuse it.
+    // The renderer's half of stopping a distrusted project from running its own code, and the
+    // reason this check is here rather than at the three call sites: this function is the only way
+    // a workspace-side backend source comes into being, and one of those callers is an offscreen
+    // probe that no gesture starts. Main holds the other half - the `app://fs/` handler serves a
+    // distrusted project's scripts as inert text, so the `import()` below would fail on its MIME
+    // type without this - but a loader error is not a reason the author can act on, and this is.
     if (!await isProjectTrusted(project.resolve())) {
         // Thrown as an *unavailable* rather than a failure, because that is what it is: nothing
         // is broken and the author has somewhere to go. Every caller treats anything else as "a

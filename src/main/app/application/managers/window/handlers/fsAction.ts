@@ -110,7 +110,7 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
         const denied = await ensurePathAllowed<string>(window, path, "read");
         if (denied) return this.success(denied);
 
-        const hash = window.app.storageManager.allocateHash(path, raw, "read", encoding);
+        const hash = window.app.storageManager.allocateHash(path, raw, "read", window.getWebContents().id, encoding);
 
         window.app.logger.debug(`[fs.read] path="${path}", raw=${raw}, encoding=${encoding}`);
 
@@ -205,7 +205,7 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
         const denied = await ensurePathAllowed<string>(window, path, "write");
         if (denied) return this.success(denied);
 
-        const hash = window.app.storageManager.allocateHash(path, raw, "write", encoding);
+        const hash = window.app.storageManager.allocateHash(path, raw, "write", window.getWebContents().id, encoding);
 
         window.app.logger.debug(`[fs.write] path="${path}", raw=${raw}, encoding=${encoding}`);
 
