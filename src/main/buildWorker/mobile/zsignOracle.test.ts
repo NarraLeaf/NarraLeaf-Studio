@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { wrapPackKey } from "@narraleaf/bindings";
 import { validateMobileShellManifest, type MobileShellManifest } from "./mobileShellManifest";
 import { runMobileRepack } from "./runMobileRepack";
 import {
@@ -166,14 +167,17 @@ async function buildSignedIpa(): Promise<{ ipaPath: string; templateManifest: Mo
     await fs.writeFile(p12File, appleIdentityP12());
     await fs.writeFile(provisioningProfileFile, appleProvisioningProfile());
 
+    // The container's key, as the manager mints one per build; the shell reads it from shell-config.
+    const contentKey = wrapPackKey(Buffer.alloc(32, 1));
     const job: GameBuildWorkerMobileJob = {
         sourceDir,
+        contentKey,
         templateManifest,
         productName: "Oracle Game",
         appDirBaseName: "OracleGame",
         orientation: "landscape",
         indexHtmlOverride: "<!doctype html><title>mobile</title>",
-        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
+        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000", contentKey }),
         ios: {
             templateAppZipPath: path.join(TEMPLATE_DIR, templateManifest.ios.template),
             outputName: "oracle.ipa",
@@ -284,6 +288,7 @@ describe.skipIf(!zsign.available)("zsign on a Studio-built .ipa", () => {
         const outputDir = await tempDir("nls-zsign-out-");
         await expect(runMobileRepack({
             sourceDir,
+            contentKey: wrapPackKey(Buffer.alloc(32, 1)),
             templateManifest,
             productName: "Oracle Game",
             appDirBaseName: "OracleGame",
