@@ -22,25 +22,18 @@ import type {
     BpVariableAst,
 } from "./ast";
 import { indexOfTopLevel, parseValue, splitTokens, splitTopLevel } from "./values";
+import {
+    BLUEPRINT_OWNER_KINDS,
+    blueprintOwnerFieldAliases,
+    knownBlueprintOwnerFieldNames,
+} from "./ownerGrammar";
 
 export type BpParseResult = {
     document: BpDocumentAst;
     diagnostics: BpDiagnostic[];
 };
 
-const OWNER_FIELD_ALIASES: Record<string, string> = {
-    surface: "surfaceId",
-    surfaceid: "surfaceId",
-    element: "elementId",
-    elementid: "elementId",
-    prop: "propPath",
-    proppath: "propPath",
-    component: "componentId",
-    componentid: "componentId",
-    blueprint: "blueprintId",
-    blueprintid: "blueprintId",
-    mode: "mode",
-};
+const OWNER_FIELD_ALIASES = blueprintOwnerFieldAliases();
 
 type FailFn = (line: number, code: string, message: string, hint?: string) => void;
 
@@ -279,7 +272,7 @@ function parseBlueprintHeader(text: string, line: number, fail: FailFn): BpBluep
                 line,
                 "dsl.unknown_owner_field",
                 `Unknown blueprint field "${key}".`,
-                "Known fields: owner, id, surface, element, prop, component, asset, blueprint, mode.",
+                `Known fields: owner, id, ${knownBlueprintOwnerFieldNames().join(", ")}.`,
             );
             continue;
         }
@@ -290,8 +283,7 @@ function parseBlueprintHeader(text: string, line: number, fail: FailFn): BpBluep
             line,
             "dsl.missing_owner",
             "Blueprint has no `owner=`.",
-            "One of: globalMain, surfaceMain, widgetMain, widgetValue, componentWidgetMain, "
-                + "storyAction.",
+            `One of: ${BLUEPRINT_OWNER_KINDS.join(", ")}.`,
         );
     }
     return blueprint;

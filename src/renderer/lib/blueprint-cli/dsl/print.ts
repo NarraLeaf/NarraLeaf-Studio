@@ -17,6 +17,7 @@ import type {
 } from "@shared/types/blueprint/document";
 import type { BpDiagnostic } from "./ast";
 import { printValue } from "./values";
+import { BLUEPRINT_OWNER_GRAMMAR } from "./ownerGrammar";
 
 export type BpPrintResult = {
     text: string;
@@ -173,38 +174,25 @@ function printEndpoint(edge: BlueprintGraphEdge, side: "from" | "to", nodeIds: R
     return nodeIds.has(`${nodeId}.${port}`) ? `${nodeId}:${port}` : `${nodeId}.${port}`;
 }
 
+/**
+ * The `owner=` line, read straight off the grammar the reader is built from.
+ *
+ * Written as a walk rather than one arm per kind because the two have to agree exactly - a file this
+ * prints is a file `apply` reads back - and the arms did not: the old fallback labelled an owner it
+ * did not recognise `owner=globalMain`, so `show` on a kind added later would have quietly rewritten
+ * it as a project-wide blueprint instead of failing.
+ */
 function printOwner(owner: BlueprintOwnerRef): string[] {
-    switch (owner.kind) {
-        case "globalMain":
-            return ["owner=globalMain"];
-        case "surfaceMain":
-            return ["owner=surfaceMain", `surface=${printValue(owner.surfaceId)}`];
-        case "widgetMain":
-            return [
-                "owner=widgetMain",
-                `surface=${printValue(owner.surfaceId)}`,
-                `element=${printValue(owner.elementId)}`,
-            ];
-        case "widgetValue":
-            return [
-                "owner=widgetValue",
-                `surface=${printValue(owner.surfaceId)}`,
-                `element=${printValue(owner.elementId)}`,
-                `prop=${printValue(owner.propPath)}`,
-            ];
-        case "componentWidgetMain":
-            return [
-                "owner=componentWidgetMain",
-                `component=${printValue(owner.componentId)}`,
-                `element=${printValue(owner.elementId)}`,
-            ];
-        case "storyAction":
-            return [
-                "owner=storyAction",
-                `blueprint=${printValue(owner.blueprintId)}`,
-                ...(owner.mode ? [`mode=${owner.mode}`] : []),
-            ];
-        default:
-            return ["owner=globalMain"];
+    const parts = [`owner=${owner.kind}`];
+    const carried = owner as unknown as Record<string, unknown>;
+    for (const field of BLUEPRINT_OWNER_GRAMMAR[owner.kind]) {
+        const value = carried[field.prop];
+        // An optional field the owner does not carry is simply not written; a required one that is
+        // missing is a broken owner, and saying so is `check`'s job, not the printer's.
+        if (value === undefined || value === null || value === "") {
+            continue;
+        }
+        parts.push(`${field.text}=${printValue(value)}`);
     }
+    return parts;
 }

@@ -39,6 +39,7 @@ import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import type { BpBlueprintAst, BpDiagnostic, BpDocumentAst, BpEndpointAst, BpGraphAst, BpNodeAst } from "./ast";
 import { autoLayout } from "./layout";
 import { valueToJs } from "./values";
+import { BLUEPRINT_OWNER_KINDS, isBlueprintOwnerKind, requiredBlueprintOwnerProps } from "./ownerGrammar";
 
 export type BpCompileOptions = {
     /**
@@ -78,14 +79,6 @@ export type BpCompileResult = {
     diagnostics: BpDiagnostic[];
 };
 
-const OWNER_REQUIRED_FIELDS: Record<string, string[]> = {
-    globalMain: [],
-    surfaceMain: ["surfaceId"],
-    widgetMain: ["surfaceId", "elementId"],
-    widgetValue: ["surfaceId", "elementId", "propPath"],
-    componentWidgetMain: ["componentId", "elementId"],
-    storyAction: ["blueprintId"],
-};
 
 export function compileBlueprintDocument(
     ast: BpDocumentAst,
@@ -658,19 +651,19 @@ function describeParamOptions(
 
 function buildOwnerRef(ast: BpBlueprintAst, diagnostics: BpDiagnostic[]): BlueprintOwnerRef | null {
     const kind = ast.ownerKind;
-    const required = OWNER_REQUIRED_FIELDS[kind];
-    if (!required) {
+    if (!isBlueprintOwnerKind(kind)) {
         if (kind.length > 0) {
             pushError(
                 diagnostics,
                 ast.line,
                 "compile.unknown_owner",
                 `Unknown owner kind "${kind}".`,
-                `One of: ${Object.keys(OWNER_REQUIRED_FIELDS).join(", ")}.`,
+                `One of: ${BLUEPRINT_OWNER_KINDS.join(", ")}.`,
             );
         }
         return null;
     }
+    const required = requiredBlueprintOwnerProps(kind);
     const missing = required.filter(field => !ast.ownerFields[field]);
     if (missing.length > 0) {
         pushError(
@@ -705,8 +698,12 @@ function buildOwnerRef(ast: BpBlueprintAst, diagnostics: BpDiagnostic[]): Bluepr
                 blueprintId: fields.blueprintId,
                 ...(fields.mode ? { mode: fields.mode as "action" | "value" | "condition" } : {}),
             };
-        default:
-            return null;
+        default: {
+            // `kind` is the union by here, so an owner kind added without an arm is a compile error
+            // rather than a `.bp` file the reader silently refuses.
+            const unbuilt: never = kind;
+            return unbuilt;
+        }
     }
 }
 
