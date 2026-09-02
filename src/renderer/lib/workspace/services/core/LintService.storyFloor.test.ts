@@ -84,7 +84,10 @@ function mount(storyService: StoryService): LintService {
     vi.spyOn(referenceService, "ensureReady").mockResolvedValue(undefined);
 
     const ctx = {
-        project: { resolve: (parts: string[]) => parts.join("/") },
+        // Variadic, and answering the project root for no arguments at all, because that is what
+        // the real one does - the sweep asks for the root that way to settle whether the project is
+        // trusted before it probes any media.
+        project: { resolve: (...parts: (string[] | string)[]) => ["/project", ...parts.flat()].join("/") },
         services: {
             get: (id: Services) => {
                 switch (id) {
