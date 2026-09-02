@@ -19,6 +19,27 @@ const DEFAULT_STATE: ProjectTrustState = {
 };
 
 /**
+ * A normalized key followed by each of its ancestors, nearest first, stopping short of the root.
+ *
+ * Splits on both separators because {@link normalizeProjectPath} writes `\` on Windows and leaves
+ * `/` alone elsewhere, and this manager is tested under both rules on one machine. An empty key
+ * yields nothing, which is how an unusable path stays "nobody imported it".
+ */
+function selfAndAncestors(key: string): string[] {
+    const keys: string[] = [];
+    let current = key;
+    while (current) {
+        keys.push(current);
+        const cut = Math.max(current.lastIndexOf("\\"), current.lastIndexOf("/"));
+        if (cut <= 0) {
+            break;
+        }
+        current = current.slice(0, cut);
+    }
+    return keys;
+}
+
+/**
  * Which projects arrived from elsewhere, and which of those the author has since trusted.
  *
  * # Why this lives in the main process
@@ -71,13 +92,25 @@ export class ProjectTrustManager {
         this.state.setItem("project.trust", table);
     }
 
-    /** The record for a project, or `undefined` when Studio never saw it arrive. */
+    /**
+     * The record governing a project, or `undefined` when Studio never saw it arrive.
+     *
+     * The project's own row when it has one, else the nearest ancestor's. An arrival is a tree,
+     * not a path: a package or a clone can carry a second project folder inside the first, and an
+     * author told to "open the inner folder" would otherwise be opening it with no row at all -
+     * which, under absence-means-trusted, is a project from outside that Studio trusts. Whatever
+     * the author decided about the tree applies to everything in it, so trusting the outer project
+     * trusts the inner one too, and withdrawing that trust withdraws it from both.
+     */
     public getRecord(projectPath: string): ProjectTrustRecord | undefined {
-        const key = normalizeProjectPath(projectPath);
-        if (!key) {
-            return undefined;
+        const table = this.table();
+        for (const key of selfAndAncestors(normalizeProjectPath(projectPath))) {
+            const record = table[key];
+            if (record) {
+                return record;
+            }
         }
-        return this.table()[key];
+        return undefined;
     }
 
     /**
@@ -147,6 +180,26 @@ export class ProjectTrustManager {
             return false;
         }
         table[key] = { ...existing, trustedAt: null };
+        this.write(table);
+        return true;
+    }
+
+    /**
+     * Drop an arrival that left nothing behind.
+     *
+     * For the routes that record before they copy - the safe order, since a copy that lands
+     * unrecorded is a project trusted by accident - when the copy then fails without writing a
+     * byte. A row for an empty folder would sit in the settings list as a project waiting for a
+     * decision that no folder exists to receive. Whether the folder is empty is the caller's to
+     * check; this only forgets.
+     */
+    public forgetImport(projectPath: string): boolean {
+        const key = normalizeProjectPath(projectPath);
+        const table = this.table();
+        if (!key || !table[key]) {
+            return false;
+        }
+        delete table[key];
         this.write(table);
         return true;
     }

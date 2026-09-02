@@ -8,6 +8,8 @@ import {
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
 import { readProjectPackageInto, writeProjectPackage } from "../../../utils/projectPackageFile";
+import { directoryHoldsNothing } from "../../../utils/directoryHoldsNothing";
+import type { ProjectTrustManager } from "../../projectTrustManager";
 import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
@@ -117,12 +119,7 @@ export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventTyp
                 return this.failed(`File system access is not allowed for import folder: ${resolvedTarget}`);
             }
 
-            const result = await readProjectPackageInto(resolvedPackage, resolvedTarget);
-            // Recorded before answering, so the window that opens this path cannot get there ahead
-            // of the record: a project unpacked from somebody else's file ships executable code
-            // (a puppet backend is `import()`ed the moment anything shows a model), and the only
-            // thing standing between opening it and running it is this row.
-            window.app.projectTrustManager.recordImport(resolvedTarget, "package", new Date().toISOString());
+            const result = await unpackAsArrival(window.app.projectTrustManager, resolvedPackage, resolvedTarget);
             return this.success({
                 projectPath: resolvedTarget,
                 projectName: result.projectName,
@@ -174,6 +171,41 @@ export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.p
             "session",
         );
         return this.success({ dest: packagePath });
+    }
+}
+
+/**
+ * Unpack a package into a folder, with the folder on the trust ledger before a byte of it lands.
+ *
+ * The order is the point. A project unpacked from somebody else's file ships executable code - a
+ * puppet backend is `import()`ed the moment anything shows a model - and the only thing standing
+ * between opening it and running it is its row in the ledger. Recording after the copy left a
+ * window in which the copy was on disk and the row was not, and a copy that finished unrecorded
+ * would be a project trusted by accident. Recording first closes that: whatever else fails, the
+ * folder is distrusted from before it has contents.
+ *
+ * Two consequences are handled here. The folder has to be empty for the unpack to start, so the
+ * row is only written when it is - recording first must never mark something the author already
+ * had at that path. And an unpack that fails before writing anything takes its row with it, so the
+ * settings list does not show a project waiting for a decision that no folder exists to receive;
+ * one that fails part-way keeps it, because a half-written tree is still somebody else's tree.
+ */
+async function unpackAsArrival(
+    trust: ProjectTrustManager,
+    packagePath: string,
+    targetDir: string,
+): ReturnType<typeof readProjectPackageInto> {
+    const recorded = await directoryHoldsNothing(targetDir);
+    if (recorded) {
+        trust.recordImport(targetDir, "package", new Date().toISOString());
+    }
+    try {
+        return await readProjectPackageInto(packagePath, targetDir);
+    } catch (error) {
+        if (recorded && await directoryHoldsNothing(targetDir)) {
+            trust.forgetImport(targetDir);
+        }
+        throw error;
     }
 }
 

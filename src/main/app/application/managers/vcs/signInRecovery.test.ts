@@ -84,7 +84,10 @@ const SESSION = {
     signedInAt: 0,
 };
 
-/** What the trust ledger was asked to record, so a clone's arrival can be asserted rather than stubbed. */
+/**
+ * The trust ledger as a clone leaves it, so an arrival can be asserted rather than stubbed. A row
+ * goes in before the copy and comes out again only when the copy failed without writing anything.
+ */
 const recordedImports: { path: string; origin: string }[] = [];
 
 function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
@@ -99,6 +102,10 @@ function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
         getUserDataDir: () => "D:/userData",
         projectTrustManager: {
             recordImport: (path: string, origin: string) => { recordedImports.push({ path, origin }); },
+            forgetImport: (path: string) => {
+                const index = recordedImports.findIndex((row) => row.path === path);
+                if (index >= 0) recordedImports.splice(index, 1);
+            },
         },
     } as unknown as BaseApp;
 }
@@ -219,19 +226,22 @@ describe("the address a clone came from", () => {
         // reads this file when it opens a store.
         expect(lore.calls.indexOf("writeRemote")).toBeGreaterThan(lore.calls.indexOf("release"));
         // A clone is somebody else's working tree, so it arrives distrusted like any other import.
-        // Recorded once, for the copy, and marked as having come from a server rather than a file.
+        // Recorded once, ahead of the copy, and marked as having come from a server rather than
+        // a file.
         expect(recordedImports).toHaveLength(1);
         expect(recordedImports[0]!.origin).toBe("remote");
         expect(recordedImports[0]!.path.replace(/\\/g, "/")).toContain("driftwood");
     });
 
-    it("is not written for a clone that failed, which has no copy to write it into", async () => {
+    it("is taken back for a clone that failed before writing anything", async () => {
         lore.missing.count = 5;
 
         await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
             .rejects.toThrow(/No token stored/);
         expect(lore.wrote).toHaveLength(0);
-        // Nor is anything recorded as having arrived: there is no copy on disk to distrust.
+        // Recorded ahead of the copy and forgotten again: there is no copy on disk to distrust,
+        // and a row for a folder that does not exist would sit in the settings list waiting for
+        // a decision nothing needs.
         expect(recordedImports).toHaveLength(0);
     });
 

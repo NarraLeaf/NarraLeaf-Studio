@@ -108,6 +108,48 @@ describe("ProjectTrustManager", () => {
         expect(manager.listDistrusted().map(r => r.displayPath)).toEqual(["D:/a"]);
     });
 
+    it("governs a project folder nested inside an arrival", () => {
+        // A package or a clone is a tree, and a tree can hold a second `.nlproj` deeper down. The
+        // author asked to open the inner folder is opening the same arrival, so the outer row
+        // answers for it - distrusted until trusted, and trusted once the author vouches for the
+        // tree.
+        manager.recordImport("D:/games/imported", "package", T1);
+        expect(manager.isTrusted("D:/games/imported/inner")).toBe(false);
+        expect(manager.isTrusted("D:\\games\\Imported\\inner\\deeper")).toBe(false);
+        expect(manager.getRecord("D:/games/imported/inner")?.path).toBe("d:\\games\\imported");
+
+        manager.grantTrust("D:/games/imported", T2);
+        expect(manager.isTrusted("D:/games/imported/inner")).toBe(true);
+
+        manager.revokeTrust("D:/games/imported");
+        expect(manager.isTrusted("D:/games/imported/inner")).toBe(false);
+    });
+
+    it("does not let a sibling that shares a prefix inherit a row", () => {
+        // `imported-2` is not inside `imported`, and a string-prefix walk would say it was.
+        manager.recordImport("D:/games/imported", "package", T1);
+        expect(manager.isTrusted("D:/games/imported-2")).toBe(true);
+        expect(manager.isTrusted("D:/games")).toBe(true);
+    });
+
+    it("prefers the nearest row when an arrival sits inside another", () => {
+        manager.recordImport("D:/games/outer", "package", T1);
+        manager.recordImport("D:/games/outer/inner", "remote", T2);
+        manager.grantTrust("D:/games/outer", T2);
+        // The inner arrival has its own row, still waiting; the outer grant does not reach past it.
+        expect(manager.isTrusted("D:/games/outer")).toBe(true);
+        expect(manager.isTrusted("D:/games/outer/inner")).toBe(false);
+    });
+
+    it("forgets an arrival, and only one that was recorded", () => {
+        manager.recordImport("D:/games/imported", "package", T1);
+        expect(manager.forgetImport("D:/games/imported")).toBe(true);
+        expect(manager.isTrusted("D:/games/imported")).toBe(true);
+        expect(manager.listDistrusted()).toEqual([]);
+        expect(manager.forgetImport("D:/games/imported")).toBe(false);
+        expect(manager.forgetImport("")).toBe(false);
+    });
+
     it("treats an unusable path as one nobody imported", () => {
         // Total on purpose: refusing here would break opening projects rather than protect
         // anything, and there is nothing to protect - no row can exist under an empty key.
