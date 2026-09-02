@@ -46,7 +46,8 @@ interface SidebarPanelContextMenu {
  * its icon is currently shown. Clicking a row shows or hides that panel. When the menu is opened on
  * a specific icon, a trailing block appears: fold it into the group, or remove it outright.
  * Right-clicking the group's own icon instead lists everything currently folded into it, each row
- * checked; clicking one lifts it back out onto the rail.
+ * checked; clicking one lifts it back out onto the rail. A final block, present however the menu
+ * was opened, resets the dock's icon order to the registered default.
  *
  * The rail itself only renders {@link SidebarPanelContextMenu.railPanels}, so hidden panels drop out
  * of the strip but stay reachable through the menu, and collapsed ones move into the group's flyout.
@@ -59,6 +60,7 @@ export function useSidebarPanelContextMenu(
     const {
         getPanelsByPosition,
         reorderPanels,
+        resetPanelOrder,
         panelOrder,
         collapsedPanels,
         setCollapsedPanels,
@@ -171,6 +173,17 @@ export function useSidebarPanelContextMenu(
             });
         }
     }
+
+    // The rail's own housekeeping sits last, in its own block: it acts on the whole dock rather
+    // than on one row, so it must not read as part of the checklist above it. Only the order is
+    // reset — hidden panels stay hidden and the group keeps its members, since those are choices
+    // about what is shown, not where.
+    items.push({ separator: true as const, id: "sep-reset" });
+    items.push({
+        id: "reset-order",
+        label: t("workspace.shell.panelMenu.resetOrder"),
+        onClick: () => resetPanelOrder(position),
+    });
 
     const menu = (
         <ContextMenu

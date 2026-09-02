@@ -576,6 +576,7 @@ export const workspace = {
         panelMenu: {
             removeItem: "Remove this item",
             collapseItem: "Collapse into group",
+            resetOrder: "Reset to default order",
         },
         // The left rail's collapse group: one icon standing in for the panels folded behind it,
         // which unfolds into a flyout listing them.
