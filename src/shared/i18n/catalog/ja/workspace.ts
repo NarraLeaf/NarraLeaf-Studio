@@ -534,9 +534,10 @@ export const workspace = {
         // サイドバーのレールを右クリックしたときのメニュー。各パネルのアイコンの表示を切り替える
         // チェックリストと、右クリックしたパネルへの操作。
         panelMenu: {
-            removeItem: "この項目を取り除く",
+            hideItem: "この項目を隠す",
             collapseItem: "グループにまとめる",
             resetOrder: "並び順を既定に戻す",
+            resetOrderDisabled: "すでに既定の並び順",
         },
         // 左のレールのまとめ役。畳んだパネルを 1 つのアイコンで代表し、押すと一覧が開く。
         panelGroup: {
