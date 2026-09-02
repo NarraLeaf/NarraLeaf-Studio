@@ -94,6 +94,10 @@ export const help = {
                 + "\n"
                 + "- Dev Mode opens the line that is playing in the story editor, from its debug menu.\n"
                 + "- Run starts the mode chosen last.\n"
+                + "- A project that protects its assets has Preview as shipped in the Run menu. Off, a "
+                + "preview runs the project's files directly and starts in about a second.\n"
+                + "- Turn it on before a release. The preview then holds its content exactly as the "
+                + "delivered game does, and the window title says so.\n"
                 + "- Preview and Build are unavailable while the project is frozen. Dev Mode still runs, and "
                 + "while an old version is open it runs that version.",
         },

@@ -27,6 +27,11 @@ export const actions = {
         runAs: "运行为",
             runWithDlc: "带 DLC 运行",
             dlcCount: "{active} / {total}",
+        // 预览是否按受保护构建的方式存放内容。仅在项目开启资产保护时出现，且默认关闭。
+        previewAsShipped: "按出货方式预览",
+        previewAsShippedDetail: "预览按玩家收到的受保护形式运行，启动更慢",
+        // 同一个选择在 Run 按钮上的写法，避免封库的预览被当成普通预览。
+        asShipped: "出货形式",
         // 清除一次运行留下的存档与持久化数据，用于游戏自身让该状态出错、启动即崩溃时。开发模式与预览各存各的，
         // 子菜单只重置其中一个，不影响另一个。
         resetData: "重置玩家数据",
