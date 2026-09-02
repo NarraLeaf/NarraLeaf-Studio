@@ -95,7 +95,7 @@ import {
 import type { BlueprintFlowNodeData } from "../flow/components/BlueprintFlowNode";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
-import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPane";
+import { ScriptBlueprintPane } from "../ts/ScriptBlueprintPane";
 import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -792,13 +792,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             });
         },
         [openBlueprint, payload, t],
-    );
-
-    const onTsSourceChange = useCallback(
-        (code: string) => {
-            localBp.updateScriptModuleSource(payload.blueprintId, code);
-        },
-        [localBp, payload.blueprintId],
     );
 
     const ir = getActiveIr(bp, editor.graphView);
@@ -2102,7 +2095,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     if (bp.program.kind === "scriptModule") {
-        const src = bp.program.source.code;
+        const { scriptRef } = bp.program;
         return (
             <div
                 className="h-full min-h-0"
@@ -2131,7 +2124,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     }
                     memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
                     onMemberPanelCollapsedChange={setMemberPanelCollapsed}
-                    canvas={<TypeScriptBlueprintEditorPane code={src} onChange={onTsSourceChange} />}
+                    canvas={<ScriptBlueprintPane context={context} scriptRef={scriptRef} />}
                     diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
                 />
             </div>

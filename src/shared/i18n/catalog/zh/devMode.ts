@@ -20,6 +20,9 @@ export const devMode = {
         onPlugin: "插件 {plugin}",
         pluginNotDeclared: "{plugin} 已安装，但不在本项目的插件依赖中；本次会话与构建都不包含它。在「项目 ▸ 应用」中重新扫描依赖表",
         pluginUnusable: "{plugin} 在本项目的插件依赖中，但无法载入；本次会话与构建都不包含它。在「项目 ▸ 应用」中查看它的状态",
+        // See the English catalog: a plugin that does run here, whose runtime entry threw.
+        pluginEntryFailed: "{plugin} 载入失败：{error}。本次会话不会注册它的蓝图节点与控件",
+        pluginListFailed: "无法读取运行时插件列表：{error}。本次会话不会载入任何插件",
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         stack: "调用栈",

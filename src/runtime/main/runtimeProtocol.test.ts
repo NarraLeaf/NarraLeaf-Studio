@@ -52,8 +52,6 @@ function createPack(): GameRuntimePackV1 {
 
                 saveSchema: [],
             },
-            blueprintCompiledScripts: {},
-            blueprintScriptsCompileOk: true,
         },
         assets: {
             items: {

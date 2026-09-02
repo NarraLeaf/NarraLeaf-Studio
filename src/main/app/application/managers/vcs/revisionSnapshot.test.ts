@@ -3,6 +3,7 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { shouldExcludeProjectPackagePath } from "@shared/utils/projectPackage";
 import { isVersioned } from "@shared/vcs/workingSet";
 import {
     materializeRevisionSnapshot,
@@ -56,6 +57,22 @@ describe("where a snapshot lives", () => {
         // launch of a past revision adds a few hundred files to the author's change list.
         expect(isVersioned(relative)).toBe(false);
         expect(relative.split(path.sep)[0]).toBe(".nlstudio");
+    });
+
+    it("is outside an exported project package, by the writer's own path", () => {
+        // The two spellings this pins together drifted once already: snapshots are written to
+        // `.nlstudio/devmode` and the package exclusion listed `.nlstudio/dev-mode`, so every
+        // `.nlspkg` an author handed to somebody else carried a full copy of their documents at
+        // whatever revision they had last run in Dev Mode.
+        //
+        // The path comes from the writer rather than being typed out here, which is the whole point:
+        // a test with the directory name in it would have passed on both sides of that drift.
+        const relative = path
+            .relative(project, path.join(revisionSnapshotDirectory(project, REVISION), "editor", "ui", "uidoc.json"))
+            .split(path.sep)
+            .join("/");
+
+        expect(shouldExcludeProjectPackagePath(relative)).toBe(true);
     });
 
     it("names the revision, so a stray directory says which one it is", () => {

@@ -1,4 +1,6 @@
 import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { buildGameScriptContext, resolveScriptHandler, scriptSelfOf } from "./script/scriptRuntime";
+import type { GameScriptContext, ScriptListRow, ScriptSelf } from "./script/scriptContext";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildBlueprintRunGraphId, type BlueprintRunGraphKind } from "@shared/blueprint/blueprintRunGraphId";
 import {
@@ -123,6 +125,64 @@ function emitExecutionError(input: {
         nodeId: input.nodeId,
         surfaceId: input.surfaceId,
     });
+}
+
+/**
+ * The `ctx` a script handler is called with, from what a dispatch has in hand.
+ *
+ * One place rather than three, because the three dispatch paths differ only in which self they can
+ * name - a widget, a surface, the project - and everything else about the context is the same
+ * question answered the same way. `vars` is the drawing's own store, the one a graph's `Var` nodes
+ * use, so a script and a graph on the same slot remember things with the same lifetime.
+ */
+function buildDispatchScriptContext(input: {
+    hostAdapter: UIHostAdapter;
+    blueprintDocument: BlueprintDocument;
+    blueprint: Blueprint;
+    runtimeScopeId?: string;
+    elementId?: string;
+    elementInstanceKey?: string;
+    self: ScriptSelf;
+    /** Present only where an event can be stopped - a widget's. A surface or the project has none. */
+    eventControl?: BehaviorGraphEventControl;
+    signal?: AbortSignal;
+}): GameScriptContext {
+    const hostApi = input.hostAdapter.blueprintRuntime?.hostApi;
+    if (!hostApi) {
+        // Every path that reaches here has a running game behind it; a host without an API is the
+        // editor preview, which does not dispatch.
+        throw new BlueprintGraphExecutionError("Host API unavailable (use Dev Mode)", input.blueprint.id);
+    }
+    return buildGameScriptContext({
+        self: input.self,
+        hostAdapter: input.hostAdapter,
+        hostApi,
+        vars: acquireBlueprintExecutionLocals({
+            blueprintDocument: input.blueprintDocument,
+            currentBlueprintId: input.blueprint.id,
+            surfaceId: input.self.kind === "surface" || input.self.kind === "element" ? input.self.surfaceId : undefined,
+            runtimeScopeId: input.runtimeScopeId,
+            elementId: input.elementId,
+            elementInstanceKey: input.elementInstanceKey,
+        }),
+        signal: input.signal,
+        // A script says `ctx.stopPropagation()` where a graph places `Stop Propagation` or
+        // `Keep Window Open`; both reach the same event control.
+        stopPropagation: () => input.eventControl?.stopPropagation(),
+    });
+}
+
+/** A dispatched list row, as a script sees it. Null when nothing drew this element per row. */
+function scriptRowOf(listItemScope: UIListItemScope | null | undefined): ScriptListRow | null {
+    return listItemScope
+        ? {
+              item: listItemScope.item,
+              index: listItemScope.index,
+              count: listItemScope.count,
+              key: listItemScope.key,
+              selected: listItemScope.selected,
+          }
+        : null;
 }
 
 function newExecutionId(): string {
@@ -402,13 +462,6 @@ function createScriptExecutionContext(input: {
     };
 }
 
-type BlueprintModuleSink = { events: Record<string, unknown>; bound: Record<string, unknown> };
-
-function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | undefined {
-    const g = globalThis as typeof globalThis & { __NL_BP_MODULES__?: Record<string, BlueprintModuleSink> };
-    return g.__NL_BP_MODULES__?.[blueprintId];
-}
-
 /**
  * Dispatch a widget UI event into its private blueprint event graph or TypeScript module.
  *
@@ -478,9 +531,8 @@ export async function dispatchBlueprintUiEvent(options: {
         return false;
     }
     if (bp.program.kind === "scriptModule") {
-        const mod = getMountedBlueprintModule(blueprintId);
-        const fn = mod?.events?.[eventName];
-        if (typeof fn !== "function") {
+        const fn = resolveScriptHandler(blueprintId, eventName);
+        if (!fn) {
             return false;
         }
         const executionId = newExecutionId();
@@ -493,18 +545,26 @@ export async function dispatchBlueprintUiEvent(options: {
             allowClosedScopeExecution: options.allowClosedScopeExecution,
         });
         debug.emit({ type: "execution.started", executionId, blueprintId });
-        const ctx = createScriptExecutionContext({
-            hostApi: hostAdapter.blueprintRuntime?.hostApi,
-            debug,
-            getSurfaceState,
-            setSurfaceState,
-            eventName,
-            eventPayload,
+        const ctx = buildDispatchScriptContext({
+            hostAdapter,
+            blueprintDocument,
+            blueprint: bp,
+            runtimeScopeId,
+            elementId,
+            elementInstanceKey: instanceKey,
+            eventControl,
+            self: scriptSelfOf({
+                surfaceId,
+                componentId,
+                elementId,
+                widgetType: el?.type,
+                row: scriptRowOf(listItemScope),
+            }),
             signal: execution?.signal,
         });
         try {
             throwIfBlueprintExecutionCancelled(execution?.signal);
-            await Promise.resolve(fn(ctx));
+            await Promise.resolve(fn(ctx, eventPayload ?? {}));
             throwIfBlueprintExecutionCancelled(execution?.signal);
             debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
@@ -1451,9 +1511,8 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     }
 
     if (bp.program.kind === "scriptModule") {
-        const mod = getMountedBlueprintModule(blueprintId);
-        const fn = mod?.events?.[eventName];
-        if (typeof fn !== "function") {
+        const fn = resolveScriptHandler(blueprintId, eventName);
+        if (!fn) {
             return;
         }
         const executionId = newExecutionId();
@@ -1466,18 +1525,17 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             allowClosedScopeExecution: options.allowClosedScopeExecution,
         });
         debug.emit({ type: "execution.started", executionId, blueprintId });
-        const ctx = createScriptExecutionContext({
-            hostApi: hostAdapter.blueprintRuntime?.hostApi,
-            debug,
-            getSurfaceState,
-            setSurfaceState,
-            eventName,
-            eventPayload: eventPayload ?? {},
+        const ctx = buildDispatchScriptContext({
+            hostAdapter,
+            blueprintDocument,
+            blueprint: bp,
+            runtimeScopeId,
+            self: scriptSelfOf({ surfaceId }),
             signal: execution?.signal,
         });
         try {
             throwIfBlueprintExecutionCancelled(execution?.signal);
-            await Promise.resolve(fn(ctx));
+            await Promise.resolve(fn(ctx, eventPayload ?? {}));
             throwIfBlueprintExecutionCancelled(execution?.signal);
             debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
@@ -1657,9 +1715,8 @@ export async function dispatchGlobalBlueprintEvent(options: {
     }
 
     if (bp.program.kind === "scriptModule") {
-        const mod = getMountedBlueprintModule(blueprintId);
-        const fn = mod?.events?.[eventName];
-        if (typeof fn !== "function") {
+        const fn = resolveScriptHandler(blueprintId, eventName);
+        if (!fn) {
             return;
         }
         const executionId = newExecutionId();
@@ -1671,18 +1728,16 @@ export async function dispatchGlobalBlueprintEvent(options: {
             allowClosedScopeExecution: options.allowClosedScopeExecution,
         });
         debug.emit({ type: "execution.started", executionId, blueprintId });
-        const ctx = createScriptExecutionContext({
-            hostApi: hostAdapter.blueprintRuntime?.hostApi,
-            debug,
-            getSurfaceState,
-            setSurfaceState,
-            eventName,
-            eventPayload: eventPayload ?? {},
+        const ctx = buildDispatchScriptContext({
+            hostAdapter,
+            blueprintDocument,
+            blueprint: bp,
+            self: scriptSelfOf({}),
             signal: execution?.signal,
         });
         try {
             throwIfBlueprintExecutionCancelled(execution?.signal);
-            await Promise.resolve(fn(ctx));
+            await Promise.resolve(fn(ctx, eventPayload ?? {}));
             throwIfBlueprintExecutionCancelled(execution?.signal);
             debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {

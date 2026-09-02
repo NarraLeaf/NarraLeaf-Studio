@@ -116,7 +116,6 @@ export interface RendererPrivilegedInterface {
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         /** See `PrivilegedFileSystemCall`'s `writeFileNoFollowOrCreate`. */
         writeFileNoFollowOrCreate(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-        recoverCorruptedJsonFile(actor: PrivilegedActor, path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -216,7 +215,6 @@ export interface RendererPreloadedInterface {
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-        recoverCorruptedJsonFile(path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteDir(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -514,6 +512,14 @@ export interface RendererPreloadedInterface {
         removeRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Shows a remembered project's folder in the OS file manager. Paths outside the history are refused. */
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
+        /**
+         * Hand one of the project's own scripts to whatever the author edits with.
+         *
+         * Studio has no script editor: `<project>/scripts/` is the one directory the disk owns, and
+         * a second writer over those bytes is what that boundary exists to prevent. The host
+         * refuses any project but this window's and any path but a script under `scripts/`.
+         */
+        openScript(projectPath: string, scriptRef: string): Promise<RequestStatus<void>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
         /** Each remembered project's own app icon as a `data:` URL. Projects without one are absent. */

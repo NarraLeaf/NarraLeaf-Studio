@@ -127,10 +127,6 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 refuseFrozenWrite(path)
                     ? frozenNoOp()
                     : privileged().fs.writeFileNoFollowOrCreate(actor(), path, data, encoding),
-            recoverCorruptedJsonFile: (path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
-                refuseFrozenWrite(path)
-                    ? frozenNoOp()
-                    : privileged().fs.recoverCorruptedJsonFile(actor(), path, replacement, encoding),
             createDir: (path: string): Promise<RequestStatus<FsRequestResult<void>>> =>
                 refuseFrozenWrite(path)
                     ? frozenNoOp()

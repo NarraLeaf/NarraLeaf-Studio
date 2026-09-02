@@ -102,6 +102,10 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
          * why that is worth doing rather than building one target at a time.
          */
         files: perTargetFileSets(target.platformKey),
+        // The languages the project offers, rather than the 55 Electron ships. See
+        // electronLanguages.ts; the list always carries `en-US`, so this never empties
+        // `locales/`, which would produce an app that does not start.
+        electronLanguages: config.electronLanguages,
         asar: true,
         asarUnpack: config.asarUnpack,
         electronFuses: target.fuses,

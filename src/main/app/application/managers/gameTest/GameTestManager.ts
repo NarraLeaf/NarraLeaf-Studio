@@ -32,6 +32,7 @@ import {
 } from "../preview/PreviewManager";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
+import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
@@ -471,7 +472,16 @@ export class GameTestManager {
             if (pluginSelection.errors.length > 0) {
                 throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
             }
-            const encryptionKey = await this.resolveEncryptionKey(session.projectPath);
+            const sealing = await resolveRunSealing({
+                projectPath: session.projectPath,
+                settings: this.app.getGlobalState(),
+                resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), session.projectPath),
+            });
+            const sealingLine = runSealingLogLine(sealing);
+            if (sealingLine) {
+                this.emitConsole(session, "verbose", sealingLine);
+            }
+            const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(session);
 
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
@@ -857,16 +867,6 @@ export class GameTestManager {
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,
         });
-    }
-
-    private async resolveEncryptionKey(projectPath: string): Promise<string | undefined> {
-        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
-        const enabled =
-            (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
-        if (!enabled) {
-            return undefined;
-        }
-        return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
     }
 
     private readRuntimeVersion(): string {

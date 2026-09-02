@@ -36,8 +36,6 @@ export type RuntimePluginSelection<T extends RuntimePluginCandidate> = {
     selected: T[];
     /** Enabled runtime plugins left out, with the reason each one was left out. */
     excluded: RuntimePluginExclusion[];
-    /** The ids of {@link excluded}, for a one-line log. */
-    skippedPluginIds: string[];
     /** Fail-the-build problems, human-readable. */
     errors: string[];
     /**
@@ -62,7 +60,6 @@ export function selectProjectRuntimePlugins<T extends RuntimePluginCandidate>(in
         return {
             selected: [...available],
             excluded: [],
-            skippedPluginIds: [],
             errors: [],
             fallbackAll: true,
         };
@@ -166,7 +163,6 @@ export function selectProjectRuntimePlugins<T extends RuntimePluginCandidate>(in
     return {
         selected,
         excluded,
-        skippedPluginIds: excluded.map(entry => entry.pluginId),
         errors,
         fallbackAll: false,
     };

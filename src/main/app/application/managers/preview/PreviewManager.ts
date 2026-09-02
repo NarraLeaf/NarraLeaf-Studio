@@ -24,7 +24,7 @@ import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArt
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
-import { resolvePreviewAsShipped } from "../../utils/previewAsShipped";
+import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
@@ -69,18 +69,6 @@ type PreviewLaunchAttempt = {
     abandonWeatherBake: (() => void) | null;
     session: PreviewSession | null;
 };
-
-/**
- * Whether a preview seals its content, and why not when it does not.
- *
- * The two "no" answers are kept apart because only one of them is a choice: a project with asset
- * protection off has nothing to seal, while a project with it on is running loose files because this
- * machine asked for the fast path, and that is worth saying on the console.
- */
-type PreviewSealing =
-    | { kind: "unprotected" }
-    | { kind: "loose-by-choice" }
-    | { kind: "sealed"; key: string };
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 /** How long to wait before re-dialling a control socket that is not listening yet. */
@@ -347,17 +335,29 @@ export class PreviewManager {
             if (pluginSelection.fallbackAll && pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, "project has no plugin dependency table; packaging every enabled runtime plugin");
             }
-            if (pluginSelection.skippedPluginIds.length > 0) {
-                this.emitVerbose(session, `runtime plugins not packaged (unused by this project): ${pluginSelection.skippedPluginIds.join(", ")}`);
+            // One line per reason, never one line for both. "Unused by this project" is true of a
+            // plugin the dependency table does not name and false of one it names and could not
+            // resolve - and the second is a problem the author has to fix, reported here as though
+            // it were a choice they had made.
+            const notDeclared = pluginSelection.excluded.filter(entry => entry.reason === "notDeclared");
+            const unusable = pluginSelection.excluded.filter(entry => entry.reason === "unusable");
+            if (notDeclared.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (not a dependency of this project): ${notDeclared.map(entry => entry.pluginId).join(", ")}`);
+            }
+            if (unusable.length > 0) {
+                this.emitVerbose(session, `runtime plugins not packaged (a dependency of this project that cannot be loaded): ${unusable.map(entry => entry.pluginId).join(", ")}`);
             }
             if (pluginSelection.selected.length > 0) {
                 this.emitVerbose(session, `packaging runtime plugin(s): ${pluginSelection.selected.map(source => source.manifest.id).join(", ")}`);
             }
-            const sealing = await this.resolveSealing(normalizedProjectPath);
-            if (sealing.kind === "sealed") {
-                this.emitVerbose(session, "asset protection enabled; encrypting pack");
-            } else if (sealing.kind === "loose-by-choice") {
-                this.emitVerbose(session, "asset protection enabled; running loose files (Preview as shipped is off)");
+            const sealing = await resolveRunSealing({
+                projectPath: normalizedProjectPath,
+                settings: this.app.getGlobalState(),
+                resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), normalizedProjectPath),
+            });
+            const sealingLine = runSealingLogLine(sealing);
+            if (sealingLine) {
+                this.emitVerbose(session, sealingLine);
             }
             const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(attempt);
@@ -497,41 +497,6 @@ export class PreviewManager {
             available: await this.app.pluginManager.listRuntimePluginPackSources(),
             installed,
         });
-    }
-
-    /**
-     * How this preview holds its content: sealed in a protected store, or as loose files.
-     *
-     * Two questions, answered in order. The project decides whether protection exists at all; the
-     * machine decides whether *this* preview rehearses it. Nothing else in the compile is touched,
-     * so a sealed preview is the artifact a protected production build produces - same store, same
-     * empty manifest, same runtime-file whitelist, same codec - and a loose one is the artifact an
-     * unprotected build produces.
-     *
-     * # Why the second question exists
-     *
-     * The store has no way to replace one entry, so a sealed preview re-seals every asset on every
-     * launch: measured on a real-size project at around six seconds hot against under two loose, for
-     * an artifact nobody receives. Paying that for each run of a story edit is the cost of rehearsing
-     * a shipped path the author is not shipping yet.
-     *
-     * It is not free to skip, either, which is why this is a switch rather than a rule. A sealed
-     * store behaves differently by construction in three ways an author only meets once: an asset
-     * has no file path, a runtime file outside the store's allowed names cannot be read, and the
-     * manifest is empty so everything resolves by id. Left off for a whole project, those three
-     * surface for the first time in a shipped build.
-     */
-    private async resolveSealing(projectPath: string): Promise<PreviewSealing> {
-        const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
-        const enabled =
-            (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
-        if (!enabled) {
-            return { kind: "unprotected" };
-        }
-        if (!resolvePreviewAsShipped(this.app.getGlobalState(), projectPath)) {
-            return { kind: "loose-by-choice" };
-        }
-        return { kind: "sealed", key: await resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath) };
     }
 
     private async stopSession(session: PreviewSession): Promise<void> {

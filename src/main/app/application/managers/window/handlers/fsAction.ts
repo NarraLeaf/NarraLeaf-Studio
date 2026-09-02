@@ -292,19 +292,6 @@ export class FsWriteFileNoFollowHandler extends IPCHandler<IPCEventType.fsWriteF
     }
 }
 
-export class FsRecoverCorruptedJsonFileHandler extends IPCHandler<IPCEventType.fsRecoverCorruptedJsonFile> {
-    readonly name = IPCEventType.fsRecoverCorruptedJsonFile;
-    readonly type = IPCMessageType.request;
-
-    public async handle(window: AppWindow, { path, replacement, encoding }: IPCEvents[IPCEventType.fsRecoverCorruptedJsonFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
-        const denied = await ensurePathAllowed<void>(window, path, "write");
-        if (denied) return this.success(denied);
-
-        const result = await Fs.recoverCorruptedJsonFile(path, replacement, encoding);
-        return this.success(result);
-    }
-}
-
 export class FsCreateDirHandler extends IPCHandler<IPCEventType.fsCreateDir> {
     readonly name = IPCEventType.fsCreateDir;
     readonly type = IPCMessageType.request;

@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import path from "path";
 import crypto from "crypto";
 import chokidar, { FSWatcher } from "chokidar";
@@ -11,7 +12,6 @@ import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } 
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
 import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
-import { compileAllBlueprintScriptsForProject } from "./compiler/blueprint/compileProjectBlueprintScripts";
 import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
@@ -389,26 +389,6 @@ export class DevModeManager {
             }
             this.emitVerbose(session, `nlang compile finished in ${Date.now() - started} ms`);
 
-            started = Date.now();
-            this.emitVerbose(session, "Blueprint script compile started");
-            const blueprintScripts = await compileAllBlueprintScriptsForProject(session.sourcePath);
-            if (!blueprintScripts.ok) {
-                const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
-                session.status = "error";
-                this.app.logger.error("[DevMode] TypeScript blueprint compile failed", blueprintScripts.errors);
-                this.emitWorkspaceConsoleLog(session, {
-                    level: "error",
-                    source: "Dev Mode",
-                    message: `Blueprint script compile failed:\n${detail}`,
-                });
-                this.queueSessionError(session, `Blueprint script compile failed:\n${detail}`);
-                return;
-            }
-            this.emitVerbose(
-                session,
-                `Blueprint script compile finished in ${Date.now() - started} ms (${Object.keys(blueprintScripts.scripts).length} script(s))`,
-            );
-
             session.revision += 1;
             started = Date.now();
             this.emitVerbose(session, `bundle assembly started: revision ${session.revision}`);
@@ -432,8 +412,6 @@ export class DevModeManager {
                     message,
                 }),
                 compiled: compileResult.artifacts,
-                blueprintCompiledScripts: blueprintScripts.scripts,
-                blueprintScriptsCompileOk: true,
             });
             this.emitVerbose(session, `bundle assembly finished in ${Date.now() - started} ms`);
             this.sendBundle(session, bundle);
@@ -511,15 +489,27 @@ export class DevModeManager {
         const assetsRoot = path.join(session.projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
+        // The author's scripts. Watched like every other document the bundle bakes in: a script
+        // saved in another editor is a change to what the running game does, and the reload that
+        // follows is the only thing that makes editing outside Studio feel like editing inside it.
+        const scriptsRoot = path.join(session.projectPath, SCRIPTS_DIR);
         this.emitVerbose(session, "watching project files for Dev Mode reload");
         session.watcher = chokidar.watch(
-            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot],
+            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot, scriptsRoot],
             // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
             // it into place. Reporting it would schedule a reload against a file that is already
             // gone, on top of the reload the rename itself triggers.
             // `alwaysStat` so `fileContentChanged` has a modification time and a size to compare;
             // without it every reported change would have to be taken at face value.
-            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN, alwaysStat: true },
+            {
+                ignoreInitial: true,
+                // The dependency tree under `scripts/` is the reason this is a list rather than one
+                // pattern: an `npm install` there is tens of thousands of files, and watching them
+                // would cost a reload on every one and enough handles to stall the session. What a
+                // script imports from it is already inside the bundle esbuild produced.
+                ignored: [ATOMIC_WRITE_TEMP_PATTERN, `**/${SCRIPTS_MODULES_DIR}/**`, `**/${SCRIPTS_GENERATED_DIR}/**`],
+                alwaysStat: true,
+            },
         );
         session.watcher.on("add", (file, stats) => {
             rememberWatchedFile(session.fileIdentities, file, stats);

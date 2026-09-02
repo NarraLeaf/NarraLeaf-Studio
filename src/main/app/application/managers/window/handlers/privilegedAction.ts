@@ -217,10 +217,6 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.writeFileNoFollowOrCreate(data.path, data.data, data.encoding));
             }
-            case "recoverCorruptedJsonFile": {
-                const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
-                return this.success(denied ?? await Fs.recoverCorruptedJsonFile(data.path, data.replacement, data.encoding));
-            }
             case "createDir": {
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.createDir(data.path) as FsRequestResult<void>);

@@ -37,9 +37,17 @@ import type { RuntimePluginHost } from "./runtimePluginHost";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
+/**
+ * What became of one plugin's runtime entry.
+ *
+ * `pluginName` rides along on both branches because the only host that can say a failure out loud
+ * is the one that has an issue list, and by then the descriptor it came from is gone. The manifest
+ * name is what an author called the plugin in the store and in the dependency table, so it is what
+ * a report has to name; the id stands in for a manifest that carries no name.
+ */
 export type RuntimePluginLoadResult =
-    | { pluginId: string; ok: true }
-    | { pluginId: string; ok: false; error: string };
+    | { pluginId: string; pluginName: string; ok: true }
+    | { pluginId: string; pluginName: string; ok: false; error: string };
 
 export type RuntimePluginLoaderOptions = {
     log: (level: RuntimePluginLogLevel, message: string) => void;
@@ -213,6 +221,7 @@ async function loadRuntimePlugin(
     options: RuntimePluginLoaderOptions,
 ): Promise<RuntimePluginLoadResult> {
     const pluginId = descriptor.plugin.id;
+    const pluginName = descriptor.manifest.name || pluginId;
     try {
         const mod = await import(descriptor.entryUrl) as RuntimePluginModule;
         const definition = mod.default ?? mod.plugin;
@@ -221,11 +230,11 @@ async function loadRuntimePlugin(
         }
         await definition.setup(createRuntimePluginApp(descriptor, options));
         options.log("info", `[plugin:${pluginId}] runtime entry loaded`);
-        return { pluginId, ok: true };
+        return { pluginId, pluginName, ok: true };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         options.log("error", `[plugin:${pluginId}] runtime entry failed: ${message}`);
-        return { pluginId, ok: false, error: message };
+        return { pluginId, pluginName, ok: false, error: message };
     }
 }
 

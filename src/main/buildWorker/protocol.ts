@@ -391,6 +391,12 @@ export type GameBuildWorkerConfig = {
     electronBuilderBinariesMirror?: string;
     /** Glob patterns kept outside the asar as real files. */
     asarUnpack: string[];
+    /**
+     * The Chromium locale packs to keep in `locales/`, derived from the languages the project
+     * offers (see `electronLanguages.ts`). Never empty - an app with no locale pack does not
+     * start - and always includes the `en-US` Chromium falls back to.
+     */
+    electronLanguages: string[];
     /** Desktop packaging jobs, one per platform (electron-builder). */
     targets: GameBuildWorkerTarget[];
     /**

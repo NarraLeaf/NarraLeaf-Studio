@@ -212,23 +212,6 @@ export class Fs {
         })());
     }
 
-    public static recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
-        return this.wrap((async () => {
-            const originalStat = await fs.lstat(path);
-            this.assertSafeFileStat(path, originalStat);
-
-            const handle = await this.openExistingFileNoFollow(path, originalStat);
-            try {
-                const corruptedContent = await handle.readFile();
-                await this.writeNewBackup(path, corruptedContent);
-
-                await this.replaceOpenFileContents(handle, replacement, encoding);
-            } finally {
-                await handle.close();
-            }
-        })());
-    }
-
     public static append(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
         return this.wrap(fs.appendFile(path, data, {encoding}));
     }
@@ -665,51 +648,6 @@ export class Fs {
     private static assertSafeFileStat(filePath: string, stats: Stats): void {
         if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1) {
             throw this.createNodeError("EINVAL", `Refusing to use unsafe file path: ${filePath}`);
-        }
-    }
-
-    private static async replaceOpenFileContents(handle: Awaited<ReturnType<typeof fs.open>>, data: string, encoding: BufferEncoding): Promise<void> {
-        const buffer = Buffer.from(data, encoding);
-        await handle.write(buffer, 0, buffer.length, 0);
-        await handle.truncate(buffer.length);
-    }
-
-    private static async writeNewBackup(src: string, data: Buffer): Promise<void> {
-        for (let attempt = 0; attempt < 10; attempt++) {
-            const backupPath = attempt === 0
-                ? `${src}.bak`
-                : `${src}.bak.${Date.now()}.${process.pid}.${attempt}`;
-
-            try {
-                await fs.writeFile(backupPath, data, {flag: "wx"});
-                return;
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
-                    continue;
-                }
-                throw error;
-            }
-        }
-
-        throw this.createNodeError("EEXIST", `Unable to create a new backup file for ${src}`);
-    }
-
-    private static async openExistingFileNoFollow(filePath: string, expectedStat: Stats) {
-        const constants = fsSync.constants as typeof fsSync.constants & { O_NOFOLLOW?: number };
-        const flags = constants.O_RDWR | (constants.O_NOFOLLOW ?? 0);
-        const handle = await fs.open(filePath, flags);
-
-        try {
-            const currentStat = await handle.stat();
-            this.assertSafeFileStat(filePath, currentStat);
-            if (currentStat.dev !== expectedStat.dev || currentStat.ino !== expectedStat.ino) {
-                throw this.createNodeError("EINVAL", `Refusing to write changed file path: ${filePath}`);
-            }
-
-            return handle;
-        } catch (error) {
-            await handle.close();
-            throw error;
         }
     }
 

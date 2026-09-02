@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import { ProjectDocumentTooNewError } from "@shared/documents/newerSchema";
+import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import {
     UI_DOCUMENT_MIN_SUPPORTED_VERSION,
@@ -624,6 +626,38 @@ describe("UIDocumentService surface creation", () => {
                 .toThrow(/older than this Studio version can read/);
         },
     );
+
+    it("refuses a newer document by naming both versions and the file", () => {
+        const { service } = createHarness();
+        const version = UI_DOCUMENT_SCHEMA_VERSION + 1;
+
+        let thrown: unknown;
+        try {
+            (service as any).migrateIfNeeded({ ...service.getDocument(), schemaVersion: version });
+        } catch (error) {
+            thrown = error;
+        }
+
+        // "Newer than this Studio version" on its own cannot tell an author a damaged file from a
+        // project a newer Studio has already opened, and those call for opposite actions - restore
+        // the file, or update Studio. Both numbers and the file's own path are what separates them.
+        const message = (thrown as Error).message;
+        expect(message).toContain("editor/ui/uidoc.json");
+        expect(message).toContain(`v${version}`);
+        expect(message).toContain(`v${UI_DOCUMENT_SCHEMA_VERSION}`);
+
+        // The same refusal value every other project document throws, carried as the cause: a
+        // caller that wants to act on this failure matches on the type rather than on the sentence.
+        const cause = (thrown as Error).cause;
+        expect(cause).toBeInstanceOf(ProjectDocumentTooNewError);
+        expect((cause as ProjectDocumentTooNewError).kind).toBe("uiDocument");
+        expect((cause as ProjectDocumentTooNewError).version).toBe(version);
+        expect((cause as ProjectDocumentTooNewError).supportedVersion).toBe(UI_DOCUMENT_SCHEMA_VERSION);
+
+        // And it is the one wording, not a second one written here: the story document's refusal
+        // says the same thing about a different file.
+        expect(message).toBe(describeProjectDocumentTooNew(cause as ProjectDocumentTooNewError));
+    });
 
     it("renames the main Page display name while preserving the main surface id", () => {
         const { service } = createHarness();

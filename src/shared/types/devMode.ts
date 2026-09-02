@@ -1,5 +1,5 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
-import type { BlueprintDocument } from "./blueprint/document";
+import type { BlueprintDiagnostic, BlueprintDocument } from "./blueprint/document";
 import type { BrandColor } from "./brand";
 import type { WindowConfiguration } from "./appWindow";
 import type { DialogueConfiguration } from "./dialogue";
@@ -319,6 +319,18 @@ export type DevModeBundle = {
          */
         savedVariables: SavedVariableRuntimeTable;
         /**
+         * The author's compiled script blueprints, by blueprint id.
+         *
+         * A URL rather than the module text, because every host has a Content-Security-Policy and
+         * none of them admits a script from `blob:` or `data:` - the shipped runtime's `script-src`
+         * carries neither those nor `unsafe-eval`. What each host does admit is a URL it serves, so
+         * a compiled script is written to disk and named here, exactly as a plugin's entry is.
+         *
+         * An entry with no `url` failed to compile and carries the reason; its blueprint simply does
+         * not listen, and the rest of the game runs.
+         */
+        scripts?: Record<string, { scriptRef: string; url?: string; diagnostics?: BlueprintDiagnostic[] }>;
+        /**
          * What one save slot carries besides the engine's own record, baked from
          * `editor/save-schema.json`. In pin order, so the write node and the read node grow the same
          * pins in the same sequence from one list.
@@ -472,11 +484,4 @@ export type DevModeBundle = {
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;
-    /**
-     * Blueprint M5: IIFE bundle JS per TypeScript blueprint id (local + shared), executed in Dev Mode before runtime.
-     */
-    blueprintCompiledScripts?: Record<string, string>;
-    /** When present and false, blueprint script compilation failed (strict block). */
-    blueprintScriptsCompileOk?: boolean;
-    blueprintScriptsCompileErrors?: string[];
 };

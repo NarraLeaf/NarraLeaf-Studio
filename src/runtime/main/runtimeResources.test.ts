@@ -108,6 +108,39 @@ describe("protected runtime resources", () => {
     });
 
     /*
+     * A script blueprint reaches a sealed game the way every other runtime file does: as a store
+     * entry the scheme serves by path. The page's policy admits nothing else - no blob, no eval -
+     * so if this prefix ever fell off the reachable list, every script in every protected build
+     * would go silent with nothing to say why.
+     */
+    it("serves a compiled script from the store, and nothing from a prefix it does not list", async () => {
+        const appDir = path.join(root, "game", "app");
+        await fs.mkdir(appDir, { recursive: true });
+        await fs.copyFile(archiveReaderPath(), path.join(appDir, ARCHIVE_READER_FILENAME));
+        const writer = await createAssetArchive(
+            path.join(appDir, ASSET_ARCHIVE_FILENAME),
+            path.join(appDir, ARCHIVE_READER_FILENAME),
+        );
+        await writer.add("pack", Buffer.from(JSON.stringify({ assets: { items: {} } })));
+        await writer.add("scripts/scripts_title.mjs", Buffer.from("export function onInit() {}"));
+        await writer.add("secret/notes.mjs", Buffer.from("export const leaked = true;"));
+        await writer.finalize();
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir: path.join(root, "game") });
+        try {
+            expect((await resources.readRuntimeFile("scripts/scripts_title.mjs"))?.toString())
+                .toBe("export function onInit() {}");
+            // The same door, leading slash and all, since that is how the URL's pathname arrives.
+            expect((await resources.readRuntimeFile("/scripts/scripts_title.mjs"))?.toString())
+                .toBe("export function onInit() {}");
+            // An entry the store holds is still not served unless its prefix is one the host names.
+            expect(await resources.readRuntimeFile("secret/notes.mjs")).toBeNull();
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /*
      * A guard on the installed package, not on this repo's code.
      *
      * The store files asset entries under a one-way fold of their name, so a shipped game cannot be

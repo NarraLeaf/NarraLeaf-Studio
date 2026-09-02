@@ -62,8 +62,9 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                         className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                         {...freeze.writes()}
                         onClick={() => {
-                            const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
-                            onReopenRevision?.(newId);
+                            void localBp
+                                .createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript")
+                                .then(newId => onReopenRevision?.(newId));
                         }}
                     >
                         {t("blueprint.revisions.newTypeScript")}
@@ -74,8 +75,9 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                     className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
                     {...freeze.writes()}
                     onClick={() => {
-                        const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual");
-                        onReopenRevision?.(newId);
+                        void localBp
+                            .createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual")
+                            .then(newId => onReopenRevision?.(newId));
                     }}
                 >
                     {t("blueprint.revisions.newVisual")}

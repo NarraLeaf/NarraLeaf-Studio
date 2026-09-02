@@ -20,6 +20,7 @@ import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
 import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import type { Translator } from "@shared/i18n";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
@@ -214,6 +215,44 @@ export function blueprintDebugEventIssue(event: BlueprintDebugEvent): GameAppRun
         message: event.message,
         origin: "interface",
         ...(event.surfaceId ? { surfaceId: event.surfaceId } : {}),
+    };
+}
+
+/**
+ * A runtime plugin entry that would not load, as an issue.
+ *
+ * The failure it describes is silent by construction: a plugin whose entry throws never registers
+ * its blueprint nodes or its widget renderers, so every node the author placed from it draws as the
+ * unknown-node stub. Without this the window's only account of it is a line in the DevTools console,
+ * and what the author sees is their own graph having stopped working.
+ *
+ * `error` rather than `warning`, unlike the exclusions reported alongside it: a project that has not
+ * declared a plugin is a state an author can be in on purpose, while an entry that threw is code
+ * that is broken.
+ *
+ * The translator is passed in rather than reached for, so the mapping is one plain function of its
+ * inputs and the window it runs in is what decides the language.
+ */
+export function runtimePluginFailureIssue(
+    failure: {
+        /** The plugin's own name, or null when the list itself could not be read. */
+        pluginName: string | null;
+        error: string;
+    },
+    t: Translator["t"],
+): GameAppRuntimeIssue {
+    if (!failure.pluginName) {
+        return {
+            level: "error",
+            origin: "plugin",
+            message: t("devMode.issues.pluginListFailed", { error: failure.error }),
+        };
+    }
+    return {
+        level: "error",
+        origin: "plugin",
+        pluginName: failure.pluginName,
+        message: t("devMode.issues.pluginEntryFailed", { plugin: failure.pluginName, error: failure.error }),
     };
 }
 

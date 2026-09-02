@@ -1,34 +1,15 @@
-import { createTranslator, FALLBACK_LOCALE, type LocaleCode } from "@shared/i18n";
-import {
-    findProjectDocumentTooNewError,
-    type ProjectDocumentTooNewError,
-} from "@shared/documents/newerSchema";
+import type { LocaleCode } from "@shared/i18n";
+import { findProjectDocumentTooNewError } from "@shared/documents/newerSchema";
+import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { findStoryDocumentTooNewError } from "@shared/story/migrateStoryDocument";
 
 /**
- * The sentence an author reads when the main process refuses a project file a newer Studio wrote.
+ * The sentence, composed in `@shared/documents/tooNewMessage`.
  *
- * The refusal itself is a value (`ProjectDocumentTooNewError`) carrying three facts and no prose,
- * because it is thrown deep inside an assembly and caught at a boundary that knows the language.
- * This is that boundary's half: it turns the three facts into one sentence, and it is the only
- * place that composes it - Dev Mode's console, Dev Mode's failure screen and the build report all
- * print the message of the error they were handed, so a second wording here would be a second
- * answer to the same question.
+ * Re-exported rather than defined here because the renderer refuses documents of its own and has to
+ * say the same thing about them; see that module for why there is exactly one wording.
  */
-export function describeProjectDocumentTooNew(
-    refusal: ProjectDocumentTooNewError,
-    locale: LocaleCode = FALLBACK_LOCALE,
-): string {
-    const translator = createTranslator(locale);
-    return translator.t("documents.tooNew.message", {
-        subject: refusal.subject,
-        // The kind list and the nouns are the same closed set, so this composes rather than
-        // switching; `projectDocumentGate.test.ts` is what holds the two ends together.
-        kind: translator.t(`documents.tooNew.kind.${refusal.kind}`),
-        version: refusal.version,
-        supported: refusal.supportedVersion,
-    });
-}
+export { describeProjectDocumentTooNew };
 
 /**
  * `error`, with a schema refusal inside it replaced by one an author can read.
