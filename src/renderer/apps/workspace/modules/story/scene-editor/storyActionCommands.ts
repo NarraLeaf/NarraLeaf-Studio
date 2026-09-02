@@ -120,6 +120,22 @@ export function pluginActionToPaletteCommand(registration: {
 // not here, avoids storyActionCommands depending on the grammar and keeps the two menus single-source.
 
 /**
+ * The speaker a row is attributed to, or nothing when the row is not a line of speech.
+ *
+ * A bare name counts: it is what the dialogue box will show, so a row that continues it has to carry
+ * it. `characterId` wins when both are somehow present, matching how the payload reads.
+ */
+export function dialogueSpeakerOf(block: StoryBlock): StoryDialogueSpeaker | undefined {
+    if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+        return undefined;
+    }
+    if (block.payload.characterId) {
+        return { characterId: block.payload.characterId };
+    }
+    return block.payload.speakerName ? { speakerName: block.payload.speakerName } : undefined;
+}
+
+/**
  * The speaker arrives as a whole attribution rather than a lone character id, so a line spoken by a
  * bare name (`speakerName`) reaches a new row by the same path a Studio character does. Passing the
  * id alone used to drop temporary speakers on the floor: the row was built with no speaker at all

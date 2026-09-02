@@ -41,7 +41,7 @@ import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessi
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
-import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
+import { createBlockForCommand, dialogueSpeakerOf, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
@@ -3715,22 +3715,6 @@ function resolveMappingsForMemory(
         }
     }
     return resolved;
-}
-
-/**
- * The speaker a row is attributed to, or nothing when the row is not a line of speech.
- *
- * A bare name counts: it is what the dialogue box will show, so a row that continues it has to carry
- * it. `characterId` wins when both are somehow present, matching how the payload reads.
- */
-export function dialogueSpeakerOf(block: StoryBlock): StoryDialogueSpeaker | undefined {
-    if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
-        return undefined;
-    }
-    if (block.payload.characterId) {
-        return { characterId: block.payload.characterId };
-    }
-    return block.payload.speakerName ? { speakerName: block.payload.speakerName } : undefined;
 }
 
 /**
