@@ -1,6 +1,6 @@
 import type { UIHostAdapter } from "../runtime/types";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
-import type { UIGraph, UIGraphEntry } from "@shared/types/ui-editor/graph";
+import type { UIGraph, UIGraphEntry, UIGraphNode } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type {
@@ -17,6 +17,10 @@ import {
 } from "./GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 import { resolveBehaviorNodeInput } from "./dataPinResolver";
+import {
+    blueprintNodeDisplayName,
+    listUnwiredRequiredInputPins,
+} from "../blueprint-nodes/requiredInputPins";
 import { getBlueprintDebugController } from "./debugControl";
 
 export type ExecuteGraphOptions = {
@@ -69,6 +73,11 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
     let cursor: string | undefined = entry.start.nodeId;
     const pendingCursors: string[] = [];
     let steps = 0;
+    /**
+     * Nodes already reported for an unconnected required input, so a node inside a loop says it
+     * once per run rather than once per pass.
+     */
+    const inputMissingReported = new Set<string>();
 
     // Null in every build that is not a Dev Mode session; see debugControl.ts.
     const debugController = getBlueprintDebugController();
@@ -155,6 +164,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
 
             if (trace) {
                 trace.emit({ type: "node.enter", executionId: trace.executionId, nodeId: node.id });
+                reportUnwiredRequiredInputs(graph, node, trace, inputMissingReported);
             }
 
             let result: BehaviorNodeExecuteResult | void;
@@ -215,5 +225,46 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
         if (debugController && debugFrame) {
             debugController.exitFrame(debugFrame);
         }
+    }
+}
+
+/**
+ * Say, once per node per run, that a required data input has nothing feeding it.
+ *
+ * Only when the execution carries a trace, which is what keeps it off the hot path: an event
+ * dispatch traces, a value binding does not - and a binding re-evaluates on every dependency change,
+ * which would turn one unfinished pin into a line per frame.
+ *
+ * Reported before the node runs rather than from inside it, because the node itself cannot tell:
+ * `resolveInput` answers `undefined` for a pin nobody wired exactly as it does for one whose source
+ * legitimately produced nothing, and most nodes never ask at all.
+ */
+function reportUnwiredRequiredInputs(
+    graph: UIGraph,
+    node: UIGraphNode,
+    trace: BehaviorGraphExecutionTrace,
+    reported: Set<string>,
+): void {
+    if (reported.has(node.id)) {
+        return;
+    }
+    reported.add(node.id);
+    const missing = listUnwiredRequiredInputPins(
+        node.type,
+        node.params,
+        pinId => graph.edges.some(edge => edge.to.nodeId === node.id && edge.to.port === pinId),
+    );
+    for (const pin of missing) {
+        trace.emit({
+            type: "node.input_missing",
+            executionId: trace.executionId,
+            nodeId: node.id,
+            nodeName: blueprintNodeDisplayName(node.type),
+            pinLabel: pin.label,
+            blueprintId: trace.blueprintId,
+            eventId: trace.eventId,
+            graphId: trace.graphId,
+            surfaceId: trace.surfaceId,
+        });
     }
 }
