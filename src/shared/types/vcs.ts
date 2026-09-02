@@ -206,6 +206,15 @@ export const VcsErrorCode = {
     ProjectPath: "vcs/project-path",
     /** The app is closing and refused to start another call rather than abandoning it. */
     ShuttingDown: "vcs/shutting-down",
+    /**
+     * Something else holds this project's repository, so it could not be opened.
+     *
+     * The backend's lock is exclusive and waits rather than failing, so the refusal is Studio's:
+     * the wait is given a bound and what is past it is reported. Named because the situation has a
+     * remedy an author can carry out - close whatever else has the project - and the backend
+     * itself never produces a sentence for it.
+     */
+    RepositoryLocked: "vcs/repository-locked",
     /** A sync was asked for on a tree with changes nobody has recorded yet. */
     UncommittedChanges: "vcs/uncommitted-changes",
     /**

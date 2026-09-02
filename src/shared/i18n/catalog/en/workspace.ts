@@ -529,6 +529,12 @@ export const workspace = {
         errorOpenFailed: "Could not open that folder: {error}",
         notAProjectTitle: "This folder is not a NarraLeaf project",
         notAProjectDetail: "No .nlproj file was found.",
+        // The project belongs to whichever NarraLeaf Studio took it first, for as long as that one
+        // has it. The machine and the time are all this says about the other session, because they
+        // are the only parts of it an author can act on.
+        projectLockedTitle: "This project is open in another NarraLeaf Studio",
+        projectLockedHere: "Open on this computer since {time}. Retry once it has been closed there.",
+        projectLockedElsewhere: "Open on {host} since {time}. Retry once it has been closed there.",
         openLauncher: "Open launcher",
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",
@@ -972,6 +978,10 @@ export const workspace = {
             // Refused because the app is closing. Rare, and worth its own sentence: the alternative
             // wording an author would otherwise see names koffi and a worker thread.
             closingWithApp: "Studio is closing. Try again after it restarts.",
+            // Another program has the project's version history open - most often a second Studio,
+            // or a `lore` command left running in a terminal. Editing is unaffected; only the
+            // version history is out of reach until it is closed.
+            repositoryLocked: "Another program has this project's version history open. Close it to use versions here.",
             commitBeforeSync: "Submit a version before getting the server's.",
             // A push the server would not take because both sides have moved on. The remedy is the
             // one the backend names; what it does not do is name it in the reader's language, or

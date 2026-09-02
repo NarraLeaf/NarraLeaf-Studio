@@ -352,4 +352,50 @@ describe("Fs atomic writes", () => {
             if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.NOT_FOUND);
         });
     });
+
+    /**
+     * The verb a lock file is built on: only one caller may come away believing it wrote the file.
+     *
+     * The neighbours cannot answer that question. `ensureRegularFile` performs the same `wx` create
+     * and reports nothing about which branch it took, so two callers both read success; the atomic
+     * writers replace whatever is there, which for a claim is the failure itself.
+     */
+    describe("createFileExclusive", () => {
+        it("creates the file and says it was the one that did", async () => {
+            const target = join(root, "session.lock");
+
+            const result = await Fs.createFileExclusive(target, "mine");
+
+            expect(result).toEqual({ ok: true, data: true });
+            expect(await readFile(target, "utf-8")).toBe("mine");
+        });
+
+        it("writes nothing over a file that is already there, and says so", async () => {
+            const target = join(root, "session.lock");
+            await writeFile(target, "theirs");
+
+            const result = await Fs.createFileExclusive(target, "mine");
+
+            expect(result).toEqual({ ok: true, data: false });
+            expect(await readFile(target, "utf-8")).toBe("theirs");
+        });
+
+        it("hands the file to exactly one of many callers racing for it", async () => {
+            const target = join(root, "session.lock");
+
+            const results = await Promise.all(
+                Array.from({ length: 8 }, (_, index) => Fs.createFileExclusive(target, `writer-${index}`)),
+            );
+
+            expect(results.filter(result => result.ok && result.data)).toHaveLength(1);
+            expect(results.every(result => result.ok)).toBe(true);
+        });
+
+        it("reports a path it could not write rather than claiming it", async () => {
+            const result = await Fs.createFileExclusive(join(root, "missing-dir", "session.lock"), "mine");
+
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.error.code).toBe(FsRejectErrorCode.NOT_FOUND);
+        });
+    });
 });

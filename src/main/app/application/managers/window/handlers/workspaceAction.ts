@@ -231,6 +231,38 @@ export class WorkspaceLiveIntentTakenHandler extends IPCHandler<IPCEventType.wor
 }
 
 /**
+ * Take this window's project for this Studio, or report which one already has it.
+ *
+ * The window asks for itself, on the project in its own props, which is why the message carries
+ * nothing: a claim is about a window's right to write its own project, and a path in the message
+ * would make it about somebody else's.
+ *
+ * `App.openProject` has already asked once by the time a window exists, and this is not a
+ * duplicate of it. That call is what makes the claim before anything can be read; this one is what
+ * the window's startup gates itself on and what Retry on the error screen re-asks, so a project
+ * released by the other Studio in the meantime opens on the next press.
+ */
+export class WorkspaceAcquireSessionLockHandler extends IPCHandler<IPCEventType.workspaceAcquireSessionLock> {
+    readonly name = IPCEventType.workspaceAcquireSessionLock;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceAcquireSessionLock]["response"]>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window holds a project.");
+        }
+
+        const projectPath = (window as AppWindow<WindowAppType.Workspace>).getProps().projectPath;
+        if (!projectPath) {
+            return this.failed("This window has no project to claim.");
+        }
+
+        return this.success(await window.app.getProjectSessionLockManager().acquire(projectPath));
+    }
+}
+
+/**
  * Show this window's project folder in the OS file manager.
  *
  * The path comes from the window's own props and never from the message, so this cannot be pointed

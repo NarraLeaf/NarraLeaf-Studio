@@ -144,6 +144,12 @@ describe("project package paths", () => {
         expect(shouldExcludeProjectPackagePath("assets/content/ab/cd/file")).toBe(false);
     });
 
+    it("never exports the claim that says who is editing the project", () => {
+        // A fact about one machine and one moment. An export carrying it would arrive claiming to
+        // be open in the sender's Studio, and stay that way until the claim aged out.
+        expect(shouldExcludeProjectPackagePath(".nlstudio/session.lock")).toBe(true);
+    });
+
     it("excludes the repository and Studio's own state, but not the project's", () => {
         expect(shouldExcludeProjectPackagePath(".lore/store/fragments/00/ab")).toBe(true);
         expect(shouldExcludeProjectPackagePath(".nlstudio/services/panel_state.json")).toBe(true);

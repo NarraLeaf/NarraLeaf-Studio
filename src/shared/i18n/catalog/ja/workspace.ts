@@ -493,6 +493,11 @@ export const workspace = {
         errorOpenFailed: "そのフォルダを開けなかった：{error}",
         notAProjectTitle: "このフォルダは NarraLeaf のプロジェクトではない",
         notAProjectDetail: ".nlproj ファイルが見つからない",
+        // プロジェクトは最初に取得した NarraLeaf Studio のもので、それが手放すまで変わらない。
+        // 別のセッションについて示すのは端末と時刻だけ。作者が動かせるのはその二つだけである。
+        projectLockedTitle: "このプロジェクトは別の NarraLeaf Studio で開かれている",
+        projectLockedHere: "この端末で {time} から開かれており、閉じると再試行できる",
+        projectLockedElsewhere: "{host} で {time} から開かれており、そちらを閉じると再試行できる",
         openLauncher: "ランチャーを開く",
         panelRenderError: "このパネルで描画のエラーが起きた",
         mainEditorRegion: "メインのエディタ",
@@ -883,6 +888,9 @@ export const workspace = {
             // 走査であり、この画面は自分から走査しない。
             nothingToCommit: "前のバージョンから変更はありません",
             closingWithApp: "Studio を終了しています。再起動後にもう一度お試しください",
+            // 別のプログラムがこのプロジェクトのバージョン履歴を開いている。多くは二つ目の Studio か、
+            // ターミナルに残った lore コマンド。編集には影響せず、バージョン履歴だけが使えない。
+            repositoryLocked: "別のプログラムがこのプロジェクトのバージョン履歴を開いています。閉じるとここでバージョンを使えます",
             commitBeforeSync: "サーバーから取得する前にバージョンを提出してください",
             branchDiverged: "このプロジェクトとサーバーの両方が変更されています。先にサーバーのバージョンを取得してから送信してください",
             changesUnknown: "未確認",

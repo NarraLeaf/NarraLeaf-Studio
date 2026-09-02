@@ -1,6 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
+import type { ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -237,6 +238,7 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    workspaceAcquireSessionLock = "workspace.acquireSessionLock",
     projectTrustQuery = "projectTrust.query",
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
@@ -2254,6 +2256,22 @@ export type IPCWorkspaceEvents = {
             reason?: string;
         },
         response: void;
+    };
+    /**
+     * Take this window's project for this Studio, or find out which one already has it.
+     *
+     * Asked once more from inside the window, after `App.openProject` has already asked on its
+     * behalf, and both are load-bearing: main's is what makes the claim before any window exists,
+     * and this one is what a Retry on the error screen re-asks. A project this process already
+     * holds answers immediately and touches no disk.
+     *
+     * The project is the window's own, never a path in the message.
+     */
+    [IPCEventType.workspaceAcquireSessionLock]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: ProjectSessionLockOutcome;
     };
     /**
      * Whether this project may cause effects, asked of the only process that can answer.
