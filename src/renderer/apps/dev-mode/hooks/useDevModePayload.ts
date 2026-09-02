@@ -24,6 +24,16 @@ export type DevModeLaunchRequest = {
     sceneId: string;
     startBlockId?: string;
     snapshotId?: string;
+    /**
+     * The bundle revision this window was showing when the request arrived, or null when it was
+     * showing none.
+     *
+     * The instruction and the bundle it belongs to are two messages, and two messages are two React
+     * commits: acting in the first of them would start the story against the documents the author
+     * has just edited out of date, and the reload that then carried the new ones would take the run
+     * straight back over it. So the request waits here until the app is showing something else.
+     */
+    afterRevision: number | null;
 };
 
 type DevModeState = {
@@ -120,7 +130,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
          * one edit the author just made out of date.
          */
         const startToken = getInterface().devMode.onControlStartStory(request => {
-            setState(prev => ({ ...prev, launchRequest: request }));
+            setState(prev => ({ ...prev, launchRequest: { ...request, afterRevision: prev.bundle?.revision ?? null } }));
         });
         const errorToken = getInterface().devMode.onControlError(({ message }) => {
             setState(prev => ({

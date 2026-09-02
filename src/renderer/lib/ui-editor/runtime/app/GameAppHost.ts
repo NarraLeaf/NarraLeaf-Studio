@@ -224,6 +224,16 @@ export type GameAppHost = {
         startBlockId?: string;
         /** Scene Snapshot whose variable values seed the launch; omitted = declared defaults. */
         snapshotId?: string;
+        /**
+         * The bundle revision the host was showing when this request reached it, or null/absent when
+         * it was showing none.
+         *
+         * The request and the bundle it was compiled from can arrive separately, and this is what
+         * says they have not both arrived yet: acting while {@link GameAppHost.bundle} still carries
+         * this revision would start the story against the documents the launch has already replaced,
+         * and the reload that then brought them would take the run straight back over it.
+         */
+        afterRevision?: number | null;
     };
     persistenceAdapter: BlueprintPersistentStoreAdapter | null;
     onDebugEvent?: (event: BlueprintDebugEvent) => void;

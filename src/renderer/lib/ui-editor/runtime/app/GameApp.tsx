@@ -4326,7 +4326,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         // window was opened with. Pressing a row's play control twice in the second it takes a Dev
         // Mode window to come up is not a rare thing to do, and without this the second press would
         // be dropped and the author would be watching the first row they pointed at.
-        const pendingLaunch = host.launchRequest && consumedLaunchTokenRef.current !== host.launchRequest.token
+        const pendingLaunch = host.launchRequest
+            && consumedLaunchTokenRef.current !== host.launchRequest.token
+            && !(host.launchRequest.afterRevision != null && host.launchRequest.afterRevision === bundle.revision)
             ? host.launchRequest
             : null;
         if (pendingLaunch) {
@@ -4685,6 +4687,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         const launch = host.launchRequest;
         if (!launch || consumedLaunchTokenRef.current === launch.token) {
+            return;
+        }
+        if (launch.afterRevision != null && bundle.revision === launch.afterRevision) {
+            // The bundle this launch was compiled from has not arrived yet. Acting now would start
+            // the story against the documents the author edited before pressing play, and the reload
+            // carrying the new ones would then resume the play head straight over it.
             return;
         }
         if (activeStoryRevisionRef.current === null) {
