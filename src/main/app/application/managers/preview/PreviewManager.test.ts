@@ -8,6 +8,9 @@ import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import { formatPreviewProcessOutput, PreviewManager, resolvePreviewRunnerBinaryForApp } from "./PreviewManager";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { encodeProjectConfig } from "@shared/utils/nlproj";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "../../utils/previewAsShipped";
 import { spawn } from "child_process";
 
 // The freeze refusal reports itself on the workspace console; keep it away from the window plumbing.
@@ -24,6 +27,11 @@ vi.mock("child_process", async importOriginal => ({
 }));
 vi.mock("chokidar", () => ({
     default: { watch: () => ({ on: () => undefined, close: () => Promise.resolve() }) },
+}));
+// The key itself comes from a native binding and from secrets on disk. What these cases are about is
+// which launches ask for one at all, so a fixed answer says more than a real derivation would.
+vi.mock("../security/packKeyService", () => ({
+    resolvePackEncryptionKey: async () => "pack-key-for-this-machine",
 }));
 
 let tempDir = "";
@@ -460,4 +468,124 @@ describe("PreviewManager.resetPlayerData", () => {
         await manager.stop(projectDir);
         await expect(launch).resolves.toBe("idle");
     });
+});
+/**
+ * Whether a preview holds its content as loose files or in the sealed store a protected build ships.
+ *
+ * Sealing costs several seconds on every launch, because the store is written whole and a story edit
+ * changes the pack - so an everyday preview of a protected project runs loose files, and rehearsing
+ * the shipped form is something this machine asks for. What the two must not become is two different
+ * compiles: the sealed one has to be the artifact a protected build produces, or rehearsing it proves
+ * nothing. That is the assertion below - one field apart, the compiler is handed the same thing.
+ */
+describe("PreviewManager and the shipped form of a protected project", () => {
+    const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
+    let projectDir = "";
+    let globalState: Record<string, unknown> = {};
+
+    const makeManager = () => new PreviewManager({
+        logger: { error: () => undefined },
+        projectTrustManager: { isTrusted: () => true },
+        isPackaged: () => false,
+        pluginManager: {
+            listPlugins: async () => [],
+            listRuntimePluginPackSources: async () => [],
+        },
+        getDistDir: () => path.join(os.tmpdir(), "dist"),
+        getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+        getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
+        getGlobalState: () => ({ get: (key: string) => globalState[key] }),
+        getAppInfo: () => ({ version: "0.0.0-test" }),
+    } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
+
+    /** Stands in for the spawned Electron, alive and doing nothing. */
+    function fakeChild() {
+        const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = vi.fn(() => true);
+        return child;
+    }
+
+    async function writeProjectConfig(encryptAssets: boolean): Promise<void> {
+        await fs.writeFile(
+            path.join(projectDir, "Tiny Shadows.nlproj"),
+            encodeProjectConfig({
+                name: "Tiny Shadows",
+                app: { security: { encryptAssets } },
+            } as never),
+        );
+    }
+
+    /**
+     * Launch once and hand back what the compiler was asked to build.
+     *
+     * Never stopped: the stand-in process below answers no control socket, so a stop would spend the
+     * shutdown deadline before killing something that was never alive.
+     */
+    async function compileInputOfOneLaunch(): Promise<Record<string, unknown>> {
+        await makeManager().launch(projectDir, entry);
+        const call = vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls.at(-1);
+        expect(call).toBeDefined();
+        return call![1] as unknown as Record<string, unknown>;
+    }
+
+    beforeEach(async () => {
+        globalState = {};
+        projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-preview-shipped-"));
+        await writeProjectConfig(true);
+        vi.mocked(spawn).mockReset();
+        vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue({
+            appDir: path.join(projectDir, ".nlstudio", "preview", "app"),
+            copiedAssetCount: 0,
+        } as never);
+    });
+
+    afterEach(async () => {
+        await fs.rm(projectDir, { recursive: true, force: true });
+    });
+
+    it("runs loose files by default, protected project or not", async () => {
+        // The everyday preview. Sealing the store on every launch would be paid on every story edit,
+        // for an artifact nobody receives.
+        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+    });
+
+    it("seals once this machine asks for it, and changes nothing else about the compile", async () => {
+        const loose = await compileInputOfOneLaunch();
+        globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
+        const sealed = await compileInputOfOneLaunch();
+
+        expect(sealed.encryptionKey).toBe("pack-key-for-this-machine");
+        // Everything else is what it was, because "as shipped" has to mean the artifact a protected
+        // build produces rather than a third kind of artifact only preview can make. The control
+        // channel is exempt: a port and a token are minted per launch.
+        expect(withoutPerLaunchFields(sealed)).toEqual(withoutPerLaunchFields(loose));
+    });
+
+    it("has nothing to seal where the project does not protect its assets", async () => {
+        await writeProjectConfig(false);
+        globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
+
+        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+    });
+
+    it("belongs to one project, not to the machine", async () => {
+        globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = {
+            [normalizeProjectPath(path.join(os.tmpdir(), "some-other-project"))]: true,
+        };
+
+        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+    });
+
+    function withoutPerLaunchFields(input: Record<string, unknown>): Record<string, unknown> {
+        const rest = { ...input };
+        delete rest.encryptionKey;
+        delete rest.preview;
+        return rest;
+    }
 });
