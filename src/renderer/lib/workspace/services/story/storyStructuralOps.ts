@@ -4,6 +4,7 @@ import {
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     stageObjectReference,
+    type StageObjectDeclaration,
     listSceneIdsInDocumentOrder,
     type StoryBlock,
     type StoryBlockId,
@@ -105,6 +106,14 @@ export function moveBlocksToScene(
 export type StorySceneCutTie = {
     /** Which kind of thing spans the cut; picks the sentence that lists it. */
     kind: "stageObject" | "label" | "variable";
+    /**
+     * The registry key, for a caller that can name it better than this module can.
+     *
+     * A character's stage key is its id, and its name lives in the cast rather than in the story
+     * document - so the editor resolves that one before it prints the list. Everything else keys on
+     * something the author typed, and `label` is already it.
+     */
+    name: string;
     /** What the author would look for: an object's stage name, a label, a variable's name. */
     label: string;
 };
@@ -173,19 +182,19 @@ function collectCutTies(
     const moving = blocksUnder(scene, movingRootIds);
     const ties: StorySceneCutTie[] = [];
     const seen = new Set<string>();
-    const add = (kind: StorySceneCutTie["kind"], label: string) => {
-        const key = `${kind}:${label}`;
+    const add = (kind: StorySceneCutTie["kind"], name: string, label: string) => {
+        const key = `${kind}:${name}`;
         if (!seen.has(key)) {
             seen.add(key);
-            ties.push({ kind, label });
+            ties.push({ kind, name, label });
         }
     };
 
-    const declaredBefore = new Map<string, string>();
+    const declaredBefore = new Map<string, StageObjectDeclaration>();
     for (const block of staying) {
         const declaration = declaredStageObject(block);
         if (declaration) {
-            declaredBefore.set(`${declaration.kind}:${declaration.name}`, declaration.label);
+            declaredBefore.set(`${declaration.kind}:${declaration.name}`, declaration);
         }
     }
     const labelsBefore = new Set(listSceneLabels(scene)
@@ -199,19 +208,19 @@ function collectCutTies(
     for (const block of moving) {
         const reference = stageObjectReference(scene, block);
         for (const kind of reference?.kinds ?? []) {
-            const label = declaredBefore.get(`${kind}:${reference!.name}`);
-            if (label) {
-                add("stageObject", label);
+            const declaration = declaredBefore.get(`${kind}:${reference!.name}`);
+            if (declaration) {
+                add("stageObject", declaration.name, declaration.label);
             }
         }
         if (block.kind === "control" && block.payload.control === "goto" && labelsBefore.has(block.payload.targetLabel)) {
-            add("label", block.payload.targetLabel);
+            add("label", block.payload.targetLabel, block.payload.targetLabel);
         }
         for (const variable of variablesBefore) {
             // The block id doubles as the variable id (schema v6), so the id appearing anywhere in
             // a payload is that variable and nothing else.
             if (containsString(block.payload, variable.id)) {
-                add("variable", variable.name);
+                add("variable", variable.id, variable.name);
             }
         }
     }

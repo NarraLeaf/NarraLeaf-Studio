@@ -14,19 +14,20 @@ import type {
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
-import { listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { characterStageName, listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate, translateN } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { createInputDialog } from "@/lib/components/dialogs";
-import { planSceneSplit } from "@/lib/workspace/services/story/storyStructuralOps";
+import { planSceneSplit, type StorySceneCutTie } from "@/lib/workspace/services/story/storyStructuralOps";
 import { moveStoryRowsToScene } from "../storyStructuralGestures";
 import { isRowTextEditable, storyDocumentFreezeScope } from "./storySceneReadOnly";
 import { rowClaimHolder } from "./storyRowClaims";
 import { useStoryRowClaimHold } from "./storyRowClaimHold";
 import { Services } from "@/lib/workspace/services/services";
+import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -3553,7 +3554,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             await uiService.showAlert(
                 translate("story.structuralOps.splitScene.refused"),
                 translate("story.structuralOps.splitScene.refusedDetail", {
-                    names: plan.ties.map(tie => tie.label).join(", "),
+                    names: plan.ties.map(tie => describeCutTie(tie, characters)).join(", "),
                 }),
             );
             return;
@@ -3751,6 +3752,21 @@ function continuationCommandFor(block: StoryBlock): ActionCommandId | null {
         if (block.payload.action === "choiceOption") return "choiceOption";
     }
     return null;
+}
+
+/**
+ * A cut tie as the author reads it.
+ *
+ * Only the character arm needs this. A character's stage key is its id, and its name is in the cast
+ * rather than in the story document, so the story-side scan can only fall back to "Character" -
+ * which names nobody. Everything else already keys on something the author typed.
+ */
+function describeCutTie(tie: StorySceneCutTie, characters: readonly Character[]): string {
+    if (tie.kind !== "stageObject") {
+        return tie.label;
+    }
+    const character = characters.find(item => characterStageName(item.profile.getId()) === tie.name);
+    return character?.profile.getName() ?? tie.label;
 }
 
 /**

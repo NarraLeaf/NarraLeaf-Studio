@@ -178,9 +178,9 @@ describe("planSceneSplit", () => {
         };
         const scene0 = scene("a", "A", [show, narration("r1", "one"), hide]);
 
-        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "stageObject", label: "poster" }]);
+        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "stageObject", name: "poster", label: "poster" }]);
         // Cut after the row that addresses it and nothing spans the cut any more.
-        expect(planSceneSplit(scene0, "hide")?.ties).toEqual([{ kind: "stageObject", label: "poster" }]);
+        expect(planSceneSplit(scene0, "hide")?.ties).toEqual([{ kind: "stageObject", name: "poster", label: "poster" }]);
         expect(planSceneSplit(scene0, "show")?.ties).toEqual([]);
     });
 
@@ -195,7 +195,7 @@ describe("planSceneSplit", () => {
         };
         const scene0 = scene("a", "A", [label, narration("r1", "one"), goto]);
 
-        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "label", label: "start" }]);
+        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "label", name: "start", label: "start" }]);
         expect(planSceneSplit(scene0, "label")?.ties).toEqual([]);
     });
 
@@ -210,7 +210,7 @@ describe("planSceneSplit", () => {
         };
         const scene0 = scene("a", "A", [declaration, narration("r1", "one"), setter]);
 
-        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "variable", label: "Gold" }]);
+        expect(planSceneSplit(scene0, "r1")?.ties).toEqual([{ kind: "variable", name: "var", label: "Gold" }]);
         expect(planSceneSplit(scene0, "declaration" as StoryBlockId)?.ties).toBeUndefined();
         expect(planSceneSplit(scene0, "var")?.ties).toEqual([]);
     });
