@@ -53,21 +53,36 @@ const KNOWN_EDITORS: readonly { id: string; name: string; command: string }[] = 
 /** How a command is looked up on this platform. Injected so the tests need no editors installed. */
 export type PathLookup = (command: string) => Promise<string | null>;
 
+/** Extensions Windows can actually start. See {@link lookUpOnPath}. */
+const WINDOWS_RUNNABLE = /\.(cmd|bat|exe|com)$/i;
+
 /**
  * Where a command lives, or null.
  *
  * `where` on Windows, `which` elsewhere; both exit non-zero when nothing is found. The *path* is
  * kept rather than a yes/no because launching needs it: on Windows the thing on PATH is usually a
  * `.cmd` shim, and knowing that is what decides how it can be started at all.
+ *
+ * **The first line is not the answer on Windows.** `where` prints every match, and a real VS Code
+ * install prints two - `…\bin\code` and `…\bin\code.cmd`. The first is the POSIX shell script,
+ * which Windows cannot execute at all; taking it produced `spawn … ENOENT` the first time this was
+ * run against a real install. So a runnable extension wins, and the first line is only the fallback
+ * for a name that has none.
  */
+export function pickRunnablePath(matches: readonly string[], platform: NodeJS.Platform): string | null {
+    const found = matches.map(line => line.trim()).filter(Boolean);
+    if (platform === "win32") {
+        return found.find(match => WINDOWS_RUNNABLE.test(match)) ?? found[0] ?? null;
+    }
+    return found[0] ?? null;
+}
+
 async function lookUpOnPath(command: string, platform: NodeJS.Platform): Promise<string | null> {
     try {
         const { stdout } = await execFileAsync(platform === "win32" ? "where" : "which", [command], {
             windowsHide: true,
         });
-        // `where` prints every match, one per line; the first is what would run.
-        const first = stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean);
-        return first ?? null;
+        return pickRunnablePath(stdout.split(/\r?\n/), platform);
     } catch {
         return null;
     }

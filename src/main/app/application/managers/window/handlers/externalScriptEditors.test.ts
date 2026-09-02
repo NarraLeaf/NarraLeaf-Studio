@@ -4,6 +4,7 @@ import {
     detectExternalScriptEditors,
     isKnownExternalScriptEditor,
     openFolderInExternalEditor,
+    pickRunnablePath,
 } from "./externalScriptEditors";
 
 /**
@@ -34,6 +35,35 @@ describe("which editors this machine has", () => {
         // than run, which is what keeps a command line out of the renderer's reach.
         expect(isKnownExternalScriptEditor("rm -rf")).toBe(false);
         expect(isKnownExternalScriptEditor("system")).toBe(false);
+    });
+});
+
+describe("which of PATH's matches is the one to run", () => {
+    it("takes the runnable one on Windows, not the first", () => {
+        // The two lines a real VS Code install prints, in the order `where` prints them. The first
+        // is the POSIX shell script, which Windows cannot start at all - taking it produced
+        // `spawn … ENOENT` the first time this was run against a real install. Separators are
+        // written forward here because only the extension decides.
+        expect(
+            pickRunnablePath(
+                ["D:/Program/Microsoft VS Code/bin/code", "D:/Program/Microsoft VS Code/bin/code.cmd"],
+                "win32",
+            ),
+        ).toBe("D:/Program/Microsoft VS Code/bin/code.cmd");
+    });
+
+    it("falls back to the first when no match carries a runnable extension", () => {
+        expect(pickRunnablePath(["C:/tools/zed"], "win32")).toBe("C:/tools/zed");
+    });
+
+    it("takes the first elsewhere, where an extension means nothing", () => {
+        expect(pickRunnablePath(["/usr/local/bin/cursor", "/usr/bin/cursor"], "darwin")).toBe(
+            "/usr/local/bin/cursor",
+        );
+    });
+
+    it("answers with nothing for an empty listing", () => {
+        expect(pickRunnablePath(["", "  "], "win32")).toBeNull();
     });
 });
 

@@ -257,12 +257,14 @@ export function AssetsListView({
                     </AccordionItem>
                 );
             })}
-            {/* Last, and passed in rather than built here: the project's scripts are not in the
-                asset library, and this view is about the library. See `BlueprintScriptsSection`. */}
-            {trailingSection}
+            {/* Above the trailing section, not below it: this line is about the library's own
+                sections, and under a populated scripts section it would read as describing that. */}
             {!hasAnyItems && (
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
+            {/* Last, and passed in rather than built here: the project's scripts are not in the
+                asset library, and this view is about the library. See `BlueprintScriptsSection`. */}
+            {trailingSection}
         </Accordion>
     );
 }
