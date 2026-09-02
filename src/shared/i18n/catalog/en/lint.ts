@@ -253,6 +253,13 @@ export const lint = {
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
         },
+        blueprintUnknownNode: {
+            title: "Unknown node type",
+            description: "A node whose type the project cannot load",
+            // Names the type, because the locator points at the graph and the node but a node id is
+            // not something the author can act on - the type is what says which plugin is missing.
+            message: "{type} is not loaded, so this node will not run in the game",
+        },
         uiUnlocalizedText: {
             title: "Unlocalized text",
             description: "Text written straight onto a widget in a project that has a second language",
@@ -412,6 +419,12 @@ export const lint = {
     message: {
         ruleFailed: "{rule} could not run",
         storyLoadFailed: "{story} could not be opened",
+        /**
+         * Beside the line above and ahead of it, because it is the one reason a story will not open
+         * that says nothing about the story. Without the two versions an author reads their own
+         * file's name next to a failure and looks for the mistake in their script.
+         */
+        storyTooOld: "{story} is in story format v{version}, and this Studio opens v{minimum} and later",
     },
     category: {
         assets: "Assets",

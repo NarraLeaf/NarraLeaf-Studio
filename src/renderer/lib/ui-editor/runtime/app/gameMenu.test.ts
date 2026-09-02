@@ -176,8 +176,14 @@ describe("resolveGameMenu", () => {
         expect(itemsOf(windowed.model, 0).map(item => ("checked" in item ? item.checked : null)))
             .toEqual([false, false, true]);
 
+        // Nothing is the current size while full screen, so the rows stop being a radio group:
+        // a platform that draws one with nothing ticked ticks the first row for itself.
         const full = await resolveGameMenu(spec, createPort({ getFullscreen: async () => true }));
-        expect(itemsOf(full.model, 0).every(item => "checked" in item && item.checked === false)).toBe(true);
+        expect(itemsOf(full.model, 0).map(item => item.kind)).toEqual(["command", "command", "command"]);
+
+        // Same when the window sits between two rungs - a size a game may ask for at any time.
+        const between = await resolveGameMenu(spec, createPort({ getWindowScale: async () => 0.83 }));
+        expect(itemsOf(between.model, 0).every(item => item.kind === "command")).toBe(true);
     });
 
     it("drops the full-screen row on a shell that has no full screen to offer", async () => {

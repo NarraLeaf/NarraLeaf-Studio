@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { BlueprintNodeCatalogService } from "./BlueprintNodeCatalogService";
-import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY,
+    type BlueprintNodeDef,
+} from "@/lib/ui-editor/blueprint-nodes/types";
 
 function nodeDef(type: string, displayName = type): BlueprintNodeDef {
     return {
@@ -83,5 +86,33 @@ describe("BlueprintNodeCatalogService", () => {
             ownerPluginId: "test.plugin",
             replaceExisting: true,
         })).toThrow("prefixed with plugin id");
+    });
+
+    it("rebuilds an unknown node's pins from a stored snapshot, and stays unknown", () => {
+        const service = new BlueprintNodeCatalogService();
+        // A type that was never registered here: the plugin that defines it is not loaded.
+        const type = `absent.plugin.${crypto.randomUUID()}.node`;
+
+        const restored = service.resolveCatalogEntryForNode(type, {
+            [BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY]: [
+                { id: "in", kind: "input", semantic: "exec" },
+                { id: "amount", kind: "input", semantic: "data", valueType: "float" },
+                { id: "next", kind: "output", semantic: "exec" },
+                { id: "result", kind: "output", semantic: "data", valueType: "float" },
+            ],
+        });
+        expect(restored.unknown).toBe(true);
+        expect(restored.pins.map(p => p.id)).toEqual(["in", "amount", "next", "result"]);
+
+        // No snapshot: the bare exec stub.
+        const bare = service.resolveCatalogEntryForNode(type);
+        expect(bare.unknown).toBe(true);
+        expect(bare.pins.map(p => p.id)).toEqual(["in", "next"]);
+
+        // A malformed snapshot is discarded rather than trusted.
+        const malformed = service.resolveCatalogEntryForNode(type, {
+            [BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY]: [{ id: 5, kind: "sideways" }],
+        });
+        expect(malformed.pins.map(p => p.id)).toEqual(["in", "next"]);
     });
 });

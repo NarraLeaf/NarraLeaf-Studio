@@ -27,6 +27,83 @@ export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LI
 
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
+/**
+ * Persisted on node.params: the node's pin shape as last resolved while its type was known.
+ *
+ * Only plugin (non-built-in) node types carry this - a built-in never becomes unknown. When the
+ * plugin later goes missing, the catalogue rebuilds the card's pins from this record instead of the
+ * bare exec stub, so the node's connections stay visible and attached rather than silently absent.
+ */
+export const BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY = "__lastKnownPins" as const;
+
+/** The minimal per-pin record stored under {@link BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY}. */
+export type BlueprintNodePinSnapshotEntry = {
+    id: string;
+    kind: "input" | "output";
+    semantic: BlueprintPinSemantic;
+    valueType?: string;
+    label?: string;
+};
+
+/** Reduce a resolved catalog entry's pins to the compact shape stored on the node. */
+export function toBlueprintNodePinSnapshot(
+    pins: readonly {
+        id: string;
+        kind: "input" | "output";
+        semantic: BlueprintPinSemantic;
+        valueType?: string;
+        label?: string;
+    }[],
+): BlueprintNodePinSnapshotEntry[] {
+    return pins.map(pin => {
+        const entry: BlueprintNodePinSnapshotEntry = { id: pin.id, kind: pin.kind, semantic: pin.semantic };
+        if (pin.valueType !== undefined) {
+            entry.valueType = pin.valueType;
+        }
+        if (pin.label !== undefined) {
+            entry.label = pin.label;
+        }
+        return entry;
+    });
+}
+
+/**
+ * Read a validated pin snapshot off a node's stored params, or null when it is absent or malformed.
+ * The value comes off disk, so a shape that is not a well-formed pin list is discarded rather than
+ * trusted - the node then falls back to the exec stub.
+ */
+export function readBlueprintNodePinSnapshot(
+    params: Record<string, unknown> | undefined,
+): BlueprintNodePinSnapshotEntry[] | null {
+    const raw = params?.[BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY];
+    if (!Array.isArray(raw) || raw.length === 0) {
+        return null;
+    }
+    const out: BlueprintNodePinSnapshotEntry[] = [];
+    for (const item of raw) {
+        if (!item || typeof item !== "object") {
+            return null;
+        }
+        const rec = item as Record<string, unknown>;
+        const { id, kind, semantic } = rec;
+        if (
+            typeof id !== "string" ||
+            (kind !== "input" && kind !== "output") ||
+            (semantic !== "exec" && semantic !== "data")
+        ) {
+            return null;
+        }
+        const entry: BlueprintNodePinSnapshotEntry = { id, kind, semantic };
+        if (typeof rec.valueType === "string") {
+            entry.valueType = rec.valueType;
+        }
+        if (typeof rec.label === "string") {
+            entry.label = rec.label;
+        }
+        out.push(entry);
+    }
+    return out;
+}
 /** Persisted on node.params: show the manually wired Element target pin for a derived palette instance. */
 export const BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN = "__showMagicElementTargetPin" as const;
 /** Persisted on Animate Property nodes when the user explicitly edits the optional From field. */
@@ -431,6 +508,13 @@ export type BlueprintNodeEditorCatalogEntry = {
     graphKinds: BlueprintGraphKind[];
     role?: BlueprintNodeRole;
     scope?: BlueprintNodeScope;
+    /**
+     * True when the node type is not in the editor registry: the plugin that contributed it is
+     * uninstalled, disabled, or failed to load. The entry is then a placeholder stub - the pins are
+     * a generic exec pair, not the node's real shape - so the card must be drawn as unmistakably
+     * unknown and its wiring left alone. See {@link BlueprintNodeDefinitionsRegistry.resolveCatalogEntry}.
+     */
+    unknown?: boolean;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
     /** True on the save nodes: the card offers the editor for the project's save fields. */

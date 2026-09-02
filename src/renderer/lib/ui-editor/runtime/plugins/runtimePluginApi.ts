@@ -9,15 +9,16 @@
  */
 
 import type { GameMenuSpec } from "@shared/types/gameMenu";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type {
     BlueprintOpenExternalRequest,
     BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
+import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
-import type { ElementRendererProps } from "../ElementRendererRegistry";
 import type { StoryCompilePass } from "../game/storyCompilePass";
 
 /**
@@ -84,14 +85,93 @@ export type RuntimeBlueprintNodeDef = {
 };
 
 /**
+ * What a plugin's widget renderer is handed for one drawing of one element.
+ *
+ * Deliberately *not* the host's `ElementRendererProps`, for the same reason
+ * {@link RuntimeBlueprintNodeContext} is not the host's execution context: that type
+ * carries `hostAdapter`, and through it every host API - saves, localization, quit, the
+ * running sound mixer - none of which the plugin's manifest declared or the user
+ * approved. What a widget needs and a node does not is the element it is drawing, the
+ * document around it, and a way to raise its own event slots; those are here. Everything
+ * else is reached through the same capability-gated {@link RuntimePluginGame} the rest of
+ * the plugin uses.
+ *
+ * `dispatchEvent` and `game` are optional so that one render function written against
+ * this type can also be a studio widget module's `render`, which is handed the editor's
+ * wider props: on the editor canvas there is no running game and no blueprint to raise an
+ * event on, so both are honestly absent there. The reverse does not hold - a function
+ * written against the editor's props cannot be a runtime renderer, because `hostAdapter`
+ * is not there to read.
+ */
+export type RuntimeWidgetRendererProps = {
+    /** The element being drawn: this widget's own authored props, layout and extra. */
+    element: UIElement;
+    /** The surface it is being drawn on. */
+    surface: UISurface;
+    /**
+     * The whole interface document.
+     *
+     * Authored content rather than a host power - the game is already drawing it - and a
+     * structural widget cannot be written without it: resolving a widget's own parts and
+     * descendants means looking them up here, which is what the built-in list and switch do.
+     */
+    document: UIDocument;
+    /** This element's children, already rendered, unless the widget places its own. */
+    children?: ReactNode;
+    /** Stable suffix distinguishing repeated drawings of one authored element. */
+    instanceKey?: string;
+    /** The row this drawing belongs to, when the widget renders inside a list item template. */
+    listItemScope?: UIListItemScope | null;
+    /**
+     * Place this element's children, rather than taking the pre-rendered {@link children}.
+     * A widget that repeats one authored template calls this once per row with that row's
+     * scope and its own instance key.
+     */
+    renderChildren?: (options?: {
+        childrenIds?: string[];
+        listItemScope?: UIListItemScope | null;
+        instanceKey?: string;
+        elementOverrides?: Record<string, UIElement>;
+    }) => ReactNode[];
+    /** Read-only views of the state tables the author's blueprints write. */
+    runtimeData?: {
+        surfaceState?: { get(key: string): unknown };
+        globalState?: { get(key: string): unknown };
+        /** Props the current page was opened with; fixed for the life of the page instance. */
+        pageProps?: Readonly<Record<string, unknown>>;
+    };
+    /**
+     * Raise one of this element's own event slots, running whatever the author wired to it.
+     *
+     * The only route a plugin widget has to the author's graph, and the reason the host's
+     * blueprint runtime cannot simply be withheld: the dispatcher that turns a click into
+     * `mouseClick` reads a static table of built-in widget types, so a plugin type is not in
+     * it and nothing else will ever fire the slot.
+     *
+     * Bound to the element being drawn - a widget cannot raise an event on another one - and
+     * to the scope it is being drawn in, so a dispatch from inside a repeated row addresses
+     * that row. Pass `options` only to address a different row than the one being drawn.
+     *
+     * A new function on every render, like anything bound to the current drawing: call it
+     * from a handler, and keep it in a ref rather than in an effect's dependency list.
+     */
+    dispatchEvent?: (
+        eventName: string,
+        payload?: Record<string, unknown>,
+        options?: { listItemScope?: UIListItemScope | null; instanceKey?: string },
+    ) => Promise<void>;
+    /** The very same object `setup(app)` received as `app.game`. */
+    game?: RuntimePluginGame;
+};
+
+/**
  * Runtime-side widget binding: the game-facing render function for a widget
- * element type. Receives the same props the host passes built-in element
- * renderers, so a plugin can reuse its studio widget module's render function
- * from a shared module.
+ * element type. The props are narrowed on the way in - see
+ * {@link RuntimeWidgetRendererProps}.
  */
 export type RuntimeWidgetRendererDef = {
     type: string;
-    render: (props: ElementRendererProps) => ReactElement | null;
+    render: (props: RuntimeWidgetRendererProps) => ReactElement | null;
 };
 
 /** Removes a subscription. Also tracked by the host, so a failed plugin cannot leak listeners. */

@@ -20,6 +20,7 @@ import { isUnrenderableFontFormat } from "@shared/typography/fontFormats";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
+import { findStoryDocumentTooOldError } from "@shared/story/migrateStoryDocument";
 import type { StoryLibraryIndex } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { normalizeBuildConfiguration } from "../../project/configuration";
@@ -331,10 +332,30 @@ export class LintService extends Service<LintService> implements ILintService {
             } catch (error) {
                 complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
+                // A document older than the schema floor is the one failure here that is not about
+                // the script at all, and it is the one an author is most likely to misread: nothing
+                // in their project changed, Studio did, and "could not be opened" beside their own
+                // story's name reads as something they broke. So it says which version the file is
+                // at and which is the oldest that opens - the two numbers the ladder throws for
+                // exactly this purpose, and which every wrapper between here and it would otherwise
+                // flatten back into a sentence.
+                const tooOld = findStoryDocumentTooOldError(error);
+                const said: Pick<LintReportEntry, "messageKey" | "messageParams"> = tooOld
+                    ? {
+                          messageKey: "lint.message.storyTooOld",
+                          messageParams: {
+                              story: entry.name,
+                              version: tooOld.version,
+                              minimum: tooOld.minimumVersion,
+                          },
+                      }
+                    : {
+                          messageKey: "lint.message.storyLoadFailed",
+                          messageParams: { story: entry.name },
+                      };
                 this.contextFindings.push({
                     ruleId: "story/invalid-command",
-                    messageKey: "lint.message.storyLoadFailed",
-                    messageParams: { story: entry.name },
+                    ...said,
                     location: { kind: "story", storyId: entry.id, storyName: entry.name },
                     severity: "error",
                 });

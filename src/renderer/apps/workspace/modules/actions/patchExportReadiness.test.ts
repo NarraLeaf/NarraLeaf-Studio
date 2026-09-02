@@ -7,6 +7,7 @@ const READY: PatchExportSelection = {
     baselineAppDir: "",
     readingBaseline: false,
     baselineUnreadable: false,
+    baselineNotGranted: false,
     baselineAppTagId: null,
     dlcAttachTo: null,
 };
@@ -46,6 +47,35 @@ describe("patchExportBlocker", () => {
         })).toBe("artifact");
     });
 
+    /**
+     * The two facts about a folder that must never share a sentence.
+     *
+     * A folder nothing was allowed to open is not a folder that was found empty. Answering
+     * `"artifact"` here would tell an author who typed a valid path - or came back to a remembered
+     * one - that a folder holding their build holds no build, and the folder is right there for
+     * them to open and disagree with.
+     */
+    it("tells a folder it may not open apart from one that holds no build", () => {
+        expect(patchExportBlocker({
+            ...READY,
+            baselineMode: "artifact",
+            baselineAppDir: "D:/builds/win-unpacked",
+            baselineNotGranted: true,
+        })).toBe("artifactAccess");
+    });
+
+    it("names the access state even where the read also failed", () => {
+        // Both flags arrive together when the refusal *is* the read failure, and the more specific
+        // one is the one with a remedy in it.
+        expect(patchExportBlocker({
+            ...READY,
+            baselineMode: "artifact",
+            baselineAppDir: "D:/builds/win-unpacked",
+            baselineUnreadable: true,
+            baselineNotGranted: true,
+        })).toBe("artifactAccess");
+    });
+
     it("ignores an unread folder that was never named", () => {
         // An empty folder in artifact mode is a choice, not an omission: it means carry the whole
         // game. The reading flags describe a folder that is not there, so neither applies.
@@ -55,6 +85,7 @@ describe("patchExportBlocker", () => {
             baselineAppDir: "",
             readingBaseline: true,
             baselineUnreadable: true,
+            baselineNotGranted: true,
         })).toBeNull();
     });
 

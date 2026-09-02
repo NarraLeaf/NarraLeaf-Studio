@@ -824,6 +824,10 @@ export const workspace = {
         // rather than the reason, because the reason is on the Settings page it points at.
         distrust: {
             unavailable: "Unavailable until this project is trusted. Trust it in Settings to run it.",
+            // A few controls cannot be greyed - the play arrow that appears on a story row while
+            // the pointer is over it is one - so pressing them says this instead. The sentence is
+            // the one above, so distrust reads the same whichever way an author meets it.
+            refusedTitle: "This project is not trusted",
         },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone

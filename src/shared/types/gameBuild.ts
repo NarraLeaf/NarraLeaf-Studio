@@ -535,6 +535,17 @@ export type GameBuildStateSnapshot = {
     /** Absolute output directory of the finished build. */
     outputDir?: string;
     /**
+     * The variant this run was made as, by the name the author gave it.
+     *
+     * Stamped onto the terminal snapshot from the session, because the run resolves its variant long
+     * before it assembles one. The renderer only ever sees the snapshot, and the dashboard archives
+     * finished runs off this poll - so a variant left on the session is a variant no record can
+     * carry.
+     *
+     * Absent on the idle snapshot and on a run that failed before it resolved one.
+     */
+    variant?: string;
+    /**
      * What this build carried out of the asset library, and what it left behind.
      *
      * Absent until a build has narrowed one, which is every packaging build and no preview. Where a
@@ -971,3 +982,24 @@ export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPla
             return host !== "windows";
     }
 }
+
+/**
+ * Build failures the interface has its own words for.
+ *
+ * Set as `code` on the error and carried across by `IPCHandler.failed`, which is the only way the
+ * renderer can tell these apart from a refusal whose English sentence is the answer. Namespaced
+ * because `RequestStatus.code` is shared with everything else that throws, Node's `ENOENT` included.
+ */
+export const GameBuildErrorCode = {
+    /**
+     * A patch named a build folder this window has not been granted.
+     *
+     * Distinct from the folder holding no build, and the distinction is the whole point: a folder
+     * typed in by hand, or restored with the rest of a remembered selection, is refused before it is
+     * looked at. Told apart from an empty folder it would read as "no build here" about a folder the
+     * author can see their build sitting in.
+     */
+    BaselineNotGranted: "gameBuild/baseline-not-granted",
+} as const;
+
+export type GameBuildErrorCode = (typeof GameBuildErrorCode)[keyof typeof GameBuildErrorCode];

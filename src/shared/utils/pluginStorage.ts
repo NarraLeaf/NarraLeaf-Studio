@@ -25,6 +25,30 @@ export function pluginStoreNamespace(pluginId: string, namespace: string): strin
 }
 
 /**
+ * Recover the owner and the plugin's own namespace from a store namespace (a filename stem, without
+ * `.json`), or null when the store is not plugin-owned (e.g. a core store).
+ *
+ * The namespace matters as much as the owner: a plugin declares in `contributes.runtimeData` which
+ * of its namespaces travel into the game, and a store in one of those is data the shipped game reads
+ * - which is what makes its plugin something the pack has to carry.
+ */
+export function parsePluginStore(storeNamespace: string): { pluginId: string; namespace: string } | null {
+    if (!storeNamespace.startsWith(PLUGIN_STORE_PREFIX)) {
+        return null;
+    }
+    const rest = storeNamespace.slice(PLUGIN_STORE_PREFIX.length);
+    const delimiter = rest.indexOf(PLUGIN_STORE_DELIMITER);
+    if (delimiter <= 0) {
+        return null;
+    }
+    const namespace = rest.slice(delimiter + PLUGIN_STORE_DELIMITER.length);
+    if (!namespace) {
+        return null;
+    }
+    return { pluginId: rest.slice(0, delimiter), namespace };
+}
+
+/**
  * Recover the owning plugin id from a store namespace (a filename stem, without
  * `.json`), or null when the store is not plugin-owned (e.g. a core store).
  */

@@ -32,10 +32,17 @@ import {
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
+    isBuiltInBlueprintNodeType,
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
 } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
-import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
+    BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY,
+    readBlueprintNodePinSnapshot,
+    toBlueprintNodePinSnapshot,
+    type BlueprintNodePinSnapshotEntry,
+} from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     withInferredBlueprintVariableValueTypeParam,
     type BlueprintGraphVariableTypeInferenceContext,
@@ -148,6 +155,14 @@ function isBlueprintExecInputPin(
 }
 
 /**
+ * True when the editor has no definition for this type - the node came from a plugin that is not
+ * loaded. The catalogue then returns a placeholder stub, and its pins are not the node's real shape.
+ */
+function isUnknownBlueprintNodeType(type: string, params?: Record<string, unknown>): boolean {
+    return Boolean(resolveBlueprintNodeEditorCatalogEntryForNode(type, params).unknown);
+}
+
+/**
  * Whether a React Flow connection is allowed (exec↔exec and data↔data with optional type match).
  */
 export function isValidBlueprintIrExecConnection(
@@ -188,6 +203,106 @@ export function isValidBlueprintIrExecConnection(
     });
 }
 
+function blueprintPinSnapshotsEqual(
+    a: readonly BlueprintNodePinSnapshotEntry[],
+    b: readonly BlueprintNodePinSnapshotEntry[],
+): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+        const x = a[i]!;
+        const y = b[i]!;
+        if (
+            x.id !== y.id ||
+            x.kind !== y.kind ||
+            x.semantic !== y.semantic ||
+            x.valueType !== y.valueType ||
+            x.label !== y.label
+        ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Refresh the recorded pin shape of every plugin node whose type is currently known.
+ *
+ * Built-in nodes never become unknown, so they are skipped - only plugin nodes carry a snapshot. A
+ * node whose plugin is not loaded right now is left untouched, keeping the shape it last had. Meant
+ * to run at commit: it writes only when a node's pins actually changed, so a settled graph and its
+ * undo history are left alone. Mutates the passed IR in place; returns whether it changed anything.
+ */
+export function captureBlueprintNodePinSnapshots(ir: Pick<BlueprintGraphIr, "nodes">): boolean {
+    let changed = false;
+    for (const node of Object.values(ir.nodes ?? {})) {
+        if (isBuiltInBlueprintNodeType(node.type)) {
+            continue;
+        }
+        const entry = resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params);
+        if (entry.unknown) {
+            continue;
+        }
+        const next = toBlueprintNodePinSnapshot(entry.pins);
+        const current = readBlueprintNodePinSnapshot(node.params);
+        if (current && blueprintPinSnapshotsEqual(current, next)) {
+            continue;
+        }
+        node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_LAST_KNOWN_PINS_KEY]: next };
+        changed = true;
+    }
+    return changed;
+}
+
+/**
+ * Connections that removing these nodes would take with them without the author having seen them.
+ *
+ * An unknown node draws a placeholder pin pair, so any edge it carries on a pin the card did not
+ * render never appeared on the canvas. Deleting the node removes those silently; counting them lets
+ * the delete report what went. Edges on the shown pins, and edges of ordinary nodes, do not count -
+ * the author can see those.
+ */
+export function countHiddenBlueprintConnectionsForNodes(
+    ir: Pick<BlueprintGraphIr, "nodes" | "edges">,
+    nodeIds: readonly string[],
+): number {
+    const nodes = ir.nodes ?? {};
+    const shownInputs = new Map<string, ReadonlySet<string>>();
+    const shownOutputs = new Map<string, ReadonlySet<string>>();
+    for (const id of nodeIds) {
+        const node = nodes[id];
+        if (!node) {
+            continue;
+        }
+        const entry = resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params);
+        if (!entry.unknown) {
+            continue;
+        }
+        const ins = new Set<string>();
+        const outs = new Set<string>();
+        for (const pin of entry.pins) {
+            (pin.kind === "input" ? ins : outs).add(pin.id);
+        }
+        shownInputs.set(id, ins);
+        shownOutputs.set(id, outs);
+    }
+    if (shownInputs.size === 0) {
+        return 0;
+    }
+    let hidden = 0;
+    for (const edge of ir.edges ?? []) {
+        const outShown = shownOutputs.get(edge.from.nodeId);
+        const inShown = shownInputs.get(edge.to.nodeId);
+        const fromHidden = outShown ? !outShown.has(edge.from.port) : false;
+        const toHidden = inShown ? !inShown.has(edge.to.port) : false;
+        if (fromHidden || toHidden) {
+            hidden++;
+        }
+    }
+    return hidden;
+}
+
 export function applyBlueprintIrConnection(
     ir: Pick<BlueprintGraphIr, "edges" | "nodes">,
     connection: {
@@ -213,10 +328,17 @@ export function applyBlueprintIrConnection(
     }
 
     const sourceNode = ir.nodes?.[connection.source];
-    const allowSourceFanOut = sourceNode
-        ? isBlueprintFanOutOutputPin(sourceNode.type, connection.sourceHandle)
-        : false;
-    const allowTargetFanIn = isBlueprintExecInputPin(ir, connection.target, connection.targetHandle);
+    const targetNode = ir.nodes?.[connection.target];
+    // An unknown node's rendered pins are a placeholder pair, not its real arity. A new wire onto one
+    // must not assume the pin is single-connection and drop an existing edge the card never showed:
+    // keep everything already on the pin and add this one, at both ends.
+    const sourceUnknown = sourceNode ? isUnknownBlueprintNodeType(sourceNode.type, sourceNode.params) : false;
+    const targetUnknown = targetNode ? isUnknownBlueprintNodeType(targetNode.type, targetNode.params) : false;
+    const allowSourceFanOut =
+        sourceUnknown ||
+        (sourceNode ? isBlueprintFanOutOutputPin(sourceNode.type, connection.sourceHandle) : false);
+    const allowTargetFanIn =
+        targetUnknown || isBlueprintExecInputPin(ir, connection.target, connection.targetHandle);
     const withoutReplacedPinEdges = edges.filter(
         e =>
             (allowSourceFanOut ||

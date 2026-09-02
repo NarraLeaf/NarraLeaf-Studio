@@ -20,6 +20,13 @@
  * `progress.export` reaches a shell, `voice.listLocales()` lists what the project is dubbed into,
  * and a rebuilt slot starts from the drawing the old one left behind. Those are properties of the
  * bridge and the builder together, and the way to see them is to run both.
+ *
+ * Voice is the worst of them to meet, and worth the extra line: with the dub languages missing the
+ * bridge reports the game as having none, so `Set Voice Language` throws "This project has no voice
+ * languages configured" - an error that names the author's project settings for a field the host
+ * simply never handed over, and that no amount of editing those settings can fix. It also shows a
+ * family can arrive half-wired: `onPlayVoice` and `onPlayChoiceVoice` were forwarded all along, and
+ * only `voiceConfig` - the data half - was missing.
  */
 import { renderHook, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

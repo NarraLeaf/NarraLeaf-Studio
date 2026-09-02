@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, Camera, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Code, FileText, Filter, Image as ImageIcon, ListPlus, MonitorPlay, Plus, Rows3, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -15,8 +15,6 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
-import type { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -32,7 +30,8 @@ import {
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { STORY_VARIABLES_PANEL_ID, type StoryVariablesPanelPayload } from "../../story-variables";
-import { StorySnapshotPanel, STORY_SNAPSHOT_PANEL_ID, getSelectedSnapshotId, setSelectedSnapshotId } from "../../story-snapshots";
+import { STORY_SNAPSHOT_PANEL_ID, type StorySnapshotPanelPayload } from "../../story-snapshots";
+import { launchStoryRowInDevMode } from "./storyRowLaunch";
 import { getSpeakerCandidates, InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { useStableVisibleRows } from "./storyRowIdentity";
 import { useStoryRowReveal } from "./useStoryRowReveal";
@@ -802,31 +801,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         };
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
-    useEffect(() => {
-        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
-            return;
-        }
-        const uiService = editor.context.services.get<UIService>(Services.UI);
-        const unregister = uiService.panels.register({
-            id: STORY_SNAPSHOT_PANEL_ID,
-            title: t("story.sceneEditor.snapshotsPanel"),
-            icon: <Camera className="w-4 h-4" />,
-            position: PanelPosition.Right,
-            component: StorySnapshotPanel,
-            defaultVisible: false,
-            order: 12,
-            payload: {
-                tabId,
-                storyId: payload.storyId,
-                sceneId: payload.sceneId,
-            },
-        });
-        return () => {
-            uiService.panels.hide(STORY_SNAPSHOT_PANEL_ID);
-            unregister();
-        };
-    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId, t]);
-
+    /**
+     * The Scene Snapshot panel is a static module too (see `modules/story-snapshots`), for a reason
+     * of its own: the panel is where an author manages snapshots, and it used to be registered here,
+     * so the only way to reach it was to open a scene and focus its tab. All this tab owns is which
+     * scene the panel is showing.
+     *
+     * Cleared conditionally on the same argument as the Variables payload above.
+     */
     useEffect(() => {
         if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
@@ -839,6 +821,12 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
+        return () => {
+            const current = uiService.panels.getPayload<StorySnapshotPanelPayload>(STORY_SNAPSHOT_PANEL_ID);
+            if (current?.tabId === tabId) {
+                uiService.panels.updatePayload(STORY_SNAPSHOT_PANEL_ID, undefined);
+            }
+        };
     }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
@@ -1632,61 +1620,27 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
     });
 
     // A row's ▶ launches the real game in Dev Mode, entering at that row — this is where the
-    // interactive "play from here" lives now (the live preview stays a frozen state view). It carries
-    // the scene's selected Scene Snapshot so conditions on non-static variables (e.g. global flags)
-    // launch with concrete values; with no snapshot yet, it opens the panel and prompts instead.
+    // interactive "play from here" lives now (the live preview stays a frozen state view). The
+    // decision of what the launch carries is in `storyRowLaunch`.
     const playFromRow = useCallback((blockId: StoryBlockId) => {
         const storyId = payload?.storyId;
         const sceneId = payload?.sceneId;
         if (!editor.context || !storyId || !sceneId) {
             return;
         }
-        const services = editor.context.services;
-        const storyService = services.get<StoryService>(Services.Story);
-        const uiService = services.get<UIService>(Services.UI);
-        // Stated here, in the same shape as the missing-snapshot refusal below, rather than left to
-        // the main process: main refuses this launch on its own account, but a refusal that reaches
-        // nobody looks to the author like a button that does nothing.
+        // Said here rather than left to the main process. Main refuses the launch on its own
+        // account, but this control is a play arrow that appears on the row under the pointer -
+        // there is no persistent affordance to grey, and nothing to hover - so a refusal that
+        // reaches nobody looks to the author like an arrow that does nothing.
         if (distrusted) {
-            uiService.notifications.warning(
-                t("storySnapshot.launch.distrusted"),
-                t("storySnapshot.launch.distrustedDetail"),
+            editor.context.services.get<UIService>(Services.UI).notifications.warning(
+                t("workspace.shell.distrust.refusedTitle"),
+                t("workspace.shell.distrust.unavailable"),
             );
             return;
         }
-        const snapshots = storyService.listSceneSnapshots(storyId, sceneId);
-        if (snapshots.length === 0) {
-            uiService.panels.show(STORY_SNAPSHOT_PANEL_ID);
-            // A Scene Snapshot is stored inside the scene, and minting one is not an operation a
-            // session carries - so inside a session the offer is replaced by the reason it cannot be
-            // taken. Nothing is hidden by that: the panel this has just revealed holds the same
-            // "Add" control, greyed, which is where an author looks for it in the first place.
-            uiService.notifications.warning(
-                t("storySnapshot.launch.needSnapshot"),
-                liveSession.frozen ? liveSession.reason : t("storySnapshot.launch.needSnapshotDetail"),
-                liveSession.frozen ? undefined : [{
-                    label: t("storySnapshot.launch.createAction"),
-                    primary: true,
-                    onClick: () => {
-                        const created = storyService.createSceneSnapshot(storyId, sceneId, `${t("storySnapshot.defaultName")} 1`);
-                        if (created && panelStateService) {
-                            setSelectedSnapshotId(panelStateService, storyId, sceneId, created);
-                        }
-                    },
-                }],
-            );
-            return;
-        }
-        const saved = panelStateService ? getSelectedSnapshotId(panelStateService, storyId, sceneId) : undefined;
-        const snapshotId = saved && snapshots.some(snapshot => snapshot.id === saved) ? saved : snapshots[0].id;
-        services.get<DevModeService>(Services.DevMode).launch({
-            kind: "story",
-            storyId,
-            sceneId,
-            blockId,
-            snapshotId,
-        });
-    }, [distrusted, editor.context, liveSession, payload?.storyId, payload?.sceneId, panelStateService, t]);
+        launchStoryRowInDevMode({ context: editor.context, storyId, sceneId, blockId });
+    }, [distrusted, editor.context, payload?.storyId, payload?.sceneId, t]);
 
     // Row context menu. Right-clicking a row outside the current selection selects just it first,
     // so the menu's selection-scoped actions act on exactly what the author pointed at; inside the

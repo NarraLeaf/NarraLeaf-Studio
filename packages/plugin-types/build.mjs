@@ -157,16 +157,19 @@ throw new Error(
 }
 
 /**
- * Verify the declarations stand on their own, and that a node definition from
- * the studio surface is still accepted by the runtime surface - the exact
- * cross-entry compatibility that separate bundles broke.
+ * Verify the declarations stand on their own, and that the two documented
+ * share-one-module patterns still hold across the entries: a node definition from
+ * the studio surface accepted by the runtime surface - the exact cross-entry
+ * compatibility that separate bundles broke - and a widget render written against
+ * the runtime's narrowed props accepted as a studio widget module's render.
  */
 function verify(dir) {
     const probePath = path.join(dir, "__verify.ts");
     const tsconfigPath = path.join(dir, "tsconfig.verify.json");
 
-    fs.writeFileSync(probePath, `import type { PluginBlueprintNodeDef, PluginServices } from "./plugin.js";
-import type { RuntimeBlueprintNodeDef, RuntimePluginApp } from "./runtime.js";
+    fs.writeFileSync(probePath, `import type { ReactElement } from "react";
+import type { PluginBlueprintNodeDef, PluginServices } from "./plugin.js";
+import type { RuntimeBlueprintNodeDef, RuntimePluginApp, RuntimeWidgetRendererProps } from "./runtime.js";
 
 // A shared node definition must satisfy both surfaces; this is the pattern the
 // authoring guide tells plugins to use. Both sides take the same narrowed
@@ -179,6 +182,15 @@ declare const services: PluginServices;
 const _runtimeAccepts: RuntimeBlueprintNodeDef[] = shared;
 app.game.blueprintNodes.registerMany(shared);
 services.blueprintNodes.registerMany(shared);
+
+// The widget half of the same pattern, and it only works in one direction. The game
+// hands a renderer narrowed props - no hostAdapter - while the editor canvas hands the
+// wider ones it needs for authoring, so a render written against the narrow type is a
+// legal studio module render and the reverse is not. That is what \`dispatchEvent\` and
+// \`game\` being optional buys, and it is easy to lose by making either required.
+declare const widgetRender: (props: RuntimeWidgetRendererProps) => ReactElement | null;
+type StudioWidgetRender = Parameters<PluginServices["widgets"]["register"]>[0]["render"];
+const _studioAcceptsWidgetRender: StudioWidgetRender = widgetRender;
 export type { };
 `);
 

@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
 import {
     EMPTY_MENU_BAR_DOCUMENT,
@@ -126,5 +128,19 @@ describe("toGameMenuSpec", () => {
         };
         expect(toGameMenuSpec(document).menus[0]?.items)
             .toEqual([{ kind: "dynamic", source: "textLanguage" }]);
+    });
+});
+
+describe("the plugin manifest", () => {
+    it("stays on major 1, because a major bump takes the menu bar out of existing games", () => {
+        // A project records this version and depends on the plugin *hard* - the menu it published
+        // is unreadable without it. A different major resolves incompatible, and an incompatible
+        // hard dependency is suppressed, so every game authored before the bump would lose its menu
+        // bar with nothing but a line in a dependency list to say why. See the note in document.ts;
+        // shape changes go in MENU_BAR_DOCUMENT_VERSION, and shipping needs no major at all.
+        const manifest = JSON.parse(
+            fs.readFileSync(path.join(__dirname, "manifest.json"), "utf-8"),
+        ) as { version: string };
+        expect(manifest.version.split(".")[0]).toBe("1");
     });
 });

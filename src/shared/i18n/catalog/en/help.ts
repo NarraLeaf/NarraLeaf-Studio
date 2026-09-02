@@ -225,10 +225,12 @@ export const help = {
             title: "Playing from a row",
             body:
                 "Dev Mode can start at the current row instead of at the beginning of the scene. Nothing before "
-                + "that row runs, and the variables it would have set come from a snapshot.\n"
+                + "that row runs, and the variables it would have set hold the values the project declares for "
+                + "them.\n"
                 + "\n"
                 + "- A snapshot belongs to one scene and gives every variable in its scope a starting value.\n"
-                + "- Starting from a row with no snapshot offers to create one.\n"
+                + "- A snapshot is optional. The snapshot list starts with Defaults, which applies none.\n"
+                + "- A row start uses the entry selected in the Scene Snapshots panel.\n"
                 + "- Snapshots do not affect the finished game.",
         },
         dictionary: {

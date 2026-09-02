@@ -824,6 +824,49 @@ describe("blueprint fn validation", () => {
         const contextInvalid = diagnostics.find(d => d.code === "node.context_invalid");
         expect(contextInvalid?.target).toMatchObject({ kind: "node", nodeId: "head" });
     });
+
+    it("flags an unknown node type with node.unknown_type, not node.no_runtime", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                mystery: { id: "mystery", type: "com.example.plugin.doThing" },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+        });
+
+        const unknown = diagnostics.find(d => d.code === "node.unknown_type");
+        expect(unknown?.target).toMatchObject({ kind: "node", nodeId: "mystery" });
+        expect(unknown?.severity).toBe("warning");
+        expect(diagnostics.map(d => d.code)).not.toContain("node.no_runtime");
+    });
+
+    it("anchors edge.port_mismatch on the node missing the pin, not its upstream neighbour", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                getter: { id: "getter", type: BLUEPRINT_NODE_TYPE_LOCAL_GET },
+                mystery: { id: "mystery", type: "com.example.plugin.doThing" },
+            },
+            // Feeds a pin the unknown stub does not expose. The value node upstream is healthy; the
+            // mismatch belongs to the unknown node downstream.
+            edges: [{ from: { nodeId: "getter", port: "value" }, to: { nodeId: "mystery", port: "value" } }],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+        });
+
+        const mismatch = diagnostics.find(d => d.code === "edge.port_mismatch");
+        expect(mismatch?.target).toMatchObject({ kind: "node", nodeId: "mystery" });
+    });
 });
 
 /**

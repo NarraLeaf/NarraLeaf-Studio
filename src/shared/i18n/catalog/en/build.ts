@@ -178,6 +178,7 @@ export const build = {
                 output: "Choose where to write the file.",
                 reading: "Reading the build folder.",
                 artifact: "That folder holds no build of this game.",
+                artifactAccess: "Choose that folder with Browse to read it.",
                 dlcBaseline: "Select the build this DLC adds to.",
                 dlcVariant: "That build is not the variant this DLC attaches to.",
             },

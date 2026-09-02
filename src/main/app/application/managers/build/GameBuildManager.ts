@@ -116,7 +116,8 @@ import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { createAssetOverlay, OVERLAY_DESCRIPTOR_ENTRY, type ReaderBuildOptions } from "@narraleaf/bindings";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
-import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import type { GameRuntimePackV1, GameRuntimeProjectRevision } from "@shared/types/gameRuntime";
+import { checkPatchEngine, describeBuildProvenance, describePatchEngineCheck } from "@shared/build/buildProvenance";
 import { readDistributionKey } from "@shared/utils/distributionKey";
 import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@shared/utils/dlcDelivery";
@@ -1111,6 +1112,12 @@ export class GameBuildManager {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "patch export started" });
 
+        // The same mark a build leaves, for the same reason: a patch is a thing a player installs
+        // and can report a bug against, so the state it came out of has to be one the author can
+        // return to. Without the checkpoint the head would name a revision the working tree has
+        // moved on from, and the pack below would be pointing at the wrong project.
+        const projectRevision = await this.checkpointBeforeBuild(session);
+
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         // Read before the variant, because a DLC decides which variant this is: the record is the
@@ -1221,6 +1228,7 @@ export class GameBuildManager {
             entry,
             runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
             runtimeVersion: this.readRuntimeVersion(),
+            ...(projectRevision ? { projectRevision } : {}),
             outputRoot: path.join(projectPath, ".nlstudio", "build", "patch"),
             runtimePlugins: pluginSelection.selected,
             mode: "production",
@@ -1264,6 +1272,7 @@ export class GameBuildManager {
             source: "Build",
             message: `game compiled (${artifact.copiedAssetCount} asset(s))`,
         });
+        this.reportBuildProvenance(session, artifact.pack);
         this.reportShippedAssets(session, artifact.assetReport ?? null, pluginSelection.selected);
         this.reportShippedContentAudit(session, contentAudit);
         this.ensureNotCancelled(session);
@@ -1371,6 +1380,8 @@ export class GameBuildManager {
             /** The payload this build produced - what a player has before installing any of these. */
             baselineAppDir: string;
             outputDir: string;
+            /** The revision the build these attach to was made from; see the field on the pack. */
+            projectRevision?: GameRuntimeProjectRevision;
         },
     ): Promise<string[]> {
         const { appTag, identity, projectPath } = options;
@@ -1403,6 +1414,7 @@ export class GameBuildManager {
                 entry: options.entry,
                 runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
                 runtimeVersion: this.readRuntimeVersion(),
+                ...(options.projectRevision ? { projectRevision: options.projectRevision } : {}),
                 // Per DLC, so one compile cannot be handed the previous one's leftovers.
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "dlc", dlc.id),
                 runtimePlugins: options.runtimePlugins,
@@ -1683,6 +1695,13 @@ export class GameBuildManager {
                 // that breaks saves is sometimes exactly the patch an author means to make, and a
                 // gate here would teach them to turn the whole check off.
                 await this.reportSaveAnchorDamage(session, previous.pack, payload.pack);
+                // Beside it because it answers the other half of the same question: whether the game
+                // this file lands in is the game the content was made for. Saves are about the
+                // player's progress, the engine is about the code that will read it.
+                this.emit(session, {
+                    source: "Build",
+                    ...describePatchEngineCheck(checkPatchEngine(previous.pack, payload.pack)),
+                });
             } finally {
                 await previous.close().catch(() => undefined);
             }
@@ -1814,18 +1833,29 @@ export class GameBuildManager {
     }
 
     /**
-     * Record a checkpoint before the build touches anything.
+     * Record a checkpoint before the run touches anything, and read back the revision it leaves the
+     * project standing on.
      *
      * One of the three unconditional checkpoints: a build is the moment an author most
      * wants a mark in the history, because it is what they will come back to when the
      * shipped thing is wrong. It writes into the output directory, which the author is
      * free to point inside the project.
      *
+     * The revision goes into the pack, which is what makes coming back to it possible from a copy a
+     * player is holding rather than only from the author's own history. Reading it here rather than
+     * taking the checkpoint's own answer is deliberate: an unchanged tree records no revision and
+     * still stands on one, and that head describes the project just as truthfully.
+     *
      * Best effort, and silent when there is nothing to do: a project with no repository,
      * a host with no backend, and an unchanged tree all answer "no revision" rather than
      * failing. A version control problem must never be the reason a build does not run.
+     *
+     * A checkpoint that FAILED answers nothing at all, rather than the head. The head is only the
+     * state this artifact was compiled from because the checkpoint has just put the working tree
+     * into it; without that, naming it would be pointing an author at a revision that is not what
+     * they shipped.
      */
-    private async checkpointBeforeBuild(session: BuildSession): Promise<void> {
+    private async checkpointBeforeBuild(session: BuildSession): Promise<GameRuntimeProjectRevision | null> {
         try {
             const result = await this.app.getVcsManager().checkpoint(session.projectPath, "build");
             if (result) {
@@ -1841,6 +1871,26 @@ export class GameBuildManager {
                 source: "Build",
                 message: `could not record a version control checkpoint: ${error instanceof Error ? error.message : String(error)}`,
             });
+            return null;
+        }
+        try {
+            // `getInfo` opens a session, and opening one on a directory that is not a repository is
+            // how it reports that - so the question is asked first, the same way the checkpoint asks
+            // it, instead of reading a thrown error as an answer.
+            const vcs = this.app.getVcsManager();
+            if (!(await vcs.isRepository(session.projectPath))) {
+                return null;
+            }
+            const info = await vcs.getInfo(session.projectPath);
+            return info.head ? { id: info.head, number: info.headNumber } : null;
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not read which version this run was made from, so the artifact will not say: "
+                    + `${error instanceof Error ? error.message : String(error)}`,
+            });
+            return null;
         }
     }
 
@@ -1848,7 +1898,7 @@ export class GameBuildManager {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
 
-        await this.checkpointBeforeBuild(session);
+        const projectRevision = await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
@@ -1976,6 +2026,9 @@ export class GameBuildManager {
                 entry,
                 runtimeDistDir,
                 runtimeVersion,
+                // What the player's copy can be traced back to. Both compiles below get it: the
+                // desktop package and the web/mobile one are one project state shipped twice.
+                ...(projectRevision ? { projectRevision } : {}),
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
@@ -2050,6 +2103,7 @@ export class GameBuildManager {
                 entry,
                 runtimeDistDir,
                 runtimeVersion,
+                ...(projectRevision ? { projectRevision } : {}),
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging-web"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
@@ -2094,6 +2148,7 @@ export class GameBuildManager {
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
         }
+        this.reportBuildProvenance(session, (desktopArtifact ?? webArtifact)?.pack ?? null);
         // Stated rather than assumed: a build that could not compile its codec for
         // this title does not reach here at all - it stops with a message saying
         // so - and the line is what tells the author which of the two they have.
@@ -2230,6 +2285,9 @@ export class GameBuildManager {
                 ...(encryptionKey ? { encryptionKey } : {}),
                 baselineAppDir: desktopArtifact.appDir,
                 outputDir,
+                // The same revision the game itself carries. A DLC is a separate download a player
+                // can report a bug against on its own, and it came out of this one project state.
+                ...(projectRevision ? { projectRevision } : {}),
             }));
             this.ensureNotCancelled(session);
         }
@@ -3781,8 +3839,35 @@ export class GameBuildManager {
      * window in which the finished run reads as "there is no report".
      */
     private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
-        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, snapshot));
-        session.snapshot = snapshot;
+        const stamped = this.stampRunVariant(session, snapshot);
+        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, stamped));
+        session.snapshot = stamped;
+    }
+
+    /**
+     * Say what this run can be traced back to, off the pack it just produced.
+     *
+     * Read from the pack rather than from the values that went into it, so that what the console
+     * says and what the artifact carries cannot differ. `null` is a run that compiled nothing, which
+     * has no artifact to describe.
+     */
+    private reportBuildProvenance(session: BuildSession, pack: GameRuntimePackV1 | null): void {
+        if (!pack) {
+            return;
+        }
+        this.emit(session, { level: "info", source: "Build", message: describeBuildProvenance(pack) });
+    }
+
+    /**
+     * Carry the run's variant onto the snapshot it finishes with.
+     *
+     * Done here rather than at each of the places that assemble a terminal snapshot: the variant is
+     * resolved once per run and recorded on the session, and every terminal snapshot goes through
+     * this or {@link failSession}. A run that never got as far as resolving one says nothing, which
+     * is the truthful answer for a build that failed on its first gate.
+     */
+    private stampRunVariant(session: BuildSession, snapshot: GameBuildStateSnapshot): GameBuildStateSnapshot {
+        return session.appTagName ? { ...snapshot, variant: session.appTagName } : snapshot;
     }
 
     private runRecord(session: BuildSession, snapshot: GameBuildStateSnapshot): LastGameBuildRun {
@@ -3826,7 +3911,7 @@ export class GameBuildManager {
         if (session.snapshot.status === "done") {
             return;
         }
-        session.snapshot = {
+        session.snapshot = this.stampRunVariant(session, {
             status: "error",
             // A run that stopped counts nothing. A fraction left over from the step it stopped in
             // would go on describing a pass that ended when the build did.
@@ -3835,7 +3920,7 @@ export class GameBuildManager {
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,
             error: message,
-        };
+        });
         if (!session.cancelled) {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
