@@ -27,8 +27,10 @@ import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-ed
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
 import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
+import { ProjectDocumentTooNewError } from "@shared/documents/newerSchema";
+import { describeProjectDocumentTooNew } from "@shared/documents/tooNewMessage";
 import { RendererError } from "@shared/utils/error";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
@@ -1714,7 +1716,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      */
     private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
-            throw new RendererError("UI document schema is newer than this Studio version");
+            // Both version numbers, in the one wording every reader of a too-new project document
+            // uses. Without them the failure screen said only that the file was newer, which cannot
+            // tell an author a damaged file from a project a newer Studio has already opened - and
+            // those two call for opposite actions.
+            const refusal = new ProjectDocumentTooNewError(
+                "uiDocument",
+                ProjectNameConvention.EditorUIDocument.join("/"),
+                document.schemaVersion,
+                UI_DOCUMENT_SCHEMA_VERSION,
+            );
+            throw new RendererError(
+                describeProjectDocumentTooNew(refusal, i18nStore.getLocale()),
+                { cause: refusal },
+            );
         }
         if (document.schemaVersion < UI_DOCUMENT_MIN_SUPPORTED_VERSION) {
             throw new RendererError(
