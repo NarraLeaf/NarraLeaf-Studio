@@ -76,6 +76,8 @@ function fileNameOf(path: string): string {
  */
 export class SaveStatusService extends Service<SaveStatusService> {
     private readonly savers = new Map<string, RegisteredSaver>();
+    /** Open editors holding words the documents have not been told about. See {@link registerPendingEdit}. */
+    private readonly pendingEdits = new Set<() => void>();
     private readonly failures = new Map<string, SaveFailure>();
     /** path → notification id, so one failing file raises one toast rather than one per retry. */
     private readonly toasts = new Map<string, string>();
@@ -126,6 +128,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.toasts.clear();
         this.corruptToasts.clear();
         this.frozenToast = null;
+        this.pendingEdits.clear();
         this.notifyChanged();
     }
 
@@ -146,6 +149,44 @@ export class SaveStatusService extends Service<SaveStatusService> {
     /** Every registered saver, for callers that need to flush them one at a time. */
     public listSavers(): readonly { id: string; labelKey: TranslationKey; saver: DebouncedSaver }[] {
         return [...this.savers.values()].map(({ id, labelKey, saver }) => ({ id, labelKey, saver }));
+    }
+
+    /**
+     * Register an editor that is holding an edit no document service has been told about yet.
+     *
+     * A saver can only write what its service already has. An editor with a field open is the one
+     * place where that is not the whole truth: the words are in the field, on their way to the
+     * document but not there yet, and a flush that only asked the savers would write everything
+     * except the line the author is in the middle of. `settle` moves them into the document; the
+     * saver that owns the document then has something to flush, which is why this runs first.
+     *
+     * Returns the deregistration, to be called when the editor closes.
+     */
+    public registerPendingEdit(settle: () => void): () => void {
+        this.pendingEdits.add(settle);
+        return () => {
+            this.pendingEdits.delete(settle);
+        };
+    }
+
+    /**
+     * Move every open editor's held edit into its document. Synchronous, and safe to call when
+     * there is nothing to move - a settle with no change writes nothing.
+     *
+     * One editor that throws must not stop the others, and must not be the reason a window refuses
+     * to close: the failure is reported and the flush carries on with what it can still save.
+     */
+    public settlePendingEdits(): void {
+        for (const settle of [...this.pendingEdits]) {
+            try {
+                settle();
+            } catch (error) {
+                this.logStorage("error", translate("workspace.shell.save.flushFailed", {
+                    label: translate("workspace.shell.save.stores.openEditors"),
+                    error: String((error as Error)?.message ?? error),
+                }));
+            }
+        }
     }
 
     /** Worst state across every registered saver, with any write failure taking precedence. */

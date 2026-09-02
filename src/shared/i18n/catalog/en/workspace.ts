@@ -787,6 +787,9 @@ export const workspace = {
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",
+                // Not a document store: the row an author has open for editing, whose words the
+                // documents have not been told about yet.
+                openEditors: "the open editor",
             },
         },
         // Re-reading the working tree: the bytes on disk stopped being what the editors show (leaving a
