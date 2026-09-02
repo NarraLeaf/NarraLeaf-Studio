@@ -17,6 +17,7 @@ import {
     type GameRuntimePackV1,
     type GameRuntimeProjectIcon,
     type GameRuntimeProjectIconPlatform,
+    type GameRuntimeProjectRevision,
     normalizeGameCrashPolicy,
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
@@ -149,6 +150,16 @@ export type GameRuntimeArtifactCompileInput = {
     entry: GameRuntimeLaunchEntry;
     runtimeDistDir: string;
     runtimeVersion: string;
+    /**
+     * Where the project stood in version control when this compile was asked for.
+     *
+     * Passed in rather than read here for the reason `locale` is: this module also runs off the main
+     * process, and the version control backend is not reachable from there. Only the build and the
+     * patch export pass one - they are the two runs that record a checkpoint first, so the revision
+     * they name is the project this artifact was compiled from. A preview, a test run and a project
+     * that is not under version control all pass nothing, and the pack then states nothing.
+     */
+    projectRevision?: GameRuntimeProjectRevision;
     /**
      * Directory the compiled app dir is written under (appDir = outputRoot/app).
      * Preview also keeps its persistent userData dir here; production staging
@@ -518,7 +529,7 @@ export async function compileGameRuntimeArtifact(
     const userDataDir = mode === "preview" ? path.join(outputRoot, "userData") : null;
     const assetsDir = path.join(appDir, "assets");
 
-    await assertRuntimeDistReady(input.runtimeDistDir, shell);
+    const engineVersion = await assertRuntimeDistReady(input.runtimeDistDir, shell);
     await fs.rm(appDir, { recursive: true, force: true });
     if (!input.encryptionKey) {
         // Loose items live under assets/; the sealed store needs no such dir.
@@ -884,6 +895,12 @@ export async function compileGameRuntimeArtifact(
             mode,
             ...(debuggable ? { debuggable: true } : {}),
             runtimeVersion: input.runtimeVersion,
+            // What produced this pack, beside the Studio version that already stood here. Both are
+            // written for every shell and every mode - a preview that could not say which engine it
+            // runs would be the one place an author cannot check the answer.
+            ...(engineVersion ? { engineVersion } : {}),
+            // Only the callers that produce something a player can hold pass one; see the field.
+            ...(input.projectRevision ? { projectRevision: input.projectRevision } : {}),
             project: {
                 name: input.productName?.trim()
                     || projectConfig?.name?.trim()
@@ -1083,7 +1100,18 @@ function buildAppManifest(
     };
 }
 
-async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" | "web"): Promise<void> {
+/**
+ * Refuse a runtime build that cannot be trusted, and hand back the engine version it recorded.
+ *
+ * The two belong together because they come off the same marker: the check is already reading the
+ * manifest to establish that this dist was produced in production mode, and the engine version is
+ * the other thing only that file knows. Absent for a dist built before the field existed, which
+ * every reader of the pack has to treat as "this build does not state its engine".
+ */
+async function assertRuntimeDistReady(
+    runtimeDistDir: string,
+    shell: "electron" | "web",
+): Promise<string | undefined> {
     const missing: string[] = [];
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         try {
@@ -1101,9 +1129,11 @@ async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" 
     // tampered one) could carry development React and ship it inside every pack.
     // build-runtime.js writes this marker on every successful build; anything
     // else is a stale or foreign dist and must be rebuilt, not packed.
-    let manifest: { mode?: unknown };
+    let manifest: { mode?: unknown; engineVersion?: unknown };
     try {
-        manifest = await readJson<{ mode?: unknown }>(path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME));
+        manifest = await readJson<{ mode?: unknown; engineVersion?: unknown }>(
+            path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME),
+        );
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
             throw new Error(
@@ -1120,6 +1150,11 @@ async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" 
             `Run "yarn build:runtime" to rebuild it.`,
         );
     }
+    // An empty string is as absent as a missing key: both mean the marker names no engine, and a
+    // pack that carried "" would state that its engine is nothing rather than that it is unknown.
+    return typeof manifest.engineVersion === "string" && manifest.engineVersion.trim()
+        ? manifest.engineVersion.trim()
+        : undefined;
 }
 
 /**

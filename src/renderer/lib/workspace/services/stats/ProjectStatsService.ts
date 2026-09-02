@@ -417,6 +417,11 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
             durationMs: Math.max(0, finishedAt - startedAt),
             ok: state.status === "done",
             ...(state.platforms?.length ? { platforms: [...state.platforms] } : {}),
+            // What this run was and where it put it. Both come off the same terminal snapshot the
+            // rest of the record does, and both are what a bug report against a shipped copy needs
+            // the archive to answer: which edition, and which folder it was written to.
+            ...(state.variant ? { variant: state.variant } : {}),
+            ...(state.outputDir ? { outputDir: state.outputDir } : {}),
             ...(log.length > 0 ? { log } : {}),
             ...(omitted > 0 ? { logOmittedLines: omitted } : {}),
         });

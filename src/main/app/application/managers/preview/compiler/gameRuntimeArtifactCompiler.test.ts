@@ -169,6 +169,60 @@ describe("game runtime artifact compiler", () => {
         });
     });
 
+    it("states the engine the runtime build recorded, so a pack can be traced to what runs it", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir, "0.44.0-test");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.engineVersion).toBe("0.44.0-test");
+        // The Studio version is a different fact and keeps its own field; the two move apart the
+        // moment either is upgraded without the other.
+        expect(pack.runtimeVersion).toBe("0.0.1-test");
+    });
+
+    it("says nothing about the engine when the runtime build recorded none", async () => {
+        // Every dist produced before the marker carried a version is in this shape, and a pack that
+        // invented one would be read as a comparison that ran.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir, null);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack).not.toHaveProperty("engineVersion");
+    });
+
+    it("carries the project revision the caller resolved, and none when it resolved nothing", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const stamped = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47321),
+            projectRevision: { id: "9f2c1b7ae4", number: 12 },
+        });
+        expect(JSON.parse(await fs.readFile(stamped.packPath, "utf-8")).projectRevision)
+            .toEqual({ id: "9f2c1b7ae4", number: 12 });
+
+        // A project that is not under version control, and every preview: the pack says nothing
+        // rather than carrying a placeholder an author would have to learn to distrust.
+        const bare = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47321));
+        expect(JSON.parse(await fs.readFile(bare.packPath, "utf-8"))).not.toHaveProperty("projectRevision");
+    });
+
     it("puts the project's crash policy on the pack, which is how it reaches the game", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -1518,7 +1572,14 @@ function previewCompileInput(
     };
 }
 
-async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
+/**
+ * @param engineVersion what build-runtime.js recorded as the bundled engine, or null for a runtime
+ * build made before the marker carried one - the shape every existing dist on disk is in.
+ */
+async function createRuntimeDist(
+    runtimeDistDir: string,
+    engineVersion: string | null = "0.44.0-test",
+): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });
     await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// main", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "bindings.js"), "// bindings", "utf-8");
@@ -1532,7 +1593,12 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     // that report any mode other than "production".
     await fs.writeFile(
         path.join(runtimeDistDir, "build-manifest.json"),
-        JSON.stringify({ mode: "production", sourcemap: true, builtAt: "2026-01-01T00:00:00.000Z" }),
+        JSON.stringify({
+            mode: "production",
+            sourcemap: true,
+            builtAt: "2026-01-01T00:00:00.000Z",
+            ...(engineVersion === null ? {} : { engineVersion }),
+        }),
         "utf-8",
     );
 }

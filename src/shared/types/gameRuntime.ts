@@ -232,6 +232,20 @@ export type GameRuntimePackPuppetRuntimeEntry = {
     files: string[];
 };
 
+/**
+ * Where the project stood when a build was made, as version control records it.
+ *
+ * The branch is deliberately not here. A revision id is opaque and identifies the state on its own,
+ * while a branch is a name the author wrote - and this record ships to every player, so a build made
+ * on `chapter-4-secret-route` would be announcing it. The id is what restores the state; the number
+ * is what the history rail shows it under, so an author reading one can find it without looking a
+ * hex string up.
+ */
+export type GameRuntimeProjectRevision = {
+    id: string;
+    number: number;
+};
+
 export type GameRuntimePackV1 = {
     schemaVersion: typeof GAME_RUNTIME_PACK_SCHEMA_VERSION;
     generatedAt: string;
@@ -244,7 +258,45 @@ export type GameRuntimePackV1 = {
      * alongside the same marker in the loose app manifest.
      */
     debuggable?: boolean;
+    /**
+     * The version of **Studio** that produced this pack, despite the name.
+     *
+     * It is also written as the packaged app's `version` (see `buildAppManifest`), which is why it
+     * is spelled this way and why renaming it is not free. What it does NOT say is which engine the
+     * game runs on - that is {@link engineVersion}, and the two move independently.
+     */
     runtimeVersion: string;
+    /**
+     * The narraleaf-react version bundled into the runtime this pack ships with.
+     *
+     * The engine is an ordinary dependency of Studio, inlined into `dist/runtime` when that is
+     * built, so a pack's engine is decided by the Studio that compiled it and not by anything in
+     * the project. Read straight off the runtime build's own manifest rather than resolved here:
+     * the version that matters is the one that went into the bundle being copied, and a second
+     * lookup could answer for a different install of the package.
+     *
+     * This is the field a patch export compares - a patch cannot replace the engine, so a patch
+     * built by a newer Studio ships content into a game that keeps running the old one.
+     *
+     * Absent on packs produced before this field existed and on packs compiled against a runtime
+     * build that predates it. Both mean "this build does not state its engine", which readers must
+     * report as unchecked rather than as a match.
+     */
+    engineVersion?: string;
+    /**
+     * The version-control revision the project stood at when this build was made.
+     *
+     * Written only by the build and the patch export, both of which record a checkpoint before they
+     * read anything, so the revision named here describes the project the pack was compiled from
+     * rather than merely the last thing the author happened to commit. A preview or a test run
+     * carries nothing: neither is an artifact anybody can be holding when they report a bug.
+     *
+     * Absent on every project that is not under version control, and on any run whose checkpoint
+     * could not be recorded. There is deliberately no stand-in for those: an author who reads a
+     * revision here can go to it, and a field that answered "unknown" would be a field they had to
+     * learn to distrust.
+     */
+    projectRevision?: GameRuntimeProjectRevision;
     project: {
         name: string;
         identifier?: string;

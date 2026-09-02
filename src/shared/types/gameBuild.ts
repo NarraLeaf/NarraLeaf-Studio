@@ -535,6 +535,17 @@ export type GameBuildStateSnapshot = {
     /** Absolute output directory of the finished build. */
     outputDir?: string;
     /**
+     * The variant this run was made as, by the name the author gave it.
+     *
+     * Stamped onto the terminal snapshot from the session, because the run resolves its variant long
+     * before it assembles one. The renderer only ever sees the snapshot, and the dashboard archives
+     * finished runs off this poll - so a variant left on the session is a variant no record can
+     * carry.
+     *
+     * Absent on the idle snapshot and on a run that failed before it resolved one.
+     */
+    variant?: string;
+    /**
      * What this build carried out of the asset library, and what it left behind.
      *
      * Absent until a build has narrowed one, which is every packaging build and no preview. Where a
