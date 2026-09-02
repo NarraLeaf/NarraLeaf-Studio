@@ -292,6 +292,11 @@ export const lint = {
             description: "実行される Save Game ノードで、宣言済みのセーブ項目が未入力",
             message: "{field} が未入力のため、このセーブには既定値が書き込まれる",
         },
+        blueprintRequiredInputUnwired: {
+            title: "未接続の入力",
+            description: "実行されるノードで、必須の入力ピンが接続されていない",
+            message: "{node} の {pin} に何も接続されていない",
+        },
         blueprintStartSceneForeign: {
             title: "別のストーリーのシーン",
             description: "Start Game ノードのシーンが、指定したストーリーに入っていない",
