@@ -1,5 +1,5 @@
 import { Puzzle, Settings2 } from "lucide-react";
-import type { StoryBlock } from "@shared/types/story";
+import type { StoryBlock, StoryDialogueSpeaker } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import type { StoryCommandGroupId } from "./storyCommandCategories";
 
@@ -119,14 +119,20 @@ export function pluginActionToPaletteCommand(registration: {
 // `/show`) that a palette command's own fields never carry, and ranks fuzzy hits. Keeping it there,
 // not here, avoids storyActionCommands depending on the grammar and keeps the two menus single-source.
 
-export function createBlockForCommand(commandId: ActionCommandId, generateId: () => string, initialText = "", characterId?: string): StoryBlock {
+/**
+ * The speaker arrives as a whole attribution rather than a lone character id, so a line spoken by a
+ * bare name (`speakerName`) reaches a new row by the same path a Studio character does. Passing the
+ * id alone used to drop temporary speakers on the floor: the row was built with no speaker at all
+ * and compiled to "Unknown".
+ */
+export function createBlockForCommand(commandId: ActionCommandId, generateId: () => string, initialText = "", speaker?: StoryDialogueSpeaker): StoryBlock {
     const blockId = generateId();
     const textId = generateId();
     const base = { id: blockId, parentId: null, childrenIds: [] };
 
     switch (commandId) {
         case "dialogue":
-            return { ...base, kind: "nodeAction", payload: { action: "dialogue", characterId, text: { textId, role: "dialogue", value: initialText } } };
+            return { ...base, kind: "nodeAction", payload: { action: "dialogue", ...speaker, text: { textId, role: "dialogue", value: initialText } } };
         case "choice":
             return { ...base, kind: "nodeAction", payload: { action: "choice", prompt: { textId, role: "choicePrompt", value: initialText } } };
         case "choiceOption":

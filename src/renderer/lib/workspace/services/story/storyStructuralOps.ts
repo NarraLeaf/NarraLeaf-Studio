@@ -1,0 +1,391 @@
+import {
+    listSceneBlocksInDocumentOrder,
+    listSceneIdsInDocumentOrder,
+    type StoryBlock,
+    type StoryBlockId,
+    type StoryChapterId,
+    type StoryDocument,
+    type StoryScene,
+    type StorySceneId,
+} from "@shared/types/story";
+
+/**
+ * The three operations that reshape a story rather than a row: move rows to another scene, split a
+ * scene in two, merge two scenes into one.
+ *
+ * They live here, as functions over a `StoryDocument`, for the reason the rest of `storyModel`
+ * does: each one has to leave the document consistent in *one* step, and a step spread over the
+ * service's public mutators would publish half-finished documents to the editor between calls.
+ * `StoryService` wraps each of these in a single `mutateDocument`, so what the editor and the disk
+ * see is the finished shape.
+ *
+ * # Row identity survives all three
+ *
+ * Blocks are re-homed, never re-created: ids, `textId`s and every reference that names them (jump
+ * targets, labels, deep links, translation units, voice takes) keep working because nothing about
+ * them changes. That is the difference between these and copy/paste, which mints fresh ids by
+ * design.
+ *
+ * # Scene identity survives too
+ *
+ * A split keeps the original scene and adds one; a merge keeps one of the pair and drops the other.
+ * No operation renumbers or re-creates a scene that already existed, because a scene id is the
+ * reference other documents hold (see `story-scene-identity-never-changes`).
+ */
+
+export type StoryBlockPlacement = {
+    parentId: StoryBlockId | null;
+    beforeBlockId?: StoryBlockId | null;
+};
+
+// ---------------------------------------------------------------------------
+// Moving rows to another scene
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-home a selection of rows into another scene, subtrees and all, keeping every id.
+ *
+ * The blocks arrive in the order given, each inserted in front of the same anchor, which is how a
+ * multi-row selection keeps its reading order. Callers pass roots only: a row whose ancestor is
+ * also moving travels inside that ancestor's subtree and must not be listed again.
+ *
+ * Returns the number of rows moved, counting the subtrees - the figure a notification reports.
+ */
+export function moveBlocksToScene(
+    document: StoryDocument,
+    sourceSceneId: StorySceneId,
+    targetSceneId: StorySceneId,
+    blockIds: readonly StoryBlockId[],
+    placement: StoryBlockPlacement,
+): number {
+    const source = document.scenes[sourceSceneId];
+    const target = document.scenes[targetSceneId];
+    if (!source || !target || source === target) {
+        return 0;
+    }
+    const roots = blockIds.filter(id => Boolean(source.blocks[id]));
+    if (roots.length === 0) {
+        return 0;
+    }
+    if (placement.parentId && !target.blocks[placement.parentId]) {
+        return 0;
+    }
+    let moved = 0;
+    for (const rootId of roots) {
+        const subtree = subtreeIds(source, rootId);
+        const root = source.blocks[rootId];
+        detachFromParent(source, root);
+        for (const id of subtree) {
+            const block = source.blocks[id];
+            if (!block) {
+                continue;
+            }
+            delete source.blocks[id];
+            target.blocks[id] = block;
+            moved += 1;
+        }
+        root.parentId = placement.parentId;
+        const siblings = placement.parentId
+            ? target.blocks[placement.parentId].childrenIds
+            : target.rootBlockIds;
+        insertBefore(siblings, rootId, placement.beforeBlockId ?? null);
+    }
+    return moved;
+}
+
+// ---------------------------------------------------------------------------
+// Splitting a scene
+// ---------------------------------------------------------------------------
+
+export type StorySceneSplitPlan = {
+    /** Rows from the cut to the end of the scene, in document order. Never empty. */
+    movingRootIds: StoryBlockId[];
+    /**
+     * Whether the first half would stop the game where it now ends.
+     *
+     * The engine has no scene successor: play runs off the last row and the action stack drains,
+     * which ends the run. So a split that leaves the first half without an exit needs one written,
+     * or the second half becomes unreachable and the story ends early.
+     */
+    needsJump: boolean;
+};
+
+/**
+ * What splitting a scene at `atBlockId` would do, or null when there is nothing to split.
+ *
+ * The cut is only offered at the top level: a row nested inside a container belongs to that
+ * container's structure, and taking half a condition's branches into another scene is not a split
+ * of anything the author can name.
+ */
+export function planSceneSplit(scene: StoryScene, atBlockId: StoryBlockId): StorySceneSplitPlan | null {
+    const index = scene.rootBlockIds.indexOf(atBlockId);
+    if (index < 0) {
+        return null;
+    }
+    const movingRootIds = scene.rootBlockIds.slice(index);
+    if (movingRootIds.length === 0) {
+        return null;
+    }
+    const staying = scene.rootBlockIds.slice(0, index);
+    return { movingRootIds, needsJump: !endsWithTransfer(scene, staying) };
+}
+
+/**
+ * Whether a list of top-level rows hands control somewhere the engine can follow.
+ *
+ * Only the last live row decides it, and only the shapes that unconditionally leave count: a jump,
+ * a `/goto`, an ending or a quit. A conditional exit is not an exit - the branch that does not take
+ * it still runs off the end.
+ */
+function endsWithTransfer(scene: StoryScene, rootIds: readonly StoryBlockId[]): boolean {
+    for (let index = rootIds.length - 1; index >= 0; index -= 1) {
+        const block = scene.blocks[rootIds[index]];
+        if (!block || block.disabled) {
+            continue;
+        }
+        if (block.kind === "jump") {
+            return true;
+        }
+        if (block.kind === "control") {
+            const control = block.payload.control;
+            return control === "goto" || control === "ending" || control === "quit";
+        }
+        return false;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Merging two scenes
+// ---------------------------------------------------------------------------
+
+/** One place outside the pair that names the scene a merge would drop. */
+export type StorySceneReferrer = {
+    /** What holds the reference, for the sentence that lists it. */
+    kind: "jump" | "entryScene" | "blueprint";
+    /** What the author would look for to find it: a scene name, a blueprint name. */
+    label: string;
+};
+
+export type StorySceneMergePlan = {
+    /** The scene that keeps its id and receives the rows. */
+    survivingSceneId: StorySceneId;
+    /** The scene whose rows move out and which is then deleted. */
+    mergedSceneId: StorySceneId;
+    /** How many top-level rows travel. */
+    movingRootCount: number;
+    /** The surviving scene's trailing jump into the merged scene, which the merge drops. */
+    droppedJumpBlockId: StoryBlockId | null;
+    /** Jumps elsewhere in the story that the merge re-points at the surviving scene. */
+    rewrittenJumpBlockIds: StoryBlockId[];
+    /** References the merge cannot rewrite. Non-empty means the merge is refused. */
+    blockers: StorySceneReferrer[];
+};
+
+/**
+ * What merging `mergedSceneId` into `survivingSceneId` would do.
+ *
+ * The surviving scene is always the earlier of the pair, so "merge with next" and "merge into
+ * previous" are the same operation named from either end and the result does not depend on which
+ * one the author reached for.
+ *
+ * `externalReferrers` is what the caller found outside the story document - blueprint graphs name
+ * scenes by id and cannot be rewritten from here. Any of them makes the plan a refusal: a merge
+ * that leaves a graph pointing at a scene that no longer exists is a build failure the author did
+ * not ask for, and half a merge is worse than none.
+ */
+export function planSceneMerge(
+    document: StoryDocument,
+    survivingSceneId: StorySceneId,
+    mergedSceneId: StorySceneId,
+    externalReferrers: readonly StorySceneReferrer[] = [],
+): StorySceneMergePlan | null {
+    const surviving = document.scenes[survivingSceneId];
+    const merged = document.scenes[mergedSceneId];
+    if (!surviving || !merged || surviving === merged) {
+        return null;
+    }
+    const droppedJumpBlockId = trailingJumpTo(surviving, mergedSceneId);
+    const rewrittenJumpBlockIds: StoryBlockId[] = [];
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "jump" || block.payload.targetSceneId !== mergedSceneId) {
+                continue;
+            }
+            if (block.id === droppedJumpBlockId) {
+                continue;
+            }
+            rewrittenJumpBlockIds.push(block.id);
+        }
+    }
+    return {
+        survivingSceneId,
+        mergedSceneId,
+        movingRootCount: merged.rootBlockIds.length,
+        droppedJumpBlockId,
+        rewrittenJumpBlockIds,
+        blockers: [...externalReferrers],
+    };
+}
+
+/**
+ * The surviving scene's last row when it is a jump into the scene about to be merged in.
+ *
+ * This is the row a split wrote to keep playback going, so a merge that puts the two halves back
+ * together has to take it out again - left in place it would jump the scene to its own middle.
+ */
+function trailingJumpTo(scene: StoryScene, targetSceneId: StorySceneId): StoryBlockId | null {
+    for (let index = scene.rootBlockIds.length - 1; index >= 0; index -= 1) {
+        const block = scene.blocks[scene.rootBlockIds[index]];
+        if (!block || block.disabled) {
+            continue;
+        }
+        return block.kind === "jump" && block.payload.targetSceneId === targetSceneId ? block.id : null;
+    }
+    return null;
+}
+
+/** Apply a merge plan. The merged scene is emptied and removed; the caller deletes nothing else. */
+export function applySceneMerge(document: StoryDocument, plan: StorySceneMergePlan): void {
+    const surviving = document.scenes[plan.survivingSceneId];
+    const merged = document.scenes[plan.mergedSceneId];
+    if (!surviving || !merged || plan.blockers.length > 0) {
+        return;
+    }
+    if (plan.droppedJumpBlockId) {
+        const jump = surviving.blocks[plan.droppedJumpBlockId];
+        if (jump) {
+            detachFromParent(surviving, jump);
+            delete surviving.blocks[plan.droppedJumpBlockId];
+        }
+    }
+    moveBlocksToScene(document, plan.mergedSceneId, plan.survivingSceneId, [...merged.rootBlockIds], {
+        parentId: null,
+        beforeBlockId: null,
+    });
+    // Snapshots name rows by block id, so the ones taken in the merged scene still describe rows
+    // that now live in the surviving one and travel with them.
+    if (merged.sceneSnapshots?.length) {
+        surviving.sceneSnapshots = [...(surviving.sceneSnapshots ?? []), ...merged.sceneSnapshots];
+    }
+    for (const scene of Object.values(document.scenes)) {
+        for (const blockId of plan.rewrittenJumpBlockIds) {
+            const block = scene.blocks[blockId];
+            if (block?.kind === "jump") {
+                block.payload = { ...block.payload, targetSceneId: plan.survivingSceneId };
+            }
+        }
+    }
+    if (document.entrySceneId === plan.mergedSceneId) {
+        document.entrySceneId = plan.survivingSceneId;
+    }
+    delete document.scenes[plan.mergedSceneId];
+    for (const chapter of document.chapters) {
+        chapter.sceneIds = chapter.sceneIds.filter(id => id !== plan.mergedSceneId);
+    }
+    if (document.unassignedSceneIds) {
+        document.unassignedSceneIds = document.unassignedSceneIds.filter(id => id !== plan.mergedSceneId);
+    }
+}
+
+/**
+ * Blueprints that name a scene, found by looking for its id anywhere in their program.
+ *
+ * A value scan rather than a walk of the node catalogue's scene-typed params. The catalogue lives
+ * behind the editor's node registry, and a merge asking it would drag the whole blueprint editor
+ * into the story editor's import graph for one question. A scene id is a generated identifier, so a
+ * string equal to it in a graph is that reference and nothing else - and the scan cannot go stale
+ * when a node type with a new scene-typed param is added, which the catalogue walk can.
+ */
+export function findSceneReferrersInBlueprints(
+    blueprints: { blueprints: Record<string, { name: string; program: unknown }> } | null | undefined,
+    sceneId: StorySceneId,
+): StorySceneReferrer[] {
+    const referrers: StorySceneReferrer[] = [];
+    for (const blueprint of Object.values(blueprints?.blueprints ?? {})) {
+        if (containsString(blueprint.program, sceneId)) {
+            referrers.push({ kind: "blueprint", label: blueprint.name });
+        }
+    }
+    return referrers;
+}
+
+function containsString(value: unknown, needle: string): boolean {
+    if (typeof value === "string") {
+        return value === needle;
+    }
+    if (Array.isArray(value)) {
+        return value.some(item => containsString(item, needle));
+    }
+    if (value && typeof value === "object") {
+        return Object.values(value).some(item => containsString(item, needle));
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Scene neighbours
+// ---------------------------------------------------------------------------
+
+/** The scene before and after this one in document order - what "merge with next" needs to exist. */
+export function sceneNeighbours(
+    document: StoryDocument,
+    sceneId: StorySceneId,
+): { previousSceneId: StorySceneId | null; nextSceneId: StorySceneId | null } {
+    const order = listSceneIdsInDocumentOrder(document);
+    const index = order.indexOf(sceneId);
+    if (index < 0) {
+        return { previousSceneId: null, nextSceneId: null };
+    }
+    return {
+        previousSceneId: order[index - 1] ?? null,
+        nextSceneId: order[index + 1] ?? null,
+    };
+}
+
+/** The chapter a scene sits in, so a scene made beside it lands in the same one. */
+export function chapterOfScene(document: StoryDocument, sceneId: StorySceneId): StoryChapterId | null {
+    return document.chapters.find(chapter => chapter.sceneIds.includes(sceneId))?.id ?? null;
+}
+
+/** Every block in the scene, in reading order - what a bulk row operation walks. */
+export function sceneBlocksInOrder(scene: StoryScene): StoryBlock[] {
+    return listSceneBlocksInDocumentOrder(scene);
+}
+
+// ---------------------------------------------------------------------------
+// Shared list surgery
+// ---------------------------------------------------------------------------
+
+function subtreeIds(scene: StoryScene, rootId: StoryBlockId): StoryBlockId[] {
+    const ids: StoryBlockId[] = [];
+    const visit = (id: StoryBlockId) => {
+        if (ids.includes(id)) {
+            return;
+        }
+        ids.push(id);
+        scene.blocks[id]?.childrenIds.forEach(visit);
+    };
+    visit(rootId);
+    return ids;
+}
+
+function detachFromParent(scene: StoryScene, block: StoryBlock): void {
+    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
+    if (!siblings) {
+        return;
+    }
+    const index = siblings.indexOf(block.id);
+    if (index >= 0) {
+        siblings.splice(index, 1);
+    }
+}
+
+function insertBefore(ids: StoryBlockId[], id: StoryBlockId, beforeId: StoryBlockId | null): void {
+    const index = beforeId ? ids.indexOf(beforeId) : -1;
+    if (index < 0) {
+        ids.push(id);
+        return;
+    }
+    ids.splice(index, 0, id);
+}

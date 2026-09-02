@@ -3,21 +3,26 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type {
     StoryBlock,
     StoryBlockId,
+    StoryDialogueSpeaker,
     StoryDocument,
     StoryExpression,
     StoryLiteralValue,
     StoryRichRun,
     StoryScene,
+    StorySceneId,
     StorySceneUpdate,
     StoryVariableScope,
     StoryVariableValueType,
 } from "@shared/types/story";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story";
-import { translate } from "@/lib/i18n";
+import { translate, translateN } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
+import { createInputDialog } from "@/lib/components/dialogs";
+import { planSceneSplit } from "@/lib/workspace/services/story/storyStructuralOps";
+import { moveStoryRowsToScene } from "../storyStructuralGestures";
 import { isRowTextEditable, storyDocumentFreezeScope } from "./storySceneReadOnly";
 import { rowClaimHolder } from "./storyRowClaims";
 import { useStoryRowClaimHold } from "./storyRowClaimHold";
@@ -49,7 +54,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks } from "@/lib/workspace/services/story/storyModel";
+import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks, setSpeakerOnBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -1535,11 +1540,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setEditorMode({ kind: "idle" });
     }, [cancelTextSettle, editorMode, readTextDraft, recordTextEditHistoryOnce, scene, sceneId, storyId, storyService]);
 
-    const createBlock = useCallback((kind: ActionCommandId, initialText = "", characterId?: string): StoryBlock | null => {
+    const createBlock = useCallback((kind: ActionCommandId, initialText = "", speaker?: StoryDialogueSpeaker): StoryBlock | null => {
         if (!uuidService) {
             return null;
         }
-        const block = createBlockForCommand(kind, () => uuidService.generate(), initialText, characterId);
+        const block = createBlockForCommand(kind, () => uuidService.generate(), initialText, speaker);
         if (block.kind === "jump" && !block.payload.targetSceneId && document) {
             block.payload.targetSceneId = listSceneIdsInDocumentOrder(document)[0] ?? "";
         }
@@ -2033,10 +2038,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (updatedPayload) {
             storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
         }
-        const characterId = currentBlock.kind === "nodeAction" && currentBlock.payload.action === "dialogue"
-            ? currentBlock.payload.characterId
-            : undefined;
-        const block = createBlock(continuation, "", characterId);
+        const block = createBlock(continuation, "", dialogueSpeakerOf(currentBlock));
         if (!block) {
             return;
         }
@@ -2424,7 +2426,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const replaceBlockId = editorMode.slot.replaceBlockId;
         // Empty, not the typed text: everything after `#` was the speaker query (see `chooserQuery`),
         // so reusing it as the body would put the speaker's own name in their first line.
-        const block = createBlock("dialogue", "", characterId);
+        const block = createBlock("dialogue", "", { characterId });
         if (block) {
             insertBlock(block, editorMode.slot.afterBlockId, false, { target, replaceBlockId });
             setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
@@ -2498,7 +2500,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
          * author in a row of dialogue, and a second empty one under it continues nothing.
          */
         if (scope && followTarget && !isTextEditableBlock(block)) {
-            const next = createBlock("dialogue", "", scope.characterId);
+            const next = createBlock("dialogue", "", { characterId: scope.characterId });
             if (next) {
                 // One undo step for the whole gesture: the command's own commit already recorded it.
                 insertBlock(next, null, false, { target: followTarget, recordHistory: false });
@@ -2641,11 +2643,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const target = editorMode.slot.target;
         const replaceBlockId = editorMode.slot.replaceBlockId;
         // Empty for the same reason as `chooseCharacterForInsert`: the post-`#` text was the name.
-        const block = createBlock("dialogue", "");
-        if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+        const block = createBlock("dialogue", "", { speakerName: name });
+        if (!block) {
             return;
         }
-        block.payload = { ...block.payload, speakerName: name, characterId: undefined };
         insertBlock(block, editorMode.slot.afterBlockId, false, { target, replaceBlockId });
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
     }, [createBlock, editorMode, insertBlock]);
@@ -2807,6 +2808,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             .map(edit => ({ blockId: edit.blockId, payload: edit.payload }));
         updateBlockPayloads(edits);
     }, [document, knownCharacterIds, sceneId, updateBlockPayloads]);
+
+    /**
+     * Say every selected line as one speaker - a character, or a name with no character behind it.
+     *
+     * The widest of the three speaker gestures and the only one that reaches rows whose speaker was
+     * already fine: this is the author changing their mind about who is talking, not repairing a
+     * binding that broke. The two narrower ones stay as they are ({@link bindSpeakerForRows} for a
+     * paste to repair, {@link createCharacterFromSpeaker} for a name becoming somebody).
+     *
+     * Rows in the selection that are not lines of speech are left alone rather than refused - a
+     * selection dragged down the list holds actions too, and the gesture is about the lines in it.
+     */
+    const setSpeakerForRows = useCallback((blockIds: readonly StoryBlockId[], speaker: StoryDialogueSpeaker) => {
+        if (!document || !sceneId) {
+            return 0;
+        }
+        const edits = setSpeakerOnBlocks(document, blockIds, speaker)
+            .filter(edit => edit.sceneId === sceneId)
+            .map(edit => ({ blockId: edit.blockId, payload: edit.payload }));
+        updateBlockPayloads(edits);
+        return edits.length;
+    }, [document, sceneId, updateBlockPayloads]);
+
 
     /**
      * Where a Shift range starts, for this render.
@@ -3445,6 +3469,113 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, scene, selectedBlockIds]);
 
     /**
+     * Cut: the copy the author already has, and then the rows are gone.
+     *
+     * It fills the clipboard through the copy path rather than a second serialiser, so a cut puts
+     * exactly what a copy does on the clipboard - which is what keeps it pasteable into another
+     * scene, another project, another window, and after a restart. Same reason it is a `cut` event
+     * and not a keybinding: copy and paste here are the browser's own clipboard events, and a third
+     * gesture routed anywhere else would be a second clipboard for the same rows.
+     *
+     * The deletion is conditional on the copy having happened. `copySelectionToClipboard` cancels
+     * the event exactly when it wrote a payload, so `defaultPrevented` is the one signal saying the
+     * rows are somewhere else before they are taken out of here; without it a cut over a clipboard
+     * that refused the write would be a delete the author cannot paste back.
+     *
+     * One undo step, not two: the deletion records the checkpoint, and the clipboard is not part of
+     * the document, so Ctrl+Z brings the rows back while the clipboard still holds them.
+     */
+    const handleCut = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+        if (!isStoryEditorFocusActive()) {
+            return;
+        }
+        copySelectionToClipboard(event);
+        if (!event.defaultPrevented) {
+            return;
+        }
+        void deleteRows(selectionRootIds());
+    }, [copySelectionToClipboard, deleteRows, isStoryEditorFocusActive, selectionRootIds]);
+
+    /**
+     * Send the selected rows to another scene, ids and all.
+     *
+     * The gesture the outline's drag and the row menu's "Move to scene" both end in, so both reach
+     * {@link moveStoryRowsToScene} rather than the service directly - one place decides which undo
+     * stack the step lands on and what the author is told.
+     */
+    const moveSelectionToScene = useCallback((targetSceneId: StorySceneId) => {
+        if (!storyService || !storyId || !sceneId) {
+            return;
+        }
+        const roots = selectionRootIds();
+        if (roots.length === 0) {
+            return;
+        }
+        const moved = moveStoryRowsToScene({
+            storyService,
+            ...(uiService ? { uiService } : {}),
+            storyId,
+            sourceSceneId: sceneId,
+            targetSceneId,
+            blockIds: roots,
+        });
+        if (moved > 0) {
+            setEditorMode({ kind: "idle" });
+            setSelectedBlockIds(new Set());
+            setActiveBlockId(null);
+        }
+    }, [sceneId, selectionRootIds, storyId, storyService, uiService]);
+
+    /**
+     * Cut this scene in two at the selected row.
+     *
+     * The name is asked for rather than derived silently: a scene's name is what the author reads in
+     * the outline for the rest of the project's life, and the split is the one moment they are
+     * looking at the rows that belong to it. The offered name is numbered off this scene's.
+     *
+     * A jump is appended to this scene when it would otherwise have run off its own end - the engine
+     * has no scene successor, so without it the rows that just moved would never play - and the
+     * notification says so, because an appended row the author did not write must not be silent.
+     */
+    const splitSceneAtRow = useCallback(async (blockId: StoryBlockId) => {
+        if (!storyService || !storyId || !sceneId || !scene || !document || !uiService) {
+            return;
+        }
+        if (!planSceneSplit(scene, blockId)) {
+            return;
+        }
+        const name = await createInputDialog(uiService).show({
+            title: translate("story.structuralOps.splitScene.title"),
+            description: translate("story.structuralOps.splitScene.description"),
+            placeholder: translate("story.structuralOps.splitScene.placeholder"),
+            initialValue: nextSceneName(document, scene.name),
+            required: true,
+            maxLength: 120,
+        });
+        if (!name) {
+            return;
+        }
+        const result = storyService.splitScene(storyId, sceneId, blockId, name, {
+            scopeId: storySceneHistoryScope(storyId, sceneId),
+        });
+        if (!result) {
+            uiService.showNotification(translate("story.structuralOps.moveRows.refused"), "warning");
+            return;
+        }
+        const done = translateN("story.structuralOps.splitScene.done", result.movedRowCount, {
+            count: result.movedRowCount,
+            scene: name,
+        });
+        uiService.showNotification(
+            result.jumpAdded ? `${done} · ${translate("story.structuralOps.splitScene.jumpAdded")}` : done,
+            "success",
+        );
+        setEditorMode({ kind: "idle" });
+        setSelectedBlockIds(new Set());
+        setActiveBlockId(null);
+    }, [document, scene, sceneId, storyId, storyService, uiService]);
+
+    /**
      * Toggle the compiled-out flag across the selection (schema v7). When every targeted root is already
      * disabled it enables them, so the one menu action reads "Enable"; otherwise it disables. Undoable.
      */
@@ -3542,7 +3673,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
-        unresolvedSpeakerRowIds, bindSpeakerForRows,
+        unresolvedSpeakerRowIds, bindSpeakerForRows, setSpeakerForRows,
+        cutSelectionToClipboard: handleCut, moveSelectionToScene, splitSceneAtRow,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit,
@@ -3586,6 +3718,22 @@ function resolveMappingsForMemory(
 }
 
 /**
+ * The speaker a row is attributed to, or nothing when the row is not a line of speech.
+ *
+ * A bare name counts: it is what the dialogue box will show, so a row that continues it has to carry
+ * it. `characterId` wins when both are somehow present, matching how the payload reads.
+ */
+export function dialogueSpeakerOf(block: StoryBlock): StoryDialogueSpeaker | undefined {
+    if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+        return undefined;
+    }
+    if (block.payload.characterId) {
+        return { characterId: block.payload.characterId };
+    }
+    return block.payload.speakerName ? { speakerName: block.payload.speakerName } : undefined;
+}
+
+/**
  * The action command a text row's Enter continues with - a same-kind successor. Kinds with no natural
  * successor (a choice prompt) return null so the caller falls back to the generic insert slot.
  *
@@ -3605,6 +3753,25 @@ function continuationCommandFor(block: StoryBlock): ActionCommandId | null {
         if (block.payload.action === "choiceOption") return "choiceOption";
     }
     return null;
+}
+
+/**
+ * The name a split offers for the second half: this scene's, numbered up until it is free.
+ *
+ * Numbering off the scene being cut rather than off "New Scene" is what keeps the outline readable
+ * after a chapter has been split a few times - the halves sort together and say where they came
+ * from. The author can type over it; this is the offer, not the rule.
+ */
+function nextSceneName(document: StoryDocument, baseName: string): string {
+    const taken = new Set(Object.values(document.scenes).map(scene => scene.name.trim().toLowerCase()));
+    const base = baseName.trim() || translate("story.panel.newSceneTitle");
+    let index = 2;
+    let candidate = translate("story.structuralOps.splitScene.namePattern", { name: base, index });
+    while (taken.has(candidate.trim().toLowerCase())) {
+        index += 1;
+        candidate = translate("story.structuralOps.splitScene.namePattern", { name: base, index });
+    }
+    return candidate;
 }
 
 /** Pick a unique default name ("Layer 1", "Layer 2", …) for a freshly-created layer in a scene. */

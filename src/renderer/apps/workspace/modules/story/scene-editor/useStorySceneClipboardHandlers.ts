@@ -309,7 +309,7 @@ export function useStorySceneClipboardHandlers(params: {
         const blocks = lines.map(line => {
             const parsed = parseDialogueLine(line, characters);
             return parsed
-                ? createBlockForCommand("dialogue", () => uuidService.generate(), parsed.text, parsed.characterId)
+                ? createBlockForCommand("dialogue", () => uuidService.generate(), parsed.text, { characterId: parsed.characterId })
                 : createBlockForCommand("narration", () => uuidService.generate(), line);
         });
         insertPastedBlocks(blocks, target);

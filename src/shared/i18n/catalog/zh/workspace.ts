@@ -292,6 +292,10 @@ export const workspace = {
         entry: {
             edit: "编辑",
             storyEdit: "故事编辑",
+            storyMoveRowsToScene: "移动到其他场景",
+            storySplitScene: "场景拆分",
+            storyMergeScenes: "场景合并",
+            storySpeakerChange: "说话人变更",
             storyMotionEdit: "运动编辑",
             audioMarkers: "标记变更",
             surfaceEdit: "界面编辑",

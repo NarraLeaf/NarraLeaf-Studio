@@ -617,6 +617,17 @@ export type StoryInvalidPayload = {
     source: string;
 };
 
+/**
+ * Who a dialogue row is attributed to.
+ *
+ * The two arms are mutually exclusive by construction: a row carries a Studio character, or a bare
+ * name, never both. Anything that creates or re-points a line of speech takes this rather than a
+ * lone `characterId`, so a temporary speaker travels the same paths a real character does.
+ */
+export type StoryDialogueSpeaker =
+    | { characterId: string }
+    | { speakerName: string };
+
 export type StoryNodeActionPayload =
     | {
           action: "narration";

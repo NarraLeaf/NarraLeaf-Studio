@@ -1450,6 +1450,14 @@ export const story = {
             other: "Link speaker on {count} lines",
         },
         playFromHere: "Play from here",
+        moveToScene: "Move to scene",
+        splitScene: "Split scene here…",
+        mergeWithNext: "Merge with next scene",
+        mergeIntoPrevious: "Merge into previous scene",
+        changeSpeaker: "Change speaker",
+        // A speaker with no character behind it, offered beside the cast so the two are told apart
+        // in a list that shows only names.
+        speakerNameOnly: "{name} (name only)",
         openInspector: "Open inspector",
         delete: "Delete",
     },
@@ -1463,6 +1471,56 @@ export const story = {
         // gesture, and an author taking one back is not distinguishing them.
         moveScene: "move scene {name}",
         moveChapter: "move chapter {name}",
+    },
+    /**
+     * Reshaping a story rather than a row: rows travelling to another scene, a scene cut in two, two
+     * scenes put back together.
+     */
+    structuralOps: {
+        moveRows: {
+            done: {
+                one: "{count} row moved to {scene}",
+                other: "{count} rows moved to {scene}",
+            },
+            refused: "Not available during a live session",
+        },
+        splitScene: {
+            title: "Split Scene",
+            description: "The rows from here to the end become this scene.",
+            placeholder: "Enter scene name",
+            // The name offered first, numbered up until it is free.
+            namePattern: "{name} {index}",
+            done: {
+                one: "{count} row moved to {scene}",
+                other: "{count} rows moved to {scene}",
+            },
+            // Appended to the line above when the first half would otherwise have ended the game.
+            jumpAdded: "jump added",
+        },
+        mergeScenes: {
+            confirm: "Merge \"{merged}\" into \"{surviving}\"?",
+            detail: {
+                one: "Its {count} row moves to the end of {surviving}.",
+                other: "Its {count} rows move to the end of {surviving}.",
+            },
+            done: {
+                one: "{count} row merged into {scene}",
+                other: "{count} rows merged into {scene}",
+            },
+            jumpsRepointed: {
+                one: "{count} jump re-pointed",
+                other: "{count} jumps re-pointed",
+            },
+            refused: "\"{name}\" is named outside this story",
+            refusedDetail: "Named by: {referrers}",
+            noNeighbour: "There is no scene to merge with",
+        },
+        speaker: {
+            done: {
+                one: "Speaker changed on {count} line",
+                other: "Speaker changed on {count} lines",
+            },
+        },
     },
     keybindings: {
         find: "Find and replace",

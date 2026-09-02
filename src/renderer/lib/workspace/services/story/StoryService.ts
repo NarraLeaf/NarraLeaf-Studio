@@ -42,7 +42,7 @@ import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
 import { HistoryService } from "../history/HistoryService";
-import type { HistoryLabel } from "../history/historyModel";
+import type { HistoryLabel, HistoryScopeId } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { translate } from "@/lib/i18n";
@@ -74,6 +74,16 @@ import {
     storyDocumentRelativePath,
     updateBlockPayload,
 } from "./storyModel";
+import {
+    applySceneMerge,
+    chapterOfScene,
+    moveBlocksToScene,
+    planSceneMerge,
+    planSceneSplit,
+    type StoryBlockPlacement,
+    type StorySceneMergePlan,
+    type StorySceneReferrer,
+} from "./storyStructuralOps";
 
 type StoryServiceEvents = {
     libraryChanged: StoryLibraryIndex;
@@ -123,6 +133,7 @@ type StoryStructureSnapshot = {
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
     entrySceneId?: StorySceneId;
+    unassignedSceneIds?: StorySceneId[];
 };
 
 type StoryAssetLockEntry = {
@@ -2154,6 +2165,164 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     /**
+     * The three operations that reshape a story rather than a row - moving rows to another scene,
+     * splitting a scene, merging two - each as one document revision and one undo step.
+     *
+     * None of them is in the live-session vocabulary, so each refuses while a session holds the
+     * story, exactly as {@link replaceScene} does and for the same reason: the effect the other
+     * machines would receive does not exist, so the write can only be a local divergence. A refusal
+     * is returned rather than thrown; the caller says so on screen.
+     *
+     * `scopeId` names the stack the step lands on. The scene editor passes its own scene's scope so
+     * Ctrl+Z there takes the operation back; callers with no editor in front of them leave it out
+     * and get the project stack.
+     */
+    public moveBlocksToScene(
+        storyId: StoryId,
+        sourceSceneId: StorySceneId,
+        targetSceneId: StorySceneId,
+        blockIds: readonly StoryBlockId[],
+        placement: StoryBlockPlacement,
+        options?: { scopeId?: HistoryScopeId },
+    ): number {
+        if (this.opSink !== null) {
+            return 0;
+        }
+        const before = this.captureStoryStructure(storyId);
+        let moved = 0;
+        this.mutateDocument(storyId, document => {
+            moved = moveBlocksToScene(document, sourceSceneId, targetSceneId, blockIds, placement);
+        }, [sourceSceneId, targetSceneId]);
+        if (moved === 0) {
+            return 0;
+        }
+        this.recordStructuralChange(
+            storyId,
+            { key: "workspace.history.entry.storyMoveRowsToScene" },
+            before,
+            options?.scopeId,
+        );
+        return moved;
+    }
+
+    /**
+     * Cut a scene in two at one of its top-level rows: the rows from there on become a new scene
+     * filed straight after this one.
+     *
+     * The new scene inherits the original's background and music, and the original gets a jump to it
+     * appended when it would otherwise have run off its own end - the engine has no scene successor,
+     * so a scene that stops stops the game. Both are what keeps the split playing the way the one
+     * scene did.
+     *
+     * Returns what happened, so the caller can say it in one line, or null when the row is not one a
+     * scene can be cut at.
+     */
+    public splitScene(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        atBlockId: StoryBlockId,
+        name: string,
+        options?: { scopeId?: HistoryScopeId },
+    ): { sceneId: StorySceneId; movedRowCount: number; jumpAdded: boolean } | null {
+        if (this.opSink !== null) {
+            return null;
+        }
+        const document = this.getStoryDocument(storyId);
+        const source = document.scenes[sceneId];
+        if (!source) {
+            return null;
+        }
+        const plan = planSceneSplit(source, atBlockId);
+        if (!plan) {
+            return null;
+        }
+        const now = new Date().toISOString();
+        const created = createStorySceneModel({
+            id: this.getUuidService().generate(),
+            name: this.cleanName(name, "New Scene"),
+            runtimeName: this.toRuntimeName(name),
+            now,
+        });
+        const jumpBlock: StoryBlock | null = plan.needsJump
+            ? {
+                id: this.getUuidService().generate(),
+                parentId: null,
+                childrenIds: [],
+                kind: "jump",
+                payload: { targetSceneId: created.id },
+            }
+            : null;
+        const chapterId = chapterOfScene(document, sceneId);
+        const before = this.captureStoryStructure(storyId);
+        let movedRowCount = 0;
+        this.mutateDocument(storyId, target => {
+            const scene = this.getSceneOrThrow(target, sceneId);
+            const scenes = target.scenes as Record<StorySceneId, StoryScene>;
+            scenes[created.id] = {
+                ...created,
+                ...(scene.defaultBackgroundAssetId ? { defaultBackgroundAssetId: scene.defaultBackgroundAssetId } : {}),
+                ...(scene.bgm ? { bgm: JSON.parse(JSON.stringify(scene.bgm)) as StoryScene["bgm"] } : {}),
+            };
+            const chapter = chapterId ? target.chapters.find(item => item.id === chapterId) : undefined;
+            if (chapter) {
+                const at = chapter.sceneIds.indexOf(sceneId);
+                chapter.sceneIds.splice(at < 0 ? chapter.sceneIds.length : at + 1, 0, created.id);
+            } else {
+                target.unassignedSceneIds = [...(target.unassignedSceneIds ?? []), created.id];
+            }
+            movedRowCount = moveBlocksToScene(target, sceneId, created.id, plan.movingRootIds, {
+                parentId: null,
+                beforeBlockId: null,
+            });
+            if (jumpBlock) {
+                insertBlockInScene(scene, jumpBlock, { parentId: null, beforeBlockId: null });
+            }
+        }, [sceneId, created.id]);
+        this.recordStructuralChange(
+            storyId,
+            { key: "workspace.history.entry.storySplitScene" },
+            before,
+            options?.scopeId,
+        );
+        return { sceneId: created.id, movedRowCount, jumpAdded: Boolean(jumpBlock) };
+    }
+
+    /**
+     * Put two neighbouring scenes back together. The earlier one keeps its id and receives the
+     * rows; the later one is removed.
+     *
+     * A plan with `blockers` is a refusal: something outside the story document names the scene
+     * about to disappear and cannot be re-pointed from here, and half a merge is worse than none.
+     * The caller lists them.
+     */
+    public mergeScenes(
+        storyId: StoryId,
+        survivingSceneId: StorySceneId,
+        mergedSceneId: StorySceneId,
+        externalReferrers: readonly StorySceneReferrer[] = [],
+        options?: { scopeId?: HistoryScopeId },
+    ): StorySceneMergePlan | null {
+        if (this.opSink !== null) {
+            return null;
+        }
+        const plan = planSceneMerge(this.getStoryDocument(storyId), survivingSceneId, mergedSceneId, externalReferrers);
+        if (!plan || plan.blockers.length > 0) {
+            return plan;
+        }
+        const before = this.captureStoryStructure(storyId);
+        this.mutateDocument(storyId, document => {
+            applySceneMerge(document, plan);
+        }, "all");
+        this.recordStructuralChange(
+            storyId,
+            { key: "workspace.history.entry.storyMergeScenes" },
+            before,
+            options?.scopeId,
+        );
+        return plan;
+    }
+
+    /**
      * Hand one operation to the sink, if there is one that wants it.
      *
      * The single place the eleven mutators ask, so "is this story somebody else's to change" has one
@@ -2658,6 +2827,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
             chapters: document.chapters,
             scenes: document.scenes,
             entrySceneId: document.entrySceneId,
+            unassignedSceneIds: document.unassignedSceneIds,
         })) as StoryStructureSnapshot;
     }
 
@@ -2671,16 +2841,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
             } else {
                 document.entrySceneId = restored.entrySceneId;
             }
+            if (restored.unassignedSceneIds === undefined) {
+                delete document.unassignedSceneIds;
+            } else {
+                document.unassignedSceneIds = restored.unassignedSceneIds;
+            }
         }, "all");
     }
 
     /**
-     * Record an edit to the outline - a deletion, or a scene or chapter changing places - as one
-     * undo step on the project stack.
+     * Record an edit to the outline - a deletion, a scene or chapter changing places, a split or a
+     * merge - as one undo step.
      *
-     * The project stack rather than a scene's, because none of these edits is *in* a document the
-     * author has open: they are made from the story panel, and that is where Ctrl+Z reaches from
-     * (`resolveWorkspaceUndoScope`).
+     * The project stack by default, because most of these edits are not *in* a document the author
+     * has open: they are made from the story panel, and that is where Ctrl+Z reaches from
+     * (`resolveWorkspaceUndoScope`). `scopeId` is for the ones that are: a split, a merge or a move
+     * to another scene runs from the scene editor, so it has to land on the stack that editor's
+     * Ctrl+Z reads, or the keystroke undoes the author's previous edit and leaves the split standing.
      *
      * `before` is captured by the caller ahead of the mutation; `after` is taken here, so undo and
      * redo are the same operation in opposite directions and neither has to re-derive what changed.
@@ -2689,9 +2866,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
         storyId: StoryId,
         label: HistoryLabel,
         before: StoryStructureSnapshot,
+        scopeId: HistoryScopeId = projectHistoryScope(),
     ): void {
         const after = this.captureStoryStructure(storyId);
-        this.getHistoryService().pushCommand(projectHistoryScope(), {
+        this.getHistoryService().pushCommand(scopeId, {
             label,
             undo: () => this.applyStoryStructure(storyId, before),
             redo: () => this.applyStoryStructure(storyId, after),

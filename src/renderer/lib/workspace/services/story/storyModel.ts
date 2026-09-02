@@ -19,6 +19,7 @@ import {
     StoryBlock,
     StoryBlockId,
     StoryChapter,
+    StoryDialogueSpeaker,
     StoryDocument,
     StoryId,
     StoryLibraryEntry,
@@ -1193,6 +1194,38 @@ export function rebindSpeakersInBlocks(
         collectUnresolvedSpeakerRows(document, blockIds, knownCharacterIds),
         characterId,
     );
+}
+
+/**
+ * Point an explicit set of rows at one speaker, whoever they were speaking as before.
+ *
+ * The third member of the family, and the widest: {@link promoteTempSpeaker} reaches every row that
+ * shares a name, {@link rebindSpeakersInBlocks} reaches only the rows whose speaker is unresolved,
+ * and this one reaches every dialogue row the author selected - which is what "change the speaker on
+ * these lines" means. Rows that are not dialogue are skipped rather than refused: a selection made
+ * by dragging down the list will contain actions, and the gesture is about the lines in it.
+ *
+ * Returns payload edits rather than mutating, so the whole set is one document revision, one save
+ * and one undo step.
+ */
+export function setSpeakerOnBlocks(
+    document: StoryDocument,
+    blockIds: Iterable<StoryBlockId>,
+    speaker: StoryDialogueSpeaker,
+): StorySpeakerEdit[] {
+    const wanted = new Set(blockIds);
+    const rows: StoryDialogueRowRef[] = [];
+    for (const scene of Object.values(document.scenes)) {
+        for (const blockId of wanted) {
+            const block = scene.blocks[blockId];
+            if (block?.kind === "nodeAction" && block.payload.action === "dialogue") {
+                rows.push({ sceneId: scene.id, blockId });
+            }
+        }
+    }
+    return "characterId" in speaker
+        ? bindRowsToCharacter(document, rows, speaker.characterId)
+        : setRowsSpeakerName(document, rows, speaker.speakerName);
 }
 
 /**
