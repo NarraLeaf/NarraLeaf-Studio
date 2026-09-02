@@ -306,8 +306,13 @@ export type GameAppHost = {
      * Measured by the shell against the display the window is on, because which multiples fit is a
      * fact about that screen and not about the project. Empty - or the whole capability absent -
      * where the shell has no window it can size, so a configuration screen built from it (see the
-     * `Get Window Scale Options` node) draws no size row on the web export, in Dev Mode or in the
-     * story preview, rather than drawing a control that does nothing.
+     * `Get Window Scale Options` node) draws no size row on the web export or in the story preview,
+     * rather than drawing a control that does nothing.
+     *
+     * The Dev Mode window answers all five, and answers them about the STAGE: the window is
+     * Studio's, so the size a graph asks for is the size the stage is drawn at and Studio's own
+     * chrome is added back around it. An author reading their own size row there reads the list a
+     * player would get on this machine, and the step they pick is the step they see.
      */
     getWindowScaleOptions?: () => Promise<number[]>;
     /**

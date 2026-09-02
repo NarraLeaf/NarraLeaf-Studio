@@ -585,6 +585,22 @@ export interface RendererPreloadedInterface {
         stop(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         reload(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
         getStatus(projectPath: string): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        /**
+         * The stage inside the Dev Mode window, sized the way a packaged game sizes its own.
+         *
+         * `chrome` is the window's content minus the box the stage is drawn into, which only the
+         * renderer can measure - the window is Studio's, and what Studio draws around the stage is
+         * not part of what a game is asking about.
+         */
+        getWindowScaleOptions(
+            design: { width: number; height: number },
+            chrome: { width: number; height: number },
+        ): Promise<RequestStatus<{ scales: number[] }>>;
+        setStageSize(
+            width: number,
+            height: number,
+            chrome: { width: number; height: number },
+        ): Promise<RequestStatus<void>>;
         /** Fullscreen state of the Dev Mode window itself. */
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;

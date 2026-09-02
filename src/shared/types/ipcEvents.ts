@@ -279,6 +279,8 @@ export enum IPCEventType {
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
     devModeDataReset = "devMode.data.reset",
+    devModeWindowScaleOptions = "devMode.window.scaleOptions",
+    devModeWindowSetStageSize = "devMode.window.setStageSize",
     devModeFullscreenGet = "devMode.fullscreen.get",
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
@@ -2534,6 +2536,43 @@ export type IPCDevModeEvents = {
             bundle: DevModeBundle;
         },
         response: never;
+    };
+    /**
+     * The stage sizes this Dev Mode window has room to offer, for `Get Window Scale Options`.
+     *
+     * The window belongs to Studio, so what a game asks about - the stage - is the window's content
+     * minus whatever Studio draws around it. Only the renderer can measure that, so it sends it as
+     * `chrome`; this side adds the frame the platform draws and the work area of the display the
+     * window is on, and answers with the arithmetic a packaged game's shell answers with.
+     */
+    [IPCEventType.devModeWindowScaleOptions]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            /** The entry surface's design size: the coordinate space a scale step is a multiple of. */
+            design: { width: number; height: number };
+            /** Window content minus the box the stage is drawn into, in CSS pixels. */
+            chrome: { width: number; height: number };
+        },
+        response: {
+            scales: number[];
+        };
+    };
+    /**
+     * Size the stage inside this Dev Mode window, for `Set Window Scale` and `Set Window Size`.
+     *
+     * In pixels of stage, not of window, so the number a graph asks for is the number the author
+     * sees the stage drawn at - the same thing the request means in a packaged game.
+     */
+    [IPCEventType.devModeWindowSetStageSize]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            width: number;
+            height: number;
+            chrome: { width: number; height: number };
+        },
+        response: void;
     };
     [IPCEventType.devModeFullscreenGet]: {
         type: IPCMessageType.request,
