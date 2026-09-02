@@ -817,7 +817,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
 
         const handlePanelOrderChanged = ({ position, order }: { position: string; order: string[] }) => {
-            setPanelOrders(prev => ({ ...prev, [position as PanelPosition]: order }));
+            setPanelOrders(prev => {
+                // An empty order is the store saying the override was dropped; forgetting the key
+                // makes the setting persist as "nothing stored", which is what the loader treats as
+                // the default order.
+                if (order.length === 0) {
+                    const { [position as PanelPosition]: _dropped, ...rest } = prev;
+                    return rest;
+                }
+                return { ...prev, [position as PanelPosition]: order };
+            });
         };
 
         const handleCollapsedPanelsChanged = ({ position, collapsed }: { position: string; collapsed: string[] }) => {

@@ -536,6 +536,7 @@ export const workspace = {
         panelMenu: {
             removeItem: "この項目を取り除く",
             collapseItem: "グループにまとめる",
+            resetOrder: "並び順を既定に戻す",
         },
         // 左のレールのまとめ役。畳んだパネルを 1 つのアイコンで代表し、押すと一覧が開く。
         panelGroup: {

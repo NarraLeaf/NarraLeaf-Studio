@@ -398,6 +398,19 @@ export class UIStore {
         this.events.emit("stateChanged", { panels: [...this.state.panels] });
     }
 
+    /**
+     * Drop the user-defined ordering for a dock area so its panels fall back to their static
+     * `order` field. Subscribers see it as an order change with an empty list, which is also what
+     * the persisted setting stores for "nothing overridden".
+     */
+    public resetPanelOrder(position: PanelPosition): void {
+        const { [position]: _dropped, ...rest } = this.state.panelOrder;
+        this.state.panelOrder = rest;
+        this.sortPanels();
+        this.events.emit("panelOrderChanged", { position, order: [] });
+        this.events.emit("stateChanged", { panels: [...this.state.panels] });
+    }
+
     public getPanelOrder(): Record<string, string[]> {
         const copy: Record<string, string[]> = {};
         for (const [position, ids] of Object.entries(this.state.panelOrder)) {

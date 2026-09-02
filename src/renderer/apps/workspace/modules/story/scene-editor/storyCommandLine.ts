@@ -11,6 +11,7 @@ import type {
     StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { formatStoryLiteral } from "@shared/types/story";
 import {
     actionableSubjectWord,
     declarationDefaultForType,
@@ -358,7 +359,12 @@ function assignedValueArg(
     const sceneId = payload.expression ? null : parseSceneTranslationUnitId(source);
     const sceneName = sceneId ? resolveStorySceneName(lookups.scenes, sceneId) : null;
     if (!sceneId || sceneName === null) {
-        return positional("value", source);
+        // A stored literal is printed the way it would be TYPED, which for a string means quoted:
+        // the slot holds an expression, and `Location = The corridor` is two identifiers rather than
+        // a value. `String()` here printed it bare, so a row assigning any string with a space in it
+        // showed a line the author could not type back. Numbers, booleans and null are unchanged -
+        // `formatStoryLiteral` writes those exactly as `String` did.
+        return positional("value", payload.expression ? source : formatStoryLiteral(payload.value ?? null));
     }
     return positional("value", sceneName, {
         editValue: source,

@@ -424,7 +424,10 @@ describe("projectStoryCommandLine", () => {
             ...LOOKUPS,
             projectVariableName: () => "Place",
         };
-        expect(projectStoryCommandLine(setPlace, withRegistry)!.source).toBe("/set Place scene:deleted");
+        // Quoted, because the slot holds an EXPRESSION and a stored string is written the way it
+        // would be typed. The dangling reference is still shown rather than hidden, which is the
+        // point of this case; what changed is that the line it shows can now be typed back.
+        expect(projectStoryCommandLine(setPlace, withRegistry)!.source).toBe('/set Place "scene:deleted"');
     });
 
     it("says an empty default rather than dropping it", () => {
