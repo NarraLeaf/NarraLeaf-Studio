@@ -6,7 +6,10 @@ import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/Binding
 import { BlueprintDebugSession } from "@/lib/ui-editor/blueprint-runtime/BlueprintDebugSession";
 import { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
-import { mountBlueprintCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
+import {
+    mountBlueprintCompiledScripts,
+    type BlueprintScriptIssue,
+} from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
 import {
     ScopeStoreBridge,
     type BlueprintPersistentStoreAdapter,
@@ -34,6 +37,14 @@ export type BlueprintRuntimeCoreOptions = {
      * entirely rather than behind a flag the game could flip.
      */
     debuggerEnabled?: boolean;
+    /**
+     * Where a script blueprint that will not run is reported.
+     *
+     * Passed by the hosts that have somewhere to put it - Dev Mode draws an issues list - and
+     * omitted by the ones that do not. Must be stable across renders: it is in this effect's
+     * dependency list, so a fresh function every render would remount every script.
+     */
+    onScriptIssue?: (issue: BlueprintScriptIssue) => void;
 };
 
 /**
@@ -49,6 +60,7 @@ export function useBlueprintRuntimeCore(
     const onDebugEvent = options.onDebugEvent;
     const disposeMessage = options.disposeMessage ?? "Blueprint runtime disposed";
     const debuggerEnabled = options.debuggerEnabled ?? false;
+    const onScriptIssue = options.onScriptIssue;
 
     useEffect(() => {
         if (!bundle) {
@@ -79,7 +91,7 @@ export function useBlueprintRuntimeCore(
         // empty - the handler would simply not be found, with nothing anywhere reporting why. That
         // is what happened the first time this was driven for real.
         let cancelled = false;
-        void mountBlueprintCompiledScripts(bundle).then(() => {
+        void mountBlueprintCompiledScripts(bundle, onScriptIssue).then(() => {
             if (!cancelled) {
                 setSession(nextSession);
             }
@@ -103,6 +115,7 @@ export function useBlueprintRuntimeCore(
         debuggerEnabled,
         disposeMessage,
         onDebugEvent,
+        onScriptIssue,
         persistenceAdapter,
     ]);
 

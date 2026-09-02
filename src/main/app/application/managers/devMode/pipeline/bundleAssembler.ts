@@ -194,6 +194,15 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
             toUrl: filePath => pathToFileURL(filePath).toString(),
         },
     );
+    // A script that did not compile is a handler that will not run, and a build that says nothing
+    // about it ships a control that does nothing. Each distinct file is said once - two blueprints
+    // may name one script - and it stays a notice rather than a failure, because the type check is
+    // a lint and a build never depends on one.
+    for (const message of new Set(
+        Object.values(scripts).flatMap(script => (script.diagnostics ?? []).map(d => d.message)),
+    )) {
+        context.onNotice?.(message);
+    }
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
     // project has. See `DevModeBundleLoadContext.includedDlc`.
     const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;

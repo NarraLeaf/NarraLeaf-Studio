@@ -1,5 +1,12 @@
 import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { buildGameScriptContext, resolveScriptHandler, scriptSelfOf } from "./script/scriptRuntime";
+import {
+    scriptEventIdForProjectSlot,
+    scriptEventIdForSurfaceSlot,
+    scriptEventIdForWidgetSlot,
+    scriptEventIdOfHead,
+} from "./script/scriptEventDispatch";
+import type { ScriptEventId } from "./script/scriptEvents";
 import type { GameScriptContext, ScriptListRow, ScriptSelf } from "./script/scriptContext";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildBlueprintRunGraphId, type BlueprintRunGraphKind } from "@shared/blueprint/blueprintRunGraphId";
@@ -170,6 +177,204 @@ function buildDispatchScriptContext(input: {
         // `Keep Window Open`; both reach the same event control.
         stopPropagation: () => input.eventControl?.stopPropagation(),
     });
+}
+
+/**
+ * Run one script blueprint's handler for one dispatch.
+ *
+ * Six paths reach a script - a widget's own event, a page's, the project's, a broadcast, an element
+ * event and the widget fan-out - and every one of them wants the same five things around the call:
+ * a tracked execution, a started/finished pair on the debug bridge, the ctx, the cancellation check
+ * either side of the await, and the three-branch catch. Written once here so a new dispatch path
+ * cannot reach a script through a shorter route that forgets one of them.
+ *
+ * `eventId` is the id this dispatch traces under - its own, not the script event's. The trace is
+ * read against the runtime's own vocabulary (a slider's `valueChanged`), while the export name was
+ * resolved by the caller through `scriptEventDispatch.ts`.
+ */
+async function runScriptBlueprintHandler(input: {
+    handler: (...args: unknown[]) => unknown;
+    blueprint: Blueprint;
+    blueprintDocument: BlueprintDocument;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    self: ScriptSelf;
+    eventId: string;
+    eventPayload?: Record<string, unknown>;
+    runtimeScopeId?: string;
+    surfaceId?: string;
+    elementId?: string;
+    elementInstanceKey?: string;
+    eventControl?: BehaviorGraphEventControl;
+    executionManager?: BlueprintExecutionManager;
+    allowClosedScopeExecution?: boolean;
+}): Promise<void> {
+    const blueprintId = input.blueprint.id;
+    const executionId = newExecutionId();
+    const execution = beginTrackedExecution({
+        executionManager: input.executionManager,
+        executionId,
+        runtimeScopeId: input.runtimeScopeId,
+        blueprintId,
+        eventId: input.eventId,
+        allowClosedScopeExecution: input.allowClosedScopeExecution,
+    });
+    input.debug.emit({ type: "execution.started", executionId, blueprintId });
+    try {
+        const ctx = buildDispatchScriptContext({
+            hostAdapter: input.hostAdapter,
+            blueprintDocument: input.blueprintDocument,
+            blueprint: input.blueprint,
+            runtimeScopeId: input.runtimeScopeId,
+            elementId: input.elementId,
+            elementInstanceKey: input.elementInstanceKey,
+            eventControl: input.eventControl,
+            self: input.self,
+            signal: execution?.signal,
+        });
+        throwIfBlueprintExecutionCancelled(execution?.signal);
+        await Promise.resolve(input.handler(ctx, input.eventPayload ?? {}));
+        throwIfBlueprintExecutionCancelled(execution?.signal);
+        input.debug.emit({ type: "execution.finished", executionId, blueprintId });
+    } catch (err) {
+        if (isBlueprintGraphExecutionCancelledError(err)) {
+            emitExecutionCancelled({
+                debug: input.debug,
+                executionId,
+                blueprintId,
+                eventId: input.eventId,
+                reason: err.message,
+            });
+            return;
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        emitExecutionError({
+            debug: input.debug,
+            executionId,
+            message,
+            blueprintId,
+            eventId: input.eventId,
+            surfaceId: input.surfaceId,
+        });
+    } finally {
+        execution?.finish();
+    }
+}
+
+/**
+ * The script event a broadcast reaches.
+ *
+ * Derived from the head rather than spelled out, so the two cannot drift. The fallback is
+ * unreachable - `scriptEvents.test.ts` asserts every registered head maps to an event - and is here
+ * only because the lookup is total over strings.
+ */
+const BROADCAST_SCRIPT_EVENT_ID: ScriptEventId =
+    scriptEventIdOfHead(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST) ?? "broadcast";
+
+/** One script listening for a fanned-out event: the module's handler, and where it sits. */
+type ScriptListener = {
+    blueprint: Blueprint;
+    handler: (...args: unknown[]) => unknown;
+    /** Absent for the page's own script, which sits on the surface rather than in it. */
+    elementId?: string;
+};
+
+/** The active script blueprint on an owner slot, when it exports a handler for this event. */
+function resolveScriptListener(
+    blueprintDocument: BlueprintDocument,
+    ownerKey: string,
+    eventId: ScriptEventId,
+): { blueprint: Blueprint; handler: (...args: unknown[]) => unknown } | null {
+    const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+    const blueprint = blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined;
+    if (!blueprintId || !blueprint || blueprint.program.kind !== "scriptModule") {
+        return null;
+    }
+    const handler = resolveScriptHandler(blueprintId, eventId);
+    return handler ? { blueprint, handler } : null;
+}
+
+/**
+ * Every script on this surface that listens for one fanned-out event - the page's own and each
+ * element's.
+ *
+ * The script half of what `collectBroadcastTargets` and `collectElementEventTargets` answer for
+ * graphs, and deliberately a second function rather than a branch inside those: what "listening"
+ * means is not the same question for the two frontends. A graph is scanned for a head whose fields
+ * match this dispatch - which broadcast name, which target element - because a graph cannot branch
+ * cheaply. A script exports one handler for the whole event and filters in a line of the author's
+ * code (see the folds in `scriptEvents.ts`), so there is nothing to scan and nothing to match: it
+ * listens if it exports.
+ */
+function collectSurfaceScriptListeners(input: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    eventId: ScriptEventId;
+}): ScriptListener[] {
+    const listeners: ScriptListener[] = [];
+    const surfaceListener = resolveScriptListener(
+        input.blueprintDocument,
+        surfaceMainOwnerKey(input.surfaceId),
+        input.eventId,
+    );
+    if (surfaceListener) {
+        listeners.push(surfaceListener);
+    }
+    for (const elementId of collectSurfaceElementIds(input.document, input.surfaceId)) {
+        const element = input.document.elements[elementId];
+        if (!getWidgetLogicApi(element?.type)?.supportsPrivateBlueprint) {
+            continue;
+        }
+        const listener = resolveScriptListener(
+            input.blueprintDocument,
+            widgetMainOwnerKey(input.surfaceId, elementId),
+            input.eventId,
+        );
+        if (listener) {
+            listeners.push({ ...listener, elementId });
+        }
+    }
+    return listeners;
+}
+
+/** Run a fanned-out event against every script that listens for it, in document order. */
+async function runScriptListeners(input: {
+    listeners: readonly ScriptListener[];
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    surfaceId: string;
+    runtimeScopeId?: string;
+    eventId: string;
+    eventPayload?: Record<string, unknown>;
+    executionManager?: BlueprintExecutionManager;
+    allowClosedScopeExecution?: boolean;
+}): Promise<void> {
+    for (const listener of input.listeners) {
+        await runScriptBlueprintHandler({
+            handler: listener.handler,
+            blueprint: listener.blueprint,
+            blueprintDocument: input.blueprintDocument,
+            hostAdapter: input.hostAdapter,
+            debug: input.debug,
+            eventId: input.eventId,
+            eventPayload: input.eventPayload,
+            runtimeScopeId: input.runtimeScopeId,
+            surfaceId: input.surfaceId,
+            elementId: listener.elementId,
+            executionManager: input.executionManager,
+            allowClosedScopeExecution: input.allowClosedScopeExecution,
+            self: scriptSelfOf({
+                surfaceId: input.surfaceId,
+                elementId: listener.elementId,
+                widgetType: listener.elementId
+                    ? input.document.elements[listener.elementId]?.type
+                    : undefined,
+            }),
+        });
+    }
 }
 
 /** A dispatched list row, as a script sees it. Null when nothing drew this element per row. */
@@ -531,28 +736,26 @@ export async function dispatchBlueprintUiEvent(options: {
         return false;
     }
     if (bp.program.kind === "scriptModule") {
-        const fn = resolveScriptHandler(blueprintId, eventName);
+        const scriptEventId = scriptEventIdForWidgetSlot(el.type, eventName);
+        const fn = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
         if (!fn) {
             return false;
         }
-        const executionId = newExecutionId();
-        const execution = beginTrackedExecution({
-            executionManager: options.executionManager,
-            executionId,
-            runtimeScopeId,
-            blueprintId,
-            eventId: eventName,
-            allowClosedScopeExecution: options.allowClosedScopeExecution,
-        });
-        debug.emit({ type: "execution.started", executionId, blueprintId });
-        const ctx = buildDispatchScriptContext({
-            hostAdapter,
-            blueprintDocument,
+        await runScriptBlueprintHandler({
+            handler: fn,
             blueprint: bp,
+            blueprintDocument,
+            hostAdapter,
+            debug,
+            eventId: eventName,
+            eventPayload,
             runtimeScopeId,
+            surfaceId,
             elementId,
             elementInstanceKey: instanceKey,
             eventControl,
+            executionManager: options.executionManager,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
             self: scriptSelfOf({
                 surfaceId,
                 componentId,
@@ -560,29 +763,7 @@ export async function dispatchBlueprintUiEvent(options: {
                 widgetType: el?.type,
                 row: scriptRowOf(listItemScope),
             }),
-            signal: execution?.signal,
         });
-        try {
-            throwIfBlueprintExecutionCancelled(execution?.signal);
-            await Promise.resolve(fn(ctx, eventPayload ?? {}));
-            throwIfBlueprintExecutionCancelled(execution?.signal);
-            debug.emit({ type: "execution.finished", executionId, blueprintId });
-        } catch (err) {
-            if (isBlueprintGraphExecutionCancelledError(err)) {
-                emitExecutionCancelled({
-                    debug,
-                    executionId,
-                    blueprintId,
-                    eventId: eventName,
-                    reason: err.message,
-                });
-                return true;
-            }
-            const message = err instanceof Error ? err.message : String(err);
-            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
-        } finally {
-            execution?.finish();
-        }
         return true;
     }
 
@@ -845,7 +1026,28 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
     } = options;
     const payload = { ...(eventPayload ?? {}), element: target };
     const targets = collectElementEventTargets({ document, blueprintDocument, surfaceId, target, nodeType });
-    const handled = targets.length > 0;
+    // The two frontends listen for this the same way and differ only in how they say so; see
+    // `collectSurfaceScriptListeners`. A script listener counts as handled for the same reason a
+    // graph one does - something answered the event.
+    const scriptEventId = scriptEventIdOfHead(nodeType);
+    const scriptListeners = scriptEventId
+        ? collectSurfaceScriptListeners({ document, blueprintDocument, surfaceId, eventId: scriptEventId })
+        : [];
+    const handled = targets.length > 0 || scriptListeners.length > 0;
+
+    await runScriptListeners({
+        listeners: scriptListeners,
+        document,
+        blueprintDocument,
+        hostAdapter,
+        debug,
+        surfaceId,
+        runtimeScopeId,
+        eventId,
+        eventPayload: payload,
+        executionManager: options.executionManager,
+        allowClosedScopeExecution: options.allowClosedScopeExecution,
+    });
 
     for (const listener of targets) {
         const executionId = newExecutionId();
@@ -1063,7 +1265,19 @@ export function countBlueprintBroadcastListeners(options: {
     surfaceId: string;
     eventName: string;
 }): number {
-    return collectBroadcastTargets(options).reduce((sum, target) => sum + target.headIds.length, 0);
+    // Graph heads and script handlers both, because this backs `ctx.broadcast.listenerCount()` and
+    // an author asking "is anyone listening" means anyone. Counting heads on one side and modules on
+    // the other is right: a graph may subscribe to one broadcast several times, a module once.
+    const scriptListeners = collectSurfaceScriptListeners({
+        document: options.document,
+        blueprintDocument: options.blueprintDocument,
+        surfaceId: options.surfaceId,
+        eventId: BROADCAST_SCRIPT_EVENT_ID,
+    });
+    return (
+        collectBroadcastTargets(options).reduce((sum, target) => sum + target.headIds.length, 0) +
+        scriptListeners.length
+    );
 }
 
 /**
@@ -1111,7 +1325,34 @@ export async function dispatchWidgetsBlueprintEvent(options: {
         const ownerKey = widgetMainOwnerKey(surfaceId, elementId);
         const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
         const bp = blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined;
-        if (!blueprintId || !bp || bp.program.kind !== "graph") {
+        if (!blueprintId || !bp) {
+            continue;
+        }
+        if (bp.program.kind === "scriptModule") {
+            // The slot table decides here too - it is what says this widget type raises this event
+            // at all - and only the name it resolves to differs between the frontends.
+            const scriptEventId = scriptEventIdForWidgetSlot(element?.type, eventName);
+            const handler = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
+            if (handler) {
+                await runScriptBlueprintHandler({
+                    handler,
+                    blueprint: bp,
+                    blueprintDocument,
+                    hostAdapter,
+                    debug,
+                    eventId: eventName,
+                    eventPayload,
+                    runtimeScopeId,
+                    surfaceId,
+                    elementId,
+                    executionManager: options.executionManager,
+                    allowClosedScopeExecution: options.allowClosedScopeExecution,
+                    self: scriptSelfOf({ surfaceId, elementId, widgetType: element?.type }),
+                });
+            }
+            continue;
+        }
+        if (bp.program.kind !== "graph") {
             continue;
         }
         for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
@@ -1234,6 +1475,27 @@ export async function dispatchBlueprintBroadcastEvent(options: {
     } = options;
     const eventPayload = { event: eventName, data, sender: sender ?? "" };
     const targets = collectBroadcastTargets({ document, blueprintDocument, surfaceId, eventName });
+
+    // A graph subscribes with a head that names the broadcast; a script exports `onBroadcast` and
+    // reads the name off the payload. Both are subscriptions to the same fan-out.
+    await runScriptListeners({
+        listeners: collectSurfaceScriptListeners({
+            document,
+            blueprintDocument,
+            surfaceId,
+            eventId: BROADCAST_SCRIPT_EVENT_ID,
+        }),
+        document,
+        blueprintDocument,
+        hostAdapter,
+        debug,
+        surfaceId,
+        runtimeScopeId,
+        eventId: eventName,
+        eventPayload,
+        executionManager: options.executionManager,
+        allowClosedScopeExecution: options.allowClosedScopeExecution,
+    });
 
     for (const target of targets) {
         const executionId = newExecutionId();
@@ -1511,49 +1773,26 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     }
 
     if (bp.program.kind === "scriptModule") {
-        const fn = resolveScriptHandler(blueprintId, eventName);
+        const scriptEventId = scriptEventIdForSurfaceSlot(eventName);
+        const fn = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
         if (!fn) {
             return;
         }
-        const executionId = newExecutionId();
-        const execution = beginTrackedExecution({
-            executionManager: options.executionManager,
-            executionId,
-            runtimeScopeId,
-            blueprintId,
-            eventId: eventName,
-            allowClosedScopeExecution: options.allowClosedScopeExecution,
-        });
-        debug.emit({ type: "execution.started", executionId, blueprintId });
-        const ctx = buildDispatchScriptContext({
-            hostAdapter,
-            blueprintDocument,
+        await runScriptBlueprintHandler({
+            handler: fn,
             blueprint: bp,
+            blueprintDocument,
+            hostAdapter,
+            debug,
+            eventId: eventName,
+            eventPayload,
             runtimeScopeId,
+            surfaceId,
+            eventControl,
+            executionManager: options.executionManager,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
             self: scriptSelfOf({ surfaceId }),
-            signal: execution?.signal,
         });
-        try {
-            throwIfBlueprintExecutionCancelled(execution?.signal);
-            await Promise.resolve(fn(ctx, eventPayload ?? {}));
-            throwIfBlueprintExecutionCancelled(execution?.signal);
-            debug.emit({ type: "execution.finished", executionId, blueprintId });
-        } catch (err) {
-            if (isBlueprintGraphExecutionCancelledError(err)) {
-                emitExecutionCancelled({
-                    debug,
-                    executionId,
-                    blueprintId,
-                    eventId: eventName,
-                    reason: err.message,
-                });
-                return;
-            }
-            const message = err instanceof Error ? err.message : String(err);
-            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
-        } finally {
-            execution?.finish();
-        }
         return;
     }
 
@@ -1715,48 +1954,26 @@ export async function dispatchGlobalBlueprintEvent(options: {
     }
 
     if (bp.program.kind === "scriptModule") {
-        const fn = resolveScriptHandler(blueprintId, eventName);
+        const scriptEventId = scriptEventIdForProjectSlot(eventName);
+        const fn = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
         if (!fn) {
             return;
         }
-        const executionId = newExecutionId();
-        const execution = beginTrackedExecution({
-            executionManager: options.executionManager,
-            executionId,
-            blueprintId,
-            eventId: eventName,
-            allowClosedScopeExecution: options.allowClosedScopeExecution,
-        });
-        debug.emit({ type: "execution.started", executionId, blueprintId });
-        const ctx = buildDispatchScriptContext({
-            hostAdapter,
-            blueprintDocument,
+        // The global blueprint belongs to no surface, so this one runs without a place: no
+        // `surfaceId` goes to the runner, and its failures report without one.
+        await runScriptBlueprintHandler({
+            handler: fn,
             blueprint: bp,
+            blueprintDocument,
+            hostAdapter,
+            debug,
+            eventId: eventName,
+            eventPayload,
+            eventControl,
+            executionManager: options.executionManager,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
             self: scriptSelfOf({}),
-            signal: execution?.signal,
         });
-        try {
-            throwIfBlueprintExecutionCancelled(execution?.signal);
-            await Promise.resolve(fn(ctx, eventPayload ?? {}));
-            throwIfBlueprintExecutionCancelled(execution?.signal);
-            debug.emit({ type: "execution.finished", executionId, blueprintId });
-        } catch (err) {
-            if (isBlueprintGraphExecutionCancelledError(err)) {
-                emitExecutionCancelled({
-                    debug,
-                    executionId,
-                    blueprintId,
-                    eventId: eventName,
-                    reason: err.message,
-                });
-                return;
-            }
-            const message = err instanceof Error ? err.message : String(err);
-            // The global blueprint belongs to no surface, so this one reports without a place.
-            emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName });
-        } finally {
-            execution?.finish();
-        }
         return;
     }
 

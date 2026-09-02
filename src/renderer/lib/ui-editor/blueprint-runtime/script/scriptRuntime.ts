@@ -114,14 +114,39 @@ export function unmountCompiledScripts(): void {
  * The export name follows from the event id by one rule (`mouseClick` -> `onMouseClick`), which is
  * why there is no table here: a script and the dispatcher agree because both ask
  * {@link scriptEventExportName}.
+ *
+ * A **script event id**, not the id the dispatch raised. Those are two vocabularies and they differ
+ * on every head named after its widget - a slider raises `valueChanged` and its head is
+ * `sliderValueChanged` - so a caller translates first through `scriptEventDispatch.ts`. Passing the
+ * dispatch's own id here is what made 81 declared handler names unreachable.
  */
-export function resolveScriptHandler(blueprintId: string, eventId: string): ((...args: unknown[]) => unknown) | null {
+export function resolveScriptHandler(
+    blueprintId: string,
+    eventId: ScriptEventId,
+): ((...args: unknown[]) => unknown) | null {
     const mounted = state().modules[blueprintId];
     if (!mounted) {
         return null;
     }
-    const handler = mounted.module[scriptEventExportName(eventId as ScriptEventId)];
+    const handler = mounted.module[scriptEventExportName(eventId)];
     return typeof handler === "function" ? (handler as (...args: unknown[]) => unknown) : null;
+}
+
+/**
+ * Every function this blueprint's module exports, by name.
+ *
+ * For the mount-time check that reports a script exporting nothing its slot calls: the author's
+ * spelling is half of that message, and only the module knows it.
+ */
+export function listScriptExportedFunctionNames(blueprintId: string): string[] {
+    const mounted = state().modules[blueprintId];
+    if (!mounted) {
+        return [];
+    }
+    return Object.entries(mounted.module)
+        .filter(([, value]) => typeof value === "function")
+        .map(([name]) => name)
+        .sort();
 }
 
 /** The default export, which is how a story row and a value binding are entered. */
