@@ -16,6 +16,7 @@ import { ModelImportWizard } from "./components/ModelImportWizard";
 import { MediaImportDialog } from "./components/MediaImportDialog";
 import { MediaConvertAssetDialog } from "./components/MediaConvertAssetDialog";
 import { useMediaAssetSupport } from "./state/useMediaAssetSupport";
+import { useUnreadableAssetCategories } from "./state/useUnreadableAssetCategories";
 
 import { useAssetData } from "./state/useAssetData";
 import { useAssetSets, type ResolvedAssetSet } from "./state/useAssetSets";
@@ -960,6 +961,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const mediaSupport = useMediaAssetSupport();
 
+    /**
+     * The sections whose metadata file could not be read. Both views draw a line in place of the
+     * rows for one of these, because otherwise it is indistinguishable from a category with
+     * nothing in it - and it is the opposite of that.
+     */
+    const unreadableCategories = useUnreadableAssetCategories();
+
     const canConvertMedia = useMemo(() => {
         const item = contextMenuTarget?.item;
         if (!item || contextMenuTarget?.isGroup) {
@@ -1123,6 +1131,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         compactToolbar: !showHeader,
         setAssetsIconToolbarCenter,
         mediaSupport,
+        unreadableCategories,
         handleConvertMedia,
         assetClaims,
         assetTransfers,

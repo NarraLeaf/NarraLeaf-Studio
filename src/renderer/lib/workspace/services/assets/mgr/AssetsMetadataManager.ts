@@ -1,6 +1,11 @@
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { RendererError } from "@shared/utils/error";
+import { FsRejectErrorCode } from "@shared/types/os";
+import { quarantinePathFor } from "@shared/documents/documentIo";
+import { DocumentCorruptError } from "@shared/documents/types";
+import { reportUnreadableDocument } from "../../autosave/SaveStatusService";
 import { FileSystemService } from "../../core/FileSystem";
+import { RendererDocumentStorage } from "../../core/DocumentStorage";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType, categoryOfAssetType, isBundleAssetType } from "../assetTypes";
 import { Asset, AssetExtras, AssetResolveMeta, AssetSource, AssetsMap } from "../types";
@@ -8,6 +13,46 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { reconcileAssetOrder } from "../assetOrder";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+
+/**
+ * A metadata shard that is on disk and could not be read.
+ *
+ * The record the library keeps in place of the shard's contents. Its type comes up with no assets
+ * in memory, which is not the same as having none: the file is still there, holding every record
+ * this open could not parse, and the one thing that must not happen to it is a write. So the shard
+ * is latched read-only for the life of the manager (`AssetsService.writeAssetsMetadata` refuses it,
+ * and the section's order file with it), the panel says so in the section it belongs to, and the
+ * recovery offer the anomaly raises is the way to look at the file.
+ *
+ * The same rule the spec-based loaders apply (`loadDocument` in `@shared/documents`): the bytes are
+ * copied aside as evidence, the failure is reported, and the file is left exactly as it was found.
+ */
+export interface UnreadableAssetShard {
+    readonly type: AssetType;
+    /** The shard, as an absolute path - what the anomaly names and the notice shows the name of. */
+    readonly path: string;
+    /** The failure in one line: the parse error's own message, position and token included. */
+    readonly reason: string;
+    /** Where the bytes were copied, project-relative, or `null` when the copy failed as well. */
+    readonly quarantinePath: string | null;
+}
+
+/**
+ * One line naming what went wrong, for the record above and for the notice built from it.
+ *
+ * `JSON.parse` throws a `SyntaxError` whose message carries the position; the filesystem bridge
+ * rejects with `{code, message}`. Both are wanted verbatim, minus the stack the anomaly log keeps.
+ */
+function describeShardFailure(error: unknown): string {
+    if (error instanceof Error) {
+        return `${error.name}: ${error.message}`;
+    }
+    if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+        const record = error as { code?: unknown; message: string };
+        return typeof record.code === "string" ? `${record.code}: ${record.message}` : record.message;
+    }
+    return String(error);
+}
 
 /**
  * Set an asset's extension, removing the key when there is none.
@@ -27,6 +72,11 @@ function setAssetExtension(asset: Asset<AssetType, AssetSource>, ext: string | u
 
 export class AssetsMetadataManager {
     public assetsMetadata: AssetsMap | null = null;
+    /**
+     * The shards this open found on disk and could not read, by type. See
+     * {@link UnreadableAssetShard} for what being in here means; filled once, by {@link init}.
+     */
+    private readonly unreadableShards = new Map<AssetType, UnreadableAssetShard>();
 
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
     }
@@ -36,6 +86,21 @@ export class AssetsMetadataManager {
             throw new RendererError("Assets metadata not initialized");
         }
         return this.assetsMetadata;
+    }
+
+    /** Every shard that is on disk and could not be read. Empty for a healthy library. */
+    public getUnreadableShards(): ReadonlyMap<AssetType, UnreadableAssetShard> {
+        return this.unreadableShards;
+    }
+
+    /**
+     * Whether `type`'s shard is latched read-only because it could not be read.
+     *
+     * The question every writer of the shard has to ask first: the in-memory record for such a
+     * type is empty, and writing it would replace the author's file with `{}`.
+     */
+    public isShardUnreadable(type: AssetType): boolean {
+        return this.unreadableShards.has(type);
     }
 
     public list<T extends AssetType>(type: T): string[] {
@@ -339,25 +404,29 @@ export class AssetsMetadataManager {
 
                 if (parsed) {
                     this.assignValidAssets(data[type], parsed, type, shardPath);
-                } else {
-                    // The one that most needed saying and never did. What happens next is that this
-                    // asset type comes back EMPTY and the file behind it is replaced: to the author
-                    // every image in the project has vanished, with nothing on screen connecting
-                    // that to a JSON file that would not parse. The parse failure - the position in
-                    // the file, the unexpected token - is the only thing that says whether this is a
-                    // truncated write, a merge left in the file, or something that was never JSON.
+                } else if (rawResult.ok) {
+                    await this.setAsideUnreadableShard(type, shardPath, rawResult.data, parseError ?? shardResult.error);
+                } else if (rawResult.error.code === FsRejectErrorCode.NOT_FOUND) {
+                    // No file at all, which is not the same as a file that will not parse.
+                    // `initAssetsMetadata` creates a missing shard as `{}` before this loop runs, so
+                    // the only way to be here is that creation having been refused - a frozen
+                    // workspace, or a revision being shown. Recorded, because the library still
+                    // comes up short of what the project holds, but not latched read-only: there
+                    // are no bytes for a later write to destroy.
                     reportWorkspaceAnomaly({
                         source: "assets",
                         operationKey: "workspace.recovery.operations.assetsShardRead",
                         path: shardPath,
-                        error: parseError ?? shardResult.error,
+                        error: rawResult.error,
                         severity: "degraded",
                     });
-                    console.warn(`AssetsService: metadata shard corrupted, backing up and resetting: ${shardPath}`);
-                    const recoveryResult = await filesystemService.recoverCorruptedJsonFile(shardPath, JSON.stringify({}), "utf-8");
-                    if (!recoveryResult.ok) {
-                        console.warn(`AssetsService: failed to recover corrupted metadata shard: ${shardPath}`, recoveryResult.error);
-                    }
+                } else {
+                    // The file is there and could not be read at all: no permission, a bad sector,
+                    // a directory where a file should be. Latched like a parse failure, because the
+                    // reason to refuse a write is the same - the record is empty and the file is
+                    // not - but nothing is set aside: there are no bytes to set aside, and an I/O
+                    // failure is not corruption.
+                    await this.setAsideUnreadableShard(type, shardPath, null, parseError ?? shardResult.error);
                 }
             }
         }
@@ -366,6 +435,93 @@ export class AssetsMetadataManager {
         this.migrateAssetExtensions(data);
 
         return data;
+    }
+
+    /**
+     * A shard is on disk and does not parse: keep the evidence, say so, and touch nothing.
+     *
+     * This used to back the file up and write `{}` over it. To the author that was every image in
+     * the project vanishing on open with nothing on screen to connect it to a JSON file that would
+     * not parse - and the open itself had already destroyed the file the error was about. So the
+     * file now stays exactly as it was found, the type comes up empty and read-only (see
+     * {@link UnreadableAssetShard}), and the anomaly is what raises the recovery offer.
+     *
+     * The bytes are copied to `.nlstudio/quarantine/<stamp>/assets/...`, the same place and the
+     * same layout the spec-based loaders use, and the copy is byte-for-byte for the reason
+     * `DocumentStorage.copy` gives: a truncated write can cut a multi-byte sequence in half, and a
+     * copy that went through a string would not be the file. A copy that fails is reported and is
+     * not a reason to stop: the file is still on disk, and the report is still true.
+     *
+     * `text` is what was read, and `null` when nothing could be. Only the first kind is corruption:
+     * a file that could not be read at all is latched all the same, but there is nothing to
+     * quarantine and nothing for the author to be shown the contents of.
+     *
+     * The parse failure - the position in the file, the unexpected token - is the only thing that
+     * says whether this is a truncated write, a merge left in the file, or something that was never
+     * JSON, which is why the anomaly carries it rather than `readJSON`'s flat summary.
+     */
+    private async setAsideUnreadableShard(
+        type: AssetType,
+        shardPath: string,
+        text: string | null,
+        error: unknown,
+    ): Promise<void> {
+        reportWorkspaceAnomaly({
+            source: "assets",
+            operationKey: "workspace.recovery.operations.assetsShardRead",
+            path: shardPath,
+            error,
+            severity: "degraded",
+        });
+
+        const relativePath = ProjectNameConvention.AssetsMetadataShard(type).join("/");
+        const reason = describeShardFailure(error);
+        let quarantinePath: string | null = null;
+        if (text !== null) {
+            try {
+                const target = quarantinePathFor(relativePath, new Date());
+                await this.documentStorage().copy(relativePath, target);
+                quarantinePath = target;
+            } catch (failure) {
+                console.warn(`AssetsService: could not set aside a copy of the unreadable metadata shard ${shardPath}:`, failure);
+            }
+        }
+
+        this.unreadableShards.set(type, {
+            type,
+            path: shardPath,
+            reason,
+            quarantinePath,
+        });
+
+        // The same channel a story or a character that will not parse goes out on: a line in the
+        // workspace's Storage console and one sticky notice naming the file, saying that it is
+        // unchanged and where the copy is. An asset shard is not loaded through `loadDocument` -
+        // it predates the document port - but what the author needs to be told about it is
+        // identical, and two vocabularies for one fact is how they come to disagree.
+        if (text !== null) {
+            reportUnreadableDocument(this.getContext(), {
+                error: new DocumentCorruptError({ kind: "assets-metadata", path: relativePath, reason, text, cause: error }),
+                quarantinePath,
+            });
+        }
+
+        console.warn(
+            `AssetsService: metadata shard could not be read and is left as found: ${shardPath}`
+            + (quarantinePath ? ` (copy at ${quarantinePath})` : ""),
+        );
+    }
+
+    /**
+     * The project's documents as the quarantine copy needs them: project-relative paths, parent
+     * directories created on demand, and a refusal to copy while a revision is being shown -
+     * the bytes that failed to parse were the revision's then, not the file's.
+     */
+    private documentStorage(): RendererDocumentStorage {
+        return new RendererDocumentStorage(
+            this.getContext().services.get<FileSystemService>(Services.FileSystem),
+            this.getContext().project.getConfig().projectPath,
+        );
     }
 
     private assignValidAssets<T extends AssetType>(
@@ -400,7 +556,7 @@ export class AssetsMetadataManager {
     }
 
     private migrateAssetExtensions(data: AssetsMap): void {
-        let hasChanges = false;
+        const changedTypes = new Set<AssetType>();
 
         for (const type of Object.values(AssetType)) {
             // A model bundle is a directory: it has no extension, and deriving one from its display
@@ -424,15 +580,16 @@ export class AssetsMetadataManager {
                     continue;
                 }
                 setAssetExtension(asset, extension);
-                hasChanges = true;
+                changedTypes.add(type);
             }
         }
 
-        // Mark all types as dirty if we made changes so they get saved
-        if (hasChanges) {
-            for (const type of Object.values(AssetType)) {
-                this.assetsService.markDirty(type);
-            }
+        // Only the shards that changed. This used to mark every type on any change, which was
+        // harmless while every shard was writable and is not now: a shard that could not be read
+        // would be queued for a write it is going to refuse, and the author told their edit was
+        // not saved when they had made none.
+        for (const type of changedTypes) {
+            this.assetsService.markDirty(type);
         }
     }
 

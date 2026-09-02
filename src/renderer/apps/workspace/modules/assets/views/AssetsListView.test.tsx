@@ -56,9 +56,10 @@ const FOLDER: AssetGroup = {
 
 const importToGroup = vi.fn();
 
-function Harness({ publishRowOrder = () => undefined, assetTransfers = {} }: {
+function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
     publishRowOrder?: (keys: readonly string[]) => void;
     assetTransfers?: Readonly<Record<string, number>>;
+    unreadableCategories?: ReadonlySet<AssetCategory>;
 }) {
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -106,6 +107,7 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {} }: {
         compactToolbar: false,
         setAssetsIconToolbarCenter: () => undefined,
         mediaSupport: new Map(),
+        unreadableCategories,
         handleConvertMedia: () => undefined,
         assetClaims: {},
         assetTransfers,
@@ -203,5 +205,23 @@ describe("AssetsListView on a large library", () => {
         fireEvent.click(folder as HTMLElement);
 
         expect(drawnRows()).toBeLessThan(80);
+    });
+});
+
+describe("a section whose metadata file could not be read", () => {
+    it("says so, where an ordinary empty section says nothing", () => {
+        // The whole point: with no rows and nothing said, the author reads it as a category they
+        // have not used yet, while the file behind it still holds everything they imported. Media
+        // is empty in this harness either way, so the only difference is the sentence.
+        const { container } = render(<Harness unreadableCategories={new Set([AssetCategory.Media])} />);
+
+        expect(document.querySelector(`[data-asset-category="${AssetCategory.Media}"]`)).not.toBeNull();
+        expect(container.textContent).toContain("could not be read");
+    });
+
+    it("stays quiet about every section that was read", () => {
+        const { container } = render(<Harness />);
+
+        expect(container.textContent).not.toContain("could not be read");
     });
 });
