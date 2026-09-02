@@ -1512,12 +1512,13 @@ export const story = {
                 one: "{count} row merged into {scene}",
                 other: "{count} rows merged into {scene}",
             },
-            jumpsRepointed: {
-                one: "{count} jump re-pointed",
-                other: "{count} jumps re-pointed",
-            },
-            refused: "\"{name}\" is named outside this story",
+            // A jump into the merged scene used to start at its first row; after a merge the
+            // surviving scene's rows come first, so the jump would still resolve and play something
+            // else. Named rather than re-pointed - see `planSceneMerge`.
+            refused: "\"{name}\" is still named elsewhere",
             refusedDetail: "Named by: {referrers}",
+            referrerJump: "{scene} · row {row}",
+            referrerEntryScene: "the story's entry scene",
             noNeighbour: "There is no scene to merge with",
         },
         speaker: {

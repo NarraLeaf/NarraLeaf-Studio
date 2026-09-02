@@ -241,29 +241,39 @@ describe("planSceneMerge / applySceneMerge", () => {
         expect(playbackOrder(doc, "a")).toEqual(before);
     });
 
-    it("re-points a jump from elsewhere at the surviving scene", () => {
+    it("refuses, naming the row, when a jump from elsewhere still targets the scene", () => {
         const doc = document([
             scene("a", "A", [narration("r1", "one"), jump("j1", "b")]),
             scene("b", "B", [narration("r2", "two")]),
-            scene("c", "C", [jump("j2", "b")]),
+            scene("c", "C", [narration("r3", "three"), jump("j2", "b")]),
         ]);
 
         const plan = planSceneMerge(doc, "a", "b")!;
-        expect(plan.rewrittenJumpBlockIds).toEqual(["j2"]);
-        applySceneMerge(doc, plan);
+        // Not re-pointed: a jump into B started at B's first row, and after a merge A's rows come
+        // first - so a re-pointed jump would resolve, build, and play something else.
+        expect(plan.blockers).toEqual([{ kind: "jump", sceneName: "C", row: 2 }]);
+        // The tail jump the split wrote is not a blocker; it is the row the merge removes.
+        expect(plan.droppedJumpBlockId).toBe("j1");
 
-        const rewritten = doc.scenes.c.blocks.j2;
-        expect(rewritten.kind === "jump" && rewritten.payload.targetSceneId).toBe("a");
+        applySceneMerge(doc, plan);
+        expect(doc.scenes.b).toBeDefined();
+        expect(doc.scenes.a.rootBlockIds).toEqual(["r1", "j1"]);
+        const untouched = doc.scenes.c.blocks.j2;
+        expect(untouched.kind === "jump" && untouched.payload.targetSceneId).toBe("b");
     });
 
-    it("moves the entry pointer off a scene it removes", () => {
+    it("refuses when the story's entry pointer names the scene", () => {
         const doc = document([
             scene("a", "A", [narration("r1", "one")]),
             scene("b", "B", [narration("r2", "two")]),
         ], "b");
 
-        applySceneMerge(doc, planSceneMerge(doc, "a", "b")!);
-        expect(doc.entrySceneId).toBe("a");
+        const plan = planSceneMerge(doc, "a", "b")!;
+        expect(plan.blockers).toEqual([{ kind: "entryScene" }]);
+
+        applySceneMerge(doc, plan);
+        expect(doc.scenes.b).toBeDefined();
+        expect(doc.entrySceneId).toBe("b");
     });
 
     it("writes nothing while anything outside the story still names the scene", () => {
@@ -271,8 +281,8 @@ describe("planSceneMerge / applySceneMerge", () => {
             scene("a", "A", [narration("r1", "one")]),
             scene("b", "B", [narration("r2", "two")]),
         ]);
-        const plan = planSceneMerge(doc, "a", "b", [{ kind: "blueprint", label: "Quit" }])!;
-        expect(plan.blockers).toHaveLength(1);
+        const plan = planSceneMerge(doc, "a", "b", [{ kind: "blueprint", name: "Quit" }])!;
+        expect(plan.blockers).toEqual([{ kind: "blueprint", name: "Quit" }]);
 
         applySceneMerge(doc, plan);
         expect(doc.scenes.b).toBeDefined();
@@ -322,7 +332,7 @@ describe("findSceneReferrersInBlueprints", () => {
                 two: { name: "Quit", program: { graphs: { main: { nodes: { n1: { params: { sceneId: "z" } } } } } } },
             },
         };
-        expect(findSceneReferrersInBlueprints(blueprints, "b")).toEqual([{ kind: "blueprint", label: "Start" }]);
+        expect(findSceneReferrersInBlueprints(blueprints, "b")).toEqual([{ kind: "blueprint", name: "Start" }]);
         expect(findSceneReferrersInBlueprints(blueprints, "q")).toEqual([]);
         expect(findSceneReferrersInBlueprints(null, "b")).toEqual([]);
     });

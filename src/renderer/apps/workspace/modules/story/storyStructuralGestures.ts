@@ -1,6 +1,11 @@
 import { translate, translateN } from "@/lib/i18n";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
-import { findSceneReferrersInBlueprints, sceneNeighbours } from "@/lib/workspace/services/story/storyStructuralOps";
+import {
+    findSceneReferrersInBlueprints,
+    planSceneMerge,
+    sceneNeighbours,
+    type StorySceneReferrer,
+} from "@/lib/workspace/services/story/storyStructuralOps";
 import type { StoryBlockId, StoryId, StorySceneId } from "@shared/types/story";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -127,11 +132,16 @@ export async function mergeStoryScenes(params: {
         return null;
     }
     const referrers = findSceneReferrersInBlueprints(blueprintService?.getBlueprintDocument(), mergedSceneId);
-    if (referrers.length > 0) {
+    // Planned before the confirm rather than after it: a refusal is not something to ask about first.
+    const planned = planSceneMerge(document, survivingSceneId, mergedSceneId, referrers);
+    if (!planned) {
+        return null;
+    }
+    if (planned.blockers.length > 0) {
         await uiService.showAlert(
             translate("story.structuralOps.mergeScenes.refused", { name: merged.name }),
             translate("story.structuralOps.mergeScenes.refusedDetail", {
-                referrers: referrers.map(referrer => referrer.label).join(", "),
+                referrers: planned.blockers.map(describeSceneReferrer).join(", "),
             }),
         );
         return null;
@@ -154,12 +164,26 @@ export async function mergeStoryScenes(params: {
         count: plan.movingRootCount,
         scene: survivingName,
     });
-    const repointed = plan.rewrittenJumpBlockIds.length;
-    uiService.showNotification(
-        repointed > 0
-            ? `${done} · ${translateN("story.structuralOps.mergeScenes.jumpsRepointed", repointed, { count: repointed })}`
-            : done,
-        "success",
-    );
+    uiService.showNotification(done, "success");
     return mergedSceneId;
+}
+
+/**
+ * One referrer, as the author would go looking for it.
+ *
+ * A row is named by where it is - its scene and its position in it - because that is what the
+ * author has to open to move it. The other two name themselves.
+ */
+function describeSceneReferrer(referrer: StorySceneReferrer): string {
+    switch (referrer.kind) {
+        case "jump":
+            return translate("story.structuralOps.mergeScenes.referrerJump", {
+                scene: referrer.sceneName,
+                row: referrer.row,
+            });
+        case "entryScene":
+            return translate("story.structuralOps.mergeScenes.referrerEntryScene");
+        default:
+            return referrer.name;
+    }
 }

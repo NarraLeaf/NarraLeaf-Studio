@@ -216,7 +216,7 @@ describe("StoryService structural operations", () => {
         addRows(service, story.id, b.id, ["r2"]);
         const before = snapshot(service, story.id);
 
-        const plan = service.mergeScenes(story.id, a.id, b.id, [{ kind: "blueprint", label: "Start" }])!;
+        const plan = service.mergeScenes(story.id, a.id, b.id, [{ kind: "blueprint", name: "Start" }])!;
         expect(plan.blockers).toHaveLength(1);
         expect(snapshot(service, story.id)).toBe(before);
     });

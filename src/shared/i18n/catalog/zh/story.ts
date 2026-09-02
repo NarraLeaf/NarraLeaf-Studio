@@ -1302,11 +1302,10 @@ export const story = {
             done: {
                 other: "已将 {count} 行合并到 {scene}",
             },
-            jumpsRepointed: {
-                other: "已改指 {count} 处跳转",
-            },
-            refused: "“{name}”被该故事之外的位置引用",
+            refused: "“{name}”仍被其他位置引用",
             refusedDetail: "引用位置：{referrers}",
+            referrerJump: "{scene} · 第 {row} 行",
+            referrerEntryScene: "故事的入口场景",
             noNeighbour: "没有可合并的场景",
         },
         speaker: {

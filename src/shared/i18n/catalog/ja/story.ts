@@ -1359,11 +1359,10 @@ export const story = {
             done: {
                 other: "{count} 行を {scene} に結合した",
             },
-            jumpsRepointed: {
-                other: "{count} 件のジャンプを付け替えた",
-            },
-            refused: "「{name}」はこのストーリーの外から参照されている",
+            refused: "「{name}」は他の場所から参照されている",
             refusedDetail: "参照元：{referrers}",
+            referrerJump: "{scene} · {row} 行目",
+            referrerEntryScene: "ストーリーの開始シーン",
             noNeighbour: "結合できるシーンがない",
         },
         speaker: {

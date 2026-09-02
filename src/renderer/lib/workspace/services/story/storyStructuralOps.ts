@@ -2,6 +2,7 @@ import {
     declaredStageObject,
     isStoryDeclarationBlock,
     listSceneBlocksInDocumentOrder,
+    listScenesInDocumentOrder,
     listSceneLabels,
     stageObjectReference,
     type StageObjectDeclaration,
@@ -270,13 +271,19 @@ function endsWithTransfer(scene: StoryScene, rootIds: readonly StoryBlockId[]): 
 // Merging two scenes
 // ---------------------------------------------------------------------------
 
-/** One place outside the pair that names the scene a merge would drop. */
-export type StorySceneReferrer = {
-    /** What holds the reference, for the sentence that lists it. */
-    kind: "jump" | "entryScene" | "blueprint";
-    /** What the author would look for to find it: a scene name, a blueprint name. */
-    label: string;
-};
+/**
+ * One place that names the scene a merge would drop, in the terms the author would look for it.
+ *
+ * Shaped for the sentence rather than carrying a pre-built one: a row is named by its scene and its
+ * position, and how those two read is the interface layer's business, not this module's.
+ */
+export type StorySceneReferrer =
+    /** A `/jump` row somewhere in the story. `row` is its one-based position among its scene's rows. */
+    | { kind: "jump"; sceneName: string; row: number }
+    /** The story's own entry pointer. */
+    | { kind: "entryScene" }
+    /** A blueprint graph that holds the scene id. */
+    | { kind: "blueprint"; name: string };
 
 export type StorySceneMergePlan = {
     /** The scene that keeps its id and receives the rows. */
@@ -287,9 +294,7 @@ export type StorySceneMergePlan = {
     movingRootCount: number;
     /** The surviving scene's trailing jump into the merged scene, which the merge drops. */
     droppedJumpBlockId: StoryBlockId | null;
-    /** Jumps elsewhere in the story that the merge re-points at the surviving scene. */
-    rewrittenJumpBlockIds: StoryBlockId[];
-    /** References the merge cannot rewrite. Non-empty means the merge is refused. */
+    /** Everything that still names the scene. Non-empty means the merge is refused. */
     blockers: StorySceneReferrer[];
 };
 
@@ -300,10 +305,18 @@ export type StorySceneMergePlan = {
  * previous" are the same operation named from either end and the result does not depend on which
  * one the author reached for.
  *
+ * **Anything else that names the merged scene refuses the merge.** The tempting alternative is to
+ * re-point those jumps at the surviving scene, and it is wrong: a jump into the merged scene used to
+ * start at its first row, and after a merge the surviving scene's own rows come first - so the jump
+ * still resolves, still builds, and plays something else. There is no cross-scene label to land on,
+ * so nothing can express the old meaning. A refusal naming the rows is the only honest answer; the
+ * author moves or re-points them and merges again.
+ *
+ * The one exception is the surviving scene's trailing jump into the merged scene, which is the row a
+ * split wrote to keep playback going and which the merge takes back out.
+ *
  * `externalReferrers` is what the caller found outside the story document - blueprint graphs name
- * scenes by id and cannot be rewritten from here. Any of them makes the plan a refusal: a merge
- * that leaves a graph pointing at a scene that no longer exists is a build failure the author did
- * not ask for, and half a merge is worse than none.
+ * scenes by id and cannot be re-pointed from here at all.
  */
 export function planSceneMerge(
     document: StoryDocument,
@@ -317,25 +330,30 @@ export function planSceneMerge(
         return null;
     }
     const droppedJumpBlockId = trailingJumpTo(surviving, mergedSceneId);
-    const rewrittenJumpBlockIds: StoryBlockId[] = [];
-    for (const scene of Object.values(document.scenes)) {
-        for (const block of Object.values(scene.blocks)) {
-            if (block.kind !== "jump" || block.payload.targetSceneId !== mergedSceneId) {
-                continue;
+    const blockers: StorySceneReferrer[] = [];
+    // Document order, so the list reads the way the outline does rather than the way the scene table
+    // happens to be keyed.
+    for (const scene of listScenesInDocumentOrder(document)) {
+        scene.rootBlockIds.forEach((blockId, index) => {
+            const block = scene.blocks[blockId];
+            if (block?.kind !== "jump" || block.payload.targetSceneId !== mergedSceneId) {
+                return;
             }
             if (block.id === droppedJumpBlockId) {
-                continue;
+                return;
             }
-            rewrittenJumpBlockIds.push(block.id);
-        }
+            blockers.push({ kind: "jump", sceneName: scene.name, row: index + 1 });
+        });
+    }
+    if (document.entrySceneId === mergedSceneId) {
+        blockers.push({ kind: "entryScene" });
     }
     return {
         survivingSceneId,
         mergedSceneId,
         movingRootCount: merged.rootBlockIds.length,
         droppedJumpBlockId,
-        rewrittenJumpBlockIds,
-        blockers: [...externalReferrers],
+        blockers: [...blockers, ...externalReferrers],
     };
 }
 
@@ -379,17 +397,6 @@ export function applySceneMerge(document: StoryDocument, plan: StorySceneMergePl
     if (merged.sceneSnapshots?.length) {
         surviving.sceneSnapshots = [...(surviving.sceneSnapshots ?? []), ...merged.sceneSnapshots];
     }
-    for (const scene of Object.values(document.scenes)) {
-        for (const blockId of plan.rewrittenJumpBlockIds) {
-            const block = scene.blocks[blockId];
-            if (block?.kind === "jump") {
-                block.payload = { ...block.payload, targetSceneId: plan.survivingSceneId };
-            }
-        }
-    }
-    if (document.entrySceneId === plan.mergedSceneId) {
-        document.entrySceneId = plan.survivingSceneId;
-    }
     delete document.scenes[plan.mergedSceneId];
     for (const chapter of document.chapters) {
         chapter.sceneIds = chapter.sceneIds.filter(id => id !== plan.mergedSceneId);
@@ -415,7 +422,7 @@ export function findSceneReferrersInBlueprints(
     const referrers: StorySceneReferrer[] = [];
     for (const blueprint of Object.values(blueprints?.blueprints ?? {})) {
         if (containsString(blueprint.program, sceneId)) {
-            referrers.push({ kind: "blueprint", label: blueprint.name });
+            referrers.push({ kind: "blueprint", name: blueprint.name });
         }
     }
     return referrers;
