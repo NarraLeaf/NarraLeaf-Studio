@@ -2,6 +2,7 @@
 import type { GameBuildRequest } from "./gameBuild";
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
+import type { ProjectTrustPromptProps, ProjectTrustPromptResult } from "./projectTrust";
 
 export enum WindowAppType {
     Launcher = "launcher",
@@ -11,6 +12,7 @@ export enum WindowAppType {
     DevMode = "dev-mode",
     PluginPermissionPrompt = "plugin-permission",
     ServerTrustPrompt = "server-trust",
+    ProjectTrustPrompt = "project-trust",
     Raw = "raw",
 }
 
@@ -135,6 +137,7 @@ export type WindowProps = {
     },
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
+    [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptProps,
     [WindowAppType.Raw]: {
     },
 }
@@ -226,5 +229,6 @@ export type WindowCloseResults = {
     [WindowAppType.DevMode]: null;
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
+    [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptResult;
     [WindowAppType.Raw]: null;
 };

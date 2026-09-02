@@ -325,6 +325,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         revoke: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectTrustRevoke, { projectPath }),
         list: () => ipcClient.invoke(IPCEventType.projectTrustList, {}),
+        prompt: () => ipcClient.invoke(IPCEventType.projectTrustPrompt, {}),
     },
     app: {
         launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),

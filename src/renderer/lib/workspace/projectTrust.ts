@@ -19,10 +19,10 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
  *
  * # Memoized per path, except when the question was never answered
  *
- * Trust is settled when a workspace starts, the same way recovery mode is, and revoking a grant
- * takes effect on the next launch. So one answer per path for the life of the window is not a cache
- * that can go stale - it is the semantics. It also removes a whole class of ordering bug: callers
- * await the same promise rather than racing a "not seeded yet" state.
+ * Trust is settled when a workspace starts, the same way recovery mode is, and a change of trust
+ * reloads the window. So one answer per path for the life of a load is not a cache that can go
+ * stale - it is the semantics. It also removes a whole class of ordering bug: callers await the
+ * same promise rather than racing a "not seeded yet" state.
  *
  * The exception is a query that produced no answer at all. "Distrusted" and "the question did not
  * get through" are both `false` to a caller, and only the first is a fact about the project: a

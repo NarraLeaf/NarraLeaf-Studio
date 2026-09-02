@@ -1,6 +1,7 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
+import { windowProjectPath } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -13,9 +14,11 @@ import { IPCHandler } from "./IPCHandler";
  * Changing it is not. A grant is the one message that turns a distrusted project into a trusted one,
  * and the workspace window is where that project's content is shown - and, once trusted, where its
  * code runs. A grant accepted from there would let the thing being judged answer the question, so
- * the three handlers that change or enumerate the ledger take orders from the Settings window only:
- * it opens no project, loads nothing a project supplied, and is the page the status bar sends the
- * author to. Any other window is refused and the refusal is logged with the window that asked.
+ * the handlers that change or enumerate the ledger take orders from the Settings window only: it
+ * opens no project, loads nothing a project supplied, and is the page the status bar sends the
+ * author to for the list. What a workspace may do is *ask* - {@link ProjectTrustPromptHandler} puts
+ * the question in a window of Studio's own and the host reads the answer off that window, so the
+ * workspace only ever raises the question and never answers it.
  *
  * **Nothing here enforces anything.** The gates that matter live in main, next to the operations
  * they refuse - a build, a preview, a spawn - because a keybinding, a second window or a stale
@@ -71,6 +74,7 @@ export class ProjectTrustGrantHandler extends IPCHandler<IPCEventType.projectTru
         const changed = window.app.projectTrustManager.grantTrust(projectPath, new Date().toISOString());
         if (changed) {
             window.app.logger.info("[Trust] Author vouched for", projectPath);
+            await window.getApp().applyProjectTrustChange(projectPath, true);
         }
         return this.success({ changed });
     }
@@ -91,6 +95,7 @@ export class ProjectTrustRevokeHandler extends IPCHandler<IPCEventType.projectTr
         const changed = window.app.projectTrustManager.revokeTrust(projectPath);
         if (changed) {
             window.app.logger.info("[Trust] Grant withdrawn for", projectPath);
+            await window.getApp().applyProjectTrustChange(projectPath, false);
         }
         return this.success({ changed });
     }
@@ -114,5 +119,37 @@ export class ProjectTrustListHandler extends IPCHandler<IPCEventType.projectTrus
             trusted: manager.listTrusted(),
             distrusted: manager.listDistrusted(),
         });
+    }
+}
+
+/**
+ * A workspace asking to have the trust question put for its own project.
+ *
+ * The project is the window's, never the payload's, and the answer is not the window's either: the
+ * host raises the prompt in a window of its own, reads the author's answer off it, and writes the
+ * grant. What the workspace gets back is what the ledger now says. A project already trusted -
+ * a second click while the reload is on its way - answers yes without asking again.
+ */
+export class ProjectTrustPromptHandler extends IPCHandler<IPCEventType.projectTrustPrompt> {
+    readonly name = IPCEventType.projectTrustPrompt;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ trusted: boolean }>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed(new Error(`Only a workspace can ask about its project; this is a ${window.getWindowType()} window.`));
+        }
+        const projectPath = windowProjectPath(window);
+        if (!projectPath) {
+            return this.failed(new Error("This window has no project to ask about."));
+        }
+        const app = window.getApp();
+        if (app.projectTrustManager.isTrusted(projectPath)) {
+            return this.success({ trusted: true });
+        }
+        const trusted = await app.askProjectTrust(window, projectPath);
+        if (trusted) {
+            await app.applyProjectTrustChange(projectPath, true);
+        }
+        return this.success({ trusted });
     }
 }
