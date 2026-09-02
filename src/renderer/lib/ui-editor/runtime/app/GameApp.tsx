@@ -142,7 +142,6 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { listStoryEndings, savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
-import type { StoryLiteralValue } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -187,6 +186,7 @@ import { createSessionGate } from "./sessionGate";
 import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
+import { openLaunchPersistentReader } from "./launchPersistentReader";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -3279,10 +3279,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         const startBlockId = request.startBlockId?.trim() || undefined;
         const snapshotId = request.snapshotId?.trim() || undefined;
         const scene = storyDocument.scenes[sceneId];
-        // The selected Scene Snapshot's persistent overrides go in FIRST, because the stage walk
-        // below reads the same store to decide which arm of a persistent condition the scene took.
-        // Written after it, they would settle the story the author is about to play while the stage
-        // in front of them was posed down the branch they did not choose.
+        // Read the persistent store before anything asks it a question. The walk that poses the
+        // stage is synchronous and the store is not, and a launch outruns the reload the bridge
+        // starts on its own - so this is what makes the pre-pose read the author's stored value
+        // rather than every persistent variable's declared default. See `openLaunchPersistentReader`.
+        //
+        // It has to happen HERE, above the overrides: reading the store replaces the whole cache,
+        // so an override written first would be read straight back out again.
+        const readPersistent = startBlockId && core
+            ? await openLaunchPersistentReader(core.scopeBridge)
+            : undefined;
+        // The selected Scene Snapshot's persistent overrides go in next, and still ahead of the walk,
+        // because the walk reads the same store to decide which arm of a persistent condition the
+        // scene took. Written after it, they would settle the story the author is about to play while
+        // the stage in front of them was posed down the branch they did not choose.
         const overrides = snapshotId
             ? scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values
             : undefined;
@@ -3310,9 +3320,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // the run - and Dev Mode has the profile that holds it, so the pre-pose and the
                     // tail decide every persistent condition from one value instead of two.
                     persistentVariables: bundle.ui.persistentVariables,
-                    ...(core
-                        ? { readPersistent: (key: string) => core.scopeBridge.persistenceGet(key) as StoryLiteralValue | null | undefined }
-                        : {}),
+                    ...(readPersistent ? { readPersistent } : {}),
                 }),
             }
             : undefined;

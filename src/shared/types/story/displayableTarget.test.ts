@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    authoredCharacterStageName,
+    characterStageObjectName,
     displayableCreatorIdentity,
     displayableSourceIdentity,
     displayableSubjectWord,
@@ -127,5 +129,45 @@ describe("displayableSubjectWord", () => {
     it("spells a built-in by the reserved word the row already stores, never by its label", () => {
         expect(displayableSubjectWord(scene([]), { builtin: "background", kind: "image", name: "Scene background", label: "Scene background" }, "background"))
             .toBe("background");
+    });
+});
+
+describe("authoredCharacterStageName", () => {
+    /**
+     * The field an editor shows next to a character row, and the reason it exists: `objectName` is
+     * the stage key, so anything shown there has to be what the key is actually made of. A field
+     * that read "no stage name" over a row keying on one would be the editor telling an author their
+     * row is fine while the compiler reports it addressing nothing.
+     */
+    const characterPayload = (objectName?: string): Extract<StoryActionPayload, { action: "character" }> =>
+        ({ action: "character", operation: "expression", characterId: "char-alice", ...(objectName === undefined ? {} : { objectName }) });
+
+    it("reads a name the stage is keyed on as a name", () => {
+        const payload = characterPayload("Alice");
+        expect(characterStageObjectName(payload)).toBe("Alice");
+        expect(authoredCharacterStageName(payload)).toBe("Alice");
+    });
+
+    it("reads nothing when the row keys on the character", () => {
+        for (const payload of [characterPayload(), characterPayload(""), characterPayload("   ")]) {
+            expect(characterStageObjectName(payload)).toBe("char-alice");
+            expect(authoredCharacterStageName(payload)).toBe("");
+        }
+    });
+
+    it("reads the bare block's own default as nothing", () => {
+        // `"character"` is what an empty block carries, and the naming rule discards it - so it is
+        // not a name anyone chose and must not print as one.
+        const payload = characterPayload("character");
+        expect(characterStageObjectName(payload)).toBe("char-alice");
+        expect(authoredCharacterStageName(payload)).toBe("");
+    });
+
+    it("reads the cast name as a name, because the stage is keyed on it", () => {
+        // The one that used to be hidden. Looking like the character's name changes nothing: a row
+        // carrying it addresses "Alice", and every other row in the scene addresses the id.
+        const payload = characterPayload("Alice");
+        expect(authoredCharacterStageName(payload)).toBe("Alice");
+        expect(characterStageObjectName(payload)).not.toBe(characterStageObjectName(characterPayload()));
     });
 });
