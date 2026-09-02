@@ -437,7 +437,7 @@ export const settings = {
             granted: "已信任",
             trust: "信任",
             remove: "移除",
-            appliesNote: "更改在下次打开该项目时生效。",
+            reloadNote: "已打开的项目在信任状态变更时重新载入。",
             origin: {
                 package: "来自项目包",
                 remote: "来自远程源",

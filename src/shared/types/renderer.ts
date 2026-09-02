@@ -418,12 +418,18 @@ export interface RendererPreloadedInterface {
             record: ProjectTrustRecord | null;
         }>>;
         grant(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
-        /** Takes effect on the project's next launch, not on a window already open on it. */
+        /** A workspace open on the project reloads, and what the project was running stops. */
         revoke(projectPath: string): Promise<RequestStatus<{ changed: boolean }>>;
         list(): Promise<RequestStatus<{
             trusted: ProjectTrustRecord[];
             distrusted: ProjectTrustRecord[];
         }>>;
+        /**
+         * Put the trust question for this window's own project, in a window of Studio's own. The
+         * host writes the grant and reloads this window if the author agrees; the answer is what
+         * the ledger says afterwards.
+         */
+        prompt(): Promise<RequestStatus<{ trusted: boolean }>>;
     };
 
     // App

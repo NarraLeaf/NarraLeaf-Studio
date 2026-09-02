@@ -475,7 +475,7 @@ export function DistrustedProjectEntry() {
             emphasis
             tooltip={t("workspace.shell.statusBar.distrusted.tooltip")}
             ariaLabel={t("workspace.shell.statusBar.distrusted.label")}
-            onClick={() => { void getInterface().app.launchSettings({ highlight: "data.projectTrust" }); }}
+            onClick={() => { void getInterface().projectTrust.prompt(); }}
         >
             <ShieldAlert className="h-3 w-3" />
             <span>{t("workspace.shell.statusBar.distrusted.label")}</span>

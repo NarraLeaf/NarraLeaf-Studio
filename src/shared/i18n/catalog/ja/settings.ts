@@ -456,7 +456,7 @@ export const settings = {
             granted: "信頼済み",
             trust: "信頼する",
             remove: "解除",
-            appliesNote: "変更は次にそのプロジェクトを開いたときに反映される。",
+            reloadNote: "開いているプロジェクトは、信頼の状態が変わると読み込み直される。",
             origin: {
                 package: "パッケージから",
                 remote: "リモートソースから",
