@@ -172,6 +172,21 @@
       "status": "translated",
       "target": "Master volume"
     },
+    "key:config.muteOnBlur": {
+      "sourceHash": "fnv1a:d976032e",
+      "status": "translated",
+      "target": "Mute when unfocused"
+    },
+    "key:config.muteOnBlurOff": {
+      "sourceHash": "fnv1a:1f9312b8",
+      "status": "translated",
+      "target": "Off"
+    },
+    "key:config.muteOnBlurOn": {
+      "sourceHash": "fnv1a:0592e9ca",
+      "status": "translated",
+      "target": "On"
+    },
     "key:config.secondsSuffix": {
       "sourceHash": "fnv1a:577b1035",
       "status": "translated",

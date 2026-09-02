@@ -24,6 +24,15 @@
     "config.masterVolume": {
       "sourceText": "主音量"
     },
+    "config.muteOnBlur": {
+      "sourceText": "失去焦点时静音"
+    },
+    "config.muteOnBlurOff": {
+      "sourceText": "关闭"
+    },
+    "config.muteOnBlurOn": {
+      "sourceText": "开启"
+    },
     "config.secondsSuffix": {
       "sourceText": "秒"
     },

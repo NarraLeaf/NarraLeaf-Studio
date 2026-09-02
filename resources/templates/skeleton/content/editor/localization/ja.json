@@ -177,6 +177,21 @@
       "status": "translated",
       "target": "全体音量"
     },
+    "key:config.muteOnBlur": {
+      "sourceHash": "fnv1a:cbde85a0",
+      "status": "translated",
+      "target": "非アクティブ時にミュート"
+    },
+    "key:config.muteOnBlurOff": {
+      "sourceHash": "fnv1a:0dc6b4aa",
+      "status": "translated",
+      "target": "オフ"
+    },
+    "key:config.muteOnBlurOn": {
+      "sourceHash": "fnv1a:60e47df0",
+      "status": "translated",
+      "target": "オン"
+    },
     "key:config.secondsSuffix": {
       "sourceHash": "fnv1a:f60c4582",
       "status": "translated",

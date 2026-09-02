@@ -1992,6 +1992,151 @@
                         }
                       }
                     },
+                    "init.muteHead": {
+                      "id": "init.muteHead",
+                      "type": "blueprint.event.head.surfaceInit",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 80,
+                          "y": 1560
+                        }
+                      }
+                    },
+                    "init.muteGet": {
+                      "id": "init.muteGet",
+                      "type": "blueprint.game.getMuteOnWindowBlur",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 80,
+                          "y": 1480
+                        }
+                      }
+                    },
+                    "init.muteIf": {
+                      "id": "init.muteIf",
+                      "type": "blueprint.flow.ifElse",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 320,
+                          "y": 1560
+                        }
+                      }
+                    },
+                    "init.muteOnSel.ref": {
+                      "id": "init.muteOnSel.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-on",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 580,
+                          "y": 1420
+                        }
+                      }
+                    },
+                    "init.muteOnSel.set": {
+                      "id": "init.muteOnSel.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 580,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "init.muteOffDef.ref": {
+                      "id": "init.muteOffDef.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-off",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1420
+                        }
+                      }
+                    },
+                    "init.muteOffDef.set": {
+                      "id": "init.muteOffDef.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1500
+                        }
+                      }
+                    },
+                    "init.muteOnDef.ref": {
+                      "id": "init.muteOnDef.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-on",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 580,
+                          "y": 1660
+                        }
+                      }
+                    },
+                    "init.muteOnDef.set": {
+                      "id": "init.muteOnDef.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 580,
+                          "y": 1740
+                        }
+                      }
+                    },
+                    "init.muteOffSel.ref": {
+                      "id": "init.muteOffSel.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-off",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1660
+                        }
+                      }
+                    },
+                    "init.muteOffSel.set": {
+                      "id": "init.muteOffSel.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 1740
+                        }
+                      }
+                    },
                     "nClear": {
                       "id": "nClear",
                       "type": "blueprint.page.clear",
@@ -2322,6 +2467,106 @@
                       },
                       "to": {
                         "nodeId": "init.fsOffSel.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteGet",
+                        "port": "muteOnWindowBlur"
+                      },
+                      "to": {
+                        "nodeId": "init.muteIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "init.muteIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteOnSel.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOnSel.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteOffDef.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOffDef.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteIf",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOnSel.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteOnSel.set",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOffDef.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteOnDef.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOnDef.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteOffSel.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOffSel.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteIf",
+                        "port": "else"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOnDef.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "init.muteOnDef.set",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "init.muteOffSel.set",
                         "port": "in"
                       }
                     },
@@ -21371,6 +21616,448 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "f6ce7fbc-6a23-419e-b473-1d884352b0bf": {
+        "id": "f6ce7fbc-6a23-419e-b473-1d884352b0bf",
+        "name": "静音开",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "config-mute-on"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "c7830507-cc1c-4f97-b130-0631a07c0189"
+            ],
+            "events": {
+              "c7830507-cc1c-4f97-b130-0631a07c0189": {
+                "id": "c7830507-cc1c-4f97-b130-0631a07c0189",
+                "name": "图层 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.mouseClick",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.fn.call",
+                      "params": {
+                        "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
+                        "__fnSignatureSnapshot": {
+                          "name": "界面确认音",
+                          "params": [],
+                          "returns": []
+                        }
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.data.booleanLiteral",
+                      "params": {
+                        "value": "true"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "blueprint.game.setMuteOnWindowBlur",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sel.On.ref": {
+                      "id": "sel.On.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-on",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1100,
+                          "y": 180
+                        }
+                      }
+                    },
+                    "sel.On.set": {
+                      "id": "sel.On.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1100,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sel.Off.ref": {
+                      "id": "sel.Off.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-off",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1360,
+                          "y": 180
+                        }
+                      }
+                    },
+                    "sel.Off.set": {
+                      "id": "sel.Off.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1360,
+                          "y": 260
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "muteOnWindowBlur"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sel.On.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "sel.On.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "sel.On.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sel.Off.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "sel.Off.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sel.On.set",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "sel.Off.set",
+                        "port": "in"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "216e1287-aa30-4ef2-86d1-56a68b6fd941": {
+        "id": "216e1287-aa30-4ef2-86d1-56a68b6fd941",
+        "name": "静音关",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "config-mute-off"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "90ea2824-771f-48ea-8fa2-0a32e5e468d5"
+            ],
+            "events": {
+              "90ea2824-771f-48ea-8fa2-0a32e5e468d5": {
+                "id": "90ea2824-771f-48ea-8fa2-0a32e5e468d5",
+                "name": "图层 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.mouseClick",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.fn.call",
+                      "params": {
+                        "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
+                        "__fnSignatureSnapshot": {
+                          "name": "界面确认音",
+                          "params": [],
+                          "returns": []
+                        }
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.data.booleanLiteral",
+                      "params": {
+                        "value": "false"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "blueprint.game.setMuteOnWindowBlur",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sel.On.ref": {
+                      "id": "sel.On.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-on",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1100,
+                          "y": 180
+                        }
+                      }
+                    },
+                    "sel.On.set": {
+                      "id": "sel.On.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "default"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1100,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sel.Off.ref": {
+                      "id": "sel.Off.ref",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "config-mute-off",
+                        "elementType": "nl.button"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1360,
+                          "y": 180
+                        }
+                      }
+                    },
+                    "sel.Off.set": {
+                      "id": "sel.Off.set",
+                      "type": "blueprint.element.displayable.setVariant",
+                      "params": {
+                        "variantId": "selected"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1360,
+                          "y": 260
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "muteOnWindowBlur"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sel.On.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "sel.On.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "sel.On.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sel.Off.ref",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "sel.Off.set",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sel.On.set",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "sel.Off.set",
+                        "port": "in"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -22910,12 +23597,24 @@
         "privateBlueprintIds": [
           "5107c0a1-0000-4000-8000-000000000210"
         ]
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:config-mute-on": {
+        "activeBlueprintId": "f6ce7fbc-6a23-419e-b473-1d884352b0bf",
+        "privateBlueprintIds": [
+          "f6ce7fbc-6a23-419e-b473-1d884352b0bf"
+        ]
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:config-mute-off": {
+        "activeBlueprintId": "216e1287-aa30-4ef2-86d1-56a68b6fd941",
+        "privateBlueprintIds": [
+          "216e1287-aa30-4ef2-86d1-56a68b6fd941"
+        ]
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-28T02:39:01.921Z"
+    "updatedAt": "2026-09-02T22:59:54.847Z"
   }
 }
