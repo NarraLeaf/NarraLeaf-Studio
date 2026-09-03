@@ -215,3 +215,48 @@ describe("RectangleChromeRenderer image fill stacking", () => {
         expect(markup).not.toContain(CROP_MASK);
     });
 });
+
+const STACK_TAG = "data-nl-stack";
+
+describe("container stack wrap", () => {
+    it("keeps children on one line unless the author asked for wrap", () => {
+        const style = inlineStyleOf(renderStack(createStackDocument({})), STACK_TAG);
+
+        expect(style).toContain("flex-wrap:nowrap");
+        // Line packing is meaningless on one line, and stating it would suggest it were readable.
+        expect(style).not.toContain("align-content");
+    });
+
+    it("packs wrapped lines from the start of the cross axis, at the authored gap", () => {
+        const style = inlineStyleOf(
+            renderStack(createStackDocument({ stackDirection: "horizontal", stackWrap: true, stackGap: 24 })),
+            STACK_TAG,
+        );
+
+        expect(style).toContain("flex-wrap:wrap");
+        // Without this the two lines sit at opposite ends of the box rather than 24px apart.
+        expect(style).toContain("align-content:flex-start");
+        expect(style).toContain("gap:24px");
+    });
+
+    it("has no sibling overlap to draw once children wrap", () => {
+        const overlapping = renderStack(createStackDocument({ stackGap: -12 }));
+        const wrapped = renderStack(createStackDocument({ stackWrap: true, stackGap: -12 }));
+
+        // The overlap is drawn with a margin on every child after the first, which under wrap would
+        // land on the first child of each new line as well and pull it back out of the box.
+        expect(overlapping).toContain("margin-top: -12px !important");
+        expect(wrapped).not.toContain("!important");
+        expect(inlineStyleOf(wrapped, STACK_TAG)).toContain("gap:0;");
+    });
+
+    it("gives a wrapping column of children a main size to break against in a scroll viewport", () => {
+        const wrapped = createStackDocument({ layoutKind: "scroll", scrollAxis: "x", stackWrap: true });
+        const plain = createStackDocument({ layoutKind: "scroll", scrollAxis: "x" });
+
+        // Logical, because a stack inside a vertical writing mode inherits it and its column of
+        // children runs across the screen; a block box only fills the inline axis on its own.
+        expect(inlineStyleOf(renderStack(wrapped), STACK_TAG)).toContain("block-size:100%");
+        expect(inlineStyleOf(renderStack(plain), STACK_TAG)).not.toContain("block-size");
+    });
+});
