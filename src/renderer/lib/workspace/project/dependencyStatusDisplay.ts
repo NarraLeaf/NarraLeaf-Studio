@@ -54,8 +54,13 @@ export type DependencyStateInput = Pick<DependencyResolutionEntry, "installedEna
  * this decision is a function rather than a table lookup. A plugin the author switched off is
  * installed, compatible, and contributes nothing - its nodes, widgets and actions are unknown
  * types in this project exactly as if it were absent - so the row has to say so instead of
- * reading "Ready". It is written after the author's own switch, because the word for the version
- * verdict is already taken by a state Studio decides on its own.
+ * reading "Ready".
+ *
+ * The two words come from the Plugins panel rather than from here, because that panel already
+ * names both facts and an author reads the pair together: `disabled` is what it writes beside the
+ * switch, and `suppressed` is what it writes for the plugin Studio withheld from this project.
+ * This table used to spend the switch's word on the version verdict, so the one thing the author
+ * had actually done was the one thing neither panel said.
  */
 export function describeDependencyState(entry: DependencyStateInput): DependencyStateDisplay | null {
     const { status, suppressed, installedEnabled } = entry;
@@ -65,11 +70,11 @@ export function describeDependencyState(entry: DependencyStateInput): Dependency
         return null;
     }
     if (suppressed) {
-        return { labelKey: "project.dependencies.status.disabled", className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
+        return { labelKey: "project.dependencies.status.suppressed", className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
     }
     if (installedEnabled === false) {
         // Nothing loads, which is what `missing` looks like from inside the project.
-        return { labelKey: "project.dependencies.status.switchedOff", className: "text-danger" };
+        return { labelKey: "project.dependencies.status.disabled", className: "text-danger" };
     }
     if (status !== "satisfied") {
         return { labelKey: DEPENDENCY_STATUS_LABEL_KEYS[status], className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
