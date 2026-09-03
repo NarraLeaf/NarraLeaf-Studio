@@ -210,6 +210,11 @@ export const lint = {
             // 仍然打印存下来的那个词：菜单里已经找不到它，作者手上只剩这一个抓手。
             message: "转场 {transition} 不可用，该行的画面将直接切换",
         },
+        storyBackgroundUnchanged: {
+            title: "没有变化的背景",
+            description: "该行转场的目标是当前已显示的背景",
+            message: "该背景已显示在屏幕上，该行的转场不会改变画面",
+        },
         blueprintReferenceMissing: {
             title: "目标缺失",
             description: "节点指向项目中已不存在的对象",

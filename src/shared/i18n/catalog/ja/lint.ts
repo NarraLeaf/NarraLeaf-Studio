@@ -213,6 +213,11 @@ export const lint = {
             // 保存された語をそのまま出す。どのメニューにも残っていない以上、作者に残る手がかりはこれだけ。
             message: "トランジション {transition} は利用できないため、この変化は切り替えで再生される",
         },
+        storyBackgroundUnchanged: {
+            title: "変化しない背景",
+            description: "すでに画面に出ている背景へ遷移する行",
+            message: "この背景はすでに画面に出ているため、このトランジションは何も変えない",
+        },
         blueprintReferenceMissing: {
             title: "参照先の欠落",
             description: "プロジェクトに存在しない対象を指すノード",
