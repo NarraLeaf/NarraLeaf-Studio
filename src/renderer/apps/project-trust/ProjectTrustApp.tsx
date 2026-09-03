@@ -102,14 +102,34 @@ export function ProjectTrustApp() {
                             <div className="text-sm font-medium text-fg">{t("projectTrust.title")}</div>
                         </div>
 
+                        {/*
+                          * Two blocks, read in order: which project, then what saying yes does.
+                          *
+                          * The identity is boxed rather than set in a tone of its own. A path is the
+                          * longest run of text here and the least of what the decision turns on, and
+                          * shading it down far enough to stop competing would also make the one thing
+                          * that identifies the project hard to read. Inside a box it can be as legible
+                          * as it likes without reading as prose.
+                          *
+                          * That leaves the prose two tones and no more: the context is muted, the
+                          * consequence is not, and that contrast is the whole hierarchy. The footnote
+                          * is `text-2xs`, which makes it a different kind of text rather than a third
+                          * shade of paragraph.
+                          */}
                         <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-                            <div className="truncate text-base font-medium text-fg">{prompt.projectName}</div>
-                            <div className="mt-1 break-all text-xs text-fg-muted">{prompt.projectPath}</div>
-                            <div className="mt-1 text-xs text-fg-subtle">{t(PROJECT_TRUST_ORIGIN_LABEL[prompt.origin])}</div>
+                            <div className="rounded-md border border-edge bg-fill-subtle px-3 py-2">
+                                <div className="truncate text-sm font-medium text-fg">{prompt.projectName}</div>
+                                <div className="mt-1 break-all text-2xs leading-4 text-fg-muted">
+                                    {prompt.projectPath}
+                                </div>
+                                <div className="mt-1 text-2xs leading-4 text-fg-subtle">
+                                    {t(PROJECT_TRUST_ORIGIN_LABEL[prompt.origin])}
+                                </div>
+                            </div>
 
                             <p className="mt-3 text-xs leading-5 text-fg-muted">{t("projectTrust.untrusted")}</p>
-                            <p className="mt-2 text-xs leading-5 text-fg">{t("projectTrust.meaning")}</p>
-                            <p className="mt-2 text-xs leading-5 text-fg-subtle">{t("projectTrust.later")}</p>
+                            <p className="mt-2 text-xs font-medium leading-5 text-fg">{t("projectTrust.meaning")}</p>
+                            <p className="mt-3 text-2xs leading-4 text-fg-subtle">{t("projectTrust.later")}</p>
                         </div>
                     </>
                 ) : error ? (
