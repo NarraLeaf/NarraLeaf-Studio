@@ -1089,6 +1089,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.g
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME = "blueprint.game.save.getTime" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE = "blueprint.game.save.getLine" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME = "blueprint.game.save.getPlaytime" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY = "blueprint.game.save.getStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT = "blueprint.game.save.slot" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN = "blueprint.game.save.currentRun" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME = "blueprint.game.getPlaytime" as const;

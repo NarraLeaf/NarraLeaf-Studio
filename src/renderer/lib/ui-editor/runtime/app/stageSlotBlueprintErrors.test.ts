@@ -88,35 +88,28 @@ const localBlueprints: BlueprintDocument = {
             id: BLUEPRINT_ID,
             name: "Auto Button",
             owner: { kind: "widgetMain", surfaceId: SURFACE_ID, elementId: BUTTON_ID },
-            frontend: "visual",
-            programKind: "graph",
             members: { variables: {}, fields: {}, functions: {} },
             bindings: {},
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {
-                        mouseClick: {
-                            id: "mouseClick",
-                            graph: {
-                                nodes: {
-                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                    setAuto: { id: "setAuto", type: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD },
-                                },
-                                edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "setAuto", port: "in" } }],
+            graphs: {
+                events: {
+                    mouseClick: {
+                        id: "mouseClick",
+                        graph: {
+                            nodes: {
+                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                setAuto: { id: "setAuto", type: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD },
                             },
+                            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "setAuto", port: "in" } }],
                         },
                     },
-                    functions: {},
                 },
+                functions: {},
             },
         },
     },
     ownerRecords: {
         [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: BUTTON_ID })]: {
-            activeBlueprintId: BLUEPRINT_ID,
-            privateBlueprintIds: [BLUEPRINT_ID],
-            initializedFrontend: "visual",
+            blueprintId: BLUEPRINT_ID,
         },
     },
 } as unknown as BlueprintDocument;

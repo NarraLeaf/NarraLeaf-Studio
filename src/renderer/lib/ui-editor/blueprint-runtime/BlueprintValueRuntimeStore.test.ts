@@ -108,25 +108,18 @@ function blueprintDocument(graph: BlueprintGraphIr = initGraph()): BlueprintDocu
                 id: "bp-value",
                 name: "Text value",
                 owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            init: { id: "init", graph },
-                        },
-                        functions: {},
+                graphs: {
+                    events: {
+                        init: { id: "init", graph },
                     },
+                    functions: {},
                 },
             },
         },
         ownerRecords: {
             "widgetValue:surface:text:text": {
-                activeBlueprintId: "bp-value",
-                privateBlueprintIds: ["bp-value"],
-                initializedFrontend: "visual",
+                blueprintId: "bp-value",
             },
         },
     };
@@ -147,26 +140,19 @@ function singleValueBlueprintDocument(input: {
                 id: input.blueprintId,
                 name: "Value",
                 owner: { kind: "widgetValue", surfaceId: "surface", elementId: input.elementId, propPath: input.propPath },
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
                 meta: { valueType: input.valueType },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            init: { id: "init", graph: input.graph },
-                        },
-                        functions: {},
+                graphs: {
+                    events: {
+                        init: { id: "init", graph: input.graph },
                     },
+                    functions: {},
                 },
             },
         },
         ownerRecords: {
             [ownerKey]: {
-                activeBlueprintId: input.blueprintId,
-                privateBlueprintIds: [input.blueprintId],
-                initializedFrontend: "visual",
+                blueprintId: input.blueprintId,
             },
         },
     };

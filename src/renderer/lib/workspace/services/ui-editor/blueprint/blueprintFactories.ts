@@ -160,34 +160,6 @@ export function renderStarterScript(params: {
     }
 }
 
-/**
- * A script blueprint: the same slot a visual one fills, pointing at a file instead of holding a graph.
- *
- * `scriptRef` is passed in rather than derived here because deriving it needs to know which paths
- * are already taken, and because the file has to be written in the same act - both of which belong
- * to the service that has a filesystem.
- */
-export function createScriptMainBlueprint(params: {
-    id: string;
-    name: string;
-    owner: BlueprintOwnerRef;
-    scriptRef: string;
-}): Blueprint {
-    return {
-        id: params.id,
-        name: params.name,
-        owner: params.owner,
-        frontend: "typescript",
-        programKind: "scriptModule",
-        program: {
-            kind: "scriptModule",
-            scriptRef: params.scriptRef,
-        },
-        members: emptyMemberIndex(),
-        bindings: {},
-    };
-}
-
 export function createMainBlueprint(params: {
     id: string;
     name: string;
@@ -197,16 +169,11 @@ export function createMainBlueprint(params: {
         id: params.id,
         name: params.name,
         owner: params.owner,
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                eventIds: [],
-                events: {},
-                functionIds: [],
-                functions: {},
-            },
+        graphs: {
+            eventIds: [],
+            events: {},
+            functionIds: [],
+            functions: {},
         },
         members: emptyMemberIndex(),
         bindings: {},
@@ -258,16 +225,14 @@ export function createDefaultGlobalMainBlueprint(params: {
         name: params.name,
         owner: { kind: "globalMain" },
     });
-    if (blueprint.program.kind === "graph") {
-        blueprint.program.graphs.eventIds = [DEFAULT_GLOBAL_BOOT_LAYER_ID];
-        blueprint.program.graphs.events = {
-            [DEFAULT_GLOBAL_BOOT_LAYER_ID]: {
-                id: DEFAULT_GLOBAL_BOOT_LAYER_ID,
-                name: DEFAULT_GLOBAL_BOOT_LAYER_NAME,
-                graph: createDefaultGlobalBootGraph(),
-            },
-        };
-    }
+    blueprint.graphs.eventIds = [DEFAULT_GLOBAL_BOOT_LAYER_ID];
+    blueprint.graphs.events = {
+        [DEFAULT_GLOBAL_BOOT_LAYER_ID]: {
+            id: DEFAULT_GLOBAL_BOOT_LAYER_ID,
+            name: DEFAULT_GLOBAL_BOOT_LAYER_NAME,
+            graph: createDefaultGlobalBootGraph(),
+        },
+    };
     return blueprint;
 }
 
@@ -287,9 +252,7 @@ export function createInitialBlueprintDocument(generateId: () => string): Bluepr
         blueprints: { [globalId]: globalBp },
         ownerRecords: {
             [ownerKey]: {
-                activeBlueprintId: globalId,
-                privateBlueprintIds: [globalId],
-                initializedFrontend: "visual",
+                blueprintId: globalId,
             },
         },
         meta: {},
@@ -299,7 +262,7 @@ export function createInitialBlueprintDocument(generateId: () => string): Bluepr
 export function repairGlobalMainIfMissing(doc: BlueprintDocument, generateId: () => string): BlueprintDocument {
     const key = GLOBAL_MAIN_OWNER_KEY;
     const rec = doc.ownerRecords[key];
-    const existingId = rec?.activeBlueprintId;
+    const existingId = rec?.blueprintId;
     if (existingId && doc.blueprints[existingId]?.owner.kind === "globalMain") {
         return doc;
     }
@@ -308,18 +271,9 @@ export function repairGlobalMainIfMissing(doc: BlueprintDocument, generateId: ()
         id: globalId,
         name: "Global",
     });
-    const prevIds = rec?.privateBlueprintIds ?? [];
-    const mergedIds = [...new Set([...prevIds, globalId])];
     return {
         ...doc,
         blueprints: { ...doc.blueprints, [globalId]: globalBp },
-        ownerRecords: {
-            ...doc.ownerRecords,
-            [key]: {
-                activeBlueprintId: globalId,
-                privateBlueprintIds: mergedIds.length > 0 ? mergedIds : [globalId],
-                initializedFrontend: rec?.initializedFrontend ?? "visual",
-            },
-        },
+        ownerRecords: { ...doc.ownerRecords, [key]: { blueprintId: globalId } },
     };
 }

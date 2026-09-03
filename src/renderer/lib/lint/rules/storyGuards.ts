@@ -1,3 +1,4 @@
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import {
     collectStoryExpressionVariables,
@@ -191,7 +192,7 @@ export function collectWrittenVariableKeysByStory(ctx: LintContext): Map<string,
  */
 export function hasUnreadableWriter(ctx: LintContext): boolean {
     for (const blueprint of Object.values((ctx.blueprintDocument as BlueprintDocument | null)?.blueprints ?? {})) {
-        if (blueprint && blueprint.program?.kind !== "graph") {
+        if (blueprint && hasScriptLayer(blueprint)) {
             return true;
         }
     }

@@ -22,6 +22,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import type { BlueprintDocument, BlueprintDiagnostic } from "@shared/types/blueprint/document";
 import { isScriptSourcePath } from "@shared/project/scriptsDirectory";
+import { listScriptLayers, scriptLayerKey } from "@shared/blueprint/blueprintLayers";
 
 type EsbuildModule = typeof import("esbuild");
 
@@ -43,15 +44,21 @@ export type CompiledScriptModule = {
     diagnostics?: BlueprintDiagnostic[];
 };
 
-/** Compiled scripts by blueprint id. Two blueprints naming one file each get their own entry. */
+/**
+ * Compiled scripts by script-layer key ({@link scriptLayerKey}).
+ *
+ * By layer rather than by blueprint, because a blueprint can hold several script layers and a
+ * layer id is only unique inside its own blueprint. Two layers naming one file each get their own
+ * entry pointing at one compiled module - see {@link compileProjectScripts}.
+ */
 export type CompiledScripts = Record<string, CompiledScriptModule>;
 
-/** The script each script blueprint names, by blueprint id. */
+/** The file each script layer in the document names, by script-layer key. */
 export function collectScriptRefs(document: BlueprintDocument | undefined): Map<string, string> {
     const refs = new Map<string, string>();
     for (const [blueprintId, blueprint] of Object.entries(document?.blueprints ?? {})) {
-        if (blueprint?.program?.kind === "scriptModule") {
-            refs.set(blueprintId, blueprint.program.scriptRef);
+        for (const { layerId, script } of listScriptLayers(blueprint?.graphs)) {
+            refs.set(scriptLayerKey(blueprintId, layerId), script.scriptRef);
         }
     }
     return refs;
@@ -67,9 +74,9 @@ function failure(scriptRef: string, message: string): CompiledScriptModule {
 /**
  * Bundle every script the document names.
  *
- * Compiled once per distinct file rather than once per blueprint: two blueprints pointing at one
- * script are the same module, and bundling it twice would give them separate copies of its
- * module-level state, which is not what an author reading one file would expect.
+ * Compiled once per distinct file rather than once per layer: two layers pointing at one script are
+ * the same module, and bundling it twice would give them separate copies of its module-level state,
+ * which is not what an author reading one file would expect.
  */
 export async function compileProjectScripts(
     projectPath: string,
@@ -94,8 +101,8 @@ export async function compileProjectScripts(
     if (!output) {
         // Nowhere to put them, so nothing can be imported. Said once rather than per script.
         return Object.fromEntries(
-            [...refs].map(([blueprintId, scriptRef]) => [
-                blueprintId,
+            [...refs].map(([layerKey, scriptRef]) => [
+                layerKey,
                 failure(scriptRef, "This host cannot serve compiled scripts."),
             ]),
         );
@@ -111,8 +118,8 @@ export async function compileProjectScripts(
     }
 
     const out: CompiledScripts = {};
-    for (const [blueprintId, scriptRef] of refs) {
-        out[blueprintId] = byRef.get(scriptRef) as CompiledScriptModule;
+    for (const [layerKey, scriptRef] of refs) {
+        out[layerKey] = byRef.get(scriptRef) as CompiledScriptModule;
     }
     return out;
 }
@@ -154,8 +161,8 @@ async function compileOne(
         if (typeof code !== "string") {
             return failure(scriptRef, `${scriptRef} produced no output.`);
         }
-        // Named after the source rather than after a blueprint id, so a stack trace in the game's
-        // console names something the author can open. Two blueprints on one file share it.
+        // Named after the source rather than after a layer, so a stack trace in the game's console
+        // names something the author can open. Two layers on one file share it.
         const outputName = `${scriptRef.replace(/[\/]/g, "_").replace(/\.(ts|js)$/, "")}.mjs`;
         const outputPath = path.join(outputDirectory, outputName);
         await fs.writeFile(outputPath, code, "utf-8");

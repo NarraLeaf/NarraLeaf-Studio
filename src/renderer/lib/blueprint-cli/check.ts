@@ -141,8 +141,7 @@ function runGraphValidation(
         // stops `apply` writing it - so the graph could never be written at all, and the way out
         // was to hand-edit the JSON this tool exists to keep people out of.
         document.ownerRecords[ownerRefToIndexKey(blueprint.owner)] = {
-            activeBlueprintId: blueprint.id,
-            privateBlueprintIds: [blueprint.id],
+            blueprintId: blueprint.id,
         };
     }
 

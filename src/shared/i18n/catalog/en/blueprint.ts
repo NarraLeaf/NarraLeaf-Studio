@@ -194,11 +194,29 @@ export const blueprint = {
         selectDataType: "Select data type",
     },
     eventLayer: {
-        createTitle: "Create event layer",
-        createInvalid: "Select an event and name the layer before creating it.",
-        event: "Event",
+        createTitle: "Add layer",
+        createInvalid: "Name the layer before creating it.",
         layerName: "Layer name",
         defaultName: "Layer {index}",
+    },
+    /**
+     * Choosing what a new layer is.
+     *
+     * The two words are the whole distinction an author holds - a graph on a canvas, or a file they
+     * own - so neither modifies the other and neither names a language.
+     */
+    layerDialog: {
+        graphDescription: "Wire nodes together on the canvas.",
+        scriptDescription: "Run one of your own files.",
+        scriptPickerLabel: "Which file this layer runs",
+        newScript: "New script…",
+        newScriptDetail: "Writes a starter file under scripts/",
+        // A file two layers run is a legitimate arrangement, so it is offered like any other and
+        // says what already runs it.
+        alreadyRun: {
+            one: "Already run by {count} layer",
+            other: "Already run by {count} layers",
+        },
     },
     // Names the thing a blueprint hangs on, for search results that have to say where a node lives.
     owner: {
@@ -217,6 +235,8 @@ export const blueprint = {
         renameLayerTitle: "Rename layer",
         layerNamePlaceholder: "Layer name",
         deleteLayer: "Delete layer…",
+        /** Removing a layer never removes a file: the disk owns a script from the moment it exists. */
+        deleteScriptLayer: "Remove layer (the file stays)",
         deleteLayerConfirm: "Delete this layer?",
         deleteLayerDetail: "Linked UI events will be cleared.",
         deleteVariableLabel: "Delete variable \"{name}\"",
@@ -239,21 +259,6 @@ export const blueprint = {
         createPersistentInvalid: "Check the persistent variable name and data type before creating it.",
         defaultVariableName: "Variable",
         defaultPersistentName: "Persistent",
-    },
-    revisions: {
-        title: "Revisions",
-        active: "· active",
-        // A revision nobody named. Numbered by its place in the list rather than spelled with its
-        // id, which is a UUID and names nothing an author can recognize.
-        unnamed: "Revision {index}",
-        rowMenu: "More",
-        /** Removing a revision never removes a file: the disk owns a script from the moment it exists. */
-        delete: "Delete revision",
-        deleteScript: "Delete revision (the file stays)",
-        deleteOnly: "A slot keeps its last revision.",
-        newScript: "New script",
-        newBlueprint: "New blueprint",
-        useExisting: "Use an existing file",
     },
     /**
      * What a revision is written in, and the whole of the distinction an author has to hold: a
@@ -449,7 +454,7 @@ export const blueprint = {
         sectionTitle: "Scripts",
         /** The tab a script opens in. A script is not a blueprint and is never titled as one. */
         tabTitle: "Script",
-        sectionEmpty: "No scripts yet. Open the logic of a page or a component and choose New script.",
+        sectionEmpty: "No scripts yet. Open the logic of a page or a component, add a layer, and choose Script.",
         unbound: "Nothing runs this file",
         boundTo: "Runs as {name}",
         boundToMany: "Runs as {name} and {count} more",
@@ -779,6 +784,7 @@ export const blueprint = {
         status: "Status",
         step: "Step",
         story: "Story",
+        storyName: "Story Name",
         success: "Success",
         string: "String",
         switch: "Switch",
@@ -1399,6 +1405,7 @@ export const blueprint = {
         getTimeZone: "Get Time Zone",
         getSaveTime: "Get Save Time",
         getSaveLine: "Get Save Line",
+        getSaveStory: "Get Save Story",
         getSavePlaytime: "Get Save Playtime",
         getPlaytime: "Get Playtime",
         getTotalPlaytime: "Get Total Playtime",

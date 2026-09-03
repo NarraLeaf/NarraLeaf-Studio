@@ -20,12 +20,13 @@ type Props = {
     /** True while focus is inside the left member panel (disables graph delete-key shortcuts). */
     onMemberPanelFocusContainedChange?: (contained: boolean) => void;
     /**
-     * What this editor is, for the help it answers with and for the side panel's heading.
+     * Which help topic F1 answers with, which follows the layer on screen rather than the editor.
      *
-     * A script is edited through this same layout, and left to itself the layout said "Blueprint"
-     * over the revision list and answered F1 with the topic about wiring nodes together.
+     * One editor holds both kinds of layer now, so "what is this" has no single answer for the
+     * whole window: a script layer's canvas is a file, and answering it with the topic about wiring
+     * nodes together is answering a question the author did not ask.
      */
-    kind?: "blueprint" | "script";
+    helpTopic?: "blueprints" | "scripts";
 };
 
 export function BlueprintEditorLayout({
@@ -38,10 +39,9 @@ export function BlueprintEditorLayout({
     memberPanelCollapsed,
     onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
-    kind = "blueprint",
+    helpTopic = "blueprints",
 }: Props) {
     const { t } = useTranslation();
-    const helpTopic = kind === "script" ? "scripts" : "blueprints";
     const detachedTitleBar = useDetachedTitleBar();
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
@@ -110,7 +110,7 @@ export function BlueprintEditorLayout({
                 <aside className={leftPanelClasses}>
                     <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
                         <span className="text-2xs font-medium text-fg-subtle">
-                            {t(kind === "script" ? "blueprint.script.tabTitle" : "blueprint.panelLabel")}
+                            {t("blueprint.panelLabel")}
                         </span>
                         <button
                             type="button"

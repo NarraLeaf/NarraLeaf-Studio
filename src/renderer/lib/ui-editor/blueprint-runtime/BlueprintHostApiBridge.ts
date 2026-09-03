@@ -124,7 +124,13 @@ import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/u
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
+import type {
+    AutoSaveEntry,
+    SaveRecordLine,
+    SaveRecordPlaytime,
+    SaveRecordStory,
+    SaveRecordTimes,
+} from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
@@ -544,6 +550,8 @@ export type BlueprintHostApiRuntime = {
         getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
         /** Where a slot stopped, or null when there is no such slot. */
         getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+        /** Which story a slot was written in, or null when there is no such slot. */
+        getSaveStory: (id: string) => Promise<SaveRecordStory | null>;
         /** How long a slot was played, or null when there is no such slot. */
         getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
         /** The running playthrough's playtime, in seconds. */
@@ -914,6 +922,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
     onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
+    onGetSaveStory?: (id: string) => Promise<SaveRecordStory | null> | SaveRecordStory | null;
     onCaptureRun?: () => unknown | null;
     onReadSaveGame?: (id: string) => Promise<unknown | null> | unknown | null;
     onGetSavePlaytime?: (id: string) => Promise<SaveRecordPlaytime | null> | SaveRecordPlaytime | null;
@@ -2082,6 +2091,26 @@ function normalizeSaveRecordLine(value: unknown): SaveRecordLine | null {
     };
 }
 
+/**
+ * A host's answer for which story one slot was written in, or null when it says there is no slot.
+ *
+ * Same split as {@link normalizeSaveRecordLine}: a non-object is "no slot", while a present record
+ * with nothing to report becomes empty strings. The two fields are trimmed and kept apart rather
+ * than folded - a stamp with an id and no name is a real slot whose story this build does not ship,
+ * and reporting it as no story at all would lose exactly the fact a save screen wants to draw.
+ */
+function normalizeSaveRecordStory(value: unknown): SaveRecordStory | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const toText = (raw: unknown): string => (typeof raw === "string" ? raw.trim() : "");
+    return {
+        id: toText(record.id),
+        name: toText(record.name),
+    };
+}
+
 function normalizeBlueprintChoiceCount(value: unknown): number {
     const count = Number(value);
     return Number.isInteger(count) && count > 0 ? count : 0;
@@ -2479,6 +2508,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSaveMetadata,
         onGetSaveTimes,
         onGetSaveLine,
+        onGetSaveStory,
         onCaptureRun,
         onReadSaveGame,
         onGetSavePlaytime,
@@ -4205,6 +4235,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSaveLine: game save runtime is not available");
                     }
                     return normalizeSaveRecordLine(await onGetSaveLine(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSaveStory: async (id: string) => {
+                const cap = "game.getSaveStory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSaveStory", id);
+                    if (!onGetSaveStory) {
+                        throw new Error("getSaveStory: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordStory(await onGetSaveStory(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

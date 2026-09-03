@@ -15,7 +15,7 @@ const ELEMENT_ID = "btn";
 function ownerRecord(ownerKey: string, blueprintId: string): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-        ownerRecords: { [ownerKey]: { activeBlueprintId: blueprintId, privateBlueprintIds: [blueprintId] } },
+        ownerRecords: { [ownerKey]: { blueprintId: blueprintId } },
         blueprints: {},
     } as unknown as BlueprintDocument;
 }
@@ -53,7 +53,7 @@ describe("the locals a released widget leaves behind", () => {
         id: "bp-own",
         name: "Button logic",
         owner: { kind: "widgetMain", surfaceId: SURFACE_ID, elementId: ELEMENT_ID },
-        program: { kind: "graph", graphs: { events: {}, functions: {} } },
+        graphs: { events: {}, functions: {} },
     } as unknown as Blueprint;
 
     /**

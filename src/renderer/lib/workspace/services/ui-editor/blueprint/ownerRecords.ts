@@ -1,19 +1,9 @@
-import type { BlueprintDocument, BlueprintFrontendKind, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 
-export function getActiveBlueprintId(doc: BlueprintDocument, ownerKey: string): string | undefined {
-    return doc.ownerRecords[ownerKey]?.activeBlueprintId;
-}
-
-export function setPrivateOwnerActive(doc: BlueprintDocument, ownerKey: string, blueprintId: string): void {
-    const rec = doc.ownerRecords[ownerKey];
-    if (!rec) {
-        throw new Error(`ownerRecords missing for key ${ownerKey}`);
-    }
-    if (!rec.privateBlueprintIds.includes(blueprintId)) {
-        throw new Error(`Blueprint ${blueprintId} is not in privateBlueprintIds for ${ownerKey}`);
-    }
-    rec.activeBlueprintId = blueprintId;
+/** The blueprint this slot runs, or undefined when the slot has none. */
+export function getSlotBlueprintId(doc: BlueprintDocument, ownerKey: string): string | undefined {
+    return doc.ownerRecords[ownerKey]?.blueprintId;
 }
 
 /**
@@ -36,49 +26,13 @@ export function parsePrivateOwnerKeyToRef(ownerKey: string): BlueprintOwnerRef |
 }
 
 /**
- * Drop one of a slot's revisions.
+ * Point a slot at a blueprint.
  *
- * The record keeps a list and one active id, so removing the active one has to choose a successor:
- * the revision before it, which is the one an author was looking at before they made this. The last
- * revision is not removable here - callers refuse it - because the slot's record is what a value
- * binding is addressed through, and a slot with no record is a binding pointing at nothing.
- *
- * A script's file is never touched. Studio wrote it once and the disk owns it from then on; an
- * author who wants it gone deletes it themselves, and until they do it is listed as a file nothing
- * runs.
+ * One slot, one blueprint. The record used to hold a list with one entry marked active, so that a
+ * slot written as a script could keep the graph it displaced - a private version history beside the
+ * one version control already keeps. A script is a layer now, so nothing needs displacing and the
+ * record has one field.
  */
-export function removePrivateBlueprint(doc: BlueprintDocument, ownerKey: string, blueprintId: string): void {
-    const rec = doc.ownerRecords[ownerKey];
-    const index = rec?.privateBlueprintIds.indexOf(blueprintId) ?? -1;
-    if (!rec || index < 0) {
-        return;
-    }
-    if (rec.privateBlueprintIds.length <= 1) {
-        throw new Error(`Cannot remove the only revision of ${ownerKey}`);
-    }
-    rec.privateBlueprintIds.splice(index, 1);
-    delete doc.blueprints[blueprintId];
-    if (rec.activeBlueprintId === blueprintId) {
-        rec.activeBlueprintId = rec.privateBlueprintIds[Math.max(0, index - 1)] ?? rec.privateBlueprintIds[0]!;
-    }
-}
-
-/**
- * Add or refresh a private blueprint as the active one for this owner slot.
- */
-export function registerPrivateBlueprintAsActive(
-    doc: BlueprintDocument,
-    ownerKey: string,
-    blueprintId: string,
-    initializedFrontend?: BlueprintFrontendKind,
-): void {
-    const prev = doc.ownerRecords[ownerKey];
-    const nextIds = prev?.privateBlueprintIds?.includes(blueprintId)
-        ? prev.privateBlueprintIds
-        : [...(prev?.privateBlueprintIds ?? []), blueprintId];
-    doc.ownerRecords[ownerKey] = {
-        activeBlueprintId: blueprintId,
-        privateBlueprintIds: nextIds,
-        initializedFrontend: prev?.initializedFrontend ?? initializedFrontend,
-    };
+export function setPrivateOwnerBlueprint(doc: BlueprintDocument, ownerKey: string, blueprintId: string): void {
+    doc.ownerRecords[ownerKey] = { blueprintId };
 }

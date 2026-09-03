@@ -66,23 +66,24 @@ export function isBlueprintWidgetOwner(owner: BlueprintOwnerRef | undefined): bo
         || owner?.kind === "componentWidgetMain";
 }
 
-export type BlueprintFrontendKind = "visual" | "typescript";
-
-export type BlueprintProgramKind = "graph" | "scriptModule";
+/**
+ * How one layer is written: as a graph on the canvas, or as one of the author's script files.
+ *
+ * A property of the layer and of nothing above it. A slot used to be one or the other as a whole,
+ * with the alternative kept beside it as an inactive "revision" - a private version history that
+ * only the two frontends needed, that no other part of the product could see, and that answered a
+ * question version control already answers. Layers were never exclusive (the dispatcher runs every
+ * layer whose head matches), so this is the level the choice always belonged at.
+ */
+export type BlueprintLayerKind = "graph" | "script";
 
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
 
-/**
- * Per private owner slot (global / surface / widget main): multiple blueprint revisions may exist,
- * but only one is active for runtime resolution and default editor targeting (Blueprint M5).
- */
+/** The blueprint a private owner slot (global / surface / widget main / value) runs. Exactly one. */
 export type BlueprintPrivateOwnerRecord = {
-    activeBlueprintId: string;
-    privateBlueprintIds: string[];
-    /** Set when the owner slot was first initialized (informational). */
-    initializedFrontend?: BlueprintFrontendKind;
+    blueprintId: string;
 };
 
 export type BlueprintDocument = {
@@ -106,11 +107,18 @@ export type Blueprint = {
     id: string;
     name: string;
     owner: BlueprintOwnerRef;
-    frontend: BlueprintFrontendKind;
-    programKind: BlueprintProgramKind;
     members?: BlueprintMemberIndex;
     bindings?: Record<string, BindingDefinition>;
-    program: BlueprintProgram;
+    /**
+     * The layers this slot runs, in the order the author arranged them.
+     *
+     * Reached directly rather than through a `program: { kind }` wrapper. The wrapper existed to
+     * separate a graph blueprint from a script one, and there is no such division any more: a
+     * blueprint is a container of layers, and each layer says for itself whether it is a graph or a
+     * file. Three fields used to answer the same question - `frontend`, `programKind` and
+     * `program.kind` - and none of them could answer it for a blueprint holding one of each.
+     */
+    graphs: BlueprintGraphIndex;
     meta?: Record<string, unknown>;
 };
 
@@ -169,32 +177,25 @@ export type BlueprintFunctionSignature = {
 };
 
 // ---------------------------------------------------------------------------
-// Program (graph vs script module)
+// Layer program (a graph, or one of the author's script files)
 // ---------------------------------------------------------------------------
 
-export type BlueprintProgram =
-    | {
-          kind: "graph";
-          graphs: BlueprintGraphIndex;
-      }
-    | {
-          kind: "scriptModule";
-          /**
-           * The author's file, as a project-relative path under `scripts/`.
-           *
-           * A reference rather than the text, because the text is not Studio's to hold. A script is
-           * edited in the author's own editor, and a document service that kept a copy would write
-           * that copy back over their edit the next time anything saved - which is what
-           * `<project>/scripts/` exists to prevent. See `@shared/project/scriptsDirectory`.
-           *
-           * Dangling is an ordinary state: a file the author moved or deleted leaves a reference
-           * that resolves to nothing, and that is reported as a diagnostic rather than repaired by
-           * guessing.
-           */
-          scriptRef: string;
-          /** What the last compile of {@link scriptRef} said. Absent until one has run. */
-          diagnostics?: BlueprintDiagnostic[];
-      };
+/**
+ * The author's file a script layer runs, as a project-relative path under `scripts/`.
+ *
+ * A reference rather than the text, because the text is not Studio's to hold. A script is edited in
+ * the author's own editor, and a document service that kept a copy would write that copy back over
+ * their edit the next time anything saved - which is what `<project>/scripts/` exists to prevent.
+ * See `@shared/project/scriptsDirectory`.
+ *
+ * Dangling is an ordinary state: a file the author moved or deleted leaves a reference that
+ * resolves to nothing, and that is reported as a diagnostic rather than repaired by guessing.
+ */
+export type BlueprintLayerScript = {
+    scriptRef: string;
+    /** What the last compile of {@link scriptRef} said. Absent until one has run. */
+    diagnostics?: BlueprintDiagnostic[];
+};
 
 export type BlueprintGraphIndex = {
     /**
@@ -213,7 +214,7 @@ export type BlueprintGraphIndex = {
      * listed. Write it through the service, never by hand.
      */
     eventIds?: string[];
-    events: Record<string, BlueprintEventGraph>;
+    events: Record<string, BlueprintLayer>;
     /**
      * Authored order of {@link functions}, on the same terms as {@link eventIds}.
      *
@@ -279,13 +280,31 @@ export type BlueprintGraphEdge = {
     };
 };
 
-export type BlueprintEventGraph = {
+/**
+ * One layer of a blueprint: a piece of logic that says for itself what it listens to.
+ *
+ * A graph layer answers the events its head nodes name; a script layer answers the events its
+ * module exports a handler for. Neither excludes the other and neither excludes a sibling: the
+ * dispatcher runs *every* layer that answers a dispatched event, which is why a script can sit in
+ * this list beside a graph rather than replacing the blueprint it would otherwise have to displace.
+ *
+ * Exactly one of {@link graph} and {@link script} is set. A layer with neither is a graph layer the
+ * author has not drawn anything into yet, which is the state a freshly declared one starts in.
+ */
+export type BlueprintLayer = {
     id: string;
     name?: string;
     /** Event execution graph - may contain effectful nodes */
     graph?: BlueprintGraphIr;
+    /** The author's file this layer runs, when it is a script layer rather than a graph one. */
+    script?: BlueprintLayerScript;
     meta?: Record<string, unknown>;
 };
+
+/** Which of the two a layer is, without reaching into it. */
+export function blueprintLayerKind(layer: BlueprintLayer | undefined): BlueprintLayerKind {
+    return layer?.script ? "script" : "graph";
+}
 
 export type BlueprintFunctionGraph = {
     id: string;

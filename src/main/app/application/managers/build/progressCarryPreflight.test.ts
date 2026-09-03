@@ -32,17 +32,12 @@ function blueprint(id: string, name: string, nodeType: string) {
         id,
         name,
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    main: {
-                        id: "main",
-                        name: "On Click",
-                        graph: { nodes: { "node-1": { id: "node-1", type: nodeType } }, edges: [] },
-                    },
+        graphs: {
+            events: {
+                main: {
+                    id: "main",
+                    name: "On Click",
+                    graph: { nodes: { "node-1": { id: "node-1", type: nodeType } }, edges: [] },
                 },
             },
         },

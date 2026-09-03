@@ -870,10 +870,7 @@ type GraphCarrier = { id: string; name?: string; graph?: BlueprintGraphIr; meta?
  * costing nothing while the record is empty is the cheapest way not to be the walker that forgot.
  */
 function eachGraphSlot(blueprint: Blueprint): Array<{ slot: "events" | "functions" | "macros"; carrier: GraphCarrier }> {
-    if (blueprint.program.kind !== "graph") {
-        return [];
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     return [
         ...Object.values(graphs.events ?? {}).map(carrier => ({ slot: "events" as const, carrier })),
         ...Object.values(graphs.functions ?? {}).map(carrier => ({ slot: "functions" as const, carrier })),
@@ -946,10 +943,7 @@ export function applyAppTagToBlueprintDocument(
 
 /** One blueprint's graphs, folded. Reference-identical when none of them mentioned the variant. */
 export function applyAppTagToBlueprint(blueprint: Blueprint, options: AppTagGraphFoldOptions): Blueprint {
-    if (blueprint.program.kind !== "graph") {
-        return blueprint;
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     let changed = false;
     const foldSlot = <T extends GraphCarrier>(entries: Record<string, T> | undefined): Record<string, T> | undefined => {
         if (!entries) {
@@ -976,14 +970,11 @@ export function applyAppTagToBlueprint(blueprint: Blueprint, options: AppTagGrap
     }
     return {
         ...blueprint,
-        program: {
-            ...blueprint.program,
-            graphs: {
-                ...graphs,
-                ...(events ? { events } : {}),
-                ...(functions ? { functions } : {}),
-                ...(macros ? { macros } : {}),
-            },
+        graphs: {
+            ...graphs,
+            ...(events ? { events } : {}),
+            ...(functions ? { functions } : {}),
+            ...(macros ? { macros } : {}),
         },
     };
 }

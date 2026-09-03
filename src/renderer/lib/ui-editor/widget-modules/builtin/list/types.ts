@@ -40,6 +40,17 @@ export type ListWidgetProps = {
     /** Stack preview copies vertically or horizontally. */
     repeatDirection: ListDirection;
     /**
+     * Whether items that do not fit along `repeatDirection` continue on a further line.
+     *
+     * This is the list's second axis, and it is the list that lays it out: items flow along the
+     * repeat direction, break when the box runs out, and the lines pack against the start of the
+     * cross axis with `itemGap` between them - a grid, from a list of items and one item template.
+     *
+     * It also turns the axis the list scrolls along. Items no longer run off the end of the repeat
+     * direction, so there is nothing to scroll there; what grows is the stack of lines, across it.
+     */
+    repeatWrap: boolean;
+    /**
      * Block flow of the list.
      *
      * A vertical mode turns the whole list, not only the glyphs inside it: `repeatDirection` is read
@@ -116,6 +127,7 @@ export const defaultListWidgetProps: ListWidgetProps = {
     selectedIndex: -1,
     itemGap: 8,
     repeatDirection: "vertical",
+    repeatWrap: false,
     writingMode: "horizontal-tb",
     contentPaddingTop: 0,
     contentPaddingRight: 0,

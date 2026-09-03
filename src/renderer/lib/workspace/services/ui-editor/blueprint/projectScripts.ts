@@ -1,10 +1,10 @@
 /**
  * What is in `<project>/scripts/`, and which blueprint runs each file.
  *
- * The list a script blueprint has never had anywhere. Studio could say which file one blueprint
- * pointed at, and nothing could say the other direction - what the project holds, and which of it is
- * bound to something. Both halves are needed for a management surface: a file bound to nothing is
- * as much a fact as a blueprint whose file is gone.
+ * The list a script has never had anywhere. Studio could say which file one layer pointed at, and
+ * nothing could say the other direction - what the project holds, and which of it is bound to
+ * something. Both halves are needed for a management surface: a file bound to nothing is as much a
+ * fact as a layer whose file is gone.
  *
  * Two facts, joined here rather than in a panel, because both readings have to agree:
  *
@@ -19,6 +19,7 @@
 import { SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { FileEntry } from "@shared/utils/fs";
+import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 
 /** One row of the scripts listing: a file, or a reference to one that is not there. */
 export type ProjectScriptEntry = {
@@ -26,15 +27,17 @@ export type ProjectScriptEntry = {
     scriptRef: string;
     /** Just the file name, for a list that is read rather than parsed. */
     fileName: string;
-    /** Whether the file is on disk. False for a blueprint pointing at a file that was moved away. */
+    /** Whether the file is on disk. False for a layer pointing at a file that was moved away. */
     exists: boolean;
-    /** Every blueprint bound to this file. Two may share one script; most files have exactly one. */
+    /** Every layer bound to this file. Two may share one script; most files have exactly one. */
     boundTo: readonly ProjectScriptBinding[];
 };
 
 export type ProjectScriptBinding = {
     blueprintId: string;
-    /** The blueprint's own name, which is what the editor tab and the revision list show. */
+    /** The layer inside that blueprint, which is what actually runs the file. */
+    layerId: string;
+    /** The blueprint's own name, which is what the editor tab and the layer list show. */
     name: string;
     owner: Blueprint["owner"];
 };
@@ -77,22 +80,29 @@ export async function walkProjectScripts(read: ScriptDirectoryReader): Promise<s
     return found.sort();
 }
 
-/** Every blueprint that runs a script, by the file it runs. */
+/** Every layer that runs a script, by the file it runs. */
 export function scriptBindingsByRef(document: BlueprintDocument | undefined): Map<string, ProjectScriptBinding[]> {
     const byRef = new Map<string, ProjectScriptBinding[]>();
     for (const blueprint of Object.values(document?.blueprints ?? {})) {
-        if (blueprint?.program?.kind !== "scriptModule") {
+        if (!blueprint) {
             continue;
         }
-        const bindings = byRef.get(blueprint.program.scriptRef) ?? [];
-        bindings.push({ blueprintId: blueprint.id, name: blueprint.name, owner: blueprint.owner });
-        byRef.set(blueprint.program.scriptRef, bindings);
+        for (const { layerId, script } of listScriptLayers(blueprint.graphs)) {
+            const bindings = byRef.get(script.scriptRef) ?? [];
+            bindings.push({
+                blueprintId: blueprint.id,
+                layerId,
+                name: blueprint.name,
+                owner: blueprint.owner,
+            });
+            byRef.set(script.scriptRef, bindings);
+        }
     }
     return byRef;
 }
 
 /**
- * The listing: every file on disk, plus every file a blueprint names that is not.
+ * The listing: every file on disk, plus every file a layer names that is not.
  *
  * Sorted by path so the order is the folder's own and does not move when a binding changes.
  */

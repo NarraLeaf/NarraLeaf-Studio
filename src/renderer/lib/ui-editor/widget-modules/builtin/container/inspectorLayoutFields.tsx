@@ -39,6 +39,19 @@ function ContainerEmptyChildrenHintField(props: CustomFieldProps<UIInspectorData
     return null;
 }
 
+/**
+ * Whether the container lays its children out absolutely, which is when the flow controls below
+ * have nothing to act on.
+ *
+ * Written as "hidden when" rather than "visible when" because the properties framework only knows
+ * `hidden`: an unknown key on a field is accepted and ignored, so the whole flow group was being
+ * offered on a free container, where none of it does anything.
+ */
+function hiddenOutsideFlow(data: D): boolean {
+    const kind = getContainerProps(data.element).layoutKind;
+    return kind !== "stack" && kind !== "scroll";
+}
+
 export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknown[] {
     const { t } = i18nStore.getTranslator();
     const { element, documentService } = ctx;
@@ -83,7 +96,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                         { value: "y", label: t("widgets.vertical") },
                         { value: "x", label: t("widgets.horizontal") },
                     ],
-                    visible: (d: D) => getContainerProps(d.element).layoutKind === "scroll",
+                    hidden: (d: D) => getContainerProps(d.element).layoutKind !== "scroll",
                     getValue: (d: D) => getContainerProps(d.element).scrollAxis,
                     setValue: (_d: D, v: string | number) => patch({ scrollAxis: v as ContainerScrollAxis }),
                 }),
@@ -93,10 +106,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     mode: "single",
                     label: t("widgets.direction"),
                     showLabels: false,
-                    visible: (d: D) => {
-                        const k = getContainerProps(d.element).layoutKind;
-                        return k === "stack" || k === "scroll";
-                    },
+                    hidden: hiddenOutsideFlow,
                     options: [
                         { id: "vertical", icon: <Rows2 className="w-4 h-4" />, label: t("widgets.container.verticalStack") },
                         { id: "horizontal", icon: <Columns2 className="w-4 h-4" />, label: t("widgets.container.horizontalStack") },
@@ -108,15 +118,20 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     },
                 }),
                 defineField<D, any>({
+                    id: "container.stackWrap",
+                    type: "toggle",
+                    label: t("widgets.wrap"),
+                    hidden: hiddenOutsideFlow,
+                    getValue: (d: D) => getContainerProps(d.element).stackWrap,
+                    setValue: (_d: D, v: boolean) => patch({ stackWrap: v }),
+                }),
+                defineField<D, any>({
                     id: "container.stackAlignItems",
                     type: "iconButtonGroup",
                     mode: "single",
                     label: t("widgets.container.alignCross"),
                     showLabels: false,
-                    visible: (d: D) => {
-                        const k = getContainerProps(d.element).layoutKind;
-                        return k === "stack" || k === "scroll";
-                    },
+                    hidden: hiddenOutsideFlow,
                     options: [
                         { id: "start", icon: <AlignHorizontalJustifyStart className="w-4 h-4" />, label: t("widgets.container.start") },
                         { id: "center", icon: <AlignHorizontalJustifyCenter className="w-4 h-4" />, label: t("widgets.container.center") },
@@ -135,10 +150,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     mode: "single",
                     label: t("widgets.container.justifyMain"),
                     showLabels: false,
-                    visible: (d: D) => {
-                        const k = getContainerProps(d.element).layoutKind;
-                        return k === "stack" || k === "scroll";
-                    },
+                    hidden: hiddenOutsideFlow,
                     options: [
                         { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: t("widgets.container.start") },
                         { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: t("widgets.container.center") },
@@ -158,10 +170,7 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     gap: 8,
                     wrap: true,
                     label: undefined,
-                    visible: (d: D) => {
-                        const k = getContainerProps(d.element).layoutKind;
-                        return k === "stack" || k === "scroll";
-                    },
+                    hidden: hiddenOutsideFlow,
                     items: [
                         {
                             id: "container.stackGap",

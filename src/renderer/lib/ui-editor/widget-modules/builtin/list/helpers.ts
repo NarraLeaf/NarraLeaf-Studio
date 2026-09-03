@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
@@ -13,6 +14,7 @@ import {
     type UIPageAnimationSettings,
 } from "@shared/types/ui-editor/pageAnimation";
 import {
+    isPhysicallyHorizontalAxis,
     normalizeVerticalTypography,
     type TextWritingMode,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
@@ -39,6 +41,64 @@ export function resolveListItemContentAlignmentStyle(
     return templateDirection === "horizontal"
         ? { justifyContent: "flex-end" }
         : { alignItems: "flex-end" };
+}
+
+/** What the item flow is, once the writing mode and the wrap have been read against each other. */
+export type ListRepeatLayout = {
+    /**
+     * Whether the axis the content grows and scrolls along is the screen's horizontal one.
+     *
+     * Everything physical reads this rather than working it out again: which overflow scrolls, and
+     * which way a drag pans.
+     */
+    overflowIsHorizontal: boolean;
+    /** The flex host that repeats the item template, sized so the wrap can happen. */
+    flexHostStyle: CSSProperties;
+};
+
+/**
+ * How a list lays its items out: the flow, and the axis that overflows.
+ *
+ * One function, because those two answers must not be allowed to disagree. `repeatDirection` names
+ * a flex axis rather than a screen axis and flex axes turn with the writing mode, and wrapping
+ * moves the axis the content grows along to the other one - items stop at the edge of the box
+ * instead of running past it, and it is the stack of lines that gets longer.
+ */
+export function resolveListRepeatLayout(
+    props: Pick<ListWidgetProps, "repeatDirection" | "repeatWrap" | "writingMode" | "itemGap">,
+): ListRepeatLayout {
+    const repeatIsHorizontal = isPhysicallyHorizontalAxis(props.repeatDirection, props.writingMode);
+    const mainIsBlockAxis = props.repeatDirection === "vertical";
+    // Sized logically rather than in width/height: which screen axis a wrap has to break against is
+    // the flex main axis, and that follows `repeatDirection` through the writing mode. A block box
+    // already fills the inline axis, so only a main axis that is the block axis needs stating; the
+    // cross axis is the one that grows, and keeps the "at least fill the box" it has without wrap.
+    const wrapSizing: CSSProperties = mainIsBlockAxis
+        ? { blockSize: "100%", minInlineSize: "100%" }
+        : { minBlockSize: "100%" };
+    return {
+        overflowIsHorizontal: props.repeatWrap ? !repeatIsHorizontal : repeatIsHorizontal,
+        flexHostStyle: {
+            display: "flex",
+            flexDirection: mainIsBlockAxis ? "column" : "row",
+            gap: props.itemGap,
+            alignItems: "stretch",
+            ...(props.repeatWrap
+                ? {
+                      flexWrap: "wrap",
+                      // Not an authored choice: the initial value spreads the lines over the whole
+                      // cross axis, which would put two lines at opposite ends of the box instead
+                      // of one under the other at `itemGap`.
+                      alignContent: "flex-start",
+                      ...wrapSizing,
+                  }
+                : {
+                      // The cross axis is the one the items do not run along, so it is the one that fills.
+                      minWidth: repeatIsHorizontal ? 0 : "100%",
+                      minHeight: repeatIsHorizontal ? "100%" : 0,
+                  }),
+        },
+    };
 }
 
 function finiteNumber(value: unknown, fallback: number): number {
@@ -203,6 +263,7 @@ export function getListProps(element: UIElement): ListWidgetProps {
             raw.repeatDirection === "horizontal" || raw.repeatDirection === "vertical"
                 ? raw.repeatDirection
                 : defaultListWidgetProps.repeatDirection,
+        repeatWrap: typeof raw.repeatWrap === "boolean" ? raw.repeatWrap : defaultListWidgetProps.repeatWrap,
         writingMode: normalizeVerticalTypography(raw as { writingMode?: TextWritingMode }).writingMode,
         contentPaddingTop: clampNumber(raw.contentPaddingTop, defaultListWidgetProps.contentPaddingTop, 0, 512),
         contentPaddingRight: clampNumber(raw.contentPaddingRight, defaultListWidgetProps.contentPaddingRight, 0, 512),

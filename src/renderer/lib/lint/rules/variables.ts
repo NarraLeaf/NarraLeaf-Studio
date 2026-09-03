@@ -344,10 +344,7 @@ function* eachBlueprintNode(document: BlueprintDocument | null): Generator<Bluep
         return;
     }
     for (const blueprint of Object.values(document.blueprints ?? {})) {
-        if (blueprint?.program?.kind !== "graph") {
-            continue;
-        }
-        const graphs = blueprint.program.graphs;
+        const graphs = blueprint.graphs;
         const carriers = [
             ...Object.values(graphs.events ?? {}),
             ...Object.values(graphs.functions ?? {}),

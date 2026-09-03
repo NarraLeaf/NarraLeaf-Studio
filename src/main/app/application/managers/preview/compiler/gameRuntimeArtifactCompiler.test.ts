@@ -724,44 +724,38 @@ describe("game runtime artifact compiler", () => {
                             kind: "surfaceMain",
                             surfaceId: "surface-main",
                         },
-                        frontend: "visual",
-                        programKind: "graph",
-                        program: {
-                            kind: "graph",
-                            graphs: {
-                                events: {
-                                    "after-enter": {
-                                        id: "after-enter",
-                                        graph: {
-                                            nodes: {
-                                                animate: {
-                                                    id: "animate",
-                                                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
-                                                    params: {
-                                                        property: "opacity",
-                                                        from: 0,
-                                                        [DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM]: true,
-                                                        to: 100,
-                                                        duration: 0.3,
-                                                        delay: 0,
-                                                        easing: "linear",
-                                                        after: "hold",
-                                                    },
+                        graphs: {
+                            events: {
+                                "after-enter": {
+                                    id: "after-enter",
+                                    graph: {
+                                        nodes: {
+                                            animate: {
+                                                id: "animate",
+                                                type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                                                params: {
+                                                    property: "opacity",
+                                                    from: 0,
+                                                    [DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM]: true,
+                                                    to: 100,
+                                                    duration: 0.3,
+                                                    delay: 0,
+                                                    easing: "linear",
+                                                    after: "hold",
                                                 },
                                             },
-                                            edges: [],
                                         },
+                                        edges: [],
                                     },
                                 },
-                                functions: {},
                             },
+                            functions: {},
                         },
                     },
                 },
                 ownerRecords: {
                     "surfaceMain:surface-main": {
-                        activeBlueprintId: "surface-main-blueprint",
-                        privateBlueprintIds: ["surface-main-blueprint"],
+                        blueprintId: "surface-main-blueprint",
                     },
                 },
                 persistentVariables: {},
@@ -772,9 +766,7 @@ describe("game runtime artifact compiler", () => {
         const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47323));
 
         const blueprint = result.pack.bundle.ui.localBlueprints.blueprints["surface-main-blueprint"];
-        const nodeParams = blueprint?.program.kind === "graph"
-            ? blueprint.program.graphs.events["after-enter"]?.graph?.nodes?.animate?.params
-            : undefined;
+        const nodeParams = blueprint?.graphs.events["after-enter"]?.graph?.nodes?.animate?.params;
 
         expect(nodeParams).toMatchObject({
             property: "opacity",

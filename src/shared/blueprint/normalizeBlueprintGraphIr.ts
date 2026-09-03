@@ -25,7 +25,7 @@ function cloneIr(ir: BlueprintGraphIr | undefined): BlueprintGraphIr {
  * Ensure event graph IR has correct `meta.graphKind`.
  * New / empty layers stay empty (no auto-injected Event node); existing graphs are preserved as-is.
  */
-export function ensureBlueprintEventGraphIrStructure(
+export function ensureBlueprintLayerIrStructure(
     ir: BlueprintGraphIr | undefined,
     _generateId: () => string,
 ): BlueprintGraphIr {

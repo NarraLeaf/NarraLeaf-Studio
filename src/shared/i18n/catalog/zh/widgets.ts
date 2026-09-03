@@ -18,6 +18,7 @@ export const widgets = {
     horizontal: "水平",
     vertical: "垂直",
     gap: "间距",
+    wrap: "换行",
     perSidePx: "各边（px）",
     sides: {
         top: "上",

@@ -90,20 +90,13 @@ function valueBlueprintDocument(input: { blueprintId: string; elementId: string;
                 id: input.blueprintId,
                 name: "Text value",
                 owner: { kind: "widgetValue", surfaceId: SURFACE_ID, elementId: input.elementId, propPath: "text" },
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
-                program: {
-                    kind: "graph",
-                    graphs: { events: { init: { id: "init", graph: input.graph } }, functions: {} },
-                },
+                graphs: { events: { init: { id: "init", graph: input.graph } }, functions: {} },
             },
         },
         ownerRecords: {
             [encodeBlueprintOwnerKey({ kind: "widgetValue", surfaceId: SURFACE_ID, elementId: input.elementId, propPath: "text" })]: {
-                activeBlueprintId: input.blueprintId,
-                privateBlueprintIds: [input.blueprintId],
-                initializedFrontend: "visual",
+                blueprintId: input.blueprintId,
             },
         },
     };

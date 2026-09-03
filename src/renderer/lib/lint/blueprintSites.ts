@@ -45,24 +45,23 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
         return [];
     }
 
-    // blueprintId -> ownerKey. The active blueprint is listed first so it wins over the historical
-    // revisions kept beside it in the same record.
+    // blueprintId -> ownerKey. One each way: a slot names one blueprint and a blueprint belongs to
+    // one slot. This used to walk a list of revisions beside the active one, which put findings on
+    // the author's slot for graphs that were not running.
     const ownerKeyByBlueprintId = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords ?? {})) {
-        for (const blueprintId of [record.activeBlueprintId, ...(record.privateBlueprintIds ?? [])]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
+        if (record.blueprintId) {
+            ownerKeyByBlueprintId.set(record.blueprintId, ownerKey);
         }
     }
 
     const sites: BlueprintGraphSite[] = [];
     for (const blueprint of Object.values(document.blueprints ?? {})) {
         const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
-        if (!ownerKey || blueprint.program.kind !== "graph") {
+        if (!ownerKey) {
             continue;
         }
-        const graphs = blueprint.program.graphs;
+        const graphs = blueprint.graphs;
         const slots: readonly { graphKind: BlueprintGraphKind; entries: Record<string, { graph?: BlueprintGraphIr }> }[] = [
             { graphKind: "event", entries: graphs.events ?? {} },
             { graphKind: "function", entries: graphs.functions ?? {} },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BlueprintEventGraph, BlueprintGraphIndex } from "../types/blueprint/document";
+import type { BlueprintLayer, BlueprintGraphIndex } from "../types/blueprint/document";
 import {
     captureBlueprintDocumentEventOrder,
     captureBlueprintDocumentFunctionOrder,
@@ -9,15 +9,15 @@ import {
     listBlueprintFunctionIds,
 } from "./blueprintEventOrder";
 
-function layers(...ids: string[]): Record<string, BlueprintEventGraph> {
-    const out: Record<string, BlueprintEventGraph> = {};
+function layers(...ids: string[]): Record<string, BlueprintLayer> {
+    const out: Record<string, BlueprintLayer> = {};
     for (const id of ids) {
         out[id] = { id };
     }
     return out;
 }
 
-function graphs(events: Record<string, BlueprintEventGraph>, eventIds?: string[]): BlueprintGraphIndex {
+function graphs(events: Record<string, BlueprintLayer>, eventIds?: string[]): BlueprintGraphIndex {
     return { ...(eventIds ? { eventIds } : {}), events, functions: {} };
 }
 
@@ -136,20 +136,20 @@ describe("captureBlueprintDocumentEventOrder", () => {
     it("captures every graph program and leaves script modules alone", () => {
         const raw = {
             blueprints: {
-                visual: { program: { kind: "graph", graphs: { events: layers("zeta", "alpha"), functions: {} } } },
+                visual: { graphs: { events: layers("zeta", "alpha"), functions: {} } },
                 script: { program: { kind: "scriptModule", source: { language: "typescript", code: "" } } },
             },
         };
 
         captureBlueprintDocumentEventOrder(raw);
 
-        expect((raw.blueprints.visual.program.graphs as BlueprintGraphIndex).eventIds).toEqual(["zeta", "alpha"]);
+        expect((raw.blueprints.visual.graphs as BlueprintGraphIndex).eventIds).toEqual(["zeta", "alpha"]);
         expect(raw.blueprints.script.program).not.toHaveProperty("graphs");
     });
 
     it("leaves functionIds alone, and the function pass leaves eventIds alone", () => {
         const graphIndex = { events: layers("zeta", "alpha"), functions: layers("fb", "fa") };
-        const raw = { blueprints: { visual: { program: { kind: "graph", graphs: graphIndex } } } };
+        const raw = { blueprints: { visual: { graphs: graphIndex } } };
 
         captureBlueprintDocumentEventOrder(raw);
         expect(graphIndex).not.toHaveProperty("functionIds");

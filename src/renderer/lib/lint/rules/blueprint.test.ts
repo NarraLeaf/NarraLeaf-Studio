@@ -79,7 +79,7 @@ function documentWithGraphs(input: {
         Object.fromEntries(Object.entries(graphs).map(([id, graph]) => [id, { id, graph }]));
     return {
         ownerRecords: {
-            "surfaceMain:s1": { activeBlueprintId: "bp1", privateBlueprintIds: ["bp1"] },
+            "surfaceMain:s1": { blueprintId: "bp1" },
         },
         blueprints: {
             bp1: {
@@ -88,12 +88,9 @@ function documentWithGraphs(input: {
                 // The owner the record above files it under. Spelled out because what a graph may
                 // reach is decided by it - fn visibility is the case with teeth.
                 owner: { kind: "surfaceMain", surfaceId: "s1" },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: wrap(input.events ?? {}),
-                        functions: wrap(input.functions ?? {}),
-                    },
+                graphs: {
+                    events: wrap(input.events ?? {}),
+                    functions: wrap(input.functions ?? {}),
                 },
             },
         },
@@ -684,7 +681,7 @@ describe("blueprint/fn-target-missing", () => {
             ownerRecords: Object.fromEntries(
                 specs.map(spec => [
                     ownerRefToIndexKey(spec.owner),
-                    { activeBlueprintId: spec.id, privateBlueprintIds: [spec.id] },
+                    { blueprintId: spec.id },
                 ]),
             ),
             blueprints: Object.fromEntries(
@@ -694,33 +691,30 @@ describe("blueprint/fn-target-missing", () => {
                         id: spec.id,
                         name: spec.id,
                         owner: spec.owner,
-                        program: {
-                            kind: "graph",
-                            graphs: {
-                                events: {
-                                    main: {
-                                        id: "main",
-                                        graph: {
-                                            nodes: {
-                                                ...Object.fromEntries(
-                                                    Object.entries(spec.heads ?? {}).map(([nodeId, name]) => [
-                                                        nodeId,
-                                                        headNode(nodeId, name),
-                                                    ]),
-                                                ),
-                                                ...Object.fromEntries(
-                                                    Object.entries(spec.calls ?? {}).map(([nodeId, call]) => [
-                                                        nodeId,
-                                                        callNode(nodeId, call),
-                                                    ]),
-                                                ),
-                                            },
-                                            edges: [],
+                        graphs: {
+                            events: {
+                                main: {
+                                    id: "main",
+                                    graph: {
+                                        nodes: {
+                                            ...Object.fromEntries(
+                                                Object.entries(spec.heads ?? {}).map(([nodeId, name]) => [
+                                                    nodeId,
+                                                    headNode(nodeId, name),
+                                                ]),
+                                            ),
+                                            ...Object.fromEntries(
+                                                Object.entries(spec.calls ?? {}).map(([nodeId, call]) => [
+                                                    nodeId,
+                                                    callNode(nodeId, call),
+                                                ]),
+                                            ),
                                         },
+                                        edges: [],
                                     },
                                 },
-                                functions: {},
                             },
+                            functions: {},
                         },
                     },
                 ]),
@@ -1383,10 +1377,7 @@ function skeletonBlueprintDocument(): BlueprintDocument {
 /** Remove the first edge feeding an `element` pin, and say whether there was one. */
 function cutOneElementEdge(document: BlueprintDocument): boolean {
     for (const blueprint of Object.values(document.blueprints)) {
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
-        for (const graph of Object.values(blueprint.program.graphs.events ?? {})) {
+        for (const graph of Object.values(blueprint.graphs.events ?? {})) {
             const edges = graph.graph?.edges ?? [];
             const index = edges.findIndex(edge => edge.to.port === "element");
             if (index >= 0) {

@@ -1,3 +1,4 @@
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { scanProjectStoryEntryPoints } from "@shared/story/storyReachability";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StorySceneId } from "@shared/types/story";
@@ -90,7 +91,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
             // A program that is not a graph has no nodes to scan, so what it assigns is unknowable.
             // Whole-project, because a `saved` counter it moves is a counter every story shares.
             const opaqueWriters = Object.values(blueprintDocument?.blueprints ?? {})
-                .some(blueprint => blueprint && blueprint.program?.kind !== "graph");
+                .some(blueprint => hasScriptLayer(blueprint));
 
             const writtenByStory = new Map(stories.map(story => [story.id, storyWrittenKeys(story.document)]));
             const analysed = stories.filter(story => (byStory.get(story.id)?.size ?? 0) > 0);

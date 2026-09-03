@@ -129,25 +129,20 @@ function blueprintWithStartStory(params: Record<string, unknown>, wiredPins: str
                 id: "bp-1",
                 name: "Title screen",
                 owner: { kind: "globalMain" },
-                frontend: "visual",
-                programKind: "graph",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            "ev-1": {
-                                id: "ev-1",
-                                graph: {
-                                    nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
-                                    edges: wiredPins.map(port => ({
-                                        from: { nodeId: "n-source", port: "value" },
-                                        to: { nodeId: "n-1", port },
-                                    })),
-                                },
+                graphs: {
+                    events: {
+                        "ev-1": {
+                            id: "ev-1",
+                            graph: {
+                                nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
+                                edges: wiredPins.map(port => ({
+                                    from: { nodeId: "n-source", port: "value" },
+                                    to: { nodeId: "n-1", port },
+                                })),
                             },
                         },
-                        functions: {},
                     },
+                    functions: {},
                 },
             },
         },

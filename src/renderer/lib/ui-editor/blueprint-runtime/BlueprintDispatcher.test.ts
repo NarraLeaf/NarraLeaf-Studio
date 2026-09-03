@@ -71,49 +71,42 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Container Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "container" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                init: {
-                                    id: "init",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
-                                            },
-                                            message: {
-                                                id: "message",
-                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                                                params: { value: "init fired" },
-                                            },
-                                            log: {
-                                                id: "log",
-                                                type: BLUEPRINT_NODE_TYPE_LOG,
-                                            },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
-                                            { from: { nodeId: "message", port: "value" }, to: { nodeId: "log", port: "value" } },
-                                        ],
+                                        message: {
+                                            id: "message",
+                                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                            params: { value: "init fired" },
+                                        },
+                                        log: {
+                                            id: "log",
+                                            type: BLUEPRINT_NODE_TYPE_LOG,
+                                        },
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                                        { from: { nodeId: "message", port: "value" }, to: { nodeId: "log", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:container": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -189,37 +182,30 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Component Container Logic",
                     owner: { kind: "componentWidgetMain", componentId: "component", elementId: "component-container" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                init: {
-                                    id: "init",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
-                                            },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
                                         },
-                                        edges: [],
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "componentWidgetMain:component:component-container": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -298,24 +284,17 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Button Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {},
-                            functions: {},
-                        },
+                    graphs: {
+                        events: {},
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:button": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -379,37 +358,30 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Container Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "container" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseEnter: {
-                                    id: "mouseEnter",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
-                                            },
+                    graphs: {
+                        events: {
+                            mouseEnter: {
+                                id: "mouseEnter",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
                                         },
-                                        edges: [],
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:container": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -478,42 +450,35 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Panel Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "panel" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                dialogNext: {
-                                    id: "dialogNext",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
-                                                params: {
-                                                    surfaceId: "surface",
-                                                    elementId: "interaction",
-                                                    elementType: "nl.container",
-                                                },
+                    graphs: {
+                        events: {
+                            dialogNext: {
+                                id: "dialogNext",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                                            params: {
+                                                surfaceId: "surface",
+                                                elementId: "interaction",
+                                                elementType: "nl.container",
                                             },
                                         },
-                                        edges: [],
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:panel": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -590,8 +555,6 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Button Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             mouseX: { id: "mouseX", name: "mouseX", valueType: "float", defaultValue: 0 },
@@ -600,38 +563,33 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseClick: {
-                                    id: "mouseClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                            setX: {
-                                                id: "setX",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "mouseX" },
-                                            },
+                    graphs: {
+                        events: {
+                            mouseClick: {
+                                id: "mouseClick",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                        setX: {
+                                            id: "setX",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "mouseX" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setX", port: "in" } },
-                                            { from: { nodeId: "head", port: "x" }, to: { nodeId: "setX", port: "value" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setX", port: "in" } },
+                                        { from: { nodeId: "head", port: "x" }, to: { nodeId: "setX", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:button": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -704,8 +662,6 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Button Keyboard Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             keyName: { id: "keyName", name: "keyName", valueType: "string", defaultValue: "" },
@@ -714,38 +670,33 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                keyDown: {
-                                    id: "keyDown",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
-                                            setKey: {
-                                                id: "setKey",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "keyName" },
-                                            },
+                    graphs: {
+                        events: {
+                            keyDown: {
+                                id: "keyDown",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                        setKey: {
+                                            id: "setKey",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "keyName" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
-                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                        { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:button": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -826,8 +777,6 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "List Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             selectedKey: { id: "selectedKey", name: "selectedKey", valueType: "string", defaultValue: "" },
@@ -836,38 +785,33 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                itemClick: {
-                                    id: "itemClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK },
-                                            setKey: {
-                                                id: "setKey",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "selectedKey" },
-                                            },
+                    graphs: {
+                        events: {
+                            itemClick: {
+                                id: "itemClick",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK },
+                                        setKey: {
+                                            id: "setKey",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "selectedKey" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
-                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                        { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:list": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -940,8 +884,6 @@ describe("BlueprintDispatcher", () => {
                     id: globalBlueprintId,
                     name: "Global Logic",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             booted: { id: "booted", name: "booted", valueType: "string", defaultValue: "" },
@@ -951,53 +893,48 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                appBoot: {
-                                    id: "appBoot",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT },
-                                            setBooted: {
-                                                id: "setBooted",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "booted", value: "yes" },
-                                            },
+                    graphs: {
+                        events: {
+                            appBoot: {
+                                id: "appBoot",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT },
+                                        setBooted: {
+                                            id: "setBooted",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "booted", value: "yes" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setBooted", port: "in" } },
-                                        ],
                                     },
-                                },
-                                gameReady: {
-                                    id: "gameReady",
-                                    graph: {
-                                        nodes: {
-                                            headReady: { id: "headReady", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY },
-                                            setReady: {
-                                                id: "setReady",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "ready", value: "yes" },
-                                            },
-                                        },
-                                        edges: [
-                                            { from: { nodeId: "headReady", port: "then" }, to: { nodeId: "setReady", port: "in" } },
-                                        ],
-                                    },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setBooted", port: "in" } },
+                                    ],
                                 },
                             },
-                            functions: {},
+                            gameReady: {
+                                id: "gameReady",
+                                graph: {
+                                    nodes: {
+                                        headReady: { id: "headReady", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY },
+                                        setReady: {
+                                            id: "setReady",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "ready", value: "yes" },
+                                        },
+                                    },
+                                    edges: [
+                                        { from: { nodeId: "headReady", port: "then" }, to: { nodeId: "setReady", port: "in" } },
+                                    ],
+                                },
+                            },
                         },
+                        functions: {},
                     },
                 },
                 [surfaceBlueprintId]: {
                     id: surfaceBlueprintId,
                     name: "Surface Logic",
                     owner: { kind: "surfaceMain", surfaceId: "surface" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             initialized: {
@@ -1011,42 +948,35 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                surfaceInit: {
-                                    id: "surfaceInit",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT },
-                                            setInitialized: {
-                                                id: "setInitialized",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "initialized", value: "yes" },
-                                            },
+                    graphs: {
+                        events: {
+                            surfaceInit: {
+                                id: "surfaceInit",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT },
+                                        setInitialized: {
+                                            id: "setInitialized",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "initialized", value: "yes" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setInitialized", port: "in" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setInitialized", port: "in" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 globalMain: {
-                    activeBlueprintId: globalBlueprintId,
-                    privateBlueprintIds: [globalBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: globalBlueprintId,
                 },
                 "surfaceMain:surface": {
-                    activeBlueprintId: surfaceBlueprintId,
-                    privateBlueprintIds: [surfaceBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: surfaceBlueprintId,
                 },
             },
         };
@@ -1112,8 +1042,6 @@ describe("BlueprintDispatcher", () => {
                     id: surfaceBlueprintId,
                     name: "Surface Click",
                     owner: { kind: "surfaceMain", surfaceId: "surface" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             mouseX: { id: "mouseX", name: "mouseX", valueType: "float", defaultValue: 0 },
@@ -1123,45 +1051,40 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseClick: {
-                                    id: "mouseClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                            setX: {
-                                                id: "setX",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "mouseX" },
-                                            },
-                                            setY: {
-                                                id: "setY",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "mouseY" },
-                                            },
+                    graphs: {
+                        events: {
+                            mouseClick: {
+                                id: "mouseClick",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                        setX: {
+                                            id: "setX",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "mouseX" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setX", port: "in" } },
-                                            { from: { nodeId: "setX", port: "next" }, to: { nodeId: "setY", port: "in" } },
-                                            { from: { nodeId: "head", port: "x" }, to: { nodeId: "setX", port: "value" } },
-                                            { from: { nodeId: "head", port: "y" }, to: { nodeId: "setY", port: "value" } },
-                                        ],
+                                        setY: {
+                                            id: "setY",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "mouseY" },
+                                        },
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setX", port: "in" } },
+                                        { from: { nodeId: "setX", port: "next" }, to: { nodeId: "setY", port: "in" } },
+                                        { from: { nodeId: "head", port: "x" }, to: { nodeId: "setX", port: "value" } },
+                                        { from: { nodeId: "head", port: "y" }, to: { nodeId: "setY", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "surfaceMain:surface": {
-                    activeBlueprintId: surfaceBlueprintId,
-                    privateBlueprintIds: [surfaceBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: surfaceBlueprintId,
                 },
             },
         };
@@ -1201,8 +1124,6 @@ describe("BlueprintDispatcher", () => {
                         id: surfaceBlueprintId,
                         name: "Surface Cancel",
                         owner: { kind: "surfaceMain", surfaceId: "surface" },
-                        frontend: "visual",
-                        programKind: "graph",
                         members: {
                             variables: {
                                 initialized: {
@@ -1216,43 +1137,38 @@ describe("BlueprintDispatcher", () => {
                             functions: {},
                         },
                         bindings: {},
-                        program: {
-                            kind: "graph",
-                            graphs: {
-                                events: {
-                                    surfaceInit: {
-                                        id: "surfaceInit",
-                                        graph: {
-                                            nodes: {
-                                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT },
-                                                delay: {
-                                                    id: "delay",
-                                                    type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
-                                                    params: { duration: 1 },
-                                                },
-                                                setInitialized: {
-                                                    id: "setInitialized",
-                                                    type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                    params: { variableId: "initialized", value: "yes" },
-                                                },
+                        graphs: {
+                            events: {
+                                surfaceInit: {
+                                    id: "surfaceInit",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT },
+                                            delay: {
+                                                id: "delay",
+                                                type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                                                params: { duration: 1 },
                                             },
-                                            edges: [
-                                                { from: { nodeId: "head", port: "then" }, to: { nodeId: "delay", port: "in" } },
-                                                { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "setInitialized", port: "in" } },
-                                            ],
+                                            setInitialized: {
+                                                id: "setInitialized",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "initialized", value: "yes" },
+                                            },
                                         },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "delay", port: "in" } },
+                                            { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "setInitialized", port: "in" } },
+                                        ],
                                     },
                                 },
-                                functions: {},
                             },
+                            functions: {},
                         },
                     },
                 },
                 ownerRecords: {
                     "surfaceMain:surface": {
-                        activeBlueprintId: surfaceBlueprintId,
-                        privateBlueprintIds: [surfaceBlueprintId],
-                        initializedFrontend: "visual",
+                        blueprintId: surfaceBlueprintId,
                     },
                 },
             };
@@ -1304,8 +1220,6 @@ describe("BlueprintDispatcher", () => {
                     id: globalBlueprintId,
                     name: "Global Keyboard",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             lastKey: { id: "lastKey", name: "lastKey", valueType: "string", defaultValue: "" },
@@ -1314,38 +1228,33 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                keyDown: {
-                                    id: "keyDown",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
-                                            setKey: {
-                                                id: "setKey",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "lastKey" },
-                                            },
+                    graphs: {
+                        events: {
+                            keyDown: {
+                                id: "keyDown",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                        setKey: {
+                                            id: "setKey",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "lastKey" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
-                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                        { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
                 [surfaceBlueprintId]: {
                     id: surfaceBlueprintId,
                     name: "Surface Keyboard",
                     owner: { kind: "surfaceMain", surfaceId: "surface" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             lastKey: { id: "lastKey", name: "lastKey", valueType: "string", defaultValue: "" },
@@ -1354,43 +1263,36 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                keyUp: {
-                                    id: "keyUp",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP },
-                                            setKey: {
-                                                id: "setKey",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "lastKey" },
-                                            },
+                    graphs: {
+                        events: {
+                            keyUp: {
+                                id: "keyUp",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP },
+                                        setKey: {
+                                            id: "setKey",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "lastKey" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
-                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                        { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 globalMain: {
-                    activeBlueprintId: globalBlueprintId,
-                    privateBlueprintIds: [globalBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: globalBlueprintId,
                 },
                 "surfaceMain:surface": {
-                    activeBlueprintId: surfaceBlueprintId,
-                    privateBlueprintIds: [surfaceBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: surfaceBlueprintId,
                 },
             },
         };
@@ -1459,8 +1361,6 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Global On Key",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             ctrlHeld: { id: "ctrlHeld", name: "ctrlHeld", valueType: "boolean", defaultValue: false },
@@ -1475,57 +1375,52 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                escapeDown: {
-                                    id: "escapeDown",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
-                                                params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: "escape" },
-                                            },
-                                            setCtrl: {
-                                                id: "setCtrl",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "ctrlHeld", value: true },
-                                            },
+                    graphs: {
+                        events: {
+                            escapeDown: {
+                                id: "escapeDown",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+                                            params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: "escape" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setCtrl", port: "in" } },
-                                        ],
-                                    },
-                                },
-                                emptyKeyDown: {
-                                    id: "emptyKeyDown",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN },
-                                            setEmpty: {
-                                                id: "setEmpty",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "emptyMatched", value: true },
-                                            },
+                                        setCtrl: {
+                                            id: "setCtrl",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "ctrlHeld", value: true },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setEmpty", port: "in" } },
-                                        ],
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setCtrl", port: "in" } },
+                                    ],
                                 },
                             },
-                            functions: {},
+                            emptyKeyDown: {
+                                id: "emptyKeyDown",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN },
+                                        setEmpty: {
+                                            id: "setEmpty",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "emptyMatched", value: true },
+                                        },
+                                    },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setEmpty", port: "in" } },
+                                    ],
+                                },
+                            },
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 globalMain: {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -1571,8 +1466,6 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Page Component Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "frame" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             eventName: { id: "eventName", name: "eventName", valueType: "string", defaultValue: "" },
@@ -1582,45 +1475,40 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                pageEvent: {
-                                    id: "pageEvent",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT },
-                                            setEvent: {
-                                                id: "setEvent",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "eventName" },
-                                            },
-                                            setPayload: {
-                                                id: "setPayload",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "payload" },
-                                            },
+                    graphs: {
+                        events: {
+                            pageEvent: {
+                                id: "pageEvent",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT },
+                                        setEvent: {
+                                            id: "setEvent",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "eventName" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setEvent", port: "in" } },
-                                            { from: { nodeId: "head", port: "event" }, to: { nodeId: "setEvent", port: "value" } },
-                                            { from: { nodeId: "setEvent", port: "next" }, to: { nodeId: "setPayload", port: "in" } },
-                                            { from: { nodeId: "head", port: "data" }, to: { nodeId: "setPayload", port: "value" } },
-                                        ],
+                                        setPayload: {
+                                            id: "setPayload",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "payload" },
+                                        },
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setEvent", port: "in" } },
+                                        { from: { nodeId: "head", port: "event" }, to: { nodeId: "setEvent", port: "value" } },
+                                        { from: { nodeId: "setEvent", port: "next" }, to: { nodeId: "setPayload", port: "in" } },
+                                        { from: { nodeId: "head", port: "data" }, to: { nodeId: "setPayload", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:frame": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -1693,8 +1581,6 @@ describe("BlueprintDispatcher", () => {
                     id: blueprintId,
                     name: "Receiver Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "receiver" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             payload: { id: "payload", name: "payload", valueType: "json", defaultValue: null },
@@ -1703,48 +1589,43 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                broadcast: {
-                                    id: "broadcast",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
-                                                params: { event: "score" },
-                                            },
-                                            setPayload: {
-                                                id: "setPayload",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "payload" },
-                                            },
+                    graphs: {
+                        events: {
+                            broadcast: {
+                                id: "broadcast",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
+                                            params: { event: "score" },
                                         },
-                                        edges: [
-                                            {
-                                                from: { nodeId: "head", port: "then" },
-                                                to: { nodeId: "setPayload", port: "in" },
-                                            },
-                                            {
-                                                from: { nodeId: "head", port: "data" },
-                                                to: { nodeId: "setPayload", port: "value" },
-                                            },
-                                        ],
+                                        setPayload: {
+                                            id: "setPayload",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "payload" },
+                                        },
                                     },
+                                    edges: [
+                                        {
+                                            from: { nodeId: "head", port: "then" },
+                                            to: { nodeId: "setPayload", port: "in" },
+                                        },
+                                        {
+                                            from: { nodeId: "head", port: "data" },
+                                            to: { nodeId: "setPayload", port: "value" },
+                                        },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:receiver": {
-                    activeBlueprintId: blueprintId,
-                    privateBlueprintIds: [blueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: blueprintId,
                 },
             },
         };
@@ -1833,8 +1714,6 @@ describe("BlueprintDispatcher", () => {
                     id: surfaceBlueprintId,
                     name: "Page Logic",
                     owner: { kind: "surfaceMain", surfaceId: "surface" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             [payloadVarId]: {
@@ -1848,48 +1727,43 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                broadcast: {
-                                    id: "broadcast",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
-                                                params: { event: "score" },
-                                            },
-                                            setPayload: {
-                                                id: "setPayload",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: payloadVarId },
-                                            },
+                    graphs: {
+                        events: {
+                            broadcast: {
+                                id: "broadcast",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
+                                            params: { event: "score" },
                                         },
-                                        edges: [
-                                            {
-                                                from: { nodeId: "head", port: "then" },
-                                                to: { nodeId: "setPayload", port: "in" },
-                                            },
-                                            {
-                                                from: { nodeId: "head", port: "data" },
-                                                to: { nodeId: "setPayload", port: "value" },
-                                            },
-                                        ],
+                                        setPayload: {
+                                            id: "setPayload",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: payloadVarId },
+                                        },
                                     },
+                                    edges: [
+                                        {
+                                            from: { nodeId: "head", port: "then" },
+                                            to: { nodeId: "setPayload", port: "in" },
+                                        },
+                                        {
+                                            from: { nodeId: "head", port: "data" },
+                                            to: { nodeId: "setPayload", port: "value" },
+                                        },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "surfaceMain:surface": {
-                    activeBlueprintId: surfaceBlueprintId,
-                    privateBlueprintIds: [surfaceBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: surfaceBlueprintId,
                 },
             },
         };
@@ -1967,8 +1841,6 @@ describe("BlueprintDispatcher", () => {
                     id: globalBlueprintId,
                     name: "Global",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             [globalVarId]: {
@@ -1982,14 +1854,12 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
                 [pageBlueprintId]: {
                     id: pageBlueprintId,
                     name: "Page",
                     owner: { kind: "surfaceMain", surfaceId: "surface" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             [pageVarId]: {
@@ -2003,69 +1873,58 @@ describe("BlueprintDispatcher", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
                 [widgetBlueprintId]: {
                     id: widgetBlueprintId,
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseClick: {
-                                    id: "mouseClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                            setPage: {
-                                                id: "setPage",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: pageVarRef, value: 7 },
-                                            },
-                                            setGlobal: {
-                                                id: "setGlobal",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: globalVarRef, value: true },
-                                            },
+                    graphs: {
+                        events: {
+                            mouseClick: {
+                                id: "mouseClick",
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                        setPage: {
+                                            id: "setPage",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: pageVarRef, value: 7 },
                                         },
-                                        edges: [
-                                            {
-                                                from: { nodeId: "head", port: "then" },
-                                                to: { nodeId: "setPage", port: "in" },
-                                            },
-                                            {
-                                                from: { nodeId: "setPage", port: "next" },
-                                                to: { nodeId: "setGlobal", port: "in" },
-                                            },
-                                        ],
+                                        setGlobal: {
+                                            id: "setGlobal",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: globalVarRef, value: true },
+                                        },
                                     },
+                                    edges: [
+                                        {
+                                            from: { nodeId: "head", port: "then" },
+                                            to: { nodeId: "setPage", port: "in" },
+                                        },
+                                        {
+                                            from: { nodeId: "setPage", port: "next" },
+                                            to: { nodeId: "setGlobal", port: "in" },
+                                        },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 globalMain: {
-                    activeBlueprintId: globalBlueprintId,
-                    privateBlueprintIds: [globalBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: globalBlueprintId,
                 },
                 "surfaceMain:surface": {
-                    activeBlueprintId: pageBlueprintId,
-                    privateBlueprintIds: [pageBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: pageBlueprintId,
                 },
                 "widgetMain:surface:button": {
-                    activeBlueprintId: widgetBlueprintId,
-                    privateBlueprintIds: [widgetBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: widgetBlueprintId,
                 },
             },
         };
@@ -2174,48 +2033,34 @@ describe("invokeBlueprintFnCall", () => {
                     id: "bp-widget",
                     name: "Widget Fns",
                     owner: { kind: "widgetMain", surfaceId: "s1", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                main: { id: "main", graph: fnEchoGraph("w-head") },
-                                slow: { id: "slow", graph: fnEchoGraph("w-slow-head", true) },
-                            },
-                            functions: {},
+                    graphs: {
+                        events: {
+                            main: { id: "main", graph: fnEchoGraph("w-head") },
+                            slow: { id: "slow", graph: fnEchoGraph("w-slow-head", true) },
                         },
+                        functions: {},
                     },
                 },
                 "bp-global": {
                     id: "bp-global",
                     name: "Global Fns",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: { main: { id: "main", graph: fnEchoGraph("g-head") } },
-                            functions: {},
-                        },
+                    graphs: {
+                        events: { main: { id: "main", graph: fnEchoGraph("g-head") } },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 globalMain: {
-                    activeBlueprintId: "bp-global",
-                    privateBlueprintIds: ["bp-global"],
-                    initializedFrontend: "visual",
+                    blueprintId: "bp-global",
                 },
                 "widgetMain:s1:button": {
-                    activeBlueprintId: "bp-widget",
-                    privateBlueprintIds: ["bp-widget"],
-                    initializedFrontend: "visual",
+                    blueprintId: "bp-widget",
                 },
             },
         };
@@ -2355,8 +2200,6 @@ describe("ambient window event dispatch", () => {
                     id: listenerBlueprintId,
                     name: "Listener Logic",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "listener" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: {
                         variables: {
                             state: { id: "state", name: "state", valueType: "boolean", defaultValue: null },
@@ -2365,45 +2208,40 @@ describe("ambient window event dispatch", () => {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                fs: {
-                                    id: "fs",
-                                    graph: {
-                                        nodes: {
-                                            head: {
-                                                id: "head",
-                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
-                                                params: {},
-                                            },
-                                            setState: {
-                                                id: "setState",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "state" },
-                                            },
+                    graphs: {
+                        events: {
+                            fs: {
+                                id: "fs",
+                                graph: {
+                                    nodes: {
+                                        head: {
+                                            id: "head",
+                                            type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
+                                            params: {},
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setState", port: "in" } },
-                                            {
-                                                from: { nodeId: "head", port: "isFullscreen" },
-                                                to: { nodeId: "setState", port: "value" },
-                                            },
-                                        ],
+                                        setState: {
+                                            id: "setState",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "state" },
+                                        },
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "setState", port: "in" } },
+                                        {
+                                            from: { nodeId: "head", port: "isFullscreen" },
+                                            to: { nodeId: "setState", port: "value" },
+                                        },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
             ownerRecords: {
                 "widgetMain:surface:listener": {
-                    activeBlueprintId: listenerBlueprintId,
-                    privateBlueprintIds: [listenerBlueprintId],
-                    initializedFrontend: "visual",
+                    blueprintId: listenerBlueprintId,
                 },
             },
         };

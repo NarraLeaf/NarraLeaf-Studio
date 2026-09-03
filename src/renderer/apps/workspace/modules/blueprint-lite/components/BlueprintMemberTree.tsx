@@ -5,6 +5,8 @@ import type {
     LiteralValue,
 } from "@shared/types/blueprint/document";
 import { listBlueprintEventIds } from "@shared/blueprint/blueprintEventOrder";
+import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
+import { BlueprintLayerKindBadge } from "./BlueprintLayerKindBadge";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
@@ -678,12 +680,9 @@ export function BlueprintMemberTree({
         onVariableGroupOpenChange?.("persistent", true);
     }, [blueprintId, localBp, onVariableGroupOpenChange, promptCreatePersistentVariable]);
 
-    if (blueprint.program.kind !== "graph") {
-        return <p className="text-xs text-fg-subtle">{t("blueprint.memberTree.notGraph")}</p>;
-    }
 
     const blueprintDocument = localBp.getBlueprintDocument();
-    const globalBlueprintId = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+    const globalBlueprintId = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId;
     const globalBlueprint = globalBlueprintId ? blueprintDocument.blueprints[globalBlueprintId] : undefined;
     const pageBlueprintId =
         blueprint.owner.kind === "surfaceMain"
@@ -693,11 +692,11 @@ export function BlueprintMemberTree({
               : undefined;
     const pageBlueprint = pageBlueprintId ? blueprintDocument.blueprints[pageBlueprintId] : undefined;
 
-    const events = blueprint.program.graphs.events ?? {};
+    const events = blueprint.graphs.events ?? {};
     // Not `Object.keys(events)`: that is the order the record happens to be in, and the
     // canonical writer sorts it. Both this list and `eventIds[0]` (which layer opens) have
     // to come off the same reconciliation or they will disagree about layer one.
-    const eventIds = listBlueprintEventIds(blueprint.program.graphs);
+    const eventIds = listBlueprintEventIds(blueprint.graphs);
 
     const variableGroups = useMemo(
         () =>
@@ -726,11 +725,65 @@ export function BlueprintMemberTree({
         [localBp, registryRevision],
     );
 
+    /**
+     * Every file some layer of this project runs, other than the one this menu is about.
+     *
+     * Read off the document rather than off the disk: this is a repair for a reference, and the
+     * files worth offering are the ones already in use somewhere - a file nothing runs is reached
+     * by adding a layer, where the whole listing is shown.
+     */
+    const otherScriptFiles = useMemo(() => {
+        const current = menuLayerId ? events[menuLayerId]?.script?.scriptRef : undefined;
+        const refs = new Set<string>();
+        for (const candidate of Object.values(blueprintDocument.blueprints ?? {})) {
+            for (const { script } of listScriptLayers(candidate?.graphs)) {
+                if (script.scriptRef !== current) {
+                    refs.add(script.scriptRef);
+                }
+            }
+        }
+        return [...refs].sort();
+    }, [blueprintDocument, events, menuLayerId]);
+
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
 
     const layerMenuItems: ContextMenuDef = useMemo(() => {
         if (!menuLayerId) {
             return [];
+        }
+        const layerScript = events[menuLayerId]?.script;
+        if (layerScript) {
+            return [
+                {
+                    id: "changeFile",
+                    label: t("blueprint.script.changeFile"),
+                    ...freeze.menuRow(),
+                    submenu:
+                        otherScriptFiles.length === 0
+                            ? [{ id: "none", label: t("blueprint.script.changeFileEmpty"), disabled: true }]
+                            : otherScriptFiles.map(ref => ({
+                                  id: ref,
+                                  label: ref,
+                                  onClick: () => localBp.setLayerScriptRef(blueprintId, menuLayerId, ref),
+                              })),
+                },
+                { id: "sep", separator: true },
+                {
+                    id: "delete",
+                    // Removing the layer never removes the file: the disk owns a script from the
+                    // moment it exists, and it stays listed in the scripts panel as one nothing runs.
+                    label: t("blueprint.memberTree.deleteScriptLayer"),
+                    ...freeze.menuRow(),
+                    onClick: () => {
+                        const id = menuLayerId;
+                        hideMenu();
+                        setMenuLayerId(null);
+                        if (id) {
+                            onDeleteLayer(id);
+                        }
+                    },
+                },
+            ];
         }
         return [
             {
@@ -785,7 +838,19 @@ export function BlueprintMemberTree({
                 },
             },
         ];
-    }, [blueprintId, events, freeze, hideMenu, inputDialog, localBp, menuLayerId, onDeleteLayer, uiService, t]);
+    }, [
+        blueprintId,
+        events,
+        freeze,
+        hideMenu,
+        inputDialog,
+        localBp,
+        menuLayerId,
+        onDeleteLayer,
+        otherScriptFiles,
+        uiService,
+        t,
+    ]);
 
     return (
         <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-fg-muted">
@@ -808,11 +873,12 @@ export function BlueprintMemberTree({
                     ) : (
                         eventIds.map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "event", id);
+                            const script = events[id]?.script;
                             return (
-                                <li key={id}>
+                                <li key={id} className="flex items-center gap-1.5">
                                     <button
                                         type="button"
-                                        className={`w-full rounded-md px-2 py-1 text-left font-mono text-2xs ${
+                                        className={`min-w-0 flex-1 truncate rounded-md px-2 py-1 text-left font-mono text-2xs ${
                                             layerActive(id)
                                                 ? "bg-primary/15 text-fg"
                                                 : "text-fg-muted hover:bg-fill-subtle"
@@ -823,13 +889,19 @@ export function BlueprintMemberTree({
                                             showMenu(e);
                                         }}
                                     >
-                                        {events[id]?.name ?? t("blueprint.memberTree.unnamedEvent")}
+                                        {/* A script layer is named by its file. A name of its own
+                                            would be a second thing to keep in step with the disk,
+                                            and the file is what the author opens. */}
+                                        {script
+                                            ? script.scriptRef.slice(script.scriptRef.lastIndexOf("/") + 1)
+                                            : events[id]?.name ?? t("blueprint.memberTree.unnamedEvent")}
                                         {errors > 0 ? (
                                             <span className="ml-1 text-danger">{t("blueprint.memberTree.errorBadge", { count: errors })}</span>
                                         ) : warnings > 0 ? (
                                             <span className="ml-1 text-warning">{t("blueprint.memberTree.warningBadge", { count: warnings })}</span>
                                         ) : null}
                                     </button>
+                                    <BlueprintLayerKindBadge kind={script ? "script" : "graph"} />
                                 </li>
                             );
                         })

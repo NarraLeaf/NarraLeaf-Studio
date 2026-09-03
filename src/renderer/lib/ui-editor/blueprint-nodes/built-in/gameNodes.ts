@@ -43,6 +43,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
@@ -2241,6 +2242,88 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     line: saved?.line ?? "",
                     speaker: saved?.speaker ?? "",
                     exists: Boolean(saved),
+                },
+            };
+        },
+    },
+    {
+        /**
+         * Which of the project's stories one slot was written in.
+         *
+         * A story is a compilation unit on this product: a save is a position inside one of them,
+         * and two saves from two routes have nothing in common but the file they sit beside. The
+         * store has stamped every record with its story all along - `SaveCompatibilityStamp` reads
+         * it, and `Load Save` already refuses or rewinds on it by the author's policy - but no graph
+         * could ask, so a load screen could draw six slots from three routes with nothing on the
+         * rows to tell them apart. Grouping a grid by route, filtering one story's slots out of it,
+         * and saying on the row itself that a slot comes from somewhere else all needed this one
+         * fact, and all of them had to be left undone.
+         *
+         * Keyed by id like `Get Save Time` and `Get Save Line`, so it composes with `List Saves` and
+         * `List Auto Saves` alike rather than being a second listing node.
+         *
+         * ## Why two output pins and not one
+         *
+         * `Story Name` is the only one an author may put on screen, and it is what the pin label
+         * says. `Story Id` is a generated reference: it is stable across a rename, so it is what
+         * grouping and comparing should key on, and it is what `Start Game` takes on the pin of the
+         * same name - which is the whole of its use. Wiring it into a text widget would print a
+         * generated id at a player, and the label is what tells an author that before they do.
+         *
+         * The name is resolved against the story library this build ships, not stored in the record:
+         * a story renamed after a save was taken then reads as its current name, which is the name
+         * the author has in front of them and the only one that could be recognised.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+        displayName: "Get Save Story",
+        category: "Game",
+        keywords: [
+            "game", "save", "story", "route", "which", "belongs", "group", "filter",
+            "slot", "name", "chapter",
+        ],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            saveIdIn,
+            saveSlotIn,
+            {
+                id: "storyName",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Story Name",
+            },
+            {
+                id: "storyId",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Story Id",
+            },
+            {
+                id: "exists",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Exists",
+            },
+        ],
+        async execute(ctx) {
+            const story = await requireHostApi(ctx).game.getSaveStory(resolveSaveId(ctx));
+            return {
+                nextPort: "next",
+                outputValues: {
+                    // Three absences, and `Exists` separates the one that matters. No slot at all
+                    // answers "" on both pins with `Exists` false; a real slot from before saves
+                    // carried a story answers "" on both with `Exists` true; a real slot naming a
+                    // story this build does not ship answers an id with no name. A save screen can
+                    // draw all three differently, and none of them is a claim about the others.
+                    storyName: story?.name ?? "",
+                    storyId: story?.id ?? "",
+                    exists: Boolean(story),
                 },
             };
         },

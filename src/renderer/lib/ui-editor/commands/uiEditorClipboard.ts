@@ -257,7 +257,7 @@ function readBlueprintTable(value: unknown): Record<string, Blueprint> {
             continue;
         }
         const blueprint = entry as Partial<Blueprint>;
-        if (!blueprint.owner || !blueprint.program) {
+        if (!blueprint.owner || !blueprint.graphs) {
             continue;
         }
         blueprints[id] = { ...(blueprint as Blueprint), id };

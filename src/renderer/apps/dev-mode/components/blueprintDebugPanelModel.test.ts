@@ -20,14 +20,9 @@ function visualBlueprint(
         id,
         name,
         owner,
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {},
-                functions: {},
-            },
+        graphs: {
+            events: {},
+            functions: {},
         },
         members: {
             variables: {},
@@ -40,8 +35,8 @@ function visualBlueprint(
 
 function authoredBlueprint(id: string, name: string, owner: BlueprintOwnerRef): Blueprint {
     const bp = visualBlueprint(id, name, owner);
-    if (bp.program.kind === "graph") {
-        bp.program.graphs.events.mouseClick = {
+    {
+        bp.graphs.events.mouseClick = {
             id: "mouseClick",
             name: "Mouse Click",
             graph: { nodes: {}, edges: [] },
@@ -55,11 +50,10 @@ function scriptBlueprint(id: string, name: string): Blueprint {
         id,
         name,
         owner: { kind: "widgetMain", surfaceId: "surface-a", elementId: "element-a" },
-        frontend: "typescript",
-        programKind: "scriptModule",
-        program: {
-            kind: "scriptModule",
-            scriptRef: "scripts/widget.ts",
+        graphs: {
+            eventIds: ["layer-script"],
+            events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/widget.ts" } } },
+            functions: {},
         },
         members: {
             variables: {},
@@ -143,8 +137,8 @@ describe("listDevModeBlueprints — workspace", () => {
 
     it("shows visual blueprints once they have authored graph content", () => {
         const authored = visualBlueprint("authored", "Authored");
-        if (authored.program.kind === "graph") {
-            authored.program.graphs.events.mouseClick = {
+        {
+            authored.graphs.events.mouseClick = {
                 id: "mouseClick",
                 name: "Mouse Click",
                 graph: { nodes: {}, edges: [] },

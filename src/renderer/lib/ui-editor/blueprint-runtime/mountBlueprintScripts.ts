@@ -12,9 +12,10 @@ import {
     resolveScriptHandler,
 } from "./script/scriptRuntime";
 import type { ScriptEventId } from "./script/scriptEvents";
+import { parseScriptLayerKey } from "@shared/blueprint/blueprintLayers";
 
 /**
- * Something wrong with one script blueprint, in words that name the author's file.
+ * Something wrong with one script layer, in words that name the author's file.
  *
  * Reported rather than thrown: one script that will not run is one dead handler, and the rest of
  * the game still has to start.
@@ -31,8 +32,8 @@ export type BlueprintScriptIssue = {
  * every script that will not run.
  *
  * The bundle holds each script as a URL the host wrote esbuild's output to; this turns it into a
- * module and remembers it by blueprint id, so a dispatched event can find the export it calls. See
- * `script/scriptRuntime.ts` for how one is loaded and what that does and does not isolate.
+ * module and remembers it by script-layer key, so a dispatched event can find the export it calls.
+ * See `script/scriptRuntime.ts` for how one is loaded and what that does and does not isolate.
  *
  * # Why the reporting is here
  *
@@ -59,18 +60,26 @@ export async function mountBlueprintCompiledScripts(
 
     // Reported before the mount, not after: a script that failed to compile has no module, so the
     // check below would have nothing to say about it and the author would hear nothing.
-    for (const [blueprintId, entry] of Object.entries(scripts ?? {})) {
+    for (const [layerKey, entry] of Object.entries(scripts ?? {})) {
         for (const diagnostic of entry?.diagnostics ?? []) {
-            onIssue?.({ scriptRef: entry.scriptRef, blueprintId, message: diagnostic.message });
+            onIssue?.({
+                scriptRef: entry.scriptRef,
+                blueprintId: parseScriptLayerKey(layerKey)?.blueprintId ?? layerKey,
+                message: diagnostic.message,
+            });
         }
     }
 
     await mountCompiledScripts(
         scripts,
-        (blueprintId, scriptRef, message) => {
+        (layerKey, scriptRef, message) => {
             // The author's own code, failing while it is being evaluated. Their file, their message.
             console.error(`[blueprint script] ${scriptRef} failed to load: ${message}`);
-            onIssue?.({ scriptRef, blueprintId, message: `${scriptRef} could not be loaded: ${message}` });
+            onIssue?.({
+                scriptRef,
+                blueprintId: parseScriptLayerKey(layerKey)?.blueprintId ?? layerKey,
+                message: `${scriptRef} could not be loaded: ${message}`,
+            });
         },
         loadModule,
     );
@@ -81,7 +90,7 @@ export async function mountBlueprintCompiledScripts(
 }
 
 /**
- * Report every mounted script whose module exports nothing its slot will ever call.
+ * Report every mounted script layer whose module exports nothing its slot will ever call.
  *
  * The message carries both halves of what the author is missing: what they exported, and what this
  * slot accepts. Naming only one of the two is what makes a misspelling hard to see - `onMouseclick`
@@ -92,16 +101,17 @@ function reportScriptsWithNothingToCall(
     onIssue: (issue: BlueprintScriptIssue) => void,
 ): void {
     const blueprints = bundle.ui.localBlueprints?.blueprints ?? {};
-    for (const [blueprintId, entry] of Object.entries(bundle.ui.scripts ?? {})) {
+    for (const [layerKey, entry] of Object.entries(bundle.ui.scripts ?? {})) {
         // Only a module that is actually mounted can be asked what it exports. One that did not
         // compile, or threw on the way in, has already been reported once above - saying "it
         // exports nothing" about it as well would be two messages for one failure, and the second
         // would point at the wrong cause.
-        if (typeof entry?.url !== "string" || !isScriptMounted(blueprintId)) {
+        if (typeof entry?.url !== "string" || !isScriptMounted(layerKey)) {
             continue;
         }
-        const blueprint = blueprints[blueprintId];
-        if (!blueprint || blueprint.program.kind !== "scriptModule") {
+        const blueprintId = parseScriptLayerKey(layerKey)?.blueprintId;
+        const blueprint = blueprintId ? blueprints[blueprintId] : undefined;
+        if (!blueprintId || !blueprint) {
             continue;
         }
         // A story row and a value binding are entered through the default export, and neither is
@@ -117,18 +127,18 @@ function reportScriptsWithNothingToCall(
         if (accepted.length === 0) {
             continue;
         }
-        const called = accepted.filter((eventId: ScriptEventId) => resolveScriptHandler(blueprintId, eventId));
+        const called = accepted.filter((eventId: ScriptEventId) => resolveScriptHandler(layerKey, eventId));
         if (called.length > 0) {
             continue;
         }
-        const exported = listScriptExportedFunctionNames(blueprintId);
+        const exported = listScriptExportedFunctionNames(layerKey);
         const names = scriptEventExportNamesForOwner(blueprint.owner, widgetType).join(", ");
         onIssue({
             scriptRef: entry.scriptRef,
             blueprintId,
             message: exported.length > 0
-                ? `${entry.scriptRef} exports ${exported.join(", ")}, none of which this blueprint calls. It calls: ${names}.`
-                : `${entry.scriptRef} exports no handler this blueprint calls. It calls: ${names}.`,
+                ? `${entry.scriptRef} exports ${exported.join(", ")}, none of which this slot calls. It calls: ${names}.`
+                : `${entry.scriptRef} exports no handler this slot calls. It calls: ${names}.`,
         });
     }
 }

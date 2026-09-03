@@ -63,10 +63,7 @@ function remapGraphElementRefs(
     surfaceId: string,
     elementIdMap: Record<string, string>,
 ): void {
-    if (blueprint.program.kind !== "graph") {
-        return;
-    }
-    const { events, functions, macros } = blueprint.program.graphs;
+    const { events, functions, macros } = blueprint.graphs;
     const graphs = [
         ...Object.values(events ?? {}),
         ...Object.values(functions ?? {}),

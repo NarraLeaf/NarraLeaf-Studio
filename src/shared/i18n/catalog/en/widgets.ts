@@ -21,6 +21,7 @@ export const widgets = {
     horizontal: "Horizontal",
     vertical: "Vertical",
     gap: "Gap",
+    wrap: "Wrap",
     perSidePx: "Per side (px)",
     sides: {
         top: "Top",

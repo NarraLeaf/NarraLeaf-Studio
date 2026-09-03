@@ -56,11 +56,7 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
-import {
-    DEPENDENCY_STATUS_LABEL_KEYS,
-    DEPENDENCY_STATUS_TEXT_STYLES,
-    dependencyNeedsAttention,
-} from "@/lib/workspace/project/dependencyStatusDisplay";
+import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import type {
     DependencyStatus,
     ProjectDependencyResolution,
@@ -187,6 +183,8 @@ export type BuildPluginEntry = {
     status?: DependencyStatus;
     /** True when an unmet hard dependency disables this plugin for the project. */
     suppressed?: boolean;
+    /** False when the plugin is installed here but switched off, so it contributes nothing. */
+    installedEnabled?: boolean;
 };
 
 /**
@@ -208,6 +206,7 @@ export function buildPluginEntries(
             version: entry.dependency.authoredVersion,
             status: entry.status,
             suppressed: entry.suppressed,
+            installedEnabled: entry.installedEnabled,
         }));
     }
     return (table?.plugins ?? []).map(plugin => ({
@@ -1372,17 +1371,16 @@ function PluginList({
     );
 }
 
-/** The status word, and only when there is something to say - see `dependencyNeedsAttention`. */
+/** The status word, and only when there is something to say - see `describeDependencyState`. */
 function PluginStatus({ plugin }: { plugin: BuildPluginEntry }) {
     const { t } = useTranslation();
-    if (!plugin.status || !dependencyNeedsAttention(plugin.status, plugin.suppressed ?? false)) {
+    const state = describeDependencyState(plugin);
+    if (!state) {
         return null;
     }
     return (
-        <span className={cn("shrink-0 text-2xs font-medium", DEPENDENCY_STATUS_TEXT_STYLES[plugin.status])}>
-            {plugin.suppressed
-                ? t("project.dependencies.status.disabled")
-                : t(DEPENDENCY_STATUS_LABEL_KEYS[plugin.status])}
+        <span className={cn("shrink-0 text-2xs font-medium", state.className)}>
+            {t(state.labelKey)}
         </span>
     );
 }

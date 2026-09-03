@@ -236,14 +236,9 @@ function blueprintWithNode(params: Record<string, unknown>): BlueprintDocument {
                 id: "bp-1",
                 name: "HUD",
                 owner: { kind: "globalMain" },
-                frontend: "visual",
-                programKind: "graph",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: { "ev-1": { id: "ev-1", graph: { nodes: { "n-1": { id: "n-1", type: "blueprint.story.sceneGet", params } } } } },
-                        functions: {},
-                    },
+                graphs: {
+                    events: { "ev-1": { id: "ev-1", graph: { nodes: { "n-1": { id: "n-1", type: "blueprint.story.sceneGet", params } } } } },
+                    functions: {},
                 },
             },
         },
@@ -936,15 +931,12 @@ function blueprintWriting(blueprintId: string, savedVariableId: string, ownerKin
                 owner: ownerKind === "storyAction"
                     ? { kind: "storyAction", blueprintId }
                     : { kind: "surface", surfaceId: "s1" },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            e1: {
-                                graph: {
-                                    nodes: {
-                                        n1: { id: "n1", type: "blueprint.saved.set", params: { savedVariableId } },
-                                    },
+                graphs: {
+                    events: {
+                        e1: {
+                            graph: {
+                                nodes: {
+                                    n1: { id: "n1", type: "blueprint.saved.set", params: { savedVariableId } },
                                 },
                             },
                         },

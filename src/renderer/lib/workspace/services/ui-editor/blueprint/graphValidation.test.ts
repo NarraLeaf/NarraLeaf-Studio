@@ -276,34 +276,29 @@ describe("blueprint graph validation", () => {
                     id: "widget",
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                init: {
-                                    id: "init",
-                                    graph: {
-                                        nodes: {
-                                            declare: {
-                                                id: "declare",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
-                                                params: { variableId: "score", name: "Score", valueType: "integer", defaultValue: 0 },
-                                            },
-                                            get: {
-                                                id: "get",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
-                                                params: { variableId: "score" },
-                                            },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        declare: {
+                                            id: "declare",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                            params: { variableId: "score", name: "Score", valueType: "integer", defaultValue: 0 },
                                         },
-                                        edges: [],
+                                        get: {
+                                            id: "get",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                                            params: { variableId: "score" },
+                                        },
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
@@ -312,8 +307,8 @@ describe("blueprint graph validation", () => {
 
         expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).not.toContain("node.variable_id_invalid");
         const widget = doc.blueprints.widget!;
-        if (widget.program.kind === "graph") {
-            delete widget.program.graphs.events.init!.graph!.nodes!.declare;
+        {
+            delete widget.graphs.events.init!.graph!.nodes!.declare;
         }
         expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).toContain("node.variable_id_invalid");
     });
@@ -327,45 +322,40 @@ describe("blueprint graph validation", () => {
                     id: "widget",
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                init: {
-                                    id: "init",
-                                    graph: {
-                                        nodes: {
-                                            declare: {
-                                                id: "declare",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
-                                                params: {
-                                                    variableId: "score",
-                                                    name: "Score",
-                                                    valueType: "integer",
-                                                    defaultValue: 0,
-                                                },
+                    graphs: {
+                        events: {
+                            init: {
+                                id: "init",
+                                graph: {
+                                    nodes: {
+                                        declare: {
+                                            id: "declare",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                            params: {
+                                                variableId: "score",
+                                                name: "Score",
+                                                valueType: "integer",
+                                                defaultValue: 0,
                                             },
-                                            get: {
-                                                id: "get",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
-                                                params: { variableId: "score" },
-                                            },
-                                            format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
                                         },
-                                        edges: [
-                                            {
-                                                from: { nodeId: "get", port: "value" },
-                                                to: { nodeId: "format", port: "values" },
-                                            },
-                                        ],
+                                        get: {
+                                            id: "get",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                                            params: { variableId: "score" },
+                                        },
+                                        format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
                                     },
+                                    edges: [
+                                        {
+                                            from: { nodeId: "get", port: "value" },
+                                            to: { nodeId: "format", port: "values" },
+                                        },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
@@ -377,9 +367,7 @@ describe("blueprint graph validation", () => {
         expect(diagnostics.find(d => d.code === "edge.connection_invalid")?.message).toContain(
             "Type mismatch: integer -> json",
         );
-        const graph = doc.blueprints.widget?.program.kind === "graph"
-            ? doc.blueprints.widget.program.graphs.events.init?.graph
-            : undefined;
+        const graph = doc.blueprints.widget?.graphs.events.init?.graph;
         expect(graph?.edges).toHaveLength(1);
 
         const declare = graph?.nodes?.declare;
@@ -594,18 +582,12 @@ describe("blueprint fn validation", () => {
                 id,
                 name: id,
                 owner: entry.owner,
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
                 bindings: {},
-                program: {
-                    kind: "graph",
-                    graphs: { events: { main: { id: "main", graph: entry.ir } }, functions: {} },
-                },
+                graphs: { events: { main: { id: "main", graph: entry.ir } }, functions: {} },
             };
             ownerRecords[ownerRefToIndexKey(entry.owner)] = {
-                activeBlueprintId: id,
-                privateBlueprintIds: [id],
+                blueprintId: id,
             };
         }
         return {
@@ -938,13 +920,8 @@ describe("palette and validator agreement", () => {
                     id: "bp",
                     name: "Blueprint",
                     owner,
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: { events: { layer: { id: "layer", graph: { nodes, edges: [] } } }, functions: {} },
-                    },
+                    graphs: { events: { layer: { id: "layer", graph: { nodes, edges: [] } } }, functions: {} },
                 },
             },
             ownerRecords: {},
@@ -1046,25 +1023,20 @@ describe("palette and validator agreement", () => {
                     id: "bp",
                     name: "Blueprint",
                     owner: { kind: "widgetMain", surfaceId: "surface", elementId: "loose" },
-                    frontend: "visual",
-                    programKind: "graph",
                     members: { variables: {}, fields: {}, functions: {} },
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                layer: {
-                                    id: "layer",
-                                    graph: {
-                                        nodes: {
-                                            read: { id: "read", type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX },
-                                        },
-                                        edges: [],
+                    graphs: {
+                        events: {
+                            layer: {
+                                id: "layer",
+                                graph: {
+                                    nodes: {
+                                        read: { id: "read", type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX },
                                     },
+                                    edges: [],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },

@@ -8,7 +8,7 @@
  * which is true.
  */
 
-import type { DependencyStatus } from "@shared/types/pluginDependencies";
+import type { DependencyResolutionEntry, DependencyStatus } from "@shared/types/pluginDependencies";
 import type { TranslationKey } from "@shared/i18n";
 
 /**
@@ -19,26 +19,65 @@ import type { TranslationKey } from "@shared/i18n";
  * service dashboard rather than a list of plugins. The rows that need attention now say so in one
  * place instead of two.
  */
-export const DEPENDENCY_STATUS_TEXT_STYLES: Record<DependencyStatus, string> = {
+const DEPENDENCY_STATUS_TEXT_STYLES: Record<DependencyStatus, string> = {
     satisfied: "text-success",
     outdated: "text-warning",
     missing: "text-danger",
     incompatible: "text-danger",
 };
 
-export const DEPENDENCY_STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
+const DEPENDENCY_STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
     satisfied: "project.dependencies.status.ready",
     outdated: "project.dependencies.status.outdated",
     missing: "project.dependencies.status.missing",
     incompatible: "project.dependencies.status.incompatible",
 };
 
+/** How one plugin's state is written beside its name. */
+export interface DependencyStateDisplay {
+    labelKey: TranslationKey;
+    /** Colour for the word - see {@link DEPENDENCY_STATUS_TEXT_STYLES}. */
+    className: string;
+}
+
+/** The part of a resolution entry a row needs to write its state. */
+export type DependencyStateInput = Pick<DependencyResolutionEntry, "installedEnabled">
+    & Partial<Pick<DependencyResolutionEntry, "status" | "suppressed">>;
+
 /**
- * Whether a dependency is worth saying anything about.
+ * The state word for one plugin, or null when the row needs none.
  *
- * A satisfied, unsuppressed plugin needs no word beside it: the row already names it and its
+ * A satisfied plugin that is loaded needs no word beside it: the row already names it and its
  * version, and "Ready" on every line is a column of noise that hides the one line that is not.
+ *
+ * Three of the four cases are about versions; the switched-off one is not, and it is the reason
+ * this decision is a function rather than a table lookup. A plugin the author switched off is
+ * installed, compatible, and contributes nothing - its nodes, widgets and actions are unknown
+ * types in this project exactly as if it were absent - so the row has to say so instead of
+ * reading "Ready".
+ *
+ * The two words come from the Plugins panel rather than from here, because that panel already
+ * names both facts and an author reads the pair together: `disabled` is what it writes beside the
+ * switch, and `suppressed` is what it writes for the plugin Studio withheld from this project.
+ * This table used to spend the switch's word on the version verdict, so the one thing the author
+ * had actually done was the one thing neither panel said.
  */
-export function dependencyNeedsAttention(status: DependencyStatus, suppressed: boolean): boolean {
-    return suppressed || status !== "satisfied";
+export function describeDependencyState(entry: DependencyStateInput): DependencyStateDisplay | null {
+    const { status, suppressed, installedEnabled } = entry;
+    // Before the first resolve there is no verdict to write - the table names what the project
+    // depends on, and nothing more.
+    if (!status) {
+        return null;
+    }
+    if (suppressed) {
+        return { labelKey: "project.dependencies.status.suppressed", className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
+    }
+    if (installedEnabled === false) {
+        // Nothing loads, which is what `missing` looks like from inside the project.
+        return { labelKey: "project.dependencies.status.disabled", className: "text-danger" };
+    }
+    if (status !== "satisfied") {
+        return { labelKey: DEPENDENCY_STATUS_LABEL_KEYS[status], className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
+    }
+    return null;
 }

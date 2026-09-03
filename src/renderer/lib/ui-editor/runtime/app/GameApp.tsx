@@ -42,6 +42,7 @@ import {
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
     type SaveRecordLine,
+    type SaveRecordStory,
     type SaveRecordPlaytime,
     type SaveRecordTimes,
 } from "@shared/types/saves";
@@ -3361,6 +3362,33 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [host.saveStore]);
 
+    /**
+     * Which of the project's stories one slot was written in.
+     *
+     * The reference comes off the record's own stamp - the same field `planSaveResume` decides on -
+     * and the name is looked up in the story library this build ships. Resolved here rather than
+     * stored in the save because a story renamed after the save was taken should read as its
+     * current name: that is the name the author has in front of them, and the only one a player
+     * could recognise.
+     *
+     * A slot naming a story this build does not carry keeps its reference and answers no name. Both
+     * halves of that are true and a save screen wants them apart, so neither is faked from the
+     * other.
+     */
+    const getSaveStory = useCallback(async (id: string): Promise<SaveRecordStory | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const storyId = readSaveCompatibilityStamp(record.metadata.compatibility)?.storyId ?? "";
+        if (!storyId) {
+            // A real slot from before saves carried a story, or one taken with no story mounted.
+            return { id: "", name: "" };
+        }
+        const entry = (bundle.storyLibrary?.index?.stories ?? []).find(story => story.id === storyId);
+        return { id: storyId, name: entry?.name ?? "" };
+    }, [bundle.storyLibrary, host.saveStore]);
+
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
         const capture = await host.saveStore.readPreview(id);
         if (!capture) {
@@ -3694,6 +3722,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetSaveMetadata: getSaveMetadata,
             onGetSaveTimes: getSaveTimes,
             onGetSaveLine: getSaveLine,
+            onGetSaveStory: getSaveStory,
             onGetSavePlaytime: getSavePlaytime,
             onGetPlaytime: playtime.getRunSeconds,
             onGetTotalPlaytime: playtime.getTotalSeconds,
@@ -3779,6 +3808,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveTimes,
         getSaveLine,
         getSavePlaytime,
+        getSaveStory,
         getSavePreview,
         handleLocaleChanged,
         autoSave.writeNow,
@@ -4023,6 +4053,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveTimes,
         getSaveLine,
         getSavePlaytime,
+        getSaveStory,
         getSavePreview,
         handleLocaleChanged,
         autoSave.writeNow,

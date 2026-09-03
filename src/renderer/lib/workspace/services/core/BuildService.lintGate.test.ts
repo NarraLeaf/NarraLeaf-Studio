@@ -427,18 +427,15 @@ describe("BuildService invalid-block gate (ruling R4)", () => {
 describe("BuildService network gate", () => {
     /** One Fetch on one event of one blueprint. */
     const DOCUMENT_WITH_FETCH = {
-        ownerRecords: { "surface:main": { activeBlueprintId: "bp1", privateBlueprintIds: [] } },
+        ownerRecords: { "surface:main": { blueprintId: "bp1" } },
         blueprints: {
             bp1: {
                 id: "bp1",
                 name: "Title Screen",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: { ev1: { graph: { nodes: { n1: { id: "n1", type: "blueprint.network.fetch" } } } } },
-                        functions: {},
-                        macros: {},
-                    },
+                graphs: {
+                    events: { ev1: { graph: { nodes: { n1: { id: "n1", type: "blueprint.network.fetch" } } } } },
+                    functions: {},
+                    macros: {},
                 },
             },
         },

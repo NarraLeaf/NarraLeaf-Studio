@@ -69,31 +69,28 @@ describe("asset pins declared by the shipping node catalogue", () => {
 
     it("finds a reference through the catalogue's declarations end to end", () => {
         const document = {
-            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: { globalMain: { blueprintId: "bp-1" } },
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
                     name: "Main",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                "g-1": {
-                                    graph: {
-                                        nodes: {
-                                            set: { id: "set", type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET, params: {} },
-                                            lit: {
-                                                id: "lit",
-                                                type: "blueprint.data.jsonLiteral",
-                                                params: { value: { kind: "imageAsset", assetId: "img-1" } },
-                                            },
+                    graphs: {
+                        events: {
+                            "g-1": {
+                                graph: {
+                                    nodes: {
+                                        set: { id: "set", type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET, params: {} },
+                                        lit: {
+                                            id: "lit",
+                                            type: "blueprint.data.jsonLiteral",
+                                            params: { value: { kind: "imageAsset", assetId: "img-1" } },
                                         },
-                                        edges: [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "set", port: "asset" } }],
                                     },
+                                    edges: [{ from: { nodeId: "lit", port: "value" }, to: { nodeId: "set", port: "asset" } }],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
@@ -136,27 +133,24 @@ describe("the blueprints the shipped starter template creates", () => {
 describe("a pin that publishes rather than stores", () => {
     function hitAreaDoc(sourceType: string, sourcePort: string) {
         return {
-            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: { globalMain: { blueprintId: "bp-1" } },
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
                     name: "Hit area",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                "g-1": {
-                                    graph: {
-                                        nodes: {
-                                            get: { id: "get", type: sourceType, params: {} },
-                                            set: { id: "set", type: "blueprint.element.image.setImageAsset", params: {} },
-                                        },
-                                        edges: [{ from: { nodeId: "get", port: sourcePort }, to: { nodeId: "set", port: "asset" } }],
+                    graphs: {
+                        events: {
+                            "g-1": {
+                                graph: {
+                                    nodes: {
+                                        get: { id: "get", type: sourceType, params: {} },
+                                        set: { id: "set", type: "blueprint.element.image.setImageAsset", params: {} },
                                     },
+                                    edges: [{ from: { nodeId: "get", port: sourcePort }, to: { nodeId: "set", port: "asset" } }],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },
@@ -207,21 +201,18 @@ describe("a pin that publishes rather than stores", () => {
 describe("the clip a Play Sound stores", () => {
     function playSoundDoc(params: Record<string, unknown>) {
         return {
-            ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+            ownerRecords: { globalMain: { blueprintId: "bp-1" } },
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
                     name: "Title",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                "g-1": {
-                                    graph: { nodes: { play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params } } },
-                                },
+                    graphs: {
+                        events: {
+                            "g-1": {
+                                graph: { nodes: { play: { id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY, params } } },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             },

@@ -118,13 +118,11 @@ export function extractBlueprintEntries(
     const { resolveNodeLabel, resolveOwnerLabel, registryVariables = [], labels } = options;
     const entries: SearchIndexEntry[] = [];
 
-    // blueprintId → ownerKey (active blueprint first so it wins over historical siblings).
+    // blueprintId → ownerKey. A slot names one blueprint, so this is one entry per slot.
     const ownerKeyByBlueprintId = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
-        for (const blueprintId of [record.activeBlueprintId, ...record.privateBlueprintIds]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
+        if (record.blueprintId) {
+            ownerKeyByBlueprintId.set(record.blueprintId, ownerKey);
         }
     }
 
@@ -143,7 +141,7 @@ export function extractBlueprintEntries(
                 text: definition.name,
                 target: {
                     kind: "blueprint",
-                    blueprintId: globalRecord.activeBlueprintId,
+                    blueprintId: globalRecord.blueprintId,
                     ownerKey: "globalMain",
                 },
             });
@@ -182,9 +180,6 @@ export function extractBlueprintEntries(
             });
         }
 
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
         type GraphSlot = {
             focus: "event" | "function";
             graphId: string;
@@ -192,13 +187,13 @@ export function extractBlueprintEntries(
             ir: { nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }> } | undefined;
         };
         const graphSlots: GraphSlot[] = [
-            ...Object.entries(blueprint.program.graphs.events).map(([graphId, slot]) => ({
+            ...Object.entries(blueprint.graphs.events).map(([graphId, slot]) => ({
                 focus: "event" as const,
                 graphId,
                 name: slot.name || labels.unnamedEvent,
                 ir: slot.graph,
             })),
-            ...Object.entries(blueprint.program.graphs.functions).map(([graphId, slot]) => ({
+            ...Object.entries(blueprint.graphs.functions).map(([graphId, slot]) => ({
                 focus: "function" as const,
                 graphId,
                 name: slot.name || labels.unnamedFunction,

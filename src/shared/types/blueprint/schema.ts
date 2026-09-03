@@ -30,11 +30,19 @@
  * migration writes each one's text out to a file and points the blueprint at it, so no typing is
  * lost even though none of it ever executed.
  *
+ * v14: a script is a LAYER rather than a whole blueprint, and a slot runs exactly one blueprint.
+ * The two went together: a slot could only be a graph or a script as a whole, so keeping both meant
+ * keeping two blueprints per slot with one marked active - a private revision history no other part
+ * of the product could see, which duplicated what version control already records. Layers were
+ * never exclusive (the dispatcher runs every layer whose head matches a dispatch), so the migration
+ * folds each script blueprint into a one-layer container, keeps the blueprint each `ownerRecords`
+ * entry had active, and drops the rest along with `frontend` / `programKind` / `program`.
+ *
  * The ladder that reads these stops at `BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION`. The versions
  * named above it are kept as the record of what each one changed; the ones below are history only,
  * and a document at one of them is refused. See `@shared/blueprint/migrateBlueprintDocument`.
  */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 13 as const;
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 14 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 
