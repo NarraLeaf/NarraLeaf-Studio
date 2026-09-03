@@ -523,7 +523,11 @@ export const project = {
             outdated: "已过时",
             missing: "缺失",
             incompatible: "不兼容",
+            // 已安装版本与项目所依赖的版本不兼容，Studio 不为本项目载入该插件。
             disabled: "已禁用",
+            // 插件已安装且版本兼容，但在插件面板里被关掉了，它贡献的内容一概不载入。
+            // 用词跟着作者操作的那个开关走：上面的「已禁用」说的是版本裁定，那是 Studio 自己的决定。
+            switchedOff: "已关闭",
         },
         meta: {
             requires: "需要 {version}",

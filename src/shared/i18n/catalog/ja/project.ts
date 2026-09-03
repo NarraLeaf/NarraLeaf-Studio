@@ -541,7 +541,11 @@ export const project = {
             outdated: "古い",
             missing: "未インストール",
             incompatible: "非対応",
+            // 入っているバージョンがプロジェクトの依存と合わないため、Studio がこのプロジェクトへ読み込まない状態。
             disabled: "無効",
+            // インストール済みでバージョンも合うが、プラグインパネルで切られているため何も読み込まれない状態。
+            // 作者が操作したスイッチに合わせた言い方にする。上の「無効」はバージョンの判定、つまり Studio 側の判断。
+            switchedOff: "オフ",
         },
         meta: {
             requires: "{version} が必要",

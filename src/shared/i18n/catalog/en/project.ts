@@ -587,7 +587,15 @@ export const project = {
             outdated: "Outdated",
             missing: "Missing",
             incompatible: "Incompatible",
+            // Studio withheld the plugin from this project because the installed version is
+            // incompatible with the authored one.
             disabled: "Disabled",
+            /**
+             * The plugin is installed and compatible, and switched off in the Plugins panel, so
+             * nothing it contributes is loaded. Worded after the switch the author operated - the
+             * row above says `Disabled` for the version verdict, which is Studio's own doing.
+             */
+            switchedOff: "Switched off",
         },
         meta: {
             requires: "Requires {version}",
