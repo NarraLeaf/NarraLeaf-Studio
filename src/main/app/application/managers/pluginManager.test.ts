@@ -271,6 +271,31 @@ describe("PluginManager", () => {
         await expect(manager.uninstallPlugin("acme.sample-plugin")).rejects.toThrow("Built-in plugins cannot be uninstalled");
     });
 
+    it("ships the authoring built-ins switched off and remembers the author turning one on", async () => {
+        const builtInPluginsDir = path.join(tempDir, "dist", "builtin-plugins");
+        await writePluginPackage(path.join(builtInPluginsDir, "gallery"), "1.0.0", { studio: "main.js" }, [], undefined, "narraleaf.gallery");
+
+        const manager = new PluginManager(tempDir, permissionManager as any, { builtInPluginsDir });
+        // Installed and authorized like any built-in, but not running: the author
+        // asks for the Gallery rather than every project carrying its tab.
+        await expect(manager.listPlugins()).resolves.toMatchObject([{
+            pluginId: "narraleaf.gallery",
+            builtIn: true,
+            enabled: false,
+            status: "disabled",
+            grantedManifestVersion: "1.0.0",
+        }]);
+        await expect(manager.listWorkspacePlugins()).resolves.toEqual([]);
+
+        // Authorized already, so turning it on needs no install prompt - and a
+        // later scan (a rebuild under the running app, or the next launch) must
+        // not put it back the way it shipped.
+        await expect(manager.setPluginEnabled("narraleaf.gallery", true))
+            .resolves.toMatchObject({ enabled: true, status: "enabled" });
+        await manager.refreshBuiltInPlugins();
+        await expect(manager.listPlugins()).resolves.toMatchObject([{ pluginId: "narraleaf.gallery", enabled: true }]);
+    });
+
     it("ignores staging leftovers instead of letting them shadow the installed package", async () => {
         const builtInPluginsDir = path.join(tempDir, "dist", "builtin-plugins");
         await writePluginPackage(path.join(builtInPluginsDir, "sample"), "2.0.0");
@@ -396,6 +421,7 @@ async function writePluginPackage(
     entries: Record<string, string> = { studio: "main.js" },
     permissions: unknown[] = [{ kind: "api", capability: "bash.execute" }],
     icon?: string,
+    id = "acme.sample-plugin",
 ): Promise<void> {
     await fs.mkdir(dir, { recursive: true });
     for (const entry of Object.values(entries)) {
@@ -403,7 +429,7 @@ async function writePluginPackage(
     }
     await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({
         manifestVersion: 2,
-        id: "acme.sample-plugin",
+        id,
         name: "Sample Plugin",
         version,
         description: "Test plugin",

@@ -60,6 +60,25 @@ const STAGING_DIR_NAME = ".staging";
  */
 const LEGACY_STAGING_DIR = /\.(?:builtin-tmp|builtin-dev-tmp|tmp)-\d{13}(?:-[a-z0-9]+)?$/;
 
+/**
+ * Built-ins that ship installed but switched off.
+ *
+ * A built-in normally arrives enabled: Studio put it there, and its permissions
+ * are granted along with it. These two are authoring surfaces rather than
+ * plumbing - the Menu Bar contributes a panel and a menu document, the Gallery an
+ * editor tab, a plugin store and fourteen blueprint nodes - and a game that wants
+ * neither would carry both anyway. So they start off, and the author turns on
+ * whichever the game needs from the plugin list. Enabling one costs a single
+ * action and no install prompt: a built-in is authorized whether or not it runs.
+ *
+ * Only a plugin with no record yet reads this. From the first scan onwards a
+ * record exists, and whatever the author chose is what sticks.
+ */
+const BUILT_IN_DISABLED_BY_DEFAULT: ReadonlySet<string> = new Set([
+    "narraleaf.menu-bar",
+    "narraleaf.gallery",
+]);
+
 export class PluginManager {
     private readonly state: PersistentState<PluginRegistryState>;
     private readonly pluginsDir: string;
@@ -444,7 +463,11 @@ export class PluginManager {
                 nextRecords[manifest.id] = {
                     pluginId: manifest.id,
                     installPath,
-                    enabled: builtIn ? previous?.enabled ?? true : previous?.enabled ?? false,
+                    // A built-in arrives running unless it is one of the authoring
+                    // surfaces above; anything installed by hand arrives off until it
+                    // is authorized. Either way an existing record keeps its choice.
+                    enabled: previous?.enabled
+                        ?? (builtIn && !BUILT_IN_DISABLED_BY_DEFAULT.has(manifest.id)),
                     builtIn,
                     manifest,
                     installSource: builtIn && builtInSource
