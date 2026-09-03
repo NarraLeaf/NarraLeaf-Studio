@@ -571,6 +571,11 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "game.getSaveLine" });
                     return null;
                 },
+                getSaveStory: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSaveStory" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSaveStory" });
+                    return null;
+                },
                 captureRun: () => {
                     input.debug.emit({ type: "function.call", functionId: "game.captureRun" });
                     input.debug.emit({ type: "function.return", functionId: "game.captureRun" });

@@ -308,6 +308,12 @@ declare module "@narraleaf/script" {
     	/** Who spoke it, or "" when the record carries no speaker (narration, or none yet). */
     	speaker: string;
     };
+    type SaveRecordStory = {
+    	/** The story the save was written in, as an opaque reference; "" when the record carries none. */
+    	id: string;
+    	/** That story's author-facing name; "" when this build ships no story under that reference. */
+    	name: string;
+    };
     type AutoSaveEntry = {
     	id: string;
     	/** Slot index within the ring. */
@@ -1014,6 +1020,8 @@ declare module "@narraleaf/script" {
     		getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
     		/** Where a slot stopped, or null when there is no such slot. */
     		getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+    		/** Which story a slot was written in, or null when there is no such slot. */
+    		getSaveStory: (id: string) => Promise<SaveRecordStory | null>;
     		/** How long a slot was played, or null when there is no such slot. */
     		getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
     		/** The running playthrough's playtime, in seconds. */

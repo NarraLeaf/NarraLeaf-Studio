@@ -199,6 +199,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -3450,6 +3451,15 @@ function resolveSelfOutput(
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE &&
         (portId === "line" || portId === "speaker" || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Get Save Story, separate for the same reason as the two above: `storyId` is an inspector
+    // param and an *input* pin name on `Start Game`, and `exists` belongs to three save nodes
+    // already - folding this into either list would answer those names for every node in it.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY &&
+        (portId === "storyName" || portId === "storyId" || portId === "exists")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

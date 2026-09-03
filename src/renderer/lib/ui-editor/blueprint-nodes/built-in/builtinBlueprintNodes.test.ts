@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
+import type {
+    AutoSaveEntry,
+    SaveRecordLine,
+    SaveRecordPlaytime,
+    SaveRecordStory,
+    SaveRecordTimes,
+} from "@shared/types/saves";
 import { SCREENSHOT_UNSUPPORTED_MESSAGE } from "@shared/types/blueprint/screenshot";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -143,6 +149,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -454,6 +461,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSaveStory: async () => null,
                     getSavePlaytime: async () => null,
                     getPlaytime: () => 0,
                     getTotalPlaytime: () => 0,
@@ -643,6 +651,7 @@ function createPageNavigationHostAdapter(
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSaveStory: async () => null,
                     getSavePlaytime: async () => null,
                     getPlaytime: () => 0,
                     getTotalPlaytime: () => 0,
@@ -717,6 +726,7 @@ function createGameSaveHostAdapter(options: {
     previews?: Record<string, unknown>;
     saveTimes?: SaveRecordTimes | null;
     saveLine?: SaveRecordLine | null;
+    saveStory?: SaveRecordStory | null;
     savePlaytime?: SaveRecordPlaytime | null;
     playtimeSeconds?: number;
     totalPlaytimeSeconds?: number;
@@ -835,6 +845,7 @@ function createGameSaveHostAdapter(options: {
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSaveTimes: async () => options.saveTimes ?? null,
                     getSaveLine: async () => options.saveLine ?? null,
+                    getSaveStory: async () => options.saveStory ?? null,
                     getSavePlaytime: async () => options.savePlaytime ?? null,
                     getPlaytime: () => options.playtimeSeconds ?? 0,
                     getTotalPlaytime: () => options.totalPlaytimeSeconds ?? 0,
@@ -2864,6 +2875,74 @@ describe("built-in blueprint nodes", () => {
         expect(localsFromMissingLine.line).toBe("");
         expect(localsFromMissingLine.speaker).toBe("");
         expect(localsFromMissingLine.exists).toBe(false);
+
+        // Get Save Story answers which of the project's stories a slot was written in, so a load
+        // screen can group its grid by route and say on the row that a slot comes from elsewhere.
+        // Read back through Set Local rather than off `execute`: the output pins only reach a
+        // downstream node through the param resolvers, and that read path is what has to work.
+        const readSaveStory = async (
+            saveStory: SaveRecordStory | null,
+            locals: Record<string, unknown>,
+        ): Promise<void> => {
+            await executeGraph({
+                graph: {
+                    id: "storySave",
+                    entries: { main: { start: { nodeId: "story", port: "in" } } },
+                    nodes: {
+                        story: {
+                            id: "story",
+                            type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+                            params: { id: "slot-a" },
+                        },
+                        captureName: {
+                            id: "captureName",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "storyName" },
+                        },
+                        captureId: {
+                            id: "captureId",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "storyId" },
+                        },
+                        captureExists: {
+                            id: "captureExists",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "exists" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "story", port: "next" }, to: { nodeId: "captureName", port: "in" } },
+                        { from: { nodeId: "story", port: "storyName" }, to: { nodeId: "captureName", port: "value" } },
+                        { from: { nodeId: "captureName", port: "next" }, to: { nodeId: "captureId", port: "in" } },
+                        { from: { nodeId: "story", port: "storyId" }, to: { nodeId: "captureId", port: "value" } },
+                        { from: { nodeId: "captureId", port: "next" }, to: { nodeId: "captureExists", port: "in" } },
+                        { from: { nodeId: "story", port: "exists" }, to: { nodeId: "captureExists", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "story", port: "in" } },
+                hostAdapter: createGameSaveHostAdapter({ saveStory }),
+                blueprintLocals: locals,
+            });
+        };
+        const localsFromStory: Record<string, unknown> = {};
+        await readSaveStory({ id: "story-1", name: "Ashes of Winter" }, localsFromStory);
+        expect(localsFromStory.storyName).toBe("Ashes of Winter");
+        expect(localsFromStory.storyId).toBe("story-1");
+        expect(localsFromStory.exists).toBe(true);
+
+        // A real slot whose story this build does not ship: the reference is known and there is
+        // nothing to call it. Both halves are reported, because a save screen draws them apart.
+        const localsFromUnshippedStory: Record<string, unknown> = {};
+        await readSaveStory({ id: "story-gone", name: "" }, localsFromUnshippedStory);
+        expect(localsFromUnshippedStory.storyName).toBe("");
+        expect(localsFromUnshippedStory.storyId).toBe("story-gone");
+        expect(localsFromUnshippedStory.exists).toBe(true);
+
+        const localsFromMissingStory: Record<string, unknown> = {};
+        await readSaveStory(null, localsFromMissingStory);
+        expect(localsFromMissingStory.storyName).toBe("");
+        expect(localsFromMissingStory.storyId).toBe("");
+        expect(localsFromMissingStory.exists).toBe(false);
 
         const loadedIds: string[] = [];
         const localsAfterLoad: Record<string, unknown> = {};
