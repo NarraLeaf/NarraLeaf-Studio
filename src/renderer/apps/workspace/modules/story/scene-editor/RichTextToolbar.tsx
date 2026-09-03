@@ -56,6 +56,24 @@ const BTN_INERT = `grid h-6 w-6 place-items-center rounded-md text-fg-subtle ${F
 const TOOLBAR_HEIGHT = 24;
 const TOOLBAR_HEIGHT_EXPANDED = 30;
 const TOOLBAR_GAP = 4;
+/**
+ * The space a row open for editing keeps clear beneath its line for the strip to sit in.
+ *
+ * The story list has no gaps: rows are one line box after another, so a floating strip the size of
+ * this one covers a neighbour's words wherever it is put. It therefore sits in space the row itself
+ * makes, and this constant is the contract between the two - {@link StoryRow} pads by it, and the
+ * placement below never leaves it.
+ *
+ * Beneath rather than above, and that is the whole of the fix: a band opened above would push the
+ * line the author has just clicked out from under their pointer, which is the one motion an editing
+ * surface may never make. Opened beneath, the edited line does not move at all and the rows below it
+ * shift down by one band - the same thing a line wrapping to two does.
+ *
+ * The expanded height always, even while the strip is the collapsed chip. The band is then a
+ * constant, so expanding the strip does not reflow the scene under the author mid-sentence, and no
+ * row has to subscribe to the session's expanded flag to know how tall it should be.
+ */
+export const RICH_TEXT_TOOLBAR_BAND_PX = TOOLBAR_HEIGHT_EXPANDED + TOOLBAR_GAP;
 
 /**
  * The rect of the nearest ancestor that actually scrolls — the pane the toolbar has to stay inside.
@@ -70,6 +88,40 @@ function scrollClipRect(el: HTMLElement): DOMRect | null {
         }
     }
     return null;
+}
+
+/**
+ * Where the strip sits, in viewport coordinates.
+ *
+ * Pure, and separate from the effect that measures, because the one thing it guarantees is worth a
+ * test of its own: **the strip never rises above the top of the line it belongs to**. The story list
+ * has no gaps between rows, so anything over that edge is a sentence some other row is showing - the
+ * defect this placement replaced, where the strip was drawn one row box higher and covered the start
+ * of the line above.
+ *
+ * Three bounds, applied outermost last:
+ *
+ *  - `anchorBottom + TOOLBAR_GAP` is where it wants to be: in the band the row keeps clear beneath
+ *    its line (see {@link RICH_TEXT_TOOLBAR_BAND_PX}).
+ *  - `paneBottom - height` keeps it inside the scrolling pane, so it cannot float over the panel
+ *    below or the tab strip.
+ *  - `anchorTop` is the floor under both. A pane too short to hold the band - a row opened with the
+ *    pane's bottom edge a few pixels beneath it - costs the strip a few pixels of THIS line rather
+ *    than putting it over the one above.
+ *
+ * `paneTop` wins last of all, for a row scrolled half out of the top of its pane: the strip belongs
+ * to a line the author can see.
+ */
+export function richTextToolbarTop(input: {
+    anchorTop: number;
+    anchorBottom: number;
+    paneTop: number;
+    paneBottom: number;
+    height: number;
+}): number {
+    const floor = input.paneBottom - input.height;
+    const wanted = Math.min(input.anchorBottom + TOOLBAR_GAP, floor);
+    return Math.max(input.paneTop, Math.max(input.anchorTop, wanted));
 }
 
 /** Case-insensitive normalized hex key so colors from mixed sources compare reliably. */
@@ -192,14 +244,14 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                 setPos(null);
                 return;
             }
-            const height = expanded ? TOOLBAR_HEIGHT_EXPANDED : TOOLBAR_HEIGHT;
-            const ceiling = clip ? clip.top : 0;
-            const floor = (clip ? clip.bottom : globalThis.window.innerHeight) - height;
-            const above = rect.top - height - TOOLBAR_GAP;
-            // Sit above the row; drop below it when the pane has no room above (the top row, or a
-            // scrolled-to-edge one) rather than escaping the pane and covering the tab strip.
-            const top = above >= ceiling ? above : rect.bottom + TOOLBAR_GAP;
-            setPos({ top: Math.min(Math.max(top, ceiling), Math.max(ceiling, floor)), left: rect.left });
+            const top = richTextToolbarTop({
+                anchorTop: rect.top,
+                anchorBottom: rect.bottom,
+                paneTop: clip ? clip.top : 0,
+                paneBottom: clip ? clip.bottom : globalThis.window.innerHeight,
+                height: expanded ? TOOLBAR_HEIGHT_EXPANDED : TOOLBAR_HEIGHT,
+            });
+            setPos({ top, left: rect.left });
         };
         update();
         // Re-measure across the next frames: entering edit mode focuses the row, which can scroll

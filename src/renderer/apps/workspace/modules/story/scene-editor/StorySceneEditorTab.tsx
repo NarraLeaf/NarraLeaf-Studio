@@ -1001,6 +1001,15 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         : null;
     const measuredSlotHostRef = useRef<StoryBlockId | null>(null);
     /**
+     * The row holding the open text editor, which is a row one band taller than the list has cached.
+     *
+     * It changes height for the same reason a slot host does and needs the same correction: opening
+     * the editor reserves the rich-text strip's band beneath the line (see
+     * `RICH_TEXT_TOOLBAR_BAND_PX`), and closing it gives the band back.
+     */
+    const editingRowId: StoryBlockId | null = editor.editorMode.kind === "text" ? editor.editorMode.blockId : null;
+    const measuredEditingRowRef = useRef<StoryBlockId | null>(null);
+    /**
      * Re-measure the host before the browser paints, instead of a frame later.
      *
      * Backspace on an empty dialogue deletes the row and opens a blank slot where it stood, in the
@@ -1019,16 +1028,25 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      */
     useLayoutEffect(() => {
         const previousHostId = measuredSlotHostRef.current;
-        if (previousHostId === insertSlotHostId) {
+        const previousEditingId = measuredEditingRowRef.current;
+        const slotMoved = previousHostId !== insertSlotHostId;
+        const editorMoved = previousEditingId !== editingRowId;
+        if (!slotMoved && !editorMoved) {
             return;
         }
         measuredSlotHostRef.current = insertSlotHostId;
+        measuredEditingRowRef.current = editingRowId;
         const list = rowListRef.current;
         if (!list) {
             return;
         }
-        // Both ends of the move: the row the slot left (shrunk back) and the one it landed on (grown).
-        for (const blockId of [previousHostId, insertSlotHostId]) {
+        // Both ends of each move: the row the slot or the editor left (shrunk back) and the one it
+        // landed on (grown).
+        const moved = [
+            ...(slotMoved ? [previousHostId, insertSlotHostId] : []),
+            ...(editorMoved ? [previousEditingId, editingRowId] : []),
+        ];
+        for (const blockId of new Set(moved)) {
             if (!blockId) {
                 continue;
             }
