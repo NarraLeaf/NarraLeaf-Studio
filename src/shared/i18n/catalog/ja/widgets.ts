@@ -303,7 +303,7 @@ export const widgets = {
         describeNoModel: "名前を一覧するにはモデルのバンドルを選ぶ",
         describeNoBackend: "モデルの名前を一覧するにはランタイムを選ぶ",
         describeBackendMissing: "そのランタイムはこのプロジェクトに入っていないので、名前は手入力する",
-        describeDistrusted: "このプロジェクトは信頼されていないため、ランタイムは読み込まれない。設定で信頼できる。",
+        describeDistrusted: "このプロジェクトは信頼されていないため、ランタイムは読み込まれない。ステータスバーから信頼できる。",
         describeNotSupported: "このランタイムはモデルの内容を返さない。名前は手入力する",
         describeFailed: "モデルを読み込めなかった。名前は手入力する",
         redescribe: "読み直す",
@@ -314,6 +314,8 @@ export const widgets = {
         placeholderUnconfigured: "モデルのバンドルとランタイムを選ぶ",
         placeholderNoModel: "ここではそのモデルのバンドルを使えない",
         placeholderBackendMissing: "「{backend}」というランタイムはこのプロジェクトに入っていない",
+        // ファイルが無いのでも壊れているのでもない。ランタイムはあり、Studio が読み込まない。
+        placeholderDistrusted: "描画していない。このプロジェクトは信頼されていないため、ランタイムを読み込まない",
         placeholderLoading: "モデルを読み込んでいる…",
         placeholderError: "ランタイムが失敗した：{error}",
         placeholderBudget: "描画していない。このウィンドウではすでに {drawn} 体を描いている",

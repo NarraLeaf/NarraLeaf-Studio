@@ -20,7 +20,7 @@ import { isUnrenderableFontFormat } from "@shared/typography/fontFormats";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
-import { findStoryDocumentTooNewError, findStoryDocumentTooOldError } from "@shared/story/migrateStoryDocument";
+import { storyUnreadableFinding } from "@/lib/lint/storyLoadFailure";
 import type { StoryLibraryIndex } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { normalizeBuildConfiguration } from "../../project/configuration";
@@ -332,20 +332,7 @@ export class LintService extends Service<LintService> implements ILintService {
             } catch (error) {
                 complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
-                // A document outside the schema ladder is the one failure here that is not about the
-                // script at all, and it is the one an author is most likely to misread: nothing in
-                // their project changed, Studio did, and "could not be opened" beside their own
-                // story's name reads as something they broke. So both ends of the ladder say which
-                // version the file is at and which version answers it - the numbers the ladder
-                // throws for exactly this purpose, and which every wrapper between here and it would
-                // otherwise flatten back into a sentence.
-                const said = describeStoryLoadFailure(entry.name, error);
-                this.contextFindings.push({
-                    ruleId: "story/invalid-command",
-                    ...said,
-                    location: { kind: "story", storyId: entry.id, storyName: entry.name },
-                    severity: "error",
-                });
+                this.contextFindings.push(storyUnreadableFinding(entry, error));
             }
         }
         return { stories, complete };
@@ -693,32 +680,3 @@ function safely<T>(read: () => T, fallback: T): T {
     }
 }
 
-/**
- * What the report says about a story that would not open.
- *
- * Three answers, and the two schema ones are the reason this is a function rather than a ternary:
- * they are the only failures here that say nothing about the author's script, so they are the only
- * ones that have to carry numbers. The generic line stays for everything else - a truncated write,
- * a document whose id does not match its folder - where the file itself is what went wrong and
- * there is no version to name.
- */
-function describeStoryLoadFailure(
-    storyName: string,
-    error: unknown,
-): Pick<LintReportEntry, "messageKey" | "messageParams"> {
-    const tooOld = findStoryDocumentTooOldError(error);
-    if (tooOld) {
-        return {
-            messageKey: "lint.message.storyTooOld",
-            messageParams: { story: storyName, version: tooOld.version, minimum: tooOld.minimumVersion },
-        };
-    }
-    const tooNew = findStoryDocumentTooNewError(error);
-    if (tooNew) {
-        return {
-            messageKey: "lint.message.storyTooNew",
-            messageParams: { story: storyName, version: tooNew.version, supported: tooNew.supportedVersion },
-        };
-    }
-    return { messageKey: "lint.message.storyLoadFailed", messageParams: { story: storyName } };
-}

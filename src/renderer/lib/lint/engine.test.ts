@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runLintRules } from "./engine";
 import { createTestLintContext } from "./testContext";
-import type { LintFinding, LintRule, LintRuleId } from "./types";
+import type { LintFinding, LintRule, LintRuleId, RegisteredLintRuleId } from "./types";
 
 /**
  * The engine's contract, stated as the four ways a sweep can go wrong: a rule that should not have
@@ -10,7 +10,7 @@ import type { LintFinding, LintRule, LintRuleId } from "./types";
  */
 
 function makeRule(
-    id: LintRuleId,
+    id: RegisteredLintRuleId,
     overrides: Partial<LintRule> = {},
     findings: LintFinding[] = [],
 ): LintRule {

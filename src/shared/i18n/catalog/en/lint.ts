@@ -6,7 +6,9 @@
  *
  *  - Every rule has `title`, `description` and `message` under its camelCase slug
  *    (`lint.rule.<slug>`), and `registry.test.ts` fails if a registered rule is missing any of them
- *    in either catalogue. A rule's variant messages sit beside `message` as `message<Variant>`.
+ *    in either catalogue. A rule's variant messages sit beside `message` as `message<Variant>`. The
+ *    handful of ids no rule owns (`LINT_RULELESS_IDS`) carry only `title` and `description`; their
+ *    messages live under `lint.message` because more than one of them can produce the same finding.
  *  - Titles are short noun phrases; descriptions are one clause and appear only in a hint popover.
  *    Nothing here is a sentence explaining the UI - the interface does not narrate itself.
  *
@@ -88,6 +90,16 @@ export const lint = {
             title: "Network node without network access",
             description: "A network node in a project whose network policy is off",
             message: "{blueprint} makes a network request, which this project does not allow",
+        },
+        /**
+         * The one entry here with no rule behind it. A story document the schema ladder refuses is
+         * never handed to a rule, so it has no row in Project -> Project and no severity to set;
+         * only a name, because the report groups by rule and these findings need a heading. What
+         * one says is `message.storyTooOld` / `.storyTooNew` / `.storyLoadFailed` below.
+         */
+        storyUnreadable: {
+            title: "Unreadable story",
+            description: "A story document this Studio cannot open",
         },
         storyInvalidCommand: {
             title: "Invalid command",
