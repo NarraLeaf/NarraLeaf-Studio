@@ -417,6 +417,32 @@ export class BuildService extends Service<BuildService> {
         this.gateAbort = abort;
         try {
             return await this.runPreBuildGatesInner(startedAt, platforms, appTagId, abort.signal);
+        } catch (error) {
+            // Nothing may escape the checks.
+            //
+            // Only one gate wraps itself (the editor flush); the rest can throw - a document that
+            // will not parse, an IPC round trip that rejects, a sweep of sixty-eight rules over
+            // every story, graph and asset the project has. Before the checks had a phase of their
+            // own an escape here left the state untouched and the pipeline's poll went on saying
+            // what was true, so it cost the author a build and nothing else. Now it would leave the
+            // window in `checking` with nothing running: the poller is stopped for that phase and
+            // `refreshState` refuses to overwrite it, both deliberately, so the run would sit there
+            // saying it was checking the project until the project was reopened.
+            //
+            // Untranslated for the same reason as the sweep's own failure below: this reports
+            // Studio malfunctioning, not something the project did.
+            console.error("[Build] a pre-build check failed to run", error);
+            const message = "A pre-build check failed to run";
+            this.tryGetConsole()?.log(BUILD_CONSOLE_CHANNEL, "error", message, { source: BUILD_CONSOLE_SOURCE });
+            this.updateState({
+                status: "error",
+                progress: null,
+                startedAt,
+                finishedAt: Date.now(),
+                platforms,
+                error: message,
+            });
+            return this.state;
         } finally {
             this.gateAbort = null;
         }
@@ -697,10 +723,18 @@ export class BuildService extends Service<BuildService> {
         this.cancelRequested = true;
         // Still in the checks: they belong to this window, so this is the only thing that can stop
         // them - and asking the pipeline would be asking it to stop a run it has not been given.
-        // The gates report the refusal themselves, so nothing is updated here.
-        if (this.gateAbort) {
-            this.gateAbort.abort();
-            return this.state;
+        if (this.state.status === "checking") {
+            if (this.gateAbort) {
+                // The gates are still running and will report the refusal themselves between one
+                // gate and the next, so nothing is updated here.
+                this.gateAbort.abort();
+                return this.state;
+            }
+            // In `checking` with no gates left to abort. That should not be reachable - the guard
+            // above turns every escape into a terminal state - but the cost of being wrong is a
+            // window stuck on "checking the project" with its build control disabled and no way
+            // back, so Stop puts it back itself rather than trusting that.
+            return this.refuseCancelledChecks(this.state.startedAt ?? Date.now(), this.state.platforms ?? []);
         }
         const result = await getInterface().gameBuild.cancel(this.projectPath());
         if (result.success) {

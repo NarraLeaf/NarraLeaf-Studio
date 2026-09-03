@@ -132,6 +132,8 @@ function mount(options: {
     storyDocument?: StoryDocument;
     /** What the reference index says it could not read. Empty by default. */
     referenceGaps?: readonly ReferenceIndexGap[];
+    /** Make one gate throw where it does not catch for itself, to test the escape path. */
+    throwFromNetworkGate?: boolean;
 } = {}) {
     const lines: ConsoleLine[] = [];
     const run = vi.fn(options.run ?? (async () => report([])));
@@ -176,11 +178,16 @@ function mount(options: {
                     case Services.Project:
                         return {
                             getLintingConfiguration: () => linting,
-                            getNetworkConfiguration: () => ({
-                                allowHttp: options.allowHttp ?? true,
-                                allowRemoteResource: false,
-                                allowRemoteScript: false,
-                            }),
+                            getNetworkConfiguration: () => {
+                                if (options.throwFromNetworkGate) {
+                                    throw new Error("the network configuration could not be read");
+                                }
+                                return {
+                                    allowHttp: options.allowHttp ?? true,
+                                    allowRemoteResource: false,
+                                    allowRemoteScript: false,
+                                };
+                            },
                         };
                     case Services.Lint:
                         return { run };
@@ -456,6 +463,42 @@ describe("BuildService pre-build checks, as a visible phase", () => {
         expect(state.status).toBe("error");
         expect(state.error).toBe("build.cancelled");
         expect(lines.some(line => line.message === "build.cancelled")).toBe(true);
+    });
+
+    /**
+     * The phase this window owns is the one it has to be able to leave.
+     *
+     * The poller is stopped during `checking` and `refreshState` refuses to overwrite it - both
+     * deliberate, because the pipeline's honest answer during the checks is `idle` - so an exception
+     * escaping the gates would strand the window on "checking the project" with the build control
+     * disabled and nothing left running to correct it. Before the phase existed the same exception
+     * left the state alone and the poll kept the window honest, so this path is new.
+     */
+    it("lands a run in a terminal state when a gate throws", async () => {
+        const { service, lines } = mount({ throwFromNetworkGate: true });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const state = await service.start(REQUEST);
+
+        expect(state.status).toBe("error");
+        expect(service.getStatus()).not.toBe("checking");
+        expect(service.isBuilding()).toBe(false);
+        expect(state.startedAt).toBeTypeOf("number");
+        expect(state.platforms).toEqual(["windows", "web"]);
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(lines.some(line => line.level === "error")).toBe(true);
+        consoleError.mockRestore();
+    });
+
+    it("lands a patch export in a terminal state when a gate throws", async () => {
+        const { service } = mount({ throwFromNetworkGate: true });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        const state = await service.exportPatch({ outputFile: "D:/projects/demo/dist/demo.nlpatch" } as never);
+
+        expect(state.status).toBe("error");
+        expect(service.isBuilding()).toBe(false);
+        consoleError.mockRestore();
     });
 
     it("hands the sweep the signal that a cancel aborts", async () => {
