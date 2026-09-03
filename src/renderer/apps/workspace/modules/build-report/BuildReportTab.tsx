@@ -239,7 +239,11 @@ export function BuildReportTab() {
                                             <li
                                                 key={character.id}
                                                 className="flex items-baseline gap-2 rounded-md px-1.5 py-1"
-                                                data-tip={character.id}
+                                                // The name, not the id: a row here can be narrow enough to
+                                                // truncate, and the tooltip is what reads the whole of it.
+                                                // An id is never something to put in front of an author, and
+                                                // a tooltip is on the interface like anything else.
+                                                data-tip={character.name}
                                             >
                                                 <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
                                                     {character.name}
@@ -451,7 +455,10 @@ function ShippedAssetGroupRow({
                         <li
                             key={entry.id}
                             className="flex items-baseline gap-2 rounded-md px-1.5 py-0.5"
-                            data-tip={entry.id}
+                            // The asset's name rather than its id, for the reason the character rows
+                            // above give: the tooltip is the whole of a truncated name, and a
+                            // generated id belongs nowhere on the interface, tooltips included.
+                            data-tip={entry.name}
                         >
                             <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">{entry.name}</span>
                             <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">
