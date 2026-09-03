@@ -34,7 +34,7 @@ describe("working set policy", () => {
 
     it("excludes caches, build output and the repository itself", () => {
         expect(isVersioned(".lore/config.toml")).toBe(false);
-        expect(isVersioned(".nlstudio/plugins/plugin.js")).toBe(false);
+        expect(isVersioned(".nlstudio/services/panel_state.json")).toBe(false);
         expect(isVersioned("editor/cache/thumbnail/ab/cd/thumb.png")).toBe(false);
         expect(isVersioned("editor/assets/remote/ab/cd/blob.bin")).toBe(false);
         expect(isVersioned("dist/out.js")).toBe(false);
