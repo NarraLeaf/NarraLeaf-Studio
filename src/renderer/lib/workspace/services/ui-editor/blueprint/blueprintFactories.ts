@@ -143,6 +143,7 @@ export function renderStarterScript(params: {
                 "",
                 "export default async function (ctx: StoryCtx): Promise<void> {",
                 '    ctx.saved.set("visitedIntro", true);',
+                '    ctx.devtools.log("info", "the intro row ran");',
                 "}",
                 "",
             ].join("\n");

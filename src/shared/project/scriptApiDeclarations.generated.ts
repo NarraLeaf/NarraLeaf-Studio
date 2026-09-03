@@ -140,6 +140,29 @@ declare module "@narraleaf/script" {
     	level: string;
     	message: string;
     } | {
+    	/**
+    	 * A node ran with one of its required data inputs left unconnected and no value on the
+    	 * card, so the pin resolved to nothing.
+    	 *
+    	 * Its own event rather than a \`devtools.log\`, because it has a place: an issue list can
+    	 * put it on a surface, and a repeat of it on the same pin is the same problem rather than
+    	 * a second line of output. Carries the node's and the pin's English names off the
+    	 * catalogue, which is what a host that has no node-title map (the shipped game) can still
+    	 * write into a player's log.
+    	 */
+    	type: "node.input_missing";
+    	executionId: string;
+    	nodeId: string;
+    	/** The node's display name as its definition declares it. */
+    	nodeName: string;
+    	/** The unwired pin's label as its definition declares it. */
+    	pinLabel: string;
+    	blueprintId?: string;
+    	eventId?: string;
+    	graphId?: string;
+    	/** See the note on \`execution.error\`: what lets a host say "the Quick Menu". */
+    	surfaceId?: string;
+    } | {
     	type: "execution.error";
     	executionId: string;
     	message: string;
@@ -164,6 +187,20 @@ declare module "@narraleaf/script" {
     type BlueprintOpenExternalResult = {
     	outcome: BlueprintOpenExternalOutcome;
     	/** Human-readable reason, null when the page was handed over. */
+    	error: string | null;
+    };
+    type BlueprintScreenshotOutcome = "saved" | "failed";
+    type BlueprintScreenshotResult = {
+    	outcome: BlueprintScreenshotOutcome;
+    	/** The file that was written, absolute, or null when nothing was. */
+    	path: string | null;
+    	/** Why nothing was written. Null on success. */
+    	error: string | null;
+    };
+    type BlueprintOpenScreenshotsResult = {
+    	outcome: "opened" | "failed";
+    	/** The folder that was opened, absolute, or null when none was. */
+    	path: string | null;
     	error: string | null;
     };
     declare const BLUEPRINT_NETWORK_METHODS: readonly [
@@ -334,6 +371,21 @@ declare module "@narraleaf/script" {
     	startBlockId?: string;
     	/** Scene Snapshot (变量快照) whose variable overrides seed the launch. */
     	snapshotId?: string;
+    	/**
+    	 * Variable values lifted off a running game, laid over the launch's own stage walk.
+    	 *
+    	 * Set only by a hot reload resuming where the player was: the walk reconstructs what the values
+    	 * would be had the story been played from the top down one path, and these are what they
+    	 * actually were. Applied after the walk and after any Scene Snapshot, because they are the later
+    	 * state - re-seeding either over them would rewind the player.
+    	 *
+    	 * Storage keys, the way the compiler names namespace entries, not variable ids. Persistent
+    	 * values are absent by design: they outlive the run, so a reload has nothing to restore.
+    	 */
+    	resume?: {
+    		sceneVariables: Record<string, StoryLiteralValue>;
+    		savedVariables: Record<string, StoryLiteralValue>;
+    	};
     };
     type GameProgressImportOutcome = {
     	outcome: "found" | "missing" | "failed";
@@ -751,6 +803,11 @@ declare module "@narraleaf/script" {
      */
      | "skipReadText"
     /**
+     * Studio's own: the game's whole output goes quiet while its window is not the one the player is
+     * working in. What acts on it is the host's output gate (\`focusMute\`), not the engine.
+     */
+     | "muteOnWindowBlur"
+    /**
      * Studio's own, and transient: the skip run is going. Writing it is the equivalent of holding
      * the skip key, and the host clears it whenever the run ends - a guard stopping it, the game
      * leaving the stage, the window losing focus. Never persisted (see \`@shared/types/preference\`).
@@ -801,6 +858,22 @@ declare module "@narraleaf/script" {
     		 * \`@shared/types/blueprint/externalLink\`.
     		 */
     		openExternal: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    		/**
+    		 * Write a picture of the frame the player is looking at, and say where it went.
+    		 *
+    		 * The shell decides where: a path chosen in a graph would be a path a graph could write
+    		 * anywhere the player's account can. See \`@shared/types/blueprint/screenshot\`.
+    		 */
+    		saveScreenshot: () => Promise<BlueprintScreenshotResult>;
+    		/** Show the player the folder those pictures are in. */
+    		openScreenshotsFolder: () => Promise<BlueprintOpenScreenshotsResult>;
+    		/**
+    		 * Whether this game's window is the one the player is working in right now.
+    		 *
+    		 * True wherever the shell cannot tell, which is the honest reading of "there is no window
+    		 * to be behind": a story preview inside Studio is always the thing being looked at.
+    		 */
+    		isWindowFocused: () => Promise<boolean>;
     	};
     	/** Surfaces stacked over the page lane. See the \`layers\` family in \`@shared/types/blueprint/hostApi\`. */
     	layers: {
@@ -1422,6 +1495,15 @@ declare module "@narraleaf/script" {
     	self: StoryScriptSelf;
     	scene: StoryVariableRuntimeAccess;
     	saved: StoryVariableRuntimeAccess;
+    	/**
+    	 * Log a line where the author is already looking: Dev Mode's Output panel, beside the lines a
+    	 * \`Log\` node writes.
+    	 *
+    	 * The one member of the host API a story row reaches, and it is here rather than under a \`host\`
+    	 * because this tier has no \`host\`: a row's context is a short flat list of what it may touch,
+    	 * and adding a namespace holding a single member would ask an author to learn one for nothing.
+    	 */
+    	devtools: BlueprintHostApiRuntime["devtools"];
     };
     type StoryScriptContext = StorySyncScriptContext & {
     	persistent: BlueprintHostApiRuntime["persistence"];
@@ -1532,6 +1614,9 @@ declare module "@narraleaf/script" {
     	readonly windowCloseRequested: {};
     	readonly fullscreenChanged: {
     		readonly isFullscreen: "boolean";
+    	};
+    	readonly windowFocusChanged: {
+    		readonly isFocused: "boolean";
     	};
     	readonly keyDown: {
     		readonly key: "string";
@@ -1723,6 +1808,7 @@ declare module "@narraleaf/script" {
     		"keyUp",
     		"preferenceChanged",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"windowCloseRequested",
     		"action"
     	];
@@ -1737,6 +1823,7 @@ declare module "@narraleaf/script" {
     		"keyUp",
     		"preferenceChanged",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"windowCloseRequested",
     		"action",
     		"broadcast",
@@ -1757,6 +1844,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1782,6 +1870,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1807,6 +1896,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1832,6 +1922,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1856,6 +1947,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1880,6 +1972,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1905,6 +1998,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1922,6 +2016,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1938,6 +2033,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1965,6 +2061,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1984,6 +2081,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -1998,6 +2096,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2023,6 +2122,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2042,6 +2142,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2061,6 +2162,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2080,6 +2182,7 @@ declare module "@narraleaf/script" {
     		"keyDown",
     		"keyUp",
     		"fullscreenChanged",
+    		"windowFocusChanged",
     		"broadcast",
     		"elementClick",
     		"elementFlush",
@@ -2108,6 +2211,7 @@ declare module "@narraleaf/script" {
     	"keyDown",
     	"keyUp",
     	"fullscreenChanged",
+    	"windowFocusChanged",
     	"broadcast",
     	"elementClick",
     	"elementFlush"

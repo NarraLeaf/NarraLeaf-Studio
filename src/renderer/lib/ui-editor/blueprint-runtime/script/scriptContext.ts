@@ -198,6 +198,15 @@ export type StorySyncScriptContext = {
     self: StoryScriptSelf;
     scene: StoryVariableRuntimeAccess;
     saved: StoryVariableRuntimeAccess;
+    /**
+     * Log a line where the author is already looking: Dev Mode's Output panel, beside the lines a
+     * `Log` node writes.
+     *
+     * The one member of the host API a story row reaches, and it is here rather than under a `host`
+     * because this tier has no `host`: a row's context is a short flat list of what it may touch,
+     * and adding a namespace holding a single member would ask an author to learn one for nothing.
+     */
+    devtools: BlueprintHostApiRuntime["devtools"];
 };
 
 /**

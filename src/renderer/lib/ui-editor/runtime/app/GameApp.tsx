@@ -78,6 +78,7 @@ import type {
 import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/pageAnimation";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
+    createBlueprintDevtoolsApi,
     createDevModeBlueprintHostApi,
     type BlueprintLayerShowRequest,
     type BlueprintStoryEnding,
@@ -3538,6 +3539,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
             persistence: storyPersistence?.port,
+            // A story row's `Log` node, and a story script's `ctx.devtools`, write to the stream a
+            // Surface blueprint's host API already writes to - so one Output panel carries both, and
+            // an author reading it does not have to know which frontend produced a line. Built here
+            // rather than in the compiler because the stream belongs to this runtime.
+            devtools: core ? createBlueprintDevtoolsApi(event => core.debug.emit(event)) : undefined,
             localization: bundle.localization && core
                 ? { ...bundle.localization, getLocale: readTextLocale }
                 : undefined,
