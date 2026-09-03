@@ -40,6 +40,14 @@ interface AssetsListViewProps {
     handleRootDrop: (event: DragEvent, category: AssetCategory, contextualGroup?: AssetGroup | null) => Promise<void>;
     handleImport: (category: AssetCategory) => void;
     handleImportRemote: (category: AssetCategory) => void;
+    /**
+     * Why downloading is off, or absent when it is on.
+     *
+     * Passed in rather than read here: a distrusted project is the workspace's answer and
+     * these views are also rendered outside one. Importing from disk beside it stays
+     * available - only the download is started on the project's behalf.
+     */
+    remoteImportBlockedReason?: string;
     handleCreateGroup: (category: AssetCategory) => void;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
@@ -63,6 +71,7 @@ export function AssetsListView({
     handleRootDrop,
     handleImport,
     handleImportRemote,
+    remoteImportBlockedReason,
     handleCreateGroup,
     actionLoading,
     setDropTargetId,
@@ -200,7 +209,10 @@ export function AssetsListView({
                                             handleImportRemote(category);
                                         }}
                                         className="p-1 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                                        {...freeze.writes(false, t("assets.importRemote"))}
+                                        {...freeze.writes(
+                                            Boolean(remoteImportBlockedReason),
+                                            remoteImportBlockedReason ?? t("assets.importRemote"),
+                                        )}
                                     >
                                         <Link className="w-3 h-3" />
                                     </button>

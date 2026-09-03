@@ -301,7 +301,7 @@ export const widgets = {
         describeNoModel: "Pick a model bundle to list its names.",
         describeNoBackend: "Pick a runtime to list the model's names.",
         describeBackendMissing: "That runtime is not installed in this project, so names must be typed.",
-        describeDistrusted: "This project is not trusted, so its runtimes do not run. Trust it in Settings.",
+        describeDistrusted: "This project is not trusted, so its runtimes do not run. Trust it from the status bar.",
         describeNotSupported: "This runtime does not describe its models. Type the names.",
         describeFailed: "Could not read the model; type names by hand.",
         redescribe: "Re-read",
@@ -312,6 +312,8 @@ export const widgets = {
         placeholderUnconfigured: "Select a model bundle and a runtime.",
         placeholderNoModel: "The model bundle is not available here.",
         placeholderBackendMissing: "No runtime named “{backend}” is installed in this project.",
+        // Not a missing file and not a fault: the runtime is there and Studio declined to run it.
+        placeholderDistrusted: "Not drawn: this project is not trusted, so its runtime is not run.",
         placeholderLoading: "Loading the model…",
         placeholderError: "The runtime failed: {error}",
         placeholderBudget: "Not drawn: {drawn} models are already drawn in this window.",

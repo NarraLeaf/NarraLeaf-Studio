@@ -86,6 +86,13 @@ function placeholderKey(input: {
         case "error":
             return "widgets.puppet.placeholderError";
         case "missing-backend":
+            // Three situations reach one status, and two of them are about the project rather than
+            // about this widget. A distrusted project's runtime was found and deliberately not run,
+            // so saying "no runtime is installed" would send the author looking for a file that is
+            // sitting right there - and the way out is a decision, not an install.
+            if (input.reason === "distrusted") {
+                return "widgets.puppet.placeholderDistrusted";
+            }
             return input.reason === "no-model"
                 ? "widgets.puppet.placeholderNoModel"
                 : "widgets.puppet.placeholderBackendMissing";

@@ -298,7 +298,7 @@ export const widgets = {
         describeNoModel: "选择模型包后才能列出名称",
         describeNoBackend: "选择运行时后才能列出模型的名称",
         describeBackendMissing: "本机未安装该运行时，名称需要手动输入",
-        describeDistrusted: "该项目未受信任，其运行时不会加载。可在设置中信任该项目。",
+        describeDistrusted: "该项目未受信任，其运行时不会加载。可在状态栏信任该项目。",
         describeNotSupported: "该运行时不描述模型，名称需要手动输入",
         describeFailed: "读取模型失败，名称需要手动输入",
         redescribe: "重新读取",
@@ -309,6 +309,8 @@ export const widgets = {
         placeholderUnconfigured: "选择模型包与运行时",
         placeholderNoModel: "此处无法读取该模型包",
         placeholderBackendMissing: "本项目没有名为“{backend}”的运行时",
+        // 不是文件缺失，也不是故障：运行时就在那里，是 Studio 不去加载它。
+        placeholderDistrusted: "未绘制：该项目未受信任，其运行时不会加载",
         placeholderLoading: "正在加载模型…",
         placeholderError: "运行时出错：{error}",
         placeholderBudget: "未绘制：本窗口已经绘制了 {drawn} 个模型",

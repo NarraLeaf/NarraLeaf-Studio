@@ -51,6 +51,7 @@ import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
@@ -178,6 +179,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * no verbs of its own, so their controls keep {@link freeze} and grey under any freeze at all.
      */
     const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
+    // Read here rather than in the two views: this is the component that has a workspace,
+    // and the views it renders are also mounted without one. Only the download is refused for
+    // a distrusted project - importing from disk starts nothing on the project's behalf.
+    const distrusted = useProjectDistrusted();
+    const distrustedReason = useProjectDistrustedReason();
+    const remoteImportBlockedReason = distrusted ? distrustedReason : undefined;
     /**
      * The asset sets' own guard.
      *
@@ -1292,6 +1299,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             handleRootDrop={handleRootDrop}
                             handleImport={handleImport}
                             handleImportRemote={handleImportRemote}
+                            remoteImportBlockedReason={remoteImportBlockedReason}
                             handleCreateGroup={handleCreateGroup}
                             actionLoading={actionLoading}
                             setDropTargetId={setDropTargetId}
@@ -1311,6 +1319,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             setDropTargetId={setDropTargetId}
                             handleImport={handleImport}
                             handleImportRemote={handleImportRemote}
+                            remoteImportBlockedReason={remoteImportBlockedReason}
                             handleCreateGroup={handleCreateGroup}
                             iconSize={iconSize}
                             onIconSizeChange={setIconSize}
