@@ -366,15 +366,26 @@ async function preloadAsset(input: {
     await preloadImage(url);
 }
 
+/**
+ * Told after every asset, warmed or failed, with how far the pass has got.
+ *
+ * `settled` rather than `loaded`: a broken asset is one this pass will never come back to, so
+ * counting it as still outstanding would leave a progress bar short of its end for the rest of the
+ * boot. `total` never moves - the list is assembled before the first fetch.
+ */
+export type RuntimePreloadProgress = (settled: number, total: number) => void;
+
 export async function preloadRuntimeSurfaceAssets(input: {
     pack: GameRuntimePackV1;
     surface: UISurface;
     assetUrl: (assetId: string) => string;
     timeoutMs?: number;
+    onProgress?: RuntimePreloadProgress;
 }): Promise<RuntimeSurfacePreloadResult> {
     const assetIds = collectRuntimeSurfaceAssetIds(input.pack, input.surface);
     const failed: string[] = [];
     let loaded = 0;
+    let settled = 0;
     let completed = false;
     const preloadAll = Promise.all(assetIds.map(async assetId => {
         try {
@@ -387,6 +398,8 @@ export async function preloadRuntimeSurfaceAssets(input: {
         } catch {
             failed.push(assetId);
         }
+        settled += 1;
+        input.onProgress?.(settled, assetIds.length);
     })).then(() => {
         completed = true;
     });
@@ -413,6 +426,7 @@ export async function preloadRuntimePackAssets(input: {
     firstSurface: UISurface;
     assetUrl: (assetId: string) => string;
     timeoutMs?: number;
+    onProgress?: RuntimePreloadProgress;
 }): Promise<RuntimeSurfacePreloadResult> {
     const { firstSurfaceAssetIds, assetIds } = collectRuntimePackAssetIds(input.pack, input.firstSurface);
     const firstSurfaceAssetSet = new Set(firstSurfaceAssetIds);
@@ -420,6 +434,7 @@ export async function preloadRuntimePackAssets(input: {
     const failed: string[] = [];
     const firstSurfaceFailed: string[] = [];
     let loaded = 0;
+    let settled = 0;
     let firstSurfaceLoaded = 0;
     let firstSurfaceComplete = false;
     let completed = false;
@@ -441,6 +456,11 @@ export async function preloadRuntimePackAssets(input: {
                 firstSurfaceFailed.push(assetId);
             }
         }
+        // Against the whole list, both passes counted together: what the caller is drawing is one
+        // wait, and a bar that filled during the first screen's assets and then started again for
+        // the rest would be two answers to "how much longer".
+        settled += 1;
+        input.onProgress?.(settled, assetIds.length);
     };
 
     const preloadAll = (async () => {

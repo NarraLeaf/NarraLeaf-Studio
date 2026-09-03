@@ -95,10 +95,10 @@ describe("openStoryPersistence", () => {
 describe("the boot path", () => {
     it("waits for the store before it compiles, and reads nothing past what it waited for", async () => {
         const source = await fs.readFile(path.join(path.resolve(__dirname), "GameApp.tsx"), "utf-8");
-        const start = source.indexOf("const compileStoryRequest = useCallback(");
-        expect(start, "GameApp no longer has a compileStoryRequest").toBeGreaterThan(-1);
+        const start = source.indexOf("const compileStoryDocument = useCallback(");
+        expect(start, "GameApp no longer has a compileStoryDocument").toBeGreaterThan(-1);
         const body = source.slice(start, source.indexOf("\n    }, [bundle,", start));
-        expect(body.length, "compileStoryRequest body not found").toBeGreaterThan(0);
+        expect(body.length, "compileStoryDocument body not found").toBeGreaterThan(0);
 
         const primed = body.indexOf("await openStoryPersistence(");
         expect(primed, "the boot must read the persistent store before it compiles").toBeGreaterThan(-1);

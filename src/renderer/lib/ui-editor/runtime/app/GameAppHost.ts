@@ -24,6 +24,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import type { GameBootProgress } from "./bootTiming";
 import type { SaveLoadOutcome } from "./saveLoad";
 
 export type GameAppLogLevel = "info" | "warning" | "error";
@@ -203,6 +204,24 @@ export type GameAppHost = {
      * the guarantee: press Start before the environment is ready and the press waits for it.
      */
     surfacesBeforeStoryBoot?: boolean;
+    /**
+     * How far the boot has got, phase by phase, for a shell that wants to say so.
+     *
+     * The same boundaries the game app writes to the page's performance timeline - see
+     * {@link GameBootProgress} - handed over as they happen. A packaged game draws its loading
+     * state from this: without it a player watches a black window for as long as the story takes to
+     * compile and warm, with nothing on screen to say the game is coming.
+     *
+     * Every host declares it, including the ones that draw nothing. A capability the Dev Mode window
+     * lacks is a capability an author cannot see working in the window they test in, and a boot is
+     * exactly the thing they would be testing; what Dev Mode does with the phases is put them in its
+     * Output panel, where "why does my game take four seconds to start" is asked.
+     *
+     * Called during the boot and once more when the first frame has painted (`firstFrame`), which is
+     * the signal to take a loading state away. Never called again after that - a hot reload restarts
+     * the story, not the boot.
+     */
+    onBootProgress?: (progress: GameBootProgress) => void;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */

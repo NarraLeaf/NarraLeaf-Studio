@@ -924,6 +924,25 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, []);
 
+    /** The last boot phase written out, so a phase that reports its progress writes only one line. */
+    const bootPhaseLoggedRef = useRef<string | null>(null);
+    /**
+     * Where the boot's phases go in the window an author watches their game start in.
+     *
+     * Dev Mode draws no loading state - it puts the interface up before the story is warm on
+     * purpose (`surfacesBeforeStoryBoot`), so there is nothing here to hold back. What it can do
+     * with the phases is the reason this window exists: they land in Output, next to the rest of the
+     * run, where "why does my game take four seconds to start" is asked. The packaged game sends the
+     * same reports to its loading screen.
+     */
+    const reportBootProgress = useCallback<NonNullable<GameAppHost["onBootProgress"]>>(progress => {
+        if (bootPhaseLoggedRef.current === progress.phase) {
+            return;
+        }
+        bootPhaseLoggedRef.current = progress.phase;
+        log("info", `[DevMode] boot: ${progress.phase} at ${Math.round(progress.at)}ms`);
+    }, [log]);
+
     /**
      * Failures the running game reported, located against the story that is open.
      *
@@ -1707,6 +1726,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     .filter((id): id is string => Boolean(id)),
             )],
             ready: runtimePlugins.ready,
+            onBootProgress: reportBootProgress,
             bootAction,
             // Only when there is one: a host field that is always present but usually null would put
             // an empty object in every render's dependency comparison for the sake of the rare press.
@@ -1769,6 +1789,7 @@ export function DevModeContent(props: DevModeContentProps) {
         quitApplication,
         restartApplication,
         listPuppetBackendModules,
+        reportBootProgress,
         reportIssue,
         resolveStoryAssetUrl,
         prewarmStoryAssetUrls,

@@ -39,6 +39,9 @@ import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
 } from "./surfaceResourcePreload";
+import { publishRuntimeBootProgress, runtimeShellBootReporter } from "./bootProgress";
+import { resolveRuntimeBootColors } from "./bootAppearance";
+import { RuntimeBootBackdrop, RuntimeBootScreen } from "./RuntimeBootScreen";
 
 function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISurface | null {
     if (surfaceId) {
@@ -75,6 +78,9 @@ function useRuntimePack(): {
             setError(translate("game.crash.bridgeUnavailable"));
             return;
         }
+        // The first phase of the boot, and the only one nothing else can time: the loading state
+        // cannot even know the game's colours until this answers.
+        runtimeShellBootReporter.begin("bundle");
         void bridge.readPack()
             .then(nextPack => {
                 if (disposed) {
@@ -104,8 +110,12 @@ function useRuntimePack(): {
                 setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
                 setPack(nextPack);
                 setError(null);
+                // After the palette, so the phase this closes is the one the next paint can already
+                // draw in the game's own colours.
+                runtimeShellBootReporter.end("bundle");
             })
             .catch(err => {
+                runtimeShellBootReporter.end("bundle");
                 if (!disposed) {
                     setError(normalizeError(err));
                 }
@@ -129,8 +139,16 @@ function RuntimeErrorScreen(props: { message: string }): ReactNode {
     return <RuntimeCrashScreen details={props.message} />;
 }
 
+/**
+ * The wait, painted in whatever colours are known yet.
+ *
+ * Before the pack is read that is the seeded palette, which is what a project that never touched
+ * its colours ships anyway; after it, the screen the game is starting towards. Either way it is a
+ * colour somebody chose, which is the whole difference from the bare black div this replaced.
+ */
 function RuntimeLoadingScreen(): ReactNode {
-    return <div className="h-screen w-screen bg-black" />;
+    const colors = resolveRuntimeBootColors(null);
+    return <RuntimeBootScreen background={colors.background} accent={colors.accent} />;
 }
 
 /**
@@ -196,11 +214,16 @@ function useRuntimePackPreload(input: {
         const preloadKey = `${pack.bundle.bundleId}:${pack.bundle.revision}:${firstSurface.id}`;
         let cancelled = false;
         setState({ key: preloadKey, ready: false, result: null });
+        // The one phase of the boot whose size is known in advance, so the one the loading state
+        // can draw as a real bar rather than a sweep.
+        runtimeShellBootReporter.begin("preload", { loaded: 0, total: 0 });
         void preloadRuntimePackAssets({
             pack,
             firstSurface,
             assetUrl: assetId => bridge.assetUrl(assetId),
+            onProgress: (settled, total) => runtimeShellBootReporter.progress("preload", settled, total),
         }).then(result => {
+            runtimeShellBootReporter.end("preload");
             if (cancelled) {
                 return;
             }
@@ -219,6 +242,7 @@ function useRuntimePackPreload(input: {
             }
             setState({ key: preloadKey, ready: true, result });
         }).catch(err => {
+            runtimeShellBootReporter.end("preload");
             if (cancelled) {
                 return;
             }
@@ -402,8 +426,9 @@ export function GameRuntimeApp() {
         return <RuntimeSessionTakenScreen />;
     }
     if (sessionClaim === "pending") {
-        // The black screen a boot already shows, for the fraction of a second a lock takes to
+        // The loading state a boot already shows, for the fraction of a second a lock takes to
         // answer - and for the second and a half it takes to conclude that another tab holds it.
+        // No pack yet, so this is the seeded palette rather than the project's own.
         return <RuntimeLoadingScreen />;
     }
     return <GameRuntimeSession />;
@@ -865,6 +890,10 @@ function GameRuntimeSession() {
             // where the two meet.
             installedDlcIds: pack.installedDlc,
             ready: runtimeReady,
+            // Straight into the store the loading state reads. Nothing between the two: the game
+            // app is where the story compile and the scene warm-up are, and they are the longest
+            // part of what the player is waiting through.
+            onBootProgress: publishRuntimeBootProgress,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
                 : { kind: "surface" },
@@ -981,24 +1010,53 @@ function GameRuntimeSession() {
         [stageViewport],
     );
 
-    const renderPlaceholder = useCallback(() => <RuntimeLoadingScreen />, []);
+    /**
+     * The colours of the wait, settled once the pack is in hand.
+     *
+     * Recomputed when the entry surface changes and not per progress tick - the loading state reads
+     * its numbers from a store of its own for exactly that reason, so nothing here re-renders while
+     * the assets come in.
+     */
+    const bootColors = useMemo(() => resolveRuntimeBootColors(entrySurface), [entrySurface]);
+
+    // Under the loading state rather than instead of it: this is what the game app draws when it has
+    // no page yet, and a second indicator over the one already on screen would be two answers to the
+    // same question.
+    const renderPlaceholder = useCallback(
+        () => <RuntimeBootBackdrop background={bootColors.background} />,
+        [bootColors.background],
+    );
 
     if (error) {
         return <RuntimeErrorScreen message={error} />;
     }
-    if (!pack || !host || !entrySurface) {
-        return <RuntimeLoadingScreen />;
-    }
 
     return (
-        <GameApp
-            host={host}
-            rendererRegistry={rendererRegistry}
-            getScale={getScale}
-            renderFrame={renderFrame}
-            renderPlaceholder={renderPlaceholder}
-            pluginHost={pluginHost}
-            onTestControlsChanged={onTestControlsChanged}
-        />
+        <>
+            {pack && host && entrySurface ? (
+                <GameApp
+                    host={host}
+                    rendererRegistry={rendererRegistry}
+                    getScale={getScale}
+                    renderFrame={renderFrame}
+                    renderPlaceholder={renderPlaceholder}
+                    pluginHost={pluginHost}
+                    onTestControlsChanged={onTestControlsChanged}
+                />
+            ) : null}
+            {/*
+             * A sibling of the game rather than something the game renders, and mounted from this
+             * component's first render rather than swapped in when the game appears - so the wait
+             * is one continuous screen that recolours as the pack lands, instead of two screens
+             * replacing each other.
+             *
+             * It takes itself away: it removes itself the moment the boot reports its first painted
+             * frame, and it subscribes to the boot store directly. So the game app renders when the
+             * pack arrives and is not re-rendered again by the loading state updating or going -
+             * which matters, because all of that happens in the very seconds this exists to make
+             * feel shorter.
+             */}
+            <RuntimeBootScreen background={bootColors.background} accent={bootColors.accent} />
+        </>
     );
 }

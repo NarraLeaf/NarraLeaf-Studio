@@ -378,6 +378,61 @@ describe("runtime surface asset preload", () => {
         expect(result.loaded).toBe(3);
         expect(decoded).toEqual([]);
     });
+
+    /**
+     * This is the one part of a boot whose size is known before it starts, so it is the one a
+     * loading state can draw as a real bar rather than a sweep. It reports what has SETTLED rather
+     * than what loaded: a broken asset is one this pass will never come back to, and counting it as
+     * outstanding would leave the bar short of its end for the rest of the boot.
+     */
+    it("reports how far it has got, counting a failed asset as settled", async () => {
+        const pack = makePack();
+        delete pack.assets.items["component-font"];
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        const ticks: Array<[number, number]> = [];
+
+        class FakeImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            private currentSrc = "";
+
+            set src(value: string) {
+                this.currentSrc = value;
+                queueMicrotask(() => {
+                    if (value.endsWith("nested-img")) {
+                        this.onerror?.();
+                    } else {
+                        this.onload?.();
+                    }
+                });
+            }
+
+            get src(): string {
+                return this.currentSrc;
+            }
+
+            decode(): Promise<void> {
+                return Promise.resolve();
+            }
+        }
+
+        vi.stubGlobal("Image", FakeImage);
+
+        const result = await preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 100,
+            onProgress: (settled, total) => ticks.push([settled, total]),
+        });
+
+        expect(result.failed).toEqual(["nested-img"]);
+        expect(ticks).toHaveLength(3);
+        // Against the whole list from the first tick, and rising to it: two passes counted as one
+        // wait, because one wait is what the player is looking at.
+        expect(ticks.map(([settled]) => settled)).toEqual([1, 2, 3]);
+        expect(ticks.every(([, total]) => total === 3)).toBe(true);
+    });
 });
 
 /**

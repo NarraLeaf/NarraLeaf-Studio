@@ -218,6 +218,7 @@ import {
     markEndingReached,
     readReachedEndings,
 } from "./endingsRecord";
+import { createGameBootReporter } from "./bootTiming";
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -666,6 +667,26 @@ export function GameApp(props: GameAppProps): ReactNode {
     // in-flight boot) when nlrSession / hostAdapterBundle identities churn — the boot itself
     // mutates nlrSession, which would otherwise self-cancel before nlrPreloadDone is ever set.
     const runBootRef = useRef<(() => Promise<void>) | null>(null);
+    /**
+     * The boot's phases, written to the page's performance timeline and handed to the host.
+     *
+     * Rebuilt only when the host's listener changes, which for every real host is never: the
+     * reporter holds the spans it has open, and a new one mid-boot would lose the ends of them.
+     */
+    const bootReporter = useMemo(
+        () => createGameBootReporter(host.onBootProgress),
+        [host.onBootProgress],
+    );
+    /**
+     * Whether the work now running is the boot.
+     *
+     * The same two calls compile a story and warm its opening scene when the player presses Start
+     * an hour in, and a boot mark written then would say the game was still starting up. Nothing
+     * else distinguishes them: `startStoryInGame` and the boot go through one path on purpose.
+     */
+    const bootInFlightRef = useRef(false);
+    /** The first painted frame is reported once per window, not once per hot reload. */
+    const bootFirstFrameRef = useRef(false);
     // Whether the currently mounted NLR environment has actually entered a game (newGame() called).
     // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
     // until Start Game / Load Save.
@@ -3385,7 +3406,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const compiledStoryCacheRef = useRef<CompiledStoryCacheEntry | null>(null);
 
-    const compileStoryRequest = useCallback(async (
+    const compileStoryDocument = useCallback(async (
         request: DevModeStartStoryRequest,
     ): Promise<CompiledNlrStory> => {
         const storyId = String(request.storyId ?? "").trim();
@@ -3596,6 +3617,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         return compiled;
     }, [bundle, core, host, readTextLocale, readVoiceLocale]);
+
+    /**
+     * The compile, timed when it is the boot's.
+     *
+     * A wrapper rather than a mark inside the compile because a cache hit is a compile too: it
+     * takes no time, and a phase that is absent from the timeline whenever the story was reused
+     * would read as a boot that skipped a step rather than one that had it for free.
+     */
+    const compileStoryRequest = useCallback(async (
+        request: DevModeStartStoryRequest,
+    ): Promise<CompiledNlrStory> => {
+        if (!bootInFlightRef.current) {
+            return compileStoryDocument(request);
+        }
+        bootReporter.begin("story");
+        try {
+            return await compileStoryDocument(request);
+        } finally {
+            bootReporter.end("story");
+        }
+    }, [bootReporter, compileStoryDocument]);
 
     /**
      * Everything the blueprint nodes can ask of this game, built once for every surface of it.
@@ -3935,14 +3977,28 @@ export function GameApp(props: GameAppProps): ReactNode {
             height,
             onStageNode,
         });
-        await environmentReady;
-        // Hold the mount open until the stage is warm. Callers mount either from boot (loading
-        // step on screen) or from a Start Game that could not fast-path, and both would otherwise
-        // reveal a stage that still has to fetch and decode its first scene.
-        await assetsReady;
+        // The engine warming the opening scene, from the moment the Player has a session to warm
+        // it from. Its API reports the two boundaries and nothing between them, so this phase is
+        // indeterminate - there is no count to pass, and a shell draws accordingly.
+        const timedWarmup = bootInFlightRef.current;
+        if (timedWarmup) {
+            bootReporter.begin("preload");
+        }
+        try {
+            await environmentReady;
+            // Hold the mount open until the stage is warm. Callers mount either from boot (loading
+            // step on screen) or from a Start Game that could not fast-path, and both would otherwise
+            // reveal a stage that still has to fetch and decode its first scene.
+            await assetsReady;
+        } finally {
+            if (timedWarmup) {
+                bootReporter.end("preload");
+            }
+        }
         return sessionId;
     }, [
         activeSurface,
+        bootReporter,
         bundle,
         clearGameHiddenStudioPages,
         goBack,
@@ -4445,6 +4501,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }, NLR_BOOT_PRELOAD_TIMEOUT_MS);
 
         nlrBootPromiseRef.current = (async () => {
+            bootInFlightRef.current = true;
             try {
                 await runBootRef.current?.();
             } catch (err) {
@@ -4459,6 +4516,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     reportFailure(err);
                 }
             } finally {
+                bootInFlightRef.current = false;
                 clearTimeout(timeoutId);
                 finish();
             }
@@ -4948,6 +5006,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (activeEntry && !prepaintReadyKeys.has(activeEntry.key) && !gameStageVisible) {
             return;
         }
+        // The boot is over: something the player can see is on the screen. Reported here rather
+        // than beside it because this is already the one place that knows the condition - the first
+        // surface has prepainted, or the stage covered the surfaces before any of them could - and
+        // a second copy of that rule would be the one that drifts. Once per window: a hot reload
+        // comes back through here with a new signature, and it restarts the story, not the boot.
+        if (!bootFirstFrameRef.current) {
+            bootFirstFrameRef.current = true;
+            bootReporter.firstFrame();
+        }
         const sig = `${bundle.bundleId}:${bundle.revision}`;
         if (appBootFiredRef.current === sig) {
             return;
@@ -4964,7 +5031,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setSurfaceState: (key, value) => surfaceStore.set(key, value),
             executionManager: core.executionManager,
         });
-    }, [activeEntry, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
+    }, [activeEntry, bootReporter, bundle, core, gameStageVisible, host.ready, hostAdapterBundle, prepaintReadyKeys]);
 
     useEffect(() => {
         const scope = resolveKeyboardDispatchScope({
