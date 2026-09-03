@@ -42,8 +42,8 @@ import {
     nearestCommands,
     queryCommands,
 } from "./catalog";
-import { applyScene, formatApplySummary, summariseApply } from "./apply";
-import { checkProject, checkStoryFile, formatDiagnostics, hasErrors } from "./check";
+import { applyScene, findingsIntroduced, formatApplySummary, formatCarriedFindings, summariseApply } from "./apply";
+import { checkProject, checkStoryFile, formatDiagnostics, hasErrors, lintStoredProject } from "./check";
 import { printStoryScene } from "./dsl/print";
 import { LINE_SHAPES_HELP } from "./dsl/shapes";
 import { buildLookups } from "./lookups";
@@ -381,8 +381,19 @@ async function commandApply(args: Args, io: CliIo): Promise<number> {
     const file = resolveStoryFile(given, { forWriting: false });
     const documentFile = readStoryDocument(projectDir, story.id);
     const result = await checkStoryFile(readSource(file), { projectDir, storyId: story.id, scene: null });
-    io.out(formatDiagnostics(result.diagnostics, { fileName: file, notRun: result.notRun }));
-    if (!result.scene || hasErrors(result.diagnostics)) {
+
+    // The document layer is judged against the project as it stands, so a finding that was already
+    // there is not this write's problem. Skipped when the edited project has no findings at all:
+    // nothing can have been introduced, and the baseline run reads every story in the project.
+    const baseline = result.projectFindings.length > 0 ? await lintStoredProject(projectDir) : [];
+    const findings = findingsIntroduced(baseline, result.projectFindings);
+    const reported = [...result.fileDiagnostics, ...findings.introduced];
+    io.out(formatDiagnostics(reported, { fileName: file, notRun: result.notRun }));
+    if (findings.carried > 0) {
+        io.out("");
+        io.out(formatCarriedFindings(findings.carried));
+    }
+    if (!result.scene || hasErrors(reported)) {
         io.err("Nothing written.");
         return 1;
     }

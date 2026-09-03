@@ -11,6 +11,14 @@
  * cannot spell rather than leaving it out. {@link summariseApply} counts what is going before it
  * happens, so a file that lost a hundred rows to a bad edit says so rather than being written.
  *
+ * ## What it refuses over
+ *
+ * The file layer's errors are always this file's doing, so any of them stops the write. The document
+ * layer's are not: the project linter reads the whole project, and it has plenty to say about scenes
+ * this file has never seen. So the linter is run twice - over the project as it stands, and over the
+ * project with this scene substituted in - and only the difference stops the write. See
+ * {@link findingsIntroduced}.
+ *
  * ## What it never touches
  *
  * The scene's own metadata - its snapshot, its BGM, its launch entries - and everything outside the
@@ -22,7 +30,9 @@
  */
 
 import type { StoryBlockId, StoryScene } from "@shared/types/story";
+import type { StoryFileDiagnostic } from "./dsl/ast";
 import { sameRowContent } from "./dsl/equal";
+import type { KeyedLintFinding } from "./check";
 import type { StoryDocumentFile } from "./project";
 
 export type ApplySummary = {
@@ -67,6 +77,54 @@ export function summariseApply(
         removed,
         renamedTo: next.name !== existing.name ? next.name : null,
     };
+}
+
+export type IntroducedFindings = {
+    /** Findings the edit adds, which are the only document-layer ones a write answers for. */
+    introduced: StoryFileDiagnostic[];
+    /** How many of the edited project's findings were already there. Counted, never listed. */
+    carried: number;
+};
+
+/**
+ * Which of the edited project's lint findings this edit is responsible for.
+ *
+ * Two runs of the same rules over almost the same project, compared as multisets of
+ * {@link KeyedLintFinding.key}: a key seen more often after the edit than before it has that many
+ * new findings, and one seen as often or less has none. Counting rather than set difference is what
+ * makes a second finding of one rule on one row visible, and what keeps a finding whose message
+ * merely changed from being reported as new.
+ *
+ * The findings reported are taken from the *after* run, so what is printed is the state the write
+ * would leave rather than a description of a project that no longer exists.
+ */
+export function findingsIntroduced(
+    before: readonly KeyedLintFinding[],
+    after: readonly KeyedLintFinding[],
+): IntroducedFindings {
+    const budget = new Map<string, number>();
+    for (const finding of before) {
+        budget.set(finding.key, (budget.get(finding.key) ?? 0) + 1);
+    }
+    const introduced: StoryFileDiagnostic[] = [];
+    for (const finding of after) {
+        const remaining = budget.get(finding.key) ?? 0;
+        if (remaining > 0) {
+            budget.set(finding.key, remaining - 1);
+            continue;
+        }
+        introduced.push(finding.diagnostic);
+    }
+    return { introduced, carried: after.length - introduced.length };
+}
+
+/** The one line that says the project's own findings were seen and left where they were. */
+export function formatCarriedFindings(carried: number): string {
+    return carried === 1
+        ? "1 finding was already in this project before this file, and is not counted against it. "
+            + "`story check --project <dir>` lists it."
+        : `${carried} findings were already in this project before this file, and are not counted against it. `
+            + "`story check --project <dir>` lists them.";
 }
 
 /** Put the compiled scene into the document. The caller writes the file. */

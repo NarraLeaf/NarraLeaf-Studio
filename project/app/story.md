@@ -186,15 +186,28 @@ Exit code 1 means something at error severity was found; 0 means clean.
 
 ## Writing
 
-`apply` checks first and writes nothing if anything is at error severity. It
-writes `editor/story/stories/<id>/storydoc.json` the way `StoryService` does, so
-the file it leaves and the file Studio leaves are the same shape.
+`apply` checks first and writes nothing if anything **this file introduces** is at
+error severity. It writes `editor/story/stories/<id>/storydoc.json` the way
+`StoryService` does, so the file it leaves and the file Studio leaves are the same
+shape.
 
-Four things to know before using it:
+The two layers are judged differently, because only one of them is about this
+file. Every file-layer error stops the write: an unknown command or a refused
+value is the file's own. The document layer is not - it reads the whole project,
+and a project carries findings from scenes this file has never seen. So the
+linter runs twice, over the project as it stands and over the project with this
+scene substituted in, and only the difference stops the write. Findings that
+were already there are counted in one line and left alone; `check` is where they
+are read. Two findings are told apart by rule and site, and counted, so a second
+empty choice on a new row is new even though the project already had one.
+
+Five things to know before using it:
 
 - **A file describes a whole scene.** Applying it deletes every row the file does
   not mention; `apply` names them before it happens, and writes nothing without
   `--write`.
+- **A project's own errors do not block it.** One bad row in another chapter used
+  to mean nothing could be written anywhere.
 - **A zero-edit round trip changes nothing.** `show` then `apply` on an untouched
   file leaves the document byte for byte as it was - rows keep their stored key
   order, so a one-line edit is a one-line diff.
