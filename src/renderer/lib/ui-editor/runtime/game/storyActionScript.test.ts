@@ -7,6 +7,7 @@ import {
 } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import {
+    buildStoryActionHostApi,
     evaluateStoryActionBlueprintValueSync,
     type CompileStoryActionScriptInput,
 } from "./storyActionBlueprint";
@@ -62,8 +63,12 @@ function scriptCtx(saved: Map<string, unknown>): ScriptCtx {
     return { storable: { getNamespace: () => namespace } } as unknown as ScriptCtx;
 }
 
-function input(onDiagnostic?: (message: string) => void): CompileStoryActionScriptInput {
+function input(
+    onDiagnostic?: (message: string) => void,
+    devtools?: CompileStoryActionScriptInput["devtools"],
+): CompileStoryActionScriptInput {
     return {
+        devtools,
         blueprintDocument: blueprintDocument(),
         persistentVariables: {} as never,
         blueprintId: BLUEPRINT_ID,
@@ -88,6 +93,31 @@ async function mount(module: Record<string, unknown>): Promise<void> {
 
 afterEach(() => {
     unmountCompiledScripts();
+});
+
+/**
+ * The graph half of the same seam.
+ *
+ * A `Log` node placed in a story row reads `hostAdapter.blueprintRuntime?.hostApi?.devtools?.log`
+ * and falls back to the console when it is not there. It was never there: the row's host API was
+ * built only when the host had a persistence bridge, and carried nothing else when it was. So the
+ * node wrote to the console and to nowhere an author looks.
+ */
+describe("a story row's host API", () => {
+    it("carries devtools whether or not the host has persistence", () => {
+        const lines: string[] = [];
+        const withHost = buildStoryActionHostApi(input(undefined, { log: (_level, message) => lines.push(message) }));
+        withHost.devtools!.log("info", "through the host");
+        expect(lines).toEqual(["through the host"]);
+
+        // No persistence bridge, and the object still exists: that absence is what used to remove
+        // the whole host API, and with it every `Log` node's only route to the panel.
+        expect(buildStoryActionHostApi(input()).devtools).toBeDefined();
+    });
+
+    it("omits persistence when the host has none, rather than answering with a broken one", () => {
+        expect(buildStoryActionHostApi(input()).persistence).toBeUndefined();
+    });
 });
 
 describe("a story row runs a script", () => {
@@ -129,6 +159,33 @@ describe("a story row runs a script", () => {
 
         expect(evaluateStoryActionBlueprintValueSync(input(m => messages.push(m)), scriptCtx(new Map()))).toBeUndefined();
         expect(messages[0]).toContain(SCRIPT_REF);
+    });
+
+    it("hands the row's script the host's own devtools, so a line reaches the Output panel", async () => {
+        const lines: Array<[string, string]> = [];
+        await mount({
+            default: (ctx: { devtools: { log: (level: string, message: string) => void } }) => {
+                ctx.devtools.log("info", "from the row");
+                return true;
+            },
+        });
+
+        expect(
+            evaluateStoryActionBlueprintValueSync(input(undefined, { log: (level, message) => lines.push([level, message]) }), scriptCtx(new Map())),
+        ).toBe(true);
+        expect(lines).toEqual([["info", "from the row"]]);
+    });
+
+    it("still gives a script devtools when the host has no debugger, so the call never throws", async () => {
+        // A workspace scene preview compiles with no host stream. The console half of the log still
+        // runs; what must not happen is a script failing on a member the types promise it.
+        await mount({
+            default: (ctx: { devtools: { log: (level: string, message: string) => void } }) => {
+                ctx.devtools.log("info", "nowhere to go");
+                return "survived";
+            },
+        });
+        expect(evaluateStoryActionBlueprintValueSync(input(), scriptCtx(new Map()))).toBe("survived");
     });
 
     it("says nothing when the script never mounted, because the compile already did", async () => {

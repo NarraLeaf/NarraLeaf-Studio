@@ -2237,6 +2237,35 @@ function switchPropertiesEqual(a: BlueprintSwitchProperties, b: BlueprintSwitchP
     return a.checked === b.checked;
 }
 
+/**
+ * `devtools.log`, on its own, for the two hosts that have one.
+ *
+ * Separate from {@link createDevModeBlueprintHostApi} because a story row's host is not that one: it
+ * is assembled in the story compiler from the few members a row may reach, and it needs this member
+ * without the forty options the full factory takes. Written twice it would drift in the two places
+ * an author reads it - the panel line and the console line - so it is written here.
+ */
+export function createBlueprintDevtoolsApi(
+    emit: (event: BlueprintDebugEvent) => void,
+): BlueprintHostApiRuntime["devtools"] {
+    return {
+        log: (level: string, message: string) => {
+            const safeMessage = truncateDebugEventMessage(String(message));
+            emitHostCall(emit, "devtools.log", "call");
+            emit({ type: "devtools.log", level, message: safeMessage });
+            const line = `[Blueprint devtools.${level}] ${safeMessage}`;
+            if (level === "error") {
+                console.error(line);
+            } else if (level === "warn") {
+                console.warn(line);
+            } else {
+                console.info(line);
+            }
+            emitHostCall(emit, "devtools.log", "return");
+        },
+    };
+}
+
 function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
     if (phase === "call") {
         emit({ type: "function.call", functionId: capabilityId });
@@ -4922,21 +4951,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 }
             },
         },
-        devtools: {
-            log: (level: string, message: string) => {
-                const safeMessage = truncateDebugEventMessage(String(message));
-                emitHostCall(emit, "devtools.log", "call");
-                emit({ type: "devtools.log", level, message: safeMessage });
-                const line = `[Blueprint devtools.${level}] ${safeMessage}`;
-                if (level === "error") {
-                    console.error(line);
-                } else if (level === "warn") {
-                    console.warn(line);
-                } else {
-                    console.info(line);
-                }
-                emitHostCall(emit, "devtools.log", "return");
-            },
-        },
+        devtools: createBlueprintDevtoolsApi(emit),
     };
 }

@@ -32,6 +32,8 @@ import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/bluepri
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { isScriptMounted, resolveScriptDefault } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
+import { createBlueprintDevtoolsApi } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type {
     StoryScriptContext,
     StorySyncScriptContext,
@@ -50,6 +52,16 @@ export type StoryPersistenceBridgeLike = {
     set: (storageKey: string, value: unknown) => void | Promise<void>;
 };
 
+/**
+ * Where a story row's log lines go: the same debug stream a Surface blueprint writes to.
+ *
+ * Supplied by the host rather than built here, because what is on the other end is the host's
+ * business - Dev Mode's Output panel, and the log a packaged game keeps. A host that has no
+ * debugger passes none, and the fallback below still writes the console line: that half has always
+ * worked, and it is the half a `Log` node in a story row was reaching before this member existed.
+ */
+export type StoryDevtoolsBridge = BlueprintHostApiRuntime["devtools"];
+
 export type CompileStoryActionScriptInput = {
     blueprintDocument: BlueprintDocument;
     /** M-VAR: persistent variable definitions (baked from the registry), replacing the old blueprint-doc field. */
@@ -61,6 +73,7 @@ export type CompileStoryActionScriptInput = {
     savedVariables: Record<string, StorySavedVariableDefinition>;
     savedNamespace: string;
     persistence?: StoryPersistenceBridgeLike;
+    devtools?: StoryDevtoolsBridge;
     onDiagnostic?: (message: string) => void;
 };
 
@@ -180,6 +193,7 @@ function buildStoryScriptContext(
         self: { kind: "storyRow" },
         scene: access.sceneVar,
         saved: access.savedVar,
+        devtools: storyDevtools(input),
         persistent: {
             get: async (storageKey: string) => (persistence ? persistence.get(storageKey) : unavailable()),
             set: async (storageKey: string, value: unknown) => {
@@ -206,7 +220,12 @@ function buildStorySyncScriptContext(
     ctx: ScriptCtx,
 ): StorySyncScriptContext {
     const access = buildStoryVariableAccess(input, ctx);
-    return { self: { kind: "storyRow" }, scene: access.sceneVar, saved: access.savedVar };
+    return {
+        self: { kind: "storyRow" },
+        scene: access.sceneVar,
+        saved: access.savedVar,
+        devtools: storyDevtools(input),
+    };
 }
 
 /**
@@ -307,6 +326,44 @@ type StorableNamespaceLike = {
 };
 
 /**
+ * The host API a story row's nodes are given: the two families a row may reach, and no more.
+ *
+ * Always an object, where it used to be absent unless the host had a persistence bridge. `devtools`
+ * is a member every host can answer - the console half needs nothing - and a `Log` node placed in a
+ * story row reads exactly `hostApi?.devtools?.log`, so an absent object was the whole of why that
+ * node wrote nothing to the panel. The members stay individually optional, which is what lets a row
+ * carry these two and none of the forty a Surface blueprint's host carries.
+ */
+export function buildStoryActionHostApi(input: CompileStoryActionScriptInput): Partial<BlueprintHostApiRuntime> {
+    const persistence = input.persistence;
+    return {
+        devtools: storyDevtools(input),
+        ...(persistence
+            ? {
+                  persistence: {
+                      get: async (storageKey: string) => persistence.get(storageKey),
+                      set: async (storageKey: string, value: unknown) => {
+                          assertSerializable(value);
+                          await persistence.set(storageKey, value);
+                      },
+                  },
+              }
+            : {}),
+    };
+}
+
+/**
+ * The devtools this run writes to: the host's, or a console-only stand-in.
+ *
+ * The stand-in is the same implementation with nowhere to emit, rather than a second one: a host
+ * without a debugger should still put the line where a developer looks for it, and writing that
+ * line twice is how the two spellings of it drift.
+ */
+function storyDevtools(input: CompileStoryActionScriptInput): StoryDevtoolsBridge {
+    return input.devtools ?? createBlueprintDevtoolsApi(() => undefined);
+}
+
+/**
  * The story's two variable stores, by variable id.
  *
  * Shared by the graph's host adapter and by a script's ctx so both frontends read and write the same
@@ -357,18 +414,7 @@ function buildStoryActionHostAdapter(
     signal: AbortSignal,
 ): UIHostAdapter {
     const { sceneVar, savedVar } = buildStoryVariableAccess(input, ctx);
-    const persistence = input.persistence;
-    const hostApi = persistence
-        ? {
-              persistence: {
-                  get: async (storageKey: string) => persistence.get(storageKey),
-                  set: async (storageKey: string, value: unknown) => {
-                      assertSerializable(value);
-                      await persistence.set(storageKey, value);
-                  },
-              },
-          }
-        : undefined;
+    const hostApi = buildStoryActionHostApi(input);
 
     const adapter: Partial<UIHostAdapter> = {
         host: undefined as unknown as UIHostAdapter["host"],

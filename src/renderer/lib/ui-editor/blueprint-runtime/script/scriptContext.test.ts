@@ -83,6 +83,8 @@ type StoryTierChecks = [
     Expect<Equal<StorySyncScriptContext["scene"], StoryVariableRuntimeAccess>>,
     Expect<Equal<StorySyncScriptContext["saved"], StoryVariableRuntimeAccess>>,
     Expect<Equal<StoryScriptContext["persistent"], Host["persistence"]>>,
+    // The one host family a row may reach, and it is the host's own rather than a copy of it.
+    Expect<Equal<StorySyncScriptContext["devtools"], Host["devtools"]>>,
     // And it has none of the four families a story row is denied.
     Expect<Equal<Extract<keyof StoryScriptContext, "host" | "navigation" | "game" | "widget" | "sound">, never>>,
 ];
