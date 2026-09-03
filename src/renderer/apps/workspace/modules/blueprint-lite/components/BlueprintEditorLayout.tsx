@@ -27,6 +27,15 @@ type Props = {
      * nodes together is answering a question the author did not ask.
      */
     helpTopic?: "blueprints" | "scripts";
+    /**
+     * Whether the canvas extends beneath the layer panel, which floats over it.
+     *
+     * True for a graph: the panel sits on top of a canvas that pans and zooms, so the part behind
+     * it is reachable by dragging and the overlap costs nothing. False for anything the author
+     * reads in place - a script's source does not pan, so its first forty columns would simply be
+     * behind the panel, which is what they were until this was a choice.
+     */
+    canvasUnderPanel?: boolean;
 };
 
 export function BlueprintEditorLayout({
@@ -40,6 +49,7 @@ export function BlueprintEditorLayout({
     onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
     helpTopic = "blueprints",
+    canvasUnderPanel = true,
 }: Props) {
     const { t } = useTranslation();
     const detachedTitleBar = useDetachedTitleBar();
@@ -135,7 +145,17 @@ export function BlueprintEditorLayout({
                         <ChevronDown className="h-4 w-4" />
                     </button>
                 ) : null}
-                <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">{canvas}</main>
+                <main
+                    className={cn(
+                        "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface",
+                        // Matches the panel's own slide, so the two move together rather than the
+                        // canvas jumping to its new width a beat before or after.
+                        "transition-[margin] duration-200 ease-out",
+                        !canvasUnderPanel && !isLeftCollapsed && "ml-56",
+                    )}
+                >
+                    {canvas}
+                </main>
             </div>
             {diagnostics}
         </div>

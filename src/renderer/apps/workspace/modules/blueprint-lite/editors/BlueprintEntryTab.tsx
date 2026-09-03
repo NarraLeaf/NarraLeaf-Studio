@@ -2216,6 +2216,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             <BlueprintEditorLayout
                 header={header}
                 helpTopic={activeScriptLayer ? "scripts" : "blueprints"}
+                canvasUnderPanel={!activeScriptLayer}
                 headerActions={detachAction}
                 onHeaderAuxClick={onHeaderAuxClick}
                 memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
