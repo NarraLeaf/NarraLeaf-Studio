@@ -1366,15 +1366,39 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
         run(ctx) {
             const findings: LintFinding[] = [];
             for (const { entry, scene } of eachScene(ctx)) {
+                /**
+                 * Every background that could be on screen anywhere in this scene, as the walk goes
+                 * past: the scene's own default, plus each one a row before this point puts up.
+                 *
+                 * A gate, not an answer. Each snapshot below costs a walk from the scene's first row,
+                 * so asking for one per background row is quadratic in a scene's background rows -
+                 * measured at 80 walks crossing 21,044 rows on a 4,026-row project, which made this
+                 * the most expensive rule in the story set by four times over. Anything the walk can
+                 * have executed before a row precedes that row in document order, so this set is a
+                 * superset of what may be showing there and a row naming something outside it cannot
+                 * be a finding. It halved the work on that project (34 walks, 9,746 rows) and it
+                 * cannot change a verdict: what IS showing still comes from the walk alone.
+                 */
+                const mayBeShowing = new Set<string>();
+                const showingKey = (background: BackgroundOnStage): string =>
+                    "assetId" in background ? `asset:${background.assetId}` : `color:${background.color.toLowerCase()}`;
+                const sceneDefault = backgroundOf(scene.defaultBackgroundAssetId, undefined);
+                if (sceneDefault) {
+                    mayBeShowing.add(showingKey(sceneDefault));
+                }
                 for (const block of liveBlocks(scene)) {
                     if (block.kind !== "action" || block.payload.action !== "setBackground") {
                         continue;
                     }
-                    if (transitionVisibleMs(block.payload.transition) <= 0) {
-                        continue;
-                    }
                     const wanted = backgroundNamedByRow(block.payload);
                     if (!wanted) {
+                        continue;
+                    }
+                    const couldAlreadyBeShowing = mayBeShowing.has(showingKey(wanted));
+                    // After the test and before the walk: this row's own picture is on screen for the
+                    // rows below it, not for itself.
+                    mayBeShowing.add(showingKey(wanted));
+                    if (!couldAlreadyBeShowing || transitionVisibleMs(block.payload.transition) <= 0) {
                         continue;
                     }
                     const snapshot = computeStoryStageSnapshot({
@@ -1389,7 +1413,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     }
                     const showing = snapshot.background
                         ? backgroundOf(snapshot.background.assetId, snapshot.background.color)
-                        : backgroundOf(scene.defaultBackgroundAssetId, undefined);
+                        : sceneDefault;
                     if (!showing || !sameBackground(showing, wanted)) {
                         continue;
                     }

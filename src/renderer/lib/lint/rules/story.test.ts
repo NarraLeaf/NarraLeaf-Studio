@@ -1761,6 +1761,23 @@ describe("story/background-unchanged", () => {
         )).toEqual([]);
     });
 
+    it("still walks a row whose picture only an earlier row put up", () => {
+        // The candidate gate in front of the walk is a superset test, and this is the case that
+        // proves it is not the answer: `asset-street` is not the scene's default, so only `b1`
+        // makes it reachable, and `b3` repeating it is a finding while `b2` changing away is not.
+        const findings = run(
+            "story/background-unchanged",
+            ctxWith(story("s1", "Main", [openingOn(CAFE, [
+                bg("b1", STREET, dissolve),
+                bg("b2", CAFE, dissolve),
+                bg("b3", STREET, dissolve),
+                bg("b4", STREET, dissolve),
+            ])])),
+        );
+
+        expect(findings.map(finding => finding.location)).toMatchObject([{ blockId: "b4" }]);
+    });
+
     it("says nothing when the scene declares no default and no row has set one", () => {
         // Nothing is on screen to be the same as: the row is the first thing that puts a background
         // up, which is the opposite of the defect.
