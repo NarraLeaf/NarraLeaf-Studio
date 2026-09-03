@@ -16,7 +16,12 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
@@ -1067,5 +1072,108 @@ describe("palette and validator agreement", () => {
         };
 
         expect(validateBlueprintDocumentGraphs(doc, "bp").map(d => d.code)).not.toContain("node.context_invalid");
+    });
+});
+
+describe("node.input_missing", () => {
+    /** A click head wired into one node, which is the shape every one of these cases shares. */
+    function graphWith(
+        node: { id: string; type: string; params?: Record<string, unknown> },
+        extraEdges: BlueprintGraphIr["edges"] = [],
+        extraNodes: BlueprintGraphIr["nodes"] = {},
+    ): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                ...extraNodes,
+                [node.id]: node,
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: node.id, port: "in" } },
+                ...(extraEdges ?? []),
+            ],
+        };
+    }
+
+    function validate(ir: BlueprintGraphIr): BlueprintGraphEditorDiagnostic[] {
+        registerCoreBlueprintNodes();
+        return validateBlueprintGraphIr(ir, { blueprintId: "bp", graphKind: "event", graphId: "mouseClick" });
+    }
+
+    it("warns about a required data input with nothing wired to it", () => {
+        const diagnostics = validate(
+            graphWith({ id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Hello" } }),
+        );
+
+        const missing = diagnostics.filter(d => d.code === "node.input_missing");
+        expect(missing).toHaveLength(1);
+        expect(missing[0].severity).toBe("warning");
+        // Named by what the card says, never by the node id.
+        expect(missing[0].message).toContain("Set Text");
+        expect(missing[0].message).toContain("Element");
+        expect(missing[0].target).toMatchObject({ kind: "node", nodeId: "setText" });
+    });
+
+    it("says nothing once the pin is wired", () => {
+        const diagnostics = validate(
+            graphWith(
+                { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "Hello" } },
+                [{ from: { nodeId: "element", port: "element" }, to: { nodeId: "setText", port: "element" } }],
+                { element: { id: "element", type: BLUEPRINT_NODE_TYPE_ELEMENT_REF, params: { elementId: "label" } } },
+            ),
+        );
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    it("says nothing about a pin the card carries a value for", () => {
+        // `Log`'s Value is an inline literal, and an author who cleared it chose the empty string.
+        const withValue = validate(graphWith({ id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: { value: "" } }));
+        expect(withValue.map(d => d.code)).not.toContain("node.input_missing");
+
+        const withoutValue = validate(graphWith({ id: "log", type: BLUEPRINT_NODE_TYPE_LOG }));
+        expect(withoutValue.map(d => d.code)).toContain("node.input_missing");
+    });
+
+    it("says nothing about a pin the definition marks optional", () => {
+        // Play Sound takes its asset, volume, loop and fade from the inspector when unwired, and
+        // says so on the pins - which is the only place a node may say it.
+        const diagnostics = validate(graphWith({ id: "play", type: BLUEPRINT_NODE_TYPE_SOUND_PLAY }));
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    it("leaves an unfinished draft alone", () => {
+        // Nothing reaches it, so `blueprint/unreachable-node` is the one report it gets.
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                setText: { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT },
+            },
+            edges: [],
+        };
+
+        expect(validate(ir).map(d => d.code)).not.toContain("node.input_missing");
+    });
+
+    it("leaves Return Value to the condition check", () => {
+        // One node with two explanations is worse than one; `condition.return_missing` owns this pin.
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } }],
+        };
+        registerCoreBlueprintNodes();
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "onCall",
+            blueprintOwner: { kind: "storyAction", blueprintId: "bp", mode: "condition" },
+        });
+
+        expect(diagnostics.map(d => d.code)).toContain("condition.return_missing");
+        expect(diagnostics.map(d => d.code)).not.toContain("node.input_missing");
     });
 });

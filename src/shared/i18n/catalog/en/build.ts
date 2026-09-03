@@ -485,7 +485,7 @@ export const build = {
      * which is why every line names the variant.
      */
     contentBlockedStartStory: "A Start Game node in {location} picks its scene while the game runs. Pick the scene in the inspector, or list the scenes it can start in the {variant} variant.",
-    contentBlockedScript: "The blueprint {location} is written in TypeScript and can start any scene. List the scenes it can start in the {variant} variant.",
+    contentBlockedScript: "The script {location} can start any scene. List the scenes it can start in the {variant} variant.",
     contentBlockedPlugin: "The {location} plugin can start any scene. List the scenes it can start in the {variant} variant.",
     contentBlockedSummary: {
         one: "Build stopped: {count} place can start a scene the {variant} build cannot read. See the console.",
@@ -543,6 +543,7 @@ export const build = {
      */
     networkNodeDisallowed: "{blueprint} makes a network request, which this project does not allow.",
     pointerNodeUnsupported: "{blueprint} moves the mouse cursor, which does not work on {platforms}.",
+    screenshotNodeUnsupported: "{blueprint} saves screenshots, which does not work on {platforms}.",
     networkSummary: {
         one: "Build stopped: {count} network node cannot run. Change the network policy in project settings, or remove the node.",
         other: "Build stopped: {count} network nodes cannot run. Change the network policy in project settings, or remove the nodes.",

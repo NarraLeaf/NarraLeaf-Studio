@@ -16,6 +16,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
+import { listScenesInDocumentOrder } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -2031,6 +2032,36 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             }]
             : []))
         : [];
+    // Every other scene this story has. The rows keep their ids on the way over, so the submenu is
+    // the whole gesture: no dialog, and nothing to confirm afterwards.
+    const menuSceneTargets = menuTarget
+        ? listScenesInDocumentOrder(document)
+            .filter(target => target.id !== scene.id)
+            .map(target => ({
+                id: `move-to-scene-${target.id}`,
+                label: target.name,
+                onClick: () => editor.moveSelectionToScene(target.id),
+            }))
+        : [];
+    // Who the selected lines could speak as: the cast, and the bare names already in this story.
+    // A name that is not in the document yet is not offered here - inventing one is what the `#`
+    // chooser on a single line is for, and a bulk change is not the place to name somebody new.
+    const menuSpeakerChoices = menuTarget
+        ? [
+            ...getSpeakerCandidates(editor.characters, [], "").flatMap(candidate => (candidate.kind === "character"
+                ? [{
+                    id: `set-speaker-${candidate.key}`,
+                    label: candidate.name,
+                    onClick: () => editor.setSpeakerForRows(menuSelectionIds, { characterId: candidate.key }),
+                }]
+                : [])),
+            ...editor.tempSpeakers.map(speaker => ({
+                id: `set-speaker-name-${speaker.name}`,
+                label: t("story.rowMenu.speakerNameOnly", { name: speaker.name }),
+                onClick: () => editor.setSpeakerForRows(menuSelectionIds, { speakerName: speaker.name }),
+            })),
+        ]
+        : [];
     const rowMenuItems: ContextMenuDef = menuTarget ? [
         { id: "insert-above", label: t("story.rowMenu.insertAbove"), ...freeze.menuRow(), onClick: () => editor.startInsertBefore(menuTarget) },
         { id: "insert-below", label: t("story.rowMenu.insertBelow"), ...freeze.menuRow(), onClick: () => editor.startInsertAfter(menuTarget, true) },
@@ -2044,6 +2075,29 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             label: tn("story.rowMenu.bindSpeaker", menuSpeakerRowIds.length),
             ...freeze.menuRow(),
             submenu: menuSpeakerTargets,
+        }] : []),
+        // Absent rather than greyed when the story has one scene, for the same reason "Link speaker"
+        // is: this is a rung the author reaches for, not a standing property of a row.
+        ...(menuSceneTargets.length > 0 ? [{
+            id: "move-to-scene",
+            label: t("story.rowMenu.moveToScene"),
+            ...freeze.menuRow(),
+            submenu: menuSceneTargets,
+        }] : []),
+        ...(menuSpeakerChoices.length > 0 ? [{
+            id: "change-speaker",
+            label: t("story.rowMenu.changeSpeaker"),
+            ...freeze.menuRow(),
+            submenu: menuSpeakerChoices,
+        }] : []),
+        { id: "sep-scene", separator: true },
+        // Only at a top-level row: a row inside a container belongs to that container's structure,
+        // and half a condition is not a scene.
+        ...(scene.rootBlockIds.includes(menuTarget) ? [{
+            id: "split-scene",
+            label: t("story.rowMenu.splitScene"),
+            ...freeze.menuRow(),
+            onClick: () => void editor.splitSceneAtRow(menuTarget),
         }] : []),
         { id: "sep-op", separator: true },
         { id: "play", label: t("story.rowMenu.playFromHere"), onClick: () => playFromRow(menuTarget) },
@@ -2101,6 +2155,7 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
             // passage out of the script yield the rows behind it instead of the text on screen.
             onKeyDown={scriptOpen ? undefined : freeze.run(editor.handleKeyDown)}
             onCopy={scriptOpen ? undefined : editor.copySelectionToClipboard}
+            onCut={scriptOpen ? undefined : freeze.run(editor.cutSelectionToClipboard)}
             onPaste={scriptOpen ? undefined : freeze.run(editor.handlePaste)}
         >
             <div className="flex min-h-[44px] items-center gap-3 border-b border-edge px-3">

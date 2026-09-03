@@ -6,6 +6,10 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
 import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
+import type {
     GameProgressExportRequest,
     GameProgressExportResult,
     GameProgressImportResult,
@@ -203,6 +207,38 @@ export type GameAppHost = {
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
     bootAction: GameAppBootAction;
+    /**
+     * A story the host wants started NOW, replacing whatever is playing.
+     *
+     * Dev Mode's row play control, pressed while its window is already open: the window is kept and
+     * the run restarts in place rather than the whole window being rebuilt around a new
+     * {@link bootAction}. It arrives together with the recompiled bundle the launch was made from,
+     * so the app that acts on it is already holding the documents the author just edited.
+     *
+     * `token` rises with each request, and only a request whose token has not been acted on starts a
+     * run - so a re-render, a StrictMode double-invoke or a bundle that arrives twice cannot start
+     * the same story twice. Omitted by hosts that never relaunch in place (the packaged game, the
+     * story preview): for them, a launch is a boot.
+     */
+    launchRequest?: {
+        token: number;
+        storyId: string;
+        sceneId: string;
+        /** Row to enter at (row-precise "play from here"); omitted = the scene start. */
+        startBlockId?: string;
+        /** Scene Snapshot whose variable values seed the launch; omitted = declared defaults. */
+        snapshotId?: string;
+        /**
+         * The bundle revision the host was showing when this request reached it, or null/absent when
+         * it was showing none.
+         *
+         * The request and the bundle it was compiled from can arrive separately, and this is what
+         * says they have not both arrived yet: acting while {@link GameAppHost.bundle} still carries
+         * this revision would start the story against the documents the launch has already replaced,
+         * and the reload that then brought them would take the run straight back over it.
+         */
+        afterRevision?: number | null;
+    };
     persistenceAdapter: BlueprintPersistentStoreAdapter | null;
     onDebugEvent?: (event: BlueprintDebugEvent) => void;
     /**
@@ -330,6 +366,38 @@ export type GameAppHost = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     /** Subscribe to fullscreen transitions; returns an unsubscribe function. */
     subscribeFullscreenChanged?: (listener: (isFullscreen: boolean) => void) => () => void;
+    /**
+     * Whether this shell's window is the one the player is working in.
+     *
+     * Asked of the shell rather than read off the page, and on the desktop shells that means the
+     * process that owns the window: `document.hasFocus()` in a renderer and `BrowserWindow.
+     * isFocused()` in the main process are two different questions with two different answers about
+     * a window whose chrome is being dragged, and a game must not have both.
+     *
+     * Omitted by hosts with no window of their own (the story preview), where the node answers true.
+     */
+    isWindowFocused?: () => Promise<boolean>;
+    /**
+     * Subscribe to that changing; returns an unsubscribe function.
+     *
+     * Both or neither, and from the same place: a reader that says one thing and an event that says
+     * another is worse than having only one of them.
+     */
+    subscribeWindowFocusChanged?: (listener: (isFocused: boolean) => void) => () => void;
+    /**
+     * Write a picture of the frame the player is looking at, and say where it went.
+     *
+     * Every desktop shell hands this to the process that owns its window, because the capture and
+     * the file are both that process's to make. The web export declines: a page cannot picture the
+     * window it is inside, and a file it produced would be a download the player has to accept.
+     *
+     * Where the file goes is the shell's answer, never the caller's - see
+     * `@shared/types/blueprint/screenshot`. Omitted by hosts that can do neither, where the node
+     * reports the platform has no screenshots rather than throwing.
+     */
+    saveScreenshot?: () => Promise<BlueprintScreenshotResult>;
+    /** Open the folder those go in, for the same shells and omitted by the same ones. */
+    openScreenshotsFolder?: () => Promise<BlueprintOpenScreenshotsResult>;
     /**
      * Put a menu bar on this shell's window, and hear which item the player picked.
      *

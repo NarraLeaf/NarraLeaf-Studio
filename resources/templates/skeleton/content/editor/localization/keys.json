@@ -24,6 +24,15 @@
     "config.masterVolume": {
       "sourceText": "Master volume"
     },
+    "config.muteOnBlur": {
+      "sourceText": "Mute when unfocused"
+    },
+    "config.muteOnBlurOff": {
+      "sourceText": "Off"
+    },
+    "config.muteOnBlurOn": {
+      "sourceText": "On"
+    },
     "config.secondsSuffix": {
       "sourceText": "s"
     },

@@ -47,6 +47,10 @@ import type {
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { ServerTrustPromptProps } from "./serverTrust";
 import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "./blueprint/screenshot";
 import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -636,9 +640,33 @@ export interface RendererPreloadedInterface {
         getFullscreen(): Promise<RequestStatus<{ isFullscreen: boolean }>>;
         setFullscreen(fullscreen: boolean): Promise<RequestStatus<void>>;
         onFullscreenChanged(handler: (payload: { isFullscreen: boolean }) => void): AppEventToken;
+        /**
+         * Whether the Dev Mode window has the author's attention, from the process that owns it.
+         *
+         * The page's own `hasFocus` is a different question: it is false while Studio's developer
+         * tools hold the keyboard, and an author with the console open has not gone anywhere.
+         */
+        getWindowFocused(): Promise<RequestStatus<{ isFocused: boolean }>>;
+        onWindowFocusChanged(handler: (payload: { isFocused: boolean }) => void): AppEventToken;
+        /** Capture this window and write the picture into the project's Dev Mode data. */
+        saveScreenshot(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<BlueprintScreenshotResult>>;
+        openScreenshotsFolder(
+            projectRef: DevModeSaveProjectRef,
+        ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>>;
         onCloseRequested(handler: () => Promise<RequestStatus<{ allow: boolean }>>): AppEventToken;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
+        /**
+         * Start this story in the window that is already open, replacing whatever is playing. Sent
+         * immediately before the bundle it was compiled against; `token` rises per request.
+         */
+        onControlStartStory(handler: (payload: {
+            token: number;
+            storyId: string;
+            sceneId: string;
+            startBlockId?: string;
+            snapshotId?: string;
+        }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;
         onConsoleLog(handler: (payload: DevModeConsoleLogPayload) => void): AppEventToken;
         onBlueprintDebugEvent(handler: (event: BlueprintDebugEvent) => void): AppEventToken;

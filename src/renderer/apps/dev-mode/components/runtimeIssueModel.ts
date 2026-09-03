@@ -16,6 +16,14 @@
 // character pointed at the project palette is coloured in both (both are Studio chrome, both render
 // on the light and the dark surface).
 import { readableAccentColor } from "@/apps/workspace/modules/story/scene-editor/storySceneBlockUtils";
+// Node titles and pin labels are English literals inside the node definitions; this is the map that
+// turns them into what the canvas shows. Imported rather than restated so an issue names a node the
+// same way the card the author is looking at does.
+import {
+    resolveBlueprintLabel,
+    resolveBlueprintNodeTitle,
+} from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
+import { BLUEPRINT_INPUT_MISSING_MESSAGE_KEY } from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
@@ -205,8 +213,28 @@ export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefi
  * a Dev Mode window forwards to the Workspace console, so a node that threw inside a Game UI slot
  * surface — a dialogue box, a quick menu, a choice list — produced NOTHING an author could see. The
  * button just did not work. Every host that owns an issue list runs its debug events through here.
+ *
+ * `node.input_missing` is the same silence one step earlier: a node whose required input nobody
+ * wired does not throw at all, it just runs on `undefined`. The executor reports it once per node
+ * per run, and the list collapses repeats, so pressing the button twice leaves one entry.
  */
-export function blueprintDebugEventIssue(event: BlueprintDebugEvent): GameAppRuntimeIssue | null {
+export function blueprintDebugEventIssue(
+    event: BlueprintDebugEvent,
+    t: Translator["t"],
+): GameAppRuntimeIssue | null {
+    if (event.type === "node.input_missing") {
+        // A warning: the graph carried on and only this node's effect was lost. Named through the
+        // same render-time map the node card uses, so the sentence names the node the author sees.
+        return {
+            level: "warning",
+            message: t(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                node: resolveBlueprintNodeTitle(event.nodeName, t),
+                pin: resolveBlueprintLabel(event.pinLabel, t),
+            }),
+            origin: "interface",
+            ...(event.surfaceId ? { surfaceId: event.surfaceId } : {}),
+        };
+    }
     if (event.type !== "execution.error") {
         return null;
     }

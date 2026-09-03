@@ -310,6 +310,10 @@ export const workspace = {
         entry: {
             edit: "edit",
             storyEdit: "story edit",
+            storyMoveRowsToScene: "move to another scene",
+            storySplitScene: "scene split",
+            storyMergeScenes: "scene merge",
+            storySpeakerChange: "speaker change",
             storyMotionEdit: "motion edit",
             audioMarkers: "marker change",
             surfaceEdit: "interface edit",

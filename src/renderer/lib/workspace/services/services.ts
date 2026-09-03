@@ -931,7 +931,13 @@ interface ILocalBlueprintService extends IService {
      * succeeded - a blueprint pointing at a file that was never written would be indistinguishable
      * from one whose file the author deleted.
      */
-    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): Promise<string>;
+    createSiblingPrivateBlueprintForOwnerKey(
+        ownerKey: string,
+        frontend: BlueprintFrontendKind,
+        options?: { existingScriptRef?: string },
+    ): Promise<string>;
+    deletePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
+    setBlueprintScriptRef(blueprintId: string, scriptRef: string): void;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {
@@ -1258,7 +1264,8 @@ interface ICharacterService extends IService {
         kind?: CharacterAppearanceKind,
         initial?: { color?: string; groupId?: string },
     ): Character;
-    renameCharacter(id: string, name: string): boolean;
+    renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean>;
+    countRowsSpeakingAs(speakerName: string): Promise<number>;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;
     listGroups(): CharacterGroup[];

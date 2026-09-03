@@ -17,6 +17,10 @@ import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { getInterface } from "@/lib/app/bridge";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { useTranslation } from "@/lib/i18n";
@@ -64,6 +68,8 @@ import {
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
+import type { DevModeLaunchRequest } from "../hooks/useDevModePayload";
+import { devModeAssetPrewarmKey } from "@shared/devMode/assetRevision";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
 import { currentWindowScale, scaledDesign } from "@shared/utils/windowGeometry";
@@ -73,6 +79,8 @@ import { registerDevModePuppetHost } from "@/lib/ui-editor/runtime/game/surfaceP
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
     entry: DevModeEntry | null;
+    /** A story this window has been asked to start in place; see {@link DevModeLaunchRequest}. */
+    launchRequest: DevModeLaunchRequest | null;
     projectPath: string | null;
     surface: UISurface | null;
     surfaceId: string;
@@ -832,6 +840,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const {
         bundle,
         entry,
+        launchRequest,
         projectPath,
         surface,
         surfaceId,
@@ -964,7 +973,7 @@ export function DevModeContent(props: DevModeContentProps) {
      * the Issues panel is where they are told something is wrong right now.
      */
     const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
-        const issue = blueprintDebugEventIssue(event);
+        const issue = blueprintDebugEventIssue(event, t);
         if (issue) {
             reportIssue(issue);
         }
@@ -976,7 +985,7 @@ export function DevModeContent(props: DevModeContentProps) {
         } catch (error) {
             console.warn("[DevMode] failed to forward blueprint debug event", error);
         }
-    }, [projectPath, reportIssue]);
+    }, [projectPath, reportIssue, t]);
     useEffect(() => {
         setRuntimeIssues([]);
         setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);
@@ -1019,15 +1028,23 @@ export function DevModeContent(props: DevModeContentProps) {
      *
      * Keyed by asset id alone, which is what the resolver keys on: the type is a hint that picks a
      * bucket to look in first, and an id belongs to exactly one asset whichever way it is reached.
-     * Refilled rather than kept, because a grant token is derived from the file's size and
+     * Refilled when an asset file moves, because a grant token is derived from the file's size and
      * modification time - an asset the author replaced mints a different one, and the old URL 404s.
+     *
+     * Which is the ONLY thing that invalidates it, so the key is the bundle's asset revision rather
+     * than its bundle revision (see `DevModeBundle.assetRevision`). Every reload used to redo the
+     * pass, and the pass is seconds of work on a project with a thousand assets - paid on every save
+     * of a line of dialogue, which cannot change a single URL. An asset id this map has never heard
+     * of still resolves one at a time through `resolveStoryAssetUrl`, so a newly added asset needs no
+     * refill either. A bundle that states no asset revision (a host that does not watch files) falls
+     * back to the bundle revision, which is what this always did.
      */
     const assetUrlsRef = useRef<Map<string, string>>(new Map());
     const assetUrlPrewarmRef = useRef<{ revision: string; done: Promise<void> } | null>(null);
 
     const prewarmStoryAssetUrls = useCallback<NonNullable<GameAppHost["prewarmStoryAssetUrls"]>>(() => {
         const current = bundleRef.current;
-        const revision = current ? `${current.bundleId}:${current.revision}` : "";
+        const revision = current ? devModeAssetPrewarmKey(current) : "";
         const existing = assetUrlPrewarmRef.current;
         if (existing && existing.revision === revision) {
             return existing.done;
@@ -1468,6 +1485,49 @@ export function DevModeContent(props: DevModeContentProps) {
         });
     }, []);
 
+    /**
+     * Whether this window has the author's attention.
+     *
+     * Asked of the main process, which is what makes the answer here the answer a packaged game
+     * gives: `document.hasFocus()` is false while Studio's own developer tools hold the keyboard,
+     * and an author with the console open has not gone anywhere.
+     */
+    const isWindowFocused = useCallback(async (): Promise<boolean> => {
+        const result = await getInterface().devMode.getWindowFocused();
+        if (!result.success) {
+            throw new Error(result.error ?? "Is Window Focused failed");
+        }
+        return result.data.isFocused;
+    }, []);
+
+    const subscribeWindowFocusChanged = useCallback((listener: (isFocused: boolean) => void): (() => void) => {
+        const token = getInterface().devMode.onWindowFocusChanged(({ isFocused }) => listener(isFocused));
+        return () => token.cancel();
+    }, []);
+
+    /**
+     * The screenshot pair, against this window's own web contents.
+     *
+     * The project is what travels, never a path: the main process puts the file in this project's
+     * Dev Mode data, so an author testing a screenshot button gets a real file in a real folder and
+     * "reset this project's player data" takes it away again.
+     */
+    const saveScreenshot = useCallback(async (): Promise<BlueprintScreenshotResult> => {
+        const result = await getInterface().devMode.saveScreenshot(await awaitProjectRef());
+        if (!result.success) {
+            return { outcome: "failed", path: null, error: result.error ?? "Save Screenshot failed" };
+        }
+        return result.data;
+    }, [awaitProjectRef]);
+
+    const openScreenshotsFolder = useCallback(async (): Promise<BlueprintOpenScreenshotsResult> => {
+        const result = await getInterface().devMode.openScreenshotsFolder(await awaitProjectRef());
+        if (!result.success) {
+            return { outcome: "failed", path: null, error: result.error ?? "Open Screenshots Folder failed" };
+        }
+        return result.data;
+    }, [awaitProjectRef]);
+
     // Runtime plugin capability backends for the Dev Mode window. Built once and kept stable:
     // plugin setup captures these objects, and they have to outlive every bundle revision and
     // in-window relaunch.
@@ -1648,6 +1708,9 @@ export function DevModeContent(props: DevModeContentProps) {
             )],
             ready: runtimePlugins.ready,
             bootAction,
+            // Only when there is one: a host field that is always present but usually null would put
+            // an empty object in every render's dependency comparison for the sake of the rare press.
+            ...(launchRequest ? { launchRequest } : {}),
             persistenceAdapter,
             onDebugEvent,
             debuggerEnabled: true,
@@ -1672,6 +1735,10 @@ export function DevModeContent(props: DevModeContentProps) {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            isWindowFocused,
+            subscribeWindowFocusChanged,
+            saveScreenshot,
+            openScreenshotsFolder,
             subscribeCloseRequested,
             networkFetch,
             movePointer,
@@ -1683,6 +1750,7 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [
         bootAction,
         bundle,
+        launchRequest,
         getFullscreen,
         getWindowScaleOptions,
         getWindowScale,
@@ -1709,6 +1777,10 @@ export function DevModeContent(props: DevModeContentProps) {
         saveStore,
         setFullscreen,
         subscribeFullscreenChanged,
+        isWindowFocused,
+        subscribeWindowFocusChanged,
+        saveScreenshot,
+        openScreenshotsFolder,
         subscribeCloseRequested,
         surface,
     ]);

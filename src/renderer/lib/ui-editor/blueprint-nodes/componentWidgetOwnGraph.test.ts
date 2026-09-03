@@ -55,6 +55,7 @@ const DELIBERATELY_OUT: Record<string, string> = {
     "blueprint.event.head.anyKeyDown": "keyboard input is not addressed to a widget",
     "blueprint.event.head.anyKeyUp": "keyboard input is not addressed to a widget",
     "blueprint.event.head.fullscreenChanged": "a window event, not a widget one",
+    "blueprint.event.head.windowFocusChanged": "a window event, not a widget one",
     "blueprint.page.getProps": "a component definition has no page",
     "blueprint.page.isSurfaceEntering": "a component definition has no page",
     "blueprint.page.isSurfaceExiting": "a component definition has no page",

@@ -40,6 +40,10 @@ import type {
 } from "@shared/types/signing";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
@@ -444,12 +448,29 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeFullscreenSet, { fullscreen }) as Promise<RequestStatus<void>>,
         onFullscreenChanged: (handler: (payload: { isFullscreen: boolean }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeFullscreenChanged, handler),
+        getWindowFocused: () =>
+            ipcClient.invoke(IPCEventType.devModeWindowFocusGet, {}) as Promise<RequestStatus<{ isFocused: boolean }>>,
+        onWindowFocusChanged: (handler: (payload: { isFocused: boolean }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeWindowFocusChanged, handler),
+        saveScreenshot: (projectRef: DevModeSaveProjectRef) =>
+            ipcClient.invoke(IPCEventType.devModeScreenshotSave, { projectRef }) as Promise<RequestStatus<BlueprintScreenshotResult>>,
+        openScreenshotsFolder: (projectRef: DevModeSaveProjectRef) =>
+            ipcClient.invoke(IPCEventType.devModeScreenshotOpenFolder, { projectRef }) as Promise<RequestStatus<BlueprintOpenScreenshotsResult>>,
         onCloseRequested: (handler: () => Promise<RequestStatus<{ allow: boolean }>>) =>
             ipcClient.onRequest(IPCEventType.devModeWindowCloseRequested, handler),
         onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        onControlStartStory: (
+            handler: (payload: {
+                token: number;
+                storyId: string;
+                sceneId: string;
+                startBlockId?: string;
+                snapshotId?: string;
+            }) => void,
+        ) => ipcClient.onMessage(IPCEventType.devModeControlStartStory, handler),
         onControlError: (handler: (payload: { message: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
         onConsoleLog: (handler: (payload: DevModeConsoleLogPayload) => void) =>

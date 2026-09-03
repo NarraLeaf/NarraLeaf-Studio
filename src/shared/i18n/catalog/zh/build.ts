@@ -406,7 +406,7 @@ export const build = {
         other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
     contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。在检查器中选定场景，或在 {variant} 变体中列出其可开始的场景",
-    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
+    contentBlockedScript: "脚本 {location} 可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedPlugin: "{location} 插件可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedSummary: {
         one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
@@ -440,6 +440,7 @@ export const build = {
     },
     networkNodeDisallowed: "{blueprint} 发起了网络请求，本项目不允许",
     pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上无效",
+    screenshotNodeUnsupported: "{blueprint} 会保存截图，这在 {platforms} 上无效",
     networkSummary: {
         one: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除该节点",
         other: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除这些节点",

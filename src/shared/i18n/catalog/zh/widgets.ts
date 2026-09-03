@@ -6,7 +6,7 @@ export const widgets = {
         interaction: "交互",
     },
     blueprint: {
-        controlLabel: "控制蓝图",
+        controlLabel: "控件逻辑",
     },
     appearance: {
         title: "外观",

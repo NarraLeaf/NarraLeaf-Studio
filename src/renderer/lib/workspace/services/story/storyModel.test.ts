@@ -9,6 +9,8 @@ import {
 } from "@shared/story/migrateStoryDocument";
 import {
     bindRowsToCharacter,
+    collectRowsSpokenByName,
+    setSpeakerOnBlocks,
     collectInvalidBlocks,
     collectRowsSpokenBy,
     collectTempSpeakers,
@@ -932,6 +934,51 @@ describe("repairing a row's speaker", () => {
 
         expect(edits[0].payload).toMatchObject({ characterId: "char-alice" });
         expect(edits[0].payload).not.toHaveProperty("speakerName");
+    });
+
+    it("changes the speaker on every selected line, resolved or not", () => {
+        const document = documentWithScenes([
+            dialogue("a", { characterId: "char-alice" }),
+            dialogue("b", { speakerName: "???" }),
+            dialogue("c", { characterId: "char-bob" }),
+        ]);
+
+        const edits = setSpeakerOnBlocks(document, ["a", "b"], { characterId: "char-bob" });
+
+        // "c" was not selected, so it is not in the edits at all.
+        expect(edits.map(edit => edit.blockId).sort()).toEqual(["a", "b"]);
+        expect(edits[0].payload).toMatchObject({ characterId: "char-bob" });
+        expect(edits.find(edit => edit.blockId === "b")!.payload).not.toHaveProperty("speakerName");
+    });
+
+    it("changes them to a bare name, dropping whatever character they had", () => {
+        const document = documentWithScenes([dialogue("a", { characterId: "char-alice" })]);
+
+        const edits = setSpeakerOnBlocks(document, ["a"], { speakerName: "???" });
+
+        expect(edits[0].payload).toMatchObject({ speakerName: "???" });
+        expect(edits[0].payload).not.toHaveProperty("characterId");
+    });
+
+    it("skips rows in the selection that are not lines of speech", () => {
+        const document = documentWithScenes([
+            dialogue("a", { characterId: "char-alice" }),
+            characterEnter("stage", "char-alice"),
+        ]);
+
+        expect(setSpeakerOnBlocks(document, ["a", "stage"], { characterId: "char-bob" })
+            .map(edit => edit.blockId)).toEqual(["a"]);
+    });
+
+    it("finds the lines a bare name speaks, and leaves bound rows out of it", () => {
+        const document = documentWithScenes([
+            dialogue("a", { speakerName: "Alice" }),
+            dialogue("b", { characterId: "char-alice", speakerName: "Alice" }),
+            dialogue("c", { speakerName: "Bob" }),
+        ]);
+
+        expect(collectRowsSpokenByName(document, "Alice").map(row => row.blockId)).toEqual(["a"]);
+        expect(collectRowsSpokenByName(document, "  ")).toEqual([]);
     });
 });
 

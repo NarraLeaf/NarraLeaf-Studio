@@ -52,6 +52,18 @@ import {
     resolveBlueprintNodeEditorCatalogEntryForNode,
 } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { isBlueprintNodeAllowedInGraphContext } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import {
+    BLUEPRINT_INPUT_MISSING_MESSAGE_KEY,
+    listUnwiredRequiredInputPins,
+} from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
+// Node titles and pin labels are English literals in the definitions, translated at render time by
+// this map (see `blueprintNodeI18n`). A diagnostic that named a node in English beside a card that
+// names it in the author's language would read as being about some other node.
+import {
+    resolveBlueprintLabel,
+    resolveBlueprintNodeTitle,
+} from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
+import { collectLiveBlueprintGraphNodeIds } from "./graphLiveness";
 import type {
     BlueprintNodeDef,
     BlueprintPaletteContext,
@@ -638,6 +650,15 @@ export function validateBlueprintGraphIr(
 
     const nodeValidationContext = buildNodeValidationPaletteContext(ctx);
     const nodeCatalog = BlueprintNodeCatalogService.getInstance();
+    // Which pins have an edge, and which nodes anything will ask to work. Both are walks over the
+    // whole graph, so they are done once here rather than per node.
+    const wiredInputPorts = new Map<string, Set<string>>();
+    for (const edge of edges) {
+        const ports = wiredInputPorts.get(edge.to.nodeId) ?? new Set<string>();
+        ports.add(edge.to.port);
+        wiredInputPorts.set(edge.to.nodeId, ports);
+    }
+    const liveNodeIds = collectLiveBlueprintGraphNodeIds(ir);
     for (const [nid, n] of Object.entries(nodes)) {
         const def = nodeCatalog.get(n.type);
         const validationDef = def?.magicElementTarget ? { ...def, scope: undefined } : def;
@@ -672,6 +693,25 @@ export function validateBlueprintGraphIr(
                 message: translate("blueprint.diagnostics.node.noRuntime", { node: nid, type: n.type }),
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
+        }
+        // A required data input with no edge and no value on the card. The node still runs, reads
+        // `undefined` and does nothing, which is the commonest form of "my button does nothing".
+        // Only on nodes something will actually ask to work: an unwired draft is already
+        // `blueprint/unreachable-node`'s to report, and saying it twice helps nobody.
+        if (def && liveNodeIds.has(nid)) {
+            const wired = wiredInputPorts.get(nid);
+            const missing = listUnwiredRequiredInputPins(n.type, n.params, pinId => wired?.has(pinId) === true);
+            for (const pin of missing) {
+                out.push({
+                    severity: "warning",
+                    code: "node.input_missing",
+                    message: translate(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                        node: resolveBlueprintNodeTitle(def.displayName, translate),
+                        pin: resolveBlueprintLabel(pin.label, translate),
+                    }),
+                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+                });
+            }
         }
         if (
             (n.type === BLUEPRINT_NODE_TYPE_LOCAL_SET || n.type === BLUEPRINT_NODE_TYPE_LOCAL_GET) &&

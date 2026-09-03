@@ -3,6 +3,11 @@ import type {
     BlueprintOpenExternalRequest,
     BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
+import {
+    SCREENSHOT_UNSUPPORTED_MESSAGE,
+    type BlueprintOpenScreenshotsResult,
+    type BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import type {
     BlueprintNetworkFetchRequest,
     BlueprintNetworkFetchResult,
@@ -307,6 +312,11 @@ export type BlueprintGamePreferenceKey =
      */
     | "skipReadText"
     /**
+     * Studio's own: the game's whole output goes quiet while its window is not the one the player is
+     * working in. What acts on it is the host's output gate (`focusMute`), not the engine.
+     */
+    | "muteOnWindowBlur"
+    /**
      * Studio's own, and transient: the skip run is going. Writing it is the equivalent of holding
      * the skip key, and the host clears it whenever the run ends - a guard stopping it, the game
      * leaving the stage, the window losing focus. Never persisted (see `@shared/types/preference`).
@@ -381,6 +391,22 @@ export type BlueprintHostApiRuntime = {
          * `@shared/types/blueprint/externalLink`.
          */
         openExternal: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+        /**
+         * Write a picture of the frame the player is looking at, and say where it went.
+         *
+         * The shell decides where: a path chosen in a graph would be a path a graph could write
+         * anywhere the player's account can. See `@shared/types/blueprint/screenshot`.
+         */
+        saveScreenshot: () => Promise<BlueprintScreenshotResult>;
+        /** Show the player the folder those pictures are in. */
+        openScreenshotsFolder: () => Promise<BlueprintOpenScreenshotsResult>;
+        /**
+         * Whether this game's window is the one the player is working in right now.
+         *
+         * True wherever the shell cannot tell, which is the honest reading of "there is no window
+         * to be behind": a story preview inside Studio is always the thing being looked at.
+         */
+        isWindowFocused: () => Promise<boolean>;
     };
     /** Surfaces stacked over the page lane. See the `layers` family in `@shared/types/blueprint/hostApi`. */
     layers: {
@@ -1092,6 +1118,36 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * degradation the Fetch node takes: a Page previewed in Studio should still lay out.
      */
     onOpenExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+    /**
+     * Captures the frame and writes it, in a process that owns both a window and a filesystem.
+     *
+     * Absent wherever neither exists - the web export, the editor preview, the story preview - and
+     * the node then leaves by `Failed` saying the platform has none, the same degradation Open Link
+     * takes. Nothing here names a directory: see `@shared/types/blueprint/screenshot`.
+     */
+    onSaveScreenshot?: () => Promise<BlueprintScreenshotResult>;
+    /** Opens the folder those go in. Absent alongside {@link onSaveScreenshot}, for its reasons. */
+    onOpenScreenshotsFolder?: () => Promise<BlueprintOpenScreenshotsResult>;
+    /**
+     * Whether the shell's window has the player's attention.
+     *
+     * Absent where there is no window of the shell's own to ask about (the story preview), and the
+     * bridge then answers `true` - a panel inside Studio is being looked at whenever it is drawn,
+     * and a game that believed itself backgrounded forever would silence itself forever.
+     */
+    onIsWindowFocused?: () => Promise<boolean> | boolean;
+    /**
+     * How much of the game's own output is currently getting through, 0..1.
+     *
+     * One number, and it is not a preference: it is the host's output gate, which the
+     * mute-when-unfocused preference closes and opens (see `focusMute`). It exists on this API for
+     * one consumer - {@link BlueprintHostApi.sound.resolveElementVolume}, which is how a `<video>`
+     * element's volume is computed. That element sits outside the engine's audio graph, so the gain
+     * every other sound gets from a gain node has to be multiplied in by hand here.
+     *
+     * Absent means "nothing is gating", which is 1.
+     */
+    onGetAudioOutputGain?: () => number;
     /**
      * Writes this playthrough into the title's progress document, in a process that owns a
      * filesystem. Absent in every environment with nowhere to send it - the editor preview and the
@@ -2227,6 +2283,7 @@ const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
     "autoForwardDelay",
     "skip",
     "skipReadText",
+    "muteOnWindowBlur",
     "skipping",
     "showDialog",
     "gameSpeed",
@@ -2290,6 +2347,7 @@ function normalizeGamePreferenceValue(
         case "autoForward":
         case "skip":
         case "skipReadText":
+        case "muteOnWindowBlur":
         case "skipping":
         case "showDialog":
             if (typeof value !== "boolean") {
@@ -2447,6 +2505,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onNetworkFetch,
         onMovePointer,
         onOpenExternal,
+        onSaveScreenshot,
+        onOpenScreenshotsFolder,
+        onIsWindowFocused,
+        onGetAudioOutputGain,
         onExportProgress,
         onImportProgress,
         onStorageDurability,
@@ -2843,6 +2905,53 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onOpenExternal(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            saveScreenshot: async () => {
+                const cap = "navigation.saveScreenshot";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSaveScreenshot) {
+                        // No window to capture, or nowhere to keep the file: the web export, the
+                        // editor canvas, the story preview. Reported as a result rather than thrown
+                        // for the reason Open Link reports one - the author's Failed branch is what
+                        // should run, on every platform where this is not a thing.
+                        return {
+                            outcome: "failed" as const,
+                            path: null,
+                            error: SCREENSHOT_UNSUPPORTED_MESSAGE,
+                        };
+                    }
+                    return await onSaveScreenshot();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            openScreenshotsFolder: async () => {
+                const cap = "navigation.openScreenshotsFolder";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onOpenScreenshotsFolder) {
+                        return {
+                            outcome: "failed" as const,
+                            path: null,
+                            error: SCREENSHOT_UNSUPPORTED_MESSAGE,
+                        };
+                    }
+                    return await onOpenScreenshotsFolder();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isWindowFocused: async () => {
+                const cap = "navigation.isWindowFocused";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // True from a host with no window of its own, which is what a panel that is
+                    // only drawn while it is being looked at honestly answers.
+                    return onIsWindowFocused ? (await onIsWindowFocused()) !== false : true;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -4650,7 +4759,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 // master. Reading a single channel's preference - which is what this did when a
                 // track was a preset on one of three fixed channels - would leave every bus the
                 // author invented inaudible to the element.
-                return resolveMixedElementVolume(playback, tracks, readMixPreferences(onGetGamePreference));
+                //
+                // The host's output gate multiplies in here and nowhere else on this path: an
+                // element outside the engine's audio graph gets by arithmetic what every other
+                // sound gets from a gain node. See `onGetAudioOutputGain`.
+                const gate = onGetAudioOutputGain ? onGetAudioOutputGain() : 1;
+                const gain = Number.isFinite(gate) ? Math.min(1, Math.max(0, gate)) : 1;
+                return resolveMixedElementVolume(playback, tracks, readMixPreferences(onGetGamePreference)) * gain;
             },
             subscribeMixerChanges: listener => onSubscribeGamePreferences?.(listener) ?? (() => undefined),
             getTrackVolume: (trackId: string) => {

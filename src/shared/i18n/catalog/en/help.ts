@@ -555,6 +555,27 @@ export const help = {
                 + "- Each pin takes one wire. Values with no wire are typed on the node itself.\n"
                 + "- Problems are listed under the canvas, and selecting one selects what it refers to.",
         },
+        scripts: {
+            title: "Scripts",
+            body:
+                "The logic of a page, a component or a story row is written as a blueprint or as a script. A "
+                + "blueprint is a graph on a canvas. A script is a TypeScript file under the project's scripts "
+                + "folder, written in an external editor. Studio creates the file once and never writes it again.\n"
+                + "\n"
+                + "Both are revisions of the same slot and only the active one runs. New script adds one, and each "
+                + "row in the revision list says which of the two it is.\n"
+                + "\n"
+                + "- A script is entered through its exported functions. Which names this position calls follows "
+                + "from where it sits, and the first lines of a new file list them. A story row uses the default "
+                + "export instead.\n"
+                + "- Open in editor opens the whole scripts folder. The types come from the files beside a script, "
+                + "so an editor opened on one file alone resolves none of them.\n"
+                + "- The Scripts section of the Assets panel lists every file under the scripts folder, which logic "
+                + "runs each one, and which of them nothing runs.\n"
+                + "- A file that fails to compile, and one that exports nothing this position calls, are reported "
+                + "in Dev Mode. The blueprint list there names the file and says whether it loaded.\n"
+                + "- Removing a revision leaves its file on disk. Deleting the file is done in the file manager.",
+        },
         uiBindings: {
             title: "Values on a screen",
             body:

@@ -5,10 +5,11 @@
  * JSON with a refreshed `meta.updatedAt` - so a file this tool wrote and a file Studio wrote are the
  * same shape.
  *
- * One thing does move: the keys of the flat `elements` map come out in tree order, surface by
- * surface, rather than in whatever order a project's editing history left them. Nothing reads that
- * order - every element is addressed by id, and the semantic diff does too - so this is a one-off
- * reshuffle of the JSON text on the first apply and nothing after it.
+ * The key order of the flat `elements` map is kept as the file already had it, with elements this
+ * apply adds appended after them (see `mergePreservingOrder` in `apply.ts`). Nothing reads that
+ * order - every element is addressed by id, and the semantic diff walks the tree - but a text diff
+ * does, and rewriting the map in tree order turned a five-element change into twenty thousand lines
+ * of churn that hid it and collided with every other branch touching the same document.
  *
  * The schema version is checked before anything is written. Eleven versions' worth of migration live
  * on the renderer's `UIDocumentService` and need a service to run; writing an unmigrated document

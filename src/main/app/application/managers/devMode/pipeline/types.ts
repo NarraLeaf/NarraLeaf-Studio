@@ -18,6 +18,12 @@ export type DevModeBundleLoadContext = {
     bundleId: string;
     revision: number;
     /**
+     * How many times this session has seen an asset file change. Copied onto the bundle for the
+     * window that reads it; see {@link DevModeBundle.assetRevision}. Absent for a host that does not
+     * watch anything, which is every host but Dev Mode.
+     */
+    assetRevision?: number;
+    /**
      * The build variant these bytes are being produced as.
      *
      * Absent is the release variant, which is what Dev Mode and Preview pass: there is no variant to

@@ -305,6 +305,10 @@ export const workspace = {
         entry: {
             edit: "編集",
             storyEdit: "ストーリーの編集",
+            storyMoveRowsToScene: "別のシーンへの移動",
+            storySplitScene: "シーンの分割",
+            storyMergeScenes: "シーンの結合",
+            storySpeakerChange: "話者の変更",
             storyMotionEdit: "モーションの編集",
             audioMarkers: "マーカーの変更",
             surfaceEdit: "インターフェースの編集",

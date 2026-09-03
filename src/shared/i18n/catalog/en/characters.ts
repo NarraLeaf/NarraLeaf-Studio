@@ -23,6 +23,11 @@ export const characters = {
         namePlaceholder: "Enter character name",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
+        renameSpokenRowsConfirm: {
+            one: "Also rename {count} line that speaks as \"{name}\"?",
+            other: "Also rename {count} lines that speak as \"{name}\"?",
+        },
+        renameSpokenRowsDetail: "Those lines carry the name, not the character. They become \"{name}\".",
         // Was "This action cannot be undone." until deletion became undoable. What is worth weighing
         // now is the consequence, not the finality - and the consequence is no longer the same for
         // every row: dialogue keeps the name as a bare speaker, while a row that places the character
@@ -34,6 +39,7 @@ export const characters = {
     // Names for the undo steps these deletions leave behind ("Undo delete character Hiyori").
     history: {
         deleteCharacter: "delete character {name}",
+        renameCharacter: "rename character {name}",
         deleteGroup: "delete group {name}",
     },
     // The one dialog "New character" opens. Everything a character is created with is asked here,

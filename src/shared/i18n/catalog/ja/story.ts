@@ -1313,6 +1313,12 @@ export const story = {
             other: "{count} 行の話者を割り当て",
         },
         playFromHere: "ここから再生",
+        moveToScene: "シーンへ移動",
+        splitScene: "ここでシーンを分割…",
+        mergeWithNext: "次のシーンと結合",
+        mergeIntoPrevious: "前のシーンに結合",
+        changeSpeaker: "話者を変更",
+        speakerNameOnly: "{name}（名前のみ）",
         openInspector: "インスペクタを開く",
         delete: "削除",
     },
@@ -1325,6 +1331,45 @@ export const story = {
         // チャプターの移動も並べ替えも同じドラッグ操作なので、言い方も一つにする。
         moveScene: "シーン {name} の移動",
         moveChapter: "チャプター {name} の移動",
+    },
+    structuralOps: {
+        moveRows: {
+            done: {
+                other: "{count} 行を {scene} へ移動した",
+            },
+            refused: "ライブセッション中は利用できない",
+        },
+        splitScene: {
+            title: "シーンの分割",
+            description: "この行から末尾までの行が新しいシーンになる",
+            placeholder: "シーン名を入力",
+            namePattern: "{name} {index}",
+            done: {
+                other: "{count} 行を {scene} へ移動した",
+            },
+            jumpAdded: "ジャンプを追加",
+            refused: "この行より後の行が、それより前の内容を必要としている",
+            refusedDetail: "この行より後で使用中：{names}",
+        },
+        mergeScenes: {
+            confirm: "「{merged}」を「{surviving}」に結合しますか？",
+            detail: {
+                other: "その {count} 行が {surviving} の末尾に移動する。",
+            },
+            done: {
+                other: "{count} 行を {scene} に結合した",
+            },
+            refused: "「{name}」は他の場所から参照されている",
+            refusedDetail: "参照元：{referrers}",
+            referrerJump: "{scene} · {row} 行目",
+            referrerEntryScene: "ストーリーの開始シーン",
+            noNeighbour: "結合できるシーンがない",
+        },
+        speaker: {
+            done: {
+                other: "{count} 行の話者を変更した",
+            },
+        },
     },
     keybindings: {
         find: "検索と置換",

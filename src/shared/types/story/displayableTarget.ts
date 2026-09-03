@@ -47,6 +47,24 @@ export function characterStageName(characterId: string | undefined, objectName?:
 }
 
 /**
+ * The stage name a character row carries as a name, or "" when its key comes from somewhere else.
+ *
+ * The inverse of {@link characterStageObjectName}, and deliberately the same rule read backwards
+ * rather than a second opinion about it: text counts as a name exactly when the rule above keys on
+ * that text. So the bare block's literal `"character"` reads as no name, because the rule discards
+ * it and keys on the id - and anything else the author left in there reads as a name, because the
+ * rule uses it, which makes it the word every later row in the scene has to repeat.
+ *
+ * An editor showing this field must show what this returns. A field that hid a value the rule is
+ * keying on would tell an author their row has no stage name while the row addresses one nothing
+ * else on the stage answers to, and the row would compile to nothing with the field looking empty.
+ */
+export function authoredCharacterStageName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
+    const text = payload.objectName?.trim() ?? "";
+    return text && characterStageObjectName(payload) === text ? text : "";
+}
+
+/**
  * The identity of the displayable a creator action block introduces, or null when the block does not
  * declare one. Character / image / text / layer actions are the only ways a displayable comes into
  * existence, so these are the only sources of a stable identity.

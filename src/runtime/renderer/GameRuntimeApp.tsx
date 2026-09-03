@@ -1,6 +1,11 @@
 import type { GameMenuModel } from "@shared/types/gameMenu";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
+import {
+    SCREENSHOT_UNSUPPORTED_MESSAGE,
+    type BlueprintOpenScreenshotsResult,
+    type BlueprintScreenshotResult,
+} from "@shared/types/blueprint/screenshot";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
@@ -14,6 +19,7 @@ import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRenderer
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { BLUEPRINT_INPUT_MISSING_MESSAGE_KEY } from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
@@ -551,11 +557,22 @@ function GameRuntimeSession() {
         }
         if (event.type === "execution.error") {
             bridge.log("error", event.message);
+        } else if (event.type === "node.input_missing") {
+            // The one thing a player's log can say about "the button did nothing": which page, which
+            // node, which pin. Named in the English the catalogue declares - the map that localizes a
+            // node title is Studio's and is not in this bundle - which is also what an author reading
+            // the log will find the node under.
+            const surface = pack?.bundle.ui.uidoc.surfaces.find(item => item.id === event.surfaceId);
+            const sentence = translate(BLUEPRINT_INPUT_MISSING_MESSAGE_KEY, {
+                node: event.nodeName,
+                pin: event.pinLabel,
+            });
+            bridge.log("warning", surface ? `${surface.name}: ${sentence}` : sentence);
         } else if (event.type === "devtools.log") {
             const level = event.level === "error" || event.level === "warning" ? event.level : "info";
             bridge.log(level, event.message);
         }
-    }, [bridge]);
+    }, [bridge, pack]);
 
     const log = useCallback<GameAppHost["log"]>((level, message) => {
         bridge?.log(level, message);
@@ -768,6 +785,39 @@ function GameRuntimeSession() {
         return bridge?.onCloseRequested(listener) ?? (() => undefined);
     }, [bridge]);
 
+    /**
+     * Whether the player is looking at this game right now.
+     *
+     * Optional-chained like the rest of the window family because the shell is loaded from the
+     * game's own files: a patched game can be running a preload that predates this, and a game that
+     * cannot ask is a game that is being looked at.
+     */
+    const isWindowFocused = useCallback(async (): Promise<boolean> => {
+        return (await bridge?.isWindowFocused?.()) !== false;
+    }, [bridge]);
+
+    const subscribeWindowFocusChanged = useCallback((listener: (isFocused: boolean) => void): (() => void) => {
+        return bridge?.onWindowFocusChanged?.(listener) ?? (() => undefined);
+    }, [bridge]);
+
+    /**
+     * A picture of the frame, and the folder those go in.
+     *
+     * Gated on the shell saying it can, rather than on the method being there: the web export has
+     * both methods and neither ability, and a host that offered them anyway would put a screenshot
+     * button on a page where it can only ever apologise. Absent here, the node reports that the
+     * platform has none - which is the same thing the author saw in Dev Mode's `Failed` branch.
+     */
+    const saveScreenshot = useCallback(async (): Promise<BlueprintScreenshotResult> => {
+        return (await bridge?.saveScreenshot?.())
+            ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
+    }, [bridge]);
+
+    const openScreenshotsFolder = useCallback(async (): Promise<BlueprintOpenScreenshotsResult> => {
+        return (await bridge?.openScreenshotsFolder?.())
+            ?? { outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE };
+    }, [bridge]);
+
     /*
      * The menu bar, when this shell has one.
      *
@@ -836,7 +886,11 @@ function GameRuntimeSession() {
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
+            isWindowFocused,
+            subscribeWindowFocusChanged,
             subscribeCloseRequested,
+            // Present only where the shell can really take one; see `saveScreenshot` above.
+            ...(bridge?.capabilities?.screenshot ? { saveScreenshot, openScreenshotsFolder } : {}),
             // Present only when the shell really has a bar: see the host's own note on why an
             // absent pair is the answer rather than a pair that does nothing.
             ...(bridge?.menu ? { setApplicationMenu, subscribeMenuCommand } : {}),
@@ -875,6 +929,10 @@ function GameRuntimeSession() {
         setWindowSize,
         setFullscreen,
         subscribeFullscreenChanged,
+        isWindowFocused,
+        subscribeWindowFocusChanged,
+        saveScreenshot,
+        openScreenshotsFolder,
         subscribeCloseRequested,
         setApplicationMenu,
         subscribeMenuCommand,

@@ -154,6 +154,7 @@ export const blueprint = {
             contextValueReturnHint: " Return Value only belongs in Blueprint Value graphs.",
             contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
+            inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",
             unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",
@@ -245,11 +246,23 @@ export const blueprint = {
         // A revision nobody named. Numbered by its place in the list rather than spelled with its
         // id, which is a UUID and names nothing an author can recognize.
         unnamed: "Revision {index}",
-        newTypeScript: "New TypeScript revision",
-        newVisual: "New Visual revision",
+        rowMenu: "More",
+        /** Removing a revision never removes a file: the disk owns a script from the moment it exists. */
+        delete: "Delete revision",
+        deleteScript: "Delete revision (the file stays)",
+        deleteOnly: "A slot keeps its last revision.",
+        newScript: "New script",
+        newBlueprint: "New blueprint",
+        useExisting: "Use an existing file",
     },
+    /**
+     * What a revision is written in, and the whole of the distinction an author has to hold: a
+     * blueprint is a graph on a canvas, a script is a TypeScript file they own. Neither word is
+     * ever used for the other.
+     */
     frontend: {
-        visual: "Visual",
+        visual: "Blueprint",
+        script: "Script",
     },
     literal: {
         string: "String",
@@ -427,11 +440,17 @@ export const blueprint = {
          */
         openFolder: "Open scripts folder",
         missing: "This file is missing.",
+        /** Re-pointing a script, which is also how a file renamed outside Studio is reconnected. */
+        changeFile: "Use another file",
+        changeFileEmpty: "No other file under scripts/",
         /** Monaco's own read-only tooltip says the editor is read only. This says where writing happens. */
         readOnly: "Scripts are edited in your own editor.",
-        /** The blueprints section of the asset browser. */
-        sectionEmpty: "No scripts yet. A TypeScript blueprint creates one.",
-        unbound: "Not used by any blueprint",
+        /** The section heading in the panel where a project's own files are listed. */
+        sectionTitle: "Scripts",
+        /** The tab a script opens in. A script is not a blueprint and is never titled as one. */
+        tabTitle: "Script",
+        sectionEmpty: "No scripts yet. Open the logic of a page or a component and choose New script.",
+        unbound: "Nothing runs this file",
         boundTo: "Runs as {name}",
         boundToMany: "Runs as {name} and {count} more",
     },
@@ -660,6 +679,7 @@ export const blueprint = {
         isEntering: "Is Entering",
         isExiting: "Is Exiting",
         isFullscreen: "Is Fullscreen",
+        isFocused: "Is Focused",
         isPicked: "Is Picked",
         isRead: "Is Read",
         isInstalled: "Is Installed",
@@ -749,6 +769,7 @@ export const blueprint = {
         skipDelay: "Skip Delay",
         skipInterval: "Skip Interval",
         skipReadText: "Skip Read Text",
+        muteWhenUnfocused: "Mute When Unfocused",
         skipping: "Skipping",
         slider: "Slider",
         sound: "Sound",
@@ -918,6 +939,7 @@ export const blueprint = {
         getSkipDelay: "Get Skip Delay",
         getSkipInterval: "Get Skip Interval",
         getSkipReadText: "Get Skip Read Text",
+        getMuteWhenUnfocused: "Get Mute When Unfocused",
         getSkipping: "Get Skipping",
         getSliderEnabled: "Get Slider Enabled",
         getSliderVisible: "Get Slider Visible",
@@ -965,6 +987,7 @@ export const blueprint = {
         setSkipDelay: "Set Skip Delay",
         setSkipInterval: "Set Skip Interval",
         setSkipReadText: "Set Skip Read Text",
+        setMuteWhenUnfocused: "Set Mute When Unfocused",
         setSkipping: "Set Skipping",
         setSliderEnabled: "Set Slider Enabled",
         setSliderVisible: "Set Slider Visible",
@@ -1229,11 +1252,15 @@ export const blueprint = {
         onGameReady: "On Game Ready",
         onFullscreenChanged: "On Fullscreen Changed",
         onWindowCloseRequested: "On Window Close Requested",
+        onWindowFocusChanged: "On Window Focus Changed",
         onAction: "On Action",
         onKeyDown: "On Key Down",
         onKeyUp: "On Key Up",
         onPreferenceChanged: "On Preference Changed",
         openLink: "Open Link",
+        openScreenshotsFolder: "Open Screenshots Folder",
+        saveScreenshot: "Save Screenshot",
+        isWindowFocused: "Is Window Focused",
         openPage: "Open page",
         or: "Or",
         padEnd: "Pad End",

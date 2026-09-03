@@ -288,6 +288,11 @@ export const lint = {
             description: "会执行的 Save Game 节点上，声明过的存档字段未填写",
             message: "{field} 未填写，本次存档将写入其默认值",
         },
+        blueprintRequiredInputUnwired: {
+            title: "未连接的输入",
+            description: "会执行的节点上，必填的输入引脚没有连接",
+            message: "{node} 的 {pin} 没有连接任何东西",
+        },
         blueprintStartSceneForeign: {
             title: "来自另一个故事的场景",
             description: "Start Game 节点选中的场景不在它指定的故事里",

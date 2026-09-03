@@ -25,6 +25,10 @@ export const characters = {
         namePlaceholder: "キャラクター名を入力",
         groupNamePlaceholder: "グループ名を入力",
         deleteCharacterConfirm: "キャラクター「{name}」を削除するか",
+        renameSpokenRowsConfirm: {
+            other: "「{name}」を話者とする {count} 行も変更するか",
+        },
+        renameSpokenRowsDetail: "これらの行が持つのはキャラクターではなく名前で、「{name}」になる",
         // 削除を取り消せるようになるまでは「元に戻せない」と書いてあった。いま量るべきは
         // 取り返しのつかなさではなく結果のほう。しかもその結果は行ごとに違う。セリフは名前だけを
         // 残して話者になるが、キャラクターを舞台に出す行にはその形がなく、解決できない参照が残る。
@@ -35,6 +39,7 @@ export const characters = {
     // これらの削除が履歴に残す名前（「キャラクター ひより の削除を元に戻す」）。
     history: {
         deleteCharacter: "キャラクター {name} の削除",
+        renameCharacter: "キャラクター {name} の名前変更",
         deleteGroup: "グループ {name} の削除",
     },
     // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。

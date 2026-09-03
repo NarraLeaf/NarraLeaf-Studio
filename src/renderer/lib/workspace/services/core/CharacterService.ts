@@ -17,6 +17,8 @@ import {
     applyCharacterSpeakerFallback,
     planCharacterSpeakerFallback,
     revertCharacterSpeakerFallback,
+    planSpeakerNameRows,
+    applySpeakerNameRename,
 } from "../story/characterSpeakerFallback";
 import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
@@ -187,14 +189,57 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return character;
     }
 
-    public renameCharacter(id: string, name: string): boolean {
+    /**
+     * How many lines in the project speak as a bare name, so a rename can offer to carry them along.
+     *
+     * A separate question, asked before the rename, because a bare name is not this character: it is
+     * text a row carries because nobody was bound to it. Renaming the character has no effect on
+     * those rows and must not - "Alice" the character and "Alice" the typed name are two things, and
+     * one of them belongs to lines the author may have meant to keep as they are.
+     */
+    public async countRowsSpeakingAs(speakerName: string): Promise<number> {
+        const plan = await planSpeakerNameRows(this.getStoryService(), speakerName);
+        return plan.reduce((total, entry) => total + entry.rows.length, 0);
+    }
+
+    /**
+     * Rename a character, optionally carrying the lines that speak as their old name.
+     *
+     * The sweep is off by default and stays an offer: see {@link countRowsSpeakingAs} for why those
+     * rows are not the character's. When it runs, both halves are one undo step, because the author
+     * made one decision.
+     *
+     * Asynchronous only because finding those rows means reading every story document, including the
+     * ones nobody has opened - the same reason {@link deleteCharacter} is.
+     */
+    public async renameCharacter(id: string, name: string, options?: { renameSpokenRows?: boolean }): Promise<boolean> {
         const character = this.characters[id];
         if (!character) {
             return false;
         }
-        character.profile.setName(name);
-        this.markDirty();
-        this.emitChange();
+        const previousName = character.profile.getName();
+        const spokenRows = options?.renameSpokenRows
+            ? await planSpeakerNameRows(this.getStoryService(), previousName)
+            : [];
+        const applyRename = (next: string, rowName: string) => {
+            const current = this.characters[id];
+            if (!current) {
+                return;
+            }
+            current.profile.setName(next);
+            applySpeakerNameRename(this.getStoryService(), spokenRows, rowName);
+            this.markDirty();
+            this.emitChange();
+        };
+        applyRename(name, name);
+        this.getHistoryService().pushCommand(projectHistoryScope(), {
+            label: {
+                key: "characters.history.renameCharacter" as TranslationKey,
+                params: { name },
+            },
+            undo: () => applyRename(previousName, previousName),
+            redo: () => applyRename(name, name),
+        });
         return true;
     }
 

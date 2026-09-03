@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
+import { SCREENSHOT_UNSUPPORTED_MESSAGE } from "@shared/types/blueprint/screenshot";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -370,6 +371,16 @@ const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
 const NO_DECLARED_LINKS: BlueprintHostApiRuntime["navigation"]["openExternal"] =
     async () => ({ outcome: "refused", error: "not declared" });
 
+/** A host with no window to picture and nowhere to keep a file, which is every host in this file. */
+const NO_SCREENSHOTS: Pick<
+    BlueprintHostApiRuntime["navigation"],
+    "saveScreenshot" | "openScreenshotsFolder" | "isWindowFocused"
+> = {
+    saveScreenshot: async () => ({ outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE }),
+    openScreenshotsFolder: async () => ({ outcome: "failed", path: null, error: SCREENSHOT_UNSUPPORTED_MESSAGE }),
+    isWindowFocused: async () => true,
+};
+
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
         host: "player",
@@ -395,6 +406,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getWindowSize: async () => ({ width: 0, height: 0 }),
                     setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
+                    ...NO_SCREENSHOTS,
                 },
                 layers: SILENT_LAYER_HOST,
                 widget: {} as any,
@@ -561,6 +573,7 @@ function createPageNavigationHostAdapter(
                         openedExternalUrls.push(request.url);
                         return { outcome: "opened", error: null };
                     },
+                    ...NO_SCREENSHOTS,
                 },
                 layers: SILENT_LAYER_HOST,
                 widget: {
@@ -769,6 +782,7 @@ function createGameSaveHostAdapter(options: {
                     getWindowSize: async () => ({ width: 0, height: 0 }),
                     setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
+                    ...NO_SCREENSHOTS,
                 },
                 layers: SILENT_LAYER_HOST,
                 widget: {} as any,

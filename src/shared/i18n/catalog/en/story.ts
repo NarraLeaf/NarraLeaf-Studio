@@ -1450,6 +1450,14 @@ export const story = {
             other: "Link speaker on {count} lines",
         },
         playFromHere: "Play from here",
+        moveToScene: "Move to scene",
+        splitScene: "Split scene here…",
+        mergeWithNext: "Merge with next scene",
+        mergeIntoPrevious: "Merge into previous scene",
+        changeSpeaker: "Change speaker",
+        // A speaker with no character behind it, offered beside the cast so the two are told apart
+        // in a list that shows only names.
+        speakerNameOnly: "{name} (name only)",
         openInspector: "Open inspector",
         delete: "Delete",
     },
@@ -1463,6 +1471,62 @@ export const story = {
         // gesture, and an author taking one back is not distinguishing them.
         moveScene: "move scene {name}",
         moveChapter: "move chapter {name}",
+    },
+    /**
+     * Reshaping a story rather than a row: rows travelling to another scene, a scene cut in two, two
+     * scenes put back together.
+     */
+    structuralOps: {
+        moveRows: {
+            done: {
+                one: "{count} row moved to {scene}",
+                other: "{count} rows moved to {scene}",
+            },
+            refused: "Not available during a live session",
+        },
+        splitScene: {
+            title: "Split Scene",
+            description: "The rows from here to the end become this scene.",
+            placeholder: "Enter scene name",
+            // The name offered first, numbered up until it is free.
+            namePattern: "{name} {index}",
+            done: {
+                one: "{count} row moved to {scene}",
+                other: "{count} rows moved to {scene}",
+            },
+            // Appended to the line above when the first half would otherwise have ended the game.
+            jumpAdded: "jump added",
+            // A scene holds the stage, the labels and the scene variables, and a jump between
+            // scenes empties all three - so what the second half would still be asking the first
+            // half for is named, and the split is refused until those rows move.
+            refused: "The rows after this one still need what comes before it",
+            refusedDetail: "Still in use after this row: {names}",
+        },
+        mergeScenes: {
+            confirm: "Merge \"{merged}\" into \"{surviving}\"?",
+            detail: {
+                one: "Its {count} row moves to the end of {surviving}.",
+                other: "Its {count} rows move to the end of {surviving}.",
+            },
+            done: {
+                one: "{count} row merged into {scene}",
+                other: "{count} rows merged into {scene}",
+            },
+            // A jump into the merged scene used to start at its first row; after a merge the
+            // surviving scene's rows come first, so the jump would still resolve and play something
+            // else. Named rather than re-pointed - see `planSceneMerge`.
+            refused: "\"{name}\" is still named elsewhere",
+            refusedDetail: "Named by: {referrers}",
+            referrerJump: "{scene} · row {row}",
+            referrerEntryScene: "the story's entry scene",
+            noNeighbour: "There is no scene to merge with",
+        },
+        speaker: {
+            done: {
+                one: "Speaker changed on {count} line",
+                other: "Speaker changed on {count} lines",
+            },
+        },
     },
     keybindings: {
         find: "Find and replace",

@@ -19,6 +19,13 @@ type Props = {
     onMemberPanelCollapsedChange?: (collapsed: boolean) => void;
     /** True while focus is inside the left member panel (disables graph delete-key shortcuts). */
     onMemberPanelFocusContainedChange?: (contained: boolean) => void;
+    /**
+     * What this editor is, for the help it answers with and for the side panel's heading.
+     *
+     * A script is edited through this same layout, and left to itself the layout said "Blueprint"
+     * over the revision list and answered F1 with the topic about wiring nodes together.
+     */
+    kind?: "blueprint" | "script";
 };
 
 export function BlueprintEditorLayout({
@@ -31,8 +38,10 @@ export function BlueprintEditorLayout({
     memberPanelCollapsed,
     onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
+    kind = "blueprint",
 }: Props) {
     const { t } = useTranslation();
+    const helpTopic = kind === "script" ? "scripts" : "blueprints";
     const detachedTitleBar = useDetachedTitleBar();
     const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
@@ -75,7 +84,7 @@ export function BlueprintEditorLayout({
     return (
         // The whole editor answers with one topic: `F1` anywhere in it - the canvas, the member
         // tree, the diagnostics list - is the same question about the same thing.
-        <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg" data-help-topic="blueprints">
+        <div className="flex h-full min-h-0 flex-col bg-surface text-sm text-fg" data-help-topic={helpTopic}>
             {/* Detached, this row IS the window's title bar: the window is frameless like every
                 other Studio window, so the row carries the drag region, the gap the macOS traffic
                 lights are drawn into, and (off macOS) the window buttons. Everything in it that
@@ -93,14 +102,16 @@ export function BlueprintEditorLayout({
                 {/* No help in a detached window: F1 opens the help panel, which is a dock panel of
                     the workspace window, so the answer would appear in the window the author is not
                     looking at. The editor is one F1 away in the workspace either way. */}
-                {detachedTitleBar.isDetached ? null : <HelpTrigger topic="blueprints" />}
+                {detachedTitleBar.isDetached ? null : <HelpTrigger topic={helpTopic} />}
                 {headerActions ? <div className="no-drag flex items-center">{headerActions}</div> : null}
                 <DetachedTitleBarControls />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>
                     <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
-                        <span className="text-2xs font-medium text-fg-subtle">{t("blueprint.panelLabel")}</span>
+                        <span className="text-2xs font-medium text-fg-subtle">
+                            {t(kind === "script" ? "blueprint.script.tabTitle" : "blueprint.panelLabel")}
+                        </span>
                         <button
                             type="button"
                             className="text-fg-muted transition-colors hover:text-fg"

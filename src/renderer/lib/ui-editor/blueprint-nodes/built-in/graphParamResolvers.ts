@@ -133,6 +133,9 @@ import {
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_LAYER_WAIT,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+    BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+    BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
     BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
@@ -164,6 +167,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
@@ -1570,6 +1574,7 @@ const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string 
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING]: { portId: "skipping", key: "skipping" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
     [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT]: { portId: "skipReadText", key: "skipReadText" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_MUTE_ON_WINDOW_BLUR]: { portId: "muteOnWindowBlur", key: "muteOnWindowBlur" },
     // The one row whose port is not named after its preference: the node reads `Is Dialog Shown`,
     // and the three nodes that write the same value are named for the act rather than the key.
     [BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN]: { portId: "isShown", key: "showDialog" },
@@ -3466,6 +3471,21 @@ function resolveSelfOutput(
     // network family below is: `error` is not a port name that list carries, and joining it would
     // hand `error` to every node type in it.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL && portId === "error") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The screenshot pair, kept out of the cross-product list for Open Link's reason and for one of
+    // its own: `path` is where the picture went, which is the whole point of the node - unregistered
+    // it reads as `undefined` on a screen that was going to tell the player where to look.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT
+            || selfNode.type === BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER)
+        && (portId === "path" || portId === "error")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // `Is Window Focused`, beside them rather than in the list above: `isFocused` is a new port name
+    // there, and joining it would hand `isFocused` to every node type that list covers.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_APP_IS_WINDOW_FOCUSED && portId === "isFocused") {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // The progress pair, kept out of the cross-product list for the reason Open Link is: `error` is

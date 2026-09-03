@@ -11,16 +11,43 @@ import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 
+/**
+ * A story the main process has asked this window to start, in place of whatever it is playing.
+ *
+ * The story editor's row play control pressed while this window is already open. It arrives just
+ * before the bundle it was compiled against, and `token` is what makes acting on it exactly once
+ * decidable by the app that acts.
+ */
+export type DevModeLaunchRequest = {
+    token: number;
+    storyId: string;
+    sceneId: string;
+    startBlockId?: string;
+    snapshotId?: string;
+    /**
+     * The bundle revision this window was showing when the request arrived, or null when it was
+     * showing none.
+     *
+     * The instruction and the bundle it belongs to are two messages, and two messages are two React
+     * commits: acting in the first of them would start the story against the documents the author
+     * has just edited out of date, and the reload that then carried the new ones would take the run
+     * straight back over it. So the request waits here until the app is showing something else.
+     */
+    afterRevision: number | null;
+};
+
 type DevModeState = {
     entry: DevModeEntry | null;
     projectPath: string | null;
     bundle: DevModeBundle | null;
+    launchRequest: DevModeLaunchRequest | null;
     sessionError: string | null;
 };
 
 type UseDevModePayloadResult = {
     bundle: DevModeBundle | null;
     entry: DevModeEntry | null;
+    launchRequest: DevModeLaunchRequest | null;
     projectPath: string | null;
     surface: UISurface | null;
     surfaceId: string;
@@ -32,7 +59,13 @@ type UseDevModePayloadResult = {
 };
 
 export function useDevModePayload(): UseDevModePayloadResult {
-    const [state, setState] = useState<DevModeState>({ entry: null, projectPath: null, bundle: null, sessionError: null });
+    const [state, setState] = useState<DevModeState>({
+        entry: null,
+        projectPath: null,
+        bundle: null,
+        launchRequest: null,
+        sessionError: null,
+    });
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
     const [scale, setScale] = useState(1);
 
@@ -88,6 +121,17 @@ export function useDevModePayload(): UseDevModePayloadResult {
         const reloadToken = getInterface().devMode.onControlReload(() => {
             void tryRollbackStoryState();
         });
+        /**
+         * Held rather than acted on, and held beside the bundle it belongs to.
+         *
+         * The main process sends this immediately before the recompiled payload, so both land in one
+         * React commit and the app downstream sees the instruction and the documents together. Acting
+         * here would start the story against the bundle this window is still holding, which is the
+         * one edit the author just made out of date.
+         */
+        const startToken = getInterface().devMode.onControlStartStory(request => {
+            setState(prev => ({ ...prev, launchRequest: { ...request, afterRevision: prev.bundle?.revision ?? null } }));
+        });
         const errorToken = getInterface().devMode.onControlError(({ message }) => {
             setState(prev => ({
                 ...prev,
@@ -97,6 +141,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
         return () => {
             payloadToken.cancel();
             reloadToken.cancel();
+            startToken.cancel();
             errorToken.cancel();
         };
     }, []);
@@ -126,6 +171,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
     return {
         bundle: state.bundle,
         entry: state.entry,
+        launchRequest: state.launchRequest,
         projectPath: state.projectPath,
         surface,
         surfaceId,

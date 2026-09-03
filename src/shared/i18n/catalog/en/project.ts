@@ -384,6 +384,10 @@ export const project = {
             title: "Voice fade",
             description: "How long the fade lasts. Only used when the clip fades out.",
         },
+        muteOnWindowBlur: {
+            title: "Mute when unfocused",
+            description: "Silences the game while another window is in front.",
+        },
     },
     // The Audio sub-page: the project's mixer, as a tree of buses. One collapsed row per bus with
     // its fields behind a disclosure, so the labels below are labels rather than headings - the

@@ -184,6 +184,11 @@ export const devMode = {
         openWorkspace: "ワークスペース",
         cannotOpen: "このブループリントはプレビューからは開けない",
         openFailed: "ブループリントを開けなかった",
+        scriptLoaded: "読み込み済み",
+        scriptNotLoaded: "読み込まれていない",
+        scriptExports: "エクスポート：{names}",
+        scriptCalls: "ここで呼ばれる：{names}",
+        scriptExportsNone: "何もエクスポートしていない",
     },
     output: {
         logLevel: "ログレベル",

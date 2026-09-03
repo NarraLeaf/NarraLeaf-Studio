@@ -60,6 +60,9 @@ const LABEL = {
     blueprintChanged: "documentDiff.uiGraphs.blueprintChanged",
     blueprintRenamed: "documentDiff.uiGraphs.blueprintRenamed",
     blueprintSource: "documentDiff.uiGraphs.blueprintSource",
+    scriptAdded: "documentDiff.uiGraphs.scriptAdded",
+    scriptRemoved: "documentDiff.uiGraphs.scriptRemoved",
+    scriptChanged: "documentDiff.uiGraphs.scriptChanged",
     blueprintField: "documentDiff.uiGraphs.blueprintField",
     graphAdded: "documentDiff.uiGraphs.graphAdded",
     graphRemoved: "documentDiff.uiGraphs.graphRemoved",
@@ -149,11 +152,17 @@ function blueprintRows(
     const path = ["blueprints", blueprintId];
     if (!base || !head) {
         const present = (head ?? base) as Record<string, unknown>;
-        rows.push(change(path, head ? "added" : "removed", head ? LABEL.blueprintAdded : LABEL.blueprintRemoved, {
+        // A script and a blueprint are two things an author holds apart, so the row says which one
+        // arrived or left. A script has no nodes to count, and a count of zero beside it would read
+        // as an empty blueprint rather than as a file.
+        const script = isScriptProgram(present);
+        rows.push(change(path, head ? "added" : "removed", script
+            ? (head ? LABEL.scriptAdded : LABEL.scriptRemoved)
+            : (head ? LABEL.blueprintAdded : LABEL.blueprintRemoved), {
             subject: authoredName(present?.name),
             // One row for a whole blueprint, with its size in the label rather than a row per node:
             // the change the author made is "I wrote this piece of logic".
-            params: {nodes: blueprintNodeCount(present)},
+            params: script ? {} : {nodes: blueprintNodeCount(present)},
         }));
         return;
     }
@@ -166,8 +175,8 @@ function blueprintRows(
             subject: authoredName(head.name) ?? subject,
         }));
     }
-    // A TypeScript blueprint has no graph at all; its whole program is one string, compared whole
-    // because a line-level diff of source is a different surface from a list of changes.
+    // A script's text is not in this document - the disk owns it - so what can differ here is
+    // which file the slot points at.
     if (!sameJsonValue(sourceOf(base), sourceOf(head))) {
         children.push(change([...path, "source"], "changed", LABEL.blueprintSource, {subject}));
     }
@@ -180,7 +189,7 @@ function blueprintRows(
     // whenever any node does, and a bare "the blueprint changed" beside the node rows is the same
     // news twice.
     if (children.length > 0) {
-        rows.push(change(path, "changed", LABEL.blueprintChanged, {subject, children}));
+        rows.push(change(path, "changed", isScriptProgram(head) ? LABEL.scriptChanged : LABEL.blueprintChanged, {subject, children}));
     }
 
     for (const slot of GRAPH_SLOTS) {
@@ -392,6 +401,12 @@ function irOf(graph: Record<string, unknown> | undefined): Record<string, unknow
 
 function nodesOf(ir: Record<string, unknown>): Record<string, Record<string, unknown>> {
     return mapOf(ir.nodes);
+}
+
+/** Whether this record is a script rather than a blueprint, for the rows that name one. */
+function isScriptProgram(blueprint: Record<string, unknown> | undefined): boolean {
+    const program = blueprint?.program;
+    return isJsonObject(program) && program.kind === "scriptModule";
 }
 
 function sourceOf(blueprint: Record<string, unknown>): unknown {

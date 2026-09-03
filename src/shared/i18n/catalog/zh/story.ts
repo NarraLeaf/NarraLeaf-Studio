@@ -1256,6 +1256,12 @@ export const story = {
             other: "关联 {count} 行的说话人",
         },
         playFromHere: "从此行播放",
+        moveToScene: "移动到场景",
+        splitScene: "在此拆分场景…",
+        mergeWithNext: "与下一个场景合并",
+        mergeIntoPrevious: "合并到上一个场景",
+        changeSpeaker: "更改说话人",
+        speakerNameOnly: "{name}（仅名称）",
         openInspector: "打开检查器",
         delete: "删除",
     },
@@ -1268,6 +1274,45 @@ export const story = {
         // 换章和调位置是同一个拖拽手势，撤销的人不会去分它们，所以只有一种说法。
         moveScene: "移动场景 {name}",
         moveChapter: "移动章节 {name}",
+    },
+    structuralOps: {
+        moveRows: {
+            done: {
+                other: "已将 {count} 行移动到 {scene}",
+            },
+            refused: "实时会话期间不可用",
+        },
+        splitScene: {
+            title: "拆分场景",
+            description: "从此行到末尾的行归入该场景",
+            placeholder: "输入场景名称",
+            namePattern: "{name} {index}",
+            done: {
+                other: "已将 {count} 行移动到 {scene}",
+            },
+            jumpAdded: "已添加跳转",
+            refused: "该行之后的行仍然依赖此前的内容",
+            refusedDetail: "该行之后仍在使用：{names}",
+        },
+        mergeScenes: {
+            confirm: "将“{merged}”合并到“{surviving}”？",
+            detail: {
+                other: "其中 {count} 行将移到 {surviving} 的末尾。",
+            },
+            done: {
+                other: "已将 {count} 行合并到 {scene}",
+            },
+            refused: "“{name}”仍被其他位置引用",
+            refusedDetail: "引用位置：{referrers}",
+            referrerJump: "{scene} · 第 {row} 行",
+            referrerEntryScene: "故事的入口场景",
+            noNeighbour: "没有可合并的场景",
+        },
+        speaker: {
+            done: {
+                other: "已更改 {count} 行的说话人",
+            },
+        },
     },
     keybindings: {
         find: "查找和替换",

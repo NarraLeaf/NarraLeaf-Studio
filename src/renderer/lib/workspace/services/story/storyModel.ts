@@ -19,6 +19,7 @@ import {
     StoryBlock,
     StoryBlockId,
     StoryChapter,
+    StoryDialogueSpeaker,
     StoryDocument,
     StoryId,
     StoryLibraryEntry,
@@ -1196,6 +1197,38 @@ export function rebindSpeakersInBlocks(
 }
 
 /**
+ * Point an explicit set of rows at one speaker, whoever they were speaking as before.
+ *
+ * The third member of the family, and the widest: {@link promoteTempSpeaker} reaches every row that
+ * shares a name, {@link rebindSpeakersInBlocks} reaches only the rows whose speaker is unresolved,
+ * and this one reaches every dialogue row the author selected - which is what "change the speaker on
+ * these lines" means. Rows that are not dialogue are skipped rather than refused: a selection made
+ * by dragging down the list will contain actions, and the gesture is about the lines in it.
+ *
+ * Returns payload edits rather than mutating, so the whole set is one document revision, one save
+ * and one undo step.
+ */
+export function setSpeakerOnBlocks(
+    document: StoryDocument,
+    blockIds: Iterable<StoryBlockId>,
+    speaker: StoryDialogueSpeaker,
+): StorySpeakerEdit[] {
+    const wanted = new Set(blockIds);
+    const rows: StoryDialogueRowRef[] = [];
+    for (const scene of Object.values(document.scenes)) {
+        for (const blockId of wanted) {
+            const block = scene.blocks[blockId];
+            if (block?.kind === "nodeAction" && block.payload.action === "dialogue") {
+                rows.push({ sceneId: scene.id, blockId });
+            }
+        }
+    }
+    return "characterId" in speaker
+        ? bindRowsToCharacter(document, rows, speaker.characterId)
+        : setRowsSpeakerName(document, rows, speaker.speakerName);
+}
+
+/**
  * Every dialogue row in a document spoken by a given character.
  *
  * Only dialogue rows. Character *stage* rows (`payload.action === "character"`) also carry a
@@ -1214,6 +1247,33 @@ export function collectRowsSpokenBy(document: StoryDocument, characterId: string
                 continue;
             }
             if (block.payload.characterId?.trim() !== target) {
+                continue;
+            }
+            rows.push({ sceneId: scene.id, blockId: block.id });
+        }
+    }
+    return rows;
+}
+
+/**
+ * Every dialogue row in a document spoken by a bare name, matched exactly.
+ *
+ * The twin of {@link collectRowsSpokenBy} on the other arm of the speaker payload. Rows that carry a
+ * `characterId` are excluded even when their leftover `speakerName` matches: the character is what
+ * they speak as, and the name they would show follows it.
+ */
+export function collectRowsSpokenByName(document: StoryDocument, speakerName: string): StoryDialogueRowRef[] {
+    const target = speakerName.trim();
+    const rows: StoryDialogueRowRef[] = [];
+    if (!target) {
+        return rows;
+    }
+    for (const scene of Object.values(document.scenes)) {
+        for (const block of Object.values(scene.blocks)) {
+            if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+                continue;
+            }
+            if (block.payload.characterId || block.payload.speakerName?.trim() !== target) {
                 continue;
             }
             rows.push({ sceneId: scene.id, blockId: block.id });

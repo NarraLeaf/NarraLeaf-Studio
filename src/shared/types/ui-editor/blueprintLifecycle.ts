@@ -49,11 +49,13 @@ const GAME_PREFERENCE_EVENTS: readonly LifecycleEventDef[] = [
 ];
 
 /**
- * Fires when the application window enters or leaves fullscreen. Backed by the
- * Electron main process (`enter-full-screen` / `leave-full-screen`), so it also
- * catches fullscreen toggled outside the game (macOS green button, OS shortcuts).
- * Shared by the global and surface owners so a settings page can track the state
- * without owning the global blueprint.
+ * What the application window did, as opposed to what the game did.
+ *
+ * Both are backed by the process that owns the window (`enter-full-screen` /
+ * `leave-full-screen`, `focus` / `blur`), so they also catch what the player did
+ * to the window outside the game - the macOS green button, an OS shortcut,
+ * alt-tabbing away. Shared by the global and surface owners so a settings page
+ * can track either without owning the global blueprint.
  */
 const WINDOW_FULLSCREEN_EVENTS: readonly LifecycleEventDef[] = [
     {
@@ -62,6 +64,13 @@ const WINDOW_FULLSCREEN_EVENTS: readonly LifecycleEventDef[] = [
         description: "Fires when the application window enters or leaves fullscreen.",
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.fullscreenChanged"],
+    },
+    {
+        id: "windowFocusChanged",
+        displayName: "Window focus changed",
+        description: "Fires when the application window gains or loses the player's attention.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.windowFocusChanged"],
     },
 ];
 

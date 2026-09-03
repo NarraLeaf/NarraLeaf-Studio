@@ -20,6 +20,7 @@ import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFile
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { isProjectAssetPath } from "@shared/devMode/assetRevision";
 
 type DevModeSession = {
     id: string;
@@ -46,8 +47,27 @@ type DevModeSession = {
      * {@link DevModeManager.fileContentChanged}.
      */
     fileIdentities: Map<string, string>;
+    /**
+     * How many times a file under the project's `assets/` directory has changed since this session
+     * started.
+     *
+     * Travels on the bundle so the Dev Mode window can tell a reload that touched assets from one
+     * that only touched documents. Resolving the whole asset library to URLs is the most expensive
+     * step of a reload, and its answers stay valid for exactly as long as no asset file moves - a
+     * grant token is derived from the file's path, size and modification time. See
+     * {@link DevModeBundle.assetRevision}.
+     */
+    assetRevision: number;
     pendingBundle: DevModeBundle | null;
     pendingError: string | null;
+    /**
+     * A story this session has been asked to start in the window it already has, waiting for the
+     * window to be ready. Sent before the bundle it belongs to, so the window is holding the
+     * instruction by the time the recompiled documents arrive.
+     */
+    pendingStartStory: { token: number; storyId: string; sceneId: string; startBlockId?: string; snapshotId?: string } | null;
+    /** Rises with each in-place launch, so the window can tell one request from the next. */
+    startToken: number;
     reloadTimer: ReturnType<typeof setTimeout> | null;
 };
 
@@ -161,6 +181,9 @@ export class DevModeManager {
         const key = this.projectKey(projectPath);
         // Only this project's session is replaced; other projects keep running.
         const previous = this.sessions.get(key);
+        if (previous && entry.kind === "story" && previous.window && !previous.window.isClosed()) {
+            return this.relaunchInPlace(previous, entry);
+        }
         if (previous) {
             await this.terminateSession(previous);
         }
@@ -180,6 +203,67 @@ export class DevModeManager {
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             this.app.logger.error("[DevMode] launch failed", err);
+            session.status = "error";
+            this.emitWorkspaceConsoleLog(session, {
+                level: "error",
+                source: "Dev Mode",
+                message: `launch failed: ${message}`,
+            });
+            this.queueSessionError(session, message);
+            return "error";
+        }
+    }
+
+    /**
+     * Start a story in the Dev Mode window this project already has, instead of building another one.
+     *
+     * A story row's play control is pressed dozens of times in an editing session, and every press
+     * used to close the window and open a replacement: a window teardown, a renderer boot and a full
+     * compile before anything appeared. Nothing about that was necessary - the window is the same
+     * window, showing the same project, and the app inside it can start a different story on request.
+     *
+     * The bundle is still rebuilt. The launch flushes the author's unsaved documents on its way here,
+     * so what the window is holding is one edit out of date by definition; sending the instruction and
+     * leaving the documents behind would play the row as it was before they pressed play. The
+     * instruction goes out first so the window has it when the bundle lands, and the app treats that
+     * revision as spoken for rather than resuming the play head on top of it.
+     */
+    private async relaunchInPlace(
+        session: DevModeSession,
+        entry: Extract<DevModeEntry, { kind: "story" }>,
+    ): Promise<DevModeStatus> {
+        try {
+            this.emitVerbose(session, `launch requested in place: ${this.describeEntry(entry)}`);
+            session.entry = entry;
+            // The flush that preceded this launch may have already scheduled a reload of the very
+            // documents this compile is about to read. Dropping it here is what keeps one press from
+            // costing two compiles.
+            this.clearReloadTimer(session);
+            // Re-resolved like any other launch: the workspace may have moved onto a revision - or off
+            // one - since this session started, and a launch is the explicit act that follows it.
+            await this.resolveLaunchSource(session);
+            if (session.sourceRevision) {
+                // Nothing to watch on a snapshot; see `watchProjectFiles`.
+                this.disposeWatcher(session);
+            }
+            session.startToken += 1;
+            session.pendingStartStory = {
+                token: session.startToken,
+                storyId: entry.storyId,
+                sceneId: entry.sceneId,
+                ...(entry.blockId ? { startBlockId: entry.blockId } : {}),
+                ...(entry.snapshotId ? { snapshotId: entry.snapshotId } : {}),
+            };
+            await this.startOrFocusWindow(session);
+            await this.compileAndSendBundle(session, "starting");
+            if (!session.sourceRevision) {
+                this.watchProjectFiles(session);
+            }
+            return session.status;
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.app.logger.error("[DevMode] in-place launch failed", err);
+            session.pendingStartStory = null;
             session.status = "error";
             this.emitWorkspaceConsoleLog(session, {
                 level: "error",
@@ -245,8 +329,11 @@ export class DevModeManager {
             revision: 0,
             watcher: null,
             fileIdentities: new Map(),
+            assetRevision: 0,
             pendingBundle: null,
             pendingError: null,
+            pendingStartStory: null,
+            startToken: 0,
             reloadTimer: null,
         };
     }
@@ -297,6 +384,17 @@ export class DevModeManager {
         };
         window.win.on("enter-full-screen", forwardFullscreen(true));
         window.win.on("leave-full-screen", forwardFullscreen(false));
+        // The same, for the window gaining and losing the author's attention: it feeds the
+        // `On Window Focus Changed` head and the "mute when unfocused" preference. From the window
+        // rather than from the page, so what a Dev Mode session hears is what the packaged game
+        // hears - Studio's own developer tools taking the keyboard is not the author going away.
+        const forwardWindowFocus = (isFocused: boolean) => () => {
+            if (!window.isClosed() && !window.isDestroyed()) {
+                window.sendIpcEvent(IPCEventType.devModeWindowFocusChanged, { isFocused });
+            }
+        };
+        window.win.on("focus", forwardWindowFocus(true));
+        window.win.on("blur", forwardWindowFocus(false));
 
         // Give the game's blueprints a chance to intercept a user-initiated window close (native
         // close box, OS shortcut) via the `On Window Close Requested` head. Swallow the close, ask
@@ -398,6 +496,7 @@ export class DevModeManager {
                 projectPath: session.sourcePath,
                 bundleId: session.id,
                 revision: session.revision,
+                assetRevision: session.assetRevision,
                 // Read per rebuild rather than captured on the session: an author switching edition
                 // expects the next reload to be the other one, not to have to stop and start.
                 // `packaging` stays off, so this folds the variant and plans no scene drop.
@@ -452,6 +551,14 @@ export class DevModeManager {
             window.sendIpcEvent(IPCEventType.devModeControlError, { message: session.pendingError });
             this.emitVerbose(session, "sent error payload to Dev Mode window");
             session.pendingError = null;
+        }
+        // Before the bundle, always: the window has to be holding the instruction by the time the
+        // revision it belongs to arrives, or it would treat that revision as an ordinary reload and
+        // resume the play head instead of starting where the author pointed.
+        if (session.pendingStartStory) {
+            window.sendIpcEvent(IPCEventType.devModeControlStartStory, session.pendingStartStory);
+            this.emitVerbose(session, `sent in-place start request to Dev Mode window: token ${session.pendingStartStory.token}`);
+            session.pendingStartStory = null;
         }
         if (session.pendingBundle) {
             const revision = session.pendingBundle.revision;
@@ -513,18 +620,35 @@ export class DevModeManager {
         );
         session.watcher.on("add", (file, stats) => {
             rememberWatchedFile(session.fileIdentities, file, stats);
+            this.noteAssetChange(session, assetsRoot, file);
             this.scheduleReload(session, "add", file);
         });
         session.watcher.on("change", (file, stats) => {
             if (!watchedFileChanged(session.fileIdentities, file, stats)) {
                 return;
             }
+            this.noteAssetChange(session, assetsRoot, file);
             this.scheduleReload(session, "change", file);
         });
         session.watcher.on("unlink", file => {
             session.fileIdentities.delete(file);
+            this.noteAssetChange(session, assetsRoot, file);
             this.scheduleReload(session, "unlink", file);
         });
+    }
+
+    /**
+     * Record that this reload is about an asset, not only about documents.
+     *
+     * Counted rather than flagged so the window compares one number: a bundle whose count matches the
+     * one it prewarmed under is a bundle whose assets have not moved. See
+     * `@shared/devMode/assetRevision` for what "moved" means and why nothing else matters.
+     */
+    private noteAssetChange(session: DevModeSession, assetsRoot: string, file: string): void {
+        if (!isProjectAssetPath(assetsRoot, file)) {
+            return;
+        }
+        session.assetRevision += 1;
     }
 
     private scheduleReload(session: DevModeSession, event: string, file: string): void {

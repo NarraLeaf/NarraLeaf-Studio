@@ -7,7 +7,7 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
+import { DevTools, Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
 import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
 import { createDialogClickTargets } from "./dialogClickTargets";
 import {
@@ -159,6 +159,7 @@ import {
 import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import { buildGameHostApiOptions, type GameHostCapabilities } from "./gameHostApiOptions";
+import { createFocusMuteController, type FocusMuteOutput } from "./focusMute";
 import {
     createGameUiSlotComponents,
     createLiveGameUiCallbacks,
@@ -187,6 +188,14 @@ import { createSessionGate } from "./sessionGate";
 import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
+import {
+    applyResumeToLaunchSnapshot,
+    buildStoryResumeLaunch,
+    storyResumeNotice,
+    toStoryLiteralRecord,
+    type StoryResumeState,
+} from "./hotReloadResume";
+import { openStoryPersistence } from "./storyPersistence";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -384,6 +393,17 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const currentBundleRef = useRef(bundle);
     currentBundleRef.current = bundle;
+    /**
+     * Whether the bundle a piece of work started under is still the one this app is showing.
+     *
+     * A restart that began under an older bundle has been overtaken - by a newer save, or by a
+     * launch the author asked for while the last one was still mounting - and everything it now
+     * finds missing is missing because the newer one took the environment over. Reported as a
+     * failure it reads as a defect; reported as supersession it reads as what it is.
+     */
+    const bundleSuperseded = useCallback((revision: number, bundleId: string): boolean => (
+        currentBundleRef.current.bundleId !== bundleId || currentBundleRef.current.revision !== revision
+    ), []);
     /**
      * A script blueprint that will not run, as an issue the author can read.
      *
@@ -686,6 +706,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     const [localeResumePending, setLocaleResumePending] = useState(false);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
+    /**
+     * The bundle revision a host-requested launch has taken responsibility for.
+     *
+     * Dev Mode's row play control, pressed while the window is already open, recompiles the project
+     * and asks this app to start the story at that row - so one revision arrives carrying both a new
+     * bundle and an instruction about what to do with it. Claimed synchronously by the launch effect,
+     * which runs first, so the hot-reload effect below it knows the revision is spoken for and does
+     * not start a competing run of the same bundle.
+     */
+    const claimedLaunchRevisionRef = useRef<number | null>(null);
+    /** The last host launch token acted on, so one request cannot start two runs. */
+    const consumedLaunchTokenRef = useRef<number | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
@@ -814,6 +846,15 @@ export function GameApp(props: GameAppProps): ReactNode {
      * the inverse of the compile's own table. Re-bound per session in `onLiveGameReady`.
      */
     const currentSceneIdRef = useRef<string | null>(null);
+    /**
+     * The engine `Scene` behind {@link currentSceneIdRef}, kept for its scene-local namespace.
+     *
+     * The id map cannot answer that: a row-precise launch runs a fabricated entry scene that no
+     * Studio scene id names, and its `local` is where that scene's variables actually live. Holding
+     * the object means "the scene-local values right now" is one lookup on the thing that is running,
+     * rather than a name resolved through a table the launch scene is not in.
+     */
+    const currentSceneRef = useRef<Scene | null>(null);
     const nlrSceneTokensRef = useRef<Array<{ cancel(): void }>>([]);
     /** Drop the scene subscriptions of a session that is going away, and forget where it was. */
     const cancelSceneTracking = useCallback((): void => {
@@ -825,6 +866,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         }
         currentSceneIdRef.current = null;
+        currentSceneRef.current = null;
     }, []);
     /**
      * A progress document that arrived before the story it belongs to was started.
@@ -851,6 +893,68 @@ export function GameApp(props: GameAppProps): ReactNode {
      * the row the play head is showing rather than on a second, differently-derived answer.
      */
     const playHeadBlockId = useCallback((): string | undefined => playHead.blockId(), [playHead]);
+    /**
+     * Where the player is and what their variables hold, read out of the running game.
+     *
+     * Called at the moment a hot reload arrives, before anything replaces the session, so every
+     * answer here is about the run the author is looking at. The play head is the same source the
+     * Dev Mode timeline shows - there is no second tracker for "the current line" - and the two
+     * variable scopes come straight out of the live Storable namespaces the compile named.
+     *
+     * Persistent values are deliberately absent: they live outside the engine and outlive the run,
+     * so a reload has nothing to restore about them and re-seeding them would overwrite whatever the
+     * player had actually chosen.
+     *
+     * Null when there is nothing to keep: no story, no environment, or a run that never entered a
+     * scene.
+     */
+    const captureStoryResumeState = useCallback((): StoryResumeState | null => {
+        const request = activeStoryRequestRef.current;
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        if (!request || !liveGame || !compiled) {
+            return null;
+        }
+        // The scene the engine says it is in, falling back to the one the run was launched at: a
+        // row-precise launch plays a fabricated entry scene that the id map does not name, and the
+        // scene it stands for is exactly the launch's own.
+        const sceneId = currentSceneIdRef.current ?? request.sceneId;
+        if (!sceneId) {
+            return null;
+        }
+        const readNamespace = (name: string | undefined | null): Record<string, StoryLiteralValue> => {
+            if (!name) {
+                return {};
+            }
+            try {
+                const storable = liveGame.getStorable();
+                if (!storable.hasNamespace(name)) {
+                    return {};
+                }
+                const values: Record<string, unknown> = {};
+                for (const [key, value] of storable.getNamespace(name).entries()) {
+                    values[String(key)] = value;
+                }
+                return toStoryLiteralRecord(values);
+            } catch {
+                // A session the engine has already torn down. Nothing to carry, and a reload that
+                // keeps the row but not the variables is still better than one that keeps neither.
+                return {};
+            }
+        };
+        const sceneNamespace = currentSceneRef.current
+            ? DevTools.getNamespaceName(currentSceneRef.current.local)
+            : compiled.sceneLocalNamespaceNames[sceneId];
+        return {
+            position: {
+                sceneId,
+                ...(playHead.blockId() ? { blockId: playHead.blockId() } : {}),
+                trail: [...playHead.trail()],
+            },
+            sceneVariables: readNamespace(sceneNamespace),
+            savedVariables: readNamespace(compiled.savedNamespaceName),
+        };
+    }, [playHead]);
     /**
      * Log a failure AND, for hosts that can point into the story, say where it came from.
      *
@@ -933,6 +1037,38 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         hostRef.current = host;
     }, [host]);
+
+    /**
+     * Whether the game's window is the one the player is working in.
+     *
+     * A ref rather than state because nothing this component draws depends on it: what reads it is
+     * the output gate below, at the moment something asks it to re-decide. Starts true, which is
+     * what a game that has not heard otherwise should assume - the alternative is a title that
+     * silences itself before it has been told anything.
+     */
+    const windowFocusedRef = useRef(true);
+    /**
+     * The gate that "mute when unfocused" opens and shuts, built once for the life of this app.
+     *
+     * It reaches the engine through a ref rather than a captured game, because a session is torn
+     * down and rebuilt underneath it (a reload, a language restart) and the gate is a fact about
+     * the window rather than about any one game.
+     */
+    const focusMute = useMemo(() => createFocusMuteController({
+        output: () => {
+            const audio = nlrLiveGameRef.current?.getGameState()?.audioManager as FocusMuteOutput | undefined;
+            return audio && typeof audio.setGlobalVolume === "function" ? audio : null;
+        },
+        log: (level, message) => hostRef.current.log(level, message),
+    }), []);
+    /**
+     * Re-decide the gate. Set while a game is running; null when there is none to be quiet.
+     *
+     * Held in a ref so the focus subscription and the preference subscription - which are rebuilt
+     * on entirely different things - can both reach the current one without either of them being a
+     * dependency of the other.
+     */
+    const applyFocusMuteRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         widgetPatchesByScopeRef.current = widgetPatchesByScope;
@@ -3279,17 +3415,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         const startBlockId = request.startBlockId?.trim() || undefined;
         const snapshotId = request.snapshotId?.trim() || undefined;
         const scene = storyDocument.scenes[sceneId];
-        // The selected Scene Snapshot's persistent overrides go in FIRST, because the stage walk
-        // below reads the same store to decide which arm of a persistent condition the scene took.
-        // Written after it, they would settle the story the author is about to play while the stage
-        // in front of them was posed down the branch they did not choose.
+        // Read the persistent store before anything asks it a question, on EVERY boot: the stage
+        // walk of a row-precise launch and the compiled story itself both read persistent values
+        // synchronously, from a cache an unwaited reload fills one IPC round trip later. See
+        // `openStoryPersistence`. Every persistent read and write this boot performs goes through the
+        // object it returns; reaching past it to the bridge is the unprimed path this exists to close.
+        //
+        // It has to happen HERE, above the overrides and above the compiled-story cache: reading
+        // the store replaces the whole cache, so an override written first would be read straight
+        // back out again, and a reused story is as entitled to a primed one as a fresh compile.
+        const storyPersistence = core ? await openStoryPersistence(core.scopeBridge) : undefined;
+        // The selected Scene Snapshot's persistent overrides go in next, and still ahead of the walk,
+        // because the walk reads the same store to decide which arm of a persistent condition the
+        // scene took. Written after it, they would settle the story the author is about to play while
+        // the stage in front of them was posed down the branch they did not choose.
         const overrides = snapshotId
             ? scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values
             : undefined;
         if (startBlockId && overrides) {
             for (const [refKey, value] of Object.entries(overrides)) {
                 if (refKey.startsWith("persistent:")) {
-                    core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
+                    storyPersistence?.port.set(refKey.slice("persistent:".length), value);
                 }
             }
         }
@@ -3310,9 +3456,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // the run - and Dev Mode has the profile that holds it, so the pre-pose and the
                     // tail decide every persistent condition from one value instead of two.
                     persistentVariables: bundle.ui.persistentVariables,
-                    ...(core
-                        ? { readPersistent: (key: string) => core.scopeBridge.persistenceGet(key) as StoryLiteralValue | null | undefined }
-                        : {}),
+                    ...(storyPersistence ? { readPersistent: storyPersistence.readPersistent } : {}),
                 }),
             }
             : undefined;
@@ -3335,6 +3479,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     if (def) launch.snapshot.savedVariables[def.storageKey] = value;
                 }
             }
+        }
+        // Last, over everything above: a hot reload resuming where the player was carries the values
+        // the run actually held, and those are the current state - the stage walk's reconstruction
+        // and any Scene Snapshot are both earlier.
+        if (launch && request.resume) {
+            applyResumeToLaunchSnapshot(launch.snapshot, request.resume);
         }
         // Built as a typed local rather than inline so the two audio fields travel as ordinary
         // properties, not as excess ones on a fresh object literal: `audioTracks` is added to
@@ -3366,12 +3516,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             savedVariables: bundle.ui.savedVariables,
             onEndingReached: stableEndingReached,
             onQuitToPage: stableQuitToPage,
-            persistence: core
-                ? {
-                      get: key => core.scopeBridge.persistenceGet(key),
-                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
-                  }
-                : undefined,
+            persistence: storyPersistence?.port,
             localization: bundle.localization && core
                 ? { ...bundle.localization, getLocale: readTextLocale }
                 : undefined,
@@ -3551,6 +3696,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             onNetworkFetch: host.networkFetch,
             onMovePointer: host.movePointer,
             onOpenExternal: host.openExternal,
+            onSaveScreenshot: host.saveScreenshot,
+            onOpenScreenshotsFolder: host.openScreenshotsFolder,
+            onIsWindowFocused: host.isWindowFocused,
+            // Not a preference and not the host's: the output gate this app holds, read by the one
+            // sound that is not on a gain node. See the mute effect above and `focusMute`.
+            onGetAudioOutputGain: focusMute.getGain,
             onExportProgress: exportProgressInGame,
             onImportProgress: importProgressInGame,
             onStorageDurability: host.storageDurability,
@@ -3593,6 +3744,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.setWindowScale,
         host.getWindowSize,
         host.setWindowSize,
+        host.saveScreenshot,
+        host.openScreenshotsFolder,
+        host.isWindowFocused,
+        focusMute,
         showLayer,
         hideLayer,
         hideLayerGroup,
@@ -4214,7 +4369,25 @@ export function GameApp(props: GameAppProps): ReactNode {
     // preload the configured default scene (or launch directly into a story entry), otherwise
     // boot an empty NLR environment. gameReady fires here, once, at boot.
     runBootRef.current = async () => {
-        if (host.bootAction.kind === "story") {
+        // A launch the host asked for while this window was starting up supersedes the entry the
+        // window was opened with. Pressing a row's play control twice in the second it takes a Dev
+        // Mode window to come up is not a rare thing to do, and without this the second press would
+        // be dropped and the author would be watching the first row they pointed at.
+        const pendingLaunch = host.launchRequest
+            && consumedLaunchTokenRef.current !== host.launchRequest.token
+            && !(host.launchRequest.afterRevision != null && host.launchRequest.afterRevision === bundle.revision)
+            ? host.launchRequest
+            : null;
+        if (pendingLaunch) {
+            consumedLaunchTokenRef.current = pendingLaunch.token;
+            claimedLaunchRevisionRef.current = bundle.revision;
+            await startStoryInGame({
+                storyId: pendingLaunch.storyId,
+                sceneId: pendingLaunch.sceneId,
+                startBlockId: pendingLaunch.startBlockId,
+                snapshotId: pendingLaunch.snapshotId,
+            });
+        } else if (host.bootAction.kind === "story") {
             // A direct story launch enters the game immediately after the environment mounts.
             // `startBlockId` (row-precise "play from here") pre-poses the entry scene at that row.
             await startStoryInGame({
@@ -4547,6 +4720,60 @@ export function GameApp(props: GameAppProps): ReactNode {
         compiledStoryCacheRef.current = null;
     }, [bundle.bundleId, bundle.revision]);
 
+    /**
+     * A launch the host asked for while this app was already running.
+     *
+     * Dev Mode's row play control used to close the Dev Mode window and open another one, which cost
+     * a window teardown, a renderer boot and a fresh compile every press. The window is kept now, and
+     * what arrives instead is this request beside the recompiled bundle: start that story, at that
+     * row, in place. It is the same in-window relaunch the debug panel has always used.
+     *
+     * Declared BEFORE the hot-reload effect on purpose, and claims the revision synchronously: both
+     * effects see the same new bundle in the same commit, and exactly one of them may act on it.
+     */
+    useEffect(() => {
+        const launch = host.launchRequest;
+        if (!launch || consumedLaunchTokenRef.current === launch.token) {
+            return;
+        }
+        if (launch.afterRevision != null && bundle.revision === launch.afterRevision) {
+            // The bundle this launch was compiled from has not arrived yet. Acting now would start
+            // the story against the documents the author edited before pressing play, and the reload
+            // carrying the new ones would then resume the play head straight over it.
+            return;
+        }
+        if (activeStoryRevisionRef.current === null) {
+            // Nothing is mounted yet: the boot preload is still ahead of this and carries the
+            // request itself (see `runBootRef`). Left unconsumed on purpose, so it is the boot that
+            // takes it - starting a story beside a boot that is about to start one would be two
+            // mounts of the same session racing, and the loser is the one the author asked for half
+            // the time.
+            return;
+        }
+        consumedLaunchTokenRef.current = launch.token;
+        claimedLaunchRevisionRef.current = bundle.revision;
+        const request: DevModeStartStoryRequest = {
+            storyId: launch.storyId,
+            sceneId: launch.sceneId,
+            ...(launch.startBlockId ? { startBlockId: launch.startBlockId } : {}),
+            ...(launch.snapshotId ? { snapshotId: launch.snapshotId } : {}),
+        };
+        void (async () => {
+            try {
+                await startStoryInGame(request, { forceReinit: true });
+            } catch (err) {
+                if (err instanceof NlrSessionSupersededError || bundleSuperseded(bundle.revision, bundle.bundleId)) {
+                    // Two launches within a couple of seconds - a play control pressed again while
+                    // the last press was still mounting. The newer one owns the environment and is
+                    // putting the author's row on screen; this one has nothing left to enter.
+                    host.log("info", `[${host.id}] launch superseded by a newer bundle revision`);
+                    return;
+                }
+                reportFailure(err, { prefix: `[${host.id}] launch failed: ` });
+            }
+        })();
+    }, [bundle.bundleId, bundle.revision, bundleSuperseded, host, reportFailure, startStoryInGame]);
+
     useEffect(() => {
         if (activeStoryRevisionRef.current === null) {
             return;
@@ -4554,15 +4781,59 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (activeStoryRevisionRef.current === bundle.revision) {
             return;
         }
+        if (claimedLaunchRevisionRef.current === bundle.revision) {
+            // A launch the host asked for owns this revision (Dev Mode's row play control pressed
+            // while the window was open). It is already mounting the story at the row the author
+            // pointed at, and resuming the play head on top of it would be a second, contradictory
+            // start of the same bundle.
+            return;
+        }
         // Hot reload (new bundle revision): re-mount the environment with the recompiled story,
         // preserving whether the game had already been entered.
         const request = activeStoryRequestRef.current;
         const wasEntered = gameEnteredRef.current;
+        /**
+         * Where the player was, read now - before the mount below replaces the session that knows.
+         *
+         * Only for a run that had actually entered a game. Sitting on the title screen there is no
+         * place to keep, and re-entering the story would start a playthrough the author did not ask
+         * for.
+         */
+        const resumeState = wasEntered ? captureStoryResumeState() : null;
         void (async () => {
             try {
                 if (request) {
-                    const compiled = await compileStoryRequest(request);
-                    await mountNlrSession(compiled, { storyRequest: request });
+                    const { launchRequest, compileRequest, target } = buildStoryResumeLaunch({
+                        request,
+                        resume: resumeState,
+                        document: resolveRunningStoryDocument(),
+                    });
+                    // Said before the restart rather than after it, so that a reload which then fails
+                    // for its own reasons still explains the relocation - the two lines together are
+                    // what the author needs, and a notice held behind a successful mount is exactly
+                    // the one that goes missing when something else goes wrong.
+                    //
+                    // Only when the reload could not put the author where they were. A relocation
+                    // inside the scene they are reading is visible to them; being sent back to the
+                    // story entry is not, and a restart nobody explained reads as the reload having
+                    // lost their place.
+                    const notice = target ? storyResumeNotice(target) : null;
+                    if (notice) {
+                        const level = target?.kind === "entry" ? "warning" : "info";
+                        host.log(level, `[${host.id}] ${notice}`);
+                        if (level === "warning") {
+                            host.reportIssue?.({ level, message: notice, origin: "session" });
+                        }
+                    }
+                    const compiled = await compileStoryRequest(compileRequest);
+                    await mountNlrSession(compiled, { storyRequest: launchRequest });
+                    // The mount reset the play head with the environment it belonged to, but the
+                    // player did not restart - they are being put back where they were. Handing the
+                    // history back is what lets the NEXT edit fall back to a row they had actually
+                    // played, instead of to the top of the scene.
+                    if (target && target.kind !== "entry") {
+                        playHead.seedTrail(resumeState?.position.trail ?? []);
+                    }
                     if (wasEntered) {
                         await enterMountedGame();
                     }
@@ -4570,18 +4841,32 @@ export function GameApp(props: GameAppProps): ReactNode {
                     await startEmptyNlrEnvironment();
                 }
             } catch (err) {
-                if (err instanceof NlrSessionSupersededError) {
+                if (err instanceof NlrSessionSupersededError || bundleSuperseded(bundle.revision, bundle.bundleId)) {
                     // Another revision landed while this restart was in flight and has taken the
                     // environment over. Expected when saves arrive in quick succession — and more
                     // often now that a mount also waits for the stage to warm — so it is not a
-                    // failure to report.
+                    // failure to report. The revision test catches the tail of the same thing: the
+                    // overtaken restart can get as far as entering, and find the environment it was
+                    // going to enter already replaced.
                     host.log("info", `[${host.id}] NLR hot reload restart superseded by a newer bundle revision`);
                     return;
                 }
                 reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
             }
         })();
-    }, [bundle.revision, compileStoryRequest, enterMountedGame, host, mountNlrSession, startEmptyNlrEnvironment]);
+    }, [
+        bundle.bundleId,
+        bundle.revision,
+        bundleSuperseded,
+        captureStoryResumeState,
+        compileStoryRequest,
+        enterMountedGame,
+        host,
+        mountNlrSession,
+        playHead,
+        resolveRunningStoryDocument,
+        startEmptyNlrEnvironment,
+    ]);
 
     useEffect(() => {
         const nextBundleId = bundle.bundleId;
@@ -5050,6 +5335,151 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [activeSurface, bundle, core, host, hostAdapterBundle]);
 
+    /**
+     * The window gaining or losing the player's attention, as a fact this app keeps.
+     *
+     * Separate from the blueprint dispatch below because the two want different things: a graph
+     * only wants to hear about a change while there is a surface to run it on, and the output gate
+     * wants to know at all times - including while the game is still booting, which is exactly when
+     * a player who launched it and went to read something else is not listening.
+     *
+     * The shell is the source, so the answer is the same one in Dev Mode, in a preview and in the
+     * build: the window's, from the process that owns it. A host with no window omits both, and the
+     * value stays at "focused", which is what a panel drawn inside Studio honestly is.
+     */
+    useEffect(() => {
+        if (!host.subscribeWindowFocusChanged) {
+            return;
+        }
+        let disposed = false;
+        const set = (isFocused: boolean) => {
+            if (disposed || windowFocusedRef.current === isFocused) {
+                return;
+            }
+            windowFocusedRef.current = isFocused;
+            applyFocusMuteRef.current?.();
+        };
+        // Seeded as well as subscribed: a surface opened while the player was already in another
+        // window produces no event, and a game that waited for one would play on at full volume
+        // until they came back and left again.
+        void Promise.resolve(host.isWindowFocused?.() ?? true)
+            .then(set)
+            .catch(() => undefined);
+        const unsubscribe = host.subscribeWindowFocusChanged(set);
+        return () => {
+            disposed = true;
+            unsubscribe();
+        };
+    }, [host]);
+
+    /**
+     * "Go quiet while I am in another window": the player's preference, applied.
+     *
+     * Re-decided on every preference change as well as on every focus change, because the engine
+     * writes the player's master volume onto the same output whenever `globalVolume` moves - see
+     * `focusMute`, which is where the whole of that arrangement is written down.
+     *
+     * The announcement is the mixer's own listener set rather than the blueprint event stream: what
+     * has to hear this is the `nl.video` widget, whose element is on no gain node and therefore
+     * follows the gate by arithmetic. Nothing an author wrote has changed, so nothing an author
+     * wrote should fire.
+     */
+    useEffect(() => {
+        const game = nlrSession?.game;
+        if (!game) {
+            return;
+        }
+        // Loosened for the reason the skip controller loosens it: `muteOnWindowBlur` is Studio's own
+        // preference riding in the engine's store, so the typed accessor would refuse the key.
+        const preference = (game as {
+            preference?: { getPreference?: (key: string) => unknown };
+        }).preference;
+        let announcing = false;
+        const announce = () => {
+            // The listener set contains this effect's own re-decide, which would answer "nothing
+            // moved" and stop - but only after a second pass over every video on screen.
+            if (announcing) {
+                return;
+            }
+            announcing = true;
+            try {
+                for (const listener of [...preferenceListenersRef.current]) {
+                    listener();
+                }
+            } finally {
+                announcing = false;
+            }
+        };
+        const apply = () => {
+            const enabled = preference?.getPreference?.("muteOnWindowBlur") === true;
+            if (focusMute.update({ enabled, focused: windowFocusedRef.current })) {
+                announce();
+            }
+        };
+        applyFocusMuteRef.current = apply;
+        apply();
+        const unsubscribe = subscribeGamePreferences(apply);
+        return () => {
+            applyFocusMuteRef.current = null;
+            unsubscribe();
+            // Never across a teardown. The engine reads its output back into the master volume
+            // preference when its player mounts, so a zero left here would be taken for the volume
+            // the player chose - and then saved.
+            if (focusMute.release()) {
+                announce();
+            }
+        };
+    }, [focusMute, nlrSession, subscribeGamePreferences]);
+
+    // The same transitions, as the `On Window Focus Changed` head. Shaped exactly like the
+    // fullscreen dispatch above and owned by the host in the same way, so the two ambient window
+    // events reach a graph by one route.
+    useEffect(() => {
+        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeWindowFocusChanged) {
+            return;
+        }
+        return host.subscribeWindowFocusChanged(isFocused => {
+            const eventPayload = { isFocused };
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            void dispatchGlobalBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
+                eventName: "windowFocusChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            }).then(() => dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFocusChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).then(() => dispatchWidgetsBlueprintEvent({
+                document: bundle.ui.uidoc,
+                blueprintDocument: bundle.ui.localBlueprints,
+                persistentVariables: bundle.ui.persistentVariables,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "windowFocusChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).catch(err => host.log("error", normalizeError(err)));
+        });
+    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+
     // The user asked to close the window; the main process holds the close open until the blueprint
     // decides. A shared event control travels through the global then surface dispatch, so a Stop
     // Event Bubble node in either cancels the close. Absent that, the window closes. Scoped like the
@@ -5254,8 +5684,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     nlrSceneTokensRef.current.push(
                         sceneGameState.events.on("event:state.scene.mount", (scene: Scene) => {
                             currentSceneIdRef.current = sceneIdByScene.get(scene) ?? null;
+                            currentSceneRef.current = scene;
                         }),
                         sceneGameState.events.on("event:state.scene.unmount", (scene: Scene) => {
+                            if (currentSceneRef.current === scene) {
+                                currentSceneRef.current = null;
+                            }
                             if (currentSceneIdRef.current === (sceneIdByScene.get(scene) ?? null)) {
                                 currentSceneIdRef.current = null;
                             }

@@ -31,6 +31,10 @@ import type {
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type {
+    BlueprintOpenScreenshotsResult,
+    BlueprintScreenshotResult,
+} from "./blueprint/screenshot";
 import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
@@ -268,6 +272,7 @@ export enum IPCEventType {
     devModeGetStatus = "devMode.getStatus",
     devModePayloadUpdate = "devMode.payload.update",
     devModeControlReload = "devMode.control.reload",
+    devModeControlStartStory = "devMode.control.startStory",
     devModeControlError = "devMode.control.error",
     devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
@@ -288,6 +293,10 @@ export enum IPCEventType {
     devModeFullscreenGet = "devMode.fullscreen.get",
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
+    devModeWindowFocusGet = "devMode.window.focusGet",
+    devModeWindowFocusChanged = "devMode.window.focusChanged",
+    devModeScreenshotSave = "devMode.screenshot.save",
+    devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
     devModeWindowCloseRequested = "devMode.window.closeRequested",
 
     previewLaunch = "preview.launch",
@@ -2693,6 +2702,54 @@ export type IPCDevModeEvents = {
         response: never;
     };
     /**
+     * Whether the Dev Mode window has the author's attention, for `Is Window Focused` and for the
+     * "mute when unfocused" preference.
+     *
+     * Asked of the main process rather than read off the page, exactly as the packaged game asks
+     * its own: `document.hasFocus()` says no while Studio's own developer tools have the keyboard,
+     * which is not what an author testing a blur handler means by "I have gone away".
+     */
+    [IPCEventType.devModeWindowFocusGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            isFocused: boolean;
+        };
+    };
+    [IPCEventType.devModeWindowFocusChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            isFocused: boolean;
+        },
+        response: never;
+    };
+    /**
+     * Capture the Dev Mode window and write the picture, for the `Save Screenshot` node.
+     *
+     * The project is named rather than a path: where the file goes is this process's answer, and it
+     * is the author's Dev Mode data for that project (the same per-project directory the Dev Mode
+     * saves use), so testing a screenshot button leaves real files in a real folder and clearing
+     * the project's player data takes them with it.
+     */
+    [IPCEventType.devModeScreenshotSave]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        },
+        response: BlueprintScreenshotResult;
+    };
+    [IPCEventType.devModeScreenshotOpenFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        },
+        response: BlueprintOpenScreenshotsResult;
+    };
+    /**
      * Asks the Dev Mode renderer whether the window may close, giving its blueprints a chance to
      * intercept the close (On Window Close Requested). Driven from the main process, which owns the
      * window's close guard; `allow: false` cancels the close.
@@ -2708,6 +2765,26 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: {
             revision: number;
+        },
+        response: never;
+    };
+    /**
+     * Start this story now, in the Dev Mode window that is already open.
+     *
+     * The row play control in the story editor pressed while Dev Mode is running: the window is kept
+     * and the run restarts in place. Sent immediately before the bundle it was compiled against, so
+     * the window acts on the documents the author has just saved rather than on the ones it was
+     * showing. `token` rises per session so a request cannot be acted on twice.
+     */
+    [IPCEventType.devModeControlStartStory]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            token: number;
+            storyId: string;
+            sceneId: string;
+            startBlockId?: string;
+            snapshotId?: string;
         },
         response: never;
     };
