@@ -3,6 +3,7 @@ import { FolderOpen, SquareArrowOutUpRight } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { useProjectDistrusted, useProjectDistrustedReason } from "@/apps/workspace/hooks/useProjectDistrusted";
 import type { ExternalScriptEditor } from "@shared/types/scriptEditors";
 
 /**
@@ -46,6 +47,12 @@ export function ScriptOpenMenu({ projectPath, scriptRef, compact }: Props) {
     const { t } = useTranslation();
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [editors, setEditors] = useState<ExternalScriptEditor[]>([]);
+    // Only the editors are refused for a distrusted project - starting a program on the project's
+    // behalf is the thing it does not get - so only they are greyed. Revealing the folder and
+    // handing it to the OS start nothing of Studio's, and looking at somebody else's files is
+    // exactly what an author does before deciding to trust them.
+    const distrusted = useProjectDistrusted();
+    const distrustedReason = useProjectDistrustedReason();
 
     useEffect(() => {
         let cancelled = false;
@@ -70,6 +77,8 @@ export function ScriptOpenMenu({ projectPath, scriptRef, compact }: Props) {
         ...editors.map(editor => ({
             id: editor.id,
             label: t("blueprint.script.openIn", { editor: editor.name }),
+            disabled: distrusted,
+            tooltip: distrusted ? distrustedReason : undefined,
             onClick: () => open(editor.id),
         })),
         ...(editors.length > 0 ? [{ id: "sep", separator: true as const }] : []),

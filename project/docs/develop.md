@@ -292,7 +292,6 @@
 - [ ] Plugin Ecosystem
   - [ ] Plugin runtime
     - [ ] Plugin manifest
-    - [ ] Plugin discovery from `.nlstudio/plugins`
     - [ ] Plugin install, enable, disable, and uninstall
     - [ ] Plugin lifecycle events
     - [ ] Version compatibility checks
@@ -661,7 +660,6 @@
 - [ ] 插件生态
   - [ ] 插件运行时
     - [ ] 插件 manifest
-    - [ ] 从 `.nlstudio/plugins` 发现插件
     - [ ] 安装、启用、禁用与卸载
     - [ ] 插件生命周期事件
     - [ ] 版本兼容性检查

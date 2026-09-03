@@ -115,7 +115,7 @@ electron-builder **不需要改**：[electron-builder.yml](../electron-builder.y
 | 单段模式**任意深度**匹配 | `dist` 也会排除 `sub/dist`；要锚定根就写 `/dist/` |
 | 多段模式根锚定；`*.ext` 任意深度 | |
 | `#` 注释与空行无效力；`!` 取反可用 | |
-| `.lore/` 天然排除；**点目录不天然排除** | `.nlstudio/plugins/x.js` 不写进忽略文件就会被提交——已用差分实测：**不写忽略文件时它确实进了提交** |
+| `.lore/` 天然排除；**点目录不天然排除** | `.nlstudio/services/panel_state.json` 不写进忽略文件就会被提交——已用差分实测：**不写忽略文件时它确实进了提交** |
 | `repositoryStatus` 同样遵守 | |
 | 忽略文件自身进版本库 | 策略随 clone 传播 |
 

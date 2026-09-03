@@ -170,6 +170,7 @@ import {
     evaluateStoryActionBlueprintValueSync,
     type CompileStoryActionScriptInput,
     type StoryActionFnCatalog,
+    type StoryDevtoolsBridge,
 } from "./storyActionBlueprint";
 import {
     getStoryCompilePasses,
@@ -738,6 +739,8 @@ export type StagePreviewCompileInput = {
     /** M-VAR: saved variable registry table; see {@link CompileInput.savedVariables}. */
     savedVariables?: SavedVariableRuntimeTable;
     persistence?: StoryPersistenceBridge;
+    /** Host debug stream for a story row's log lines; see {@link CompileInput.devtools}. */
+    devtools?: StoryDevtoolsBridge;
     /** In/out points marked on audio assets; see {@link CompileInput.audioClips}. */
     audioClips?: Record<string, AudioClipRegion>;
     /** The project's audio tracks; see {@link CompileInput.audioTracks}. */
@@ -821,6 +824,8 @@ type SceneCompileContext = {
     persistentVariables: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
+    /** Host debug stream for a story row's log lines; absent for a host with no debugger. */
+    devtools?: StoryDevtoolsBridge;
     /** Host hook for an `/ending` row; see {@link CompileInput.onEndingReached}. */
     onEndingReached?: (ending: StoryEndingReach) => void;
     /** Host hook for a `/quit` row; see {@link CompileInput.onQuitToPage}. */
@@ -921,6 +926,14 @@ type CompileInput = {
     savedVariables?: SavedVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
+    /**
+     * Where a story row's log lines go, from the host's own debug stream.
+     *
+     * The same object a Surface blueprint's host API carries, so a `Log` node in a story row and one
+     * on a page write to the same place. Absent for a host with no debugger, which leaves the
+     * console line and nothing else.
+     */
+    devtools?: StoryDevtoolsBridge;
     /**
      * Called when an `/ending` row runs.
      *
@@ -1159,6 +1172,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentKeys,
             persistentVariables,
             persistence: input.persistence,
+            devtools: input.devtools,
             onEndingReached: input.onEndingReached,
             onQuitToPage: input.onQuitToPage,
             blueprintDocument: input.blueprintDocument,
@@ -1390,6 +1404,7 @@ async function buildLaunchEntryScene(params: {
         persistentKeys: params.persistentKeys,
         persistentVariables: params.persistentVariables,
         persistence: input.persistence,
+        devtools: input.devtools,
         onEndingReached: input.onEndingReached,
         onQuitToPage: input.onQuitToPage,
         blueprintDocument: input.blueprintDocument,
@@ -1657,6 +1672,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         persistentKeys: mergedPersistentStorageKeys(previewPersistentView),
         persistentVariables: input.persistentVariables ?? {},
         persistence: input.persistence,
+        devtools: input.devtools,
         blueprintDocument: input.blueprintDocument,
         sceneFnCatalog: collectSceneStoryActionFns({
             document: input.document,
@@ -3008,6 +3024,7 @@ function buildStoryActionScriptInput(
         savedVariables: ctx.savedVariables,
         savedNamespace: SAVED_PERSISTENT_NAMESPACE,
         persistence: ctx.persistence,
+        devtools: ctx.devtools,
         onDiagnostic,
     };
 }

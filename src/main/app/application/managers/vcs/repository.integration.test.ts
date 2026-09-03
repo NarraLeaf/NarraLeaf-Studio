@@ -48,7 +48,7 @@ const ASSET = "assets/content/ab/cd/sprite.png";
 const ICON = "resources/icons/derived/icon.png";
 const CONFIG = "project.json";
 
-const PLUGIN = ".nlstudio/plugins/x.js";
+const STUDIO_STATE = ".nlstudio/services/panel_state.json";
 const THUMBNAIL = "editor/cache/thumbnail/ab/cd/y.png";
 const REMOTE = "editor/assets/remote/ab/cd/z.bin";
 const BUILD = "dist/out.js";
@@ -116,7 +116,7 @@ beforeAll(async () => {
     write(STORY, JSON.stringify({ version: 9, scenes: [] }));
     write(ASSET, "PNG-BYTES");
     write(ICON, "BAKED-PNG-BYTES");
-    write(PLUGIN, "module.exports = {};");
+    write(STUDIO_STATE, JSON.stringify({ layout: {} }));
     write(THUMBNAIL, "THUMB-BYTES");
     write(REMOTE, "CACHED-REMOTE-BYTES");
     write(BUILD, "console.log(1);");
@@ -155,7 +155,7 @@ describe.skipIf(!supported)("repository init", () => {
     }, 60_000);
 
     it("keeps machine-local state, caches, build output and half-written files out of history", async () => {
-        expect(await committed(PLUGIN)).toBe(false);
+        expect(await committed(STUDIO_STATE)).toBe(false);
         expect(await committed(THUMBNAIL)).toBe(false);
         expect(await committed(REMOTE)).toBe(false);
         expect(await committed(BUILD)).toBe(false);
