@@ -230,6 +230,16 @@ export const properties = {
             refresh: "Check for Updates",
             refreshFailedTitle: "Could not check the source",
         },
+        /**
+         * A local asset's provenance, in the place where a remote one shows its address and its
+         * update check. It is one line rather than two fields because there is one fact to state:
+         * the project holds a copy, and the file it was copied from stays the author's. Studio has
+         * nothing else to say about that file, and saying nothing at all left the two asset kinds
+         * looking as though only one of them had a source. The help topic carries the rest.
+         */
+        local: {
+            origin: "The project holds a copy of a file on this machine. Studio does not track that file; Replace File imports it again.",
+        },
         image: {
             title: "Image Properties",
             info: "Image Information",

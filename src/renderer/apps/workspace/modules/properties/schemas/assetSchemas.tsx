@@ -55,11 +55,12 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
             order: 50,
         },
         {
-            id: "remoteSource",
+            id: "assetSource",
             type: "custom",
-            // Beside `replaceContent` because they are the same kind of thing — "where do this
-            // record's bytes come from" — and exactly one of them ever renders: replacing points a
-            // local record at another file, refreshing re-takes a remote record's snapshot.
+            // Under `replaceContent` because they are the same kind of thing — "where do this
+            // record's bytes come from". A remote record shows its address and offers to re-take
+            // the snapshot; a local one states that the file it was imported from is not tracked,
+            // which is what the Replace File button above it is for.
             component: ({ data }) => <AssetSourceSection asset={data.asset} />,
             order: 60,
         },
