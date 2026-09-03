@@ -50,6 +50,7 @@ export const HELP_TOPIC_IDS = [
     "dictionary",
     "dictionaryMarks",
     "assets",
+    "assetSources",
     "assetSets",
     "assetSetAxes",
     "mediaConversion",
@@ -229,7 +230,12 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         id: "assets",
         section: "content",
         shortcuts: ["assets.rename", "assets.copy", "assets.paste"],
-        related: ["assetSets", "characters", "audio", "lint"],
+        related: ["assetSources", "assetSets", "characters", "audio", "lint"],
+    },
+    {
+        id: "assetSources",
+        section: "content",
+        related: ["assets", "mediaConversion", "versionChanges"],
     },
     {
         id: "assetSets",

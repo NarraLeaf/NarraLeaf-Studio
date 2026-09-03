@@ -330,10 +330,20 @@ describe("ContentSection", () => {
 
         expect(markup).toContain("Fine 1.0.0");
         expect(markup).toContain("Broken 1.0.0");
-        // Suppression outranks the status word: "incompatible" is why, "Disabled" is what it costs.
-        expect(markup).toContain(">Disabled<");
+        // Suppression outranks the status word: "incompatible" is why, being withheld from this
+        // project is what it costs. Not "Disabled", which is the word for the author's own switch.
+        expect(markup).toContain(">Off for this project<");
+        expect(markup).not.toContain(">Disabled<");
         // A word beside every row would hide the one row that needs it.
         expect(markup).not.toContain("Ready");
+    });
+
+    it("says a plugin ships that the author switched off, which reads as ready otherwise", () => {
+        const plugins: BuildPluginEntry[] = [
+            { id: "a.off", label: "Off", version: "1.0.0", status: "satisfied", suppressed: false, installedEnabled: false },
+        ];
+
+        expect(render({ plugins })).toContain(">Disabled<");
     });
 
     it("raises the web caveat only for a selection that includes the web export", () => {

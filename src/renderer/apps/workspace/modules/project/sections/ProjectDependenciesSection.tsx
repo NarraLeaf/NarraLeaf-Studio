@@ -12,11 +12,7 @@ import type {
     DependencyResolutionEntry,
     ProjectDependencyResolution,
 } from "@shared/types/pluginDependencies";
-import {
-    DEPENDENCY_STATUS_LABEL_KEYS,
-    DEPENDENCY_STATUS_TEXT_STYLES,
-    dependencyNeedsAttention,
-} from "@/lib/workspace/project/dependencyStatusDisplay";
+import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -140,9 +136,9 @@ function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
 
 function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     const { t, tn } = useTranslation();
-    const { dependency, installedVersion, status, suppressed } = entry;
+    const { dependency, installedVersion } = entry;
     const usage = summarizeUsage(dependency.usedBy, tn);
-    const needsAttention = dependencyNeedsAttention(status, suppressed);
+    const state = describeDependencyState(entry);
 
     const meta = [
         t("project.dependencies.meta.requires", { version: dependency.authoredVersion }),
@@ -158,9 +154,9 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
                 <span className="min-w-0 truncate text-sm font-medium text-fg">
                     {dependency.name?.trim() || dependency.id}
                 </span>
-                {needsAttention ? (
-                    <span className={`shrink-0 text-2xs font-medium ${DEPENDENCY_STATUS_TEXT_STYLES[status]}`}>
-                        {suppressed ? t("project.dependencies.status.disabled") : t(DEPENDENCY_STATUS_LABEL_KEYS[status])}
+                {state ? (
+                    <span className={`shrink-0 text-2xs font-medium ${state.className}`}>
+                        {t(state.labelKey)}
                     </span>
                 ) : null}
             </div>

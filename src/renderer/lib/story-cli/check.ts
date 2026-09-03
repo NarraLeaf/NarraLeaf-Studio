@@ -29,11 +29,36 @@ import { buildLookups } from "./lookups";
 import { buildContext, listStories, readProjectData, readStoryDocument, type ProjectData } from "./project";
 
 export type CheckResult = {
+    /** Everything this run found, the file layer first. What `check` prints. */
     diagnostics: StoryFileDiagnostic[];
+    /** The file layer alone: the parser's and the compiler's own answers about these lines. */
+    fileDiagnostics: StoryFileDiagnostic[];
+    /**
+     * The document layer alone, each finding carrying the identity two runs are compared by.
+     * `apply` needs the halves apart: the file layer is always this file's doing, and the document
+     * layer is only partly - see {@link findingsIntroduced}.
+     */
+    projectFindings: KeyedLintFinding[];
     /** The scene the file compiles to, absent when it could not be compiled at all. */
     scene: StoryScene | null;
     /** Rule categories this run did not cover, so the caller can say so. */
     notRun: readonly string[];
+};
+
+/**
+ * One project-lint finding, plus a key that means "the same finding" across two runs of the linter.
+ *
+ * The key is the rule and the site, and nothing that a write elsewhere in the scene can move: not
+ * the row number (inserting a row above shifts every number below it), not the names or the excerpt
+ * a location carries for display, and not the message's own parameters (a project-wide rule counting
+ * something would change its count and read as a different finding, including when the count went
+ * down). What is left is stable enough that a finding present before a write and after it is
+ * recognised as the same one, and strict enough that a second finding of one rule on one row is not
+ * mistaken for it - two findings sharing a key are told apart by counting them.
+ */
+export type KeyedLintFinding = {
+    key: string;
+    diagnostic: StoryFileDiagnostic;
 };
 
 /** Whether anything at error severity was found - which is what decides the exit code. */
@@ -57,21 +82,18 @@ export async function checkStoryFile(
     const { document } = readStoryDocument(input.projectDir, input.storyId);
     const existing = input.scene ?? (parsed.ast.sceneId ? document.scenes?.[parsed.ast.sceneId] ?? null : null);
     if (!existing) {
-        return {
-            diagnostics: [
-                ...parsed.diagnostics,
-                {
-                    code: "file.unknown_scene",
-                    severity: "error",
-                    message: parsed.ast.sceneId
-                        ? `This story has no scene ${parsed.ast.sceneId}. It may have been deleted, or the file may `
-                            + "belong to another story."
-                        : "The file's #scene directive carries no id, so there is nothing to check it against.",
-                },
-            ],
-            scene: null,
-            notRun: [],
-        };
+        const diagnostics: StoryFileDiagnostic[] = [
+            ...parsed.diagnostics,
+            {
+                code: "file.unknown_scene",
+                severity: "error",
+                message: parsed.ast.sceneId
+                    ? `This story has no scene ${parsed.ast.sceneId}. It may have been deleted, or the file may `
+                        + "belong to another story."
+                    : "The file's #scene directive carries no id, so there is nothing to check it against.",
+            },
+        ];
+        return { diagnostics, fileDiagnostics: diagnostics, projectFindings: [], scene: null, notRun: [] };
     }
 
     const lookups = buildLookups(data, document, existing, buildContext(data, document, existing));
@@ -85,18 +107,27 @@ export async function checkStoryFile(
         mintId: mintStoryId,
     });
 
-    const diagnostics = [...parsed.diagnostics, ...compiled.diagnostics];
-    if (!compiled.scene || hasErrors(diagnostics)) {
+    const fileDiagnostics = [...parsed.diagnostics, ...compiled.diagnostics];
+    if (!compiled.scene || hasErrors(fileDiagnostics)) {
         // The document layer reads a whole project, and running it over one built from a file that
         // did not compile would report the file's own breakage a second time in a less useful place.
-        return { diagnostics, scene: compiled.scene, notRun: notRunCategories() };
+        return {
+            diagnostics: fileDiagnostics,
+            fileDiagnostics,
+            projectFindings: [],
+            scene: compiled.scene,
+            notRun: notRunCategories(),
+        };
     }
     const withEdit: StoryDocument = {
         ...document,
         scenes: { ...document.scenes, [compiled.scene.id]: compiled.scene },
     };
+    const projectFindings = await lintProject(input.projectDir, data, { [input.storyId]: withEdit });
     return {
-        diagnostics: [...diagnostics, ...(await lintProject(input.projectDir, data, { [input.storyId]: withEdit }))],
+        diagnostics: [...fileDiagnostics, ...projectFindings.map(finding => finding.diagnostic)],
+        fileDiagnostics,
+        projectFindings,
         scene: compiled.scene,
         notRun: notRunCategories(),
     };
@@ -113,21 +144,36 @@ export async function checkStoryFile(
  * first thing a reader needs.
  */
 export async function checkProject(projectDir: string): Promise<CheckResult> {
+    const findings = await lintStoredProject(projectDir);
+    return {
+        diagnostics: findings.map(finding => finding.diagnostic),
+        fileDiagnostics: [],
+        projectFindings: findings,
+        scene: null,
+        notRun: notRunCategories(),
+    };
+}
+
+/**
+ * The document layer over the stories exactly as they are stored.
+ *
+ * This is the baseline `apply` measures its own run against. A project carries findings that have
+ * nothing to do with the file being written - a stage name in chapter three, a label declared twice
+ * in a scene nobody is editing - and a write that refused while any of them stood would mean one bad
+ * row anywhere makes the whole project unwritable.
+ */
+export async function lintStoredProject(projectDir: string): Promise<KeyedLintFinding[]> {
     const data = readProjectData(projectDir);
     const documents: Record<string, StoryDocument> = {};
-    const unreadable: StoryFileDiagnostic[] = [];
+    const unreadable: KeyedLintFinding[] = [];
     for (const story of listStories(projectDir)) {
         try {
             documents[story.id] = readStoryDocument(projectDir, story.id).document;
         } catch (error) {
-            unreadable.push(toDiagnostic(storyUnreadableFinding(story, error)));
+            unreadable.push(toKeyedFinding(storyUnreadableFinding(story, error)));
         }
     }
-    return {
-        diagnostics: [...unreadable, ...(await lintProject(projectDir, data, documents))],
-        scene: null,
-        notRun: notRunCategories(),
-    };
+    return [...unreadable, ...(await lintProject(projectDir, data, documents))];
 }
 
 function notRunCategories(): string[] {
@@ -140,7 +186,7 @@ async function lintProject(
     projectDir: string,
     data: ProjectData,
     documents: Record<string, StoryDocument>,
-): Promise<StoryFileDiagnostic[]> {
+): Promise<KeyedLintFinding[]> {
     const stories = listStories(projectDir)
         .filter(story => documents[story.id])
         .map(story => ({
@@ -176,7 +222,28 @@ async function lintProject(
     const report = await runLintRules(context, {
         rules: LINT_RULES.filter(rule => headlessLintCategories.includes(rule.category)),
     });
-    return report.entries.map(toDiagnostic);
+    return report.entries.map(toKeyedFinding);
+}
+
+function toKeyedFinding(entry: LintReportEntry): KeyedLintFinding {
+    return { key: findingKey(entry), diagnostic: toDiagnostic(entry) };
+}
+
+/** See {@link KeyedLintFinding} for what is deliberately left out of this. */
+function findingKey(entry: LintReportEntry): string {
+    const location = entry.location;
+    const site = location.kind === "story"
+        ? [location.storyId, location.sceneId ?? "", location.blockId ?? ""]
+        : location.kind === "asset"
+            ? [location.assetId]
+            : location.kind === "blueprint"
+                ? [location.blueprintId, location.graphId ?? "", location.nodeId ?? ""]
+                : location.kind === "surface"
+                    ? [location.surfaceId, location.elementId ?? ""]
+                    : location.kind === "character"
+                        ? [location.characterId]
+                        : [];
+    return [entry.ruleId, entry.messageKey, location.kind, ...site].join(" ");
 }
 
 function toDiagnostic(entry: LintReportEntry): StoryFileDiagnostic {
