@@ -295,7 +295,7 @@ function transitionSlots(
     ctx: NarralangExtractContext,
     blockId: StoryBlockId,
     ref: StoryTransitionRef | undefined,
-    context: "scene" | "character",
+    context: "scene" | "character" | "expression",
 ): NarralangSlots {
     // A ref that names no kind is a row that names no transition - see `storyTransitionKindOf` - so
     // it exports as a plain line rather than as a transition the script cannot spell.
@@ -628,7 +628,12 @@ function characterShape(
                 slots: {
                     subject,
                     appearance: asNames(appearanceNames(ctx, block, payload)),
-                    ...transitionSlots(ctx, block.id, payload.transition, "character"),
+                    // The swap's own context, not the character's: this is the one character row the
+                    // engine plays a `StoryTransitionRef` on (`char(src, transition)`), and it is the
+                    // context whose word list the `/char` line offers. Read through the character's
+                    // list instead, the commonest swap of all - a plain crossfade - named nothing,
+                    // and every row carrying one was reported as having no script spelling.
+                    ...transitionSlots(ctx, block.id, payload.transition, "expression"),
                 },
             };
         case "setName":
@@ -752,7 +757,15 @@ function imageShape(
                 },
             };
         case "setSource":
-            return { form: "statement", verb: "imageSource", slots: { subject, source } };
+            // A source swap plays a transition exactly as `/char` does - the compiler emits
+            // `char(src, transition)` for both - so the tail belongs here too. Without it a
+            // transition an author had set was dropped from the script silently, and a round trip
+            // through the text took it off the row.
+            return {
+                form: "statement",
+                verb: "imageSource",
+                slots: { subject, source, ...transitionSlots(ctx, block.id, payload.transition, "expression") },
+            };
         case "show":
             return {
                 form: "statement",

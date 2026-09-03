@@ -339,7 +339,9 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
                 ...TRANSFORM_TAIL,
             ],
         },
-        imageSource: { keyword: "image source", slots: [SUBJECT, { slot: "source", value: ["name", "color"] }] },
+        // The transition tail for the same reason `characterExpression` has it: a source swap is the
+        // stage object's version of the portrait swap, and the compiler plays a transition on both.
+        imageSource: { keyword: "image source", slots: [SUBJECT, { slot: "source", value: ["name", "color"] }, ...TRANSITION_TAIL] },
         imageShow: { keyword: "show", slots: [SUBJECT, ...TRANSFORM_TAIL, ...TRANSITION_TAIL] },
         imageHide: { keyword: "hide", slots: [SUBJECT, ...TRANSFORM_TAIL, ...TRANSITION_TAIL] },
 

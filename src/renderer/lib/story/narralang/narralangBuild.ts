@@ -312,7 +312,7 @@ function transformOf(slots: NarralangSlots, context: "reveal" | "conceal" | "nvl
 }
 
 /** The row's own transition - kept apart from the transform's, because one row can carry both. */
-function transitionOf(slots: NarralangSlots, context: "scene" | "character"): StoryTransitionRef | undefined | Fail {
+function transitionOf(slots: NarralangSlots, context: "scene" | "character" | "expression"): StoryTransitionRef | undefined | Fail {
     const value = valueOf(slots, "transition");
     const easing = nameOf(slots, "transitionEasing");
     const holdMs = msOf(slots, "transitionHold");
@@ -1067,7 +1067,10 @@ function characterDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: 
             return { kind: "action", payload: prune({ ...base, operation: "move" as const, transform }) };
         }
         case "characterExpression": {
-            const transition = transitionOf(slots, "character");
+            // `expression`, not `character`: the swap is the one character row that plays a
+            // transition, and its word list is the one the `/char` line offers - the crossfade
+            // included, which the character list did not name.
+            const transition = transitionOf(slots, "expression");
             if (isFail(transition)) {
                 return transition;
             }
@@ -1229,6 +1232,12 @@ function imageDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
             assetId = asset.value;
         }
         if (verb === "imageSource") {
+            // The swap's context, the one the `/image src` line offers: a source swap is the stage
+            // object's portrait swap and the compiler plays the same `char(src, transition)` on it.
+            const swap = transitionOf(slots, "expression");
+            if (isFail(swap)) {
+                return swap;
+            }
             return {
                 kind: "action",
                 payload: prune({
@@ -1238,6 +1247,7 @@ function imageDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Narr
                     target: optionalDisplayableRefOf(ctx, objectName, "image"),
                     assetId,
                     color,
+                    transition: swap,
                 }),
             };
         }

@@ -61,9 +61,10 @@ export type StoryTransitionWord =
 /**
  * Where a transition word is being used, which decides both the supported subset and the mapping:
  *  - `scene`: `/bg` / `/jump` - a whole-screen change, maps to `StoryTransitionRef.kind`.
- *  - `character`: `/show` / `/hide` of a character - maps to `StoryTransitionRef.kind`, but `fade`
- *    is a fade-in (the portrait appears over the scene; a crossfade needs two frames of the same
- *    object, which is what `/face` does implicitly).
+ *  - `character`: a character's own `StoryTransitionRef` - `fade` is a fade-in, because the portrait
+ *    appears over the scene rather than replacing a frame of itself. Same list as `expression` minus
+ *    the whole-screen masks, and it names the crossfade too: a stored kind this context cannot name
+ *    is a row nothing can read back.
  *  - `reveal` / `conceal`: `/show` / `/hide` of a stage object - maps to a transform preset, since
  *    images and texts animate through their transform, and the direction comes from the verb.
  *  - `nvl`: the NVL panel's enter/exit, a short preset list.
@@ -123,7 +124,12 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     // whole frame, so on the expression swap - which masks to the portrait's own box - it would
     // play a full-screen picture through a sprite-sized window.
     scene: [...SCENE_WORDS, "rule"],
-    character: ["fade", "slide", "circle", "wipe", "blur", "exposure", "none"],
+    // `dissolve` for the same reason `expression` carries it, and it is the same fact: `fade` here is
+    // the fade-in, so the crossfade is the look this context can hold and had no word for. A stored
+    // `dissolve` then named nothing, and a row holding one read back as a row with no transition at
+    // all - which is how a portrait that crossfades came back as a cut, silently, wherever this
+    // context is read.
+    character: ["fade", "dissolve", "slide", "circle", "wipe", "blur", "exposure", "none"],
     // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
     // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
     // which is the slot the vocabulary already gives a placement.

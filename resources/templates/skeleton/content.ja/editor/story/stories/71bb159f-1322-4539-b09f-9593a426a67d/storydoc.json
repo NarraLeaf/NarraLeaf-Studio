@@ -119,10 +119,6 @@
                 }
               },
               "durationMs": 400
-            },
-            "transition": {
-              "kind": "fadeIn",
-              "durationMs": 400
             }
           }
         },
@@ -306,10 +302,6 @@
                   "yoffset": -50
                 }
               },
-              "durationMs": 400
-            },
-            "transition": {
-              "kind": "fadeIn",
               "durationMs": 400
             }
           }
@@ -666,10 +658,6 @@
                 }
               },
               "durationMs": 400
-            },
-            "transition": {
-              "kind": "fadeIn",
-              "durationMs": 400
             }
           }
         },
@@ -709,8 +697,10 @@
             "action": "character",
             "operation": "exit",
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
-            "transition": {
-              "kind": "dissolve",
+            "transform": {
+              "to": {
+                "opacity": 0
+              },
               "durationMs": 600
             }
           }
