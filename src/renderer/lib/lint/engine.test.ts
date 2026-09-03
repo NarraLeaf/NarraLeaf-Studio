@@ -167,6 +167,29 @@ describe("runLintRules", () => {
         expect(report.skipped).toEqual(["text/empty", "text/overlong"]);
     });
 
+    /**
+     * The sweep must not depend on a timer to get from one rule to the next.
+     *
+     * Chromium throttles timers in a window that is not visible - one wake-up per second, and one
+     * per minute once it has been hidden for five - which is the normal state of the workspace
+     * while a build runs. With `setTimeout` between the rules, a sweep whose rules cost a
+     * millisecond each took minutes, and the build gated on it looked like a build that never
+     * started. Fake timers stand in for that throttling here: nothing advances them, so a sweep
+     * that waits on one never finishes.
+     */
+    it("finishes without any timer being advanced", async () => {
+        vi.useFakeTimers();
+        try {
+            const rules = [makeRule("text/empty"), makeRule("text/overlong"), makeRule("story/empty-scene")];
+
+            const report = await runLintRules(createTestLintContext(), { rules });
+
+            expect(report.rulesRun).toEqual(["text/empty", "text/overlong", "story/empty-scene"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("reports progress once per scheduled rule", async () => {
         const progress: { done: number; total: number; ruleId: string }[] = [];
         const rules = [makeRule("text/empty"), makeRule("text/overlong")];

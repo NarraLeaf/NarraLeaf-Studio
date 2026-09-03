@@ -510,6 +510,10 @@ export const lint = {
         finding: "{location} {message} ({rule})",
     },
     build: {
+        // Printed on the build channel when the sweep begins, because it is the longest thing
+        // between the click and the first sign of a package, and the build channel is where an
+        // author waiting for one is looking.
+        started: "Checking the project…",
         blocked: "Build stopped by {count} problems",
         // Spelled out panel → page → row, because the gate is on by default: an author who never
         // opened this panel has no reason to know the setting exists, and "in the lint settings"

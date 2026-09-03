@@ -498,7 +498,10 @@ export function RunControl() {
     const launchBlocked = distrusted && !running;
     const frozenTitle = useFreezeUnavailableReason();
     const distrustedTitle = useProjectDistrustedReason();
-    const building = buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
+    // `checking` included: the pre-build checks are part of the run, and while they were left
+    // out the row went on offering to start a build that had already started.
+    const building = buildStatus === "checking" || buildStatus === "preparing"
+        || buildStatus === "compiling" || buildStatus === "packaging";
     /**
      * Production Build is off while frozen, exactly as it was when it had its own button - the same
      * answer `resolveFrozenActionDisabled` gives for `buildAction`, which is still what the palette

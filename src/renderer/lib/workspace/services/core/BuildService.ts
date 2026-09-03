@@ -145,7 +145,16 @@ export const BUILD_CONSOLE_SOURCE = "Build";
  * It snaps to a solid 100% only on real completion, which is the status saying so and never a
  * counter reaching its total.
  */
-const BUILD_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["preparing", "compiling", "packaging"];
+const BUILD_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["checking", "preparing", "compiling", "packaging"];
+
+/**
+ * The phases the main process owns, and therefore the only ones worth polling it about.
+ *
+ * `checking` is not among them: the pre-build checks run here, and the pipeline has not been asked
+ * for anything yet, so a poll during them answers `idle` - which would overwrite the phase the
+ * window is in the middle of. See {@link GameBuildStatus}.
+ */
+const PIPELINE_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["preparing", "compiling", "packaging"];
 
 /** How long the full bar lingers after a successful build before it clears. */
 const BUILD_DONE_LINGER_MS = 1400;
@@ -213,6 +222,14 @@ export class BuildService extends Service<BuildService> {
     /** What the run now in flight was asked for; read when it reaches a terminal state. */
     private pendingRun: { kind: GameBuildRunKind; appTagId?: string } | null = null;
     private cancelRequested = false;
+    /**
+     * Aborts the pre-build checks, which are the one part of a run this window performs itself.
+     *
+     * The pipeline's own cancel cannot reach them: it has not been asked for anything yet. Without
+     * this, Stop during the checks would have asked the main process to stop a run it does not have
+     * and the checks would have gone on to start the build the author had just stopped.
+     */
+    private gateAbort: AbortController | null = null;
     private lastFinishedRun: FinishedGameBuildRun | null = null;
     private finishedRunCount = 0;
 
@@ -323,7 +340,12 @@ export class BuildService extends Service<BuildService> {
         this.refreshInFlight = true;
         try {
             const result = await getInterface().gameBuild.getStatus(this.projectPath());
-            if (result.success) {
+            // Never while the pre-build checks are running. They belong to this window and the
+            // pipeline has not been asked for anything yet, so its honest answer is `idle` - which
+            // would put the window back to "no build running" halfway through starting one. The
+            // poller is stopped during `checking` for the same reason; this covers the callers that
+            // refresh on their own (a mount, a window regaining focus).
+            if (result.success && this.state.status !== "checking") {
                 this.updateState(result.data.state);
             }
         } finally {
@@ -344,6 +366,12 @@ export class BuildService extends Service<BuildService> {
         // the platforms for them - and a build that died in preflight is exactly the one an author
         // comes back to in the dashboard's history wanting to know what it was building.
         const platforms = [...new Set(request.targets.map(target => target.platform))];
+        // Before the checks, not after them. They read every story, every graph and every asset the
+        // project has, so they are the part of a run an author is most likely to be left waiting
+        // through - and until this existed the window said nothing at all while they ran: no phase,
+        // no bar, and a Production Build row that still offered to start the build that had already
+        // started. See `GameBuildStatus`.
+        this.updateState({ status: "checking", progress: null, startedAt, platforms });
         const refusal = await this.runPreBuildGates(startedAt, platforms, request.appTagId);
         if (refusal) {
             return refusal;
@@ -384,6 +412,29 @@ export class BuildService extends Service<BuildService> {
         startedAt: number,
         platforms: GameBuildPlatform[],
         appTagId: string | undefined,
+    ): Promise<GameBuildStateSnapshot | null> {
+        const abort = new AbortController();
+        this.gateAbort = abort;
+        try {
+            return await this.runPreBuildGatesInner(startedAt, platforms, appTagId, abort.signal);
+        } finally {
+            this.gateAbort = null;
+        }
+    }
+
+    /**
+     * The gates themselves. Split from {@link runPreBuildGates} only so the abort controller above
+     * is cleared however this returns; every refusal below is the one that function documents.
+     *
+     * The signal is checked between gates rather than inside them. Each gate is one pass over one
+     * kind of document and the longest of them (the project check) takes the signal itself, so a
+     * stop lands within a rule rather than within a build.
+     */
+    private async runPreBuildGatesInner(
+        startedAt: number,
+        platforms: GameBuildPlatform[],
+        appTagId: string | undefined,
+        signal: AbortSignal,
     ): Promise<GameBuildStateSnapshot | null> {
         try {
             await this.prepareProjectForBuild();
@@ -507,6 +558,9 @@ export class BuildService extends Service<BuildService> {
         if (contentRefusal) {
             return contentRefusal;
         }
+        if (signal.aborted) {
+            return this.refuseCancelledChecks(startedAt, platforms);
+        }
         // The blueprint half of the `AppTag` gate above, and unconditional for the same reason: a
         // graph that names the variant without deciding a branch with it cannot be compiled under any
         // variant, release included. Free like the two before it - it walks the blueprint document
@@ -547,6 +601,9 @@ export class BuildService extends Service<BuildService> {
         // setting an author has may turn that into a pass. Putting it behind `runOnBuild` would
         // mean a project that switched lint off ships broken media silently, which is exactly the
         // reasoning ruling R4 already applied to unresolved command lines.
+        if (signal.aborted) {
+            return this.refuseCancelledChecks(startedAt, platforms);
+        }
         const mediaRefusal = await this.runMediaGate(startedAt, platforms);
         if (mediaRefusal) {
             return mediaRefusal;
@@ -554,11 +611,36 @@ export class BuildService extends Service<BuildService> {
         // The project check (ruling R3), behind the gate above and never instead of it: that one is
         // unconditional (ruling R4), and a sweep an author can switch off in settings must not be
         // what decides whether a story the compiler refuses gets to ship.
-        const lintRefusal = await this.runLintGate(startedAt, platforms);
+        const lintRefusal = await this.runLintGate(startedAt, platforms, signal);
         if (lintRefusal) {
             return lintRefusal;
         }
+        if (signal.aborted) {
+            return this.refuseCancelledChecks(startedAt, platforms);
+        }
         return null;
+    }
+
+    /**
+     * The run the author stopped while its checks were still going.
+     *
+     * Reported as an error like every other refusal, because that is what a run that produced
+     * nothing is: the dashboard archives it beside the others and the console says why it ended.
+     * The message is the pipeline's own wording for a stopped run, so a build stopped here and a
+     * build stopped a second later read the same.
+     */
+    private refuseCancelledChecks(startedAt: number, platforms: GameBuildPlatform[]): GameBuildStateSnapshot {
+        const message = translate("build.cancelled");
+        this.tryGetConsole()?.log(BUILD_CONSOLE_CHANNEL, "warning", message, { source: BUILD_CONSOLE_SOURCE });
+        this.updateState({
+            status: "error",
+            progress: null,
+            startedAt,
+            finishedAt: Date.now(),
+            platforms,
+            error: message,
+        });
+        return this.state;
     }
 
     /**
@@ -579,6 +661,7 @@ export class BuildService extends Service<BuildService> {
         // Gated on the content's variant, not the one the patch attaches to: what a gate refuses is
         // a payload, and the payload is that variant's. A patch must not carry what a build of the
         // same content would have been stopped from shipping.
+        this.updateState({ status: "checking", progress: null, startedAt, platforms });
         const refusal = await this.runPreBuildGates(startedAt, platforms, request.contentAppTagId ?? request.appTagId);
         if (refusal) {
             return refusal;
@@ -612,6 +695,13 @@ export class BuildService extends Service<BuildService> {
         // Recorded before the request, because the pipeline reports a stopped run as a failure with
         // a message of its own making. This flag is what tells the two apart on the way back.
         this.cancelRequested = true;
+        // Still in the checks: they belong to this window, so this is the only thing that can stop
+        // them - and asking the pipeline would be asking it to stop a run it has not been given.
+        // The gates report the refusal themselves, so nothing is updated here.
+        if (this.gateAbort) {
+            this.gateAbort.abort();
+            return this.state;
+        }
         const result = await getInterface().gameBuild.cancel(this.projectPath());
         if (result.success) {
             this.updateState(result.data.state);
@@ -1357,6 +1447,7 @@ export class BuildService extends Service<BuildService> {
     private async runLintGate(
         startedAt: number,
         platforms: GameBuildPlatform[],
+        signal?: AbortSignal,
     ): Promise<GameBuildStateSnapshot | null> {
         const consoleService = this.tryGetConsole();
         const services = this.getContext().services;
@@ -1370,9 +1461,32 @@ export class BuildService extends Service<BuildService> {
             return null;
         }
 
+        // Said on the build channel, which is the one an author watching a build is looking at. The
+        // sweep also logs to its own channel, but a build that stops here has to account for the
+        // time on the record the dashboard archives per run - and this gate is the longest thing
+        // between the click and the first sign of a package.
+        consoleService?.log(BUILD_CONSOLE_CHANNEL, "info", translate("lint.build.started"), {
+            source: BUILD_CONSOLE_SOURCE,
+        });
+
         let report: LintReport;
         try {
-            report = await services.get<LintService>(Services.Lint).run();
+            report = await services.get<LintService>(Services.Lint).run({
+                // Stopping a build stops the sweep it is waiting on, rather than letting it run to
+                // the end and then discarding the report. The engine returns what it has with the
+                // unrun rules listed as skipped; the run is refused above either way.
+                signal,
+                // The build channel's own bar, filled by the sweep it is waiting on. Without it the
+                // bar animates for the whole gate and says only "something is happening"; a rule
+                // count is the one number this stretch actually has.
+                onProgress: progress => {
+                    consoleService?.setProgress(BUILD_CONSOLE_CHANNEL, {
+                        value: progress.total === 0 ? 1 : progress.done / progress.total,
+                        indeterminate: false,
+                        error: false,
+                    });
+                },
+            });
         } catch (error) {
             // Fail the build rather than log and continue. The gate answers one question - "is
             // anything wrong with this project" - and a sweep that crashed did not answer it;
@@ -1578,9 +1692,10 @@ export class BuildService extends Service<BuildService> {
             return;
         }
 
-        // Active build. "preparing" opens a fresh run: drop the previous run's bar, so the one
-        // set below is a new one and starts without its warning colour.
-        if (status === "preparing" && phaseChanged) {
+        // Active build. "checking" opens a fresh run (and "preparing" does when there were no checks
+        // to run before it): drop the previous run's bar, so the one set below is a new one and
+        // starts without its warning colour.
+        if ((status === "checking" || status === "preparing") && phaseChanged) {
             consoleService.setProgress(BUILD_CONSOLE_CHANNEL, null);
         }
 
@@ -1606,7 +1721,7 @@ export class BuildService extends Service<BuildService> {
     }
 
     private syncPolling(status: GameBuildStatus): void {
-        if (isActiveStatus(status)) {
+        if (PIPELINE_ACTIVE_STATUSES.includes(status)) {
             this.startPolling();
         } else {
             this.stopPolling();
@@ -1632,7 +1747,7 @@ export class BuildService extends Service<BuildService> {
 }
 
 function isActiveStatus(status: GameBuildStatus): boolean {
-    return status === "preparing" || status === "compiling" || status === "packaging";
+    return BUILD_ACTIVE_STATUSES.includes(status);
 }
 
 /**

@@ -4,6 +4,7 @@ import type { GameBuildRequest } from "@shared/types/gameBuild";
 import type { StoryDocument } from "@shared/types/story";
 import type { ReferenceIndexGap } from "../references/referenceModel";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
+import type { LintRunOptions } from "@/lib/lint/engine";
 import type { LintingConfiguration } from "../../project/configuration";
 import {
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
@@ -120,7 +121,7 @@ type ConsoleLine = { channel: string; level: string; message: string };
  */
 function mount(options: {
     linting?: Partial<LintingConfiguration>;
-    run?: () => Promise<LintReport>;
+    run?: (options?: LintRunOptions) => Promise<LintReport>;
     storyHasInvalidBlock?: boolean;
     /** Defaults to allowing HTTP, so the network gate stays out of the way of this file's subject. */
     allowHttp?: boolean;
@@ -389,6 +390,87 @@ describe("BuildService lint gate", () => {
         expect(state.platforms).toEqual(["windows", "web"]);
         expect(lines.some(line => line.level === "error")).toBe(true);
         consoleError.mockRestore();
+    });
+});
+
+/**
+ * What the window says while the checks run.
+ *
+ * The gates are the longest stretch of a build that has not started yet, and until the run had a
+ * phase of its own the answer to all three questions below was the same as for a project nobody had
+ * touched: no build running, no bar, and a Production Build row still offering to start one.
+ */
+describe("BuildService pre-build checks, as a visible phase", () => {
+    it("reports the run as under way while the sweep it is waiting on is still running", async () => {
+        let seen: { status: string; building: boolean } | null = null;
+        const { service } = mount({
+            run: async () => {
+                seen = { status: service.getStatus(), building: service.isBuilding() };
+                return report([]);
+            },
+        });
+
+        await service.start(REQUEST);
+
+        expect(seen).toEqual({ status: "checking", building: true });
+    });
+
+    it("fills the build channel's own bar from the sweep's rule count", async () => {
+        const progress: (number | undefined)[] = [];
+        const { service, ctx } = mount({
+            run: async options => {
+                options?.onProgress?.({ done: 1, total: 2, ruleId: "text/empty" });
+                options?.onProgress?.({ done: 2, total: 2, ruleId: "text/overlong" });
+                return report([]);
+            },
+        });
+        const consoleService = ctx.services.get(Services.Console) as unknown as {
+            setProgress: (channel: string, value: { value?: number } | null) => void;
+        };
+        consoleService.setProgress = (channel, value) => {
+            if (channel === BUILD_CONSOLE_CHANNEL) {
+                progress.push(value?.value);
+            }
+        };
+
+        await service.start(REQUEST);
+
+        expect(progress).toContain(0.5);
+        expect(progress).toContain(1);
+    });
+
+    it("stops the run when the author cancels during the checks, without asking the pipeline", async () => {
+        const { service, lines } = mount({
+            run: async () => {
+                await service.cancel();
+                return report([]);
+            },
+        });
+
+        const state = await service.start(REQUEST);
+
+        // The pipeline has not been given a run, so there is nothing there to stop; asking it to
+        // would have left these checks running on to start the build that was just stopped.
+        expect(gameBuild.cancel).not.toHaveBeenCalled();
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.status).toBe("error");
+        expect(state.error).toBe("build.cancelled");
+        expect(lines.some(line => line.message === "build.cancelled")).toBe(true);
+    });
+
+    it("hands the sweep the signal that a cancel aborts", async () => {
+        let signal: AbortSignal | undefined;
+        const { service } = mount({
+            run: async options => {
+                signal = options?.signal;
+                return report([]);
+            },
+        });
+
+        await service.start(REQUEST);
+
+        expect(signal).toBeInstanceOf(AbortSignal);
+        expect(signal?.aborted).toBe(false);
     });
 });
 

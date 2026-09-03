@@ -690,6 +690,7 @@ export const workspace = {
             // The phase after the divider. Not every phase applies to every mode.
             phase: {
                 starting: "Starting…",
+                checking: "Checking…",
                 preparing: "Preparing…",
                 compiling: "Compiling…",
                 launching: "Launching…",

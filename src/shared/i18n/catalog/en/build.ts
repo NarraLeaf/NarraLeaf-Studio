@@ -438,6 +438,8 @@ export const build = {
         showAll: "Show all {count}",
         failure: "Reason",
     },
+    /** A run the author stopped while its pre-build checks were still running. */
+    cancelled: "Build stopped",
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
     invalidCommandSummary: {
         one: "Build stopped: {count} invalid command. See the console.",

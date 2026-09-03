@@ -405,6 +405,7 @@ export const build = {
         showAll: "{count} 件すべてを表示",
         failure: "失敗の理由",
     },
+    cancelled: "ビルドを中止した",
     invalidCommand: "{story} / {scene} に無効なコマンド：{source}",
     invalidCommandSummary: {
         other: "ビルドを中止：無効なコマンドが {count} 件ある。コンソールを見る",

@@ -642,6 +642,7 @@ export const workspace = {
             // 区切りの後ろの段階。すべての段階がすべてのモードにあるわけではない。
             phase: {
                 starting: "開始している…",
+                checking: "検査している…",
                 preparing: "準備している…",
                 compiling: "コンパイルしている…",
                 launching: "起動している…",

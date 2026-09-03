@@ -469,6 +469,7 @@ export const lint = {
         finding: "{location} {message}（{rule}）",
     },
     build: {
+        started: "正在检查项目…",
         blocked: "{count} 个问题中止了构建",
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。

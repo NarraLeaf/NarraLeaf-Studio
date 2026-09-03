@@ -614,6 +614,7 @@ export const workspace = {
             // 分隔符之后的阶段文案。并非每个阶段都适用于每种模式。
             phase: {
                 starting: "启动中…",
+                checking: "检查中…",
                 preparing: "准备中…",
                 compiling: "编译中…",
                 launching: "启动中…",

@@ -333,8 +333,21 @@ export type BuildPreflightFinding = {
     detail?: Record<string, string>;
 };
 
+/**
+ * Where a run is.
+ *
+ * `checking` is the odd one out and deliberately so: it covers the pre-build checks, which run in
+ * the window that asked for the build and finish before the main process is told anything. The main
+ * process therefore never reports it - a poll of `getStatus` during it answers `idle`, because as
+ * far as the pipeline is concerned nothing has been asked for yet.
+ *
+ * It exists because those checks can take real time (they read every story, every graph and every
+ * asset the project has), and without a phase of their own the window had nothing to show for them:
+ * the run was under way and every control still said no build was running.
+ */
 export type GameBuildStatus =
     | "idle"
+    | "checking"
     | "preparing"
     | "compiling"
     | "packaging"

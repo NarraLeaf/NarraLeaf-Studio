@@ -383,6 +383,7 @@ export const build = {
         showAll: "显示全部 {count} 项",
         failure: "失败原因",
     },
+    cancelled: "已中止构建",
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
     invalidCommandSummary: {
         one: "构建已中止：有 {count} 条无效指令，详见控制台",
