@@ -85,7 +85,6 @@ export class ProjectService {
 
             // Create directories
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.NLCache)));
-            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Plugins)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Assets)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.AssetsContent)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Scripts)));

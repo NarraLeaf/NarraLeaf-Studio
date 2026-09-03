@@ -16,9 +16,18 @@ export type {
     LintRuleOptionSpec,
     LintRuleOptions,
     LintRuleSeverity,
+    LintRulelessId,
     LintSeverity,
+    RegisteredLintRuleId,
 } from "./types";
-export { LINT_CATEGORY_ORDER, LINT_SEVERITY_ORDER, deriveLintRuleSlug } from "./types";
+export {
+    LINT_CATEGORY_ORDER,
+    LINT_RULELESS_IDS,
+    LINT_SEVERITY_ORDER,
+    deriveLintRuleSlug,
+    isLintRulelessId,
+} from "./types";
+export { describeStoryLoadFailure, storyUnreadableFinding } from "./storyLoadFailure";
 export type {
     LintAssetEntry,
     LintCharacterEntry,

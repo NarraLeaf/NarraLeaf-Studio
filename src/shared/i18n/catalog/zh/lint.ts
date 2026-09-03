@@ -82,6 +82,16 @@ export const lint = {
             description: "网络策略为不允许联网的项目中存在网络节点",
             message: "{blueprint} 发起网络请求，本项目的网络策略不允许",
         },
+        /**
+         * 这里唯一一条背后没有规则的条目。低于 schema 阶梯下限的故事文档根本不会交给任何规则，
+         * 所以它在「项目 ▸ 项目」里没有对应的行，也没有可调的严重级别；只有名字，因为报告页
+         * 按规则分组，这些问题需要一个标题。具体说什么见下面的 `message.storyTooOld` /
+         * `.storyTooNew` / `.storyLoadFailed`。
+         */
+        storyUnreadable: {
+            title: "无法读取的故事",
+            description: "当前版本的 Studio 无法打开的故事文档",
+        },
         storyInvalidCommand: {
             title: "无效指令",
             description: "编译器不接受的行",

@@ -19,6 +19,7 @@ import {
     surfacePuppetContextsGranted,
 } from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
 import { __resetDevModePuppetHost, registerDevModePuppetHost } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
+import { SurfacePuppetUnavailableError } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { PuppetRenderer } from "./renderer";
 
 /**
@@ -201,5 +202,33 @@ describe("a configured puppet widget on a visible canvas", () => {
         views[0]!.unmount();
         await settle();
         expect(refused.container.textContent ?? "").not.toContain("Not drawn");
+    });
+
+    /**
+     * A distrusted project is the one arm where the runtime was found and deliberately not run, and
+     * the canvas used to report it as `backend-missing` - "no runtime named live2d is installed" -
+     * under a note about who supplies the renderer. Both sentences sent the author looking for a file
+     * that is sitting in their project.
+     *
+     * Raised here through the Dev Mode arm because that is the cheapest host to stand up; in the app
+     * it comes from `createPuppetBackendSource`, which refuses before minting a module URL. What is
+     * under test is what the box says once the reason reaches it, and that is the same either way.
+     */
+    it("says the project is not trusted rather than that its runtime is missing", async () => {
+        installIntersectionObserver(true);
+        registerDevModePuppetHost({
+            kind: "dev-mode",
+            listBackendModules: async () => { throw new SurfacePuppetUnavailableError("distrusted"); },
+            resolveModelBundleUrl: async () => null,
+        });
+
+        const view = renderWidget({ assetId: "hiyori", backend: "live2d" });
+        await settle();
+
+        const text = view.container.textContent ?? "";
+        expect(text).toContain("this project is not trusted");
+        expect(text).not.toContain("is installed in this project");
+        // The "you supply the renderer" note belongs to the two situations an install would fix.
+        expect(text).not.toContain("Studio ships no renderer");
     });
 });

@@ -438,8 +438,9 @@ export const AppSettings: AppSettingDefinition[] = [
         // product resolves through. Stored as a preset id or a `#rrggbb` hex — the presets are
         // the guided path (hue-shifts of the brand anchor at low saturation, see
         // @shared/constants/accent), the picker is there for anything else. What keeps "any
-        // color" honest is `--nl-on-primary`, the derived ink that stops a pale accent from
-        // making every primary button unreadable. Studio chrome only; a game keeps the anchor.
+        // color" honest is the pair of derived inks: `--nl-on-primary` stops a pale accent from
+        // making every primary button unreadable, and `--nl-primary-ink` does the same for the
+        // accent drawn as text on a surface. Studio chrome only; a game keeps the anchor.
         key: "ui.accentColor",
         category: "appearance",
         scope: SettingScope.Global,

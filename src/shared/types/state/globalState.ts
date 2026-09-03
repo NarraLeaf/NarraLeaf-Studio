@@ -103,9 +103,11 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "ui.windowIcon": string;
     /**
-     * Accent preset id from @shared/constants/accent — not a free color. Applied by the renderer
-     * (lib/appearance) by overriding the `--nl-primary` channels, which every `*-primary` utility
-     * resolves through. Studio windows only; a shipped game keeps the brand anchor.
+     * Accent preset id from @shared/constants/accent, or a `#rrggbb` the user picked. Applied by
+     * the renderer (lib/appearance) by overriding the `--nl-primary` channels, which every
+     * `*-primary` utility resolves through, plus the two inks derived from it — the one written on
+     * the accent and the one the accent is written in. Studio windows only; a shipped game keeps
+     * the brand anchor.
      */
     "ui.accentColor": string;
     /**

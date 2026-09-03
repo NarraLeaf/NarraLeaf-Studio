@@ -89,6 +89,16 @@ export const lint = {
             description: "ネットワークポリシーが「使わない」のプロジェクトにあるネットワークノード",
             message: "{blueprint} はネットワーク要求を行うが、このプロジェクトのネットワークポリシーが許可していない",
         },
+        /**
+         * ここで唯一、背後にルールがない項目。スキーマの下限を下回るストーリードキュメントは
+         * どのルールにも渡らないので、「プロジェクト ▸ プロジェクト」に行はなく、重大度も
+         * 設定できない。名前だけがあるのは、レポートがルールごとにまとめるため。本文は下の
+         * `message.storyTooOld` / `.storyTooNew` / `.storyLoadFailed`。
+         */
+        storyUnreadable: {
+            title: "読み込めないストーリー",
+            description: "このバージョンの Studio が開けないストーリードキュメント",
+        },
         storyInvalidCommand: {
             title: "無効なコマンド",
             description: "コンパイラが受け付けない行",

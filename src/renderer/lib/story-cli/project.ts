@@ -146,7 +146,10 @@ export function readStoryDocument(projectDir: string, storyId: string): StoryDoc
     try {
         document = migrateStoryDocumentToLatest(stored);
     } catch (error) {
-        throw new ProjectIoError(`${filePath}: ${(error as Error).message}`);
+        // The original is carried as `cause` rather than only quoted: a caller that wants to say
+        // which end of the ladder the document fell off reads the two version numbers off the
+        // error the ladder threw, and a rewrapped message has flattened them into prose.
+        throw new ProjectIoError(`${filePath}: ${(error as Error).message}`, { cause: error });
     }
     return { filePath, storyId, document };
 }

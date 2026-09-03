@@ -26,6 +26,24 @@
     --nl-on-primary: 255 255 255;
 
     /*
+     * Ink for the accent written ON a surface, as opposed to under one — Tailwind's
+     * `text-primary`, `border-primary`, `divide-primary` and `decoration-primary` all resolve
+     * through it, while `bg-`, `ring-`, `outline-`, `fill-` and `stroke-primary` keep
+     * `--nl-primary`. The split is what a colour is doing: a shape filled with the accent is
+     * seen at whatever contrast it happens to have, a glyph drawn in it has to be read.
+     *
+     * The accent may be any hex the user picks and the same hex is not equally readable on both
+     * ladders, so `accentInk` (@shared/constants/accent) derives one value per ladder and the
+     * appearance bootstrap publishes both. The theme picks between them here rather than in JS,
+     * for the reason spelled out under the token block below: the theme is a media query whose
+     * change event Electron never fires. Both default to the accent itself, which is what the
+     * five presets resolve to anyway, and what a shipped game and the first frame get.
+     */
+    --nl-primary-ink-on-dark: var(--nl-primary);
+    --nl-primary-ink-on-light: var(--nl-primary);
+    --nl-primary-ink: var(--nl-primary-ink-on-dark);
+
+    /*
      * Story editor reading density: the height of a row's single-line content box. The scene editor
      * root overrides it per density from STORY_DENSITY_METRICS; this baseline is the compact value, so
      * a row rendered outside that root (tests, isolated previews) still has a sane box.
@@ -184,6 +202,13 @@
 @media (prefers-color-scheme: light) {
     :root.nl-studio {
         color-scheme: light;
+
+        /*
+         * Accent text and hairlines take the ink derived for this ladder. `--nl-primary` itself is
+         * absent here on purpose (see the note above) — a filled accent is the user's colour on
+         * both ladders; only what has to be read is moved.
+         */
+        --nl-primary-ink: var(--nl-primary-ink-on-light);
 
         --nl-surface-canvas: 215 219 226; /* #d7dbe2 */
         --nl-surface-sunken: 227 230 236; /* #e3e6ec */

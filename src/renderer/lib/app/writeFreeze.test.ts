@@ -47,7 +47,7 @@ describe("writeFreeze scope", () => {
             // Editor state. The decision "project data freezes, editor state does not" is exactly
             // the `.loreignore` boundary, so there is no second list to keep in step.
             ".nlstudio/editor.json",
-            ".nlstudio/plugins/my-plugin/manifest.json",
+            ".nlstudio/services/panel_state.json",
             ".nlstudio/preview/app/main.js",
             "editor/cache/thumbnail/ab/cd/asset-1.png",
             "editor/assets/remote/ab/cd/remote.png",
