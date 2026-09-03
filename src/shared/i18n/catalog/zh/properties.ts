@@ -217,6 +217,10 @@ export const properties = {
             refresh: "检查更新",
             refreshFailedTitle: "无法检查来源",
         },
+        // 本地资产的来源，位置与远程资产的地址和更新检查相同。
+        local: {
+            origin: "项目内保存的是本机上某个资源文件的副本；Studio 不跟踪该资源文件，它变化后用「替换文件」重新导入",
+        },
         image: {
             title: "图片属性",
             info: "图片信息",
