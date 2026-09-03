@@ -44,6 +44,7 @@ export const storyExpr = {
      */
     reason: {
         unknownCommand: "/{token} というコマンドはない",
+        unknownCommandNear: "/{token} というコマンドはない。最も近いのは /{suggestion}",
         unknownParam: "/{token} に \"{key}\" というオプションはない",
         duplicateParam: "\"{key}\" が二度指定されている",
         extraPositional: "\"{value}\" は引数が 1 つ多い",

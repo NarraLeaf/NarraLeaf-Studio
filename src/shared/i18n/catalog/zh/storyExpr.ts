@@ -27,6 +27,7 @@ export const storyExpr = {
     },
     reason: {
         unknownCommand: "不存在 /{token} 命令",
+        unknownCommandNear: "不存在 /{token} 命令，最接近的是 /{suggestion}",
         unknownParam: "/{token} 没有名为「{key}」的参数",
         duplicateParam: "「{key}」重复给出了两次",
         extraPositional: "「{value}」多出了一个参数",
