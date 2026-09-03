@@ -3,6 +3,7 @@ import { pathToFileURL } from "url";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_LANGUAGE_CHANGE_CONFIGURATION } from "@shared/types/localization";
@@ -594,21 +595,16 @@ describe("bundleAssembler scene drop plan", () => {
             id: "bp-1",
             name: "Menu",
             owner: { kind: "surface", surfaceId: "s1" },
-            frontend: "visual",
-            programKind: "graph",
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {
-                        "e-1": {
-                            id: "e-1",
-                            graph: {
-                                nodes,
-                                edges: wiredPins.map(port => ({
-                                    from: { nodeId: "n-source", port: "value" },
-                                    to: { nodeId: "n-1", port },
-                                })),
-                            },
+            graphs: {
+                events: {
+                    "e-1": {
+                        id: "e-1",
+                        graph: {
+                            nodes,
+                            edges: wiredPins.map(port => ({
+                                from: { nodeId: "n-source", port: "value" },
+                                to: { nodeId: "n-1", port },
+                            })),
                         },
                     },
                 },
@@ -621,9 +617,7 @@ describe("bundleAssembler scene drop plan", () => {
             id: "bp-2",
             name: "Script",
             owner: { kind: "surface", surfaceId: "s1" },
-            frontend: "typescript",
-            programKind: "scriptModule",
-            program: { kind: "scriptModule", source: { entry: "index.ts", files: {} } },
+            graphs: { events: { s: { id: "s", script: { scriptRef: "scripts/launcher.ts" } } }, functions: {} },
         } as unknown as Blueprint;
     }
 
@@ -985,9 +979,11 @@ describe("bundleAssembler script blueprints", () => {
             id: "bp-script",
             name: "Boot",
             owner: { kind: "globalMain" },
-            frontend: "typescript",
-            programKind: "scriptModule",
-            program: { kind: "scriptModule", scriptRef: "scripts/boot.ts" },
+            graphs: {
+                eventIds: ["layer-script"],
+                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/boot.ts" } } },
+                functions: {},
+            },
         };
         await writeFile(
             path.join(projectPath, "editor", "ui", "uigraphs.json"),
@@ -998,7 +994,7 @@ describe("bundleAssembler script blueprints", () => {
                 blueprintDocument: {
                     schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                     blueprints: { [script.id]: script },
-                    ownerRecords: { globalMain: { activeBlueprintId: script.id, privateBlueprintIds: [script.id] } },
+                    ownerRecords: { globalMain: { blueprintId: script.id } },
                 },
             }),
             "utf-8",
@@ -1024,7 +1020,7 @@ describe("bundleAssembler script blueprints", () => {
         const projectPath = await createScriptProject();
         const bundle = await assembleDevModeBundleFromProjectPath({ projectPath, bundleId: "b", revision: 1 });
 
-        const entry = bundle.ui.scripts?.["bp-script"];
+        const entry = bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")];
         expect(entry?.scriptRef).toBe("scripts/boot.ts");
         expect(entry?.diagnostics).toBeUndefined();
         // A `file:` URL because that is what the Dev Mode document's policy admits, and under the
@@ -1051,7 +1047,7 @@ describe("bundleAssembler script blueprints", () => {
         // The URL a packaged game imports: the runtime scheme's `runtime` host serves this path from
         // the store when sealed and from the app dir otherwise. Never a `file:` URL, which the
         // shipped page's policy refuses.
-        expect(bundle.ui.scripts?.["bp-script"]?.url).toBe("nlgame://runtime/scripts/scripts_boot.mjs");
+        expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("nlgame://runtime/scripts/scripts_boot.mjs");
         expect((await readFile(path.join(appDir, "scripts", "scripts_boot.mjs"), "utf-8"))).toContain("onAppBoot");
     });
 });

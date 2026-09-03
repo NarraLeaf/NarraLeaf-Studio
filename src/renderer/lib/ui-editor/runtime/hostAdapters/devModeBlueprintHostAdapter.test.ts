@@ -88,8 +88,6 @@ function createChainFixture(chain: readonly ChainNode[]) {
                     id: blueprintIdOf(node.id),
                     name: `${node.id} logic`,
                     owner: ownerOf(node),
-                    frontend: "visual" as const,
-                    programKind: "graph" as const,
                     members: {
                         variables: {
                             fired: { id: "fired", name: "fired", valueType: "string" as const, defaultValue: "no" },
@@ -98,35 +96,32 @@ function createChainFixture(chain: readonly ChainNode[]) {
                         functions: {},
                     },
                     bindings: {},
-                    program: {
-                        kind: "graph" as const,
-                        graphs: {
-                            events: {
-                                [node.listensTo!]: {
-                                    id: node.listensTo!,
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: HEAD_TYPE_BY_EVENT[node.listensTo!] },
-                                            literal: {
-                                                id: "literal",
-                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                                                params: { value: "yes" },
-                                            },
-                                            set: {
-                                                id: "set",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "fired" },
-                                            },
+                    graphs: {
+                        events: {
+                            [node.listensTo!]: {
+                                id: node.listensTo!,
+                                graph: {
+                                    nodes: {
+                                        head: { id: "head", type: HEAD_TYPE_BY_EVENT[node.listensTo!] },
+                                        literal: {
+                                            id: "literal",
+                                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                            params: { value: "yes" },
                                         },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
-                                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
-                                        ],
+                                        set: {
+                                            id: "set",
+                                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                            params: { variableId: "fired" },
+                                        },
                                     },
+                                    edges: [
+                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
+                                        { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
+                                    ],
                                 },
                             },
-                            functions: {},
                         },
+                        functions: {},
                     },
                 },
             ]),
@@ -135,9 +130,7 @@ function createChainFixture(chain: readonly ChainNode[]) {
             listeners.map(node => [
                 ownerKeyOf(node),
                 {
-                    activeBlueprintId: blueprintIdOf(node.id),
-                    privateBlueprintIds: [blueprintIdOf(node.id)],
-                    initializedFrontend: "visual" as const,
+                    blueprintId: blueprintIdOf(node.id),
                 },
             ]),
         ),

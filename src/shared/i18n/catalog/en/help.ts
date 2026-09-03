@@ -572,12 +572,13 @@ export const help = {
         scripts: {
             title: "Scripts",
             body:
-                "The logic of a page, a component or a story row is written as a blueprint or as a script. A "
-                + "blueprint is a graph on a canvas. A script is a TypeScript file under the project's scripts "
-                + "folder, written in an external editor. Studio creates the file once and never writes it again.\n"
+                "The logic of a page, a component or a story row is a list of layers, and each layer is "
+                + "either a blueprint or a script. A blueprint is a graph on a canvas. A script is a TypeScript "
+                + "file under the project's scripts folder, written in an external editor. Studio creates the "
+                + "file once and never writes it again.\n"
                 + "\n"
-                + "Both are revisions of the same slot and only the active one runs. New script adds one, and each "
-                + "row in the revision list says which of the two it is.\n"
+                + "Every layer in the list runs, so a script can sit beside a graph in the same place and both "
+                + "answer. New layer asks which of the two it is, and each row says which one it holds.\n"
                 + "\n"
                 + "- A script is entered through its exported functions. Which names this position calls follows "
                 + "from where it sits, and the first lines of a new file list them. A story row uses the default "
@@ -588,7 +589,7 @@ export const help = {
                 + "runs each one, and which of them nothing runs.\n"
                 + "- A file that fails to compile, and one that exports nothing this position calls, are reported "
                 + "in Dev Mode. The blueprint list there names the file and says whether it loaded.\n"
-                + "- Removing a revision leaves its file on disk. Deleting the file is done in the file manager.",
+                + "- Removing a layer leaves its file on disk. Deleting the file is done in the file manager.",
         },
         uiBindings: {
             title: "Values on a screen",

@@ -78,14 +78,9 @@ function widgetBlueprint(surfaceId: string, elementId: string, blueprintId: stri
         id: blueprintId,
         name: "Widget",
         owner: { kind: "widgetMain", surfaceId, elementId },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {},
-                functions: {},
-            },
+        graphs: {
+            events: {},
+            functions: {},
         },
     };
 }
@@ -95,14 +90,9 @@ function widgetValueBlueprint(surfaceId: string, elementId: string, blueprintId:
         id: blueprintId,
         name: "Text value",
         owner: { kind: "widgetValue", surfaceId, elementId, propPath: "text" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {},
-                functions: {},
-            },
+        graphs: {
+            events: {},
+            functions: {},
         },
     };
 }
@@ -249,9 +239,7 @@ describe("UIEditorHistoryService", () => {
             },
             ownerRecords: {
                 "widgetMain:surface-a:a": {
-                    activeBlueprintId: "bp-a",
-                    privateBlueprintIds: ["bp-a"],
-                    initializedFrontend: "visual",
+                    blueprintId: "bp-a",
                 },
             },
         };
@@ -263,7 +251,7 @@ describe("UIEditorHistoryService", () => {
         expect(graphDocument.blueprintDocument.blueprints["bp-a"]).toBeUndefined();
 
         expect(history.redo("surface-a")).toBe(true);
-        expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:a"]?.activeBlueprintId).toBe("bp-a");
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:a"]?.blueprintId).toBe("bp-a");
         expect(graphDocument.blueprintDocument.blueprints["bp-a"]?.owner.kind).toBe("widgetMain");
     });
 
@@ -279,9 +267,7 @@ describe("UIEditorHistoryService", () => {
             },
             ownerRecords: {
                 "widgetValue:surface-a:a:text": {
-                    activeBlueprintId: "bp-value-a",
-                    privateBlueprintIds: ["bp-value-a"],
-                    initializedFrontend: "visual",
+                    blueprintId: "bp-value-a",
                 },
             },
         };
@@ -304,7 +290,7 @@ describe("UIEditorHistoryService", () => {
         expect(graphDocument.blueprintDocument.blueprints["bp-value-a"]).toBeUndefined();
 
         expect(history.redo("surface-a")).toBe(true);
-        expect(graphDocument.blueprintDocument.ownerRecords["widgetValue:surface-a:a:text"]?.activeBlueprintId).toBe("bp-value-a");
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetValue:surface-a:a:text"]?.blueprintId).toBe("bp-value-a");
         expect(graphDocument.blueprintDocument.blueprints["bp-value-a"]?.owner.kind).toBe("widgetValue");
         expect(uidoc.document.elements.a.valueBindings?.text).toEqual({
             kind: "blueprintValue",

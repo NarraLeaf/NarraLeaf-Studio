@@ -21,17 +21,13 @@ function createHarness() {
             id,
             name: id,
             owner,
-            frontend: "visual",
-            programKind: "graph",
-            program: { kind: "graph", graphs: { events: {}, functions: {} } },
+            graphs: { events: {}, functions: {} },
             members: { variables: {}, fields: {}, functions: {} },
             bindings: {},
         };
         const ownerKey = JSON.stringify(owner);
         blueprintDocument.ownerRecords[ownerKey] = {
-            activeBlueprintId: id,
-            privateBlueprintIds: [id],
-            initializedFrontend: "visual",
+            blueprintId: id,
         };
         return id;
     };
@@ -160,15 +156,12 @@ function copiedGameUiGraphs() {
                     id: "src-bp",
                     name: "Button",
                     owner: { kind: "widgetMain", surfaceId: "src-dialog", elementId: "src-button" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
             },
             ownerRecords: {
                 "widgetMain:src-dialog:src-button": {
-                    activeBlueprintId: "src-bp",
-                    privateBlueprintIds: ["src-bp"],
+                    blueprintId: "src-bp",
                 },
             },
         },
@@ -338,7 +331,7 @@ describe("importTemplateBundle: a surface copied from another project", () => {
         expect(Object.keys(blueprintDocument.ownerRecords)).toContain(ownerKey);
         expect(blueprintDocument.ownerRecords["widgetMain:src-dialog:src-button"]).toBeUndefined();
 
-        const newBlueprintId = blueprintDocument.ownerRecords[ownerKey].activeBlueprintId;
+        const newBlueprintId = blueprintDocument.ownerRecords[ownerKey].blueprintId;
         expect(newBlueprintId).not.toBe("src-bp");
         expect(blueprintDocument.blueprints[newBlueprintId].owner).toEqual({
             kind: "widgetMain",

@@ -13,7 +13,7 @@ import { changeLeafCount, changeMaskTone, maskColumns, type ChangeMaskTone } fro
  * # A graph is drawn from the file, not compiled
  *
  * There is no build step between the bytes and the picture. A blueprint's event layer holds its IR
- * at `program.graphs.events[<graphId>].graph`, nodes carry their canvas position in
+ * at `graphs.events[<graphId>].graph`, nodes carry their canvas position in
  * `meta.editorLayout`, and both were written by the editor that drew them - so a graph out of a
  * revision can be laid out exactly where its author left it without a compiler, a workspace or an
  * editor context, none of which a comparison pane can reach.
@@ -261,7 +261,7 @@ export function readGraphs(document: UIGraphDocument | null): Map<string, GraphF
         const record = recordOf(blueprint);
         if (!record) continue;
         const blueprintName = textOrNull(record.name);
-        const slots = recordOf(recordOf(record.program)?.graphs);
+        const slots = recordOf(record.graphs);
         for (const slot of ["events", "functions", "macros"] as const) {
             for (const [graphId, graph] of Object.entries(recordOf(slots?.[slot]) ?? {})) {
                 const wrapper = recordOf(graph);

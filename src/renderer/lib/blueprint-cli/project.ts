@@ -124,15 +124,7 @@ export function applyBlueprints(
         document.blueprints[blueprint.id] = blueprint;
     }
     for (const [ownerKey, record] of Object.entries(ownerRecords)) {
-        const previous = document.ownerRecords[ownerKey];
-        const others = (previous?.privateBlueprintIds ?? []).filter(
-            id => id !== record.activeBlueprintId && document.blueprints[id],
-        );
-        document.ownerRecords[ownerKey] = {
-            ...previous,
-            activeBlueprintId: record.activeBlueprintId,
-            privateBlueprintIds: [record.activeBlueprintId, ...others],
-        };
+        document.ownerRecords[ownerKey] = { blueprintId: record.blueprintId };
     }
     return result;
 }

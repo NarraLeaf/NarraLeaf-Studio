@@ -220,6 +220,11 @@ export const lint = {
             // handle the author has on a transition that is otherwise gone from every menu.
             message: "The transition {transition} is not available, so this change plays as a cut",
         },
+        storyBackgroundUnchanged: {
+            title: "Unchanged background",
+            description: "A row transitioning to the background already on screen",
+            message: "This background is already on screen, so the transition changes nothing",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",

@@ -43,7 +43,7 @@ type Graph = { nodes: Record<string, GraphNode>; edges: GraphEdge[] };
 type Blueprint = {
     id: string;
     owner: { kind: string; surfaceId?: string; elementId?: string };
-    program: { graphs: { events: Record<string, { graph: Graph }> } };
+    graphs: { events: Record<string, { graph: Graph }> };
 };
 type Element = { id: string; name: string; type: string; childrenIds?: string[] };
 type Surface = { id: string; name: string; rootElementId: string; actions?: UISurfaceActionEnablement[] };
@@ -124,7 +124,7 @@ function buttonsOn(surfaceName: string, elementName: string): Element[] {
 function graphsOf(owner: (blueprint: Blueprint) => boolean): Graph[] {
     return blueprints
         .filter(owner)
-        .flatMap(blueprint => Object.values(blueprint.program.graphs.events).map(event => event.graph));
+        .flatMap(blueprint => Object.values(blueprint.graphs.events).map(event => event.graph));
 }
 
 /**
@@ -136,7 +136,7 @@ function graphsOf(owner: (blueprint: Blueprint) => boolean): Graph[] {
  */
 const CUE_FN_REFS: ReadonlySet<string> = new Set(
     blueprints.flatMap(blueprint =>
-        Object.values(blueprint.program.graphs.events).flatMap(event => {
+        Object.values(blueprint.graphs.events).flatMap(event => {
             const { nodes, edges } = event.graph;
             return Object.values(nodes)
                 .filter(head => head.type === "blueprint.fn.head")

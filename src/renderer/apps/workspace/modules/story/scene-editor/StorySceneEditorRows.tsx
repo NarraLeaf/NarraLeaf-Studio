@@ -60,7 +60,7 @@ import { SpellSuggestionPopover } from "./SpellSuggestionPopover";
 import { useStorySpellcheck } from "./useStorySpellcheck";
 import { DictionaryMarkPopover } from "./DictionaryMarkPopover";
 import { useStoryDictionary } from "./useStoryDictionary";
-import { RichTextToolbar } from "./RichTextToolbar";
+import { RICH_TEXT_TOOLBAR_BAND_PX, RichTextToolbar } from "./RichTextToolbar";
 import type { RichTextToolbarHandle } from "./RichTextToolbar";
 import { InterpolationPopover } from "./InterpolationPopover";
 import { ExpressionPopover } from "./ExpressionPopover";
@@ -388,6 +388,12 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                 // chrome; the runtime treats it as absent.
                 row.disabled ? "opacity-45" : "",
             ].join(" ")}
+            // The band the rich-text strip sits in, kept clear only while this row holds the open
+            // editor. Padding on the row rather than on the field: the strip is placed from the
+            // field's box, so growing that box would push the strip down by the very space it was
+            // given. See RICH_TEXT_TOOLBAR_BAND_PX for why the space is made at all, and why it is
+            // made below the line.
+            style={editing && textSegment ? { paddingBottom: RICH_TEXT_TOOLBAR_BAND_PX } : undefined}
             onClick={on.onSelect}
             onContextMenu={on.onContextMenu}
             onMouseDown={on.onMouseDown}

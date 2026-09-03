@@ -328,8 +328,8 @@ describe("findSceneReferrersInBlueprints", () => {
     it("names the blueprints that hold the id, and no others", () => {
         const blueprints = {
             blueprints: {
-                one: { name: "Start", program: { graphs: { main: { nodes: { n1: { params: { sceneId: "b" } } } } } } },
-                two: { name: "Quit", program: { graphs: { main: { nodes: { n1: { params: { sceneId: "z" } } } } } } },
+                one: { name: "Start", graphs: { main: { nodes: { n1: { params: { sceneId: "b" } } } } } },
+                two: { name: "Quit", graphs: { main: { nodes: { n1: { params: { sceneId: "z" } } } } } },
             },
         };
         expect(findSceneReferrersInBlueprints(blueprints, "b")).toEqual([{ kind: "blueprint", name: "Start" }]);

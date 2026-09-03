@@ -43,25 +43,18 @@ function valueDocument(graph: BlueprintGraphIr): BlueprintDocument {
                 id: "bp-value",
                 name: "Text value",
                 owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text-a", propPath: "text" },
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            init: { id: "init", name: "Init", graph },
-                        },
-                        functions: {},
+                graphs: {
+                    events: {
+                        init: { id: "init", name: "Init", graph },
                     },
+                    functions: {},
                 },
             },
         },
         ownerRecords: {
             "widgetValue:surface:text-a:text": {
-                activeBlueprintId: "bp-value",
-                privateBlueprintIds: ["bp-value"],
-                initializedFrontend: "visual",
+                blueprintId: "bp-value",
             },
         },
     };
@@ -196,40 +189,33 @@ describe("Blueprint Value evaluator", () => {
             id: "bp-surface",
             name: "Surface",
             owner: { kind: "surfaceMain", surfaceId: "surface" },
-            frontend: "visual",
-            programKind: "graph",
             members: { variables: {}, fields: {}, functions: {} },
-            program: {
-                kind: "graph",
-                graphs: {
-                    events: {
-                        init: {
-                            id: "init",
-                            graph: {
-                                nodes: {
-                                    declare: {
-                                        id: "declare",
-                                        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
-                                        params: {
-                                            variableId: "title",
-                                            name: "Title",
-                                            valueType: "string",
-                                            defaultValue: "from-default",
-                                        },
+            graphs: {
+                events: {
+                    init: {
+                        id: "init",
+                        graph: {
+                            nodes: {
+                                declare: {
+                                    id: "declare",
+                                    type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                    params: {
+                                        variableId: "title",
+                                        name: "Title",
+                                        valueType: "string",
+                                        defaultValue: "from-default",
                                     },
                                 },
-                                edges: [],
                             },
+                            edges: [],
                         },
                     },
-                    functions: {},
                 },
+                functions: {},
             },
         };
         doc.ownerRecords["surfaceMain:surface"] = {
-            activeBlueprintId: "bp-surface",
-            privateBlueprintIds: ["bp-surface"],
-            initializedFrontend: "visual",
+            blueprintId: "bp-surface",
         };
 
         await expect(evalValue(doc)).resolves.toMatchObject({

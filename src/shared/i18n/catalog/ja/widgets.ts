@@ -19,6 +19,7 @@ export const widgets = {
     horizontal: "横",
     vertical: "縦",
     gap: "間隔",
+    wrap: "折り返し",
     perSidePx: "辺ごと（px）",
     sides: {
         top: "上",

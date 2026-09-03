@@ -196,16 +196,11 @@ function makeUIGraphs(): UIGraphDocument {
                     id: "bp-1",
                     name: "Widget",
                     owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            eventIds: ["ev-1"],
-                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
-                            functionIds: [],
-                            functions: {},
-                        },
+                    graphs: {
+                        eventIds: ["ev-1"],
+                        events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                        functionIds: [],
+                        functions: {},
                     },
                 },
             },
@@ -1540,7 +1535,7 @@ describe("the interface and the blueprints a session carries", () => {
             updates: ["bp-1"],
         }));
         const blueprint = world.uiGraphs.blueprintDocument.blueprints["bp-1"];
-        const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+        const graph = blueprint.graphs.events["ev-1"].graph;
         expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
         expect(graph?.edges).toEqual([]);
     });

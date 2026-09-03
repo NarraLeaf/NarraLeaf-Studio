@@ -25,15 +25,13 @@ import {
     WidgetRuntimeInstanceProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
-import {
-    isPhysicallyHorizontalAxis,
-    verticalTypographyCss,
-} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import { verticalTypographyCss } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import {
     getListProps,
     resolveListItemContentAlignmentStyle,
     resolveListItemsBindingArray,
+    resolveListRepeatLayout,
 } from "./helpers";
 
 type ScrollMetrics = {
@@ -435,17 +433,19 @@ export function ListRenderer(props: WidgetRendererProps) {
         ...effectStyle,
     };
 
-    // Which way the items actually run on screen. `repeatDirection` names the flex axis, and flex
-    // axes turn with the writing mode, so everything physical below reads this instead.
-    const repeatIsHorizontal = isPhysicallyHorizontalAxis(p.repeatDirection, p.writingMode);
+    // Which way the items actually run on screen, and which way the box therefore scrolls.
+    // `repeatDirection` names a flex axis rather than a screen axis, and a wrap moves the growing
+    // axis across it, so everything physical below reads the resolved answer instead.
+    const repeatLayout = resolveListRepeatLayout(p);
+    const overflowIsHorizontal = repeatLayout.overflowIsHorizontal;
 
     const viewportStyle: CSSProperties = {
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
         ...verticalTypographyCss({ writingMode: p.writingMode, textOrientation: "mixed" }),
-        overflowX: repeatIsHorizontal ? "auto" : "hidden",
-        overflowY: repeatIsHorizontal ? "hidden" : "auto",
+        overflowX: overflowIsHorizontal ? "auto" : "hidden",
+        overflowY: overflowIsHorizontal ? "hidden" : "auto",
         scrollbarWidth: "none",
         paddingTop: p.contentPaddingTop + reserveTop,
         paddingRight: p.contentPaddingRight + reserveRight,
@@ -453,15 +453,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         paddingLeft: p.contentPaddingLeft + reserveLeft,
     };
 
-    const flexHost: CSSProperties = {
-        display: "flex",
-        flexDirection: p.repeatDirection === "vertical" ? "column" : "row",
-        gap: p.itemGap,
-        alignItems: "stretch",
-        // The cross axis is the one the items do not run along, so it is the one that fills.
-        minWidth: repeatIsHorizontal ? 0 : "100%",
-        minHeight: repeatIsHorizontal ? "100%" : 0,
-    };
+    const flexHost = repeatLayout.flexHostStyle;
 
     const innerDir = p.templateDirection === "horizontal" ? "row" : "column";
     const listItemContentAlignment = resolveListItemContentAlignmentStyle(
@@ -759,7 +751,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 return;
             }
 
-            const useHorizontal = isPhysicallyHorizontalAxis(p.repeatDirection, p.writingMode);
+            const useHorizontal = overflowIsHorizontal;
             const scrollable = useHorizontal
                 ? viewport.scrollWidth > viewport.clientWidth + 1
                 : viewport.scrollHeight > viewport.clientHeight + 1;
@@ -812,8 +804,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         },
         [
             p.dragContentScroll,
-            p.repeatDirection,
-            p.writingMode,
+            overflowIsHorizontal,
             scrollbarThumbElement?.id,
             scrollbarTrackElement?.id,
         ],

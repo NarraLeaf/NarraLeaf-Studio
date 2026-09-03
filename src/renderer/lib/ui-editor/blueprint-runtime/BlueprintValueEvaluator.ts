@@ -75,11 +75,11 @@ export async function evaluateBlueprintValue(input: {
     const bp = input.blueprintDocument.blueprints[input.blueprintId];
     // Asked of the contract rather than the owner kind: this path exists for the one invocation
     // that returns a value to a prop, not for a particular slot the value binding happens to sit in.
-    if (!bp || blueprintContract(bp.owner).invocation !== "valueBinding" || bp.program.kind !== "graph") {
+    if (!bp || blueprintContract(bp.owner).invocation !== "valueBinding") {
         return { returned: false, value: undefined, dependencies: [] };
     }
 
-    const matching = Object.values(bp.program.graphs.events ?? {})
+    const matching = Object.values(bp.graphs.events ?? {})
         .map(eventGraph => {
             const headIds = collectValueHeadNodeIds(eventGraph.graph);
             return headIds.length > 0 ? { eventGraph, headIds } : null;

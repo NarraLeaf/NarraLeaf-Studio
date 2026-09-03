@@ -79,7 +79,6 @@ import type {
     BlueprintDocument,
     BlueprintField,
     BlueprintFieldValueSource,
-    BlueprintFrontendKind,
     BlueprintGraphIr,
     BlueprintPrivateOwnerRecord,
     Blueprint,
@@ -914,30 +913,22 @@ interface ILocalBlueprintService extends IService {
         options?: { mergeKey?: string; mergeWindowMs?: number },
     ): void;
     /** Where a script blueprint's file is. There is no setter for its text; the file is the author's. */
-    getScriptRef(blueprintId: string): string | null;
+    getScriptRef(blueprintId: string, layerId: string): string | null;
     getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     planSubtreeDuplicateBlueprintRemap(input: {
         surfaceId: string;
         oldElementIds: string[];
         generateId: () => string;
     }): SubtreeDuplicateRemapPlan;
-    /** Private owner slot keys: globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId>. */
-    listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[];
-    setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
     /**
-     * Adds a new blueprint revision for the owner; becomes active; prior blueprints stay in the record.
+     * Declares a layer that runs one of the author's script files, and answers its id.
      *
-     * Asynchronous because a script revision writes a file first and is only created if that
-     * succeeded - a blueprint pointing at a file that was never written would be indistinguishable
-     * from one whose file the author deleted.
+     * Asynchronous because a new script writes a file first and the layer is only declared if that
+     * succeeded - a layer pointing at a file that was never written would be indistinguishable from
+     * one whose file the author deleted.
      */
-    createSiblingPrivateBlueprintForOwnerKey(
-        ownerKey: string,
-        frontend: BlueprintFrontendKind,
-        options?: { existingScriptRef?: string },
-    ): Promise<string>;
-    deletePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
-    setBlueprintScriptRef(blueprintId: string, scriptRef: string): void;
+    addScriptLayer(blueprintId: string, options?: { existingScriptRef?: string }): Promise<string>;
+    setLayerScriptRef(blueprintId: string, layerId: string, scriptRef: string): void;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {

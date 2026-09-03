@@ -84,11 +84,11 @@ const LABEL = {
 /** Where a node's canvas position is kept. Its own leaf, never folded into `meta`. */
 const NODE_POSITION_KEY = "editorLayout";
 
-/** The three graph slots a blueprint program holds, in the order the member tree lists them. */
+/** The three graph slots a blueprint holds, in the order the member tree lists them. */
 const GRAPH_SLOTS = ["events", "functions", "macros"] as const;
 
 /** Blueprint fields with no words of their own; the raw identifier goes in the label's `{field}`. */
-const BLUEPRINT_FIELDS = ["owner", "frontend", "programKind", "members", "bindings", "meta"] as const;
+const BLUEPRINT_FIELDS = ["owner", "members", "bindings", "meta"] as const;
 
 /**
  * Where a slot's authored order is written down, when it has one.
@@ -103,7 +103,7 @@ const ORDER_KEY: Readonly<Record<string, string | undefined>> = {
 };
 
 /** Read off a graph, but never reported: its identity, its name, and the graph itself. */
-const GRAPH_FIELDS_NOT_REPORTED = new Set(["id", "name", "graph", "nodes", "edges"]);
+const GRAPH_FIELDS_NOT_REPORTED = new Set(["id", "name", "graph", "script", "nodes", "edges"]);
 
 export function diffUIGraphs(
     base: UIGraphDocument,
@@ -152,17 +152,13 @@ function blueprintRows(
     const path = ["blueprints", blueprintId];
     if (!base || !head) {
         const present = (head ?? base) as Record<string, unknown>;
-        // A script and a blueprint are two things an author holds apart, so the row says which one
-        // arrived or left. A script has no nodes to count, and a count of zero beside it would read
-        // as an empty blueprint rather than as a file.
-        const script = isScriptProgram(present);
-        rows.push(change(path, head ? "added" : "removed", script
-            ? (head ? LABEL.scriptAdded : LABEL.scriptRemoved)
-            : (head ? LABEL.blueprintAdded : LABEL.blueprintRemoved), {
+        rows.push(change(path, head ? "added" : "removed",
+            head ? LABEL.blueprintAdded : LABEL.blueprintRemoved, {
             subject: authoredName(present?.name),
             // One row for a whole blueprint, with its size in the label rather than a row per node:
-            // the change the author made is "I wrote this piece of logic".
-            params: script ? {} : {nodes: blueprintNodeCount(present)},
+            // the change the author made is "I wrote this piece of logic". Script layers count for
+            // nothing here - their text is not in this document - and the layer rows name them.
+            params: {nodes: blueprintNodeCount(present)},
         }));
         return;
     }
@@ -175,11 +171,6 @@ function blueprintRows(
             subject: authoredName(head.name) ?? subject,
         }));
     }
-    // A script's text is not in this document - the disk owns it - so what can differ here is
-    // which file the slot points at.
-    if (!sameJsonValue(sourceOf(base), sourceOf(head))) {
-        children.push(change([...path, "source"], "changed", LABEL.blueprintSource, {subject}));
-    }
     for (const field of BLUEPRINT_FIELDS) {
         if (!sameJsonValue(base[field], head[field])) {
             children.push(change([...path, field], "changed", LABEL.blueprintField, {params: {field}, subject}));
@@ -189,7 +180,7 @@ function blueprintRows(
     // whenever any node does, and a bare "the blueprint changed" beside the node rows is the same
     // news twice.
     if (children.length > 0) {
-        rows.push(change(path, "changed", isScriptProgram(head) ? LABEL.scriptChanged : LABEL.blueprintChanged, {subject, children}));
+        rows.push(change(path, "changed", LABEL.blueprintChanged, {subject, children}));
     }
 
     for (const slot of GRAPH_SLOTS) {
@@ -236,9 +227,15 @@ function graphRows(
 ): void {
     if (!base || !head) {
         const present = (head ?? base) as Record<string, unknown>;
-        rows.push(change(path, head ? "added" : "removed", head ? LABEL.graphAdded : LABEL.graphRemoved, {
-            subject: authoredName(present?.name),
-            params: {nodes: Object.keys(nodesOf(irOf(present))).length},
+        // A script and a graph are two things an author holds apart, so the row says which one
+        // arrived or left. A script has no nodes to count, and a count of zero beside it would read
+        // as an empty layer rather than as a file.
+        const script = isScriptLayer(present);
+        rows.push(change(path, head ? "added" : "removed", script
+            ? (head ? LABEL.scriptAdded : LABEL.scriptRemoved)
+            : (head ? LABEL.graphAdded : LABEL.graphRemoved), {
+            subject: authoredName(present?.name) ?? (sourceOf(present) as string | undefined),
+            params: script ? {} : {nodes: Object.keys(nodesOf(irOf(present))).length},
         }));
         return;
     }
@@ -251,6 +248,12 @@ function graphRows(
             subject: authoredName(head.name) ?? subject,
         }));
     }
+    // A script's text is not in this document - the disk owns it - so what can differ on a script
+    // layer is which file it points at. Reported as its own row rather than as a changed field,
+    // because "the field `script` changed" names nothing the author did.
+    if (!sameJsonValue(sourceOf(base), sourceOf(head))) {
+        children.push(change([...path, "source"], "changed", LABEL.blueprintSource, {subject}));
+    }
     const wasFields = graphFields(base);
     const nowFields = graphFields(head);
     for (const field of [...new Set([...Object.keys(wasFields), ...Object.keys(nowFields)])].sort()) {
@@ -259,7 +262,7 @@ function graphRows(
         }
     }
     if (children.length > 0) {
-        rows.push(change(path, "changed", LABEL.graphChanged, {subject, children}));
+        rows.push(change(path, "changed", isScriptLayer(head) ? LABEL.scriptChanged : LABEL.graphChanged, {subject, children}));
     }
 
     const wasNodes = nodesOf(irOf(base));
@@ -356,10 +359,9 @@ function ownerRecordsOf(document: UIGraphDocument | undefined): Record<string, R
     return mapOf((document as {blueprintDocument?: {ownerRecords?: unknown}} | undefined)?.blueprintDocument?.ownerRecords);
 }
 
-/** `program.graphs`, which holds the three slots and the two arrays that order them. */
+/** `graphs`, which holds the three slots and the two arrays that order them. */
 function graphIndexOf(blueprint: Record<string, unknown>): Record<string, unknown> {
-    const program = blueprint?.program;
-    const graphs = isJsonObject(program) ? program.graphs : undefined;
+    const graphs = blueprint?.graphs;
     return isJsonObject(graphs) ? graphs : {};
 }
 
@@ -403,15 +405,15 @@ function nodesOf(ir: Record<string, unknown>): Record<string, Record<string, unk
     return mapOf(ir.nodes);
 }
 
-/** Whether this record is a script rather than a blueprint, for the rows that name one. */
-function isScriptProgram(blueprint: Record<string, unknown> | undefined): boolean {
-    const program = blueprint?.program;
-    return isJsonObject(program) && program.kind === "scriptModule";
+/** Whether this layer runs one of the author's files rather than a graph. */
+function isScriptLayer(layer: Record<string, unknown> | undefined): boolean {
+    return isJsonObject(layer?.script);
 }
 
-function sourceOf(blueprint: Record<string, unknown>): unknown {
-    const program = blueprint?.program;
-    return isJsonObject(program) ? program.scriptRef : undefined;
+/** The file a script layer runs. A script's text is not in this document - the disk owns it. */
+function sourceOf(layer: Record<string, unknown> | undefined): unknown {
+    const script = layer?.script;
+    return isJsonObject(script) ? script.scriptRef : undefined;
 }
 
 function positionOf(node: Record<string, unknown>): unknown {

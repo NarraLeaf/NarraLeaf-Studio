@@ -18,12 +18,12 @@ export function resolveBlueprintGraphIr(
         return undefined;
     }
     const blueprint = document?.blueprints[blueprintId];
-    if (!blueprint || blueprint.program.kind !== "graph") {
+    if (!blueprint) {
         return undefined;
     }
     return (
-        blueprint.program.graphs.events?.[graphId]?.graph ??
-        blueprint.program.graphs.functions?.[graphId]?.graph
+        blueprint.graphs.events?.[graphId]?.graph ??
+        blueprint.graphs.functions?.[graphId]?.graph
     );
 }
 
@@ -37,10 +37,10 @@ export function resolveBlueprintGraphName(
         return undefined;
     }
     const blueprint = document?.blueprints[blueprintId];
-    if (!blueprint || blueprint.program.kind !== "graph") {
+    if (!blueprint) {
         return undefined;
     }
-    const entry = blueprint.program.graphs.events?.[graphId] ?? blueprint.program.graphs.functions?.[graphId];
+    const entry = blueprint.graphs.events?.[graphId] ?? blueprint.graphs.functions?.[graphId];
     return entry?.name?.trim() || undefined;
 }
 

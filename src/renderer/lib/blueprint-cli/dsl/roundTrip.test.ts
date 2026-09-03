@@ -49,14 +49,11 @@ function recompile(blueprint: Blueprint): { text: string; compiled: Blueprint | 
 }
 
 function graphsOf(blueprint: Blueprint): Record<string, BlueprintGraphIr> {
-    if (blueprint.program.kind !== "graph") {
-        return {};
-    }
     const out: Record<string, BlueprintGraphIr> = {};
-    for (const [id, graph] of Object.entries(blueprint.program.graphs.events ?? {})) {
+    for (const [id, graph] of Object.entries(blueprint.graphs.events ?? {})) {
         out[`event:${id}`] = graph.graph ?? {};
     }
-    for (const [id, graph] of Object.entries(blueprint.program.graphs.functions ?? {})) {
+    for (const [id, graph] of Object.entries(blueprint.graphs.functions ?? {})) {
         out[`function:${id}`] = graph.graph ?? {};
     }
     return out;

@@ -460,22 +460,17 @@ function blueprint(
         id,
         name,
         owner: {kind: "globalMain"},
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                eventIds: ["ev-1"],
-                events: {
-                    "ev-1": {
-                        id: "ev-1",
-                        name: "On click",
-                        graph: {nodes: Object.fromEntries(nodes.map(one => [one.id, one])), edges},
-                    },
+        graphs: {
+            eventIds: ["ev-1"],
+            events: {
+                "ev-1": {
+                    id: "ev-1",
+                    name: "On click",
+                    graph: {nodes: Object.fromEntries(nodes.map(one => [one.id, one])), edges},
                 },
-                functionIds: [],
-                functions: {},
             },
+            functionIds: [],
+            functions: {},
         },
     };
 }
@@ -505,8 +500,7 @@ function diffGraphs(base: UIGraphDocument, head: UIGraphDocument, limit = 200) {
 /** Every node in the fixture's one event graph, rebuilt with `mutate` applied. */
 function withNodes(source: Blueprint, mutate: (nodes: Record<string, BlueprintGraphNode>) => void): Blueprint {
     const clone = structuredClone(source);
-    const graphs = clone.program.kind === "graph" ? clone.program.graphs : undefined;
-    mutate((graphs?.events["ev-1"].graph?.nodes ?? {}) as Record<string, BlueprintGraphNode>);
+    mutate((clone.graphs.events["ev-1"].graph?.nodes ?? {}) as Record<string, BlueprintGraphNode>);
     return clone;
 }
 

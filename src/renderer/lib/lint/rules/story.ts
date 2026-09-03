@@ -26,16 +26,19 @@ import {
     type StoryBlock,
     type StoryBlockId,
     type StoryDocument,
+    type StoryActionPayload,
     type StoryExpr,
     type StoryInlineEvent,
     type StoryScene,
     type StorySceneId,
+    type StoryTransitionRef,
 } from "@shared/types/story";
 import {
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
 } from "@shared/types/blueprint/graph";
 import type { TranslationKey } from "@shared/i18n/catalog";
+import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintCharacterEntry, LintContext, LintStoryEntry } from "../context";
@@ -1318,7 +1321,179 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A row changing the background to the picture the stage is already showing.
+         *
+         * The player watches the transition run its full length and the frame is the same at both
+         * ends of it - a scene that opens on its own default background and then dissolves through
+         * black back to that same background sits there for a second doing nothing. The row reads
+         * perfectly well: it names a background and a transition, and neither the row nor the
+         * inspector says what the stage held a moment earlier, so there is nowhere on the interface
+         * this is visible.
+         *
+         * `warning`. The player really does see it, and it is time nobody chose to spend, but the
+         * game that ships is still the game the row describes - the picture the author named is the
+         * picture on screen when the transition ends. That falls short of the `error` clause
+         * ("severely different from what was authored"), which is where a missing image or a
+         * transition this build cannot play sits.
+         *
+         * What is already on screen comes from {@link computeStoryStageSnapshot} - the walk Dev
+         * Mode, the scene preview and a row-precise `launch` all use to pre-pose the stage. Nothing
+         * here re-derives it: the snapshot stops immediately before the target row, and its `null`
+         * background composes with `defaultBackgroundAssetId` exactly the way the story compiler
+         * composes the two ("snapshot background wins; otherwise the scene's default initial
+         * background"). So the state this rule calls "already showing" is the very frame Studio
+         * would put on stage if the author pressed play on that row.
+         *
+         * Three things it deliberately stays quiet about, because a rule that fires on work in
+         * progress gets switched off:
+         *
+         *  - **A cut.** A row with no transition, one that names `none`, one with a zero duration,
+         *    and one whose transition this build cannot play, all land instantly. Re-stating the
+         *    background costs nothing then, and it is how an author pins the background down at a
+         *    scene entered from several places.
+         *  - **A background that has been posed or graded.** A `/transform` on the background or on
+         *    the background layer leaves something other than the plain picture on screen - faded
+         *    out, masked, darkened - so a transition back to it has a change to play after all.
+         *  - **A row that names neither an image nor a colour.** There is no background for it to
+         *    be the same as.
+         */
+        id: "story/background-unchanged",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyBackgroundUnchanged",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                /**
+                 * Every background that could be on screen anywhere in this scene, as the walk goes
+                 * past: the scene's own default, plus each one a row before this point puts up.
+                 *
+                 * A gate, not an answer. Each snapshot below costs a walk from the scene's first row,
+                 * so asking for one per background row is quadratic in a scene's background rows -
+                 * measured at 80 walks crossing 21,044 rows on a 4,026-row project, which made this
+                 * the most expensive rule in the story set by four times over. Anything the walk can
+                 * have executed before a row precedes that row in document order, so this set is a
+                 * superset of what may be showing there and a row naming something outside it cannot
+                 * be a finding. It halved the work on that project (34 walks, 9,746 rows) and it
+                 * cannot change a verdict: what IS showing still comes from the walk alone.
+                 */
+                const mayBeShowing = new Set<string>();
+                const showingKey = (background: BackgroundOnStage): string =>
+                    "assetId" in background ? `asset:${background.assetId}` : `color:${background.color.toLowerCase()}`;
+                const sceneDefault = backgroundOf(scene.defaultBackgroundAssetId, undefined);
+                if (sceneDefault) {
+                    mayBeShowing.add(showingKey(sceneDefault));
+                }
+                for (const block of liveBlocks(scene)) {
+                    if (block.kind !== "action" || block.payload.action !== "setBackground") {
+                        continue;
+                    }
+                    const wanted = backgroundNamedByRow(block.payload);
+                    if (!wanted) {
+                        continue;
+                    }
+                    const couldAlreadyBeShowing = mayBeShowing.has(showingKey(wanted));
+                    // After the test and before the walk: this row's own picture is on screen for the
+                    // rows below it, not for itself.
+                    mayBeShowing.add(showingKey(wanted));
+                    if (!couldAlreadyBeShowing || transitionVisibleMs(block.payload.transition) <= 0) {
+                        continue;
+                    }
+                    const snapshot = computeStoryStageSnapshot({
+                        document: entry.document,
+                        sceneId: scene.id,
+                        targetBlockId: block.id,
+                    });
+                    if (Object.keys(snapshot.backgroundProps).length > 0
+                        || Object.keys(snapshot.backgroundEffects).length > 0
+                        || Object.keys(snapshot.builtinLayerProps.backgroundLayer).length > 0) {
+                        continue;
+                    }
+                    const showing = snapshot.background
+                        ? backgroundOf(snapshot.background.assetId, snapshot.background.color)
+                        : sceneDefault;
+                    if (!showing || !sameBackground(showing, wanted)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/background-unchanged",
+                        messageKey: "lint.rule.storyBackgroundUnchanged.message",
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/** Either half of what a background can be. Asset and colour never compare equal. */
+type BackgroundOnStage = { assetId: string } | { color: string };
+
+/** One of the two arms, or null when neither field carries anything. */
+function backgroundOf(assetId: string | undefined, color: string | undefined): BackgroundOnStage | null {
+    const asset = assetId?.trim();
+    if (asset) {
+        return { assetId: asset };
+    }
+    const paint = color?.trim();
+    return paint ? { color: paint } : null;
+}
+
+/** What a `setBackground` row puts up, read the way the snapshot walker reads it: asset before colour. */
+function backgroundNamedByRow(payload: Extract<StoryActionPayload, { action: "setBackground" }>): BackgroundOnStage | null {
+    return backgroundOf(payload.assetId, payload.color);
+}
+
+/**
+ * Whether two backgrounds are the same picture.
+ *
+ * Colours are compared case-insensitively because `#FFF` and `#fff` are one colour and both spellings
+ * reach the document - the inspector's picker writes lower case, a pasted value keeps whatever it had.
+ * Asset ids are not: they are ids, and two that differ in case are two assets.
+ */
+function sameBackground(a: BackgroundOnStage, b: BackgroundOnStage): boolean {
+    if ("assetId" in a && "assetId" in b) {
+        return a.assetId === b.assetId;
+    }
+    if ("color" in a && "color" in b) {
+        return a.color.toLowerCase() === b.color.toLowerCase();
+    }
+    return false;
+}
+
+/**
+ * How long the transition a row names occupies the screen, in milliseconds. `0` means a cut.
+ *
+ * Read exactly the way `createTransition` reads it, because the answer has to be the compiler's:
+ * the kind through {@link storyTransitionKindOf} (an absent or blank one is the author asking for a
+ * cut, not a transition this build lost), and the duration through the same `?? 300` default, so a
+ * row that states a kind and no duration is correctly read as three tenths of a second rather than
+ * as nothing.
+ *
+ * `holdMs` adds nothing to the total: a hold is split off the two moving halves rather than added to
+ * them, so `{durationMs: 4000, holdMs: 2000}` still occupies four seconds.
+ *
+ * Two kinds are cuts however they are written. One this build cannot play is downgraded to a cut and
+ * already belongs to `story/transition-unavailable`; a `ruleReveal` with no rule image is downgraded
+ * the same way, by the compiler, on the row that forgot the picture.
+ */
+function transitionVisibleMs(transition: StoryTransitionRef | undefined): number {
+    if (!transition) {
+        return 0;
+    }
+    const kind = storyTransitionKindOf(transition);
+    if (kind === "none" || !isPlayableStoryTransitionKind(kind)) {
+        return 0;
+    }
+    if (kind === "ruleReveal" && !transition.ruleAssetId) {
+        return 0;
+    }
+    return Math.max(0, transition.durationMs ?? 300);
+}
 
 /**
  * The transition kind a row names, or `null` for a row that names none.

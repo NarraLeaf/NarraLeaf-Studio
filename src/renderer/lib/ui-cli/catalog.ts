@@ -92,8 +92,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
             + "the matching row of `appearance.variants[*].propertyGroups`, and the flat prop is only the "
             + "baseline it is laid over - change both, or copy the whole `props` bag from a container that "
             + "already looks right.",
-        "Children are laid out absolutely unless `layoutKind` is `stack` or `scroll`, and a stack does "
-            + "not wrap: `flexWrap` is fixed at `nowrap`, so a grid has to be built out of nested stacks.",
+        "Children are laid out absolutely unless `layoutKind` is `stack` or `scroll`. A stack keeps its "
+            + "children on one line until `stackWrap = true`; wrapped lines pack against the start of the "
+            + "cross axis with `stackGap` between them, and `stackAlignItems` then reads within each line "
+            + "rather than across the whole box.",
     ],
     "nl.button": [
         "A new button carries an `appearance` model seeded from its flat props. Writing a colour on the "
@@ -107,8 +109,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
         "A list repeats one authored child - its item template - once per item. The elements inside the "
             + "template read their row through `bind <prop> = field <fieldId>`, and the field ids come from "
             + "the struct named by `itemStructId`.",
-        "`repeatDirection` is a single axis and there is no wrap or chunking, so a grid of rows is built "
-            + "by hand rather than by the list.",
+        "`repeatDirection` is one axis and `repeatWrap = true` adds the other: items flow along the "
+            + "direction, break at the edge of the list's box, and the lines pack from the start with "
+            + "`itemGap` between them - which is how a grid is built from one item template. Wrapping also "
+            + "turns the axis the list scrolls along, since what grows is now the stack of lines.",
     ],
     "nl.slider": [
         "The track and the handle are elements the widget built and pointed at through "

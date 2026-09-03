@@ -363,10 +363,7 @@ function countBlueprints(ctx: WorkspaceContext): {
     const document = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument();
     let nodes = 0;
     for (const blueprint of Object.values(document.blueprints ?? {})) {
-        if (blueprint.program.kind !== "graph") {
-            continue;
-        }
-        const { events, functions, macros } = blueprint.program.graphs;
+        const { events, functions, macros } = blueprint.graphs;
         const groups: Record<string, { graph?: BlueprintGraphIr }>[] = [events, functions, macros ?? {}];
         for (const group of groups) {
             for (const entry of Object.values(group)) {

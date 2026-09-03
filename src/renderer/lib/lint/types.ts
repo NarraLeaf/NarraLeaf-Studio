@@ -131,6 +131,7 @@ export type LintRuleId =
     | "story/declared-never-shown"
     | "story/character-missing"
     | "story/transition-unavailable"
+    | "story/background-unchanged"
     | "blueprint/reference-missing"
     | "blueprint/element-ref-missing"
     | "blueprint/fn-target-missing"

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { encodeCanonicalJson } from "../documents/canonicalJson";
-import type { BlueprintDocument, BlueprintGraphIndex } from "../types/blueprint/document";
+import type { Blueprint, BlueprintDocument, BlueprintGraphIndex } from "../types/blueprint/document";
 import { LEGACY_INLINE_SCRIPT_META_KEY } from "../types/blueprint/document";
 import { listBlueprintEventIds, listBlueprintFunctionIds } from "./blueprintEventOrder";
+import { listScriptLayers } from "./blueprintLayers";
+import { encodeBlueprintOwnerKey } from "./ownerKey";
 import {
     BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION,
     migrateBlueprintDocumentToLatest,
@@ -21,22 +23,19 @@ describe("migrateBlueprintDocumentToLatest (v9→v10 graph-slot order)", () => {
     function documentText(schemaVersion: number, stale?: { eventIds?: string[]; functionIds?: string[] }): string {
         return JSON.stringify({
             schemaVersion,
-            ownerRecords: {},
+            // A record naming it: a blueprint no slot names is unreachable, and the v14 pass drops
+            // one rather than leaving it in the map to be linted and diffed while never running.
+            ownerRecords: { globalMain: { activeBlueprintId: "bp", privateBlueprintIds: ["bp"] } },
             blueprints: {
                 bp: {
                     id: "bp",
                     name: "Main",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            ...(stale?.eventIds ? { eventIds: stale.eventIds } : {}),
-                            events: slots(AUTHORED),
-                            ...(stale?.functionIds ? { functionIds: stale.functionIds } : {}),
-                            functions: slots(AUTHORED_FNS),
-                        },
+                    graphs: {
+                        ...(stale?.eventIds ? { eventIds: stale.eventIds } : {}),
+                        events: slots(AUTHORED),
+                        ...(stale?.functionIds ? { functionIds: stale.functionIds } : {}),
+                        functions: slots(AUTHORED_FNS),
                     },
                 },
             },
@@ -45,10 +44,10 @@ describe("migrateBlueprintDocumentToLatest (v9→v10 graph-slot order)", () => {
 
     function graphsOf(doc: BlueprintDocument): BlueprintGraphIndex {
         const bp = doc.blueprints.bp;
-        if (!bp || bp.program.kind !== "graph") {
+        if (!bp) {
             throw new Error("test fixture lost its graph program");
         }
-        return bp.program.graphs;
+        return bp.graphs;
     }
 
     it("derives the order from the parsed key order of a v9 document", () => {
@@ -138,12 +137,24 @@ describe("migrateBlueprintDocumentToLatest (v10 to v11 owner keys)", () => {
     const BUILT_IN = "widgetMain:narraleaf-studio:main-surface:0443cfc4-b06c-483b-a1a5-f56306351f08";
     const ESCAPED = "widgetMain:narraleaf-studio%3Amain-surface:0443cfc4-b06c-483b-a1a5-f56306351f08";
 
-    function record(activeBlueprintId: string) {
-        return { activeBlueprintId, privateBlueprintIds: [activeBlueprintId] };
+    function record(blueprintId: string) {
+        // The pre-v14 shape: a list with one of them marked active.
+        return { activeBlueprintId: blueprintId, privateBlueprintIds: [blueprintId] };
     }
 
     function documentAt(schemaVersion: number, ownerRecords: Record<string, unknown>): unknown {
-        return JSON.parse(JSON.stringify({ schemaVersion, ownerRecords, blueprints: {} }));
+        // Every record's blueprint, because a record naming nothing is a document the validator
+        // refuses and the v14 pass drops.
+        const blueprints: Record<string, unknown> = {};
+        for (const entry of Object.values(ownerRecords) as { activeBlueprintId: string }[]) {
+            blueprints[entry.activeBlueprintId] = {
+                id: entry.activeBlueprintId,
+                name: entry.activeBlueprintId,
+                owner: { kind: "globalMain" },
+                program: { kind: "graph", graphs: { events: {}, functions: {} } },
+            };
+        }
+        return JSON.parse(JSON.stringify({ schemaVersion, ownerRecords, blueprints }));
     }
 
     it("moves a record onto the escaped key, keeping the blueprint it points at", () => {
@@ -155,8 +166,7 @@ describe("migrateBlueprintDocumentToLatest (v10 to v11 owner keys)", () => {
         );
 
         expect(Object.keys(migrated.ownerRecords).sort()).toEqual([ESCAPED, "widgetMain:s-1:e-1"].sort());
-        expect(migrated.ownerRecords[ESCAPED].activeBlueprintId).toBe("bp-built-in");
-        expect(migrated.ownerRecords[ESCAPED].privateBlueprintIds).toEqual(["bp-built-in"]);
+        expect(migrated.ownerRecords[ESCAPED].blueprintId).toBe("bp-built-in");
     });
 
     it("cannot escape a key it has already escaped", () => {
@@ -177,7 +187,7 @@ describe("migrateBlueprintDocumentToLatest (v10 to v11 owner keys)", () => {
         const migrated = migrateBlueprintDocumentToLatest(
             documentAt(10, { "somethingElse:x": record("bp-unknown") }),
         );
-        expect(migrated.ownerRecords["somethingElse:x"].activeBlueprintId).toBe("bp-unknown");
+        expect(migrated.ownerRecords["somethingElse:x"].blueprintId).toBe("bp-unknown");
     });
 
     it("keeps both records when two old keys want one new key", () => {
@@ -186,7 +196,7 @@ describe("migrateBlueprintDocumentToLatest (v10 to v11 owner keys)", () => {
         // on the day one can.
         const collides = { [BUILT_IN]: record("bp-a"), [ESCAPED]: record("bp-b") };
         const migrated = migrateBlueprintDocumentToLatest(documentAt(10, collides));
-        const kept = Object.values(migrated.ownerRecords).map(entry => entry.activeBlueprintId).sort();
+        const kept = Object.values(migrated.ownerRecords).map(entry => entry.blueprintId).sort();
         expect(kept).toEqual(["bp-a", "bp-b"]);
     });
 });
@@ -211,17 +221,13 @@ describe("migrateBlueprintDocumentToLatest (v11 to v12 shared asset removal)", (
                     id: "bp-global",
                     name: "Global",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
                 "bp-shared": {
                     id: "bp-shared",
                     name: "Shared",
                     owner: { kind: "sharedAsset", assetId: "asset-1" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
             },
         }));
@@ -246,12 +252,19 @@ describe("migrateBlueprintDocumentToLatest (v11 to v12 shared asset removal)", (
         const clean = JSON.parse(JSON.stringify({
             schemaVersion: 11,
             ownerRecords: { globalMain: { activeBlueprintId: "bp", privateBlueprintIds: ["bp"] } },
-            blueprints: {},
+            blueprints: {
+                bp: {
+                    id: "bp",
+                    name: "Global",
+                    owner: { kind: "globalMain" },
+                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                },
+            },
         }));
         const migrated = migrateBlueprintDocumentToLatest(clean);
 
         expect(Object.keys(migrated.ownerRecords)).toEqual(["globalMain"]);
-        expect(migrated.ownerRecords.globalMain.privateBlueprintIds).toEqual(["bp"]);
+        expect(migrated.ownerRecords.globalMain.blueprintId).toBe("bp");
     });
 });
 
@@ -261,14 +274,20 @@ describe("migrateBlueprintDocumentToLatest (v12 to v13 script references)", () =
             id,
             name,
             owner: { kind: "globalMain" },
-            frontend: "typescript",
-            programKind: "scriptModule",
             program: { kind: "scriptModule", source: { language: "typescript", code } },
         };
     }
 
     function documentWith(blueprints: Record<string, unknown>, schemaVersion = 12): unknown {
-        return JSON.parse(JSON.stringify({ schemaVersion, ownerRecords: {}, blueprints }));
+        // One record per blueprint, on a slot of its own, so nothing is dropped as unreachable.
+        // Keys through the encoder, never spelled here: `ownerKeySpelling.test.ts` is what says so.
+        const ownerRecords = Object.fromEntries(
+            Object.keys(blueprints).map((id, index) => [
+                encodeBlueprintOwnerKey({ kind: "surfaceMain", surfaceId: `s-${index}` }),
+                { activeBlueprintId: id, privateBlueprintIds: [id] },
+            ]),
+        );
+        return JSON.parse(JSON.stringify({ schemaVersion, ownerRecords, blueprints }));
     }
 
     it("points a script blueprint at a file named after it, keeping the text for whoever writes it", () => {
@@ -277,7 +296,7 @@ describe("migrateBlueprintDocumentToLatest (v12 to v13 script references)", () =
         );
 
         const blueprint = migrated.blueprints.a;
-        expect(blueprint.program).toEqual({ kind: "scriptModule", scriptRef: "scripts/quit-game.ts" });
+        expect(scriptRefsOf(blueprint)).toEqual(["scripts/quit-game.ts"]);
         // The text never ran - nothing mounted these modules - but the editor accepted typing, so
         // it is carried to the one open that can write it to disk rather than dropped.
         expect(blueprint.meta?.[LEGACY_INLINE_SCRIPT_META_KEY]).toBe("export function onMouseClick() {}");
@@ -294,8 +313,7 @@ describe("migrateBlueprintDocumentToLatest (v12 to v13 script references)", () =
             }),
         );
 
-        const refs = Object.values(migrated.blueprints).map(bp =>
-            bp.program.kind === "scriptModule" ? bp.program.scriptRef : null);
+        const refs = Object.values(migrated.blueprints).flatMap(scriptRefsOf);
         expect(refs).toEqual(["scripts/quit.ts", "scripts/quit-2.ts", "scripts/script.ts"]);
         // A filename is as much interface as a title bar is.
         for (const ref of refs) {
@@ -315,8 +333,6 @@ describe("migrateBlueprintDocumentToLatest (v12 to v13 script references)", () =
                     id: "a",
                     name: "Quit",
                     owner: { kind: "globalMain" },
-                    frontend: "typescript",
-                    programKind: "scriptModule",
                     program: { kind: "scriptModule", scriptRef: "scripts/menus/quit.ts" },
                 },
             },
@@ -338,13 +354,96 @@ describe("migrateBlueprintDocumentToLatest (v12 to v13 script references)", () =
                     id: "g",
                     name: "Visual",
                     owner: { kind: "globalMain" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                    graphs: { events: {}, functions: {} },
                 },
             }),
         );
-        expect(migrated.blueprints.g.program.kind).toBe("graph");
+        expect(scriptRefsOf(migrated.blueprints.g)).toEqual([]);
         expect(migrated.blueprints.g.meta).toBeUndefined();
+    });
+});
+
+/** Every file the layers of one blueprint run, in authored order. */
+function scriptRefsOf(blueprint: Blueprint): string[] {
+    return listScriptLayers(blueprint.graphs).map(entry => entry.script.scriptRef);
+}
+
+describe("migrateBlueprintDocumentToLatest (v13 to v14 scripts become layers)", () => {
+    function documentAt13(blueprints: Record<string, unknown>, ownerRecords: Record<string, unknown>): unknown {
+        return JSON.parse(JSON.stringify({ schemaVersion: 13, blueprints, ownerRecords }));
+    }
+
+    it("folds a script blueprint into a blueprint holding one script layer", () => {
+        const migrated = migrateBlueprintDocumentToLatest(documentAt13(
+            {
+                s: {
+                    id: "s",
+                    name: "Quit",
+                    owner: { kind: "globalMain" },
+                    frontend: "typescript",
+                    programKind: "scriptModule",
+                    program: { kind: "scriptModule", scriptRef: "scripts/quit.ts" },
+                },
+            },
+            { globalMain: { activeBlueprintId: "s", privateBlueprintIds: ["s"] } },
+        ));
+
+        // The same file, under the same slot, through the same blueprint id: what moved is where
+        // the path is written, not what runs.
+        expect(scriptRefsOf(migrated.blueprints.s)).toEqual(["scripts/quit.ts"]);
+        expect(migrated.ownerRecords.globalMain.blueprintId).toBe("s");
+        // The three fields that answered the same question are gone with the wrapper.
+        expect((migrated.blueprints.s as unknown as Record<string, unknown>).program).toBeUndefined();
+        expect((migrated.blueprints.s as unknown as Record<string, unknown>).frontend).toBeUndefined();
+        expect((migrated.blueprints.s as unknown as Record<string, unknown>).programKind).toBeUndefined();
+    });
+
+    it("keeps the blueprint a slot was running and drops the revisions beside it", () => {
+        const graphBlueprint = (id: string) => ({
+            id,
+            name: id,
+            owner: { kind: "globalMain" },
+            program: { kind: "graph", graphs: { events: {}, functions: {} } },
+        });
+        const migrated = migrateBlueprintDocumentToLatest(documentAt13(
+            { active: graphBlueprint("active"), spare: graphBlueprint("spare") },
+            { globalMain: { activeBlueprintId: "active", privateBlueprintIds: ["spare", "active"] } },
+        ));
+
+        expect(migrated.ownerRecords.globalMain.blueprintId).toBe("active");
+        // Dropped rather than left in the map: nothing resolves a blueprint by walking it, so one
+        // its slot does not name would be linted and diffed while never running.
+        expect(Object.keys(migrated.blueprints)).toEqual(["active"]);
+    });
+
+    it("drops a record naming nothing rather than leaving it pointing at a hole", () => {
+        const migrated = migrateBlueprintDocumentToLatest(documentAt13(
+            {},
+            { globalMain: { activeBlueprintId: "gone", privateBlueprintIds: ["gone"] } },
+        ));
+
+        expect(migrated.ownerRecords).toEqual({});
+    });
+
+    it("keeps the authored layer order of a graph blueprint across the fold", () => {
+        const migrated = migrateBlueprintDocumentToLatest(documentAt13(
+            {
+                g: {
+                    id: "g",
+                    name: "Global",
+                    owner: { kind: "globalMain" },
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: { second: { id: "second" }, first: { id: "first" } },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            { globalMain: { activeBlueprintId: "g", privateBlueprintIds: ["g"] } },
+        ));
+
+        expect(migrated.blueprints.g.graphs.eventIds).toEqual(["second", "first"]);
     });
 });

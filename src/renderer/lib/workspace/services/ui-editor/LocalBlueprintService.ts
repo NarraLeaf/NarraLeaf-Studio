@@ -4,7 +4,6 @@ import type {
     BlueprintDocument,
     BlueprintField,
     BlueprintFieldValueSource,
-    BlueprintFrontendKind,
     BlueprintGraphNode,
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
@@ -54,14 +53,13 @@ import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { SaveSchemaService } from "../saves/SaveSchemaService";
 import {
     createMainBlueprint,
-    createScriptMainBlueprint,
     renderStarterScript,
     emptyMemberIndex,
 } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
-import type { BlueprintEventGraph, BlueprintFunctionGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { BlueprintLayer, BlueprintFunctionGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
-    ensureBlueprintEventGraphIrStructure,
+    ensureBlueprintLayerIrStructure,
     ensureBlueprintFunctionGraphIrStructure,
     ensureBlueprintGraphIr,
 } from "./blueprint/graphEditing";
@@ -89,12 +87,11 @@ import {
     type ReadonlyBlueprintSurfaceSummary,
 } from "./blueprint/readonlyBlueprintSummary";
 import {
-    getActiveBlueprintId,
+    getSlotBlueprintId,
     parsePrivateOwnerKeyToRef,
-    registerPrivateBlueprintAsActive,
-    removePrivateBlueprint,
-    setPrivateOwnerActive,
+    setPrivateOwnerBlueprint,
 } from "./blueprint/ownerRecords";
+import { hasScriptLayer, listScriptLayers } from "@shared/blueprint/blueprintLayers";
 
 const DEFAULT_BLUEPRINT_HISTORY_LIMIT = 100;
 const DEFAULT_BLUEPRINT_MERGE_WINDOW_MS = 800;
@@ -286,10 +283,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
-    /** Whether anything in this project is a script blueprint, and so needs declarations. */
+    /** Whether anything in this project runs a script, and so needs declarations. */
     private hasScriptBlueprints(): boolean {
-        return Object.values(this.getBlueprintDocument().blueprints ?? {})
-            .some(blueprint => blueprint.program.kind === "scriptModule");
+        return Object.values(this.getBlueprintDocument().blueprints ?? {}).some(hasScriptLayer);
     }
 
     private history(): HistoryService {
@@ -348,7 +344,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         emptyNameKeepsExisting: boolean,
     ): string | null {
         const doc = this.getBlueprintDocument();
-        const activeId = getActiveBlueprintId(doc, ownerKey);
+        const activeId = getSlotBlueprintId(doc, ownerKey);
         if (!activeId) {
             return null;
         }
@@ -470,7 +466,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }
         let outId = "";
         this.applyBlueprintMutation(doc => {
-            const active = getActiveBlueprintId(doc, key);
+            const active = getSlotBlueprintId(doc, key);
             if (active && doc.blueprints[active]) {
                 outId = active;
                 if (displayName !== undefined) {
@@ -485,7 +481,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 owner: { kind: "surfaceMain", surfaceId },
             });
             doc.blueprints[id] = blueprint;
-            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            setPrivateOwnerBlueprint(doc, key, id);
             outId = id;
         });
         return outId;
@@ -500,9 +496,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             const toRemoveBlueprintIds = new Set<string>();
             for (const [k, rec] of Object.entries(doc.ownerRecords)) {
                 if (ownerKeyBelongsToSurface(k, surfaceId)) {
-                    for (const bid of rec.privateBlueprintIds) {
-                        toRemoveBlueprintIds.add(bid);
-                    }
+                    toRemoveBlueprintIds.add(rec.blueprintId);
                     delete doc.ownerRecords[k];
                 }
             }
@@ -522,7 +516,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }
         let outId = "";
         this.applyBlueprintMutation(doc => {
-            const active = getActiveBlueprintId(doc, key);
+            const active = getSlotBlueprintId(doc, key);
             if (active && doc.blueprints[active]) {
                 outId = active;
                 if (displayName !== undefined) {
@@ -537,7 +531,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 owner: { kind: "widgetMain", surfaceId, elementId },
             });
             doc.blueprints[id] = blueprint;
-            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            setPrivateOwnerBlueprint(doc, key, id);
             outId = id;
         });
         return outId;
@@ -548,9 +542,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         this.applyBlueprintMutation(doc => {
             const rec = doc.ownerRecords[key];
             if (rec) {
-                for (const bid of rec.privateBlueprintIds) {
-                    delete doc.blueprints[bid];
-                }
+                delete doc.blueprints[rec.blueprintId];
                 delete doc.ownerRecords[key];
             }
             this.stripBindingsForElement(doc, surfaceId, elementId);
@@ -559,7 +551,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined {
         const key = widgetMainOwnerKey(surfaceId, elementId);
-        return getActiveBlueprintId(this.getBlueprintDocument(), key);
+        return getSlotBlueprintId(this.getBlueprintDocument(), key);
     }
 
     public ensureComponentWidgetMain(
@@ -576,7 +568,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }
         let outId = "";
         this.applyBlueprintMutation(doc => {
-            const active = getActiveBlueprintId(doc, key);
+            const active = getSlotBlueprintId(doc, key);
             if (active && doc.blueprints[active]) {
                 outId = active;
                 if (displayName !== undefined) {
@@ -591,7 +583,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 owner: { kind: "componentWidgetMain", componentId, elementId },
             });
             doc.blueprints[id] = blueprint;
-            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            setPrivateOwnerBlueprint(doc, key, id);
             outId = id;
         });
         return outId;
@@ -604,16 +596,14 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!rec) {
                 return;
             }
-            for (const bid of rec.privateBlueprintIds) {
-                delete doc.blueprints[bid];
-            }
+            delete doc.blueprints[rec.blueprintId];
             delete doc.ownerRecords[key];
         });
     }
 
     public getComponentWidgetMainBlueprintId(componentId: string, elementId: string): string | undefined {
         const key = componentWidgetMainOwnerKey(componentId, elementId);
-        return getActiveBlueprintId(this.getBlueprintDocument(), key);
+        return getSlotBlueprintId(this.getBlueprintDocument(), key);
     }
 
     public ensureWidgetValueBlueprint(input: {
@@ -629,7 +619,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
         let outId = "";
         this.applyBlueprintMutation(doc => {
-            const active = getActiveBlueprintId(doc, key);
+            const active = getSlotBlueprintId(doc, key);
             if (active && doc.blueprints[active]) {
                 outId = active;
                 if (input.displayName !== undefined) {
@@ -644,22 +634,20 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 owner: { kind: "widgetValue", surfaceId, elementId, propPath },
             });
             blueprint.meta = { ...(blueprint.meta ?? {}), valueType: input.valueType };
-            if (blueprint.program.kind === "graph") {
-                blueprint.program.graphs.events = {
-                    init: {
-                        id: "init",
-                        name: "Init",
-                        graph: createValueGraphIr({
-                            headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
-                            valueType: input.valueType,
-                            literalValue: input.literalValue,
-                            generateId: () => uuid.generate(),
-                        }),
-                    },
-                };
-            }
+            blueprint.graphs.events = {
+                init: {
+                    id: "init",
+                    name: "Init",
+                    graph: createValueGraphIr({
+                        headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                        valueType: input.valueType,
+                        literalValue: input.literalValue,
+                        generateId: () => uuid.generate(),
+                    }),
+                },
+            };
             doc.blueprints[id] = blueprint;
-            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            setPrivateOwnerBlueprint(doc, key, id);
             outId = id;
         });
         return outId;
@@ -672,16 +660,14 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!rec) {
                 return;
             }
-            for (const bid of rec.privateBlueprintIds) {
-                delete doc.blueprints[bid];
-            }
+            delete doc.blueprints[rec.blueprintId];
             delete doc.ownerRecords[key];
         });
     }
 
     public getWidgetValueBlueprintId(surfaceId: string, elementId: string, propPath: string): string | undefined {
         const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
-        return getActiveBlueprintId(this.getBlueprintDocument(), key);
+        return getSlotBlueprintId(this.getBlueprintDocument(), key);
     }
 
     /**
@@ -694,7 +680,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const key = storyActionOwnerKey(id);
         let outId = id;
         this.applyBlueprintMutation(doc => {
-            const active = getActiveBlueprintId(doc, key);
+            const active = getSlotBlueprintId(doc, key);
             if (active && doc.blueprints[active]) {
                 outId = active;
                 return;
@@ -706,7 +692,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 name: input?.displayName ?? defaultName,
                 owner: { kind: "storyAction", blueprintId: id, ...(input?.mode ? { mode: input.mode } : {}) },
             });
-            if (blueprint.program.kind === "graph") {
+            {
                 // Value mode (inline interpolation) opens ready to return a string: On Call → Return Value
                 // ← "" literal. Condition mode returns a boolean: On Call → Return Value ← `false` literal
                 // (type-checked to boolean while authoring). Action mode runs for side effects, so it only
@@ -733,13 +719,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                               meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
                           };
                       })();
-                blueprint.program.graphs.events = {
+                blueprint.graphs.events = {
                     onCall: { id: "onCall", name: "On Call", graph },
                 };
-                captureBlueprintEventOrder(blueprint.program.graphs);
+                captureBlueprintEventOrder(blueprint.graphs);
             }
             doc.blueprints[id] = blueprint;
-            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            setPrivateOwnerBlueprint(doc, key, id);
             outId = id;
         });
         return outId;
@@ -752,15 +738,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!rec) {
                 return;
             }
-            for (const bid of rec.privateBlueprintIds) {
-                delete doc.blueprints[bid];
-            }
+            delete doc.blueprints[rec.blueprintId];
             delete doc.ownerRecords[key];
         });
     }
 
     public getStoryActionBlueprintId(blueprintId: string): string | undefined {
-        return getActiveBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
+        return getSlotBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
     }
 
     /**
@@ -782,102 +766,76 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
         const key = surfaceMainOwnerKey(surfaceId);
-        return getActiveBlueprintId(this.getBlueprintDocument(), key);
-    }
-
-    public listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[] {
-        const rec = this.getBlueprintDocument().ownerRecords[ownerKey];
-        return rec ? [...rec.privateBlueprintIds] : [];
-    }
-
-    public setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void {
-        this.applyBlueprintEdit({ blueprintId, ownerKey }, doc => {
-            setPrivateOwnerActive(doc, ownerKey, blueprintId);
-        });
+        return getSlotBlueprintId(this.getBlueprintDocument(), key);
     }
 
     /**
-     * Remove one revision of a slot, leaving any file it pointed at on disk.
+     * Declare a layer that runs one of the author's script files, and answer its id.
      *
-     * Undoable, like every other edit to this document - which matters here more than elsewhere,
-     * because the thing being removed may be the only reference to a file the author has been
-     * writing in.
-     */
-    public deletePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void {
-        this.applyBlueprintEdit({ blueprintId, ownerKey }, doc => {
-            removePrivateBlueprint(doc, ownerKey, blueprintId);
-        });
-    }
-
-    /**
-     * Point a script at a different file.
+     * A sibling of the graph layers already in the blueprint rather than a replacement for them:
+     * every layer that answers a dispatched event runs, so a script can be added to a slot that has
+     * graphs in it and both work. This is the whole of what the "revisions" list used to be for.
      *
-     * The one way a `scriptRef` can change after it is written. Without it a file renamed in the
-     * author's own editor left the slot dangling for good: the panel said the file was missing and
-     * offered nothing to do about it.
-     */
-    public setBlueprintScriptRef(blueprintId: string, scriptRef: string): void {
-        this.applyBlueprintEdit({ blueprintId }, doc => {
-            const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "scriptModule") {
-                throw new RendererError(`Not a script: ${blueprintId}`);
-            }
-            bp.program = { kind: "scriptModule", scriptRef };
-        });
-    }
-
-    /**
-     * Add a revision to a slot: a blueprint, a new script, or an existing file.
-     *
-     * `existingScriptRef` is how a file that is already in the project reaches a slot. Nothing is
+     * `existingScriptRef` is how a file that is already in the project reaches a layer. Nothing is
      * written for it - the file is the author's, and a starter written over it would destroy work -
      * so the only act is the document edit that points at it. One file may be pointed at from
-     * several slots; the scripts panel says how many.
+     * several layers; the scripts panel says how many.
      */
-    public async createSiblingPrivateBlueprintForOwnerKey(
-        ownerKey: string,
-        frontend: BlueprintFrontendKind,
+    public async addScriptLayer(
+        blueprintId: string,
         options?: { existingScriptRef?: string },
     ): Promise<string> {
-        const ownerRef = parsePrivateOwnerKeyToRef(ownerKey);
-        if (!ownerRef) {
-            throw new RendererError(`Invalid private owner key: ${ownerKey}`);
+        const blueprint = this.getBlueprintDocument().blueprints[blueprintId];
+        if (!blueprint) {
+            throw new RendererError(`Blueprint not found: ${blueprintId}`);
         }
-        // Which frontends a slot admits follows from how it is entered: a value binding is re-run
-        // whenever a dependency changes, and only the visual graph has a palette cut down to nodes
-        // that are safe to re-run.
-        if (blueprintContract(ownerRef).invocation === "valueBinding" && frontend === "typescript") {
-            throw new RendererError("Blueprint Value only supports visual blueprints");
+        // Which slots admit a script follows from how they are entered: a value binding is re-run
+        // whenever a dependency changes, and only a graph has a palette cut down to the nodes that
+        // are safe to re-run.
+        if (blueprintContract(blueprint.owner).invocation === "valueBinding") {
+            throw new RendererError("A value binding is written as a blueprint, not as a script");
         }
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-        const id = uuid.generate();
-        const name = this.unusedBlueprintName(ownerRef, ownerKey);
-        // The file first, and the blueprint only if it was written. The other order leaves a
-        // blueprint pointing at a file that does not exist, which is the dangling state the model
-        // allows for a file the author deleted - and reporting it as that would blame them for a
-        // write of ours that failed.
+        const layerId = uuid.generate();
         // The declarations first: an author who opens the new file wants completion in it, and the
         // project half is only current as of the last time this ran.
-        if (frontend === "typescript") {
-            await writeScriptDeclarations(this.getContext());
-        }
-        const scriptRef =
-            frontend === "typescript"
-                ? options?.existingScriptRef ?? (await this.createStarterScriptFile(ownerRef, name))
-                : null;
-        this.applyBlueprintEdit({ blueprintId: id, ownerKey }, doc => {
-            const blueprint =
-                scriptRef !== null
-                    ? createScriptMainBlueprint({ id, name, owner: ownerRef, scriptRef })
-                    : createMainBlueprint({ id, name, owner: ownerRef });
-            doc.blueprints[id] = blueprint;
-            registerPrivateBlueprintAsActive(doc, ownerKey, id, frontend);
+        await writeScriptDeclarations(this.getContext());
+        // The file next, and the layer only if it was written. The other order leaves a layer
+        // pointing at a file that does not exist, which is the dangling state the model allows for
+        // a file the author deleted - and reporting it as that would blame them for a write of ours
+        // that failed.
+        const scriptRef = options?.existingScriptRef
+            ?? (await this.createStarterScriptFile(blueprint.owner, this.slotName(blueprint.owner)));
+        this.applyBlueprintEdit({ blueprintId }, doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp) {
+                throw new RendererError(`Blueprint not found: ${blueprintId}`);
+            }
+            bp.graphs.events[layerId] = { id: layerId, script: { scriptRef } };
+            captureBlueprintEventOrder(bp.graphs);
         });
-        return id;
+        return layerId;
     }
 
     /**
-     * Write the file a new script blueprint will point at, and answer where it went.
+     * Point a script layer at a different file.
+     *
+     * The one way a `scriptRef` can change after it is written. Without it a file renamed in the
+     * author's own editor left the layer dangling for good: the panel said the file was missing and
+     * offered nothing to do about it.
+     */
+    public setLayerScriptRef(blueprintId: string, layerId: string, scriptRef: string): void {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
+            const layer = doc.blueprints[blueprintId]?.graphs.events[layerId];
+            if (!layer?.script) {
+                throw new RendererError(`Not a script layer: ${layerId}`);
+            }
+            layer.script = { scriptRef };
+        });
+    }
+
+    /**
+     * Write the file a new script layer will point at, and answer where it went.
      *
      * The one moment Studio writes an author's script. From here on the file is theirs: the
      * document holds the path, nothing holds the text, and nothing writes it again. See
@@ -897,37 +855,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }
         // A refusal is reported as success - the write gate turns a frozen workspace into a no-op -
         // so the flag is the only thing that separates "written" from "silently dropped". Creating
-        // the blueprint on a dropped write is precisely the dangling reference this order avoids.
+        // the layer on a dropped write is precisely the dangling reference this order avoids.
         if (written.refused) {
             throw new RendererError(`Could not create ${scriptRef}: this workspace is read-only`);
         }
         return scriptRef;
-    }
-
-    /**
-     * What a new blueprint or script is called: the slot it fills.
-     *
-     * The old name was six characters of its own UUID, which names nothing an author can recognise
-     * and - for a script - was then baked into a filename they open in their own editor. The slot
-     * has a name already: the control, the page, or the project. Two revisions of one slot count up
-     * rather than colliding, so the revision list never shows the same word twice.
-     */
-    private unusedBlueprintName(owner: BlueprintOwnerRef, ownerKey: string): string {
-        const base = this.slotName(owner);
-        const taken = new Set(
-            this.listPrivateBlueprintIdsForOwnerKey(ownerKey)
-                .map(id => this.getBlueprintDocument().blueprints[id]?.name)
-                .filter((name): name is string => typeof name === "string"),
-        );
-        if (!taken.has(base)) {
-            return base;
-        }
-        for (let index = 2; ; index += 1) {
-            const candidate = `${base} ${index}`;
-            if (!taken.has(candidate)) {
-                return candidate;
-            }
-        }
     }
 
     /**
@@ -971,17 +903,16 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     /**
-     * A path under `scripts/` that no blueprint already points at.
+     * A path under `scripts/` that no layer already points at.
      *
-     * Named after the blueprint rather than after its id: the author opens this file in their own
-     * editor, and a filename is as much interface as a title bar is. Two blueprints with one name
-     * count up rather than colliding.
+     * Named after the slot rather than after an id: the author opens this file in their own editor,
+     * and a filename is as much interface as a title bar is. Two slots with one name count up
+     * rather than colliding.
      */
     private unusedScriptRef(name: string, widgetType?: string): string {
         const taken = new Set(
             Object.values(this.getBlueprintDocument().blueprints ?? {})
-                .map(bp => (bp.program.kind === "scriptModule" ? bp.program.scriptRef : null))
-                .filter((ref): ref is string => typeof ref === "string"),
+                .flatMap(bp => listScriptLayers(bp.graphs).map(entry => entry.script.scriptRef)),
         );
         // A name written in a script the filename cannot carry - most of them - slugs to nothing.
         // The widget type is the next most specific thing that is always ASCII, and beats numbering
@@ -1257,7 +1188,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             return ownerRefToIndexKey(blueprint.owner);
         }
         const found = Object.entries(doc.ownerRecords).find(([, record]) =>
-            record.privateBlueprintIds.includes(scope.blueprintId),
+            record.blueprintId === scope.blueprintId,
         );
         return found?.[0] ?? null;
     }
@@ -1538,8 +1469,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp?.members?.variables?.[variableId]) {
                 return;
             }
-            if (bp.program.kind === "graph") {
-                for (const slot of Object.values(bp.program.graphs.events ?? {})) {
+            {
+                for (const slot of Object.values(bp.graphs.events ?? {})) {
                     const ir = ensureBlueprintGraphIr(slot?.graph);
                     for (const node of Object.values(ir.nodes ?? {})) {
                         if (
@@ -1572,13 +1503,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         target: { paramKey: string; nodeTypes: readonly string[]; variableId: string },
     ): void {
         for (const bp of Object.values(doc.blueprints)) {
-            if (bp.program.kind !== "graph") {
-                continue;
-            }
             const slots = [
-                ...Object.values(bp.program.graphs.events ?? {}),
-                ...Object.values(bp.program.graphs.functions ?? {}),
-                ...Object.values(bp.program.graphs.macros ?? {}),
+                ...Object.values(bp.graphs.events ?? {}),
+                ...Object.values(bp.graphs.functions ?? {}),
+                ...Object.values(bp.graphs.macros ?? {}),
             ];
             for (const slot of slots) {
                 if (!slot.graph) {
@@ -1601,7 +1529,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     /**
-     * Ensure an inline event graph slot exists under Blueprint.program.graphs.events[eventId].
+     * Ensure an inline event graph slot exists under Blueprint.graphs.events[eventId].
      * Upserts by eventId; preserves existing graph IR when present.
      */
     public ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void {
@@ -1610,14 +1538,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
             }
-            if (bp.program.kind !== "graph") {
-                throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
-            }
             const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-            const graphs = bp.program.graphs;
+            const graphs = bp.graphs;
             const prev = graphs.events[eventId];
-            const graphIr = ensureBlueprintEventGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
-            const next: BlueprintEventGraph = {
+            const graphIr = ensureBlueprintLayerIrStructure(prev?.graph ?? undefined, () => uuid.generate());
+            const next: BlueprintLayer = {
                 id: eventId,
                 name: displayName ?? prev?.name,
                 graph: graphIr,
@@ -1633,10 +1558,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public renameEventGraph(blueprintId: string, eventId: string, displayName: string): void {
         this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
+            if (!bp) {
                 return;
             }
-            const slot = bp.program.graphs.events?.[eventId];
+            const slot = bp.graphs.events?.[eventId];
             if (!slot) {
                 return;
             }
@@ -1648,20 +1573,20 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public removeEventGraph(blueprintId: string, eventId: string): void {
         this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
+            if (!bp) {
                 return;
             }
-            delete bp.program.graphs.events[eventId];
-            captureBlueprintEventOrder(bp.program.graphs);
+            delete bp.graphs.events[eventId];
+            captureBlueprintEventOrder(bp.graphs);
         });
     }
 
     public listEventGraphIds(blueprintId: string): string[] {
         const bp = this.getBlueprintDocument().blueprints[blueprintId];
-        if (!bp || bp.program.kind !== "graph") {
+        if (!bp) {
             return [];
         }
-        return listBlueprintEventIds(bp.program.graphs);
+        return listBlueprintEventIds(bp.graphs);
     }
 
     public ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void {
@@ -1670,11 +1595,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
             }
-            if (bp.program.kind !== "graph") {
-                throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
-            }
             const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-            const graphs = bp.program.graphs;
+            const graphs = bp.graphs;
             const prev = graphs.functions[functionId];
             const graphIr = ensureBlueprintFunctionGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintFunctionGraph = {
@@ -1691,20 +1613,20 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public removeFunctionGraph(blueprintId: string, functionId: string): void {
         this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
+            if (!bp) {
                 return;
             }
-            delete bp.program.graphs.functions[functionId];
-            captureBlueprintFunctionOrder(bp.program.graphs);
+            delete bp.graphs.functions[functionId];
+            captureBlueprintFunctionOrder(bp.graphs);
         });
     }
 
     public listFunctionGraphIds(blueprintId: string): string[] {
         const bp = this.getBlueprintDocument().blueprints[blueprintId];
-        if (!bp || bp.program.kind !== "graph") {
+        if (!bp) {
             return [];
         }
-        return listBlueprintFunctionIds(bp.program.graphs);
+        return listBlueprintFunctionIds(bp.graphs);
     }
 
     public updateEventGraphIr(
@@ -1715,10 +1637,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     ): void {
         this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
+            if (!bp) {
                 return;
             }
-            const slot = bp.program.graphs.events[eventId];
+            const slot = bp.graphs.events[eventId];
             if (!slot) {
                 return;
             }
@@ -1736,10 +1658,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     ): void {
         this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
+            if (!bp) {
                 return;
             }
-            const slot = bp.program.graphs.functions[functionId];
+            const slot = bp.graphs.functions[functionId];
             if (!slot) {
                 return;
             }
@@ -1757,9 +1679,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * edit made outside Studio the next time anything saved. This service moved a whole directory
      * out of its own reach to make that impossible - see `@shared/project/scriptsDirectory`.
      */
-    public getScriptRef(blueprintId: string): string | null {
-        const bp = this.getBlueprintDocument().blueprints?.[blueprintId];
-        return bp?.program.kind === "scriptModule" ? bp.program.scriptRef : null;
+    /** The file one script layer runs, or null when that layer is a graph. */
+    public getScriptRef(blueprintId: string, layerId: string): string | null {
+        const layer = this.getBlueprintDocument().blueprints?.[blueprintId]?.graphs.events?.[layerId];
+        return layer?.script?.scriptRef ?? null;
     }
 
     public getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary {

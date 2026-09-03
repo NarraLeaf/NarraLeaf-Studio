@@ -1,3 +1,4 @@
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { applyAppTagToStoryDocument } from "@shared/story/appTagFold";
 import {
     blueprintGraphCarriers,
@@ -201,7 +202,7 @@ export function listUnreadableMechanisms(input: {
         });
     }
     for (const blueprint of input.blueprints) {
-        if (blueprint.program?.kind !== "graph") {
+        if (hasScriptLayer(blueprint)) {
             const mechanism: AppTagMechanismRef = { kind: "scriptBlueprint", blueprintId: blueprint.id };
             found.push({
                 reason: "scriptBlueprint",

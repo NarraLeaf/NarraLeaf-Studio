@@ -694,6 +694,14 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { id: "" },
             output: null,
         },
+        getSaveStory: {
+            capabilityId: "game.getSaveStory",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
         getSavePreview: {
             capabilityId: "game.getSavePreview",
             purity: "effectful",

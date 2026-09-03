@@ -155,12 +155,12 @@ export function blueprintGraphs(
 ): BlueprintGraphIr[] {
     const graphs: BlueprintGraphIr[] = [];
     for (const blueprint of blueprints) {
-        if (!blueprint || blueprint.program.kind !== "graph") {
+        if (!blueprint) {
             // A `scriptModule` blueprint is TypeScript the author wrote, and an asset id in that
             // source is a string literal this file has no business parsing.
             continue;
         }
-        const program = blueprint.program.graphs;
+        const program = blueprint.graphs;
         for (const slot of [
             ...Object.values(program.events),
             ...Object.values(program.functions),

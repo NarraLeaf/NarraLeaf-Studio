@@ -13,15 +13,13 @@ function blueprint(id: string, owner: Blueprint["owner"]): Blueprint {
         id,
         name: id,
         owner,
-        frontend: "visual",
-        programKind: "graph",
         members: {
             variables: { [VARIABLE_ID]: { id: VARIABLE_ID, name: "Count", valueType: "integer", defaultValue: 0 } },
             fields: {},
             functions: {},
         },
         bindings: {},
-        program: { kind: "graph", graphs: { events: {}, functions: {} } },
+        graphs: { events: {}, functions: {} },
     } as unknown as Blueprint;
 }
 

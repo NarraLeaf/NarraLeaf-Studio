@@ -67,9 +67,7 @@ function blueprint(id: string, owner: Record<string, unknown>) {
         id,
         name: id,
         owner,
-        frontend: "visual",
-        programKind: "graph",
-        program: { kind: "graph", graphs: { events: {}, functions: {} } },
+        graphs: { events: {}, functions: {} },
     };
 }
 
@@ -87,13 +85,12 @@ function sourceBlueprints(): BlueprintDocument {
             "bp-global": blueprint("bp-global", { kind: "globalMain" }),
         },
         ownerRecords: {
-            "surfaceMain:dialog-surface": { activeBlueprintId: "bp-surface", privateBlueprintIds: ["bp-surface"] },
+            "surfaceMain:dialog-surface": { blueprintId: "bp-surface" },
             "widgetMain:dialog-surface:dialog-image": {
-                activeBlueprintId: "bp-widget",
-                privateBlueprintIds: ["bp-widget"],
+                blueprintId: "bp-widget",
             },
-            "surfaceMain:other-surface": { activeBlueprintId: "bp-other", privateBlueprintIds: ["bp-other"] },
-            globalMain: { activeBlueprintId: "bp-global", privateBlueprintIds: ["bp-global"] },
+            "surfaceMain:other-surface": { blueprintId: "bp-other" },
+            globalMain: { blueprintId: "bp-global" },
         },
     } as unknown as BlueprintDocument;
 }

@@ -296,6 +296,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.save.delete",
     "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview",
     "blueprint.game.save.getLine", "blueprint.game.save.getPlaytime",
+    "blueprint.game.save.getStory",
     "blueprint.game.save.getTime", "blueprint.game.save.listIds",
     "blueprint.game.save.currentRun",
     "blueprint.game.save.write", "blueprint.game.setAutoForward", "blueprint.game.setBgmVolume",

@@ -8,6 +8,7 @@ import { useProjectDistrusted, useProjectDistrustedReason } from "../../hooks/us
 import { useFreezeUnavailableReason } from "../../components/ui/freezeGuard";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
+import { revealInFileManagerKey } from "@/lib/app/platform";
 import { Services } from "@/lib/workspace/services/services";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
@@ -363,6 +364,13 @@ export function RunControl() {
      *  - **The notification stays up.** A build runs for minutes with nobody watching, so an outcome
      *    that cleared itself after five seconds was an outcome the author never saw - and the button
      *    on it has to still be there when they come back.
+     *
+     * A finished build offers both of the things there are to do with it: read what it carried, and
+     * go and look at what it wrote. The folder is the second button rather than the first because
+     * the report answers the question the author has before they have a path in their hands - and it
+     * is offered at all because "open the output folder when done" is a checkbox they may have
+     * cleared, and because a notification they come back to hours later is the only thing still on
+     * screen that knows where the build went.
      */
     useEffect(() => {
         if (!context) {
@@ -391,11 +399,24 @@ export function RunControl() {
                     "success",
                     {
                         sticky: true,
-                        actions: [{
-                            label: translate("build.toast.openReport"),
-                            primary: true,
-                            onClick: () => openBuildReportTab(context),
-                        }],
+                        actions: [
+                            {
+                                label: translate("build.toast.openReport"),
+                                primary: true,
+                                onClick: () => openBuildReportTab(context),
+                            },
+                            // Only where the run recorded a folder. A snapshot without one wrote
+                            // nowhere this window can name, and a button that opens nothing is
+                            // worse than no button.
+                            ...(run.state.outputDir
+                                ? [{
+                                    label: translate(revealInFileManagerKey()),
+                                    onClick: () => {
+                                        void build.revealLastOutput();
+                                    },
+                                }]
+                                : []),
+                        ],
                     },
                 );
             } else {

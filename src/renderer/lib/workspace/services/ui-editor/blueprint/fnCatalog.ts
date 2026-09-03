@@ -254,15 +254,12 @@ function buildFnDeclaration(input: {
 }
 
 function isActiveBlueprintForOwner(doc: BlueprintDocument, bp: Blueprint): boolean {
-    return doc.ownerRecords[ownerRefToIndexKey(bp.owner)]?.activeBlueprintId === bp.id;
+    return doc.ownerRecords[ownerRefToIndexKey(bp.owner)]?.blueprintId === bp.id;
 }
 
 function collectBlueprintFnsFromBlueprint(bp: Blueprint): BlueprintFnDeclaration[] {
-    if (bp.program.kind !== "graph") {
-        return [];
-    }
     const out: BlueprintFnDeclaration[] = [];
-    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+    for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         if (!ir?.nodes) {
             continue;
@@ -307,10 +304,7 @@ export function findBlueprintFnByRef(doc: BlueprintDocument, fnRef: unknown): Bl
     if (!bp || !FN_DECL_OWNER_KINDS.has(bp.owner.kind) || !isActiveBlueprintForOwner(doc, bp)) {
         return null;
     }
-    if (bp.program.kind !== "graph") {
-        return null;
-    }
-    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+    for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const node = eventGraph.graph?.nodes?.[parsed.headNodeId];
         if (node?.type === BLUEPRINT_NODE_TYPE_FN_HEAD && eventGraph.graph) {
             return buildFnDeclaration({

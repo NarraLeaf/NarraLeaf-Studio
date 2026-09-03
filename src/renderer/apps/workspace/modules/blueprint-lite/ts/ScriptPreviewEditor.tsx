@@ -24,7 +24,17 @@ function loadStudioMonaco(): Promise<typeof StudioMonaco> {
 }
 
 /**
- * A script blueprint's source, read-only.
+ * The reading half of a script tab: the payload's file, shown by {@link ScriptSourceView}.
+ *
+ * A tab restored from a session that no longer carries a payload has nothing to show; the empty ref
+ * reads as a missing file, which is what it is.
+ */
+export function ScriptPreviewEditor({ payload }: EditorComponentProps<ScriptPreviewTabPayload>) {
+    return <ScriptSourceView scriptRef={payload?.scriptRef ?? ""} />;
+}
+
+/**
+ * One of the author's script files, read-only.
  *
  * **A reader, never a writer**, and that is the whole design rather than an unfinished half.
  * `<project>/scripts/` is the one directory whose bytes the disk owns (see
@@ -39,15 +49,16 @@ function loadStudioMonaco(): Promise<typeof StudioMonaco> {
  * spawn, and it would be the wrong answer anyway - the author's own editor type-checks against
  * their `node_modules`, and this one cannot see them.
  *
- * The disk can change under this tab, so there is a refresh, and the tab re-reads whenever it
- * becomes visible again.
+ * The disk can change under it, so there is a refresh, and it re-reads whenever the window becomes
+ * visible again.
+ *
+ * Used in two places, which is the point: the tab the assets panel opens, and the canvas of a
+ * script layer inside the blueprint editor. One file had two different faces before - a filename
+ * and a button in the editor, this view in the panel - and neither said what the other did.
  */
-export function ScriptPreviewEditor({ payload }: EditorComponentProps<ScriptPreviewTabPayload>) {
+export function ScriptSourceView({ scriptRef }: { scriptRef: string }) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    // A tab restored from a session that no longer carries a payload has nothing to show; the empty
-    // ref reads as a missing file, which is what it is.
-    const scriptRef = payload?.scriptRef ?? "";
     const hostRef = useRef<HTMLDivElement | null>(null);
     const editorRef = useRef<StudioMonaco.monaco.editor.IStandaloneCodeEditor | null>(null);
     const [source, setSource] = useState<string | null>(null);

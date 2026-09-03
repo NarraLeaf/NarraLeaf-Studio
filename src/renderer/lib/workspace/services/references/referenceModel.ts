@@ -8,6 +8,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintAssetPinKind } from "@shared/types/blueprint/valueTypes";
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
@@ -747,24 +748,23 @@ export function extractBlueprintAssetReferences(
 
     const ownerKeyByBlueprintId = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
-        for (const blueprintId of [record.activeBlueprintId, ...record.privateBlueprintIds]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
+        if (record.blueprintId) {
+            ownerKeyByBlueprintId.set(record.blueprintId, ownerKey);
         }
     }
 
     for (const blueprint of Object.values(document.blueprints)) {
         const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
-        if (!ownerKey || blueprint.program.kind !== "graph") {
+        if (!ownerKey || hasScriptLayer(blueprint)) {
             /**
              * Two shapes this walk cannot read, and both used to leave no trace at all.
              *
-             * A `scriptModule` blueprint is TypeScript the author wrote (`blueprintFactories.ts`
-             * creates them), and an asset id in that source is a plain string literal this file has
-             * no business parsing. A blueprint no `ownerRecords` entry claims is unreachable from
-             * here for a different reason: without an owner there is no jump target to report it
-             * under. Either way an asset used only from it was reported as used by nothing.
+             * A script layer is TypeScript the author wrote, and an asset id in that source is a
+             * plain string literal this file has no business parsing - so a blueprint holding one
+             * cannot be proven to use nothing, whatever its graph layers say. A blueprint no
+             * `ownerRecords` entry claims is unreachable from here for a different reason: without
+             * an owner there is no jump target to report it under. Either way an asset used only
+             * from it was reported as used by nothing.
              */
             gaps.push({
                 reason: "blueprintProgramNotWalked",
@@ -774,7 +774,7 @@ export function extractBlueprintAssetReferences(
             continue;
         }
 
-        const graphs = blueprint.program.graphs;
+        const graphs = blueprint.graphs;
         const slots: Array<{ focus: "event" | "function" | "macro"; graphId: string; ir: BlueprintGraphIr | undefined }> = [
             ...Object.entries(graphs.events).map(([graphId, slot]) => ({ focus: "event" as const, graphId, ir: slot.graph })),
             ...Object.entries(graphs.functions).map(([graphId, slot]) => ({ focus: "function" as const, graphId, ir: slot.graph })),

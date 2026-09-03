@@ -9,6 +9,10 @@ import {
 } from "./BlueprintDispatcher";
 import { DebugBridge } from "./DebugBridge";
 import { mountCompiledScripts, unmountCompiledScripts } from "./script/scriptRuntime";
+import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
+
+/** The one layer every fixture blueprint here holds. */
+const SCRIPT_LAYER_ID = "layer-script";
 import {
     surfaceMainOwnerKey,
     widgetMainOwnerKey,
@@ -44,9 +48,11 @@ function scriptBlueprint(id: string, owner: Blueprint["owner"]): Blueprint {
         id,
         name: id,
         owner,
-        frontend: "typescript",
-        programKind: "scriptModule",
-        program: { kind: "scriptModule", scriptRef: `scripts/${id}.ts` },
+        graphs: {
+            eventIds: [SCRIPT_LAYER_ID],
+            events: { [SCRIPT_LAYER_ID]: { id: SCRIPT_LAYER_ID, script: { scriptRef: `scripts/${id}.ts` } } },
+            functions: {},
+        },
         members: { variables: {}, fields: {}, functions: {} },
         bindings: {},
     } as unknown as Blueprint;
@@ -66,12 +72,10 @@ function blueprintDocument(): BlueprintDocument {
             // Spelled through the helpers, never by hand: the key format is one function's business
             // and a fixture that restates it stops testing the thing that produces it.
             [widgetMainOwnerKey(SURFACE_ID, BUTTON_ID)]: {
-                privateBlueprintIds: ["bp-widget"],
-                activeBlueprintId: "bp-widget",
+                blueprintId: "bp-widget",
             },
             [surfaceMainOwnerKey(SURFACE_ID)]: {
-                privateBlueprintIds: ["bp-surface"],
-                activeBlueprintId: "bp-surface",
+                blueprintId: "bp-surface",
             },
         },
     } as unknown as BlueprintDocument;
@@ -87,10 +91,11 @@ function hostAdapter(): UIHostAdapter {
     return { blueprintRuntime: { hostApi: {} } } as unknown as UIHostAdapter;
 }
 
+/** Mount a module against each fixture blueprint's one script layer, keyed as the runtime keys it. */
 async function mount(modules: Record<string, Record<string, unknown>>): Promise<void> {
     const scripts = Object.fromEntries(
         Object.keys(modules).map(blueprintId => [
-            blueprintId,
+            scriptLayerKey(blueprintId, SCRIPT_LAYER_ID),
             { scriptRef: `scripts/${blueprintId}.ts`, url: `file:///${blueprintId}.mjs` },
         ]),
     );

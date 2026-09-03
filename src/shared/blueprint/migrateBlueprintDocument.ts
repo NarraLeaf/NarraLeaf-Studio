@@ -72,6 +72,10 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
         if (sv < SCRIPT_REF_VERSION) {
             moveInlineScriptsToFiles(doc);
         }
+        if (sv < SCRIPT_AS_LAYER_VERSION) {
+            keepOneBlueprintPerSlot(doc);
+            foldScriptBlueprintsIntoLayers(doc);
+        }
         return doc;
     }
     throw new Error(
@@ -110,6 +114,111 @@ const SHARED_ASSET_REMOVED_VERSION = 12;
 const SCRIPT_REF_VERSION = 13;
 
 /**
+ * The version at which a script became a layer and a slot kept exactly one blueprint.
+ *
+ * Gated like the three above: it reads `activeBlueprintId` / `privateBlueprintIds` / `program`, and
+ * a document already at v14 has none of them, so on a current document this would find nothing and
+ * cost two scans.
+ */
+const SCRIPT_AS_LAYER_VERSION = 14;
+
+/**
+ * Keep the blueprint each slot was running, and drop the rest.
+ *
+ * A slot used to hold a list of "revisions" with one marked active, because a slot was a graph or a
+ * script as a whole and there was nowhere else to keep the other one. Only the active one ever ran,
+ * and nothing outside this list could reach the others - not version control, which records the
+ * whole document and can restore any point of it, and not the editor, which opened the active one.
+ *
+ * So the ones dropped here are the ones that were never running. A script among them keeps its
+ * FILE - the disk owns those, this document only ever held the path - and it appears in the scripts
+ * panel as a file nothing runs, which is where an author can point a layer back at it. A graph among
+ * them is genuinely gone from the document, and is in version control like every other edit.
+ */
+function keepOneBlueprintPerSlot(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints) || !isRecord(doc.ownerRecords)) {
+        return;
+    }
+    const kept = new Set<string>();
+    const records: BlueprintDocument["ownerRecords"] = {};
+    for (const [key, record] of Object.entries(doc.ownerRecords)) {
+        // Read off the old shape, which the current types no longer describe.
+        const legacy = record as unknown as { activeBlueprintId?: unknown; privateBlueprintIds?: unknown };
+        const active = typeof legacy.activeBlueprintId === "string" ? legacy.activeBlueprintId : undefined;
+        const listed = Array.isArray(legacy.privateBlueprintIds)
+            ? legacy.privateBlueprintIds.filter((id): id is string => typeof id === "string")
+            : [];
+        // The active id when it resolves, else the first listed one that does. A record naming
+        // nothing that exists is dropped with its slot rather than kept pointing at a hole - the
+        // validator refuses the whole document over one of those.
+        const blueprintId = [active, ...listed].find(id => id && doc.blueprints[id]);
+        if (!blueprintId) {
+            continue;
+        }
+        kept.add(blueprintId);
+        records[key] = { blueprintId };
+    }
+    doc.ownerRecords = records;
+    doc.blueprints = Object.fromEntries(Object.entries(doc.blueprints).filter(([id]) => kept.has(id)));
+}
+
+/**
+ * Turn each script blueprint into an ordinary blueprint holding one script layer.
+ *
+ * The path moves and nothing else does: the same file, under the same slot, reached through the
+ * same blueprint id. What changes is that the blueprint is now a container of layers like every
+ * other one, so the author can put a graph layer beside the script instead of having to displace it.
+ *
+ * `frontend`, `programKind` and `program` all go here. The first two were denormalised copies of
+ * the third, and the third has become a property of each layer.
+ */
+function foldScriptBlueprintsIntoLayers(doc: BlueprintDocument): void {
+    if (!isRecord(doc.blueprints)) {
+        return;
+    }
+    for (const blueprint of Object.values(doc.blueprints) as Blueprint[]) {
+        const legacy = blueprint as unknown as {
+            program?: unknown;
+            frontend?: unknown;
+            programKind?: unknown;
+            graphs?: unknown;
+        };
+        const program = legacy.program;
+        if (isRecord(program) && program.kind === "scriptModule") {
+            const scriptRef = typeof program.scriptRef === "string" ? program.scriptRef : "";
+            const diagnostics = Array.isArray(program.diagnostics) ? program.diagnostics : undefined;
+            blueprint.graphs = {
+                eventIds: [SCRIPT_LAYER_ID],
+                events: {
+                    [SCRIPT_LAYER_ID]: {
+                        id: SCRIPT_LAYER_ID,
+                        script: diagnostics ? { scriptRef, diagnostics } : { scriptRef },
+                    },
+                },
+                functions: {},
+            };
+        } else if (isRecord(program) && isRecord(program.graphs)) {
+            blueprint.graphs = program.graphs as Blueprint["graphs"];
+        } else if (!isRecord(legacy.graphs)) {
+            blueprint.graphs = { events: {}, functions: {} };
+        }
+        delete legacy.program;
+        delete legacy.frontend;
+        delete legacy.programKind;
+    }
+}
+
+/**
+ * The layer id a folded script blueprint gets.
+ *
+ * Fixed rather than generated because a migration has no id source and must produce the same
+ * document twice: two Studio processes reading one project - the workspace and a Dev Mode main
+ * process do exactly this - would otherwise disagree about a layer's identity, and the editor
+ * addresses a layer by id.
+ */
+const SCRIPT_LAYER_ID = "script";
+
+/**
  * Turn each inline script into a file reference, keeping the text for whoever can write a file.
  *
  * **Nothing here is lost, and nothing here ever ran.** The inline form was a prototype: no mounted
@@ -134,13 +243,15 @@ function moveInlineScriptsToFiles(doc: BlueprintDocument): void {
     }
     const taken = new Set<string>();
     for (const blueprint of Object.values(doc.blueprints) as Blueprint[]) {
-        const program = blueprint?.program as unknown;
+        const program = (blueprint as unknown as { program?: unknown })?.program;
         if (!isRecord(program) || program.kind !== "scriptModule") {
             continue;
         }
         const source = isRecord(program.source) ? (program.source as unknown as LegacyInlineScriptSource) : undefined;
         const scriptRef = uniqueScriptPath(blueprint?.name, taken);
-        blueprint.program = { kind: "scriptModule", scriptRef };
+        // Writes the pre-v14 program shape on purpose: the pass that folds a script into a layer
+        // runs after this one and reads exactly this.
+        (blueprint as unknown as { program: unknown }).program = { kind: "scriptModule", scriptRef };
         if (typeof source?.code === "string" && source.code.length > 0) {
             blueprint.meta = { ...(blueprint.meta ?? {}), [LEGACY_INLINE_SCRIPT_META_KEY]: source.code };
         }
@@ -205,7 +316,12 @@ function dropSharedAssetOwners(doc: BlueprintDocument): void {
     if (isRecord(doc.ownerRecords)) {
         doc.ownerRecords = Object.fromEntries(
             Object.entries(doc.ownerRecords)
-                .filter(([, record]) => !record.privateBlueprintIds?.some(id => dropped.has(id))),
+                .filter(([, record]) => {
+                    // The pre-v14 shape, which the current types no longer describe. This pass runs
+                    // before the one that collapses these records to a single id.
+                    const listed = (record as unknown as { privateBlueprintIds?: unknown }).privateBlueprintIds;
+                    return !(Array.isArray(listed) && listed.some(id => typeof id === "string" && dropped.has(id)));
+                }),
         );
     }
 }

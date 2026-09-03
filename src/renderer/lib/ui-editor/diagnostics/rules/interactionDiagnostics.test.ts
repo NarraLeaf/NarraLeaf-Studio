@@ -57,8 +57,7 @@ function blueprintDocumentWiring(elementId: string, headNodeType: string): Bluep
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         ownerRecords: {
             [encodeBlueprintOwnerKey({ kind: "widgetMain", surfaceId: SURFACE_ID, elementId: elementId })]: {
-                activeBlueprintId: "bp-1",
-                privateBlueprintIds: ["bp-1"],
+                blueprintId: "bp-1",
             },
         },
         blueprints: {
@@ -66,18 +65,15 @@ function blueprintDocumentWiring(elementId: string, headNodeType: string): Bluep
                 id: "bp-1",
                 name: "Button logic",
                 owner: { kind: "widgetMain", surfaceId: SURFACE_ID, elementId },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            layer: {
-                                id: "layer",
-                                name: "Anything at all",
-                                graph: { nodes: { head: { id: "head", type: headNodeType } }, edges: [] },
-                            },
+                graphs: {
+                    events: {
+                        layer: {
+                            id: "layer",
+                            name: "Anything at all",
+                            graph: { nodes: { head: { id: "head", type: headNodeType } }, edges: [] },
                         },
-                        functions: {},
                     },
+                    functions: {},
                 },
             },
         },

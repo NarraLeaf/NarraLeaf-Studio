@@ -47,16 +47,6 @@ export function printBlueprint(blueprint: Blueprint, diagnostics: BpDiagnostic[]
         ].join(" "),
     );
 
-    // Script blueprints are covered now - they print a `script` line - so only a program the format
-    // has no syntax for is worth warning about.
-    if (blueprint.program.kind !== "graph" && blueprint.program.kind !== "scriptModule") {
-        diagnostics.push({
-            severity: "warning",
-            code: "print.not_a_graph",
-            message: `"${blueprint.name}" is a ${blueprint.programKind} blueprint; the text format covers `
-                + "visual graphs and scripts.",
-        });
-    }
     if (blueprint.meta && Object.keys(blueprint.meta).length > 0) {
         lines.push(`${INDENT}meta = ${JSON.stringify(blueprint.meta)}`);
     }
@@ -83,27 +73,25 @@ export function printBlueprint(blueprint: Blueprint, diagnostics: BpDiagnostic[]
         lines.push(parts.join(" "));
     }
 
-    if (blueprint.program.kind === "scriptModule") {
-        // Stated, so that applying what `show` printed keeps this a script blueprint. Printing
-        // nothing here would have produced a file describing a blueprint with no graphs, and
-        // applying that file is what turns one into an empty visual blueprint - the reference to
-        // the author's own file dropped without a word.
-        lines.push(`${INDENT}script = ${printValue(blueprint.program.scriptRef)}`);
-    }
-
-    if (blueprint.program.kind === "graph") {
-        const graphs = blueprint.program.graphs;
-        for (const id of orderedIds(graphs.eventIds, graphs.events)) {
-            const event = graphs.events?.[id];
-            if (event) {
-                lines.push("", ...printGraph("event", event.name ?? "Layer 1", id, event.graph));
-            }
+    const graphs = blueprint.graphs;
+    for (const id of orderedIds(graphs.eventIds, graphs.events)) {
+        const layer = graphs.events?.[id];
+        if (!layer) {
+            continue;
         }
-        for (const id of orderedIds(graphs.functionIds, graphs.functions)) {
-            const fn = graphs.functions?.[id];
-            if (fn) {
-                lines.push("", ...printGraph("function", fn.name ?? "Function", id, fn.graph));
-            }
+        // A script layer prints as a block of its own, so that applying what `show` printed keeps
+        // the layer. Printing nothing for it would produce a file describing a blueprint without
+        // it, and applying that file drops the reference to the author's own file without a word.
+        if (layer.script) {
+            lines.push("", `${INDENT}script ${printValue(layer.script.scriptRef)} id=${id}`);
+            continue;
+        }
+        lines.push("", ...printGraph("event", layer.name ?? "Layer 1", id, layer.graph));
+    }
+    for (const id of orderedIds(graphs.functionIds, graphs.functions)) {
+        const fn = graphs.functions?.[id];
+        if (fn) {
+            lines.push("", ...printGraph("function", fn.name ?? "Function", id, fn.graph));
         }
     }
 
