@@ -76,11 +76,11 @@ function blueprintDocument(owners: Record<string, BlueprintGraphIr>): BlueprintD
     const blueprints: Record<string, unknown> = {};
     Object.entries(owners).forEach(([ownerKey, graph], index) => {
         const blueprintId = `bp${index}`;
-        ownerRecords[ownerKey] = { activeBlueprintId: blueprintId, privateBlueprintIds: [blueprintId] };
+        ownerRecords[ownerKey] = { blueprintId: blueprintId };
         blueprints[blueprintId] = {
             id: blueprintId,
             name: ownerKey,
-            program: { kind: "graph", graphs: { events: { main: { id: "main", graph } }, functions: {} } },
+            graphs: { events: { main: { id: "main", graph } }, functions: {} },
         };
     });
     return { ownerRecords, blueprints } as unknown as BlueprintDocument;
@@ -767,17 +767,25 @@ describe("ui/gesture-answered-twice", () => {
         ).toEqual([]);
     });
 
-    it("claims nothing about a blueprint it cannot read", async () => {
-        // The polarity that matters: a script module's handlers are functions this sweep cannot
+    it("claims nothing about a layer it cannot read", async () => {
+        // The polarity that matters: a script layer's handlers are functions this sweep cannot
         // see, and crediting one with answering a click would report every widget carrying one.
         const scripted = {
             ownerRecords: {
                 [widgetMainOwnerKey(MAIN_APP_SURFACE_ID, "hit")]: {
-                    activeBlueprintId: "bpS",
-                    privateBlueprintIds: ["bpS"],
+                    blueprintId: "bpS",
                 },
             },
-            blueprints: { bpS: { id: "bpS", name: "Hit area", program: { kind: "script", source: "" } } },
+            blueprints: {
+                bpS: {
+                    id: "bpS",
+                    name: "Hit area",
+                    graphs: {
+                        events: { s: { id: "s", script: { scriptRef: "scripts/hit.ts" } } },
+                        functions: {},
+                    },
+                },
+            },
         } as unknown as BlueprintDocument;
 
         expect(

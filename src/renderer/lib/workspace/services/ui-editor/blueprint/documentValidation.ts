@@ -30,31 +30,21 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
         if (!rec || typeof rec !== "object") {
             throw new BlueprintDocumentValidationError(`ownerRecords["${key}"] is invalid`);
         }
-        const { activeBlueprintId, privateBlueprintIds } = rec;
-        if (typeof activeBlueprintId !== "string" || !activeBlueprintId) {
-            throw new BlueprintDocumentValidationError(`ownerRecords["${key}"].activeBlueprintId is missing`);
+        const { blueprintId } = rec;
+        if (typeof blueprintId !== "string" || !blueprintId) {
+            throw new BlueprintDocumentValidationError(`ownerRecords["${key}"].blueprintId is missing`);
         }
-        if (!Array.isArray(privateBlueprintIds) || privateBlueprintIds.length === 0) {
-            throw new BlueprintDocumentValidationError(`ownerRecords["${key}"].privateBlueprintIds is empty`);
-        }
-        if (!privateBlueprintIds.includes(activeBlueprintId)) {
+        const bp = doc.blueprints[blueprintId];
+        if (!bp) {
             throw new BlueprintDocumentValidationError(
-                `ownerRecords["${key}"].activeBlueprintId is not listed in privateBlueprintIds`,
+                `ownerRecords["${key}"] names missing blueprint id "${blueprintId}"`,
             );
         }
-        for (const blueprintId of privateBlueprintIds) {
-            const bp = doc.blueprints[blueprintId];
-            if (!bp) {
-                throw new BlueprintDocumentValidationError(
-                    `ownerRecords["${key}"] lists missing blueprint id "${blueprintId}"`,
-                );
-            }
-            const expectedKey = ownerRefToIndexKey(bp.owner);
-            if (expectedKey !== key) {
-                throw new BlueprintDocumentValidationError(
-                    `ownerRecords key "${key}" does not match blueprint.owner derived key "${expectedKey}" for blueprint "${blueprintId}"`,
-                );
-            }
+        const expectedKey = ownerRefToIndexKey(bp.owner);
+        if (expectedKey !== key) {
+            throw new BlueprintDocumentValidationError(
+                `ownerRecords key "${key}" does not match blueprint.owner derived key "${expectedKey}" for blueprint "${blueprintId}"`,
+            );
         }
     }
 
@@ -66,22 +56,30 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
                 `Blueprint "${bp.id}" owner key "${k}" has no ownerRecords entry`,
             );
         }
-        if (!rec.privateBlueprintIds.includes(bp.id)) {
+        // One slot, one blueprint. A blueprint its own slot does not name is unreachable: nothing
+        // resolves a blueprint by walking the map, so it would sit in the document being saved,
+        // linted and diffed while never running - which is exactly the state the revision list used
+        // to make reachable on purpose.
+        if (rec.blueprintId !== bp.id) {
             throw new BlueprintDocumentValidationError(
-                `Blueprint "${bp.id}" is not listed in ownerRecords["${k}"].privateBlueprintIds`,
+                `Blueprint "${bp.id}" is not the blueprint ownerRecords["${k}"] names`,
             );
         }
     }
 
     for (const bp of Object.values(doc.blueprints)) {
-        if (bp.program.kind !== "graph") {
-            continue;
-        }
-        const events = bp.program.graphs.events ?? {};
-        for (const [key, eg] of Object.entries(events)) {
-            if (eg.id !== key) {
+        for (const [key, layer] of Object.entries(bp.graphs.events ?? {})) {
+            if (layer.id !== key) {
                 throw new BlueprintDocumentValidationError(
-                    `Blueprint "${bp.id}" event graph key "${key}" does not match event id "${eg.id}"`,
+                    `Blueprint "${bp.id}" layer key "${key}" does not match layer id "${layer.id}"`,
+                );
+            }
+            // A layer is one thing or the other. Both set would leave every reader free to pick,
+            // and they would not all pick the same one: a graph walker sees a graph, the dispatcher
+            // sees a script, and the author sees whichever the editor drew.
+            if (layer.script && layer.graph) {
+                throw new BlueprintDocumentValidationError(
+                    `Blueprint "${bp.id}" layer "${key}" is both a graph and a script`,
                 );
             }
         }

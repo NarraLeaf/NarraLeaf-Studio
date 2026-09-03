@@ -43,7 +43,7 @@ type GraphEdge = { from: { nodeId: string; port: string }; to: { nodeId: string;
 type Blueprint = {
     id: string;
     owner: { kind: string; surfaceId?: string; elementId?: string; propPath?: string };
-    program: { graphs: { events: Record<string, { graph: { nodes: Record<string, GraphNode>; edges: GraphEdge[] } }> } };
+    graphs: { events: Record<string, { graph: { nodes: Record<string, GraphNode>; edges: GraphEdge[] } }> };
 };
 
 function readTemplate(file: string): unknown {
@@ -78,7 +78,7 @@ function pageElements(): Element[] {
 
 /** The one graph on a blueprint, flattened to the lookups the assertions want. */
 function onlyGraph(blueprint: Blueprint) {
-    const graphs = Object.values(blueprint.program.graphs.events);
+    const graphs = Object.values(blueprint.graphs.events);
     expect(graphs).toHaveLength(1);
     const { nodes, edges } = graphs[0]!.graph;
     const byType = (type: string) => Object.values(nodes).find(node => node.type === type);

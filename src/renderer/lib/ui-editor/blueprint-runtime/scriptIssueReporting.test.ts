@@ -3,6 +3,10 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import type { DevModeBundle } from "@shared/types/devMode";
 import { mountBlueprintCompiledScripts, type BlueprintScriptIssue } from "./mountBlueprintScripts";
 import { unmountCompiledScripts } from "./script/scriptRuntime";
+import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
+
+/** The one layer every fixture blueprint here holds. */
+const SCRIPT_LAYER_ID = "layer-script";
 
 /**
  * What an author is told when a script blueprint will not run.
@@ -21,9 +25,11 @@ function scriptBlueprint(id: string, scriptRef: string, owner: Blueprint["owner"
         id,
         name: id,
         owner,
-        frontend: "typescript",
-        programKind: "scriptModule",
-        program: { kind: "scriptModule", scriptRef },
+        graphs: {
+            eventIds: [SCRIPT_LAYER_ID],
+            events: { [SCRIPT_LAYER_ID]: { id: SCRIPT_LAYER_ID, script: { scriptRef: scriptRef } } },
+            functions: {},
+        },
         members: { variables: {}, fields: {}, functions: {} },
         bindings: {},
     } as unknown as Blueprint;
@@ -80,7 +86,7 @@ describe("a script that will not run says so", () => {
         const messages = await mountAndCollect(
             bundle(
                 {
-                    "bp-1": {
+                    [scriptLayerKey("bp-1", SCRIPT_LAYER_ID)]: {
                         scriptRef: "scripts/title.ts",
                         diagnostics: [
                             {
@@ -101,7 +107,7 @@ describe("a script that will not run says so", () => {
     it("reports a module that throws while loading, naming the file", async () => {
         const messages = await mountAndCollect(
             bundle(
-                { "bp-1": { scriptRef: "scripts/title.ts", url: "file:///missing.mjs" } },
+                { [scriptLayerKey("bp-1", SCRIPT_LAYER_ID)]: { scriptRef: "scripts/title.ts", url: "file:///missing.mjs" } },
                 { "bp-1": scriptBlueprint("bp-1", "scripts/title.ts", sliderOwner) },
             ),
             {},
@@ -113,7 +119,7 @@ describe("a script that will not run says so", () => {
     it("names the handler the author wrote and the ones this slot calls", async () => {
         const messages = await mountAndCollect(
             bundle(
-                { "bp-1": { scriptRef: "scripts/volume.ts", url: "file:///a.mjs" } },
+                { [scriptLayerKey("bp-1", SCRIPT_LAYER_ID)]: { scriptRef: "scripts/volume.ts", url: "file:///a.mjs" } },
                 { "bp-1": scriptBlueprint("bp-1", "scripts/volume.ts", sliderOwner) },
             ),
             // The exact shape of the original defect: the declarations say `onSliderValueChanged`,
@@ -128,7 +134,7 @@ describe("a script that will not run says so", () => {
     it("says nothing about a script whose handler this slot does call", async () => {
         const messages = await mountAndCollect(
             bundle(
-                { "bp-1": { scriptRef: "scripts/volume.ts", url: "file:///a.mjs" } },
+                { [scriptLayerKey("bp-1", SCRIPT_LAYER_ID)]: { scriptRef: "scripts/volume.ts", url: "file:///a.mjs" } },
                 { "bp-1": scriptBlueprint("bp-1", "scripts/volume.ts", sliderOwner) },
             ),
             { "file:///a.mjs": { onSliderValueChanged: () => undefined } },

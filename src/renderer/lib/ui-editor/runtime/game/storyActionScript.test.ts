@@ -11,6 +11,7 @@ import {
     evaluateStoryActionBlueprintValueSync,
     type CompileStoryActionScriptInput,
 } from "./storyActionBlueprint";
+import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
 
 /**
  * A story row whose logic is a script.
@@ -25,6 +26,9 @@ import {
  * only runs inside a live game.
  */
 
+/** The one layer this fixture blueprint holds. */
+const SCRIPT_LAYER_ID = "layer-script";
+
 const BLUEPRINT_ID = "bp-story";
 const SCRIPT_REF = "scripts/story.ts";
 
@@ -35,9 +39,11 @@ function blueprintDocument(): BlueprintDocument {
                 id: BLUEPRINT_ID,
                 name: "Condition",
                 owner: { kind: "storyAction", blueprintId: BLUEPRINT_ID, mode: "condition" },
-                frontend: "typescript",
-                programKind: "scriptModule",
-                program: { kind: "scriptModule", scriptRef: SCRIPT_REF },
+                graphs: {
+                    eventIds: [SCRIPT_LAYER_ID],
+                    events: { [SCRIPT_LAYER_ID]: { id: SCRIPT_LAYER_ID, script: { scriptRef: SCRIPT_REF } } },
+                    functions: {},
+                },
                 members: { variables: {}, fields: {}, functions: {} },
                 bindings: {},
             },
@@ -46,8 +52,7 @@ function blueprintDocument(): BlueprintDocument {
         // restates it stops testing the thing that produces it.
         ownerRecords: {
             [storyActionOwnerKey(BLUEPRINT_ID)]: {
-                privateBlueprintIds: [BLUEPRINT_ID],
-                activeBlueprintId: BLUEPRINT_ID,
+                blueprintId: BLUEPRINT_ID,
             },
         },
     } as unknown as BlueprintDocument;
@@ -85,7 +90,7 @@ function input(
 
 async function mount(module: Record<string, unknown>): Promise<void> {
     await mountCompiledScripts(
-        { [BLUEPRINT_ID]: { scriptRef: SCRIPT_REF, url: "file:///story.mjs" } },
+        { [scriptLayerKey(BLUEPRINT_ID, SCRIPT_LAYER_ID)]: { scriptRef: SCRIPT_REF, url: "file:///story.mjs" } },
         undefined,
         async () => module,
     );

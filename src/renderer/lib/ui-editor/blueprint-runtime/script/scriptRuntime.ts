@@ -1,5 +1,5 @@
 /**
- * Running a script blueprint: mounting the compiled modules, and building the `ctx` a handler gets.
+ * Running a script layer: mounting the compiled modules, and building the `ctx` a handler gets.
  *
  * The bundle names each script by a URL the host wrote it to (see the Dev Mode script compiler).
  * This imports that URL, finds the export a dispatched event calls, and assembles the context
@@ -25,6 +25,8 @@
 
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { Blueprint } from "@shared/types/blueprint/document";
+import { listScriptLayers, scriptLayerKey } from "@shared/blueprint/blueprintLayers";
 import { scriptEventExportName, type ScriptEventId } from "./scriptEvents";
 import type { GameScriptContext, ScriptListRow, ScriptSelf, ScriptWidgetType } from "./scriptContext";
 
@@ -32,7 +34,10 @@ import type { GameScriptContext, ScriptListRow, ScriptSelf, ScriptWidgetType } f
 type MountedScript = { scriptRef: string; module: Record<string, unknown> };
 
 /**
- * Mounted modules by blueprint id, and the URLs they came from.
+ * Mounted modules by script-layer key ({@link scriptLayerKey}), and the URLs they came from.
+ *
+ * By layer rather than by blueprint: a blueprint can hold several script layers, and a layer id is
+ * only unique inside its own blueprint.
  *
  * On `globalThis` because Dev Mode replaces the whole bundle on a reload and the dispatcher is
  * reached from several module instances; a module-local map would be one per copy.
@@ -49,7 +54,7 @@ function state(): ScriptMountState {
     return globalThis.__NL_BP_SCRIPTS__;
 }
 
-/** What a bundle carries for each script blueprint: where its compiled module was written. */
+/** What a bundle carries for each script layer: where its compiled module was written. */
 export type CompiledScriptEntry = { scriptRef: string; url?: string };
 
 /**
@@ -57,26 +62,26 @@ export type CompiledScriptEntry = { scriptRef: string; url?: string };
  */
 export async function mountCompiledScripts(
     scripts: Readonly<Record<string, CompiledScriptEntry>> | undefined,
-    onError: (blueprintId: string, scriptRef: string, message: string) => void = () => undefined,
+    onError: (layerKey: string, scriptRef: string, message: string) => void = () => undefined,
     // Injected so a test can mount with no host serving anything, the way the puppet runtime build
     // takes its bundler. The default is the real thing: a URL, imported.
     loadModule: (url: string) => Promise<Record<string, unknown>> = importAsModule,
 ): Promise<void> {
     const next: ScriptMountState = { modules: {}, urls: [] };
 
-    for (const [blueprintId, entry] of Object.entries(scripts ?? {})) {
+    for (const [layerKey, entry] of Object.entries(scripts ?? {})) {
         if (typeof entry?.url !== "string") {
-            // Already reported as a compile diagnostic by whatever produced the bundle. Its
-            // blueprint simply listens to nothing.
+            // Already reported as a compile diagnostic by whatever produced the bundle. Its layer
+            // simply listens to nothing.
             continue;
         }
         try {
             const module = await loadModule(entry.url);
-            next.modules[blueprintId] = { scriptRef: entry.scriptRef, module };
+            next.modules[layerKey] = { scriptRef: entry.scriptRef, module };
         } catch (error) {
             // A module that throws while it is being evaluated - a top-level statement that failed.
             // The author's own code, so the message is theirs and names their file.
-            onError(blueprintId, entry.scriptRef, error instanceof Error ? error.message : String(error));
+            onError(layerKey, entry.scriptRef, error instanceof Error ? error.message : String(error));
         }
     }
 
@@ -109,7 +114,7 @@ export function unmountCompiledScripts(): void {
 }
 
 /**
- * The handler this blueprint exports for this event, or null.
+ * The handler this script layer exports for this event, or null.
  *
  * The export name follows from the event id by one rule (`mouseClick` -> `onMouseClick`), which is
  * why there is no table here: a script and the dispatcher agree because both ask
@@ -121,10 +126,10 @@ export function unmountCompiledScripts(): void {
  * dispatch's own id here is what made 81 declared handler names unreachable.
  */
 export function resolveScriptHandler(
-    blueprintId: string,
+    layerKey: string,
     eventId: ScriptEventId,
 ): ((...args: unknown[]) => unknown) | null {
-    const mounted = state().modules[blueprintId];
+    const mounted = state().modules[layerKey];
     if (!mounted) {
         return null;
     }
@@ -133,13 +138,40 @@ export function resolveScriptHandler(
 }
 
 /**
- * Every function this blueprint's module exports, by name.
+ * Every script layer of one blueprint that answers this event, in authored order.
+ *
+ * A list rather than one answer, and that is the whole difference between a script layer and the
+ * script blueprint it replaced. Layers are siblings: the dispatcher runs every graph layer whose
+ * head matches a dispatch, and it runs every script layer that exports a handler for it too. Two
+ * layers answering one event is an arrangement the author can see in the layer list, not a
+ * precedence rule they have to know.
+ */
+export function resolveScriptLayerHandlers(
+    blueprint: Blueprint | undefined,
+    eventId: ScriptEventId,
+): Array<{ layerKey: string; handler: (...args: unknown[]) => unknown }> {
+    const out: Array<{ layerKey: string; handler: (...args: unknown[]) => unknown }> = [];
+    if (!blueprint) {
+        return out;
+    }
+    for (const { layerId } of listScriptLayers(blueprint.graphs)) {
+        const layerKey = scriptLayerKey(blueprint.id, layerId);
+        const handler = resolveScriptHandler(layerKey, eventId);
+        if (handler) {
+            out.push({ layerKey, handler });
+        }
+    }
+    return out;
+}
+
+/**
+ * Every function this script layer's module exports, by name.
  *
  * For the mount-time check that reports a script exporting nothing its slot calls: the author's
  * spelling is half of that message, and only the module knows it.
  */
-export function listScriptExportedFunctionNames(blueprintId: string): string[] {
-    const mounted = state().modules[blueprintId];
+export function listScriptExportedFunctionNames(layerKey: string): string[] {
+    const mounted = state().modules[layerKey];
     if (!mounted) {
         return [];
     }
@@ -150,14 +182,14 @@ export function listScriptExportedFunctionNames(blueprintId: string): string[] {
 }
 
 /** The default export, which is how a story row and a value binding are entered. */
-export function resolveScriptDefault(blueprintId: string): ((...args: unknown[]) => unknown) | null {
-    const handler = state().modules[blueprintId]?.module.default;
+export function resolveScriptDefault(layerKey: string): ((...args: unknown[]) => unknown) | null {
+    const handler = state().modules[layerKey]?.module.default;
     return typeof handler === "function" ? (handler as (...args: unknown[]) => unknown) : null;
 }
 
-/** Whether this blueprint has a module mounted at all - a compile that failed leaves none. */
-export function isScriptMounted(blueprintId: string): boolean {
-    return state().modules[blueprintId] !== undefined;
+/** Whether this script layer has a module mounted at all - a compile that failed leaves none. */
+export function isScriptMounted(layerKey: string): boolean {
+    return state().modules[layerKey] !== undefined;
 }
 
 export type BuildGameScriptContextInput = {

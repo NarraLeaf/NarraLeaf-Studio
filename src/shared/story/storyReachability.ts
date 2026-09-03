@@ -353,10 +353,7 @@ export function* blueprintDocumentGraphCarriers(
 }
 
 function* carriersOf(blueprint: Blueprint): Generator<BlueprintGraphCarrier> {
-    if (blueprint.program?.kind !== "graph") {
-        return;
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     // Macros are walked though nothing populates `graphs.macros` today: a node buried in one would
     // ship exactly like a node on an event, and costing nothing while the record is empty is the
     // cheapest way to not be the walker that forgot.
@@ -367,6 +364,12 @@ function* carriersOf(blueprint: Blueprint): Generator<BlueprintGraphCarrier> {
     ];
     for (const { graphKind, entries } of slots) {
         for (const [graphId, slot] of Object.entries(entries)) {
+            // A script layer has no graph to scan: what it starts is in the author's own file,
+            // which is why a blueprint holding one stops the scene sweep outright rather than being
+            // read as a layer that starts nothing.
+            if ((slot as { script?: unknown } | undefined)?.script) {
+                continue;
+            }
             yield {
                 blueprintId: blueprint.id,
                 ...(blueprint.name === undefined ? {} : { blueprintName: blueprint.name }),

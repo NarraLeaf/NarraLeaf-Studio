@@ -267,24 +267,22 @@ export function resolveFirstBlueprintLayerPreview(
     if (!blueprint) {
         return null;
     }
-    // A script has no graph, and answering "nothing" for it drew the same card as a slot with no
-    // logic at all - the first place an author looks to ask whether a control does anything.
-    if (blueprint.program.kind === "scriptModule") {
+    const graphs = blueprint.graphs;
+
+    const eventId = listBlueprintEventIds(graphs)[0];
+    const eventLayer = eventId ? graphs.events[eventId] : undefined;
+    // A script layer has no graph, and answering "nothing" for it drew the same card as a slot with
+    // no logic at all - the first place an author looks to ask whether a control does anything.
+    if (eventLayer?.script) {
+        const { scriptRef } = eventLayer.script;
         return {
             graphName: null,
             emptyReason: "script",
-            scriptFileName: blueprint.program.scriptRef.split("/").pop() ?? blueprint.program.scriptRef,
+            scriptFileName: scriptRef.split("/").pop() ?? scriptRef,
             nodes: [],
             edges: [],
         };
     }
-    if (blueprint.program.kind !== "graph") {
-        return null;
-    }
-    const graphs = blueprint.program.graphs;
-
-    const eventId = listBlueprintEventIds(graphs)[0];
-    const eventLayer = eventId ? graphs.events[eventId] : undefined;
     if (eventLayer) {
         return buildPreviewModel(eventLayer.graph, eventLayer.name, nodeCatalog);
     }

@@ -90,8 +90,7 @@ describe("the blueprint editor's operation sink", () => {
         const derived = service.holdDerived(() => {
             service.applyGraphMutation(document => {
                 document.blueprintDocument.ownerRecords["widgetMain:s1:e1"] = {
-                    activeBlueprintId: "bp-derived",
-                    privateBlueprintIds: ["bp-derived"],
+                    blueprintId: "bp-derived",
                 };
             });
         });

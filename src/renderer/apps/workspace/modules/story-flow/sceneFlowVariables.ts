@@ -189,14 +189,19 @@ const NO_BLUEPRINT_WRITES: SceneFlowBlueprintWrites = {
     ambient: new Set(),
 };
 
-/** Every graph node of a blueprint, across its events, functions and macros. */
-function* eachNodeOfBlueprint(program: unknown): Generator<BlueprintGraphNode> {
-    const graphs = (program as { kind?: string; graphs?: Record<string, Record<string, { graph?: { nodes?: Record<string, BlueprintGraphNode> } }>> });
-    if (graphs?.kind !== "graph" || !graphs.graphs) {
+/**
+ * Every graph node of a blueprint, across its events, functions and macros.
+ *
+ * A script layer has no nodes, so it contributes nothing here and needs no test of its own: what
+ * a file writes to is not readable from this document at all.
+ */
+function* eachNodeOfBlueprint(index: unknown): Generator<BlueprintGraphNode> {
+    const graphs = index as Record<string, Record<string, { graph?: { nodes?: Record<string, BlueprintGraphNode> } }>> | undefined;
+    if (!graphs) {
         return;
     }
     for (const slot of ["events", "functions", "macros"]) {
-        for (const carrier of Object.values(graphs.graphs[slot] ?? {})) {
+        for (const carrier of Object.values(graphs[slot] ?? {})) {
             for (const node of Object.values(carrier?.graph?.nodes ?? {})) {
                 if (node) {
                     yield node;
@@ -247,7 +252,7 @@ export function collectBlueprintVariableWrites(
             continue;
         }
         const written = new Set<string>();
-        for (const node of eachNodeOfBlueprint(blueprint.program)) {
+        for (const node of eachNodeOfBlueprint(blueprint.graphs)) {
             for (const writer of BLUEPRINT_WRITE_NODES) {
                 if (node.type !== writer.type) {
                     continue;

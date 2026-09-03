@@ -21,36 +21,31 @@ function graphBlueprint(id = "bp-main"): Blueprint {
         id,
         name: "Main",
         owner: { kind: "surfaceMain", surfaceId: "surface-a" },
-        frontend: "visual",
-        programKind: "graph",
         members: {
             variables: {},
             fields: {},
             functions: {},
         },
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    mouseClick: {
-                        id: "mouseClick",
-                        name: "Mouse Click",
-                        graph: {
-                            nodes: {
-                                nodeA: {
-                                    id: "nodeA",
-                                    type: "test.node",
-                                    params: {
-                                        value: 1,
-                                    },
+        graphs: {
+            events: {
+                mouseClick: {
+                    id: "mouseClick",
+                    name: "Mouse Click",
+                    graph: {
+                        nodes: {
+                            nodeA: {
+                                id: "nodeA",
+                                type: "test.node",
+                                params: {
+                                    value: 1,
                                 },
                             },
-                            edges: [],
                         },
+                        edges: [],
                     },
                 },
-                functions: {},
             },
+            functions: {},
         },
     };
 }
@@ -64,9 +59,7 @@ function blueprintDocument(): BlueprintDocument {
         },
         ownerRecords: {
             "surfaceMain:surface-a": {
-                activeBlueprintId: bp.id,
-                privateBlueprintIds: [bp.id],
-                initializedFrontend: "visual",
+                blueprintId: bp.id,
             },
         },
     };
@@ -344,10 +337,7 @@ describe("LocalBlueprintService saved variables (M-VAR registry)", () => {
         const persistent = service.createPersistentVariable("bp-main", { name: "Gold" });
 
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        bp.program.graphs.events.onClick = {
+        bp.graphs.events.onClick = {
             id: "onClick",
             graph: {
                 nodes: {
@@ -373,7 +363,7 @@ describe("LocalBlueprintService saved variables (M-VAR registry)", () => {
 
         service.deleteSavedRegistryVariable("bp-main", saved.id);
 
-        const nodes = bp.program.graphs.events.onClick?.graph?.nodes;
+        const nodes = bp.graphs.events.onClick?.graph?.nodes;
         expect(nodes?.getSaved?.params?.savedVariableId).toBeUndefined();
         expect(nodes?.setSaved?.params?.savedVariableId).toBeUndefined();
         expect(nodes?.setSaved?.params?.[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]).toBeUndefined();
@@ -402,12 +392,8 @@ describe("LocalBlueprintService history", () => {
             elementId: "button-a",
             propPath: "text",
         });
-        expect(bp.program.kind).toBe("graph");
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        expect(Object.keys(bp.program.graphs.events)).toEqual(["init"]);
-        const initGraph = bp.program.graphs.events.init?.graph;
+        expect(Object.keys(bp.graphs.events)).toEqual(["init"]);
+        const initGraph = bp.graphs.events.init?.graph;
         if (!initGraph) {
             throw new Error("Expected init graph");
         }
@@ -430,11 +416,7 @@ describe("LocalBlueprintService history", () => {
 
         const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
         expect(bp.meta?.valueType).toBe("json");
-        expect(bp.program.kind).toBe("graph");
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        const initGraph = bp.program.graphs.events.init?.graph;
+        const initGraph = bp.graphs.events.init?.graph;
         if (!initGraph) {
             throw new Error("Expected init graph");
         }
@@ -457,11 +439,7 @@ describe("LocalBlueprintService history", () => {
 
         const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
         expect(bp.meta?.valueType).toBe("float");
-        expect(bp.program.kind).toBe("graph");
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        const initGraph = bp.program.graphs.events.init?.graph;
+        const initGraph = bp.graphs.events.init?.graph;
         if (!initGraph) {
             throw new Error("Expected init graph");
         }
@@ -509,10 +487,7 @@ describe("LocalBlueprintService history", () => {
         expect(registryService.getRegistry().entries[created.id]?.defaultValue).toBe(0.75);
 
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        bp.program.graphs.events.mouseClick = {
+        bp.graphs.events.mouseClick = {
             id: "mouseClick",
             graph: {
                 nodes: {
@@ -528,7 +503,7 @@ describe("LocalBlueprintService history", () => {
                 edges: [],
             },
         };
-        bp.program.graphs.functions.readVolume = {
+        bp.graphs.functions.readVolume = {
             id: "readVolume",
             graph: {
                 nodes: {
@@ -544,7 +519,7 @@ describe("LocalBlueprintService history", () => {
                 edges: [],
             },
         };
-        bp.program.graphs.macros = {
+        bp.graphs.macros = {
             rememberVolume: {
                 id: "rememberVolume",
                 graph: {
@@ -567,9 +542,9 @@ describe("LocalBlueprintService history", () => {
 
         expect(registryService.getRegistry().entries[created.id]).toBeUndefined();
         const nodes = [
-            bp.program.graphs.events.mouseClick?.graph?.nodes?.getPersistent,
-            bp.program.graphs.functions.readVolume?.graph?.nodes?.setPersistent,
-            bp.program.graphs.macros.rememberVolume?.graph?.nodes?.getPersistent,
+            bp.graphs.events.mouseClick?.graph?.nodes?.getPersistent,
+            bp.graphs.functions.readVolume?.graph?.nodes?.setPersistent,
+            bp.graphs.macros.rememberVolume?.graph?.nodes?.getPersistent,
         ];
         for (const node of nodes) {
             expect(node?.params?.persistentVariableId).toBeUndefined();
@@ -606,10 +581,7 @@ describe("LocalBlueprintService history", () => {
 
         const readValue = () => {
             const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-            if (bp.program.kind !== "graph") {
-                return undefined;
-            }
-            return bp.program.graphs.events.mouseClick?.graph?.nodes?.nodeA?.params?.value;
+            return bp.graphs.events.mouseClick?.graph?.nodes?.nodeA?.params?.value;
         };
 
         expect(readValue()).toBe(3);
@@ -641,10 +613,7 @@ describe("LocalBlueprintService history", () => {
 
         const readEdges = () => {
             const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-            if (bp.program.kind !== "graph") {
-                return undefined;
-            }
-            return bp.program.graphs.events.mouseClick?.graph?.edges;
+            return bp.graphs.events.mouseClick?.graph?.edges;
         };
 
         expect(readEdges()).toEqual([]);
@@ -661,18 +630,12 @@ describe("LocalBlueprintService history", () => {
             service.removeEventGraph("bp-main", "mouseClick");
         });
 
-        expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.kind).toBe("graph");
-        if (graphDocument.blueprintDocument.blueprints["bp-main"].program.kind === "graph") {
-            expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.graphs.events.mouseClick).toBeUndefined();
-        }
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].graphs.events.mouseClick).toBeUndefined();
 
         expect(service.undoBlueprint("bp-main")).toBe(true);
 
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        expect(bp.program.kind).toBe("graph");
-        if (bp.program.kind === "graph") {
-            expect(bp.program.graphs.events.mouseClick?.name).toBe("Mouse Click");
-        }
+        expect(bp.graphs.events.mouseClick?.name).toBe("Mouse Click");
     });
 });
 
@@ -686,10 +649,7 @@ describe("LocalBlueprintService function graph order", () => {
         expect(service.listFunctionGraphIds("bp-main")).toEqual(["zzz", "aaa"]);
 
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        if (bp.program.kind !== "graph") {
-            throw new Error("test fixture lost its graph program");
-        }
-        const graphs = bp.program.graphs;
+        const graphs = bp.graphs;
         graphs.functions = Object.fromEntries(
             Object.keys(graphs.functions).sort().map(id => [id, graphs.functions[id]!]),
         );
@@ -702,10 +662,7 @@ describe("LocalBlueprintService function graph order", () => {
 describe("LocalBlueprintService event layer order", () => {
     function readGraphs(graphDocument: { blueprintDocument: BlueprintDocument }) {
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        if (bp.program.kind !== "graph") {
-            throw new Error("test fixture lost its graph program");
-        }
-        return bp.program.graphs;
+        return bp.graphs;
     }
 
     it("appends a new layer and drops a deleted one from the order", () => {
@@ -782,7 +739,7 @@ describe("LocalBlueprintService ensure* helpers", () => {
         const id = service.ensureWidgetMain("surface-a", "button-a", "Button", "nl.button");
 
         expect(graphMutations.count).toBeGreaterThan(before);
-        expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:button-a"].activeBlueprintId).toBe(id);
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:button-a"].blueprintId).toBe(id);
 
         const afterCreate = graphMutations.count;
         expect(service.ensureWidgetMain("surface-a", "button-a", "Button", "nl.button")).toBe(id);
@@ -798,10 +755,7 @@ describe("removing a registry variable inside a live session", () => {
         const { service, registryService, graphDocument } = createHarness();
         const saved = service.createSavedRegistryVariable("bp-main", { name: "Flag", valueType: "boolean" });
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        bp.program.graphs.events.onClick = {
+        bp.graphs.events.onClick = {
             id: "onClick",
             graph: {
                 nodes: {
@@ -821,7 +775,7 @@ describe("removing a registry variable inside a live session", () => {
         expect(registryService.listEntries()).toEqual([]);
         // Untouched here. The applier that takes the effect is what clears it, on this machine and
         // on every other, from one statement.
-        expect(bp.program.graphs.events.onClick?.graph?.nodes?.getSaved?.params?.savedVariableId).toBe(saved.id);
+        expect(bp.graphs.events.onClick?.graph?.nodes?.getSaved?.params?.savedVariableId).toBe(saved.id);
     });
 
     it("sweeps both scopes when an effect arrives, whichever declared the variable", () => {
@@ -829,10 +783,7 @@ describe("removing a registry variable inside a live session", () => {
         // about its scope - and an id belongs to one entry, so clearing both is exact.
         const { service, graphDocument } = createHarness();
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
-        if (bp.program.kind !== "graph") {
-            throw new Error("Expected graph blueprint");
-        }
-        bp.program.graphs.events.onClick = {
+        bp.graphs.events.onClick = {
             id: "onClick",
             graph: {
                 nodes: {
@@ -853,7 +804,7 @@ describe("removing a registry variable inside a live session", () => {
 
         service.sweepVariableNodeRefs("v1");
 
-        const nodes = bp.program.graphs.events.onClick?.graph?.nodes;
+        const nodes = bp.graphs.events.onClick?.graph?.nodes;
         expect(nodes?.getSaved?.params?.savedVariableId).toBeUndefined();
         expect(nodes?.getSaved?.params?.[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]).toBeUndefined();
         // A variable the sweep was not about keeps its node.

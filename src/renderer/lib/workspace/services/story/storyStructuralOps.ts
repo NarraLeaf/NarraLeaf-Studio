@@ -407,7 +407,7 @@ export function applySceneMerge(document: StoryDocument, plan: StorySceneMergePl
 }
 
 /**
- * Blueprints that name a scene, found by looking for its id anywhere in their program.
+ * Blueprints that name a scene, found by looking for its id anywhere in their layers.
  *
  * A value scan rather than a walk of the node catalogue's scene-typed params. The catalogue lives
  * behind the editor's node registry, and a merge asking it would drag the whole blueprint editor
@@ -416,12 +416,12 @@ export function applySceneMerge(document: StoryDocument, plan: StorySceneMergePl
  * when a node type with a new scene-typed param is added, which the catalogue walk can.
  */
 export function findSceneReferrersInBlueprints(
-    blueprints: { blueprints: Record<string, { name: string; program: unknown }> } | null | undefined,
+    blueprints: { blueprints: Record<string, { name: string; graphs: unknown }> } | null | undefined,
     sceneId: StorySceneId,
 ): StorySceneReferrer[] {
     const referrers: StorySceneReferrer[] = [];
     for (const blueprint of Object.values(blueprints?.blueprints ?? {})) {
-        if (containsString(blueprint.program, sceneId)) {
+        if (containsString(blueprint.graphs, sceneId)) {
             referrers.push({ kind: "blueprint", name: blueprint.name });
         }
     }

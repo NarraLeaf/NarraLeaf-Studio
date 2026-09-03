@@ -138,6 +138,12 @@ event "On click"
   that already occupies the same owner keeps its id.
 - **`event <name>`** and **`function <name>`** open a graph. `id=` optional; a
   layer is matched to an existing one by name when no id is given.
+- **`script <path>`** declares a layer that runs one of the author's files under
+  `scripts/` instead of a graph, and has no body. A blueprint holds any mix of
+  the two and every layer that answers an event runs, so a script sits beside a
+  graph rather than replacing it. `id=` optional, as above. `show` prints one
+  for every script layer, and dropping that line from a file is what removes the
+  layer - a file that does not mention it applies as a blueprint without it.
 - **`<nodeId>: <nodeType> [key=value …] [@x,y]`** declares a node. The id is
   yours to choose and is what edges refer to. `@x,y` places the card; without
   it, a node keeps the position it already had in the project, or gets one from

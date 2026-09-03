@@ -212,7 +212,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [surfaces]);
     const globalBlueprintId = useMemo(() => {
         const blueprintDocument = localBlueprintService?.getBlueprintDocument();
-        return blueprintDocument?.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+        return blueprintDocument?.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId;
     }, [blueprintRevision, localBlueprintService]);
     const globalBlueprintPreviewModel = useMemo(
         () => resolveFirstBlueprintLayerPreview(localBlueprintService, nodeCatalog, globalBlueprintId),

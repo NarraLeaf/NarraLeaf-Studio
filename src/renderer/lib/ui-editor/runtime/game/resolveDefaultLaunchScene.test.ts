@@ -98,24 +98,19 @@ function makeStartGameBlueprints(targets: Array<{ storyId?: string; sceneId?: st
                 id: "bp-1",
                 name: "Main Menu",
                 owner: { kind: "globalMain" },
-                frontend: "visual",
-                programKind: "graph",
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            onClick: {
-                                id: "onClick",
-                                graph: {
-                                    nodes: Object.fromEntries(targets.map((params, index) => [
-                                        `node-${index}`,
-                                        { id: `node-${index}`, type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params },
-                                    ])),
-                                },
+                graphs: {
+                    events: {
+                        onClick: {
+                            id: "onClick",
+                            graph: {
+                                nodes: Object.fromEntries(targets.map((params, index) => [
+                                    `node-${index}`,
+                                    { id: `node-${index}`, type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params },
+                                ])),
                             },
                         },
-                        functions: {},
                     },
+                    functions: {},
                 },
             },
         },
@@ -194,16 +189,17 @@ describe("resolveStagePreloadTarget", () => {
         expect(resolveStagePreloadTarget(makeTwoStoryBundle())).toEqual(DEFAULT_TARGET);
     });
 
-    it("ignores blueprints that are not graphs", () => {
+    it("ignores a layer that is a script rather than a graph", () => {
         const bundle = makeTwoStoryBundle({
             blueprints: {
                 "bp-ts": {
                     id: "bp-ts",
                     name: "Script",
                     owner: { kind: "globalMain" },
-                    frontend: "typescript",
-                    programKind: "scriptModule",
-                    program: { kind: "scriptModule", source: { language: "typescript", code: "" } },
+                    graphs: {
+                        events: { s: { id: "s", script: { scriptRef: "scripts/launcher.ts" } } },
+                        functions: {},
+                    },
                 },
             },
             ownerRecords: {},

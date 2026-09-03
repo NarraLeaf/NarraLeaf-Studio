@@ -3,7 +3,7 @@ import { fnv1a64BytesHex } from "@shared/utils/contentHash";
 import type {
     Blueprint,
     BlueprintDocument,
-    BlueprintEventGraph,
+    BlueprintLayer,
     BlueprintFunctionGraph,
     BlueprintGraphEdge,
     BlueprintGraphIndex,
@@ -45,21 +45,18 @@ import type { UIGraph, UIGraphDocument, UIGraphId } from "@shared/types/ui-edito
  */
 
 /** One graph slot's record with its IR taken off - its id, its name, its own metadata. */
-export type LiveGraphSlotShell = Omit<BlueprintEventGraph, "graph"> & Omit<BlueprintFunctionGraph, "graph">;
+export type LiveGraphSlotShell = Omit<BlueprintLayer, "graph"> & Omit<BlueprintFunctionGraph, "graph">;
 
 /**
- * A blueprint's program with the graph bodies taken off.
+ * A blueprint's record with the graph bodies taken off. See the note on {@link LiveUIGraphParts}.
  *
- * A script module has no body to take off: it holds the path of a file in `scripts/`, and that file
- * is not part of this document. A session shares the reference; the file itself travels the way any
- * other file in the project does.
+ * A script layer has no body to take off: it holds the path of a file in `scripts/`, and that file
+ * is not part of this document. So it travels whole in the slot's own shell, and the file itself
+ * travels the way any other file in the project does.
  */
-export type LiveBlueprintProgramShell =
-    | { kind: "graph"; graphs: Omit<BlueprintGraphIndex, "events" | "functions"> }
-    | { kind: "scriptModule"; scriptRef: string };
-
-/** A blueprint's record without its graphs. See the note on {@link LiveUIGraphParts}. */
-export type LiveBlueprintShell = Omit<Blueprint, "program"> & { program: LiveBlueprintProgramShell };
+export type LiveBlueprintShell = Omit<Blueprint, "graphs"> & {
+    graphs: Omit<BlueprintGraphIndex, "events" | "functions">;
+};
 
 /** What changed inside one graph slot. Every field is absent when that part of it did not move. */
 export type LiveGraphSlotDelta = {
@@ -153,16 +150,13 @@ export function diffUIGraphParts(before: UIGraphDocument, after: UIGraphDocument
 }
 
 function diffGraphs(before: Blueprint | undefined, after: Blueprint): LiveBlueprintGraphsDelta | null {
-    if (after.program.kind !== "graph") {
-        return null;
-    }
-    const previous = before?.program.kind === "graph" ? before.program.graphs : undefined;
+    const previous = before?.graphs;
     const delta: LiveBlueprintGraphsDelta = {};
-    const events = diffSlots(previous?.events ?? {}, after.program.graphs.events ?? {});
+    const events = diffSlots(previous?.events ?? {}, after.graphs.events ?? {});
     if (events) {
         delta.events = events;
     }
-    const functions = diffSlots(previous?.functions ?? {}, after.program.graphs.functions ?? {});
+    const functions = diffSlots(previous?.functions ?? {}, after.graphs.functions ?? {});
     if (functions) {
         delta.functions = functions;
     }
@@ -170,8 +164,8 @@ function diffGraphs(before: Blueprint | undefined, after: Blueprint): LiveBluepr
 }
 
 function diffSlots(
-    before: Readonly<Record<string, BlueprintEventGraph | BlueprintFunctionGraph>>,
-    after: Readonly<Record<string, BlueprintEventGraph | BlueprintFunctionGraph>>,
+    before: Readonly<Record<string, BlueprintLayer | BlueprintFunctionGraph>>,
+    after: Readonly<Record<string, BlueprintLayer | BlueprintFunctionGraph>>,
 ): Record<string, LiveGraphSlotDelta | null> | null {
     const delta: Record<string, LiveGraphSlotDelta | null> = {};
     let changed = false;
@@ -193,8 +187,8 @@ function diffSlots(
 }
 
 function diffSlot(
-    before: BlueprintEventGraph | BlueprintFunctionGraph | undefined,
-    after: BlueprintEventGraph | BlueprintFunctionGraph,
+    before: BlueprintLayer | BlueprintFunctionGraph | undefined,
+    after: BlueprintLayer | BlueprintFunctionGraph,
 ): LiveGraphSlotDelta | null {
     const delta: LiveGraphSlotDelta = {};
     let changed = false;
@@ -251,13 +245,13 @@ export function applyUIGraphParts(document: UIGraphDocument, parts: LiveUIGraphP
     if (parts.graphs) {
         for (const [blueprintId, delta] of Object.entries(parts.graphs)) {
             const blueprint = blueprintDocument.blueprints[blueprintId];
-            if (!blueprint || blueprint.program.kind !== "graph") {
+            if (!blueprint) {
                 // A delta naming a blueprint nobody has is applied as far as it can be rather than
                 // thrown: an applier that threw would leave every machine holding half a message.
                 continue;
             }
-            applySlots(blueprint.program.graphs.events, delta.events);
-            applySlots(blueprint.program.graphs.functions, delta.functions);
+            applySlots(blueprint.graphs.events, delta.events);
+            applySlots(blueprint.graphs.functions, delta.functions);
         }
     }
     if (parts.owners) {
@@ -272,20 +266,20 @@ export function applyUIGraphParts(document: UIGraphDocument, parts: LiveUIGraphP
 }
 
 function applySlots(
-    target: Record<string, BlueprintEventGraph> | Record<string, BlueprintFunctionGraph>,
+    target: Record<string, BlueprintLayer> | Record<string, BlueprintFunctionGraph>,
     delta: Readonly<Record<string, LiveGraphSlotDelta | null>> | undefined,
 ): void {
     if (!delta) {
         return;
     }
-    const slots = target as Record<string, BlueprintEventGraph>;
+    const slots = target as Record<string, BlueprintLayer>;
     for (const [graphId, slotDelta] of Object.entries(delta)) {
         if (slotDelta === null) {
             delete slots[graphId];
             continue;
         }
         const existing = slots[graphId];
-        const slot: BlueprintEventGraph = existing
+        const slot: BlueprintLayer = existing
             ? { ...existing, ...(slotDelta.slot ?? {}) }
             : { ...(slotDelta.slot ?? { id: graphId }) };
         const ir: BlueprintGraphIr = { ...(existing?.graph ?? {}) };
@@ -322,19 +316,12 @@ function applySlots(
  * graphs arrive in the same delta, under {@link LiveUIGraphParts.graphs}.
  */
 function mergeShell(previous: Blueprint | undefined, shell: LiveBlueprintShell): Blueprint {
-    if (shell.program.kind === "scriptModule") {
-        return { ...shell, program: { kind: "scriptModule", scriptRef: shell.program.scriptRef } };
-    }
-    const held = previous?.program.kind === "graph" ? previous.program.graphs : undefined;
     return {
         ...shell,
-        program: {
-            kind: "graph",
-            graphs: {
-                ...shell.program.graphs,
-                events: held?.events ?? {},
-                functions: held?.functions ?? {},
-            },
+        graphs: {
+            ...shell.graphs,
+            events: previous?.graphs?.events ?? {},
+            functions: previous?.graphs?.functions ?? {},
         },
     };
 }
@@ -415,7 +402,7 @@ export function uiGraphPartsBefore(document: UIGraphDocument, parts: LiveUIGraph
     const graphs: Record<string, LiveBlueprintGraphsDelta> = {};
     for (const [blueprintId, delta] of Object.entries(parts.graphs ?? {})) {
         const blueprint = held[blueprintId];
-        const index = blueprint?.program.kind === "graph" ? blueprint.program.graphs : undefined;
+        const index = blueprint?.graphs;
         const captured: LiveBlueprintGraphsDelta = {};
         if (delta.events) {
             captured.events = slotsBefore(index?.events ?? {}, delta.events);
@@ -435,12 +422,9 @@ export function uiGraphPartsBefore(document: UIGraphDocument, parts: LiveUIGraph
             continue;
         }
         const blueprint = held[blueprintId];
-        if (blueprint?.program.kind !== "graph") {
-            continue;
-        }
         const captured: LiveBlueprintGraphsDelta = {};
-        const events = wholeSlots(blueprint.program.graphs.events ?? {});
-        const functions = wholeSlots(blueprint.program.graphs.functions ?? {});
+        const events = wholeSlots(blueprint.graphs.events ?? {});
+        const functions = wholeSlots(blueprint.graphs.functions ?? {});
         if (Object.keys(events).length > 0) {
             captured.events = events;
         }
@@ -466,7 +450,7 @@ export function uiGraphPartsBefore(document: UIGraphDocument, parts: LiveUIGraph
 
 /** Every slot of one index, each captured whole. What a removed blueprint's inverse carries. */
 function wholeSlots(
-    held: Readonly<Record<string, BlueprintEventGraph | BlueprintFunctionGraph>>,
+    held: Readonly<Record<string, BlueprintLayer | BlueprintFunctionGraph>>,
 ): Record<string, LiveGraphSlotDelta | null> {
     const captured: Record<string, LiveGraphSlotDelta | null> = {};
     for (const graphId of Object.keys(held)) {
@@ -479,7 +463,7 @@ function wholeSlots(
 }
 
 function slotsBefore(
-    held: Readonly<Record<string, BlueprintEventGraph | BlueprintFunctionGraph>>,
+    held: Readonly<Record<string, BlueprintLayer | BlueprintFunctionGraph>>,
     delta: Readonly<Record<string, LiveGraphSlotDelta | null>>,
 ): Record<string, LiveGraphSlotDelta | null> {
     const captured: Record<string, LiveGraphSlotDelta | null> = {};
@@ -629,14 +613,11 @@ function shellsOf(document: BlueprintDocument | undefined): Record<string, LiveB
 }
 
 function shellOfBlueprint(blueprint: Blueprint): LiveBlueprintShell {
-    if (blueprint.program.kind === "scriptModule") {
-        return { ...blueprint, program: { kind: "scriptModule", scriptRef: blueprint.program.scriptRef } };
-    }
-    const { events: _events, functions: _functions, ...graphs } = blueprint.program.graphs;
-    return { ...blueprint, program: { kind: "graph", graphs } };
+    const { events: _events, functions: _functions, ...graphs } = blueprint.graphs;
+    return { ...blueprint, graphs };
 }
 
-function shellOfSlot(slot: BlueprintEventGraph | BlueprintFunctionGraph): LiveGraphSlotShell {
+function shellOfSlot(slot: BlueprintLayer | BlueprintFunctionGraph): LiveGraphSlotShell {
     const { graph: _graph, ...shell } = slot;
     return shell;
 }

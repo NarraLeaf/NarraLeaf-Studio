@@ -68,7 +68,7 @@ export function parseBlueprintText(source: string): BpParseResult {
             node = null;
             continue;
         }
-        if (keyword === "event" || keyword === "function") {
+        if (keyword === "event" || keyword === "function" || keyword === "script") {
             if (!blueprint) {
                 fail(lineNumber, "dsl.orphan_graph", `"${keyword}" before any "blueprint" line.`);
                 continue;
@@ -186,7 +186,7 @@ export function parseBlueprintText(source: string): BpParseResult {
  * a keyword only counts when what follows it is not an assignment.
  */
 function blockKeyword(text: string): string {
-    const match = /^(blueprint|event|function|var)(\s+|$)/.exec(text);
+    const match = /^(blueprint|event|function|script|var)(\s+|$)/.exec(text);
     if (!match) {
         return "";
     }
@@ -290,7 +290,7 @@ function parseBlueprintHeader(text: string, line: number, fail: FailFn): BpBluep
 }
 
 function parseGraphHeader(
-    keyword: "event" | "function",
+    keyword: "event" | "function" | "script",
     text: string,
     line: number,
     fail: FailFn,
@@ -303,11 +303,15 @@ function parseGraphHeader(
         return null;
     }
     tokens.shift();
-    let name = keyword === "event" ? "Layer 1" : "Function";
+    // A script layer's quoted word is its FILE, not a name: the layer is the file, and a name
+    // beside it would be a second thing to keep in step with what is on disk.
+    let name = keyword === "event" ? "Layer 1" : keyword === "script" ? "" : "Function";
     if (tokens.length > 0 && indexOfTopLevel(tokens[0], "=") < 0) {
         name = readString(tokens.shift() as string);
     }
-    const graph: BpGraphAst = { kind: keyword, name, nodes: [], edges: [], line };
+    const graph: BpGraphAst = keyword === "script"
+        ? { kind: keyword, name: "", scriptRef: name, nodes: [], edges: [], line }
+        : { kind: keyword, name, nodes: [], edges: [], line };
     for (const token of tokens) {
         const at = indexOfTopLevel(token, "=");
         if (at < 0) {
@@ -471,15 +475,13 @@ function applyBlueprintKey(
         case "id":
             blueprint.id = typeof raw === "string" ? raw : undefined;
             return;
-        case "script":
-            blueprint.script = typeof raw === "string" ? raw : undefined;
-            return;
         default:
             fail(
                 line,
                 "dsl.unknown_blueprint_field",
                 `"${key}" is not a blueprint field.`,
-                "Known: id, script, meta, bindings, fields, functions. Node params must follow a node declaration.",
+                "Known: id, meta, bindings, fields, functions. Node params must follow a node declaration."
+                    + " A script is a `script \"scripts/....ts\"` block, not a blueprint field.",
             );
     }
 }

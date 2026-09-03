@@ -8,64 +8,57 @@ function blueprintDoc(): BlueprintDocument {
     return {
         schemaVersion: 1,
         ownerRecords: {
-            globalMain: { activeBlueprintId: "bp-global", privateBlueprintIds: ["bp-global"] },
-            "surfaceMain:surf-1": { activeBlueprintId: "bp-1", privateBlueprintIds: ["bp-1"] },
+            globalMain: { blueprintId: "bp-global" },
+            "surfaceMain:surf-1": { blueprintId: "bp-1" },
         },
         blueprints: {
             "bp-global": {
                 id: "bp-global",
                 name: "Global",
                 owner: {} as never,
-                frontend: "graph",
-                programKind: "graph",
-                program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                graphs: { events: {}, functions: {} },
             },
             "bp-1": {
                 id: "bp-1",
                 name: "Main Menu Logic",
                 owner: {} as never,
-                frontend: "graph",
-                programKind: "graph",
                 members: {
                     variables: { mv1: { id: "mv1", name: "Menu Open" } as never },
                     fields: {},
                 },
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            "ev-1": {
-                                name: "On Click",
-                                graph: {
-                                    nodes: {
-                                        n1: { id: "n1", type: "flow.branch" },
-                                        // Three of a kind: two indistinguishable, one carrying a literal.
-                                        s1: { id: "s1", type: "image.setAsset" },
-                                        s2: { id: "s2", type: "image.setAsset" },
-                                        s3: {
-                                            id: "s3",
-                                            type: "image.setAsset",
-                                            params: {
-                                                slot: 3,
-                                                loop: true,
-                                                assetId: "6f1c9a2e-2b7d-4c5e-9a10-77b3c0d1e2f4",
-                                                label: "forest at dusk",
-                                                note: "second pass",
-                                            },
+                graphs: {
+                    events: {
+                        "ev-1": {
+                            name: "On Click",
+                            graph: {
+                                nodes: {
+                                    n1: { id: "n1", type: "flow.branch" },
+                                    // Three of a kind: two indistinguishable, one carrying a literal.
+                                    s1: { id: "s1", type: "image.setAsset" },
+                                    s2: { id: "s2", type: "image.setAsset" },
+                                    s3: {
+                                        id: "s3",
+                                        type: "image.setAsset",
+                                        params: {
+                                            slot: 3,
+                                            loop: true,
+                                            assetId: "6f1c9a2e-2b7d-4c5e-9a10-77b3c0d1e2f4",
+                                            label: "forest at dusk",
+                                            note: "second pass",
                                         },
                                     },
                                 },
-                            } as never,
-                            // A sibling layer with the SAME name — the shape that survived a
-                            // per-graph dedup and put four identical rows on screen.
-                            "ev-2": {
-                                name: "On Click",
-                                graph: { nodes: { s4: { id: "s4", type: "image.setAsset" } } },
-                            } as never,
-                        },
-                        functions: {
-                            "fn-1": { graph: { nodes: { n2: { id: "n2", type: "custom.unknown" } } } } as never,
-                        },
+                            },
+                        } as never,
+                        // A sibling layer with the SAME name — the shape that survived a
+                        // per-graph dedup and put four identical rows on screen.
+                        "ev-2": {
+                            name: "On Click",
+                            graph: { nodes: { s4: { id: "s4", type: "image.setAsset" } } },
+                        } as never,
+                    },
+                    functions: {
+                        "fn-1": { graph: { nodes: { n2: { id: "n2", type: "custom.unknown" } } } } as never,
                     },
                 },
             },
@@ -73,10 +66,8 @@ function blueprintDoc(): BlueprintDocument {
                 id: "bp-orphan",
                 name: "Orphan",
                 owner: {} as never,
-                frontend: "graph",
-                programKind: "graph",
                 members: { variables: { ov: { id: "ov", name: "Unreachable" } as never }, fields: {} },
-                program: { kind: "graph", graphs: { events: {}, functions: {} } },
+                graphs: { events: {}, functions: {} },
             },
         },
     } as unknown as BlueprintDocument;

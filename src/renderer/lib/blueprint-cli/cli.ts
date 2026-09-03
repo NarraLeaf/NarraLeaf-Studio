@@ -15,6 +15,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
@@ -311,7 +312,7 @@ function commandList(args: Args, io: CliIo): number {
         id: blueprint.id,
         name: blueprint.name,
         ownerKey: ownerRefToIndexKey(blueprint.owner),
-        programKind: blueprint.programKind,
+        scripts: listScriptLayers(blueprint.graphs).length,
         events: countGraphs(blueprint, "events"),
         functions: countGraphs(blueprint, "functions"),
         nodes: countNodes(blueprint),
@@ -485,7 +486,7 @@ function commandApply(args: Args, io: CliIo): number {
         ...Object.fromEntries(
             result.blueprints.map(blueprint => [
                 ownerRefToIndexKey(blueprint.owner),
-                { activeBlueprintId: blueprint.id, privateBlueprintIds: [blueprint.id] },
+                { blueprintId: blueprint.id },
             ]),
         ),
     });
@@ -533,17 +534,11 @@ function quoteAll(names: readonly string[]): string {
 }
 
 function countGraphs(blueprint: Blueprint, kind: "events" | "functions"): number {
-    if (blueprint.program.kind !== "graph") {
-        return 0;
-    }
-    return Object.keys(blueprint.program.graphs[kind] ?? {}).length;
+    return Object.keys(blueprint.graphs[kind] ?? {}).length;
 }
 
 function countNodes(blueprint: Blueprint): number {
-    if (blueprint.program.kind !== "graph") {
-        return 0;
-    }
-    const graphs = blueprint.program.graphs;
+    const graphs = blueprint.graphs;
     let total = 0;
     for (const pool of [graphs.events, graphs.functions]) {
         for (const graph of Object.values(pool ?? {})) {

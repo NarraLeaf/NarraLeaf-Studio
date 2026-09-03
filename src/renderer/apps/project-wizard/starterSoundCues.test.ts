@@ -37,7 +37,7 @@ type Graph = { nodes: Record<string, GraphNode>; edges: GraphEdge[] };
 type Blueprint = {
     id: string;
     owner: { kind: string; surfaceId?: string; elementId?: string };
-    program: { graphs: { events: Record<string, { graph: Graph }> } };
+    graphs: { events: Record<string, { graph: Graph }> };
 };
 type Element = { id: string; name: string; type: string; childrenIds?: string[] };
 type Surface = { id: string; name: string; rootElementId: string };
@@ -103,7 +103,7 @@ function graphFor(elementId: string, headType?: string): Graph {
             && candidate.owner.elementId === elementId,
     );
     expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
-    const graphs = Object.values(blueprint!.program.graphs.events).filter(
+    const graphs = Object.values(blueprint!.graphs.events).filter(
         candidate => !headType || Object.values(candidate.graph.nodes).some(node => node.type === headType),
     );
     expect(graphs, `${elementId} has ${graphs.length} graphs answering ${headType ?? "anything"}`).toHaveLength(1);
@@ -140,7 +140,7 @@ function next(graph: Graph, fromId: string, port: string): GraphNode {
 const CUE_PLAYS: Map<string, GraphNode> = (() => {
     const out = new Map<string, GraphNode>();
     for (const blueprint of blueprints) {
-        for (const event of Object.values(blueprint.program.graphs.events)) {
+        for (const event of Object.values(blueprint.graphs.events)) {
             const { nodes, edges } = event.graph;
             for (const head of Object.values(nodes)) {
                 if (head.type !== "blueprint.fn.head") {
@@ -246,7 +246,7 @@ describe("the sounds the starter template makes", () => {
 
     it("makes them in sixty places and nowhere else", () => {
         const cues = blueprints.flatMap(blueprint =>
-            Object.values(blueprint.program.graphs.events).flatMap(event =>
+            Object.values(blueprint.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
                     .filter(node => isCueCall(node))
                     .map(node => `${blueprint.owner.elementId ?? blueprint.id}:${node.id}`),

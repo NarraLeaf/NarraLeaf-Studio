@@ -49,7 +49,7 @@ import {
 } from "./graphVariableTypeInference";
 
 export {
-    ensureBlueprintEventGraphIrStructure,
+    ensureBlueprintLayerIrStructure,
     ensureBlueprintFunctionGraphIrStructure,
     graphIrHasEventHead,
     graphIrHasFunctionEntry,

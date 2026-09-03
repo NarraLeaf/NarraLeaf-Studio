@@ -73,22 +73,17 @@ function startStoryBlueprint(
         id: "bp-1",
         name: "Title screen",
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    "ev-1": {
-                        id: "ev-1",
-                        graph: {
-                            nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
-                            edges,
-                        },
+        graphs: {
+            events: {
+                "ev-1": {
+                    id: "ev-1",
+                    graph: {
+                        nodes: { "n-1": { id: "n-1", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params } },
+                        edges,
                     },
                 },
-                functions: {},
             },
+            functions: {},
         },
     } as Blueprint;
 }
@@ -350,14 +345,16 @@ describe("scanStoryEntryPoints", () => {
             .toEqual([...blueprintGraphCarriers([blueprint])]);
     });
 
-    it("finds nothing in a TypeScript blueprint and nothing in no document", () => {
+    it("finds nothing in a script layer and nothing in no document", () => {
         const script = {
             id: "bp-2",
             name: "Script",
             owner: { kind: "globalMain" },
-            frontend: "typescript",
-            programKind: "scriptModule",
-            program: { kind: "scriptModule", scriptRef: "scripts/title.ts" },
+            graphs: {
+                eventIds: ["layer-script"],
+                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/title.ts" } } },
+                functions: {},
+            },
         } as Blueprint;
 
         expect([...blueprintGraphCarriers([script])]).toEqual([]);

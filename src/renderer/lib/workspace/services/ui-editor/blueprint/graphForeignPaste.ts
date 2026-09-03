@@ -175,23 +175,18 @@ function clipboardBlueprintDocument(payload: BlueprintGraphClipboardPayload): Bl
         id: CLIPBOARD_BLUEPRINT_ID,
         name: CLIPBOARD_BLUEPRINT_ID,
         owner: { kind: "globalMain" },
-        frontend: "visual",
-        programKind: "graph",
-        program: {
-            kind: "graph",
-            graphs: {
-                events: {
-                    [CLIPBOARD_BLUEPRINT_ID]: { id: CLIPBOARD_BLUEPRINT_ID, graph: clipboardGraphIr(payload) },
-                },
-                functions: {},
+        graphs: {
+            events: {
+                [CLIPBOARD_BLUEPRINT_ID]: { id: CLIPBOARD_BLUEPRINT_ID, graph: clipboardGraphIr(payload) },
             },
+            functions: {},
         },
     };
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: { [CLIPBOARD_BLUEPRINT_ID]: blueprint },
         ownerRecords: {
-            [CLIPBOARD_BLUEPRINT_ID]: { activeBlueprintId: CLIPBOARD_BLUEPRINT_ID, privateBlueprintIds: [] },
+            [CLIPBOARD_BLUEPRINT_ID]: { blueprintId: CLIPBOARD_BLUEPRINT_ID },
         },
     };
 }

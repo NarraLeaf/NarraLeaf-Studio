@@ -38,43 +38,36 @@ function createBlueprintDocument(paramId: string): BlueprintDocument {
                 id: BLUEPRINT_ID,
                 name: "Component Logic",
                 owner: { kind: "componentWidgetMain", componentId: COMPONENT_ID, elementId: ELEMENT_ID },
-                frontend: "visual",
-                programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
                 bindings: {},
-                program: {
-                    kind: "graph",
-                    graphs: {
-                        events: {
-                            init: {
-                                id: "init",
-                                graph: {
-                                    nodes: {
-                                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
-                                        param: {
-                                            id: "param",
-                                            type: BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
-                                            params: { paramId },
-                                        },
-                                        log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG },
+                graphs: {
+                    events: {
+                        init: {
+                            id: "init",
+                            graph: {
+                                nodes: {
+                                    head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT },
+                                    param: {
+                                        id: "param",
+                                        type: BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
+                                        params: { paramId },
                                     },
-                                    edges: [
-                                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
-                                        { from: { nodeId: "param", port: "value" }, to: { nodeId: "log", port: "value" } },
-                                    ],
+                                    log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG },
                                 },
+                                edges: [
+                                    { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                                    { from: { nodeId: "param", port: "value" }, to: { nodeId: "log", port: "value" } },
+                                ],
                             },
                         },
-                        functions: {},
                     },
+                    functions: {},
                 },
             },
         },
         ownerRecords: {
             [encodeBlueprintOwnerKey({ kind: "componentWidgetMain", componentId: COMPONENT_ID, elementId: ELEMENT_ID })]: {
-                activeBlueprintId: BLUEPRINT_ID,
-                privateBlueprintIds: [BLUEPRINT_ID],
-                initializedFrontend: "visual",
+                blueprintId: BLUEPRINT_ID,
             },
         },
     };

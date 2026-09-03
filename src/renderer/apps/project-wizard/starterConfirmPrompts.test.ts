@@ -49,7 +49,7 @@ type Graph = { nodes: Record<string, GraphNode>; edges: GraphEdge[] };
 type Blueprint = {
     id: string;
     owner: { kind: string; surfaceId?: string; elementId?: string };
-    program: { graphs: { events: Record<string, { graph: Graph }> } };
+    graphs: { events: Record<string, { graph: Graph }> };
 };
 type Surface = { id: string; name: string };
 type UIDoc = { surfaces: Surface[]; elements: Record<string, { id: string; name: string }> };
@@ -89,7 +89,7 @@ const confirmSurfaceId = document.surfaces.find(surface => surface.name === "Con
  */
 const CUE_FN_REFS: ReadonlySet<string> = new Set(
     blueprints.flatMap(blueprint =>
-        Object.values(blueprint.program.graphs.events).flatMap(event => {
+        Object.values(blueprint.graphs.events).flatMap(event => {
             const { nodes, edges } = event.graph;
             return Object.values(nodes)
                 .filter(head => head.type === "blueprint.fn.head")
@@ -123,7 +123,7 @@ function graphFor(elementId: string, headType?: string) {
             && candidate.owner.elementId === elementId,
     );
     expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
-    const graphs = Object.values(blueprint!.program.graphs.events).filter(
+    const graphs = Object.values(blueprint!.graphs.events).filter(
         candidate => !headType || Object.values(candidate.graph.nodes).some(node => node.type === headType),
     );
     expect(graphs, `${elementId} has ${graphs.length} graphs answering ${headType ?? "anything"}`).toHaveLength(1);
@@ -264,7 +264,7 @@ function expectReadsSlotParam(source: GraphSource, toId: string, port: string): 
 describe("the questions the starter template asks before it takes something away", () => {
     it("asks them in ten places and nowhere else", () => {
         const asking = blueprints.flatMap(blueprint =>
-            Object.values(blueprint.program.graphs.events).flatMap(event =>
+            Object.values(blueprint.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
                     .filter(node => node.type === BLUEPRINT_NODE_TYPE_LAYER_CONFIRM)
                     .map(node => `${blueprint.owner.elementId ?? blueprint.id}:${node.id}`),

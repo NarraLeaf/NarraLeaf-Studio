@@ -12,7 +12,7 @@
 import type {
     Blueprint,
     BlueprintDocument,
-    BlueprintEventGraph,
+    BlueprintLayer,
     BlueprintFunctionGraph,
     BlueprintGraphEdge,
     BlueprintGraphIr,
@@ -25,6 +25,8 @@ import type {
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { SCRIPTS_DIR, SCRIPTS_MODULES_DIR, isScriptSourcePath } from "@shared/project/scriptsDirectory";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
+import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import { anchorComponentId, isWidgetEventGraph } from "@shared/blueprint/ownerShape";
 import {
     blueprintNodeRegistry,
@@ -97,8 +99,7 @@ export function compileBlueprintDocument(
         }
         blueprints.push(compiled);
         ownerRecords[ownerRefToIndexKey(compiled.owner)] = {
-            activeBlueprintId: compiled.id,
-            privateBlueprintIds: [compiled.id],
+            blueprintId: compiled.id,
         };
     }
 
@@ -118,7 +119,7 @@ function compileBlueprint(
     const previous = findExistingBlueprint(options.existing ?? null, ast.id, owner);
     const id = ast.id ?? previous?.id ?? newId();
 
-    const events: Record<string, BlueprintEventGraph> = {};
+    const events: Record<string, BlueprintLayer> = {};
     const eventIds: string[] = [];
     const functions: Record<string, BlueprintFunctionGraph> = {};
     const functionIds: string[] = [];
@@ -126,6 +127,19 @@ function compileBlueprint(
     for (const graphAst of ast.graphs) {
         const previousGraph = findExistingGraph(previous, graphAst);
         const graphId = graphAst.id ?? previousGraph?.id ?? newId();
+        if (graphAst.kind === "script") {
+            const scriptRef = checkedScriptRef(graphAst, owner, diagnostics);
+            if (scriptRef === null) {
+                continue;
+            }
+            if (events[graphId]) {
+                pushError(diagnostics, graphAst.line, "compile.duplicate_graph", `Two layers share id "${graphId}".`);
+                continue;
+            }
+            events[graphId] = { id: graphId, script: { scriptRef } };
+            eventIds.push(graphId);
+            continue;
+        }
         const ir = compileGraph(graphAst, owner, previousGraph?.graph ?? null, options, diagnostics);
         if (graphAst.kind === "event") {
             if (events[graphId]) {
@@ -159,16 +173,11 @@ function compileBlueprint(
         };
     }
 
-    const script = scriptRefOf(ast, eventIds, functionIds, diagnostics);
     const blueprint: Blueprint = {
         id,
         name: ast.name,
         owner,
-        frontend: script === null ? "visual" : "typescript",
-        programKind: script === null ? "graph" : "scriptModule",
-        program: script === null
-            ? { kind: "graph", graphs: { eventIds, events, functionIds, functions } }
-            : { kind: "scriptModule", scriptRef: script },
+        graphs: { eventIds, events, functionIds, functions },
         members: {
             variables,
             fields: (ast.fields as BlueprintMemberIndex["fields"]) ?? {},
@@ -183,43 +192,38 @@ function compileBlueprint(
 }
 
 /**
- * The file a script blueprint runs, checked for being one.
+ * The file a script layer runs, checked for being one this project owns.
  *
- * Null for an ordinary visual blueprint. A `script` line and a graph block state two different
- * kinds of blueprint, so a file holding both is refused rather than resolved: either answer would
- * silently discard half of what the author wrote.
+ * Null when the line cannot be used, with the reason already reported. A value binding is refused
+ * here as well: it is re-run whenever a dependency changes, and only a graph has a palette cut down
+ * to the nodes that are safe to re-run.
  */
-function scriptRefOf(
-    ast: BpBlueprintAst,
-    eventIds: readonly string[],
-    functionIds: readonly string[],
+function checkedScriptRef(
+    graphAst: BpGraphAst,
+    owner: BlueprintOwnerRef,
     diagnostics: BpDiagnostic[],
 ): string | null {
-    const script = ast.script;
-    if (script === undefined) {
-        return null;
-    }
-    if (eventIds.length > 0 || functionIds.length > 0) {
-        diagnostics.push({
-            severity: "error",
-            code: "dsl.script_with_graphs",
-            message: "A blueprint is either a script or a graph, not both.",
-            hint: "Remove the `script` line, or remove the event and function blocks.",
-            line: ast.line,
-        });
-        return null;
-    }
-    if (!isScriptSourcePath(script)) {
+    const scriptRef = graphAst.scriptRef ?? "";
+    if (!isScriptSourcePath(scriptRef)) {
         diagnostics.push({
             severity: "error",
             code: "dsl.script_not_a_script_path",
-            message: `"${script}" is not a script in this project.`,
+            message: `"${scriptRef}" is not a script in this project.`,
             hint: `A script is a .ts or .js file under ${SCRIPTS_DIR}/, outside ${SCRIPTS_MODULES_DIR}/.`,
-            line: ast.line,
+            line: graphAst.line,
         });
         return null;
     }
-    return script;
+    if (blueprintContract(owner).invocation === "valueBinding") {
+        diagnostics.push({
+            severity: "error",
+            code: "dsl.script_on_value_binding",
+            message: "A value binding is written as a blueprint, not as a script.",
+            line: graphAst.line,
+        });
+        return null;
+    }
+    return scriptRef;
 }
 
 /**
@@ -234,14 +238,14 @@ function reportDroppedGraphs(
     functionIds: readonly string[],
     diagnostics: BpDiagnostic[],
 ): void {
-    if (!previous || previous.program.kind !== "graph") {
+    if (!previous) {
         return;
     }
     const kept = new Set([...eventIds, ...functionIds]);
     const dropped: string[] = [];
     for (const [kind, pool] of [
-        ["event", previous.program.graphs.events],
-        ["function", previous.program.graphs.functions],
+        ["event", previous.graphs.events],
+        ["function", previous.graphs.functions],
     ] as const) {
         for (const [id, graph] of Object.entries(pool ?? {})) {
             if (!kept.has(id)) {
@@ -404,17 +408,18 @@ function compileParams(
         );
         return raw;
     }
-    if (!definition.graphKinds.includes(graphAst.kind)) {
+    const graphKind: BlueprintGraphKind = graphAst.kind === "function" ? "function" : "event";
+    if (!definition.graphKinds.includes(graphKind)) {
         pushError(
             diagnostics,
             nodeAst.line,
             "compile.wrong_graph_kind",
-            `"${definition.displayName}" (${nodeAst.type}) is not allowed in a ${graphAst.kind} graph.`,
+            `"${definition.displayName}" (${nodeAst.type}) is not allowed in a ${graphKind} graph.`,
             `It is available in: ${definition.graphKinds.join(", ")}.`,
         );
     } else if (
         !isBlueprintNodeAllowedInGraphContext(definition, buildBlueprintGraphContext({
-            graphKind: graphAst.kind,
+            graphKind,
             owner,
             widgetElementType,
             widgetElement,
@@ -763,7 +768,7 @@ function findExistingBlueprint(
         return document.blueprints[id];
     }
     const ownerKey = ownerRefToIndexKey(owner);
-    const activeId = document.ownerRecords?.[ownerKey]?.activeBlueprintId;
+    const activeId = document.ownerRecords?.[ownerKey]?.blueprintId;
     if (activeId && document.blueprints[activeId]) {
         return document.blueprints[activeId];
     }
@@ -778,10 +783,10 @@ function findExistingGraph(
     previous: Blueprint | null,
     ast: BpGraphAst,
 ): { id: string; graph?: BlueprintGraphIr } | null {
-    if (!previous || previous.program.kind !== "graph") {
+    if (!previous) {
         return null;
     }
-    const pool = ast.kind === "event" ? previous.program.graphs.events : previous.program.graphs.functions;
+    const pool = ast.kind === "event" ? previous.graphs.events : previous.graphs.functions;
     if (!pool) {
         return null;
     }

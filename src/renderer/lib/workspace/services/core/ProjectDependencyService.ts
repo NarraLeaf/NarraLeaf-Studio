@@ -183,10 +183,7 @@ export class ProjectDependencyService
         }
 
         for (const blueprint of Object.values(document.blueprints)) {
-            if (blueprint.program?.kind !== "graph") {
-                continue;
-            }
-            const { events, functions, macros } = blueprint.program.graphs;
+            const { events, functions, macros } = blueprint.graphs;
             for (const group of [events, functions, macros]) {
                 if (!group) {
                     continue;

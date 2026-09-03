@@ -1,3 +1,4 @@
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { useCallback, useMemo } from "react";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -14,7 +15,8 @@ export type BlueprintEventBindingRow = {
     displayName: string;
     description?: string;
     hasPrivateEventMember: boolean;
-    isScriptRevision: boolean;
+    /** True when a script layer in this slot may answer the event from a file nothing here reads. */
+    hasScriptLayer: boolean;
     openEventGraph: () => void;
 };
 
@@ -55,17 +57,15 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
             if (!surfaceId || !snapshot.blueprintId) {
                 return;
             }
-            if (snapshot.blueprint?.program.kind === "graph") {
-                const localBp = context?.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-                localBp?.ensureEventGraph(snapshot.blueprintId, uiEventName, defs.find(def => def.id === uiEventName)?.displayName);
-            }
+            const localBp = context?.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            localBp?.ensureEventGraph(snapshot.blueprintId, uiEventName, defs.find(def => def.id === uiEventName)?.displayName);
             openBlueprint({
                 blueprintId: snapshot.blueprintId,
                 ownerKind: componentId ? "componentWidgetMain" : "widgetMain",
                 surfaceId,
                 componentId: componentId ?? undefined,
                 elementId: element.id,
-                focusEventId: snapshot.blueprint?.program.kind === "graph" ? uiEventName : undefined,
+                focusEventId: uiEventName,
                 title: `Blueprint · ${element.name ?? element.type}`,
             }, {
                 // Wiring an event makes the graph if it is not there yet, so this click is the
@@ -93,10 +93,12 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
             displayName: def.displayName,
             description: def.description,
             hasPrivateEventMember: snapshot.existingIds.includes(def.id),
-            isScriptRevision: snapshot.blueprint?.program.kind === "scriptModule",
+            // A slot with a script layer in it may answer this event from the file, which nothing
+            // here can read - so the row says "a script may handle this" rather than "nothing does".
+            hasScriptLayer: hasScriptLayer(snapshot.blueprint),
             openEventGraph: () => openWiredEventGraphTab(def.id),
         }));
-    }, [defs, openWiredEventGraphTab, snapshot.blueprint?.program.kind, snapshot.existingIds]);
+    }, [defs, openWiredEventGraphTab, snapshot.blueprint, snapshot.existingIds]);
 
     return { rows, hasEvents: defs.length > 0 };
 }

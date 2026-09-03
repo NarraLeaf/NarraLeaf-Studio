@@ -5,6 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { fileURLToPath } from "url";
 import { collectScriptRefs, compileProjectScripts } from "./scriptCompiler";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { scriptLayerKey } from "@shared/blueprint/blueprintLayers";
+
+/** The one layer each fixture blueprint holds. Compiled scripts are keyed by blueprint AND layer. */
+const LAYER_ID = "layer-script";
+const layerKey = (blueprintId: string) => scriptLayerKey(blueprintId, LAYER_ID);
 
 /**
  * Compiling the author's scripts, against real files and the real bundler.
@@ -44,7 +50,7 @@ async function writeScript(relative: string, contents: string): Promise<void> {
 
 function documentWith(scripts: Record<string, string>): BlueprintDocument {
     return {
-        schemaVersion: 13,
+        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         ownerRecords: {},
         blueprints: Object.fromEntries(
             Object.entries(scripts).map(([blueprintId, scriptRef]) => [
@@ -53,9 +59,11 @@ function documentWith(scripts: Record<string, string>): BlueprintDocument {
                     id: blueprintId,
                     name: blueprintId,
                     owner: { kind: "globalMain" as const },
-                    frontend: "typescript" as const,
-                    programKind: "scriptModule" as const,
-                    program: { kind: "scriptModule" as const, scriptRef },
+                    graphs: {
+                        eventIds: [LAYER_ID],
+                        events: { [LAYER_ID]: { id: LAYER_ID, script: { scriptRef } } },
+                        functions: {},
+                    },
                 },
             ]),
         ),
@@ -69,11 +77,9 @@ describe("compiling script blueprints", () => {
             id: "bp-graph",
             name: "Graph",
             owner: { kind: "globalMain" },
-            frontend: "visual",
-            programKind: "graph",
-            program: { kind: "graph", graphs: { events: {}, functions: {} } },
+            graphs: { events: {}, functions: {} },
         };
-        expect([...collectScriptRefs(document)]).toEqual([["bp-1", "scripts/a.ts"]]);
+        expect([...collectScriptRefs(document)]).toEqual([[layerKey("bp-1"), "scripts/a.ts"]]);
     });
 
     it("strips types rather than checking them, so a wrong type still runs", async () => {
@@ -86,8 +92,8 @@ describe("compiling script blueprints", () => {
 
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/wrong.ts" }), outputDir());
 
-        expect(compiled["bp-1"].diagnostics).toBeUndefined();
-        expect(await compiledText(compiled["bp-1"].url)).toContain("onAppBoot");
+        expect(compiled[layerKey("bp-1")].diagnostics).toBeUndefined();
+        expect(await compiledText(compiled[layerKey("bp-1")].url)).toContain("onAppBoot");
     });
 
     it("bundles what the author imported", async () => {
@@ -99,7 +105,7 @@ describe("compiling script blueprints", () => {
 
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/main.ts" }), outputDir());
 
-        expect(await compiledText(compiled["bp-1"].url)).toContain("from the helper");
+        expect(await compiledText(compiled[layerKey("bp-1")].url)).toContain("from the helper");
     });
 
     it("erases the type-only import of the declarations, which resolve to no package", async () => {
@@ -112,8 +118,8 @@ describe("compiling script blueprints", () => {
 
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/typed.ts" }), outputDir());
 
-        expect(compiled["bp-1"].diagnostics).toBeUndefined();
-        expect(await compiledText(compiled["bp-1"].url)).not.toContain("@narraleaf/script");
+        expect(compiled[layerKey("bp-1")].diagnostics).toBeUndefined();
+        expect(await compiledText(compiled[layerKey("bp-1")].url)).not.toContain("@narraleaf/script");
     });
 
     it("reports a file that will not compile, and keeps compiling the others", async () => {
@@ -123,15 +129,15 @@ describe("compiling script blueprints", () => {
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-broken": "scripts/broken.ts", "bp-fine": "scripts/fine.ts" }), outputDir());
 
         // One dead handler and a message naming the file, not a project that will not open.
-        expect(compiled["bp-broken"].url).toBeUndefined();
-        expect(compiled["bp-broken"].diagnostics?.[0].message).toContain("scripts/broken.ts");
-        expect(await compiledText(compiled["bp-fine"].url)).toContain("onAppBoot");
+        expect(compiled[layerKey("bp-broken")].url).toBeUndefined();
+        expect(compiled[layerKey("bp-broken")].diagnostics?.[0].message).toContain("scripts/broken.ts");
+        expect(await compiledText(compiled[layerKey("bp-fine")].url)).toContain("onAppBoot");
     });
 
     it("reports a missing file rather than throwing", async () => {
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/gone.ts" }), outputDir());
-        expect(compiled["bp-1"].url).toBeUndefined();
-        expect(compiled["bp-1"].diagnostics?.[0].severity).toBe("error");
+        expect(compiled[layerKey("bp-1")].url).toBeUndefined();
+        expect(compiled[layerKey("bp-1")].diagnostics?.[0].severity).toBe("error");
     });
 
     it("refuses a path that is not one of this project's scripts", async () => {
@@ -139,8 +145,8 @@ describe("compiling script blueprints", () => {
         // not a script is refused here rather than handed to a bundler pointed at the project root.
         for (const ref of ["editor/story/index.json", "scripts/node_modules/pkg/index.js", "../outside.ts"]) {
             const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": ref }), outputDir());
-            expect(compiled["bp-1"].url, ref).toBeUndefined();
-            expect(compiled["bp-1"].diagnostics?.[0].message, ref).toContain("not a script");
+            expect(compiled[layerKey("bp-1")].url, ref).toBeUndefined();
+            expect(compiled[layerKey("bp-1")].diagnostics?.[0].message, ref).toContain("not a script");
         }
     });
 
@@ -149,7 +155,7 @@ describe("compiling script blueprints", () => {
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/shared.ts", "bp-2": "scripts/shared.ts" }), outputDir());
         // The same module object, so two blueprints pointing at one script share its module-level
         // state - which is what an author reading one file would expect.
-        expect(compiled["bp-1"]).toBe(compiled["bp-2"]);
+        expect(compiled[layerKey("bp-1")]).toBe(compiled[layerKey("bp-2")]);
     });
 
     it("refuses every script when the host has nowhere to serve them from", async () => {
@@ -158,8 +164,8 @@ describe("compiling script blueprints", () => {
         // names no output directory therefore gets refusals rather than modules nothing can import.
         await writeScript("scripts/a.ts", "export function onAppBoot() {}");
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/a.ts" }));
-        expect(compiled["bp-1"].url).toBeUndefined();
-        expect(compiled["bp-1"].diagnostics?.[0].message).toContain("cannot serve");
+        expect(compiled[layerKey("bp-1")].url).toBeUndefined();
+        expect(compiled[layerKey("bp-1")].diagnostics?.[0].message).toContain("cannot serve");
     });
 
     it("does nothing at all for a project with no scripts", async () => {

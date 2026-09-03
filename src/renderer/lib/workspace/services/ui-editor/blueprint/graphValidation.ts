@@ -867,7 +867,7 @@ export function validateBlueprintDocumentGraphs(
     options?: ValidateBlueprintDocumentGraphsOptions,
 ): BlueprintGraphEditorDiagnostic[] {
     const bp = doc.blueprints[blueprintId];
-    if (!bp || bp.program.kind !== "graph") {
+    if (!bp) {
         return bp ? validateBlueprintBindingsForBlueprint(doc, blueprintId) : [];
     }
     const accessibleVariables = buildAccessibleBlueprintVariableOptions({
@@ -888,7 +888,12 @@ export function validateBlueprintDocumentGraphs(
     }));
     const validSavedVariableIds = new Set((options?.savedVariables ?? []).map(variable => variable.id));
     const out: BlueprintGraphEditorDiagnostic[] = [];
-    for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
+    for (const [eventId, eg] of Object.entries(bp.graphs.events ?? {})) {
+        // A script layer has no graph, and every check below is about one: reading it as an empty
+        // graph reported "no nodes yet" against a file that is full of them.
+        if (eg.script) {
+            continue;
+        }
         out.push(
             ...validateBlueprintGraphIr(ensureIr(eg.graph), {
                 blueprintId,
@@ -909,7 +914,7 @@ export function validateBlueprintDocumentGraphs(
             }),
         );
     }
-    for (const [fnId, fg] of Object.entries(bp.program.graphs.functions ?? {})) {
+    for (const [fnId, fg] of Object.entries(bp.graphs.functions ?? {})) {
         out.push(
             ...validateBlueprintGraphIr(ensureIr(fg.graph), {
                 blueprintId,

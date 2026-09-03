@@ -80,10 +80,10 @@ import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
 import { BlueprintMemberTree, type BlueprintVariableGroupKey } from "../components/BlueprintMemberTree";
 import {
-    BlueprintEventLayerDialogContent,
-    createDefaultBlueprintEventLayerValue,
-    type BlueprintEventLayerDialogValue,
-} from "../components/BlueprintEventLayerDialogContent";
+    BlueprintLayerDialogContent,
+    createDefaultBlueprintLayerValue,
+    type BlueprintLayerDialogValue,
+} from "../components/BlueprintLayerDialogContent";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintBreakpointScope } from "../components/BlueprintBreakpointScope";
 import {
@@ -95,8 +95,13 @@ import {
 import type { BlueprintFlowNodeData } from "../flow/components/BlueprintFlowNode";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
-import { ScriptBlueprintPane } from "../ts/ScriptBlueprintPane";
-import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
+import { ScriptSourceView } from "../ts/ScriptPreviewEditor";
+import { blueprintContract } from "@shared/blueprint/ownerShape";
+import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import {
+    scriptBindingsByRef,
+    walkProjectScripts,
+} from "@/lib/workspace/services/ui-editor/blueprint/projectScripts";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type {
     BlueprintInspectorParamSelectOption,
@@ -172,24 +177,26 @@ import {
 import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../../ui-editor/uiLiveSession";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
-    if (!view || bp.program.kind !== "graph") {
+    if (!view) {
         return null;
     }
     if (view.kind === "event") {
-        return ensureBlueprintGraphIr(bp.program.graphs.events[view.graphId]?.graph);
+        const layer = bp.graphs.events[view.graphId];
+        // A script layer has no graph to hand back, and the canvas shows its file instead.
+        return layer && !layer.script ? ensureBlueprintGraphIr(layer.graph) : null;
     }
-    return ensureBlueprintGraphIr(bp.program.graphs.functions[view.graphId]?.graph);
+    return ensureBlueprintGraphIr(bp.graphs.functions[view.graphId]?.graph);
 }
 
 function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | null): string {
-    if (!view || bp.program.kind !== "graph") {
+    if (!view) {
         return "";
     }
     if (view.kind === "event") {
-        const name = bp.program.graphs.events[view.graphId]?.name ?? view.graphId;
+        const name = bp.graphs.events[view.graphId]?.name ?? view.graphId;
         return `Event · ${name}`;
     }
-    const name = bp.program.graphs.functions[view.graphId]?.name ?? view.graphId;
+    const name = bp.graphs.functions[view.graphId]?.name ?? view.graphId;
     return `Function · ${name}`;
 }
 
@@ -675,28 +682,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     // when the blueprint is deleted (avoids an early return between the hooks below).
     const bp = doc.blueprints[payload.blueprintId]!;
 
-    /**
-     * A script tab is named after the slot it fills and wears a file glyph rather than the graph one.
-     *
-     * Set here rather than by whoever opened the tab: the openers - quick open, search, the surface
-     * list, a restored session - know a blueprint id and not which of the two it holds, and the
-     * answer only arrives once the document is read.
-     *
-     * The name rather than the word "Script": two scripts open at once are two tabs, and a strip of
-     * tabs all reading "Script" names none of them. The glyph and the editor's own header carry
-     * which of the two this is.
-     */
-    const isScriptProgram = bp.program.kind === "scriptModule";
-    const scriptTabTitle = bp.name.trim();
-    useEffect(() => {
-        if (!isScriptProgram) {
-            return;
-        }
-        uiService.editor.update(tabId, {
-            title: scriptTabTitle || t("blueprint.script.tabTitle"),
-            icon: <FileCode2 className="w-4 h-4" />,
-        });
-    }, [isScriptProgram, scriptTabTitle, t, tabId, uiService]);
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
@@ -815,6 +800,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         },
         [openBlueprint, payload, t],
     );
+
+    /**
+     * The layer on screen, when it is one of the author's files rather than a graph.
+     *
+     * There is no separate script tab any more, and there is nothing for one to be: a slot is one
+     * blueprint, its layers are a graph or a file, and the tab is the slot. A tab per script was
+     * what the model needed while a script displaced the blueprint it sat in.
+     */
+    const activeScriptLayer =
+        editor.graphView?.kind === "event" ? bp.graphs.events[editor.graphView.graphId]?.script ?? null : null;
 
     const ir = getActiveIr(bp, editor.graphView);
     const activeIrRef = useRef<BlueprintGraphIr | null>(null);
@@ -1074,9 +1069,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             // to), and re-deriving one would rename it on the way back.
             title:
                 findEditorTabTitle(uiService.getStore().getEditorLayout(), tabId)
-                ?? t(isScriptProgram ? "blueprint.script.tabTitle" : "blueprint.tab.title"),
+                ?? t("blueprint.tab.title"),
         });
-    }, [detachBlueprint, isDetachedHost, isScriptProgram, payload, t, tabId, uiService]);
+    }, [detachBlueprint, isDetachedHost, payload, t, tabId, uiService]);
 
     /**
      * Middle click on the title row detaches, matching the control beside it.
@@ -1308,28 +1303,43 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         ],
     );
 
-    const onAddEvent = useCallback(async () => {
-        const eventHeadEntries = nodeCatalog.listPaletteEntries(buildBlueprintGraphContext({
-            graphKind: "event",
-            owner: bp.owner,
-            widgetElement,
-            uiDocument,
-            widgetBlueprintEvents: widgetLogicEvents,
-            widgetEventLayerSlots: isWidgetEventGraph(bp.owner) && widgetElement ? [] : undefined,
-            hasEventHead: false,
-            hasFunctionEntry: false,
-            isComponentDefinitionGraph,
-        })).filter(entry => entry.role === "eventHead" || entry.role === "elementEventHead");
-        const defaultLayerName = t("blueprint.eventLayer.defaultName", { index: eventIds.length + 1 });
+    /**
+     * Every file under `scripts/`, with how many layers already run it.
+     *
+     * Read when the dialog is opened rather than held: a file can arrive without Studio - an author
+     * writes one in their own editor - and opening the dialog is the only moment that can be
+     * noticed. Files nothing runs and files something runs are both offered, because a file two
+     * layers share is a legitimate arrangement and hiding it makes it look like Studio lost track.
+     */
+    const listScriptFilesWithUse = useCallback(async () => {
+        const fs = context.services.get<FileSystemService>(Services.FileSystem);
+        const files = await walkProjectScripts(async relative => {
+            const result = await fs.list(context.project.resolve(relative.split("/")));
+            return result.ok ? result.data : null;
+        });
+        const bound = scriptBindingsByRef(localBp.getBlueprintDocument());
+        return files.map(scriptRef => ({ scriptRef, usedBy: bound.get(scriptRef)?.length ?? 0 }));
+    }, [context, localBp]);
 
-        let selection: BlueprintEventLayerDialogValue = createDefaultBlueprintEventLayerValue(
-            eventHeadEntries,
-            defaultLayerName,
-        );
-        const selected = await new Promise<BlueprintEventLayerDialogValue | null>(resolve => {
+    /**
+     * Declare a layer, having asked which of the two it is.
+     *
+     * The one place that choice is made. It used to live under a "revisions" list beside the
+     * blueprint, where picking a script displaced the whole blueprint and its graphs went inactive;
+     * here a script joins the layer list like any other layer and the graphs beside it keep running.
+     */
+    const onAddEvent = useCallback(async () => {
+        const defaultLayerName = t("blueprint.eventLayer.defaultName", { index: eventIds.length + 1 });
+        // A value binding is re-run whenever a dependency changes, and only a graph has a palette
+        // cut down to the nodes that are safe to re-run - so it is the one slot with no choice.
+        const scriptAllowed = blueprintContract(bp.owner).invocation !== "valueBinding";
+        const scriptFiles = scriptAllowed ? await listScriptFilesWithUse() : [];
+
+        let selection: BlueprintLayerDialogValue = createDefaultBlueprintLayerValue(defaultLayerName);
+        const selected = await new Promise<BlueprintLayerDialogValue | null>(resolve => {
             let dialogId: string | null = null;
             let settled = false;
-            const safeResolve = (value: BlueprintEventLayerDialogValue | null) => {
+            const safeResolve = (value: BlueprintLayerDialogValue | null) => {
                 if (settled) {
                     return;
                 }
@@ -1357,9 +1367,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             dialogId = uiService.dialogs.show({
                 title: t("blueprint.eventLayer.createTitle"),
                 content: (
-                    <BlueprintEventLayerDialogContent
-                        entries={eventHeadEntries}
+                    <BlueprintLayerDialogContent
                         defaultName={defaultLayerName}
+                        scriptFiles={scriptFiles}
+                        scriptAllowed={scriptAllowed}
                         onChange={value => {
                             selection = value;
                         }}
@@ -1377,32 +1388,27 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         if (!selected) {
             return;
         }
+        if (selected.kind === "script") {
+            // Not inside a history transaction: writing the starter file is a disk write that no
+            // undo can take back, so the document edit stands alone the way every other one does.
+            const layerId = await localBp.addScriptLayer(payload.blueprintId, {
+                existingScriptRef: selected.scriptRef ?? undefined,
+            });
+            selectEventGraph(layerId);
+            return;
+        }
         const id = uuid.generate();
-        localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-            localBp.ensureEventGraph(payload.blueprintId, id, selected.name);
-            if (selected.nodeType) {
-                localBp.updateEventGraphIr(payload.blueprintId, id, draft => {
-                    const node = createGraphNodeForPalette(selected.nodeType, uuid.generate());
-                    writeNodeEditorLayout(node, { x: 80, y: 120 });
-                    draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
-                });
-            }
-        });
+        localBp.ensureEventGraph(payload.blueprintId, id, selected.name);
         selectEventGraph(id);
     }, [
         bp.owner,
-        editor,
         eventIds.length,
+        listScriptFilesWithUse,
         localBp,
-        nodeCatalog,
         payload.blueprintId,
-        isComponentDefinitionGraph,
         selectEventGraph,
         uiService,
-        uiDocument,
         uuid,
-        widgetElement,
-        widgetLogicEvents,
         t,
     ]);
 
@@ -2011,10 +2017,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         const currentDoc = localBp.getBlueprintDocument();
         const currentBp = currentDoc.blueprints[payload.blueprintId];
-        if (!currentBp || currentBp.program.kind !== "graph") {
+        if (!currentBp) {
             return;
         }
-        for (const [graphId, eventGraph] of Object.entries(currentBp.program.graphs.events ?? {})) {
+        for (const [graphId, eventGraph] of Object.entries(currentBp.graphs.events ?? {})) {
             const staleSnapshots = new Map<string, ReturnType<typeof buildBlueprintFnSignatureSnapshot>>();
             for (const [nodeId, node] of Object.entries(eventGraph.graph?.nodes ?? {})) {
                 if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
@@ -2118,43 +2124,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         </button>
     );
 
-    if (bp.program.kind === "scriptModule") {
-        const { scriptRef } = bp.program;
-        return (
-            <div
-                className="h-full min-h-0"
-                onMouseDownCapture={focusBlueprintEditor}
-                onFocusCapture={focusBlueprintEditor}
-            >
-                <BlueprintEditorLayout
-                    kind="script"
-                    headerActions={detachAction}
-                    onHeaderAuxClick={onHeaderAuxClick}
-                    header={
-                        <div
-                            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
-                            title={contextTitle}
-                        >
-                            <span className="text-sm font-semibold text-fg">{t("blueprint.script.tabTitle")}</span>
-                            <span className="truncate font-mono text-2xs text-fg-muted">{bp.name}</span>
-                        </div>
-                    }
-                    memberTree={
-                        <BlueprintPrivateRevisionBar
-                            blueprint={bp}
-                            localBp={localBp}
-                            onReopenRevision={reopenRevision}
-                        />
-                    }
-                    memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
-                    onMemberPanelCollapsedChange={setMemberPanelCollapsed}
-                    canvas={<ScriptBlueprintPane context={context} scriptRef={scriptRef} />}
-                    diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
-                />
-            </div>
-        );
-    }
-
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" data-tip={contextTitle}>
             <span className="text-sm font-semibold text-fg">{t("blueprint.header.title")}</span>
@@ -2163,7 +2132,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const canvas =
-        editor.graphView && ir ? (
+        activeScriptLayer ? (
+            <ScriptSourceView scriptRef={activeScriptLayer.scriptRef} />
+        ) : editor.graphView && ir ? (
             <BlueprintBreakpointScope
                 projectPath={context.project.getConfig().projectPath}
                 blueprintId={payload.blueprintId}
@@ -2244,6 +2215,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         >
             <BlueprintEditorLayout
                 header={header}
+                helpTopic={activeScriptLayer ? "scripts" : "blueprints"}
                 headerActions={detachAction}
                 onHeaderAuxClick={onHeaderAuxClick}
                 memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
@@ -2265,15 +2237,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                             onSelectLayer={selectEventGraph}
                             onAddLayer={onAddEvent}
                             onDeleteLayer={onDeleteLayer}
-                        />
-                        {/* On a graph as well as on a script, and that was the whole gap: this bar
-                            used to render only in the script branch above, so the offer to write a
-                            slot in TypeScript appeared only inside a blueprint that already was one.
-                            Nothing in the interface could make the first. */}
-                        <BlueprintPrivateRevisionBar
-                            blueprint={bp}
-                            localBp={localBp}
-                            onReopenRevision={reopenRevision}
                         />
                     </div>
                 }

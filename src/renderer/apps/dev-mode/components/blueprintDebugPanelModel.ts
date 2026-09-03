@@ -12,6 +12,7 @@
  * place either question is answered.
  */
 
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { blueprintAnchor } from "@shared/blueprint/ownerShape";
@@ -108,23 +109,25 @@ export function listDevModeBlueprints(
 /**
  * The one place the two listings disagree.
  *
- * `workspace` — anything the author could open and read. TypeScript blueprints and script modules
- * are always listed (creating the revision IS the authored state), and a visual blueprint counts
- * once it holds anything at all: a member, a binding, or a graph. Auto-provisioned empties are
- * hidden, because every widget has one and a list of those answers nothing. The caller additionally
- * scopes the result to the surface that is on screen — the panel is about what is running now.
+ * `workspace` — anything the author could open and read. A blueprint with a script layer is always
+ * listed (declaring that layer IS the authored state), and one with only graphs counts once it
+ * holds anything at all: a member, a binding, or a graph. Auto-provisioned empties are hidden,
+ * because every widget has one and a list of those answers nothing. The caller additionally scopes
+ * the result to the surface that is on screen — the panel is about what is running now.
  *
- * `breakpoints` — graph programs only, and never a TypeScript frontend: a breakpoint is a node, and
- * those have none (their code is debuggable in the window's own DevTools). No surface scope, because
- * a breakpoint outlives the surface that happens to be showing when it is set. The caller then drops
- * blueprints whose graphs are all empty — the same "nothing to stop in" rule, applied where the
- * graph list it is about to keep has already been built.
+ * `breakpoints` — blueprints with a graph layer to stop in. A breakpoint is a node, and a script
+ * layer has none (its code is debuggable in the window's own DevTools), so a blueprint that is only
+ * scripts offers nothing here. No surface scope, because a breakpoint outlives the surface that
+ * happens to be showing when it is set. The caller then drops blueprints whose graphs are all
+ * empty — the same "nothing to stop in" rule, applied where the graph list it is about to keep has
+ * already been built.
  */
 function qualifiesForPurpose(bp: Blueprint, purpose: BlueprintListingPurpose): boolean {
     if (purpose === "breakpoints") {
-        return bp.program.kind === "graph" && bp.frontend !== "typescript";
+        return Object.values(bp.graphs.events ?? {}).some(layer => !layer.script)
+            || hasRecordEntries(bp.graphs.functions);
     }
-    if (bp.frontend === "typescript" || bp.program.kind === "scriptModule") {
+    if (hasScriptLayer(bp)) {
         return true;
     }
     return (
@@ -132,17 +135,14 @@ function qualifiesForPurpose(bp: Blueprint, purpose: BlueprintListingPurpose): b
         hasRecordEntries(bp.members?.fields) ||
         hasRecordEntries(bp.members?.functions) ||
         hasRecordEntries(bp.bindings) ||
-        hasRecordEntries(bp.program.graphs.events) ||
-        hasRecordEntries(bp.program.graphs.functions) ||
-        hasRecordEntries(bp.program.graphs.macros)
+        hasRecordEntries(bp.graphs.events) ||
+        hasRecordEntries(bp.graphs.functions) ||
+        hasRecordEntries(bp.graphs.macros)
     );
 }
 
 /** Every graph of a blueprint that has a node to stop on, sorted for a picker. */
 function listDebuggableGraphs(blueprint: Blueprint): DebuggableGraph[] {
-    if (blueprint.program.kind !== "graph") {
-        return [];
-    }
     const graphs: DebuggableGraph[] = [];
     const collect = (
         table: Record<string, { id: string; name?: string; graph?: BlueprintGraphIr }> | undefined,
@@ -156,8 +156,8 @@ function listDebuggableGraphs(blueprint: Blueprint): DebuggableGraph[] {
             graphs.push({ graphId: entry.id, name: entry.name?.trim() || entry.id, kind, nodeCount });
         }
     };
-    collect(blueprint.program.graphs.events, "event");
-    collect(blueprint.program.graphs.functions, "function");
+    collect(blueprint.graphs.events, "event");
+    collect(blueprint.graphs.functions, "function");
     return graphs.sort(byName);
 }
 

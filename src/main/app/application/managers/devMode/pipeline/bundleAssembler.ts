@@ -1,5 +1,6 @@
 import path from "path";
 import { pathToFileURL } from "url";
+import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { compileProjectScripts } from "./scriptCompiler";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
@@ -500,9 +501,12 @@ export function planSceneDrop(
         }
     }
     for (const blueprint of blueprints) {
-        if (blueprint.program.kind !== "graph"
+        // A script can start any scene and nothing here can read it, so one script layer anywhere
+        // in a blueprint is enough to stop the sweep - the graph layers beside it prove nothing
+        // about what the file does.
+        if (hasScriptLayer(blueprint)
             && !answered({ kind: "scriptBlueprint", blueprintId: blueprint.id })) {
-            context.onNotice?.(`the TypeScript blueprint ${blueprint.name} can start any scene, so every story ships whole`);
+            context.onNotice?.(`the script ${blueprint.name} runs can start any scene, so every story ships whole`);
             return null;
         }
     }

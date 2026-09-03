@@ -77,15 +77,12 @@ function mount(options: MountOptions = {}): ReferenceService {
                                     return { ownerRecords: {}, blueprints: {} };
                                 }
                                 return {
-                                    ownerRecords: { globalMain: { activeBlueprintId: "bp-1", privateBlueprintIds: [] } },
+                                    ownerRecords: { globalMain: { blueprintId: "bp-1" } },
                                     blueprints: {
                                         "bp-1": {
                                             id: "bp-1",
                                             name: "Main",
-                                            program: {
-                                                kind: "graph",
-                                                graphs: { events: { "g-1": { graph: { nodes: options.blueprintNodes } } }, functions: {} },
-                                            },
+                                            graphs: { events: { "g-1": { graph: { nodes: options.blueprintNodes } } }, functions: {} },
                                         },
                                     },
                                 };

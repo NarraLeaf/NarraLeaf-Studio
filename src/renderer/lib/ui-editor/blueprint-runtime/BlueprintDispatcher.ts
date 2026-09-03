@@ -1,5 +1,5 @@
-import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { buildGameScriptContext, resolveScriptHandler, scriptSelfOf } from "./script/scriptRuntime";
+import type { Blueprint, BlueprintDocument, BlueprintLayer, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { buildGameScriptContext, resolveScriptLayerHandlers, scriptSelfOf } from "./script/scriptRuntime";
 import {
     scriptEventIdForProjectSlot,
     scriptEventIdForSurfaceSlot,
@@ -279,19 +279,18 @@ type ScriptListener = {
     elementId?: string;
 };
 
-/** The active script blueprint on an owner slot, when it exports a handler for this event. */
-function resolveScriptListener(
+/** Every script layer on an owner slot that exports a handler for this event. */
+function resolveScriptListeners(
     blueprintDocument: BlueprintDocument,
     ownerKey: string,
     eventId: ScriptEventId,
-): { blueprint: Blueprint; handler: (...args: unknown[]) => unknown } | null {
-    const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+): Array<{ blueprint: Blueprint; handler: (...args: unknown[]) => unknown }> {
+    const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
     const blueprint = blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined;
-    if (!blueprintId || !blueprint || blueprint.program.kind !== "scriptModule") {
-        return null;
-    }
-    const handler = resolveScriptHandler(blueprintId, eventId);
-    return handler ? { blueprint, handler } : null;
+    return resolveScriptLayerHandlers(blueprint, eventId).map(({ handler }) => ({
+        blueprint: blueprint as Blueprint,
+        handler,
+    }));
 }
 
 /**
@@ -300,11 +299,11 @@ function resolveScriptListener(
  *
  * The script half of what `collectBroadcastTargets` and `collectElementEventTargets` answer for
  * graphs, and deliberately a second function rather than a branch inside those: what "listening"
- * means is not the same question for the two frontends. A graph is scanned for a head whose fields
- * match this dispatch - which broadcast name, which target element - because a graph cannot branch
- * cheaply. A script exports one handler for the whole event and filters in a line of the author's
- * code (see the folds in `scriptEvents.ts`), so there is nothing to scan and nothing to match: it
- * listens if it exports.
+ * means is not the same question for the two kinds of layer. A graph layer is scanned for a head
+ * whose fields match this dispatch - which broadcast name, which target element - because a graph
+ * cannot branch cheaply. A script layer exports one handler for the whole event and filters in a
+ * line of the author's code (see the folds in `scriptEvents.ts`), so there is nothing to scan and
+ * nothing to match: it listens if it exports.
  */
 function collectSurfaceScriptListeners(input: {
     document: UIDocument;
@@ -313,25 +312,21 @@ function collectSurfaceScriptListeners(input: {
     eventId: ScriptEventId;
 }): ScriptListener[] {
     const listeners: ScriptListener[] = [];
-    const surfaceListener = resolveScriptListener(
+    listeners.push(...resolveScriptListeners(
         input.blueprintDocument,
         surfaceMainOwnerKey(input.surfaceId),
         input.eventId,
-    );
-    if (surfaceListener) {
-        listeners.push(surfaceListener);
-    }
+    ));
     for (const elementId of collectSurfaceElementIds(input.document, input.surfaceId)) {
         const element = input.document.elements[elementId];
         if (!getWidgetLogicApi(element?.type)?.supportsPrivateBlueprint) {
             continue;
         }
-        const listener = resolveScriptListener(
+        for (const listener of resolveScriptListeners(
             input.blueprintDocument,
             widgetMainOwnerKey(input.surfaceId, elementId),
             input.eventId,
-        );
-        if (listener) {
+        )) {
             listeners.push({ ...listener, elementId });
         }
     }
@@ -724,7 +719,7 @@ export async function dispatchBlueprintUiEvent(options: {
             ? componentWidgetMainOwnerKey(componentId, elementId)
             : widgetMainOwnerKey(surfaceId, elementId)
         : undefined;
-    const activeWidgetBlueprintId = widgetOwnerKey ? blueprintDocument.ownerRecords[widgetOwnerKey]?.activeBlueprintId : undefined;
+    const activeWidgetBlueprintId = widgetOwnerKey ? blueprintDocument.ownerRecords[widgetOwnerKey]?.blueprintId : undefined;
     const widgetPrivateEventSupported = Boolean(getWidgetLogicEvent(el.type, eventName));
 
     const blueprintId = widgetPrivateEventSupported ? activeWidgetBlueprintId : undefined;
@@ -735,14 +730,15 @@ export async function dispatchBlueprintUiEvent(options: {
     if (!bp) {
         return false;
     }
-    if (bp.program.kind === "scriptModule") {
-        const scriptEventId = scriptEventIdForWidgetSlot(el.type, eventName);
-        const fn = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
-        if (!fn) {
-            return false;
-        }
+    // The script layers first, then the graph ones below. Both run: a layer answers an event or it
+    // does not, and which of the two it is written in decides nothing about whether its siblings
+    // also answer. This used to return here, because a slot was a script or a graph as a whole.
+    const scriptEventId = scriptEventIdForWidgetSlot(el.type, eventName);
+    let ranAnyScriptLayer = false;
+    for (const { handler } of scriptEventId ? resolveScriptLayerHandlers(bp, scriptEventId) : []) {
+        ranAnyScriptLayer = true;
         await runScriptBlueprintHandler({
-            handler: fn,
+            handler,
             blueprint: bp,
             blueprintDocument,
             hostAdapter,
@@ -764,15 +760,13 @@ export async function dispatchBlueprintUiEvent(options: {
                 row: scriptRowOf(listItemScope),
             }),
         });
-        return true;
-    }
-
-    if (bp.program.kind !== "graph") {
-        return false;
+        if (eventControl?.isPropagationStopped()) {
+            return true;
+        }
     }
 
     const widgetElementType = el?.type;
-    const candidateGraphs = Object.values(bp.program.graphs.events ?? {});
+    const candidateGraphs = Object.values(bp.graphs.events ?? {});
     const matchingGraphs = candidateGraphs
         .map(eventGraph => {
             const ir = eventGraph.graph;
@@ -787,7 +781,7 @@ export async function dispatchBlueprintUiEvent(options: {
         .filter((entry): entry is { eventGraph: NonNullable<typeof candidateGraphs[number]>; ir: NonNullable<typeof candidateGraphs[number]["graph"]>; headIds: string[] } => Boolean(entry));
 
     if (matchingGraphs.length === 0) {
-        return false;
+        return ranAnyScriptLayer;
     }
     const executionId = newExecutionId();
     const execution = beginTrackedExecution({
@@ -943,23 +937,23 @@ function collectElementEventTargets(input: {
 }): Array<{
     elementId?: string;
     blueprintId: string;
-    eventGraph: BlueprintEventGraph;
+    eventGraph: BlueprintLayer;
     ir: BlueprintGraphIr;
     headIds: string[];
 }> {
     const out: Array<{
         elementId?: string;
         blueprintId: string;
-        eventGraph: BlueprintEventGraph;
+        eventGraph: BlueprintLayer;
         ir: BlueprintGraphIr;
         headIds: string[];
     }> = [];
 
     const surfaceOwnerKey = surfaceMainOwnerKey(input.surfaceId);
-    const surfaceBlueprintId = input.blueprintDocument.ownerRecords[surfaceOwnerKey]?.activeBlueprintId;
+    const surfaceBlueprintId = input.blueprintDocument.ownerRecords[surfaceOwnerKey]?.blueprintId;
     const surfaceBlueprint = surfaceBlueprintId ? input.blueprintDocument.blueprints[surfaceBlueprintId] : undefined;
-    if (surfaceBlueprintId && surfaceBlueprint?.program.kind === "graph") {
-        for (const eventGraph of Object.values(surfaceBlueprint.program.graphs.events ?? {})) {
+    if (surfaceBlueprintId && surfaceBlueprint) {
+        for (const eventGraph of Object.values(surfaceBlueprint.graphs.events ?? {})) {
             const ir = eventGraph.graph;
             const headIds = collectElementEventHeadNodeIds(ir?.nodes, input.target, input.nodeType);
             if (ir && headIds.length > 0) {
@@ -975,12 +969,12 @@ function collectElementEventTargets(input: {
             continue;
         }
         const ownerKey = widgetMainOwnerKey(input.surfaceId, elementId);
-        const blueprintId = input.blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+        const blueprintId = input.blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
         const bp = blueprintId ? input.blueprintDocument.blueprints[blueprintId] : undefined;
-        if (!blueprintId || !bp || bp.program.kind !== "graph") {
+        if (!blueprintId || !bp) {
             continue;
         }
-        for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+        for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
             const ir = eventGraph.graph;
             const headIds = collectElementEventHeadNodeIds(ir?.nodes, input.target, input.nodeType);
             if (ir && headIds.length > 0) {
@@ -1204,7 +1198,7 @@ function collectBroadcastTargets(input: {
     elementId?: string;
     blueprintId: string;
     bp: Blueprint;
-    eventGraph: BlueprintEventGraph;
+    eventGraph: BlueprintLayer;
     ir: BlueprintGraphIr;
     headIds: string[];
 }> {
@@ -1212,16 +1206,16 @@ function collectBroadcastTargets(input: {
         elementId?: string;
         blueprintId: string;
         bp: Blueprint;
-        eventGraph: BlueprintEventGraph;
+        eventGraph: BlueprintLayer;
         ir: BlueprintGraphIr;
         headIds: string[];
     }> = [];
 
     const surfaceOwnerKey = surfaceMainOwnerKey(input.surfaceId);
-    const surfaceBlueprintId = input.blueprintDocument.ownerRecords[surfaceOwnerKey]?.activeBlueprintId;
+    const surfaceBlueprintId = input.blueprintDocument.ownerRecords[surfaceOwnerKey]?.blueprintId;
     const surfaceBlueprint = surfaceBlueprintId ? input.blueprintDocument.blueprints[surfaceBlueprintId] : undefined;
-    if (surfaceBlueprintId && surfaceBlueprint?.program.kind === "graph") {
-        for (const eventGraph of Object.values(surfaceBlueprint.program.graphs.events ?? {})) {
+    if (surfaceBlueprintId && surfaceBlueprint) {
+        for (const eventGraph of Object.values(surfaceBlueprint.graphs.events ?? {})) {
             const ir = eventGraph.graph;
             const headIds = collectBroadcastHeadNodeIds(ir?.nodes, input.eventName);
             if (ir && headIds.length > 0) {
@@ -1243,12 +1237,12 @@ function collectBroadcastTargets(input: {
             continue;
         }
         const ownerKey = widgetMainOwnerKey(input.surfaceId, elementId);
-        const blueprintId = input.blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+        const blueprintId = input.blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
         const bp = blueprintId ? input.blueprintDocument.blueprints[blueprintId] : undefined;
-        if (!blueprintId || !bp || bp.program.kind !== "graph") {
+        if (!blueprintId || !bp) {
             continue;
         }
-        for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+        for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
             const ir = eventGraph.graph;
             const headIds = collectBroadcastHeadNodeIds(ir?.nodes, input.eventName);
             if (ir && headIds.length > 0) {
@@ -1323,39 +1317,32 @@ export async function dispatchWidgetsBlueprintEvent(options: {
             continue;
         }
         const ownerKey = widgetMainOwnerKey(surfaceId, elementId);
-        const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+        const blueprintId = blueprintDocument.ownerRecords[ownerKey]?.blueprintId;
         const bp = blueprintId ? blueprintDocument.blueprints[blueprintId] : undefined;
         if (!blueprintId || !bp) {
             continue;
         }
-        if (bp.program.kind === "scriptModule") {
-            // The slot table decides here too - it is what says this widget type raises this event
-            // at all - and only the name it resolves to differs between the frontends.
-            const scriptEventId = scriptEventIdForWidgetSlot(element?.type, eventName);
-            const handler = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
-            if (handler) {
-                await runScriptBlueprintHandler({
-                    handler,
-                    blueprint: bp,
-                    blueprintDocument,
-                    hostAdapter,
-                    debug,
-                    eventId: eventName,
-                    eventPayload,
-                    runtimeScopeId,
-                    surfaceId,
-                    elementId,
-                    executionManager: options.executionManager,
-                    allowClosedScopeExecution: options.allowClosedScopeExecution,
-                    self: scriptSelfOf({ surfaceId, elementId, widgetType: element?.type }),
-                });
-            }
-            continue;
+        // The slot table decides here too - it is what says this widget type raises this event at
+        // all - and only the name it resolves to differs between the two kinds of layer.
+        const scriptEventId = scriptEventIdForWidgetSlot(element?.type, eventName);
+        for (const { handler } of scriptEventId ? resolveScriptLayerHandlers(bp, scriptEventId) : []) {
+            await runScriptBlueprintHandler({
+                handler,
+                blueprint: bp,
+                blueprintDocument,
+                hostAdapter,
+                debug,
+                eventId: eventName,
+                eventPayload,
+                runtimeScopeId,
+                surfaceId,
+                elementId,
+                executionManager: options.executionManager,
+                allowClosedScopeExecution: options.allowClosedScopeExecution,
+                self: scriptSelfOf({ surfaceId, elementId, widgetType: element?.type }),
+            });
         }
-        if (bp.program.kind !== "graph") {
-            continue;
-        }
-        for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+        for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
             const ir = eventGraph.graph;
             const headIds = collectBlueprintEventHeadNodeIdsForDispatch(
                 ir?.nodes,
@@ -1763,7 +1750,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
 
     const ownerKey = surfaceMainOwnerKey(surfaceId);
     const ownerRecord = blueprintDocument.ownerRecords[ownerKey];
-    const blueprintId = ownerRecord?.activeBlueprintId;
+    const blueprintId = ownerRecord?.blueprintId;
     if (!blueprintId) {
         return;
     }
@@ -1772,14 +1759,10 @@ export async function dispatchSurfaceBlueprintEvent(options: {
         return;
     }
 
-    if (bp.program.kind === "scriptModule") {
-        const scriptEventId = scriptEventIdForSurfaceSlot(eventName);
-        const fn = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
-        if (!fn) {
-            return;
-        }
+    const surfaceScriptEventId = scriptEventIdForSurfaceSlot(eventName);
+    for (const { handler } of surfaceScriptEventId ? resolveScriptLayerHandlers(bp, surfaceScriptEventId) : []) {
         await runScriptBlueprintHandler({
-            handler: fn,
+            handler,
             blueprint: bp,
             blueprintDocument,
             hostAdapter,
@@ -1793,14 +1776,12 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             allowClosedScopeExecution: options.allowClosedScopeExecution,
             self: scriptSelfOf({ surfaceId }),
         });
-        return;
+        if (eventControl?.isPropagationStopped()) {
+            return;
+        }
     }
 
-    if (bp.program.kind !== "graph") {
-        return;
-    }
-
-    const candidateGraphs = Object.values(bp.program.graphs.events ?? {});
+    const candidateGraphs = Object.values(bp.graphs.events ?? {});
     const matchingGraphs = candidateGraphs
         .map(eventGraph => {
             const ir = eventGraph.graph;
@@ -1944,7 +1925,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
     }
 
     const ownerRecord = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY];
-    const blueprintId = ownerRecord?.activeBlueprintId;
+    const blueprintId = ownerRecord?.blueprintId;
     if (!blueprintId) {
         return;
     }
@@ -1953,16 +1934,12 @@ export async function dispatchGlobalBlueprintEvent(options: {
         return;
     }
 
-    if (bp.program.kind === "scriptModule") {
-        const scriptEventId = scriptEventIdForProjectSlot(eventName);
-        const fn = scriptEventId ? resolveScriptHandler(blueprintId, scriptEventId) : null;
-        if (!fn) {
-            return;
-        }
-        // The global blueprint belongs to no surface, so this one runs without a place: no
-        // `surfaceId` goes to the runner, and its failures report without one.
+    const globalScriptEventId = scriptEventIdForProjectSlot(eventName);
+    for (const { handler } of globalScriptEventId ? resolveScriptLayerHandlers(bp, globalScriptEventId) : []) {
+        // The global blueprint belongs to no surface, so these run without a place: no `surfaceId`
+        // goes to the runner, and their failures report without one.
         await runScriptBlueprintHandler({
-            handler: fn,
+            handler,
             blueprint: bp,
             blueprintDocument,
             hostAdapter,
@@ -1974,14 +1951,12 @@ export async function dispatchGlobalBlueprintEvent(options: {
             allowClosedScopeExecution: options.allowClosedScopeExecution,
             self: scriptSelfOf({}),
         });
-        return;
+        if (eventControl?.isPropagationStopped()) {
+            return;
+        }
     }
 
-    if (bp.program.kind !== "graph") {
-        return;
-    }
-
-    const candidateGraphs = Object.values(bp.program.graphs.events ?? {});
+    const candidateGraphs = Object.values(bp.graphs.events ?? {});
     const matchingGraphs = candidateGraphs
         .map(eventGraph => {
             const ir = eventGraph.graph;

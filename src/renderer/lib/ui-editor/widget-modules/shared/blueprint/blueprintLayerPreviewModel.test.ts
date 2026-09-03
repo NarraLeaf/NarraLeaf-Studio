@@ -29,7 +29,7 @@ function localBpOf(graphs: Partial<BlueprintGraphIndex>): LocalBlueprintService 
             blueprints: {
                 "bp-1": {
                     id: "bp-1",
-                    program: { kind: "graph", graphs: { events: {}, functions: {}, ...graphs } },
+                    graphs: { events: {}, functions: {}, ...graphs },
                 },
             },
         }),

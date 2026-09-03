@@ -32,6 +32,7 @@ import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/bluepri
 import { storyActionOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import type { StoryVariableRuntimeAccess, UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { isScriptMounted, resolveScriptDefault } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
+import { scriptLayerKey, soleScriptLayer, type ScriptLayerEntry } from "@shared/blueprint/blueprintLayers";
 import { createBlueprintDevtoolsApi } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type {
@@ -98,7 +99,7 @@ export function collectSceneStoryActionFns(input: {
 
 function resolveActiveStoryActionBlueprint(document: BlueprintDocument, blueprintId: string) {
     const ownerKey = storyActionOwnerKey(blueprintId);
-    const activeId = document.ownerRecords?.[ownerKey]?.activeBlueprintId ?? blueprintId;
+    const activeId = document.ownerRecords?.[ownerKey]?.blueprintId ?? blueprintId;
     return document.blueprints?.[activeId] ?? document.blueprints?.[blueprintId];
 }
 
@@ -110,7 +111,10 @@ type StoryActionExecutionEnv = {
 
 /**
  * Compile a Story Action Blueprint into an NLR `Script` action, or `null` when it cannot be compiled
- * (missing blueprint, not a graph, or no "On Call" event). The action form ignores any Return Value.
+ * (missing blueprint, or no "On Call" layer). The action form ignores any Return Value.
+ *
+ * A story row has one event head, so it has one layer, and that layer is a graph or one of the
+ * author's files.
  */
 export function compileStoryActionBlueprintToScript(input: CompileStoryActionScriptInput): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
@@ -118,12 +122,9 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
         input.onDiagnostic?.("Story Action Blueprint not found; the action was skipped.");
         return null;
     }
-    if (bp.program.kind === "scriptModule") {
-        return compileStoryActionScriptModule(input, bp.name, bp.program.scriptRef);
-    }
-    if (bp.program.kind !== "graph") {
-        input.onDiagnostic?.(`"${bp.name}" is neither a blueprint nor a script; this action was skipped.`);
-        return null;
+    const script = soleScriptLayer(bp);
+    if (script) {
+        return compileStoryActionScriptModule(input, bp.name, script);
     }
 
     return Script.execute((ctx: ScriptCtx) => {
@@ -153,13 +154,13 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
 function compileStoryActionScriptModule(
     input: CompileStoryActionScriptInput,
     name: string,
-    scriptRef: string,
+    layer: ScriptLayerEntry,
 ): unknown {
     return Script.execute((ctx: ScriptCtx) => {
         const abort = new AbortController();
-        const handler = resolveScriptDefault(input.blueprintId);
+        const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
         if (!handler) {
-            reportMissingDefaultExport(input, name, scriptRef, "this action was skipped");
+            reportMissingDefaultExport(input, name, layer, "this action was skipped");
             return () => undefined;
         }
         const storyCtx = buildStoryScriptContext(input, ctx, abort.signal);
@@ -238,16 +239,17 @@ function buildStorySyncScriptContext(
  */
 export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionScriptInput, ctx: ScriptCtx): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
-    if (bp?.program.kind === "scriptModule") {
-        return evaluateStoryScriptValueSync(input, ctx, bp.name, bp.program.scriptRef);
-    }
-    if (!bp || bp.program.kind !== "graph") {
+    if (!bp) {
         return undefined;
+    }
+    const scriptLayer = soleScriptLayer(bp);
+    if (scriptLayer) {
+        return evaluateStoryScriptValueSync(input, ctx, bp.name, scriptLayer);
     }
     // No async work runs synchronously, so a never-aborting signal suffices for the host adapter.
     const hostAdapter = buildStoryActionHostAdapter(input, ctx, new AbortController().signal);
     let lastReturn: unknown;
-    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+    for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;
@@ -280,17 +282,17 @@ function evaluateStoryScriptValueSync(
     input: CompileStoryActionScriptInput,
     ctx: ScriptCtx,
     name: string,
-    scriptRef: string,
+    layer: ScriptLayerEntry,
 ): unknown {
-    const handler = resolveScriptDefault(input.blueprintId);
+    const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
     if (!handler) {
-        reportMissingDefaultExport(input, name, scriptRef, "nothing was evaluated");
+        reportMissingDefaultExport(input, name, layer, "nothing was evaluated");
         return undefined;
     }
     const value = handler(buildStorySyncScriptContext(input, ctx));
     if (value instanceof Promise) {
         input.onDiagnostic?.(
-            `"${name}" is evaluated where the story cannot wait, so ${scriptRef} must return a value rather than a promise.`,
+            `"${name}" is evaluated where the story cannot wait, so ${layer.script.scriptRef} must return a value rather than a promise.`,
         );
         return undefined;
     }
@@ -308,14 +310,14 @@ function evaluateStoryScriptValueSync(
 function reportMissingDefaultExport(
     input: CompileStoryActionScriptInput,
     name: string,
-    scriptRef: string,
+    layer: ScriptLayerEntry,
     outcome: string,
 ): void {
-    if (!isScriptMounted(input.blueprintId)) {
+    if (!isScriptMounted(scriptLayerKey(input.blueprintId, layer.layerId))) {
         return;
     }
     input.onDiagnostic?.(
-        `"${name}" exports no default from ${scriptRef}, which is how a story row enters a script; ${outcome}.`,
+        `"${name}" exports no default from ${layer.script.scriptRef}, which is how a story row enters a script; ${outcome}.`,
     );
 }
 
@@ -437,11 +439,11 @@ function buildStoryActionHostAdapter(
 
 async function runStoryActionOnCall(env: StoryActionExecutionEnv): Promise<unknown> {
     const bp = resolveActiveStoryActionBlueprint(env.input.blueprintDocument, env.input.blueprintId);
-    if (!bp || bp.program.kind !== "graph") {
+    if (!bp) {
         return undefined;
     }
     let lastReturn: unknown;
-    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+    for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
         const ir = eventGraph.graph;
         const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
         if (headIds.length === 0 || !ir) continue;

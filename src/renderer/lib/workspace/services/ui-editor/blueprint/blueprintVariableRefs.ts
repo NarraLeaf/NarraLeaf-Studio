@@ -83,13 +83,10 @@ function blueprintSupportsDeclaredVariables(blueprint: Blueprint): boolean {
 }
 
 function listBlueprintGraphNodes(blueprint: Blueprint): BlueprintGraphNode[] {
-    if (blueprint.program.kind !== "graph") {
-        return [];
-    }
     const slots = [
-        ...Object.values(blueprint.program.graphs.events ?? {}),
-        ...Object.values(blueprint.program.graphs.functions ?? {}),
-        ...Object.values(blueprint.program.graphs.macros ?? {}),
+        ...Object.values(blueprint.graphs.events ?? {}),
+        ...Object.values(blueprint.graphs.functions ?? {}),
+        ...Object.values(blueprint.graphs.macros ?? {}),
     ];
     return slots.flatMap(slot => Object.values(slot.graph?.nodes ?? {}));
 }
@@ -203,11 +200,11 @@ function sortedVariables(group: VariableGroupInput): BlueprintVariable[] {
 }
 
 function getSurfaceMainBlueprintId(doc: BlueprintDocument, surfaceId: string | undefined): string | undefined {
-    return surfaceId ? doc.ownerRecords[surfaceMainOwnerKey(surfaceId)]?.activeBlueprintId : undefined;
+    return surfaceId ? doc.ownerRecords[surfaceMainOwnerKey(surfaceId)]?.blueprintId : undefined;
 }
 
 function getGlobalMainBlueprintId(doc: BlueprintDocument): string | undefined {
-    return doc.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+    return doc.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId;
 }
 
 function pushGroup(out: VariableGroupInput[], used: Set<string>, group: VariableGroupInput | null): void {
