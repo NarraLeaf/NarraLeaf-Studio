@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GameBuildStateSnapshot, ShippedAssetReportEntry } from "@shared/types/gameBuild";
 import {
     artifactFileName,
+    artifactLocation,
     buildArtifactRows,
     filterShippedAssets,
     formatBuildDuration,
@@ -37,6 +38,31 @@ describe("artifactFileName", () => {
     });
 });
 
+describe("artifactLocation", () => {
+    it("is blank for an artifact in the output folder itself", () => {
+        expect(artifactLocation("D:\\proj\\dist\\Game Setup.exe", "D:\\proj\\dist")).toBe("");
+    });
+
+    it("names the folder a nested artifact sits in", () => {
+        expect(artifactLocation("D:\\proj\\dist\\dlc\\winter\\winter_DLC.pak", "D:\\proj\\dist"))
+            .toBe("dlc/winter/");
+        expect(artifactLocation("/p/dist/Game-1.0.0-web/index.html", "/p/dist")).toBe("Game-1.0.0-web/");
+    });
+
+    it("relates the two paths whichever separator and case each was written in", () => {
+        // The snapshot crosses from a main process that may have built for the other OS, and
+        // Windows reports a drive letter in either case.
+        expect(artifactLocation("d:/proj/dist/mac/Game.app", "D:\\proj\\dist")).toBe("mac/");
+    });
+
+    it("claims no relation for a path outside the output folder, or with no folder recorded", () => {
+        expect(artifactLocation("/elsewhere/a.zip", "/p/dist")).toBe("");
+        expect(artifactLocation("/p/dist/a.zip", undefined)).toBe("");
+        // The folder itself is not inside itself, however it was spelled.
+        expect(artifactLocation("/p/dist", "/p/dist/")).toBe("");
+    });
+});
+
 describe("buildArtifactRows", () => {
     it("pairs each artifact with its measured size", () => {
         const rows = buildArtifactRows({
@@ -46,9 +72,19 @@ describe("buildArtifactRows", () => {
             artifactSizes: [{ path: "/dist/b.dmg", bytes: 20 }, { path: "/dist/a.zip", bytes: 10 }],
         });
         expect(rows).toEqual([
-            { path: "/dist/a.zip", name: "a.zip", bytes: 10 },
-            { path: "/dist/b.dmg", name: "b.dmg", bytes: 20 },
+            { path: "/dist/a.zip", name: "a.zip", location: "", bytes: 10 },
+            { path: "/dist/b.dmg", name: "b.dmg", location: "", bytes: 20 },
         ]);
+    });
+
+    it("carries where each artifact sits, so a multi-target run is not a flat list of names", () => {
+        const rows = buildArtifactRows({
+            status: "done",
+            progress: null,
+            outputDir: "/p/dist",
+            artifacts: ["/p/dist/Game.exe", "/p/dist/dlc/winter/winter_DLC.pak", "/p/dist/SHA256SUMS"],
+        });
+        expect(rows.map(row => row.location)).toEqual(["", "dlc/winter/", ""]);
     });
 
     it("leaves an unmeasured artifact without a size rather than at zero", () => {
@@ -63,7 +99,7 @@ describe("buildArtifactRows", () => {
 
     it("reports the artifacts of a run that measured nothing", () => {
         const rows = buildArtifactRows({ status: "done", progress: null, artifacts: ["/dist/patch.nlpatch"] });
-        expect(rows).toEqual([{ path: "/dist/patch.nlpatch", name: "patch.nlpatch" }]);
+        expect(rows).toEqual([{ path: "/dist/patch.nlpatch", name: "patch.nlpatch", location: "" }]);
         expect(totalArtifactBytes(rows)).toBe(0);
     });
 

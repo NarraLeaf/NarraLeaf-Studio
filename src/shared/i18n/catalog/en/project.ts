@@ -579,7 +579,9 @@ export const project = {
         scanning: "Scanning project…",
         empty: "No plugin dependencies.",
         banner: {
-            blocked: "Some plugins are disabled. Their installed version is incompatible. Update or reinstall them.",
+            // Names the version verdict without borrowing the word for the author's own switch:
+            // every plugin this banner is about was withheld by Studio, not turned off by anyone.
+            blocked: "Some plugins are not loaded for this project. Their installed version is incompatible. Update or reinstall them.",
             warnings: "A plugin is outdated, or an optional dependency is unavailable.",
         },
         status: {
@@ -587,7 +589,19 @@ export const project = {
             outdated: "Outdated",
             missing: "Missing",
             incompatible: "Incompatible",
+            /**
+             * The author switched the plugin off in the Plugins panel, so nothing it contributes is
+             * loaded anywhere. The same word the Plugins panel puts beside the switch itself: one
+             * fact, one word, and the author who threw that switch reads the result of it here.
+             */
             disabled: "Disabled",
+            /**
+             * Studio withheld the plugin from this project, because the installed version is
+             * incompatible with the one the project was authored against. Studio's own verdict
+             * rather than anything the author did, which is why it cannot borrow the switch's word,
+             * and why it is the same sentence the Plugins panel writes for this state.
+             */
+            suppressed: "Off for this project",
         },
         meta: {
             requires: "Requires {version}",

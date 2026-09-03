@@ -585,6 +585,13 @@ function ListLayoutField(props: CustomFieldProps<UIInspectorData>) {
                     />
                 </div>
                 <div className="mt-2">
+                    <ListToggleControl
+                        label={t("widgets.wrap")}
+                        checked={current.repeatWrap}
+                        onChange={repeatWrap => patch({ repeatWrap })}
+                    />
+                </div>
+                <div className="mt-2">
                     <ListContentPaddingEditor
                         current={current}
                         draftResetKey={draftResetKey}

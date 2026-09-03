@@ -279,6 +279,7 @@ export function useStoryPreviewGameUi(input: {
             onGetSaveMetadata: async () => null,
             onGetSaveTimes: async () => null,
             onGetSaveLine: async () => null,
+            onGetSaveStory: async () => null,
             onGetSavePlaytime: async () => null,
             onGetSavePreview: async () => null,
             // The editor preview keeps no stopwatch: what it runs is an author checking a scene,

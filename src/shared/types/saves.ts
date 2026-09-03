@@ -196,6 +196,31 @@ export type SaveRecordLine = {
     speaker: string;
 };
 
+/**
+ * Which of the project's stories one save slot was written in, as `Get Save Story` publishes it.
+ *
+ * Two fields because they are not interchangeable, and a screen needs both for different reasons:
+ *
+ *  - `name` is the only one that may be shown. It is resolved against the story library this build
+ *    ships, so it is the name the author typed and the name the reader recognises.
+ *  - `id` is an opaque reference, never for display. It is what survives a rename, so grouping and
+ *    comparing are done on it, and it is what `Start Game` takes on its `Story Id` pin.
+ *
+ * Either can be blank on its own, and the two absences mean different things. A record written
+ * before saves carried a story stamp, or taken with no story mounted, has no `id` - see
+ * `SaveCompatibilityStamp.storyId`. A record naming a story this build does not ship (a route since
+ * deleted, or one behind a DLC this package leaves out) has an `id` and no `name`: the slot's story
+ * is known, but this build has nothing to call it.
+ *
+ * `null` from a reader means no such slot.
+ */
+export type SaveRecordStory = {
+    /** The story the save was written in, as an opaque reference; "" when the record carries none. */
+    id: string;
+    /** That story's author-facing name; "" when this build ships no story under that reference. */
+    name: string;
+};
+
 export type AutoSaveEntry = {
     id: string;
     /** Slot index within the ring. */

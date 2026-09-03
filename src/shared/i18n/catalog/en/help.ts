@@ -290,6 +290,20 @@ export const help = {
                 + "- Replacing an asset's file keeps every reference to it.\n"
                 + "- Deleting an asset that is still in use lists its usages first.",
         },
+        assetSources: {
+            title: "Where an asset's file comes from",
+            body:
+                "An asset holds its own copy of a file. The copy is stored in the project and versioned "
+                + "with it, and it was taken in one of two ways.\n"
+                + "\n"
+                + "- Imported from a file on this machine. The file stays where it is, and Studio does not "
+                + "track it. Replace File imports it again after it changes.\n"
+                + "- Downloaded from an address. The asset records the address and the time of the "
+                + "download, and Check for Updates asks the server whether the copy still matches.\n"
+                + "\n"
+                + "A build and a fresh clone of the project use the stored copy. Neither needs the file "
+                + "it came from, and neither needs a network connection.",
+        },
         assetSets: {
             title: "Asset sets",
             body:
