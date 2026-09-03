@@ -51,7 +51,6 @@ export const ProjectNameConvention = {
 
     // Project Root Directories
     NLCache: [".nlstudio/"],
-    Plugins: [".nlstudio", "plugins/"],
     EditorConfig: [".nlstudio", "editor.json"],
     /**
      * Service stores that hold Studio's own state rather than the author's project -

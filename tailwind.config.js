@@ -53,6 +53,10 @@ module.exports = {
                 // label stays readable. See `accentForeground` in @shared/constants/accent.
                 'on-primary': 'rgb(var(--nl-on-primary) / <alpha-value>)',
 
+                // Every other `*-primary` utility resolves through `colors.primary` above and
+                // therefore paints the accent as chosen. The three that draw the accent as a
+                // FOREGROUND — text, hairline, underline — are redirected below.
+
                 // Dark surface ladder (5 depths). Channel values live in
                 // styles.css :root so raw CSS / inline styles can reference the
                 // same source via rgb(var(--nl-surface)).
@@ -104,6 +108,28 @@ module.exports = {
                 success: 'rgb(var(--nl-success) / <alpha-value>)',
                 warning: 'rgb(var(--nl-warning) / <alpha-value>)',
             },
+
+            // The accent used as a foreground: `text-primary`, `border-primary` and the
+            // underline under a reference token, at close to four hundred call sites between
+            // them. They resolve to `--nl-primary-ink` — the accent with its luminance clamped
+            // into the readable band of the current theme (see styles.css and `accentInk` in
+            // @shared/constants/accent) — instead of the raw accent, because the setting lets the
+            // user pick any colour and a pale one drawn on a pale surface is a glyph nobody can
+            // read. For the five presets the ink IS the accent, so nothing about them moves.
+            //
+            // Overriding the utility rather than the sites is the whole point: a colour's role is
+            // decided by which property it lands on, and Tailwind already sorts the properties
+            // into these scales. `divideColor` follows `borderColor` on its own.
+            textColor: {
+                primary: 'rgb(var(--nl-primary-ink) / <alpha-value>)',
+            },
+            borderColor: {
+                primary: 'rgb(var(--nl-primary-ink) / <alpha-value>)',
+            },
+            textDecorationColor: {
+                primary: 'rgb(var(--nl-primary-ink) / <alpha-value>)',
+            },
+
             fontSize: {
                 // Single small tier — collapses the ad-hoc text-[9px]/[10px]/[11px].
                 '2xs': ['0.6875rem', { lineHeight: '1rem' }],

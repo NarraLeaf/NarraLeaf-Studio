@@ -71,12 +71,34 @@ export const LINT_SEVERITY_ORDER: Record<LintSeverity, number> = {
 };
 
 /**
- * Every rule id, spelled out.
+ * The ids that name a finding no rule produces.
+ *
+ * A rule id is a promise: Project ▸ Project lists a row for it, the project can retune or silence
+ * it, and every surface prints the id so the author knows which row that is. `story/unreadable`
+ * can keep none of that, and borrowing an id that can would state two false things at once - that
+ * a rule looked at the document, and that the author may decide how much it matters.
+ *
+ * It is raised while the context is being assembled: a document the schema ladder refuses is never
+ * handed to a rule at all, and a project whose stories cannot be read has not been checked, so the
+ * severity is fixed at `error` rather than configured. Hence no registry entry, no settings row,
+ * and {@link RegisteredLintRuleId} to keep a rule from ever claiming one of these.
+ *
+ * A title and a description are still catalogued for each: the report groups by rule, and the
+ * heading over these findings is a name like any other. The messages are not - they are
+ * `lint.message.story*`, which say which end of the ladder the document fell off.
+ */
+export const LINT_RULELESS_IDS = ["story/unreadable"] as const;
+
+export type LintRulelessId = (typeof LINT_RULELESS_IDS)[number];
+
+/**
+ * Every rule id, spelled out, plus the handful of {@link LINT_RULELESS_IDS} that no rule owns.
  *
  * A closed union rather than `string`: the config maps ids to severities, and a typo in a stored
  * config or a UI call site should not silently address a rule that does not exist.
  */
 export type LintRuleId =
+    | LintRulelessId
     | "assets/unused"
     | "assets/missing"
     | "assets/unreadable"
@@ -144,6 +166,19 @@ export type LintRuleId =
     | "brand/broken-link"
     | "typography/glyph-coverage"
     | "typography/locale-no-font";
+
+/**
+ * An id a rule may register under - every {@link LintRuleId} except the rule-less ones.
+ *
+ * `LintRuleMeta.id` is typed with this rather than with `LintRuleId`, so "no rule behind it" is a
+ * compile error rather than a convention the registry test has to catch after the fact.
+ */
+export type RegisteredLintRuleId = Exclude<LintRuleId, LintRulelessId>;
+
+/** Whether an id names one of the findings no rule produces. */
+export function isLintRulelessId(id: LintRuleId): id is LintRulelessId {
+    return (LINT_RULELESS_IDS as readonly string[]).includes(id);
+}
 
 /**
  * Where a finding lives.
@@ -234,7 +269,7 @@ export type LintRuleOptionSpec =
 export type LintRuleOptions = Record<string, string | number>;
 
 export type LintRuleMeta = {
-    id: LintRuleId;
+    id: RegisteredLintRuleId;
     category: LintCategory;
     defaultSeverity: LintRuleSeverity;
     /** i18n: lint.rule.<slug>.title / .description */

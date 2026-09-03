@@ -8,7 +8,8 @@
  * (saturation 14–53%, lightness 51–62%, see docs/design-system.md), with the hues that would
  * collide with a semantic color deliberately absent: green (`success`), amber (`warning`), coral
  * (`danger`) and the violet the blueprint editor uses for `binding`. Beyond them the user can
- * pick anything; see `accentForeground` for what makes that safe.
+ * pick anything; `accentForeground` and `accentInk` are what make that safe — one for the ink
+ * written ON the accent, the other for the accent written on an ordinary surface.
  *
  * Shared rather than renderer-local because the value is part of the global state contract.
  */
@@ -62,20 +63,26 @@ export function normalizeHexColor(value: unknown): string | null {
     return `#${full}`;
 }
 
+function hexChannels(hex: string): number[] {
+    return [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
+}
+
 function hexToChannels(hex: string): string {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `${r} ${g} ${b}`;
+    return hexChannels(hex).join(" ");
+}
+
+/** WCAG relative luminance of RGB channels, 0 (black) to 1 (white). */
+function channelLuminance(channels: readonly number[]): number {
+    const linear = channels.map(value => {
+        const srgb = value / 255;
+        return srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
 }
 
 /** WCAG relative luminance, 0 (black) to 1 (white). */
 function relativeLuminance(hex: string): number {
-    const channels = [1, 3, 5].map(offset => {
-        const srgb = parseInt(hex.slice(offset, offset + 2), 16) / 255;
-        return srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    return channelLuminance(hexChannels(hex));
 }
 
 /**
@@ -87,10 +94,118 @@ function relativeLuminance(hex: string): number {
  * — the anchor included — sits below 0.5 and keeps its white text, because white-on-accent is the
  * product's look and "optimize contrast" would have flipped the default brand button to black
  * text. This is a rescue for genuinely light colors, not a contrast optimizer.
+ *
+ * The mirror image — the accent written on a surface rather than under one — is `accentInk`.
  */
 export function accentForeground(hex: string): string {
     // The light theme's `--nl-fg`, so dark ink on the accent matches ink everywhere else.
     return relativeLuminance(hex) > 0.5 ? "27 33 41" : "255 255 255";
+}
+
+/**
+ * The neutral surface each ladder is measured against: `--nl-surface` in styles.css, the app and
+ * panel background almost all accent text is read on. Repeated here because the clamp below runs
+ * before anything is painted and has no computed style to read; `accent.test.ts` parses the
+ * stylesheet and fails if the two ever drift.
+ */
+const SURFACE_ON_DARK = "#0f1115";
+const SURFACE_ON_LIGHT = "#eef0f4";
+
+/** WCAG AA for body text. */
+const AA_CONTRAST = 4.5;
+
+/** Lowest luminance that still clears AA as the LIGHTER half of a pair with `surface`. */
+function aaFloorAgainst(surface: string): number {
+    return AA_CONTRAST * (relativeLuminance(surface) + 0.05) - 0.05;
+}
+
+/** Highest luminance that still clears AA as the DARKER half of a pair with `surface`. */
+function aaCeilingAgainst(surface: string): number {
+    return (relativeLuminance(surface) + 0.05) / AA_CONTRAST - 0.05;
+}
+
+const PRESET_LUMINANCES = ACCENT_PRESETS.map(preset => relativeLuminance(preset.hex));
+
+/**
+ * The band the ink is kept inside, one bound per ladder.
+ *
+ * The bound is AA against the surface, EXCEPT that it is never allowed to exclude the presets
+ * themselves. Those two clauses land differently on the two ladders, and both results are wanted:
+ *
+ *   - dark: AA needs 0.200 and the darkest preset sits at 0.226, so AA binds. Every preset keeps
+ *     the colour it has today and a dark custom accent is lifted until it clears AA.
+ *   - light: AA needs 0.155 and the brand anchor sits at 0.331, so the anchor binds. Its 2.4:1 on
+ *     the light ladder is a known, deliberate trade-off (docs/design-system.md §1) that belongs to
+ *     the anchor and not to this clamp; tightening the ceiling to AA would repaint all five presets
+ *     on that ladder, which is a brand decision rather than a readability fix. What the clamp does
+ *     guarantee is that no accent is ever LESS readable than the one the product ships with — a
+ *     pale yellow goes from 1.0:1, which is nothing at all, to the anchor's own 2.4:1.
+ */
+const INK_FLOOR_ON_DARK = Math.min(aaFloorAgainst(SURFACE_ON_DARK), ...PRESET_LUMINANCES);
+const INK_CEILING_ON_LIGHT = Math.max(aaCeilingAgainst(SURFACE_ON_LIGHT), ...PRESET_LUMINANCES);
+
+/** Granularity of the mix below: 1/1024 of the way to black or white per step. */
+const MIX_STEPS = 1024;
+
+/** `channels` with `steps / MIX_STEPS` of `toward` (black or white) mixed in. */
+function mixToward(channels: readonly number[], toward: number, steps: number): number[] {
+    const amount = steps / MIX_STEPS;
+    return channels.map(value => Math.round(value + (toward - value) * amount));
+}
+
+/**
+ * The colour moved along the black-to-white axis until it is inside the band, and not one step
+ * further.
+ *
+ * That axis rather than a lightness ramp because mixing every channel toward the same endpoint
+ * scales the differences between them uniformly, which leaves the hue exactly where the user put
+ * it - the accent is still recognisably their colour, only readable.
+ */
+function clampLuminance(channels: readonly number[], bound: number, lighten: boolean): number[] {
+    const inside = (candidate: readonly number[]): boolean =>
+        lighten ? channelLuminance(candidate) >= bound : channelLuminance(candidate) <= bound;
+    if (inside(channels)) {
+        return [...channels];
+    }
+    // Mixing white in only raises luminance and mixing black in only lowers it - rounding to whole
+    // channels included - so the least amount that reaches the bound is a binary search. Searching
+    // whole steps means the rounded channels the search settles on are the ones published, with no
+    // second rounding afterwards that could fall back out of the band.
+    const toward = lighten ? 255 : 0;
+    let low = 0;
+    let high = MIX_STEPS;
+    while (low < high) {
+        const mid = (low + high) >> 1;
+        if (inside(mixToward(channels, toward, mid))) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    return mixToward(channels, toward, low);
+}
+
+/**
+ * Ink for the accent used as a FOREGROUND on a neutral surface — what `--nl-primary-ink` and the
+ * `text-primary` / `border-primary` / `decoration-primary` utilities resolve to.
+ *
+ * `--nl-on-primary` only answers what to write ON the accent. The accent is also written IN, on
+ * ordinary surfaces, at close to two hundred places, and there "any colour" is only honest if a
+ * pale one still reads: an accent whose luminance is next to the surface's draws a glyph nobody
+ * can see. So the ink is the accent with its luminance clamped into the readable band of the
+ * ladder it will be read on — lifted on the dark one, lowered on the light one, and returned
+ * untouched whenever it was already inside, which is the case for every preset on both ladders.
+ *
+ * Two ladders and no way to ask which is current: the theme is `prefers-color-scheme` and Electron
+ * updates that query's value without dispatching `change` (docs/design-system.md §0). Both inks are
+ * therefore published and the stylesheet picks.
+ */
+export function accentInk(hex: string, ladder: "dark" | "light"): string {
+    const channels = hexChannels(hex);
+    const clamped = ladder === "dark"
+        ? clampLuminance(channels, INK_FLOOR_ON_DARK, true)
+        : clampLuminance(channels, INK_CEILING_ON_LIGHT, false);
+    return clamped.join(" ");
 }
 
 export interface AccentColor {
@@ -101,6 +216,10 @@ export interface AccentColor {
     channels: string;
     /** `--nl-on-primary` channels. */
     foregroundChannels: string;
+    /** `--nl-primary-ink-on-dark` channels. */
+    inkOnDarkChannels: string;
+    /** `--nl-primary-ink-on-light` channels. */
+    inkOnLightChannels: string;
 }
 
 /** Resolve a stored value — a preset id, a hex, or something stale — to a usable accent. */
@@ -112,6 +231,8 @@ export function normalizeAccentColor(value: unknown): AccentColor {
             hex: preset.hex,
             channels: preset.channels,
             foregroundChannels: accentForeground(preset.hex),
+            inkOnDarkChannels: accentInk(preset.hex, "dark"),
+            inkOnLightChannels: accentInk(preset.hex, "light"),
         };
     }
 
@@ -122,6 +243,8 @@ export function normalizeAccentColor(value: unknown): AccentColor {
             hex,
             channels: hexToChannels(hex),
             foregroundChannels: accentForeground(hex),
+            inkOnDarkChannels: accentInk(hex, "dark"),
+            inkOnLightChannels: accentInk(hex, "light"),
         };
     }
 

@@ -39,10 +39,17 @@ let productIconSrc: string = windowIconUrl(WINDOW_ICON_DEFAULT);
 
 function applyAccentColor(value: unknown): void {
     const accent = normalizeAccentColor(value);
-    document.documentElement.style.setProperty("--nl-primary", accent.channels);
+    const root = document.documentElement.style;
+    root.setProperty("--nl-primary", accent.channels);
     // The ink that sits on the accent. Derived rather than fixed white: the user can pick any
     // color, and a pale one would otherwise make every primary button unreadable.
-    document.documentElement.style.setProperty("--nl-on-primary", accent.foregroundChannels);
+    root.setProperty("--nl-on-primary", accent.foregroundChannels);
+    // The accent written on a surface rather than under one — `text-primary`, `border-primary`.
+    // Both ladders are published because nothing here can ask which theme is current: that is a
+    // media query, and Electron changes its value without dispatching `change`. The stylesheet
+    // picks between them, so a theme switch needs nothing from this module.
+    root.setProperty("--nl-primary-ink-on-dark", accent.inkOnDarkChannels);
+    root.setProperty("--nl-primary-ink-on-light", accent.inkOnLightChannels);
 }
 
 /**
