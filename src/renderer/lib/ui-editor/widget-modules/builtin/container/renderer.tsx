@@ -13,6 +13,7 @@ import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext"
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { getContainerProps } from "./helpers";
 import {
+    containerStackOverlapsSiblings,
     resolveContainerScrollViewportOverflow,
     type ContainerStackAlignItems,
     type ContainerStackJustifyContent,
@@ -76,6 +77,19 @@ function rectangleWithoutTransform(rectangleLike: RectangleLikeProps): Rectangle
 }
 
 /**
+ * `flex-wrap` plus the line packing that has to travel with it.
+ *
+ * `align-content` is not an authored choice: its initial value spreads the lines over the whole
+ * cross axis, so a stack that had just been told to wrap would show its two lines at opposite ends
+ * of the box rather than one under the other at the gap the author set. Packing at the start is the
+ * only reading of "wrap" that leaves `stackGap` meaning what it says between lines as well as
+ * between children, and `stackAlignItems` then reads within each line.
+ */
+function stackWrapCss(wrap: boolean): CSSProperties {
+    return wrap ? { flexWrap: "wrap", alignContent: "flex-start" } : { flexWrap: "nowrap" };
+}
+
+/**
  * CSS gap/padding cannot be negative. Negative gap → sibling margins on following flex items; negative padding →
  * non‑positive padding plus compensating negative margins on an inner flex wrapper.
  */
@@ -83,7 +97,7 @@ function StackInner({ element, children }: WidgetRendererProps) {
     const p = getContainerProps(element);
     const isRow = p.stackDirection === "horizontal";
     const gapPx = p.stackGap;
-    const useNegGap = gapPx < 0;
+    const useNegGap = containerStackOverlapsSiblings(gapPx, p.stackWrap);
 
     const pt = p.stackPaddingTop;
     const pr = p.stackPaddingRight;
@@ -94,7 +108,8 @@ function StackInner({ element, children }: WidgetRendererProps) {
     const flexBox: CSSProperties = {
         display: "flex",
         flexDirection: isRow ? "row" : "column",
-        gap: useNegGap ? 0 : gapPx,
+        ...stackWrapCss(p.stackWrap),
+        gap: useNegGap ? 0 : Math.max(0, gapPx),
         alignItems: mapAlign(p.stackAlignItems),
         justifyContent: mapJustify(p.stackJustifyContent),
         overflow: "visible",
@@ -174,7 +189,7 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
     const innerDir = p.stackDirection === "horizontal" ? "row" : "column";
     const isRow = innerDir === "row";
     const gapPx = p.stackGap;
-    const useNegGap = gapPx < 0;
+    const useNegGap = containerStackOverlapsSiblings(gapPx, p.stackWrap);
 
     const pt = p.stackPaddingTop;
     const pr = p.stackPaddingRight;
@@ -199,24 +214,33 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
     const dirMin: CSSProperties =
         innerDir === "column" ? { minWidth: "100%", minHeight: 0 } : { minHeight: "100%", minWidth: 0 };
 
+    // Children wrap against the main axis, and a column of children has no main size to wrap
+    // against here: it is a block box in the viewport, so its block size follows its content and
+    // grows for ever instead of breaking. A row needs nothing - a block box already fills the
+    // inline axis. Logical rather than `height`, because a stack inside a vertical writing mode
+    // inherits it and its `column` runs across the screen.
+    const wrapMainSize: CSSProperties =
+        p.stackWrap && innerDir === "column" ? { blockSize: "100%" } : {};
+
     const scrollFlex: CSSProperties = {
         display: "flex",
         flexDirection: innerDir,
-        flexWrap: "nowrap",
+        ...stackWrapCss(p.stackWrap),
         alignItems: "stretch",
         justifyContent: "flex-start",
-        gap: useNegGap ? 0 : gapPx,
+        gap: useNegGap ? 0 : Math.max(0, gapPx),
         ...padPos,
         ...dirMin,
+        ...wrapMainSize,
     };
 
     const scrollFlexBleed: CSSProperties = {
         display: "flex",
         flexDirection: innerDir,
-        flexWrap: "nowrap",
+        ...stackWrapCss(p.stackWrap),
         alignItems: "stretch",
         justifyContent: "flex-start",
-        gap: useNegGap ? 0 : gapPx,
+        gap: useNegGap ? 0 : Math.max(0, gapPx),
         ...padNegMargins,
         ...dirMin,
         flex: 1,

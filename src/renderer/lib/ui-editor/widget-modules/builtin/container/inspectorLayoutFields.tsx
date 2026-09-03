@@ -108,6 +108,17 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                     },
                 }),
                 defineField<D, any>({
+                    id: "container.stackWrap",
+                    type: "toggle",
+                    label: t("widgets.wrap"),
+                    visible: (d: D) => {
+                        const k = getContainerProps(d.element).layoutKind;
+                        return k === "stack" || k === "scroll";
+                    },
+                    getValue: (d: D) => getContainerProps(d.element).stackWrap,
+                    setValue: (_d: D, v: boolean) => patch({ stackWrap: v }),
+                }),
+                defineField<D, any>({
                     id: "container.stackAlignItems",
                     type: "iconButtonGroup",
                     mode: "single",
