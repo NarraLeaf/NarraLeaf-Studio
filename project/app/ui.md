@@ -199,6 +199,9 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
         Grid: nl.list @120,180 1680x760 id=demo-gallery-grid
             itemStructId = demo.artwork
             itemKeyFieldId = id
+            repeatDirection = horizontal
+            repeatWrap = true
+            itemGap = 40
 
             Cell: nl.container @0,0 380x260
                 Shot: nl.image @0,0 380x214
