@@ -140,11 +140,11 @@ function RuntimeErrorScreen(props: { message: string }): ReactNode {
 }
 
 /**
- * The wait, painted in whatever colours are known yet.
+ * The wait, before this page knows anything about the game it is starting.
  *
- * Before the pack is read that is the seeded palette, which is what a project that never touched
- * its colours ships anyway; after it, the screen the game is starting towards. Either way it is a
- * colour somebody chose, which is the whole difference from the bare black div this replaced.
+ * It paints nothing over the window, which the shell has already coloured for the screen this game
+ * opens on - see `bootAppearance`. The indicator is all there is, and that is the whole of what was
+ * missing: a game that shows no sign of starting is one a player cannot tell from a hung one.
  */
 function RuntimeLoadingScreen(): ReactNode {
     const colors = resolveRuntimeBootColors(null);
@@ -1017,7 +1017,7 @@ function GameRuntimeSession() {
      * its numbers from a store of its own for exactly that reason, so nothing here re-renders while
      * the assets come in.
      */
-    const bootColors = useMemo(() => resolveRuntimeBootColors(entrySurface), [entrySurface]);
+    const bootColors = useMemo(() => resolveRuntimeBootColors(pack), [pack]);
 
     // Under the loading state rather than instead of it: this is what the game app draws when it has
     // no page yet, and a second indicator over the one already on screen would be two answers to the

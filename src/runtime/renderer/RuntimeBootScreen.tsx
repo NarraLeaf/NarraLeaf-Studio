@@ -13,8 +13,8 @@ import { getShellLocale } from "./shellLocale";
  *
  * Two decisions are the whole design:
  *
- * - **The colour is the game's, not this screen's.** It comes from the built pack's palette (see
- *   `resolveRuntimeBootBackground`), so the wait is painted in the same colour the title screen
+ * - **The colour is the game's, not this screen's.** It is the colour the shell already gave its
+ *   window for this game (see `bootAppearance`), so the wait is the same colour the title screen
  *   arrives in and the reveal is the interface appearing rather than the window changing colour.
  * - **Nothing is written on it.** A loading screen that talks needs an author to translate it, and
  *   an author who never asked for it cannot. The one string is the indicator's accessible name,
@@ -32,9 +32,8 @@ export function RuntimeBootBackdrop({ background }: { background: string }): Rea
 export function RuntimeBootScreen({ background, accent }: {
     background: string;
     /**
-     * The indicator's colour, from the palette rather than white: an author whose game is pale
-     * would otherwise get a bar they cannot see on their own background. The shell passes the
-     * project's `foreground`, which is by definition what is legible against its `background`.
+     * The indicator's colour: ink that reads against `background`, which is the only property this
+     * mark has to have. See `resolveRuntimeBootColors`.
      */
     accent: string;
 }): ReactNode {
