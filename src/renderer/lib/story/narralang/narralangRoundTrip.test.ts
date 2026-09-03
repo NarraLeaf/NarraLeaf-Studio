@@ -328,6 +328,12 @@ const corpus: Record<string, StoryScene> = {
         { id: "c1", kind: "action", payload: { action: "character", operation: "enter", characterId: "char-alice", tags: { "axis-outfit": "tag-uniform", "axis-mood": "tag-happy" }, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } }, transition: { kind: "fadeIn", durationMs: 300 } } },
         { id: "c2", kind: "action", payload: { action: "character", operation: "move", characterId: "char-alice", transform: { to: { position: { xalign: 0.5, yalign: 0.5 } }, durationMs: 400, easing: "easeInOut" } } },
         { id: "c3", kind: "action", payload: { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-smile" } },
+        // The commonest swap there is: two frames of one portrait crossfading. `fade` on a swap is
+        // the fade-in - the outgoing frame untouched - so the crossfade is spelled absolutely, and
+        // the swap is read through its OWN context rather than the character's for exactly this
+        // word. Read through the character's, `dissolve` named nothing and every row carrying one
+        // was reported as having no script spelling at all.
+        { id: "c9", kind: "action", payload: { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-smile", transition: { kind: "dissolve", durationMs: 200 } } },
         { id: "c4", kind: "action", payload: { action: "character", operation: "setName", characterId: "char-alice", displayName: "神秘的少女" } },
         { id: "c5", kind: "action", payload: { action: "character", operation: "setMotion", characterId: "char-doll", puppetName: "idle" } },
         { id: "c6", kind: "action", payload: { action: "character", operation: "setSkin", characterId: "char-doll", puppetName: "winter" } },
@@ -357,6 +363,10 @@ const corpus: Record<string, StoryScene> = {
         { id: "s1", kind: "action", payload: { action: "layer", operation: "create", objectName: "sky", zIndex: 5 } },
         { id: "s2", kind: "action", payload: { action: "image", operation: "create", objectName: "bird", assetId: "asset-bird", layer: { kind: "custom", sourceBlockId: "s1", name: "sky" }, autoFit: true, transform: { to: { position: { xalign: 0.75, yalign: 0.5 } } } } },
         { id: "s3", kind: "action", payload: { action: "image", operation: "setSource", objectName: "bird", target: BIRD, color: "#101018" } },
+        // A source swap is the stage object's portrait swap - `char(src, transition)` on both - so it
+        // carries the transition tail too. Without it a transition set on this row was dropped from
+        // the script without a word, and a trip through the text took it off the row.
+        { id: "s3b", kind: "action", payload: { action: "image", operation: "setSource", objectName: "bird", target: BIRD, assetId: "asset-bird", transition: { kind: "dissolve", durationMs: 250 } } },
         { id: "s4", kind: "action", payload: { action: "image", operation: "show", objectName: "bird", target: BIRD, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 500 }, transition: { kind: "fadeIn", durationMs: 300 } } },
         { id: "s5", kind: "action", payload: { action: "image", operation: "hide", objectName: "bird", target: BIRD, transform: { to: { opacity: 0 }, durationMs: 300 } } },
         { id: "s6", kind: "action", payload: { action: "text", operation: "create", objectName: "title", text: "第一章", layer: { kind: "default", layer: "background" }, transform: { to: { position: { xalign: 0.5, yalign: 0.5 } } } } },

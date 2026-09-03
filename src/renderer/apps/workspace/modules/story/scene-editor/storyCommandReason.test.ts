@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { commandI18nStore, i18nStore } from "@/lib/i18n";
+import { LOCALIZED_COMMANDS_DEFAULT } from "@/lib/settings/commandLanguageOptions";
 import { storyExpr as en } from "@shared/i18n/catalog/en/storyExpr";
 import { createTranslator } from "@shared/i18n";
 import type { TranslationKey } from "@shared/i18n";
@@ -63,8 +65,10 @@ describe("getCommandLineReason", () => {
         expect(reasonFor("just narration")).toBe(null);
         expect(reasonFor("/va")).toBe(null);
         expect(reasonFor("/")).toBe(null);
-        // ...but once they have moved past the token, the verdict is real.
-        expect(reasonFor("/nope ")).toBe(en.reason.unknownCommand);
+        // ...but once they have moved past the token, the verdict is real - and `nope` is one edit
+        // from `note`, so the verdict names it rather than stopping at "no such command".
+        expect(reasonFor("/nope ")).toBe(en.reason.unknownCommandNear);
+        expect(reasonFor("/xqjzzy ")).toBe(en.reason.unknownCommand);
     });
 
     it("distinguishes the ways a name can fail", () => {
@@ -159,5 +163,63 @@ describe("getCommandLineReason", () => {
     it("reports a malformed line", () => {
         expect(reasonFor("/bg forest nosuchparam=1")).toBe(en.reason.unknownParam);
         expect(reasonFor("/bg \"unclosed")).toBe(en.reason.unterminatedQuote);
+    });
+});
+
+/**
+ * The command a word that did not parse was reaching for.
+ *
+ * A word an author types is not always a word that ever parsed: `/face` became `/char` and its
+ * Chinese label went from 表情 to 外观 with it, so a Chinese author's fingers produce a token nothing
+ * answers to and the row said only that no such command exists. What it says now is which command
+ * the catalogue thinks was meant - and it says it WITHOUT a table of retired words, because a second,
+ * historical vocabulary is a list nobody maintains and every rename has to remember to grow.
+ *
+ * It comes out of the catalogue as it stands: the word is looked for among today's spellings, and
+ * then in what each command's own entry says it does - which is what catches the rename, since the
+ * thing /char does has not changed and its description still says 表情 among the appearances it
+ * switches. The assertions below are written to fail if that ever becomes a word list: 差分 is
+ * another word out of the same sentence and has to answer the same way, and 見た目 - which appears in
+ * no Chinese or English string at all - has to answer from the Japanese catalogue.
+ */
+describe("the nearest match to a word that names no command", () => {
+    afterEach(() => {
+        commandI18nStore.setPreference(LOCALIZED_COMMANDS_DEFAULT);
+        i18nStore.setLocale("en");
+    });
+
+    /** The reason, with its params filled - the suggestion is a param and the message is the key. */
+    function suggestionFor(source: string): string | null {
+        const reason = getCommandLineReason(source, CONTEXT);
+        if (!reason || reason.key !== ("storyExpr.reason.unknownCommandNear" as TranslationKey)) {
+            return null;
+        }
+        return String(reason.params.suggestion);
+    }
+
+    it("names the command in Chinese for the Chinese word the rename took away", () => {
+        i18nStore.setLocale("zh");
+
+        // The whole point: 表情 was /char's label until the rename, and it is still what the command
+        // does - so the hint reaches it through the description, in the word an author would type.
+        expect(suggestionFor("/表情 ")).toBe("外观");
+        // Another word out of the same sentence, which a table of former labels would not hold.
+        expect(suggestionFor("/差分 ")).toBe("外观");
+    });
+
+    it("reads every locale, not the active one", () => {
+        // 見た目 is the Japanese label and appears in no English or Chinese string. Reaching it from
+        // an English interface is what shows the table is the catalogue rather than one language of it
+        // - and the answer is spelled in the language the author would have to type.
+        expect(suggestionFor("/見た目 ")).toBe("char");
+    });
+
+    it("names the spelling a typo or an abbreviation is close to", () => {
+        expect(suggestionFor("/bgg ")).toBe("bg");
+        expect(suggestionFor("/backgroun ")).toBe("bg");
+    });
+
+    it("says nothing when nothing in the catalogue is close", () => {
+        expect(suggestionFor("/xqjzzy ")).toBe(null);
     });
 });

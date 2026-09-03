@@ -43,6 +43,7 @@ export const storyExpr = {
      */
     reason: {
         unknownCommand: "There is no /{token} command.",
+        unknownCommandNear: "There is no /{token} command. The nearest match is /{suggestion}.",
         unknownParam: "/{token} has no \"{key}\" option.",
         duplicateParam: "\"{key}\" is given twice.",
         extraPositional: "\"{value}\" is one argument too many.",
