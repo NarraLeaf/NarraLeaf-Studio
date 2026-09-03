@@ -18,7 +18,7 @@
  * Comments in English per project convention.
  */
 
-import { LINT_RULES, runLintRules, type LintReportEntry } from "@/lib/lint";
+import { LINT_RULES, runLintRules, storyUnreadableFinding, type LintReportEntry } from "@/lib/lint";
 import { buildProjectLintContext, headlessLintCategories } from "@/lib/lint/projectContext";
 import { translate } from "@/lib/i18n";
 import type { StoryDocument, StoryScene } from "@shared/types/story";
@@ -102,14 +102,32 @@ export async function checkStoryFile(
     };
 }
 
-/** Every story in the project, as the document layer sees it. Used by `check` with no file. */
+/**
+ * Every story in the project, as the document layer sees it. Used by `check` with no file.
+ *
+ * A story that will not open becomes a diagnostic rather than aborting the run, and the same one
+ * Studio's lint panel shows: `story/unreadable`, an id no rule owns. Abandoning the whole check at
+ * the first refused document would report a project of nine stories as unreadable because one of
+ * them is, and the eight that do open are the ones the author can still act on. Those findings lead
+ * the list for the same reason they lead the report - "this story would not open at all" is the
+ * first thing a reader needs.
+ */
 export async function checkProject(projectDir: string): Promise<CheckResult> {
     const data = readProjectData(projectDir);
     const documents: Record<string, StoryDocument> = {};
+    const unreadable: StoryFileDiagnostic[] = [];
     for (const story of listStories(projectDir)) {
-        documents[story.id] = readStoryDocument(projectDir, story.id).document;
+        try {
+            documents[story.id] = readStoryDocument(projectDir, story.id).document;
+        } catch (error) {
+            unreadable.push(toDiagnostic(storyUnreadableFinding(story, error)));
+        }
     }
-    return { diagnostics: await lintProject(projectDir, data, documents), scene: null, notRun: notRunCategories() };
+    return {
+        diagnostics: [...unreadable, ...(await lintProject(projectDir, data, documents))],
+        scene: null,
+        notRun: notRunCategories(),
+    };
 }
 
 function notRunCategories(): string[] {
