@@ -124,25 +124,27 @@ function aaCeilingAgainst(surface: string): number {
     return (relativeLuminance(surface) + 0.05) / AA_CONTRAST - 0.05;
 }
 
-const PRESET_LUMINANCES = ACCENT_PRESETS.map(preset => relativeLuminance(preset.hex));
-
 /**
- * The band the ink is kept inside, one bound per ladder.
+ * The band the ink is kept inside: AA against the surface, on both ladders and for every accent.
+ * Text that carries meaning has to be readable, and there is no accent for which that stops being
+ * true, so there is no second clause here — nothing is exempt, presets included.
  *
- * The bound is AA against the surface, EXCEPT that it is never allowed to exclude the presets
- * themselves. Those two clauses land differently on the two ladders, and both results are wanted:
+ * The two ladders reach that differently, and only one of them moves any pixels:
  *
- *   - dark: AA needs 0.200 and the darkest preset sits at 0.226, so AA binds. Every preset keeps
- *     the colour it has today and a dark custom accent is lifted until it clears AA.
- *   - light: AA needs 0.155 and the brand anchor sits at 0.331, so the anchor binds. Its 2.4:1 on
- *     the light ladder is a known, deliberate trade-off (docs/design-system.md §1) that belongs to
- *     the anchor and not to this clamp; tightening the ceiling to AA would repaint all five presets
- *     on that ladder, which is a brand decision rather than a readability fix. What the clamp does
- *     guarantee is that no accent is ever LESS readable than the one the product ships with — a
- *     pale yellow goes from 1.0:1, which is nothing at all, to the anchor's own 2.4:1.
+ *   - dark: AA needs 0.200 and the darkest preset sits at 0.226, so all five are already inside
+ *     and come out untouched. Only a dark custom accent is lifted.
+ *   - light: AA needs 0.155 while the presets sit between 0.226 and 0.331, so all five are pushed
+ *     down — the brand anchor `#40a8c4` is written as `#2d768a` when it is a glyph or a hairline
+ *     on a pale surface. That is the point rather than a side effect: the anchor's own 2.4:1 there
+ *     was unreadable, and the ceiling used to be pinned to it so that the presets stayed
+ *     pixel-identical, which bought identical pixels at the cost of the text.
+ *
+ * The accent itself is untouched by any of this. Filled shapes (`bg-primary`), focus rings and SVG
+ * fill/stroke still paint the raw `--nl-primary`, so the anchor is still the anchor everywhere it
+ * is being looked at rather than read.
  */
-const INK_FLOOR_ON_DARK = Math.min(aaFloorAgainst(SURFACE_ON_DARK), ...PRESET_LUMINANCES);
-const INK_CEILING_ON_LIGHT = Math.max(aaCeilingAgainst(SURFACE_ON_LIGHT), ...PRESET_LUMINANCES);
+const INK_FLOOR_ON_DARK = aaFloorAgainst(SURFACE_ON_DARK);
+const INK_CEILING_ON_LIGHT = aaCeilingAgainst(SURFACE_ON_LIGHT);
 
 /** Granularity of the mix below: 1/1024 of the way to black or white per step. */
 const MIX_STEPS = 1024;
@@ -192,9 +194,10 @@ function clampLuminance(channels: readonly number[], bound: number, lighten: boo
  * `--nl-on-primary` only answers what to write ON the accent. The accent is also written IN, on
  * ordinary surfaces, at close to two hundred places, and there "any colour" is only honest if a
  * pale one still reads: an accent whose luminance is next to the surface's draws a glyph nobody
- * can see. So the ink is the accent with its luminance clamped into the readable band of the
+ * can see. So the ink is the accent with its luminance clamped to AA against the surface of the
  * ladder it will be read on — lifted on the dark one, lowered on the light one, and returned
- * untouched whenever it was already inside, which is the case for every preset on both ladders.
+ * untouched whenever it was already inside. The presets are inside on the dark ladder and outside
+ * on the light one, so the five come back unchanged there and darkened here.
  *
  * Two ladders and no way to ask which is current: the theme is `prefers-color-scheme` and Electron
  * updates that query's value without dispatching `change` (docs/design-system.md §0). Both inks are

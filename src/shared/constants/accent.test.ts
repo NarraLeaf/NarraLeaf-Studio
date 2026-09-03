@@ -13,8 +13,10 @@ import { ACCENT_PRESETS, accentInk, normalizeAccentColor } from "./accent";
  * near-black one on the dark ladder, has nothing between it and the surface, so `accentInk`
  * clamps the luminance per ladder. Three things have to keep holding:
  *
- *   - the five presets come out of it untouched, because they are the product's own look;
- *   - anything else clears the band, whichever ladder it lands on;
+ *   - every accent clears AA on both ladders, the five presets included — the band has no
+ *     exemptions, which is why the presets are darkened on the light ladder;
+ *   - the colour that comes back is still the one that went in, only readable: same hue, and
+ *     untouched altogether whenever it already cleared AA (which is every preset on the dark one);
  *   - the band is measured against the surface the stylesheet actually paints.
  *
  * The last one is why this file reads styles.css and the Tailwind config rather than trusting the
@@ -60,8 +62,10 @@ function surfaceChannels(): { dark: number[]; light: number[] } {
 
 const SURFACE = surfaceChannels();
 
-/** The brand anchor, which is what the light ladder's ceiling is pinned to. */
-const ANCHOR = parseChannels(ACCENT_PRESETS[0].channels);
+/** The order the channels sit in, which is what survives a mix toward black or white. */
+function channelOrder(channels: readonly number[]): number[] {
+    return [0, 1, 2].sort((a, b) => channels[b] - channels[a]);
+}
 
 /** A spread of accents nobody would call safe, plus a few ordinary ones. */
 const SAMPLES = [
@@ -77,18 +81,44 @@ describe("the accent presets", () => {
         }
     });
 
-    it("are their own ink on both ladders, so nothing about them moves", () => {
+    it("are their own ink on the dark ladder, so nothing about them moves there", () => {
         for (const preset of ACCENT_PRESETS) {
             const accent = normalizeAccentColor(preset.id);
             expect(accent.inkOnDarkChannels).toBe(preset.channels);
-            expect(accent.inkOnLightChannels).toBe(preset.channels);
+            expect(contrast(parseChannels(preset.channels), SURFACE.dark)).toBeGreaterThanOrEqual(AA_CONTRAST);
         }
     });
 
-    it("clear AA as text on the dark ladder's surface, which is what lets the clamp be AA there", () => {
+    /**
+     * The light ladder is the one that moves. Each preset sits above the AA ceiling on a pale
+     * surface — the brand anchor worst of all at 2.4:1 — so each is darkened until it clears AA,
+     * and none of them is exempt for being a preset.
+     */
+    it("are darkened on the light ladder until they clear AA", () => {
         for (const preset of ACCENT_PRESETS) {
-            expect(contrast(parseChannels(preset.channels), SURFACE.dark)).toBeGreaterThanOrEqual(AA_CONTRAST);
+            const accent = normalizeAccentColor(preset.id);
+            const ink = parseChannels(accent.inkOnLightChannels);
+            expect(contrast(parseChannels(preset.channels), SURFACE.light)).toBeLessThan(AA_CONTRAST);
+            expect(contrast(ink, SURFACE.light)).toBeGreaterThanOrEqual(AA_CONTRAST);
+            expect(accent.inkOnLightChannels).not.toBe(preset.channels);
         }
+    });
+
+    /** Darker, but the same colour: the mix toward black is a uniform scale, so the hue holds. */
+    it("keep their hue when the light ladder darkens them", () => {
+        for (const preset of ACCENT_PRESETS) {
+            const accent = normalizeAccentColor(preset.id);
+            expect(channelOrder(parseChannels(accent.inkOnLightChannels)))
+                .toEqual(channelOrder(parseChannels(preset.channels)));
+        }
+    });
+
+    /**
+     * The one value written down in prose as well as computed here (docs/design-system.md §1), so
+     * the anchor's light ink is pinned rather than only described.
+     */
+    it("write the brand anchor as #2d768a on the light ladder", () => {
+        expect(normalizeAccentColor("teal").inkOnLightChannels).toBe("45 118 138");
     });
 });
 
@@ -100,17 +130,25 @@ describe("the accent ink", () => {
         }
     });
 
-    /**
-     * The light ladder's ceiling is the brand anchor rather than AA: the anchor's own 2.4:1 on a
-     * light surface is a decision the design system records and holds (docs/design-system.md §1),
-     * and tightening the ceiling past it would repaint all five presets. So the promise here is the
-     * one the clamp can actually keep — no accent is ever less readable than the one that ships.
-     */
-    it("is never less readable than the brand anchor on the light surface", () => {
-        const floor = contrast(ANCHOR, SURFACE.light);
+    it("clears AA against the light surface, whatever the accent", () => {
         for (const hex of SAMPLES) {
             const ink = parseChannels(accentInk(hex, "light"));
-            expect(contrast(ink, SURFACE.light)).toBeGreaterThanOrEqual(floor - 1e-9);
+            expect(contrast(ink, SURFACE.light)).toBeGreaterThanOrEqual(AA_CONTRAST);
+        }
+    });
+
+    /**
+     * Clamped to the band and not past it: an accent that already clears AA is returned as it is,
+     * so the ink is never darker or lighter than the readability it is buying.
+     */
+    it("stops at the band rather than driving on to black or white", () => {
+        for (const hex of SAMPLES) {
+            for (const [ladder, surface] of [["dark", SURFACE.dark], ["light", SURFACE.light]] as const) {
+                const source = [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
+                if (contrast(source, surface) >= AA_CONTRAST) {
+                    expect(accentInk(hex, ladder)).toBe(source.join(" "));
+                }
+            }
         }
     });
 
@@ -136,18 +174,16 @@ describe("the accent ink", () => {
         for (const hex of ["#f3f0a0", "#1a0033", "#7a5cff"]) {
             for (const ladder of ["dark", "light"] as const) {
                 const source = [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
-                const ink = parseChannels(accentInk(hex, ladder));
-                const order = (channels: readonly number[]): number[] =>
-                    [0, 1, 2].sort((a, b) => channels[b] - channels[a]);
-                expect(order(ink)).toEqual(order(source));
+                expect(channelOrder(parseChannels(accentInk(hex, ladder)))).toEqual(channelOrder(source));
             }
         }
     });
 
     it("falls back to the default accent for a value it cannot read", () => {
         const fallback = normalizeAccentColor("not a colour");
-        expect(fallback.inkOnDarkChannels).toBe(ACCENT_PRESETS[0].channels);
-        expect(fallback.inkOnLightChannels).toBe(ACCENT_PRESETS[0].channels);
+        const anchor = normalizeAccentColor(ACCENT_PRESETS[0].id);
+        expect(fallback.inkOnDarkChannels).toBe(anchor.inkOnDarkChannels);
+        expect(fallback.inkOnLightChannels).toBe(anchor.inkOnLightChannels);
     });
 });
 

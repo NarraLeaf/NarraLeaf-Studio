@@ -28,18 +28,30 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 ### 强调色的两支墨色
 
-强调色是**用户可改的**（设置 ▸ 外观 ▸ 强调色；五个预设之外还能取任意 hex），所以「拿它画什么」分两种，各有一支派生墨色。两支都由 [`@shared/constants/accent`](../src/shared/constants/accent.ts) 算出、由 `lib/appearance` 写在根元素上，**五个预设算出来就是它自己**，因此一像素不动。
+强调色是**用户可改的**（设置 ▸ 外观 ▸ 强调色；五个预设之外还能取任意 hex），所以「拿它画什么」分两种，各有一支派生墨色。两支都由 [`@shared/constants/accent`](../src/shared/constants/accent.ts) 算出、由 `lib/appearance` 写在根元素上。
 
 | Token | Tailwind | 什么时候是它 |
 |---|---|---|
 | `--nl-on-primary` | `text-on-primary` | 压在**实心强调色上**的字（主按钮、badge）。`accentForeground`：强调色亮过 0.5 就翻成深色墨。实心 `bg-primary` 上不要写 `text-white`。 |
-| `--nl-primary-ink` | `text-primary` / `border-primary` / `divide-primary` / `decoration-primary` | 强调色**画在普通表面上**的字与发丝线。`accentInk`：按当前主题把亮度夹进可读区间。 |
+| `--nl-primary-ink` | `text-primary` / `border-primary` / `divide-primary` / `decoration-primary` | 强调色**画在普通表面上**的字与发丝线。`accentInk`：按当前主题把亮度夹到对 `--nl-surface` 至少 AA 4.5:1，**任何强调色、两个主题都不例外**。 |
 
 其余的 `*-primary` 都还是 `--nl-primary` 本身：填充面（`bg-primary`）、焦点圈（`ring-primary` / `outline-primary`）、SVG 的 `fill-` / `stroke-primary`。分界是这一色在干什么——**一块被填满的形状是被看见的，一个字形是要被读的**，只有后者必须保对比度。切换只需改 tailwind.config.js 里 `textColor` / `borderColor` 那两条，不用动调用方。
 
 两个主题的墨色不同，而主题是纯 CSS（§0）、JS 问不到当前是哪一档，所以 `lib/appearance` 把两支都发出来（`--nl-primary-ink-on-dark` / `--nl-primary-ink-on-light`），由 styles.css 的亮色块挑。换主题不需要任何 JS 参与。
 
-> ⚠️ **已知取舍**：`text-primary` 在亮色主题下对比度约 **2.4:1**（品牌青压在浅底上），低于 AA。夹取的**上界就钉在品牌锚点这个值**：收紧到 AA 会把五个预设在亮色主题下全部改色，那是品牌裁决而不是可读性修复。所以 `--nl-primary-ink` 在亮色主题给的保证是「**任何强调色都不会比出厂那个更难读**」（一个淡黄从 1.0:1 抬到 2.4:1），暗色主题给的才是完整的 AA 4.5:1。要把亮色也提到 AA，改 `accentInk` 里 `INK_CEILING_ON_LIGHT` 那一句。
+> ⚠️ **已知取舍**：夹取的两个边界都是 AA 4.5:1，**没有为预设开的口子**。暗色主题下五个预设本来就在区间内（最暗的 Slate 是 4.97:1），算出来仍是它自己、一像素不动；亮色主题下五个**全部被压暗**——包括品牌锚点。于是在亮色主题里，**色板上的那一格与同一处的文字颜色不是同一个值**。这是有意的：一块被填满的形状是被看见的，一个字形是要被读的，只有后者必须保对比度。锚点在"被看"的地方（`bg-primary`、焦点圈、SVG `fill-`/`stroke-primary`）仍然是 `#40a8c4` 原色。
+
+亮色主题下五个预设的墨色（由 `accentInk` 算出，下表只是给人看；锚点那一行由 `accent.test.ts` 钉住）：
+
+| 预设 | 强调色 | 亮色主题墨色 | 对 `--nl-surface` |
+|---|---|---|---|
+| Leaf teal | `#40a8c4` | `#2d768a` | 2.42:1 → 4.52:1 |
+| Sky | `#5394c6` | `#407299` | 2.87:1 → 4.51:1 |
+| Indigo | `#7384ca` | `#5d6aa3` | 3.13:1 → 4.54:1 |
+| Rose | `#c46e9c` | `#9c577c` | 3.04:1 → 4.52:1 |
+| Slate | `#738596` | `#606f7e` | 3.33:1 → 4.52:1 |
+
+压暗走的是"整体乘一个系数往黑色混"，三个通道同比缩放，所以**色相原样保留**——还是同一个颜色，只是能读了。自定义 hex 走同一条路：一个淡黄从 1.0:1 抬到 4.5:1，一个近黑色在暗色主题下被提亮到 4.5:1。
 
 | Token | 值 | HSL | 用途 |
 |---|---|---|---|
