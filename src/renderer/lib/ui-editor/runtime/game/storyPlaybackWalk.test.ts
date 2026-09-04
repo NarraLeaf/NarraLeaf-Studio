@@ -101,6 +101,18 @@ describe("collectStoryPlaybackPlan", () => {
         expect(ids(scene, "a")).toEqual(["a", "b"]);
     });
 
+    it("drops a row that has not resolved yet, and carries on past it", () => {
+        const scene = makeScene({
+            a: say("a"),
+            half: block("half", "invalid", { source: "/sho alic" }),
+            b: say("b"),
+        }, ["a", "half", "b"]);
+        // Skipped in the middle of a tail, and skipped as the start row - a half-written line is a
+        // normal thing to have the cursor on, and playback carries on from what follows it.
+        expect(ids(scene, "a")).toEqual(["a", "b"]);
+        expect(ids(scene, "half")).toEqual(["b"]);
+    });
+
     it("marks steps inside an NVL container", () => {
         const scene = makeScene({
             nvl: block("nvl", "action", { action: "nvl" }, null, ["n1", "n2"]),

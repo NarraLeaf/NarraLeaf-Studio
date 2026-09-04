@@ -105,8 +105,8 @@ Manifest 字段：
 | `key` | `string` | 插件内唯一。**不需要**以插件 ID 为前缀（存储本身已按插件分区）。只作存储键，永不显示。 |
 | `label` | `string` | 作者看到的字段名，不能为空。 |
 | `description` | `string` | 可选。一句话说明这个值是干什么的。 |
-| `type` | `"text" \| "secret"` | `text` 存进工程（随版本控制走）；`secret` 不存——工程里存的是一个 handle，值本身封存在填写它的那台机器上。 |
-| `scope` | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在工程一级，App Tag 变体不能各说各的。 |
+| `type` | `"text" \| "secret"` | `text` 存进项目（随版本控制走）；`secret` 不存——项目里存的是一个 handle，值本身封存在填写它的那台机器上。 |
+| `scope` | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在项目一级，App Tag 变体不能各说各的。 |
 | `platforms` | `GameBuildPlatform[]` | 可选，缺省表示所有平台。空数组会被判为清单错误。 |
 | `required` | `boolean` | 可选。缺这个值的构建会被拒绝。 |
 
