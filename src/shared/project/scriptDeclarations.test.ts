@@ -152,14 +152,17 @@ describe("the host API half of the declarations", () => {
             "WidgetCtx",
             "ComponentWidgetCtx",
             "StoryCtx",
-            "ValueCtx",
+            "StorySyncCtx",
             "ScriptEvent",
             "WidgetHandler",
         ]) {
             // A name Studio writes into a starter file and the declarations do not export is a
-            // fresh script blueprint that does not compile.
+            // fresh script that does not compile.
             expect(SCRIPT_API_DECLARATIONS, name).toContain(`export type ${name}`);
         }
+        // And the one a value binding would have used, which is not offered: the slot takes a
+        // blueprint, so shipping the type would be offering an author something refused three ways.
+        expect(SCRIPT_API_DECLARATIONS).not.toContain("ValueCtx");
     });
 
     it("resolves with nothing installed", () => {
