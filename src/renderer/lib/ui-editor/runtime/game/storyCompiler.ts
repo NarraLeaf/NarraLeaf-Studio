@@ -2658,10 +2658,18 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
     }
 
     if (block.kind === "invalid") {
-        // Skipped rather than fatal so preview still runs: a half-typed command is a normal thing to
-        // have on screen while writing. `error` (not `warning`) is what stops it there - a production
-        // build refuses on error diagnostics, so an unfinished line cannot ship quietly.
-        diagnostic(ctx, "error", block.id, `Invalid command, skipped: ${block.payload.source}`);
+        // A line that has not resolved yet: nothing to emit, and nothing said about it here.
+        //
+        // It used to raise an `error`, on the reasoning that a production build refuses on error
+        // diagnostics. That was never true of this compiler - it runs inside the game at startup,
+        // never in the packer, so what actually stops an unresolved line from shipping is
+        // `BuildService`'s own gate (`collectInvalidStoryBlocks`), which refuses before a single
+        // scene is compiled. The row is already reported in the two places an author can act on it:
+        // drawn in the reject colour with the reason beside it, and listed by `story/invalid-command`
+        // in the lint report. Repeating it here bought a fourth telling that fires once per compile
+        // per row - twice for a row-precise launch, which compiles its scene both normally and as the
+        // entry - so an author writing with Dev Mode open was told they had broken something on every
+        // reload, about a line they were in the middle of typing.
         return [];
     }
 

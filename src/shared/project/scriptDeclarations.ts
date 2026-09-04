@@ -57,7 +57,15 @@ export type ScriptProjectFacts = {
     components: readonly ScriptSurfaceFacts[];
     characters: readonly { id: string; name: string }[];
     stories: readonly { id: string; name: string }[];
-    scenes: readonly { id: string; name: string }[];
+    /**
+     * Every scene, or `null` when this caller did not gather them.
+     *
+     * The two are different answers and the file says them differently: an empty list is a project
+     * that has none, `null` is a project whose scenes were not read. Scenes live in the story
+     * documents rather than in the library, so the caller that writes this file when a project
+     * opens does not have them without loading every story - see `collectScriptProjectFacts`.
+     */
+    scenes: readonly { id: string; name: string }[] | null;
     savedVariables: readonly { id: string; name: string }[];
     persistentVariables: readonly { id: string; name: string }[];
     audioTracks: readonly { id: string; name: string }[];
@@ -130,6 +138,30 @@ function surfaceBlock(surface: ScriptSurfaceFacts, typeName: string, componentSc
 }
 
 /**
+ * `SceneId`, with a line saying which of two answers it is.
+ *
+ * `never` states that the project has none, which is what {@link unionOf} means by an empty list.
+ * Saying that about ids nobody looked for is the same lie from the other side: an author with forty
+ * scenes would be told they have none. `string` is what "not known here" is worth, and the comment
+ * above it in the written file is what stops a reader having to guess which of the two they met.
+ */
+function sceneIdLines(scenes: ScriptProjectFacts["scenes"]): string[] {
+    if (scenes === null) {
+        return [
+            "    /**",
+            "     * Any scene id. Scenes live in the story documents, which are not read when this file is",
+            "     * written, so they cannot be listed here - `string` rather than a union of the real ids.",
+            "     */",
+            "    type SceneId = string;",
+        ];
+    }
+    return [
+        "    /** Every scene, by the id `isSceneVisited` takes. */",
+        `    type SceneId = ${unionOf(scenes.map(scene => scene.id))};`,
+    ];
+}
+
+/**
  * Render the project half of a script's declarations.
  *
  * Pure, so it can be checked against a project's facts without a filesystem, and so the two callers
@@ -152,15 +184,14 @@ export function renderProjectDeclarations(facts: ScriptProjectFacts): string {
         `    type CharacterId = ${unionOf(facts.characters.map(character => character.id))};`,
         "    /** Every story. */",
         `    type StoryId = ${unionOf(facts.stories.map(story => story.id))};`,
-        "    /** Every scene, by the id `isSceneVisited` takes. */",
-        `    type SceneId = ${unionOf(facts.scenes.map(scene => scene.id))};`,
+        ...sceneIdLines(facts.scenes),
         "    /** Saved variables - one playthrough's own values. */",
         `    type SavedVariableId = ${unionOf(facts.savedVariables.map(variable => variable.id))};`,
         "    /** Persistent variables - shared by every save file. */",
         `    type PersistentVariableId = ${unionOf(facts.persistentVariables.map(variable => variable.id))};`,
         "    /** Audio tracks, by the id the mixer takes. */",
         `    type AudioTrackId = ${unionOf(facts.audioTracks.map(track => track.id))};`,
-        "    /** Input actions, by the id `isActionHeld` takes. */",
+        "    /** Every input action, by the id `isActionHeld` takes. */",
         `    type InputActionId = ${unionOf(facts.inputActions.map(action => action.id))};`,
         "    /** Languages this project ships. */",
         `    type LocaleCode = ${unionOf(facts.locales)};`,

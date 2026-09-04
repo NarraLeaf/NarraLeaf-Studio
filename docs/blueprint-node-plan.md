@@ -44,7 +44,7 @@
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
 | On Preference Changed | `blueprint.event.head.preferenceChanged` | **已实现**。监听当前 `LiveGame` 指定 Game Preference（如 BGM Volume）变化；Inspector `Preference` 选择偏好键；输出 `then` / `value` / `previousValue`；订阅 NarraLeaf React `game.preference.onPreferenceChange`；Global 与 Surface 蓝图可用。 |
 | On Any Preference Changed | `blueprint.event.head.anyPreferenceChanged` | **已实现**。监听当前 `LiveGame` 任意 Game Preference 变化；输出 `then` / `key` / `value` / `previousValue`；Global 与 Surface 蓝图可用。 |
-| On Action | `blueprint.event.head.action` | **已实现**。工程声明的输入操作被触发时执行；Inspector `Action` 从工程的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
+| On Action | `blueprint.event.head.action` | **已实现**。项目声明的输入操作被触发时执行；Inspector `Action` 从项目的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
 | On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
 ## Flow
@@ -224,7 +224,7 @@
 
 ## Input
 
-工程给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
+项目给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |

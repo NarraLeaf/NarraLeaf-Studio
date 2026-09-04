@@ -1212,9 +1212,22 @@ export type IPCEvents = {
 } & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
 
 /**
- * Version control. Every event carries `projectPath`: Studio is
- * one-project-one-window and the VCS runtime is keyed per project, so an event
- * without it would be ambiguous the moment two projects are open.
+ * Version control. Nearly every event carries `projectPath`, because the VCS runtime is keyed per
+ * project and an event without it would be ambiguous the moment two projects are open.
+ *
+ * "Nearly", and the exceptions are worth naming rather than rounding off - a rule stated as
+ * absolute invites a blanket check, and a blanket check would break them:
+ *
+ *  - {@link IPCEventType.vcsGetAvailability} asks about the host, not a project.
+ *  - {@link IPCEventType.vcsTrustAuthority} is about the account's trust store, and is asked by
+ *    the server-trust prompt, a window with no project.
+ *
+ * Nor does carrying one mean naming somebody else's is allowed. Most of these fields say "the
+ * project I have open", which the main process already wrote into the window's props - the renderer
+ * only holds the string because it read it back out - and `requireWindowProject` is how a handler
+ * says so. {@link IPCEventType.vcsInitRepository} is the standing counter-example: the project
+ * wizard legitimately names a directory that is not any window's project, so that one needs a
+ * different kind of check rather than this one.
  *
  * Blobs cross as base64 rather than Buffer - structured clone would turn a
  * Buffer into a Uint8Array on the renderer side anyway, and base64 keeps the
@@ -1528,11 +1541,15 @@ export type IPCVcsEvents = {
      * asked to by somebody who was shown its fingerprint. Only a certificate this process
      * wrote is eligible - the path is checked against Studio's own directory, because a
      * renderer names it and a renderer is where untrusted content ends up.
+     *
+     * The one event in this table with no `projectPath`, because it is the one that is not
+     * about a project: an authority is trusted for the account, and the window that asks is
+     * the server-trust prompt, which has no project of its own to name.
      */
     [IPCEventType.vcsTrustAuthority]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { projectPath: string; certificatePath: string },
+        data: { certificatePath: string },
         response: { installed: boolean; output: string };
     };
     /** Local: clears the stored token as well as Studio's record of whose it was. */
@@ -3437,18 +3454,20 @@ export type IPCBlueprintPersistenceEvents = {
      * One Open Link node request, decided and performed by the main process on the Dev Mode
      * preview's behalf.
      *
-     * The renderer sends the address and never the permission: the handler reads the project's own
-     * declared addresses off disk and refuses anything else, which is what makes Dev Mode behave
-     * like the shipped game rather than like a window with Studio's privileges behind it.
+     * The renderer sends the address and never the permission: the handler decides on the
+     * address's scheme, exactly as the shipped game's main process does, which is what makes Dev
+     * Mode behave like the shipped game rather than like a window with Studio's privileges behind
+     * it.
      *
-     * The project path, not a window handle, identifies whose declaration applies - the same shape
-     * the Fetch channel above uses.
+     * No `projectPath`, unlike the Fetch channel above. Whose request this is comes from the
+     * window, which is where project trust is read; the field this used to carry was named by the
+     * caller and read by nobody, and a payload field nothing consults is an invitation to guard the
+     * wrong thing.
      */
     [IPCEventType.blueprintExternalLinkOpen]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
-            projectPath: string;
             request: BlueprintOpenExternalRequest;
         },
         response: {

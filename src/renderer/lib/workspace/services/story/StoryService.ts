@@ -3107,8 +3107,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * changes through {@link mutateDocument}, which files the change as it makes it, so a table that
      * exists is a table that is current and re-walking thirty thousand rows to confirm it buys
      * nothing. A table that does *not* exist is the one case a read has to answer for: `createStory`
-     * and both load paths derive one, but a future path that installs a document without doing so
-     * would otherwise leave the story's assets deletable.
+     * and both load paths derive one, so every story has an entry from the moment it is in memory.
+     *
+     * Note that no delete is gated on the result: `AssetsService.deleteAsset` asks
+     * `ReferenceService`, which walks every document kind rather than only stories and characters.
+     * See `AssetLockManager` for what still reads this table, which is nothing.
      */
     private ensureStoryAssetLocks(storyId: StoryId, document: StoryDocument): void {
         if (this.storyAssetLocks.has(storyId)) {

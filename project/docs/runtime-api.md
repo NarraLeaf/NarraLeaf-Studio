@@ -153,14 +153,14 @@ if (menu) {
 }
 ```
 
-内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签走工程本地化键。
+内建插件 `narraleaf.menu-bar` 就是这个域的第一个使用者：作者面在 Studio 左边栏，文档随包（`contributes.runtimeData`），标签走项目本地化键。
 
 ### game.locale
 
-游戏当前语言，以及工程自己的文案。
+游戏当前语言，以及项目自己的文案。
 
 - `current` / `onChange(listener)`：玩家正在读的语言，与切换通知。
-- `text(key)`：按工程的本地化键取当前语言下的文案，走的是 `Get Text` 节点那张表、那条 fallback 链；工程没声明这个键时返回 `null`。**给玩家看的字一律走这里**，插件自带一份译文是翻译流程唯一看不到的那份。
+- `text(key)`：按项目的本地化键取当前语言下的文案，走的是 `Get Text` 节点那张表、那条 fallback 链；项目没声明这个键时返回 `null`。**给玩家看的字一律走这里**，插件自带一份译文是翻译流程唯一看不到的那份。
 
 ### game.log
 

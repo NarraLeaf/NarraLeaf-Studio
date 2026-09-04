@@ -548,7 +548,7 @@
     - [ ] Motion 预设库与市场共享
     - [ ] Timeline-free micro-interactions 工作台
   - [ ] VN 常用范式
-    - [ ] Dialogue / Choice / SaveLoad / Settings / Pause / Toast / History 等「官方范式套件」（工程内可参考 `project/examples`，非模板引擎）
+    - [ ] Dialogue / Choice / SaveLoad / Settings / Pause / Toast / History 等「官方范式套件」（仓库内可参考 `project/examples`，非模板引擎）
   - [ ] 复用模型
     - [x] Surface Link（Stage Surface 链接 App Surface，共享 UIDocument）
     - [x] 剪贴板复制粘贴（粘贴路径含 blueprint 相关 **id remap**；尚无独立 remap 配置面板）
@@ -635,7 +635,7 @@
     - [ ] 插件构建钩子
     - [ ] 构建缓存
   - [ ] NarraLeaf 运行时集成
-    - [ ] `narraleaf-react` 工程生成
+    - [ ] `narraleaf-react` 项目生成
     - [ ] 运行时 UI 适配层
     - [ ] 可替换应用壳（App Shell）
     - [ ] 运行时兼容性检查

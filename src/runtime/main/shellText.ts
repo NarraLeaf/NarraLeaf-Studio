@@ -31,7 +31,7 @@ interface ShellStrings {
     hangRestart: string;
     /** Said once the process is going down and nothing else will be shown. */
     fatalClose: string;
-    /** `{path}` - where the report was written. Identical to `game.crash.logAt`. */
+    /** `{path}` - where the log was written. Identical to `game.crash.logAt`. */
     logAt: string;
     /** `{reason}` - Chromium's word for how the page process ended. */
     windowStopped: string;
@@ -62,7 +62,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         hangKeepWaiting: "Keep waiting",
         hangRestart: "Restart",
         fatalClose: "The game has to close.",
-        logAt: "The report is in {path}",
+        logAt: "The log is in {path}",
         windowStopped: "The game window stopped working ({reason}).",
         displayProcessExited: "The game's display process exited: {reason} (exit code {exitCode})",
         contentTooNew: "This content needs a newer version of the game.",
@@ -76,7 +76,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         hangKeepWaiting: "继续等待",
         hangRestart: "重新启动",
         fatalClose: "游戏将关闭。",
-        logAt: "报告位于 {path}",
+        logAt: "日志位于 {path}",
         windowStopped: "游戏窗口已停止工作（{reason}）",
         displayProcessExited: "游戏的显示进程已退出：{reason}（退出码 {exitCode}）",
         contentTooNew: "此内容需要更新版本的游戏。",
@@ -90,7 +90,7 @@ const STRINGS: Record<ShellLocale, ShellStrings> = {
         hangKeepWaiting: "待機を続ける",
         hangRestart: "再起動",
         fatalClose: "ゲームは終了する。",
-        logAt: "レポートは {path} にある",
+        logAt: "ログは {path} にある",
         windowStopped: "ゲームウィンドウが停止した（{reason}）",
         displayProcessExited: "ゲームの表示プロセスが終了した：{reason}（終了コード {exitCode}）",
         contentTooNew: "このコンテンツには新しいバージョンのゲームが必要。",

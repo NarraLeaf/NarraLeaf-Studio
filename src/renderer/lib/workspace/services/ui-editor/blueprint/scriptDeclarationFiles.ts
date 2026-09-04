@@ -103,17 +103,22 @@ export function collectScriptProjectFacts(context: WorkspaceContext): ScriptProj
             .listCharacter()
             .map(character => ({ id: character.profile.getId(), name: character.profile.getName() })),
         stories: stories.listStories().map(story => ({ id: story.id, name: story.name })),
-        // Scenes are per story document and are not loaded with the library, so they are named only
-        // where the story that holds them is open. An empty list is honest here; a wrong one is not.
-        scenes: [],
+        // Not gathered: a scene is inside its story's document, and this runs when a project opens.
+        // `null` rather than an empty list, which would tell an author with forty scenes that their
+        // project declares none - see `unionOfKnown`.
+        scenes: null,
         savedVariables: variables.listEntriesInScope("saved").map(entry => ({ id: entry.id, name: entry.name })),
         persistentVariables: variables
             .listEntriesInScope("persistent")
             .map(entry => ({ id: entry.id, name: entry.name })),
         audioTracks: (audio.tracksOrNull() ?? []).map(track => ({ id: track.id, name: track.name })),
-        // Input actions live on the surfaces that declare them; not gathered until there is a host
-        // method that takes one from a script by name.
-        inputActions: [],
+        // One project-level table, keyed by id, since the input rework: a surface stores which of
+        // them it answers, not the actions themselves. `input.isActionHeld` takes one of these ids
+        // from a script, which is the host method this list was waiting on.
+        inputActions: Object.entries(document.actions ?? {}).map(([id, action]) => ({
+            id,
+            name: action.name,
+        })),
         locales: config.locales.map(locale => locale.code),
     };
 }

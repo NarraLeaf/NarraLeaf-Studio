@@ -186,6 +186,14 @@ export const widgets = {
         title: "文本",
         localizeText: "本地化文本",
     },
+    /**
+     * 标签文字上的标记，作用于上方文本框里选中的字。按钮本身沿用故事那边的键：
+     * 标签上的标记与对白行上的是同一件事，用两套说法会让它们看起来像两个功能。
+     */
+    textMarks: {
+        title: "标记",
+        selectHint: "先选择要标记的文字",
+    },
     frame: {
         title: "页面",
         page: "页面",

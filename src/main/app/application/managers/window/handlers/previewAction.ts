@@ -60,7 +60,12 @@ export class PreviewResetDataHandler extends IPCHandler<IPCEventType.previewRese
         { projectPath }: IPCEvents[IPCEventType.previewResetData]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.previewResetData]["response"]>> {
         return this.tryUse(async () => {
-            await window.getApp().getPreviewManager().resetPlayerData(projectPath);
+            // The window's project, not the payload's. This is a recursive delete of a directory
+            // derived from the path it is given - `<project>/.nlstudio/preview/userData` - so a
+            // payload naming another project throws away that project's preview saves, which is
+            // the one thing in the preview profile that is not a cache the next launch rebuilds.
+            await window.getApp().getPreviewManager()
+                .resetPlayerData(requireWindowProject(window, projectPath));
         });
     }
 }
