@@ -13,6 +13,7 @@ import { useNativeMenuSync } from "./hooks/useNativeMenuSync";
 import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
 import { useUpdateOffer } from "./hooks/useUpdateOffer";
+import { useDependencyOffer } from "./hooks/useDependencyOffer";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { DetachedEditorsHost } from "./detached/DetachedEditorsHost";
@@ -34,6 +35,7 @@ function WorkspaceContent() {
     useWorkspacePlugins();
     useRecoveryOffer();
     useUpdateOffer();
+    useDependencyOffer();
     // Tabs are not restored into a recovery window. The session on disk names scenes, surfaces and
     // characters, and in this mode most of those services have not started - so restoring would
     // reopen a screenful of tabs that can only report that their subject is missing, over the one

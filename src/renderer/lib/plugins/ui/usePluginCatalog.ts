@@ -15,6 +15,15 @@ export type PluginCatalogTask =
     | { status: "error"; message: string };
 
 /**
+ * How a store install ended, for a caller that has to report on it.
+ *
+ * Only two of the three are the author's doing: `canceled` is the permission prompt closed without
+ * an answer, `notAuthorized` is it answered with a refusal. Neither is a failure, and a caller
+ * running several installs must not report them as one.
+ */
+export type PluginInstallOutcome = "installed" | "canceled" | "notAuthorized";
+
+/**
  * What the hosting surface wants done around a change, beyond what the main process does.
  *
  * The Launcher passes none: no window there is running the plugin, so writing the record IS the
@@ -61,6 +70,24 @@ export interface PluginCatalog {
     installFromStore: (pluginId: string) => void;
     /** Run an arbitrary plugin operation through the same busy/report machinery. */
     runTask: (message: string, action: () => Promise<void>) => Promise<void>;
+    /**
+     * The same two operations, awaitable and without a report of their own.
+     *
+     * For a caller running several in a row under one `runTask`: the public forms above each claim
+     * the task line and the busy flag, so a loop over them would report a different plugin every
+     * time and the second call would find the surface busy and do nothing. The choreography is
+     * shared rather than copied - the permission prompt an install chains into, the grant an
+     * update inherits, and the roll-back when the main process refuses are the part with the traps
+     * in it, and a second copy of it is a second set of them.
+     *
+     * Both throw on failure; the caller decides what a failure means for its own report.
+     */
+    apply: {
+        installFromStore: (pluginId: string) => Promise<PluginInstallOutcome>;
+        setEnabled: (pluginId: string, enabled: boolean) => Promise<void>;
+        /** Answers false when the author closed the prompt or refused it. */
+        approve: (pluginId: string) => Promise<boolean>;
+    };
 }
 
 /**
@@ -181,7 +208,7 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         setTask({ status: "success", message: t("plugins.task.installed") });
     }), [refresh, runTask, t]);
 
-    const approve = useCallback((pluginId: string) => void runTask(t("plugins.task.authorizing"), async () => {
+    const applyApprove = useCallback(async (pluginId: string): Promise<boolean> => {
         const result = await getInterface().plugins.approve(pluginId);
         if (!result.success) {
             throw new Error(result.error ?? t("plugins.error.approve"));
@@ -191,41 +218,49 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
             await hooksRef.current?.afterActivate?.(pluginId);
             hooksRef.current?.onChanged?.(pluginId);
         }
-        setTask({
-            status: result.data.approved ? "success" : "idle",
-            message: result.data.approved ? t("plugins.task.authorized") : "",
-        });
-    }), [refresh, runTask, t]);
+        return result.data.approved;
+    }, [refresh, t]);
+
+    const approve = useCallback((pluginId: string) => void runTask(t("plugins.task.authorizing"), async () => {
+        const approved = await applyApprove(pluginId);
+        setTask(approved
+            ? { status: "success", message: t("plugins.task.authorized") }
+            : { status: "idle" });
+    }), [applyApprove, runTask, t]);
+
+    const applySetEnabled = useCallback(async (pluginId: string, enabled: boolean): Promise<void> => {
+        // Stop it before the record says it is off, so the window is never running a plugin the
+        // records disown. Enabling is the mirror: write first, then start.
+        if (!enabled) {
+            await hooksRef.current?.beforeDeactivate?.(pluginId);
+        }
+        const result = await getInterface().plugins.setEnabled(pluginId, enabled);
+        if (!result.success) {
+            // The record refused the change, so the plugin we just stopped is still supposed to
+            // be running. Put it back rather than leaving the window and the record disagreeing
+            // in the other direction - a silently-unloaded plugin reads as a broken one.
+            if (!enabled) {
+                await restoreQuietly(hooksRef.current, pluginId);
+            }
+            throw new Error(result.error ?? t("plugins.error.update"));
+        }
+        await refresh();
+        if (enabled) {
+            await hooksRef.current?.afterActivate?.(pluginId);
+        }
+        hooksRef.current?.onChanged?.(pluginId);
+    }, [refresh, t]);
 
     const setEnabled = useCallback((pluginId: string, enabled: boolean) => void runTask(
         enabled ? t("plugins.task.enabling") : t("plugins.task.disabling"),
         async () => {
-            // Stop it before the record says it is off, so the window is never running a plugin the
-            // records disown. Enabling is the mirror: write first, then start.
-            if (!enabled) {
-                await hooksRef.current?.beforeDeactivate?.(pluginId);
-            }
-            const result = await getInterface().plugins.setEnabled(pluginId, enabled);
-            if (!result.success) {
-                // The record refused the change, so the plugin we just stopped is still supposed to
-                // be running. Put it back rather than leaving the window and the record disagreeing
-                // in the other direction - a silently-unloaded plugin reads as a broken one.
-                if (!enabled) {
-                    await restoreQuietly(hooksRef.current, pluginId);
-                }
-                throw new Error(result.error ?? t("plugins.error.update"));
-            }
-            await refresh();
-            if (enabled) {
-                await hooksRef.current?.afterActivate?.(pluginId);
-            }
-            hooksRef.current?.onChanged?.(pluginId);
+            await applySetEnabled(pluginId, enabled);
             setTask({
                 status: "success",
                 message: enabled ? t("plugins.task.enabled") : t("plugins.task.disabled"),
             });
         },
-    ), [refresh, runTask, t]);
+    ), [applySetEnabled, runTask, t]);
 
     const uninstall = useCallback((pluginId: string) => void runTask(t("plugins.task.uninstalling"), async () => {
         await hooksRef.current?.beforeDeactivate?.(pluginId);
@@ -244,7 +279,7 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
     // browse → install → authorize is one gesture. An update that widens no permission inherits the
     // grant it already has and skips the prompt entirely — asking again for an unchanged permission
     // set is friction with nothing behind it.
-    const installFromStore = useCallback((pluginId: string) => void runTask(t("plugins.task.downloading"), async () => {
+    const applyInstallFromStore = useCallback(async (pluginId: string): Promise<PluginInstallOutcome> => {
         // An update replaces code that may already be running here; the old copy goes first.
         await hooksRef.current?.beforeDeactivate?.(pluginId);
         const result = await getInterface().plugins.installFromRegistry(pluginId);
@@ -252,8 +287,7 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
             throw new Error(result.error ?? t("plugins.error.download"));
         }
         if (result.data.canceled) {
-            setTask({ status: "idle" });
-            return;
+            return "canceled";
         }
         // The installed package now carries its own icon, and main dropped the one it had cached
         // for the version that just moved.
@@ -264,8 +298,7 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
                 await hooksRef.current?.afterActivate?.(pluginId);
             }
             hooksRef.current?.onChanged?.(pluginId);
-            setTask({ status: "success", message: t("plugins.task.installed") });
-            return;
+            return "installed";
         }
         const approval = await getInterface().plugins.approve(pluginId);
         if (!approval.success) {
@@ -276,11 +309,24 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
             await hooksRef.current?.afterActivate?.(pluginId);
         }
         hooksRef.current?.onChanged?.(pluginId);
-        setTask({
-            status: approval.data.approved ? "success" : "idle",
-            message: approval.data.approved ? t("plugins.task.installed") : "",
-        });
-    }), [refresh, runTask, t]);
+        return approval.data.approved ? "installed" : "notAuthorized";
+    }, [refresh, t]);
+
+    const installFromStore = useCallback((pluginId: string) => void runTask(t("plugins.task.downloading"), async () => {
+        const outcome = await applyInstallFromStore(pluginId);
+        setTask(outcome === "installed"
+            ? { status: "success", message: t("plugins.task.installed") }
+            : { status: "idle" });
+    }), [applyInstallFromStore, runTask, t]);
+
+    const apply = useMemo(
+        () => ({
+            installFromStore: applyInstallFromStore,
+            setEnabled: applySetEnabled,
+            approve: applyApprove,
+        }),
+        [applyApprove, applyInstallFromStore, applySetEnabled],
+    );
 
     const registryById = useMemo(() => {
         const map = new Map<string, PluginRegistryEntry>();
@@ -312,6 +358,7 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         uninstall,
         installFromStore,
         runTask,
+        apply,
     };
 }
 

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Download, MoreVertical, Puzzle, RefreshCw } from "lucide-react";
+import { AlertTriangle, Download, MoreVertical, Puzzle, RefreshCw } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { Badge } from "@/lib/components/elements";
+import { Badge, Button } from "@/lib/components/elements";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
 import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
@@ -17,13 +17,25 @@ import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { SearchBox } from "../assets/components/SearchBox";
 import type { PanelComponentProps } from "../types";
 import type { PluginsPanelPayload } from "./openPluginsPanel";
+import { DependencyInstallScreen } from "./DependencyInstallScreen";
 import { PluginDetailsPage } from "./PluginDetailsPage";
 import { PluginRestartHint } from "./PluginRestartHint";
 import { PluginTaskLine } from "./PluginTaskLine";
 import { ACTIVITY_LABEL_KEYS, ACTIVITY_TONES } from "./pluginActivityLabels";
+import { useProjectDependencyRows } from "./useProjectDependencyRows";
 import { useWorkspacePluginActivity, type PluginActivity } from "./useWorkspacePluginActivity";
 
 type PluginsTab = "installed" | "store";
+
+/**
+ * Which reading of the plugin set the panel is showing.
+ *
+ * `dependencies` is a state, not a third tab: it is about one project rather than about this
+ * machine, it is entered from somewhere else (the warning raised when a project opens), and it
+ * ends when the author presses back. Sitting it beside Installed and Store would make it a place
+ * an author is expected to visit, which is the opposite of what it is for.
+ */
+type PluginsView = "list" | "dependencies";
 
 /**
  * Plugin management inside the workspace: the same installed list and store the Launcher shows,
@@ -36,9 +48,10 @@ type PluginsTab = "installed" | "store";
  * project, and a plugin you have to reopen a project to try is a plugin nobody tries.
  */
 export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPanelPayload | undefined>) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context, recovery } = useWorkspace();
     const [tab, setTab] = useState<PluginsTab>("installed");
+    const [view, setView] = useState<PluginsView>("list");
     const [query, setQuery] = useState("");
     const [detailId, setDetailId] = useState<string | null>(null);
     const [menu, setMenu] = useState<{ items: ContextMenuDef; position: { x: number; y: number } } | null>(null);
@@ -78,29 +91,40 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
 
     const { plugins, registry, registryError, registryLoading, task, busy, installedById, registryById } = catalog;
 
+    const dependencies = useProjectDependencyRows(context, catalog, live);
+
     // Deep link. Depends on the payload OBJECT rather than payload.pluginId: the panel is keep-alive,
     // so asking twice for the same plugin after backing out would otherwise change nothing.
     useEffect(() => {
+        if (payload?.view === "dependencies") {
+            setView("dependencies");
+            setDetailId(null);
+        }
         if (payload?.pluginId) {
             setTab("installed");
             setDetailId(payload.pluginId);
         }
     }, [payload]);
 
-    // Escape returns to the list when a plugin's page is open.
+    // Escape backs out one step: off a plugin's page first, then out of the dependency screen.
     useEffect(() => {
-        if (!detailId) {
+        if (!detailId && view === "list") {
             return;
         }
         const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                setDetailId(null);
+            if (event.key !== "Escape") {
+                return;
             }
+            event.stopPropagation();
+            if (detailId) {
+                setDetailId(null);
+                return;
+            }
+            setView("list");
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [detailId]);
+    }, [detailId, view]);
 
     const visibleInstalled = useMemo(() => filterInstalled(plugins, query), [plugins, query]);
     const visibleStore = useMemo(() => filterStore(registry ?? [], query), [registry, query]);
@@ -191,6 +215,84 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
     const detailInstalled = detailId ? installedById.get(detailId) ?? null : null;
     const detailEntry = detailId ? registryById.get(detailId) ?? null : null;
 
+    // One plugin's page, over whichever state the panel is in. The dependency screen opens it too:
+    // "inspect what this plugin is" is the same question there as it is in the list, and answering
+    // it twice would be two pages that have to agree.
+    const detailOverlay = (
+        <AnimatePresence>
+            {detailId && (detailInstalled || detailEntry) ? (
+                <motion.div
+                    key={detailId}
+                    // `.nl-opaque-surface` rather than `bg-surface`: this slides over the list,
+                    // which stays mounted underneath, so its fill has to survive the wallpaper
+                    // rule that clears every base surface (see styles.css).
+                    className="absolute inset-0 z-10 nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                    initial={{ x: "100%" }}
+                    animate={{ x: 0 }}
+                    exit={{ x: "100%" }}
+                    transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                >
+                    <PluginDetailsPage
+                        installed={detailInstalled}
+                        registryEntry={detailEntry}
+                        activity={detailInstalled ? activity.activityOf(detailInstalled) : null}
+                        task={task}
+                        restartHint={restartHint}
+                        onRestartWorkspace={restartWorkspace}
+                        loadError={detailInstalled ? activity.session.failed[detailInstalled.pluginId] ?? null : null}
+                        busy={busy}
+                        canReload={live}
+                        canUninstall={!recovery}
+                        onBack={() => setDetailId(null)}
+                        onAuthorize={catalog.approve}
+                        onSetEnabled={catalog.setEnabled}
+                        onUninstall={uninstall}
+                        onInstall={catalog.installFromStore}
+                        onReload={reload}
+                    />
+                </motion.div>
+            ) : null}
+        </AnimatePresence>
+    );
+
+    // The strips that say what the panel is doing. Shown above the list and above the dependency
+    // screen alike, because both run the same operations and a report that moves is a report the
+    // author has to look for.
+    const notices = (
+        <>
+            <PluginTaskLine task={task} />
+            {restartHint ? <PluginRestartHint onRestart={restartWorkspace} busy={busy} /> : null}
+            {recovery ? (
+                <div className="shrink-0 border-b border-edge-subtle bg-warning/5 px-3 py-2 text-2xs leading-5 text-warning">
+                    {t("plugins.workspace.recoveryNotice")}
+                </div>
+            ) : null}
+        </>
+    );
+
+    if (view === "dependencies") {
+        return (
+            <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-panel-id={panelId}>
+                <DependencyInstallScreen
+                    rows={dependencies.rows}
+                    actionable={dependencies.actionable}
+                    outcomes={dependencies.outcomes}
+                    busy={busy || dependencies.running}
+                    notices={notices}
+                    registryError={registryError}
+                    onRetryRegistry={catalog.refreshAll}
+                    onBack={() => setView("list")}
+                    onOpen={setDetailId}
+                    onRun={dependencies.run}
+                />
+                {detailOverlay}
+                {menu ? (
+                    <ContextMenu items={menu.items} position={menu.position} visible onClose={() => setMenu(null)} />
+                ) : null}
+            </div>
+        );
+    }
+
     return (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-panel-id={panelId}>
             <div className="shrink-0 space-y-2 border-b border-edge px-3 py-2">
@@ -219,13 +321,22 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
                 <SearchBox value={query} onChange={setQuery} placeholder={t("plugins.search.placeholder")} className="w-full" />
             </div>
 
-            <PluginTaskLine task={task} />
+            {notices}
 
-            {restartHint ? <PluginRestartHint onRestart={restartWorkspace} busy={busy} /> : null}
-
-            {recovery ? (
-                <div className="shrink-0 border-b border-edge-subtle bg-warning/5 px-3 py-2 text-2xs leading-5 text-warning">
-                    {t("plugins.workspace.recoveryNotice")}
+            {/* The way back to the dependency screen once the warning that raised it has been
+                closed. Same sentence as that warning, because it is the same fact; the screen it
+                opens is where anything can be done about it. */}
+            {dependencies.unavailable > 0 ? (
+                <div className="flex shrink-0 items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 py-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+                    <p className="min-w-0 flex-1 text-2xs text-fg-muted" data-dependency-banner>
+                        {tn("plugins.dependencies.unavailable", dependencies.unavailable, {
+                            count: dependencies.unavailable,
+                        })}
+                    </p>
+                    <Button variant="ghost" size="sm" onClick={() => setView("dependencies")}>
+                        {t("plugins.dependencies.open")}
+                    </Button>
                 </div>
             ) : null}
 
@@ -271,40 +382,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
                 )}
             </div>
 
-            <AnimatePresence>
-                {detailId && (detailInstalled || detailEntry) ? (
-                    <motion.div
-                        key={detailId}
-                        // `.nl-opaque-surface` rather than `bg-surface`: this slides over the list,
-                        // which stays mounted underneath, so its fill has to survive the wallpaper
-                        // rule that clears every base surface (see styles.css).
-                        className="absolute inset-0 z-10 nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
-                        initial={{ x: "100%" }}
-                        animate={{ x: 0 }}
-                        exit={{ x: "100%" }}
-                        transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                        <PluginDetailsPage
-                            installed={detailInstalled}
-                            registryEntry={detailEntry}
-                            activity={detailInstalled ? activity.activityOf(detailInstalled) : null}
-                            task={task}
-                            restartHint={restartHint}
-                            onRestartWorkspace={restartWorkspace}
-                            loadError={detailInstalled ? activity.session.failed[detailInstalled.pluginId] ?? null : null}
-                            busy={busy}
-                            canReload={live}
-                            canUninstall={!recovery}
-                            onBack={() => setDetailId(null)}
-                            onAuthorize={catalog.approve}
-                            onSetEnabled={catalog.setEnabled}
-                            onUninstall={uninstall}
-                            onInstall={catalog.installFromStore}
-                            onReload={reload}
-                        />
-                    </motion.div>
-                ) : null}
-            </AnimatePresence>
+            {detailOverlay}
 
             {menu ? (
                 <ContextMenu items={menu.items} position={menu.position} visible onClose={() => setMenu(null)} />

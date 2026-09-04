@@ -13,6 +13,17 @@ describe("describeDependencyState", () => {
         expect(describeDependencyState({})).toBeNull();
     });
 
+    /**
+     * A hard dependency on a plugin nobody has installed is `suppressed` too - trivially, since
+     * there is nothing to load - and the row used to spend the withheld word on it. That word says
+     * Studio turned something down over its version, which sends the author looking for a plugin
+     * and a switch that are not there.
+     */
+    it("says a plugin is missing rather than withheld when there is nothing installed", () => {
+        expect(describeDependencyState({ status: "missing", suppressed: true, installedEnabled: undefined }))
+            .toEqual({ labelKey: "project.dependencies.status.missing", className: "text-danger" });
+    });
+
     it("writes the version verdict for a plugin Studio withheld from the project", () => {
         expect(describeDependencyState(WITHHELD))
             .toEqual({ labelKey: "project.dependencies.status.suppressed", className: "text-danger" });
