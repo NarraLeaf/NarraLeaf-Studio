@@ -1,6 +1,5 @@
-import type { GameCrashReportResult } from "@shared/types/gameRuntime";
+import type { GameCrashReportResult, GameCrashStoryPosition } from "@shared/types/gameRuntime";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { readStoryPosition } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 import { getShellLocale } from "./shellLocale";
 
 /**
@@ -29,7 +28,15 @@ export function canSaveCrashReport(): boolean {
     }
 }
 
-export async function saveCrashReport(details: string): Promise<GameCrashReportResult> {
+/**
+ * The position is passed in rather than read here: the boundary took it while unwinding, which is
+ * the last moment it is still true. By the time this runs the player has clicked a button on a
+ * screen that replaced the game, and the record has been cleared by the teardown in between.
+ */
+export async function saveCrashReport(
+    details: string,
+    story: GameCrashStoryPosition | null,
+): Promise<GameCrashReportResult> {
     let bridge: ReturnType<typeof getGameRuntimeBridge>;
     try {
         bridge = getGameRuntimeBridge();
@@ -41,14 +48,6 @@ export async function saveCrashReport(details: string): Promise<GameCrashReportR
         // already answered yes. Here so a caller that skipped the question gets an answer rather
         // than a thrown TypeError inside a crash handler.
         return { outcome: "failed", error: "no report file on this shell" };
-    }
-    let story = null;
-    try {
-        story = readStoryPosition();
-    } catch {
-        // A report without the position is still the report. Where the player was is the one field
-        // that can be missing without costing the reader the rest.
-        story = null;
     }
     try {
         return await bridge.saveCrashReport({ details, language: getShellLocale(), story });

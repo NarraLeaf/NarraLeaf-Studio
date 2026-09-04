@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import type { GameCrashStoryPosition } from "@shared/types/gameRuntime";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
 import { getShellLocale } from "./shellLocale";
@@ -8,6 +9,14 @@ import { getRuntimeCrashPolicy, getRuntimeShellLogPath } from "./crashPolicy";
 interface RuntimeCrashScreenProps {
     /** The failure, already flattened. Carries a stack when there was one. */
     details: string;
+    /**
+     * Where the story had got to, for the report file. Taken by the boundary as it unwound, because
+     * by the time this screen renders the run it describes has been torn down.
+     *
+     * Absent on the screen the shell draws after the display process died: that page never ran the
+     * game, and has nothing to say about the session that went with it.
+     */
+    story?: GameCrashStoryPosition | null;
     /** Called instead of a plain page reload where the shell has a better way back. */
     onRestart?: () => void;
 }
@@ -32,7 +41,7 @@ interface RuntimeCrashScreenProps {
  * write one, and nothing else on this screen depends on it: a write that fails leaves the copy
  * button and the log path exactly as they are.
  */
-export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenProps): ReactNode {
+export function RuntimeCrashScreen({ details, story = null, onRestart }: RuntimeCrashScreenProps): ReactNode {
     const { t } = useTranslation();
     const [copyState, setCopyState] = useState<{ ok: boolean; text: string } | null>(null);
     /**
@@ -64,7 +73,7 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
 
     const handleSaveReport = async () => {
         setSavingReport(true);
-        const result = await saveCrashReport(details);
+        const result = await saveCrashReport(details, story);
         setSavingReport(false);
         setReportState(result.outcome === "written"
             ? { ok: true, text: t("game.crash.reportSaved", { path: result.path }) }

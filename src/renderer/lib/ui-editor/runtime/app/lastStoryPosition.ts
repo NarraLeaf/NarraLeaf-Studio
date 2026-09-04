@@ -40,11 +40,20 @@ export function recordStoryRow(rowId: string | undefined): void {
         : { storyName: position.storyName, sceneName: position.sceneName };
 }
 
-/** Nothing is running any more: a scene has ended, or the session has. */
+/** Nothing is running any more: a scene has ended, or a new session is starting. */
 export function clearStoryPosition(): void {
     position = null;
 }
 
+/**
+ * Where the story is, for whoever is about to fix that answer in place.
+ *
+ * ⚠ Read once, by the crash boundary, while it is unwinding - not later by the screen it draws.
+ * React takes the failed tree down before that screen renders, the engine unmounts its scene on the
+ * way out, and this record cannot tell that apart from a player leaving the story: asking afterwards
+ * answers "nothing was running" for every crash in the middle of a scene, which is exactly the crash
+ * worth reporting. Unwinding happens before any of those cleanups run.
+ */
 export function readStoryPosition(): GameCrashStoryPosition | null {
     return position;
 }

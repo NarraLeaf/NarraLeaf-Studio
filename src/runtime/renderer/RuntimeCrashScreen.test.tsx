@@ -25,13 +25,11 @@ vi.mock("@shared/utils/copyText", () => ({
 
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
 import { setRuntimeCrashPolicy, setRuntimeShellLogPath } from "./crashPolicy";
-import { clearStoryPosition, recordStoryRow, recordStoryScene } from "@/lib/ui-editor/runtime/app/lastStoryPosition";
 
 describe("RuntimeCrashScreen report file", () => {
     beforeEach(() => {
         copied.length = 0;
         saveCrashReport = undefined;
-        clearStoryPosition();
         setRuntimeCrashPolicy("details");
         setRuntimeShellLogPath("C:\\profile\\logs\\game.log");
     });
@@ -57,10 +55,7 @@ describe("RuntimeCrashScreen report file", () => {
             seen.push(request);
             return { outcome: "written", path: "C:\\profile\\logs\\crash-report.txt" };
         };
-        recordStoryScene("Chapter One", "The corridor");
-        recordStoryRow("block-7");
-
-        render(<RuntimeCrashScreen details="boom" />);
+        render(<RuntimeCrashScreen details="boom" story={{ storyName: "Chapter One", sceneName: "The corridor", rowId: "block-7" }} />);
         fireEvent.click(screen.getByText("game.crash.saveReport"));
 
         await waitFor(() => {

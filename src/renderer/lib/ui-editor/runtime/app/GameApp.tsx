@@ -891,9 +891,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         currentSceneIdRef.current = null;
         currentSceneRef.current = null;
-        // The copy the crash screen reads, cleared with the refs it mirrors: a session that has
-        // ended is not a place a crash after it can be attributed to.
-        clearStoryPosition();
     }, []);
     /**
      * A progress document that arrived before the story it belongs to was started.
@@ -5784,6 +5781,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // compiled with two copies of one scene still resolves by identity. Re-bound per
                 // session, exactly like the play-head stream below.
                 cancelSceneTracking();
+                // A new session has nowhere to be yet. Cleared here rather than in
+                // `cancelSceneTracking`, which also runs while the tree is coming down - including
+                // the teardown a crash causes, which is the one moment the last position is worth
+                // having.
+                clearStoryPosition();
                 const sceneGameState = liveGame.getGameState();
                 if (sceneGameState && nlrSession?.compiled) {
                     const sceneIdByScene = new Map(
