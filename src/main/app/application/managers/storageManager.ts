@@ -220,6 +220,7 @@ export class StorageManager extends Manager {
             grants.push({ path: path.resolve(fsPath), recursive, mode: grantMode });
         }
         this.runtimeFileSystemGrants.set(this.getWindowStorageKey(window), grants);
+        this.resolvedGrantRoots.clear();
     }
 
     /**
@@ -258,6 +259,30 @@ export class StorageManager extends Manager {
         return this.hasFileSystemGrant(window, fsPath, mode, true);
     }
 
+    /**
+     * Both halves of a window's file-system policy for one path, answered from a single resolve.
+     *
+     * Exists because asking them separately resolves the same path twice, and resolving a path is
+     * the expensive half: it walks the real path of every component, which on Windows is a file
+     * open per component and is what an on-access virus scanner sees. That is affordable for one
+     * file and is not for a library - see {@link resolvedGrantRoots} for the measurement.
+     *
+     * The two answers are handed back separately rather than folded into one boolean because the
+     * caller says something different about each: reaching into Studio's own storage is not the
+     * same refusal as reaching a path nothing granted.
+     */
+    public async inspectWindowPathAccess(
+        window: AppWindow,
+        fsPath: string,
+        mode: FileSystemAccessMode,
+    ): Promise<{ protectedStorage: boolean; granted: boolean }> {
+        const target = await this.resolvePathForAuthorization(fsPath);
+        if (await this.isProtectedStoragePath(target)) {
+            return { protectedStorage: true, granted: false };
+        }
+        return { protectedStorage: false, granted: await this.hasResolvedFileSystemGrant(window, target, mode, false) };
+    }
+
     private async hasFileSystemGrant(
         window: AppWindow,
         fsPath: string,
@@ -268,12 +293,21 @@ export class StorageManager extends Manager {
         if (await this.isProtectedStoragePath(target)) {
             return false;
         }
+        return this.hasResolvedFileSystemGrant(window, target, mode, requireSubtree);
+    }
 
+    /** {@link hasFileSystemGrant} once the path has been resolved and cleared of protected storage. */
+    private async hasResolvedFileSystemGrant(
+        window: AppWindow,
+        target: string,
+        mode: FileSystemAccessMode,
+        requireSubtree: boolean,
+    ): Promise<boolean> {
         for (const grant of this.getFileSystemGrants(window, mode)) {
             if (requireSubtree && !grant.recursive) {
                 continue;
             }
-            const root = await this.resolvePathForAuthorization(grant.path);
+            const root = await this.resolveGrantRoot(grant.path);
             if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
                 return true;
             }
@@ -386,6 +420,7 @@ export class StorageManager extends Manager {
             }
         }
         this.runtimeFileSystemGrants.delete(key);
+        this.resolvedGrantRoots.clear();
         this.stopSecurityScopedResources(this.runtimeSecurityScopedResourceStops.get(key) ?? []);
         this.runtimeSecurityScopedResourceStops.delete(key);
         // Every hash grant dies with the window it was minted for: a closed Dev Mode session
@@ -606,6 +641,7 @@ export class StorageManager extends Manager {
     public cleanupAll(): void {
         this.storage.clear();
         this.runtimeFileSystemGrants.clear();
+        this.resolvedGrantRoots.clear();
         for (const stopAccessingList of this.runtimeSecurityScopedResourceStops.values()) {
             this.stopSecurityScopedResources(stopAccessingList);
         }
@@ -687,6 +723,33 @@ export class StorageManager extends Manager {
 
     /** See {@link StorageManager.getResolvedProtectedStorageRoots}. */
     private resolvedProtectedStorageRoots: Promise<string[]> | null = null;
+
+    /**
+     * The grant roots with their symlinks followed, keyed by the path the grant was written with.
+     *
+     * Same argument as {@link resolvedProtectedStorageRoots}, and the same measurement: an
+     * authorization walks the window's grants and resolves each one, and an authorization happens
+     * per path - so minting the read grants for a library of 1,653 assets asked the filesystem for
+     * the same two or three real paths several thousand times. Measured 2026-09-04 on Windows, that
+     * pass was 3.0s of a 6.9s Dev Mode boot, and 75s of summed authorization across the pool.
+     *
+     * Dropped whenever the grant set changes, which is the event that can introduce a path this
+     * has never resolved. A grant whose own directory is replaced by a link to somewhere else while
+     * the grant stands is out of scope here exactly as it is for the protected roots: the answer is
+     * about what the window was allowed to reach, and that decision was made when the grant was.
+     */
+    private readonly resolvedGrantRoots = new Map<string, Promise<string>>();
+
+    /** {@link resolvedGrantRoots}, filled on the first authorization that needs this root. */
+    private resolveGrantRoot(grantPath: string): Promise<string> {
+        const cached = this.resolvedGrantRoots.get(grantPath);
+        if (cached) {
+            return cached;
+        }
+        const pending = this.resolvePathForAuthorization(grantPath);
+        this.resolvedGrantRoots.set(grantPath, pending);
+        return pending;
+    }
 
     private async resolvePathForAuthorization(fsPath: string): Promise<string> {
         const resolvedPath = path.resolve(fsPath);

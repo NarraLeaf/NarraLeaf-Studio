@@ -27,9 +27,7 @@ import type {
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
-import { translate } from "@/lib/i18n";
 import { workspacePluginSession } from "./workspacePluginSession";
-import { openPluginsPanel } from "@/apps/workspace/modules/plugins/openPluginsPanel";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
@@ -199,20 +197,11 @@ function suppressedPluginIds(ctx: WorkspaceContext): Set<string> {
 async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
     const descriptors = await fetchWorkspacePluginDescriptors();
     const suppressed = suppressedPluginIds(ctx);
+    // Withheld plugins are not announced from here. The workspace already warns about every
+    // dependency it cannot meet - absent, withheld, or switched off - from the resolution itself,
+    // and leads to the screen that can act on all three. A second toast for one of those three
+    // would say the same thing in different words, and offer less.
     const eligible = descriptors.filter(descriptor => !suppressed.has(descriptor.plugin.id));
-
-    const skipped = descriptors.filter(descriptor => suppressed.has(descriptor.plugin.id));
-    if (skipped.length > 0) {
-        const names = skipped.map(descriptor => descriptor.manifest.name).join(", ");
-        ctx.services.get<UIService>(Services.UI).notifications.warning(
-            translate("plugins.workspace.suppressedNotice", { names }),
-            undefined,
-            [{
-                label: translate("plugins.workspace.openPanel"),
-                onClick: () => openPluginsPanel(ctx, { pluginId: skipped[0].plugin.id }),
-            }],
-        );
-    }
 
     const loadResults = await Promise.all(
         eligible.map(descriptor => loadWorkspacePlugin(ctx, descriptor)),
