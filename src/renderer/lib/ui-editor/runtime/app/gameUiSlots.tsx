@@ -1,5 +1,5 @@
 import type { MutableRefObject, ReactNode } from "react";
-import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame } from "narraleaf-react";
+import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame, type PreloadStrategy } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { RUNTIME_PREFERENCE_DEFAULTS } from "@shared/types/preference";
 import type {
@@ -112,11 +112,14 @@ export function createNlrGameWithGameUi(input: {
      */
     autoForwardDefaultPause?: number;
     /**
-     * How much of the opening scene has to be warm before the game is shown, from `.nlproj`
-     * `app.preload` (see @shared/types/preload). Omitted leaves the engine's own default, which is
-     * the first frame.
+     * Who decides what the player warms, and where it gets the bytes.
+     *
+     * Studio's own, built from the compiled story: it knows which row shows which asset and in what
+     * order, and that every url is already on local disk. Omitted - the story preview, which
+     * compiles no warm order - leaves the engine's built-in strategy, which guesses from a static
+     * walk of the action tree.
      */
-    preloadGate?: "firstFrame" | "scene";
+    preload?: PreloadStrategy;
 }): Game {
     const {
         width,
@@ -127,7 +130,7 @@ export function createNlrGameWithGameUi(input: {
         audioBuses,
         hostOwnsSkipKey,
         autoForwardDefaultPause,
-        preloadGate,
+        preload,
     } = input;
     const game = new Game({
         app: { debug: false },
@@ -144,7 +147,7 @@ export function createNlrGameWithGameUi(input: {
         // lands squarely on the path to the first painted frame. Wider batches, no waiting.
         preloadConcurrency: 8,
         preloadDelay: 0,
-        ...(preloadGate ? { preloadGate } : {}),
+        ...(preload ? { preload } : {}),
         ...(minStageSize ? { minWidth: minStageSize.width, minHeight: minStageSize.height } : {}),
         ...(slots.dialog ? { dialog: slots.dialog, dialogWidth: width, dialogHeight: height } : {}),
         ...(slots.notification ? { notification: slots.notification } : {}),

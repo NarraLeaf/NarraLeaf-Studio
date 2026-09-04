@@ -708,6 +708,14 @@ export type CompiledNlrStory = {
     sceneBackgroundMusicAssetIds?: Record<string, string>;
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
+    /**
+     * What each scene's rows asked to have ready, in the order they asked - keyed by Studio scene id.
+     *
+     * Present only when the host set {@link CompileInput.collectWarmOrder}. This is what lets the
+     * player be told what to warm rather than left to guess it from a static walk; see
+     * {@link SceneWarmOrder}.
+     */
+    sceneWarmOrder?: Record<string, SceneWarmOrder>;
     /** Continuous stage previews only: why the compiled playback tail ends. */
     playbackStop?: StoryPlaybackStop;
 };
@@ -895,6 +903,50 @@ type SceneCompileContext = {
      * plugin's darkens would show the author a stage the row does not describe.
      */
     pluginInjections?: Map<string, { before: NlrStatement[]; after: NlrStatement[] }>;
+    /**
+     * Every media url this scene resolved, in the order the compiler reached it, with the row that
+     * asked for it.
+     *
+     * Recorded so the player can be told what to warm and when instead of having to guess. The
+     * engine's own answer is a static walk of the scene's action tree, which knows what a scene
+     * uses *anywhere in it* and nothing about order - on a real project that is most of the library
+     * for one painted background. This is the same question answered by the thing that already
+     * walked the rows in order.
+     *
+     * Absent when the compile is not building a warm order (see {@link CompileInput.collectWarmOrder}):
+     * every reference audit and save-anchor compile in the build pipeline goes through here too, and
+     * none of them has a player to tell.
+     */
+    warmOrder?: SceneWarmOrder;
+};
+
+/**
+ * What one scene wants warm, in the order its rows ask for it.
+ *
+ * Rows rather than a flat list of urls, because the point of recording the order is to be able to
+ * say "the next few rows" at runtime - and the play head names a row, not a url. A row that
+ * resolves nothing is still listed: dropping it would make the distance between two rows depend on
+ * what they happened to show.
+ */
+export type SceneWarmOrder = {
+    /**
+     * The url the scene opens with, or null when it opens on a colour or on nothing.
+     *
+     * This is the only image the first painted frame cannot do without, and the only one worth
+     * holding a loading screen for.
+     */
+    firstFrame: string | null;
+    /** Block ids in compile order - which is row order within a scene, and a tree walk across branches. */
+    blockOrder: string[];
+    /** Media each block resolved, keyed by block id. Deduplicated within the block. */
+    byBlock: Record<string, StoryWarmResource[]>;
+};
+
+/** One thing a row asked the player to have ready. */
+export type StoryWarmResource = {
+    /** Audio is here as well as images and video: the plan the player takes carries all three. */
+    type: "image" | "video" | "audio";
+    url: string;
 };
 
 type CompileInput = {
@@ -913,6 +965,14 @@ type CompileInput = {
      * know the size to bake at either; that follows the project's stage, which the host owns.
      */
     resolveWeatherClip?: (ref: WeatherSeedRef) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * Record what each scene's rows ask to have ready, in the order they ask for it.
+     *
+     * Only a host with a player to tell should set this: it is what the player's preload strategy
+     * plans from, and the reference audits and save-anchor compiles that share this compiler have
+     * nobody to hand it to. See {@link SceneWarmOrder}.
+     */
+    collectWarmOrder?: boolean;
     /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
@@ -1121,6 +1181,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         localization,
     });
     const allScenes = scenesBuild.scenes;
+    // Built only for a host that has a player to tell. Every reference audit and save-anchor compile
+    // in the build pipeline comes through here as well, and recording an order for those would be
+    // work nobody reads.
+    const sceneWarmOrder: Record<string, SceneWarmOrder> | null = input.collectWarmOrder ? {} : null;
 
     // Single Storable-backed namespace seeded with every saved variable's default. "Every" spans both
     // authoring surfaces since `saved` became a registry scope: the project registry's saved entries
@@ -1202,6 +1266,11 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             actionIdBindings,
             elementIdBindings,
             nextActionIndex,
+            ...(sceneWarmOrder ? {warmOrder: sceneWarmOrder[scene.id] = {
+                firstFrame: scenesBuild.initialBackgroundUrls?.[scene.id] ?? null,
+                blockOrder: [],
+                byBlock: {},
+            }} : {}),
         };
         // Let the registered plugin compile passes read this scene and say what they attach around
         // each row. Before the seeds and before any row compiles, because `compileBlock` reads the
@@ -1293,6 +1362,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         savedVariables,
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
+        ...(sceneWarmOrder ? { sceneWarmOrder } : {}),
         diagnostics,
         characters,
         avatarAssetIdByUrl,
@@ -2005,6 +2075,8 @@ async function createNlrScenes(input: {
     scenes: Record<string, Scene>;
     setVoiceLocale: (locale: string) => boolean;
     getVoicePlayback: (unitId: string) => { src: string; busId: string } | null;
+    /** The image each scene opens on, by Studio scene id; absent for a scene opening on a colour. */
+    initialBackgroundUrls: Record<string, string>;
 }> {
     const scenes: Record<string, Scene> = {};
 
@@ -2108,6 +2180,9 @@ async function createNlrScenes(input: {
     // Document order decides WHICH of the two colliding scenes gets blamed - the later one, as with
     // duplicate labels. Reading the record would hand that verdict to whichever id sorts lower.
     const namesSeen = new Set<string>();
+    // The one image a scene's first painted frame cannot do without, per scene. Collected here
+    // because this is where it is resolved, and needed by the warm order, which is built later.
+    const initialBackgroundUrls: Record<string, string> = {};
     for (const scene of listScenesInDocumentOrder(input.document)) {
         const runtimeName = scene.runtimeName || scene.name || scene.id;
         if (namesSeen.has(runtimeName)) {
@@ -2137,6 +2212,7 @@ async function createNlrScenes(input: {
         } = {};
         if (background) {
             config.background = background;
+            initialBackgroundUrls[scene.id] = background;
         }
         const sceneVoices = voicesForScene?.get(scene.id);
         if (sceneVoices) {
@@ -2173,7 +2249,7 @@ async function createNlrScenes(input: {
             }
         }
     }
-    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback };
+    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback, initialBackgroundUrls };
 }
 
 async function resolveSceneInitialBackground(input: {
@@ -6596,7 +6672,7 @@ async function resolveAsset(
     blockId: string,
     variants?: StoryAssetVariants,
 ): Promise<string | null> {
-    return resolveAssetUrlCached({
+    const url = await resolveAssetUrlCached({
         assetId: variants
             ? resolveVariantReference({
                 variants,
@@ -6612,6 +6688,44 @@ async function resolveAsset(
         assetUrlCache: ctx.assetUrlCache,
         diagnostics: ctx.diagnostics,
     });
+    recordWarmedAsset(ctx, blockId, assetType, url);
+    return url;
+}
+
+/**
+ * Note that a row asked for a piece of media, so the player can be told to have it ready.
+ *
+ * Here rather than at the twenty-odd call sites because this is the one place every scene-scoped
+ * asset reference passes through, which is also the reason the warm order can be trusted: a
+ * reference that skipped this would be one the player is never told about, and the row that shows it
+ * would fetch on demand with nothing to say why.
+ *
+ * Fonts and puppet models are not recorded. Neither is shown by an element the player's image cache
+ * knows about - a font is loaded by the document and a model by its own backend - so naming them in
+ * a plan would ask the cache to hold something it cannot show.
+ */
+function recordWarmedAsset(
+    ctx: SceneCompileContext,
+    blockId: string,
+    assetType: StoryAssetKind,
+    url: string | null,
+): void {
+    const order = ctx.warmOrder;
+    if (!order || !url) {
+        return;
+    }
+    if (assetType !== "image" && assetType !== "video" && assetType !== "audio") {
+        return;
+    }
+    const existing = order.byBlock[blockId];
+    if (!existing) {
+        order.blockOrder.push(blockId);
+        order.byBlock[blockId] = [{type: assetType, url}];
+        return;
+    }
+    if (!existing.some(resource => resource.url === url)) {
+        existing.push({type: assetType, url});
+    }
 }
 
 async function resolveAssetUrlCached(input: {
