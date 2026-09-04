@@ -193,6 +193,7 @@ import { createPlayHead, type PlayHead } from "./playHead";
 import {
     applyResumeToLaunchSnapshot,
     buildStoryResumeLaunch,
+    resolveRelaunchStartRow,
     storyResumeNotice,
     toStoryLiteralRecord,
     type StoryResumeState,
@@ -1796,6 +1797,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         return bundle.storyLibrary?.documents[storyId]
             ?? Object.values(bundle.storyLibrary?.documents ?? {}).find(document => document.id === storyId);
     }, [bundle]);
+    /**
+     * The same resolver, reachable from the story-runtime bridge.
+     *
+     * The bridge is deliberately ref-backed so its identity survives every render and every relaunch
+     * (see `storyRuntime`), and this resolver is rebuilt whenever the bundle changes - so it is held
+     * the way the bridge holds everything else it needs.
+     */
+    const resolveRunningStoryDocumentRef = useRef(resolveRunningStoryDocument);
+    useEffect(() => {
+        resolveRunningStoryDocumentRef.current = resolveRunningStoryDocument;
+    }, [resolveRunningStoryDocument]);
 
     /**
      * Every project-level variable this build declares, merged exactly as the editors merge them:
@@ -2330,8 +2342,27 @@ export function GameApp(props: GameAppProps): ReactNode {
             if (!start) {
                 throw new Error("Relaunch: runtime is not ready");
             }
+            const targetSceneId = sceneId ?? request.sceneId;
+            // The row a relaunch names was chosen when the run began, and the author has been editing
+            // the story ever since. A row that has gone is not a failure to catch - the compile takes
+            // it and quietly starts the scene from the top - so it is asked about before launching,
+            // and the relocation is said out loud, the way a hot reload says it.
+            const resolved = resolveRelaunchStartRow({
+                sceneId: targetSceneId,
+                ...(startBlockId ? { startBlockId } : {}),
+                document: resolveRunningStoryDocumentRef.current(),
+            });
+            if (resolved.notice) {
+                hostRef.current.log("warning", `[${hostRef.current.id}] ${resolved.notice}`);
+                hostRef.current.reportIssue?.({ level: "warning", message: resolved.notice, origin: "session" });
+            }
             await start(
-                { storyId: request.storyId, sceneId: sceneId ?? request.sceneId, startBlockId, snapshotId },
+                {
+                    storyId: request.storyId,
+                    sceneId: targetSceneId,
+                    ...(resolved.startBlockId ? { startBlockId: resolved.startBlockId } : {}),
+                    snapshotId,
+                },
                 { forceReinit: true },
             );
         },

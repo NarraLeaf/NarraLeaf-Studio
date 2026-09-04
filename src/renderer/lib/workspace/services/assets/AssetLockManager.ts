@@ -1,6 +1,13 @@
 /**
  * Asset Lock Manager
- * Manages locks on assets to prevent deletion of assets that are in use by services
+ *
+ * Which assets a service says it is using. Built to stop a delete taking an asset out from under a
+ * scene or a character - but that is no longer what answers the question: `ReferenceService` walks
+ * every document kind and reports what it could not read, and it is what `AssetsService.deleteAsset`
+ * consults. This table is still WRITTEN, by `StoryService` on every document change and by
+ * `CharacterService` on every character change, and nothing reads it: `isAssetLocked`,
+ * `getAssetLocks`, `getAssetLockMessage` and `getLockManager` have no callers, in this repository or
+ * in a plugin surface.
  */
 import type { TranslationKey } from "@shared/i18n";
 import { translate } from "@/lib/i18n";
