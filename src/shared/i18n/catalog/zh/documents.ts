@@ -1,4 +1,4 @@
-/** `documents` - 读取方对一份拒绝读取的工程文件的说明。 */
+/** `documents` - 读取方对一份拒绝读取的项目文件的说明。 */
 export const documents = {
     tooNew: {
         message: "{subject} 由更新版本的 NarraLeaf Studio 写入（{kind}格式 v{version}），当前构建最高读到 v{supported}",
