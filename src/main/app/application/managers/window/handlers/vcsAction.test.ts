@@ -13,7 +13,14 @@ vi.mock("electron", () => ({
 
 const { WINDOW_PROJECT_MISMATCH_CODE } = await import("@shared/types/window");
 const { WorkingFileRefusedError, readWorkingSetFile } = await import("../../vcs/workingFile");
-const { VcsReadWorkingFileHandler } = await import("./vcsAction");
+const {
+    VcsAbortMergeHandler,
+    VcsCompleteMergeHandler,
+    VcsReadWorkingFileHandler,
+    VcsResolveConflictsHandler,
+    VcsRestartConflictsHandler,
+    VcsRestoreRevisionHandler,
+} = await import("./vcsAction");
 
 type AppWindowLike = Parameters<InstanceType<typeof VcsReadWorkingFileHandler>["handle"]>[0];
 
@@ -171,4 +178,122 @@ describe("VcsReadWorkingFileHandler", () => {
         expect(result.success).toBe(false);
         expect(result.code).not.toBe(WINDOW_PROJECT_MISMATCH_CODE);
     });
+});
+
+/**
+ * Which project gets its working tree written over.
+ *
+ * These five are the ones with no way back. Everything else here either reads, or adds a revision
+ * that leaves the author's files where they were; each of these replaces the bytes on disk with
+ * bytes out of history, and the bytes it replaces were never committed - a restore checkpoints
+ * first, but only what version control was already holding. So a payload naming another project is
+ * not an operation on the wrong project, it is destroyed work in a project whose window showed
+ * nobody any of it.
+ *
+ * The double is a bare recorder rather than a real repository: what is under test is whether the
+ * manager is reached at all and with which project, and it must record nothing when refused.
+ */
+describe("the version-control writers take their project from the window", () => {
+    function makeWriter(projectPath?: string) {
+        // Declared with the project argument so a test can read back which one crossed - two
+        // spellings of one directory are two session keys in the manager behind this.
+        const writer = () => vi.fn(async (_projectPath: string, ..._rest: unknown[]) => ({}));
+        const manager = {
+            restoreRevision: writer(),
+            resolveConflicts: writer(),
+            completeMerge: writer(),
+            restartConflicts: writer(),
+            abortMerge: writer(),
+        };
+        const app = { getVcsManager: () => manager };
+        const window = {
+            app,
+            getApp: () => app,
+            getProps: () => ({ projectPath }),
+        } as unknown as AppWindowLike;
+        return { window, manager };
+    }
+
+    type Manager = ReturnType<typeof makeWriter>["manager"];
+
+    const writers = [
+        {
+            name: "vcs.restoreRevision",
+            method: (manager: Manager) => manager.restoreRevision,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new VcsRestoreRevisionHandler().handle(window, { projectPath, revision: "r1" } as never),
+        },
+        {
+            name: "vcs.resolveConflicts",
+            method: (manager: Manager) => manager.resolveConflicts,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new VcsResolveConflictsHandler().handle(window, {
+                    projectPath,
+                    paths: ["assets/a.txt"],
+                    choice: "theirs",
+                } as never),
+        },
+        {
+            name: "vcs.completeMerge",
+            method: (manager: Manager) => manager.completeMerge,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new VcsCompleteMergeHandler().handle(window, { projectPath, decisions: [] } as never),
+        },
+        {
+            name: "vcs.restartConflicts",
+            method: (manager: Manager) => manager.restartConflicts,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new VcsRestartConflictsHandler().handle(window, {
+                    projectPath,
+                    paths: ["assets/a.txt"],
+                } as never),
+        },
+        {
+            name: "vcs.abortMerge",
+            method: (manager: Manager) => manager.abortMerge,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new VcsAbortMergeHandler().handle(window, { projectPath } as never),
+        },
+    ] as const;
+
+    for (const writer of writers) {
+        it(`${writer.name} writes the window's own project`, async () => {
+            const { window, manager } = makeWriter(mine);
+
+            const result = await writer.run(window, mine);
+
+            expect(result.success).toBe(true);
+            // Asserted with the window's own spelling: the manager keys a session off this string.
+            expect(writer.method(manager).mock.calls[0][0]).toBe(mine);
+        });
+
+        it(`${writer.name} refuses a project this window does not have open, and writes nothing`, async () => {
+            const { window, manager } = makeWriter(mine);
+
+            const result = await writer.run(window, theirs);
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(writer.method(manager)).not.toHaveBeenCalled();
+        });
+
+        it(`${writer.name} refuses a window that has no project open`, async () => {
+            const { window, manager } = makeWriter();
+
+            const result = await writer.run(window, mine);
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(writer.method(manager)).not.toHaveBeenCalled();
+        });
+
+        /** A guard that refused the author their own project would be worse than the hole it closes. */
+        it(`${writer.name} accepts the window's own project under another spelling`, async () => {
+            const { window, manager } = makeWriter(mine);
+
+            const result = await writer.run(window, mine + path.sep);
+
+            expect(result.success).toBe(true);
+            expect(writer.method(manager).mock.calls[0][0]).toBe(mine);
+        });
+    }
 });
