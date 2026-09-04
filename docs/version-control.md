@@ -1095,26 +1095,58 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | [lore/abi/upstream.json](../src/main/app/application/managers/vcs/lore/abi/upstream.json) | 从 SDK 生成物提取的 ABI 快照（420 结构体 / 131 函数 / 226 tag），进版本库 |
 | [lore/library.ts](../src/main/app/application/managers/vcs/lore/library.ts) | 惰性 `koffi.load`、`LORE_LIB_PATH`、asar 解包、按需绑定 + `LoreCapabilityError` |
 | [lore/values.ts](../src/main/app/application/managers/vcs/lore/values.ts) | 显式编解码，非法标识符**抛错不补零**；路径越界防护 |
-| [lore/events.ts](../src/main/app/application/managers/vcs/lore/events.ts) | 32 个事件解码器，回调内即拷贝 |
+| [lore/events.ts](../src/main/app/application/managers/vcs/lore/events.ts) | 49 个事件解码器，回调内即拷贝 |
 | [lore/call.ts](../src/main/app/application/managers/vcs/lore/call.ts) | 单 trampoline、异步 off-thread、注册/注销配对、`PATH_IGNORE` 转异常、错误带 Rust `file:line` |
-| [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 22 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / diff / 读 blob / 分支 |
+| [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 39 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / 元数据 / 树 / 分支 / 合并 / 推送同步 / 克隆 / 登录 |
+
+上面这层之上是按题目分开的模块，`VcsManager` 只做 session 与串行化，具体动作都在这里：
+
+| 文件 | 职责 |
+|---|---|
+| [repository.ts](../src/main/app/application/managers/vcs/repository.ts) | 建库与读状态；Lore 的数字 file action 在这里映成字符串联合，是两侧词汇的分界 |
 | [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` |
+| [workingFile.ts](../src/main/app/application/managers/vcs/workingFile.ts) | 比较的**工作树那一侧**：一个仓库相对路径的当前字节，越界与超限分别是拒绝和失败 |
+| [workingSet.ts](../src/main/app/application/managers/vcs/workingSet.ts) | 工作集在磁盘上的遍历（策略在 `@shared/vcs/workingSet`） |
+| [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts) | 恢复：先打检查点、只增不退、只碰工作集，模块内不允许 `recursive:true` |
+| [revisionSnapshot.ts](../src/main/app/application/managers/vcs/revisionSnapshot.ts) | 把一个修订写成一个普通工程目录（Dev Mode 跑历史修订靠它，见 §9.2 之外的路径驱动约束） |
+| [merge.ts](../src/main/app/application/managers/vcs/merge.ts) | 合并状态与逐路径取舍；`~base` / `~mine` / `~theirs` 的读法 |
+| [mergeDocument.ts](../src/main/app/application/managers/vcs/mergeDocument.ts) | 冲突的第二档：逐处改动地和解一份文档 |
+| [diff/](../src/main/app/application/managers/vcs/diff) | 比较的呈现层：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，见 §9.1 |
+| [remote.ts](../src/main/app/application/managers/vcs/remote.ts) | 唯一需要 `offline: false` 的模块：推送、同步、克隆 |
+| [serverApi.ts](../src/main/app/application/managers/vcs/serverApi.ts) · [serverDiscovery.ts](../src/main/app/application/managers/vcs/serverDiscovery.ts) | 一次 HTTPS 请求，与「问一个地址背后是什么」 |
+| [serverSession.ts](../src/main/app/application/managers/vcs/serverSession.ts) · [serverTokens.ts](../src/main/app/application/managers/vcs/serverTokens.ts) · [serverPassword.ts](../src/main/app/application/managers/vcs/serverPassword.ts) | 登录与令牌保管。**会话按服务器 origin 存在账户级**，不属于任何一个工程 |
+| [serverProjects.ts](../src/main/app/application/managers/vcs/serverProjects.ts) · [serverProjectsSession.ts](../src/main/app/application/managers/vcs/serverProjectsSession.ts) | 服务器上的工程清单，REST 与长连接两条同形的读法 |
+| [localRepositories.ts](../src/main/app/application/managers/vcs/localRepositories.ts) | 不开库就判断本机已经有哪些仓库（Lore 的库锁是独占且阻塞的，所以这条不能开库） |
+| [authorityTrust.ts](../src/main/app/application/managers/vcs/authorityTrust.ts) | 把签名端的 CA 装进本机信任库——全 Studio 唯一改操作系统设置的地方 |
+
+接线与两侧类型：
+
+| 文件 | 职责 |
+|---|---|
 | [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
-| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 10 个 IPC handler：9 读 + `initRepository` |
+| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 42 个 IPC handler：**21 读**（什么都不改，含只走网络不记录的 `probeServer` / `getSyncState`）· **12 个动工程目录的**（建库 / 提交 / 检查点 / 恢复 / 设置远端 / 五个合并动作 / 同步 / 克隆）· **9 个服务器与账户动作**（登录三种 / 登出 / 加服务器 / 刷新 / 忘记 / 推送 / 发布）。谁可以指名哪个工程见下 |
 | [shared/vcs/workingSet.ts](../src/shared/vcs/workingSet.ts) | 工作集**策略**（谓词 + 忽略文件），两进程共用一份；走磁盘的遍历留在 main |
 | [VersionControlService.ts](../src/renderer/lib/workspace/services/core/VersionControlService.ts) | 渲染进程服务：可用性缓存、状态快照与订阅、历史缓存 |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
 
-测试（`yarn vitest run src/main/app/application/managers/vcs/`，201 个）：
+测试（`yarn vitest run src/main/app/application/managers/vcs/`，52 个文件 **724 个用例**，其中 28 个 skip；打真 DLL 的
+那批叫 `*.integration.test.ts`）。挑出值得点名的：
 
 | 文件 | 覆盖 |
 |---|---|
-| [abi/definitions.test.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) | 161 断言，逐字段比对 `upstream.json` |
+| [abi/definitions.test.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) | 244 个，逐字段比对 `upstream.json` |
 | [lore.integration.test.ts](../src/main/app/application/managers/vcs/lore/lore.integration.test.ts) | 17 个，打真 DLL：写路径、读路径、编码拒绝、回调生命周期（250 次连续调用不耗尽 koffi 回调池） |
-| [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 8 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
-| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 6 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
+| [repository.integration.test.ts](../src/main/app/application/managers/vcs/repository.integration.test.ts) | 22 个：建库、状态、暂存与 §4.17 那个扫描副作用 |
+| [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 19 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
+| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 10 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
+| [merge.integration.test.ts](../src/main/app/application/managers/vcs/merge.integration.test.ts) | 19 个：合并状态、逐路径取舍、关闭合并；`mergeSpike*.integration` 是它的四组前置实测 |
+| [diff/](../src/main/app/application/managers/vcs/diff) 七个 `.test.ts` | 111 个：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，加一份登记表 |
+| [serverSession.test.ts](../src/main/app/application/managers/vcs/serverSession.test.ts) · [serverDiscovery.test.ts](../src/main/app/application/managers/vcs/serverDiscovery.test.ts) · [publish.test.ts](../src/main/app/application/managers/vcs/publish.test.ts) | 22 / 21 / 13 个：登录、探测地址、发布的三步 |
 | [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
 | [pluggability.test.ts](../src/main/app/application/managers/vcs/pluggability.test.ts) | 3 个：静态导入图里没有 `lore/`，且这个断言非空 |
+
+IPC 那一层的测试不在这个目录下：
+[vcsAction.test.ts](../src/main/app/application/managers/window/handlers/vcsAction.test.ts)（35 个）管的是**一次请求可以指名哪个工程**。
 
 构建侧：`koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了
 external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
@@ -1125,24 +1157,57 @@ external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src
 window[RendererInterfaceKey].vcs
 ```
 
+42 个方法，与 `vcsAction.ts` 的 handler 一一对应。逐条的语义写在
+[renderer.ts](../src/shared/types/renderer.ts) 的声明上，这里只列需要先知道的那几条与全部分组：
+
 | 方法 | 返回 |
 |---|---|
 | `getAvailability()` | `{available}` 或 `{available:false, reason, detail}` — **先问这个** |
 | `isRepository(projectPath)` | `{isRepository}`；后端不可用时为 `false`，不抛 |
 | `getInfo(projectPath)` | `{root, repositoryId, head?, headNumber, branch}` — **纯读**，走 `repositoryStatus(scan:false, revisionOnly:true)`，不触发 §4.17 |
-| `initRepository(projectPath, options?)` | `{root, repositoryId, head?, headNumber, branch}` — **唯一的写**，见下 |
 | `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
-| `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — **唯一会覆写作者文件的调用**，见下 |
-| `getHistory(projectPath, limit?)` | `{entries: [{revision, number, parents}]}` |
-| `readBlob(projectPath, revision, path)` | `{contentBase64}` |
-| `getChangedPaths(projectPath, from, to)` | `{paths}` |
-| `getThreeWay(projectPath, mine, theirs, path)` | `{baseRevision?, base?, mine, theirs}`（均 base64） |
-| `getMergeBase(projectPath, a, b)` | `{base?}` |
+| `getSyncState(projectPath)` | **这一面上唯一走网络的读**，服务器不在时约 2s，禁止开工程时调或按定时器调 |
+| `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — 见下 |
+| `sync(projectPath)` | `VcsSyncResult`；**会覆写作者文件**，冲突是**成功**答案而不是失败 |
 
-**写侧现在有四个**：`initRepository`（V1）、`commit` / `checkpoint`（V2）、`restoreRevision`（V4）。前三个都只会
-**新增一个修订**，够不到冲突，所以不需要 resolve UI 先存在。`restoreRevision` 也不需要，理由不同且值得写下来：
-它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。真正有两边的写
-（merge）仍然故意缺席。
+其余按题目分组：读历史与内容（`getHistory` / `readBlob` / `readWorkingFile` / `readRevisionDocuments` /
+`getChangedPaths`）· 比较（`diffRevisions` / `diffWorkingTree` / `getThreeWay` / `getMergeBase`）·
+合并（`getMergeState` / `getMergeDocument` / `resolveConflicts` / `completeMerge` / `unresolveConflicts` /
+`restartConflicts` / `abortMerge`）· 记录（`initRepository` / `commit` / `checkpoint`）·
+服务器绑定（`getRemote` / `setRemote`）· 账户与服务器（`getServerSession` / `signIn` / `signInWithPassword` /
+`signOut` / `trustAuthority` / `probeServer` / `listServers` / `addServer` / `refreshServer` / `forgetServer`）·
+传输（`push` / `sync` / `clone` / `publishProject` / `listLocalRepositories`）。
+
+**会动工程目录的有十二个**，分三类看：只**新增一个修订**的 `initRepository`（V1）、`commit` / `checkpoint`（V2）——
+够不到冲突，所以不需要 resolve UI 先存在；**用历史覆写工作树**的 `restoreRevision`（V4）、四个落字节的合并动作
+（`resolveConflicts` / `completeMerge` / `restartConflicts` / `abortMerge`）与 `sync`，外加只改仓库里合并状态的
+`unresolveConflicts`；以及只改配置或写新目录的 `setRemote` 与 `clone`。`publishProject` 不在这十二个里算，但它的
+第三步**也会改写 `.lore/config.toml`**。`restoreRevision` 不需要 resolve UI 的理由和前三个不同且值得写下来：
+它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。
+
+### 一次请求可以指名哪个工程
+
+`projectPath` 是渲染层填的字段，而 IPC 注册表是全进程一份、按 sender 找窗口的，所以**任何窗口都能发这 42 条里的
+任何一条**。会用历史覆盖工作树的六个——`restoreRevision` 与四个合并写，加 `sync`——因此用
+`requireWindowProject(window, projectPath)` 把工程取自**窗口自己的 props** 而不是 payload：这几条替换掉的字节从未
+被提交过，没有任何东西留着它们，指错工程不是「动了错的工程」而是**在那个工程里毁掉了工作**。`push` 与 `signIn`
+同样断言，理由弱一些：调用点只有工作区自己的版本轨。比较用 `normalizeProjectPath`（`D:\Game` 与 `d:\game` 是一个
+工程两个 session key），拒绝时把窗口自己的拼法交给下游，并且**不在日志里写出被指名的那个路径**——它不是这个作者的
+工程。拒绝会经 `ipcRegistry` 落到该窗口工程的日志面板上（`windowProjectRefusal.ts`）。
+
+⚠ **断言路径没有关上「把工程送上服务器」这一族**，别把它读成关上了：
+
+- `publishProject` 的 `remoteOrigin` 是 payload 字段，从不与该工程 `.lore/config.toml` 里的 remote 比对，而发布的
+  第三步**会改写那个文件**——之后 push / sync 从文件读地址，于是静默跟着换了目标；
+- **会话与令牌按服务器 origin 存在账户级**，不属于工程，任何指向同一个 origin 的工程都借得到，
+  `withServerSession` 还会自己重放令牌；
+- `signIn` 的 `authUrl` 是 payload 字段，且**优先于令牌自带的地址**，令牌就送到它指的主机；
+- 这一族没有信任闸（`DISTRUSTED_OPERATIONS` 里没有 VCS 条目），也不查窗口的文件系统授权。
+
+`publishProject` 还**故意没有**路径断言：启动器的服务器页会让向导先把工程写到本机再送上去，而那个窗口自己没有工程，
+断言会把「在服务器上新建一个工程」这条路整条堵死。要关的是「可以送到哪里、可以花账户的哪份凭据」，
+不是「哪个工程」——这需要先决定服务器会话到底以什么为作用域，比任何单个 handler 都大。
+`initRepository` 同理不能断言：向导合法地指一个还不是任何窗口工程的新目录。
 
 `restoreRevision` 的三条硬约束（细节见 [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts)）：
 
