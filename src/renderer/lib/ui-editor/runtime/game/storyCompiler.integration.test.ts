@@ -3372,6 +3372,154 @@ describe("dialog avatars", () => {
     });
 });
 
+describe("character entrance defaults", () => {
+    const ALICE: DevModeCharacterSummary = {
+        id: "char-alice",
+        name: "Alice",
+        appearance: { kind: "preset", poses: [{ id: "pose-base", name: "base", assetId: "asset-alice" }], defaultPoseId: "pose-base" },
+        entranceTransform: { zoom: 0.54, scaleX: -1, position: { xalign: 0.5, yalign: 0.1 } },
+    };
+
+    function enterBlock(transform?: StoryActionPayload extends never ? never : Record<string, unknown>): Record<string, StoryBlock> {
+        return {
+            enter: {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "character",
+                    operation: "enter",
+                    characterId: "char-alice",
+                    ...(transform ? { transform } : {}),
+                } as StoryActionPayload,
+            },
+        };
+    }
+
+    async function compileEntrance(blocks: Record<string, StoryBlock>) {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, Object.keys(blocks)),
+            sceneId: "scene-1",
+            characters: [ALICE],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "enter")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        return { compiled, props: getDisplayableTransformProps(actions) };
+    }
+
+    it("poses an entrance that states nothing from the character", async () => {
+        const { compiled, props } = await compileEntrance(enterBlock());
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(props).toEqual([
+            expect.objectContaining({
+                opacity: 1,
+                zoom: 0.54,
+                scaleX: -1,
+                position: expect.objectContaining({ xalign: 0.5, yalign: 0.1 }),
+            }),
+        ]);
+    });
+
+    it("keeps the character's baseline when the row states only an alignment", async () => {
+        // The ordinary entrance line: `/show Alice pos=left` names one axis. Replacing the bag whole
+        // would drop the scale and the baseline with it.
+        const { props } = await compileEntrance(enterBlock({ mode: "props", to: { position: { xalign: 0 } } }));
+
+        expect(props).toEqual([
+            expect.objectContaining({
+                zoom: 0.54,
+                position: expect.objectContaining({ xalign: 0, yalign: 0.1 }),
+            }),
+        ]);
+    });
+
+    it("lets the row win on a channel it states", async () => {
+        const { props } = await compileEntrance(enterBlock({ mode: "props", to: { zoom: 1.2 } }));
+
+        expect(props).toEqual([
+            expect.objectContaining({ zoom: 1.2, scaleX: -1 }),
+        ]);
+    });
+
+    it("bakes the defaults into the element, so a motion entrance is still her own size", async () => {
+        // A Story Motion states its own keyframes and has no bag to merge into, so what carries the
+        // character's scale under one is the constructor pose.
+        const animation: StoryAnimationAsset = {
+            schemaVersion: 1,
+            id: "00000000-0000-4000-8000-0000000001a1",
+            name: "Drift in",
+            targetKind: "image",
+            sequences: [{ id: "step-1", props: { position: { xalign: 0.5, yalign: 0.5 } }, options: { durationMs: 200 } }],
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(enterBlock({ mode: "animation", animationId: animation.id }), ["enter"]),
+            sceneId: "scene-1",
+            characters: [ALICE],
+            animations: { [animation.id]: animation },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const image = compiled.sceneElements?.["scene-1"]?.images.get("char-alice");
+        // The engine folds constructor transform props into the element's transform state - the
+        // pose it starts at and comes back to after `reset()` - rather than leaving them on `config`.
+        const pose = image ? (image as unknown as { transformState: { state: Record<string, unknown> } }).transformState.state : null;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(pose).toEqual(expect.objectContaining({ zoom: 0.54, scaleX: -1 }));
+    });
+
+    it("leaves move and exit rows alone", async () => {
+        // Both address a character an earlier row put on stage, and the engine's transform is
+        // incremental - re-stating the defaults here would undo whatever those rows had done.
+        const blocks: Record<string, StoryBlock> = {
+            ...enterBlock(),
+            move: {
+                id: "move",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "character",
+                    operation: "move",
+                    characterId: "char-alice",
+                    transform: { mode: "props", to: { position: { xalign: 0.2 } } },
+                } as StoryActionPayload,
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["enter", "move"]),
+            sceneId: "scene-1",
+            characters: [ALICE],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const moveProps = getDisplayableTransformProps(compiled.actionIdBindings
+            .filter(binding => binding.blockId === "move")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story)));
+
+        expect(moveProps).toEqual([{ position: { xalign: 0.2 } }]);
+    });
+
+    it("pre-poses a mid-scene launch the same way the compile does", async () => {
+        // The snapshot is replayed as the element's constructor pose, so a launch from a row below
+        // the entrance has to settle on the size the entrance would have given her.
+        const blocks: Record<string, StoryBlock> = {
+            ...enterBlock(),
+            after: narrationBlock("after", "text-after", "After."),
+        };
+        const snapshot = computeStoryStageSnapshot({
+            document: baseDocument(blocks, ["enter", "after"]),
+            sceneId: "scene-1",
+            targetBlockId: "after",
+            characters: [ALICE],
+        });
+
+        expect(snapshot.displayables[0]?.props).toEqual(expect.objectContaining({ zoom: 0.54, scaleX: -1 }));
+    });
+});
+
 describe("puppet characters", () => {
     /** What Studio hands the engine. Read off the element because a puppet's config is fixed at construction. */
     function puppetConfig(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>, name: string) {
