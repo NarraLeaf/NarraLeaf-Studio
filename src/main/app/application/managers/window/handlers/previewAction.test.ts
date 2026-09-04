@@ -3,7 +3,12 @@ import { WINDOW_PROJECT_MISMATCH_CODE } from "@shared/types/window";
 
 vi.mock("electron", () => ({}));
 
-const { PreviewLaunchHandler, PreviewResetDataHandler } = await import("./previewAction");
+const {
+    PreviewGetStatusHandler,
+    PreviewLaunchHandler,
+    PreviewResetDataHandler,
+    PreviewStopHandler,
+} = await import("./previewAction");
 
 type AppWindowLike = Parameters<InstanceType<typeof PreviewLaunchHandler>["handle"]>[0];
 
@@ -16,11 +21,13 @@ type AppWindowLike = Parameters<InstanceType<typeof PreviewLaunchHandler>["handl
 function makeWindow(projectPath?: string) {
     const launch = vi.fn(async () => "running");
     const resetPlayerData = vi.fn(async () => undefined);
+    const stop = vi.fn(async () => "idle");
+    const getStatus = vi.fn(() => "running");
     const window = {
         getProps: () => ({ projectPath }),
-        getApp: () => ({ getPreviewManager: () => ({ launch, resetPlayerData }) }),
+        getApp: () => ({ getPreviewManager: () => ({ launch, resetPlayerData, stop, getStatus }) }),
     } as unknown as AppWindowLike;
-    return { window, launch, resetPlayerData };
+    return { window, launch, resetPlayerData, stop, getStatus };
 }
 
 const MINE = "D:/games/mine";
@@ -98,5 +105,70 @@ describe("PreviewResetDataHandler", () => {
 
         expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
         expect(resetPlayerData).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * Which project's preview is ended, and whose is being watched.
+ *
+ * Neither is a launch, and the harm is correspondingly smaller - one cuts a session short, the
+ * other says whether there is one. They are here because the question is identical and the answer
+ * has to be: a guard that stops another project being started but lets it be stopped from any
+ * window is not a rule about ownership, it is a list of the sharpest cases. The status probe is
+ * also the one the workspace polls once a second, which is the difference between glimpsing another
+ * author's session and watching it.
+ */
+describe("the preview session controls take their project from the window", () => {
+    it("stops the window's own preview", async () => {
+        const { window, stop } = makeWindow(MINE);
+
+        const result = await new PreviewStopHandler().handle(window, { projectPath: MINE });
+
+        expect(result.success).toBe(true);
+        expect(stop).toHaveBeenCalledWith(MINE);
+    });
+
+    it("refuses to stop a project this window does not have open", async () => {
+        const { window, stop } = makeWindow(MINE);
+
+        const result = await new PreviewStopHandler().handle(window, { projectPath: THEIRS });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(stop).not.toHaveBeenCalled();
+    });
+
+    it("answers the status of the window's own project", () => {
+        const { window, getStatus } = makeWindow(MINE);
+
+        const result = new PreviewGetStatusHandler().handle(window, { projectPath: MINE });
+
+        expect(result.success).toBe(true);
+        expect(getStatus).toHaveBeenCalledWith(MINE);
+    });
+
+    /**
+     * This one answers synchronously and had no `try` of its own, so the refusal has to be turned
+     * into a failed status here rather than thrown - a guard that threw would reach the renderer
+     * without the code the refusal is recognised by.
+     */
+    it("refuses to report on a project this window does not have open", () => {
+        const { window, getStatus } = makeWindow(MINE);
+
+        const result = new PreviewGetStatusHandler().handle(window, { projectPath: THEIRS });
+
+        expect(result).toMatchObject({ success: false, code: WINDOW_PROJECT_MISMATCH_CODE });
+        expect(getStatus).not.toHaveBeenCalled();
+    });
+
+    it("refuses both from a window that has no project open", async () => {
+        const { window, stop, getStatus } = makeWindow();
+
+        expect(await new PreviewStopHandler().handle(window, { projectPath: MINE }))
+            .toMatchObject({ code: WINDOW_PROJECT_MISMATCH_CODE });
+        expect(new PreviewGetStatusHandler().handle(window, { projectPath: MINE }))
+            .toMatchObject({ code: WINDOW_PROJECT_MISMATCH_CODE });
+        expect(stop).not.toHaveBeenCalled();
+        expect(getStatus).not.toHaveBeenCalled();
     });
 });

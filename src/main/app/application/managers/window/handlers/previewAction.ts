@@ -32,7 +32,12 @@ export class PreviewStopHandler extends IPCHandler<IPCEventType.previewStop> {
         { projectPath }: IPCEvents[IPCEventType.previewStop]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.previewStop]["response"]>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getPreviewManager().stop(projectPath);
+            // The window's project, not the payload's. Lower harm than a launch - it ends a
+            // session rather than starting one - but it is the same question, and a preview that
+            // stops for a reason its own window can neither see nor explain is worse than the
+            // inconsistency of guarding only the launch.
+            const status = await window.getApp().getPreviewManager()
+                .stop(requireWindowProject(window, projectPath));
             return { status };
         });
     }
@@ -46,8 +51,16 @@ export class PreviewGetStatusHandler extends IPCHandler<IPCEventType.previewGetS
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.previewGetStatus]["data"],
     ): RequestStatus<IPCEvents[IPCEventType.previewGetStatus]["response"]> {
-        const status = window.getApp().getPreviewManager().getStatus(projectPath);
-        return this.success({ status });
+        // The window's project, not the payload's. What it discloses is small - whether some
+        // project is being previewed - but it is polled, so leaving it open would be a way to
+        // watch another author's session start and end.
+        try {
+            const status = window.getApp().getPreviewManager()
+                .getStatus(requireWindowProject(window, projectPath));
+            return this.success({ status });
+        } catch (error) {
+            return this.failed(error);
+        }
     }
 }
 
