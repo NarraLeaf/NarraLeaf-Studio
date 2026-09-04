@@ -677,7 +677,6 @@ class SnapshotWalker {
         }
         const objectName = getCharacterStageObjectName(payload);
         const record = this.ensure("image", objectName, block.id);
-        record.autoFit = true;
         if (payload.operation === "exit") {
             record.visible = false;
             record.props = mergeTransformProps(record.props, this.finalProps(payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, "hide", block.id));

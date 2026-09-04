@@ -3445,6 +3445,18 @@ describe("character entrance defaults", () => {
         ]);
     });
 
+    it("draws a character at her artwork's own pixels, not stretched to the stage", async () => {
+        // `autoFit` scales a displayable's width to the stage's, which is what a full-width CG wants
+        // and what a sprite never does: under it a 1600px character and a 3000px one came out the
+        // same stage-wide size, and every entrance row had to carry a zoom computed from pixels the
+        // interface never states.
+        const { compiled } = await compileEntrance(enterBlock());
+        const image = compiled.sceneElements?.["scene-1"]?.images.get("char-alice");
+        const config = image ? (image as unknown as { config: Record<string, unknown> }).config : null;
+
+        expect(config).toEqual(expect.objectContaining({ autoFit: false }));
+    });
+
     it("bakes the defaults into the element, so a motion entrance is still her own size", async () => {
         // A Story Motion states its own keyframes and has no bag to merge into, so what carries the
         // character's scale under one is the constructor pose.

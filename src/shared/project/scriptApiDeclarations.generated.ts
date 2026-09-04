@@ -62,9 +62,6 @@ declare module "@narraleaf/script" {
     	blueprintId: string;
     	mode?: "action" | "value" | "condition";
     };
-    type LiteralValue = string | number | boolean | null | LiteralValue[] | {
-    	[key: string]: LiteralValue;
-    };
     type BlueprintElementRef = {
     	surfaceId: string;
     	elementId: string;
@@ -289,6 +286,28 @@ declare module "@narraleaf/script" {
     type StoryId = string;
     type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | {
     	[key: string]: StoryLiteralValue;
+    };
+    type StoryTextEmphasis = "dot" | "circle" | "sesame" | "under-dot";
+    type StoryTextMarks = {
+    	bold?: boolean;
+    	italic?: boolean;
+    	color?: string;
+    	ruby?: string;
+    	cps?: number;
+    	/**
+    	 * An absolute size in pixels. Legacy: it survives in documents that carry it and in scripts that
+    	 * spell it, but nothing in the editor writes one. A size pinned in pixels does not follow the
+    	 * dialogue box it is set in, and it defeats the text scaling that keeps a long line inside its
+    	 * box; \`fontSizeStep\` is what the size control writes.
+    	 */
+    	fontSize?: number;
+    	/**
+    	 * The run's size as a number of steps away from the line's, positive for larger. A step is
+    	 * \`STORY_FONT_SIZE_STEP_RATIO\`. Relative rather than absolute, so the run keeps its weight
+    	 * against the rest of the line at whatever size the line is set.
+    	 */
+    	fontSizeStep?: number;
+    	emphasis?: StoryTextEmphasis;
     };
     type SaveRecordTimes = {
     	/** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */
@@ -614,6 +633,11 @@ declare module "@narraleaf/script" {
     type TextGlyphOrientation = "mixed" | "upright" | "sideways";
     type TextWritingMode$1 = TextWritingMode;
     type TextOrientation = TextGlyphOrientation;
+    type UITextRunMarks = Pick<StoryTextMarks, "bold" | "italic" | "color" | "ruby" | "fontSizeStep" | "emphasis">;
+    type UITextRun = {
+    	text: string;
+    	marks?: UITextRunMarks;
+    };
     type EffectShadowLayerData = {
     	offsetX: number;
     	offsetY: number;
@@ -654,6 +678,15 @@ declare module "@narraleaf/script" {
     type TextWrapMode = "word" | "character" | "nowrap";
     type TextWidgetProps = {
     	text: string;
+    	/**
+    	 * The label's text as marked runs, when it carries any.
+    	 *
+    	 * \`text\` stays the plain string and stays what everything else reads - a value binding writes
+    	 * it, a translation replaces it, a plain field edits it - and these runs are only drawn while
+    	 * they still spell it (\`resolveUITextRuns\`). Absent on every label that has never been marked,
+    	 * which is what keeps the drawing of a plain label exactly what it was.
+    	 */
+    	rich?: UITextRun[];
     	/** Game-localization opt-in: registers the implicit translation unit \`ui:<elementId>.text\`. */
     	localizable?: boolean;
     	/** Named localization key reference; takes precedence over the implicit unit. */
@@ -1517,91 +1550,9 @@ declare module "@narraleaf/script" {
     	persistent: BlueprintHostApiRuntime["persistence"];
     	signal: AbortSignal;
     };
-    declare const VALUE_SCRIPT_READS: {
-    	readonly navigation: readonly [
-    		"getPageProps"
-    	];
-    	readonly layers: readonly [
-    		"isMounted"
-    	];
-    	readonly widget: readonly [
-    		"getCommonProperties",
-    		"getTextProperties",
-    		"getButtonProperties",
-    		"getContainerProperties",
-    		"getImageProperties",
-    		"getSliderProperties",
-    		"getSwitchProperties",
-    		"getTextInputProperties",
-    		"getListProperties",
-    		"getDisplayableProperties",
-    		"getMeasuredRect",
-    		"getFrameProperties"
-    	];
-    	readonly state: readonly [
-    		"get"
-    	];
-    	readonly frame: readonly [
-    		"getParam"
-    	];
-    	readonly game: readonly [
-    		"isInGame",
-    		"isGameOverlay",
-    		"getPlaytime",
-    		"getTotalPlaytime",
-    		"getNametag",
-    		"getSpeakerAvatar",
-    		"getSpeakerColor",
-    		"isDialogWaiting",
-    		"getDialogText",
-    		"isNarrator",
-    		"getCharacter",
-    		"getNotifications",
-    		"getChoiceCount",
-    		"isNvlMode",
-    		"isCurrentTextRead",
-    		"isTextRead",
-    		"isSceneVisited",
-    		"getSavedVariable",
-    		"isOptionPicked",
-    		"isEndingReached",
-    		"isDlcInstalled",
-    		"listEndings",
-    		"canUndoHistory",
-    		"canRedoHistory",
-    		"getPreference"
-    	];
-    	readonly sound: readonly [
-    		"resolveElementVolume",
-    		"getTrackVolume"
-    	];
-    	readonly localization: readonly [
-    		"getConfig"
-    	];
-    	readonly voice: readonly [
-    		"listLocales"
-    	];
-    	readonly input: readonly [
-    		"isActionHeld",
-    		"getDevice"
-    	];
-    };
-    type ValueScriptHost = {
-    	[F in keyof typeof VALUE_SCRIPT_READS]: Pick<BlueprintHostApiRuntime[F], Extract<(typeof VALUE_SCRIPT_READS)[F][number], keyof BlueprintHostApiRuntime[F]>>;
-    };
-    type ValueScriptSelf = Extract<ScriptSelf, {
-    	kind: "element";
-    }>;
-    type ValueScriptContext = {
-    	self: ValueScriptSelf;
-    	host: ValueScriptHost;
-    	surface: ScriptSurfaceTransition;
-    	vars: Record<string, unknown>;
-    };
     type StoryActionHandler = (ctx: StoryScriptContext) => void | Promise<void>;
     type StoryValueHandler = (ctx: StorySyncScriptContext) => StoryLiteralValue;
     type StoryConditionHandler = (ctx: StorySyncScriptContext) => boolean;
-    type ValueHandler = (ctx: ValueScriptContext) => LiteralValue;
     /**
      * How a head's output pin is typed for a script.
      *
@@ -2250,8 +2201,6 @@ declare module "@narraleaf/script" {
     /** A story row's context. The synchronous modes get {@link StorySyncCtx} instead. */
     export type StoryCtx = StoryScriptContext;
     export type StorySyncCtx = StorySyncScriptContext;
-    /** A value binding's context: the host API's reads, and nothing that waits. */
-    export type ValueCtx = ValueScriptContext;
     export type SurfaceCtx = GameScriptContext<SurfaceSelf>;
     export type WidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ElementSelf<W>>;
     export type ComponentWidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ComponentElementSelf<W>>;
@@ -2284,9 +2233,6 @@ declare module "@narraleaf/script" {
     export type SurfaceScriptModule = ScriptEventExports<SurfaceSelf, (typeof SCRIPT_EVENTS_BY_ANCHOR)["surface"][number]>;
     export type WidgetScriptModule<W extends ScriptWidgetType> = ScriptEventExports<ElementSelf<W>, (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number]>;
     export type ComponentWidgetScriptModule<W extends ScriptWidgetType> = ScriptEventExports<ComponentElementSelf<W>, Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>>;
-    export type ValueScriptModule = {
-    	default: ValueHandler;
-    };
     export type StoryScriptModule<Mode extends "action" | "value" | "condition" = "action"> = {
     	default: Mode extends "value" ? StoryValueHandler : Mode extends "condition" ? StoryConditionHandler : StoryActionHandler;
     };
@@ -2306,7 +2252,7 @@ declare module "@narraleaf/script" {
     	kind: "widgetMain";
     } ? WidgetScriptModule<W> : Owner extends {
     	kind: "widgetValue";
-    } ? ValueScriptModule : Owner extends {
+    } ? never : Owner extends {
     	kind: "componentWidgetMain";
     } ? ComponentWidgetScriptModule<W> : Owner extends {
     	kind: "storyAction";
