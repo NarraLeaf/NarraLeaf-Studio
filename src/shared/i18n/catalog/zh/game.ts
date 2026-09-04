@@ -36,7 +36,10 @@ export const game = {
         copyDetails: "复制详情",
         copied: "已复制到剪贴板",
         copyFailed: "复制失败：{error}",
-        logAt: "报告位于 {path}",
+        saveReport: "保存报告",
+        reportSaved: "报告位于 {path}",
+        reportFailed: "无法保存报告：{error}",
+        logAt: "日志位于 {path}",
         bridgeUnavailable: "游戏的运行时桥接未能加载",
     },
     session: {
