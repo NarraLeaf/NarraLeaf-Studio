@@ -986,8 +986,12 @@ export interface RendererPreloadedInterface {
          *
          * **Changes a setting of the operating system**, which nothing else on this
          * interface does. Only a certificate Studio itself wrote is eligible.
+         *
+         * Names no project, unlike the rest of this section: an authority is trusted for
+         * the account, and the window that asks is the server-trust prompt, which has no
+         * project of its own.
          */
-        trustAuthority(projectPath: string, certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
+        trustAuthority(certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
         /** Clear the stored token and Studio's record of whose it was. Local. */
         signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
         /**
@@ -1298,12 +1302,11 @@ export interface RendererPreloadedInterface {
          * One Open Link node request, decided and performed by the main process for a Dev Mode
          * preview.
          *
-         * `projectPath` decides whose declared addresses apply; the handler reads them off disk
-         * rather than taking the renderer's word for it, so a preview refuses exactly what the
-         * shipped game refuses.
+         * Only the address crosses. The handler decides on its scheme, as the shipped game's main
+         * process does, and takes whose request it is from the window - so a preview refuses
+         * exactly what the shipped game refuses, and a distrusted project refuses it here first.
          */
         open(
-            projectPath: string,
             request: BlueprintOpenExternalRequest,
         ): Promise<RequestStatus<{ result: BlueprintOpenExternalResult }>>;
         /**

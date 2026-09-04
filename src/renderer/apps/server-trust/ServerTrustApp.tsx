@@ -94,10 +94,10 @@ export function ServerTrustApp() {
 
         // The install runs in the host, which checks the certificate against Studio's own
         // directory before running anything - a renderer names a file here, and a renderer
-        // is where untrusted content ends up. The project path is empty because this
-        // question has no project: an authority is trusted for the account, and the host
-        // reads only the certificate.
-        const result = await getInterface().vcs.trustAuthority("", prompt.authority.path);
+        // is where untrusted content ends up. The channel names no project because this
+        // question has no project: an authority is trusted for the account, this window has
+        // no project of its own, and the host reads only the certificate.
+        const result = await getInterface().vcs.trustAuthority(prompt.authority.path);
         setBusy(false);
 
         if (!result.success || !result.data.installed) {

@@ -17,6 +17,7 @@ const { normalizeProjectPath } = await import("@shared/utils/recentProject");
 const {
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
+    DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
     DevModeOpenStoryRowInWorkspaceHandler,
 } = await import("./devModeAction");
@@ -247,5 +248,78 @@ describe("a Dev Mode request reaches the workspace of its own project", () => {
 
             expect(workspace.show.mock.calls.length > 0).toBe(door.noWorkspace === "failed");
         }
+    });
+});
+
+/**
+ * Which project a Dev Mode session is started for.
+ *
+ * The sharpest of the four here, and it was the one with nothing on it. Dev Mode compiles the named
+ * project and runs it: its puppet runtimes are imported, its `scripts/` are compiled and mounted,
+ * its plugins get a runtime, and the window that opens holds a recursive grant over that tree. A
+ * build, a preview and a test run all ask the window first; this did not, so a renderer able to send
+ * a message was a renderer able to have somebody else's project run.
+ *
+ * The trust ledger did not cover it either, and could not: the gate inside `DevModeManager.launch`
+ * reads the path it is handed, so a payload naming a project that is trusted - somebody else's,
+ * trusted for its own author's reasons - passed the gate about a project this window was never
+ * opened on. The gate answers "may this project run", never "is this project yours"; that second
+ * question only has an answer here.
+ */
+describe("DevModeLaunchHandler", () => {
+    /** A window on one project, whose Dev Mode manager records what it was asked to launch. */
+    function makeLauncher(projectPath?: string) {
+        const launch = vi.fn(async () => "running");
+        const window = {
+            getProps: () => ({ projectPath }),
+            getApp: () => ({ getDevModeManager: () => ({ launch }) }),
+        } as unknown as AppWindowLike;
+        return { window, launch };
+    }
+
+    const entry = { kind: "surface", surfaceId: "main" } as never;
+
+    it("launches the window's own project", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: mine, entry });
+
+        expect(result.success).toBe(true);
+        // Asserted through to the manager, and with the window's own spelling: two spellings of one
+        // project are two session keys, so which string crosses is not cosmetic.
+        expect(launch).toHaveBeenCalledWith(mine, entry);
+    });
+
+    it("refuses a project this window does not have open, and compiles nothing", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: theirs, entry });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    /** The launcher, settings and the wizard have no project a payload could agree with. */
+    it("refuses a window that has no project open", async () => {
+        const { window, launch } = makeLauncher();
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: mine, entry });
+
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    /** A guard that refused the author their own project would be worse than the hole it closes. */
+    it("accepts the window's own project under another spelling", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, {
+            projectPath: mine + path.sep,
+            entry,
+        });
+
+        expect(result.success).toBe(true);
+        expect(launch).toHaveBeenCalledWith(mine, entry);
     });
 });
