@@ -34,7 +34,8 @@ import {
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
-import { preloadGateFor } from "@shared/types/preload";
+import { createDefaultPreloadStrategy } from "narraleaf-react";
+import { normalizePreloadConfiguration, preloadGatesWholeScene } from "@shared/types/preload";
 import {
     isAutoSaveId,
     isReservedSaveId,
@@ -118,6 +119,10 @@ import {
     type NlrStoryCompileDiagnostic,
     type StoryEndingReach,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import {
+    createStudioPreloadScheduler,
+    type StudioPreloadScheduler,
+} from "@/lib/ui-editor/runtime/game/studioPreloadStrategy";
 import {
     isStoryVisited,
     readStoryVisitedIds,
@@ -3467,6 +3472,15 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const compiledStoryCacheRef = useRef<CompiledStoryCacheEntry | null>(null);
 
+    /**
+     * The mounted session's preload scheduler, so a later compile can be pointed at it.
+     *
+     * The scheduler is handed to `new Game()` and lives as long as the session does, while the
+     * compile it plans from is replaced on every hot reload. Keeping the handle here is what lets
+     * the second compile take effect without remounting the player.
+     */
+    const preloadSchedulerRef = useRef<StudioPreloadScheduler | null>(null);
+
     const compileStoryDocument = useCallback(async (
         request: DevModeStartStoryRequest,
     ): Promise<CompiledNlrStory> => {
@@ -3594,6 +3608,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                           host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc, bundle.vfx)),
                   }
                 : {}),
+            // What each scene's rows ask to have ready, in the order they ask. This is the whole of
+            // what `createStudioPreloadScheduler` plans from: the player's own answer is a static
+            // walk that knows what a scene uses anywhere in it and nothing about when, which on a
+            // real project is a chapter's artwork warmed in order to paint one background.
+            collectWarmOrder: true,
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             // The saved half of the same registry. This is the call both shipping runtimes go through
@@ -3945,6 +3964,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             choiceMenus,
         });
         const onStageNode = slots.onStageNode;
+        // Studio plans the warming, and hands the player urls rather than bytes. Built per session
+        // because it is handed to `new Game()` and holds the compile it plans from - a hot reload
+        // points the same scheduler at the new one through `useCompiled`.
+        const preloadScheduler = createStudioPreloadScheduler({
+            gateOnWholeScene: preloadGatesWholeScene(normalizePreloadConfiguration(bundle.preload).behavior),
+        });
+        preloadScheduler.useCompiled(compiled);
+        preloadScheduler.useMissingReport(message => host.log("warning", `[preload] ${message}`));
+        preloadSchedulerRef.current = preloadScheduler;
         const game = createNlrGameWithGameUi({
             width,
             height,
@@ -3965,8 +3993,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The author's pause length, from the bundle. A bundle written before the setting
             // carries nothing and gets the engine's own value, which is what those builds shipped.
             ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
-            ...(bundle.preload ? { preloadGate: preloadGateFor(bundle.preload.behavior) } : {}),
+            preload: preloadScheduler,
         });
+        // What the scheduler falls back on for a scene Studio has no warm order for - the synthetic
+        // scene a row-precise launch enters through, above all. It has to be set after the game
+        // exists, which is after the scheduler, because the engine's own strategy reads its config.
+        preloadScheduler.useFallback(createDefaultPreloadStrategy(game));
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
         // two views of one storage in the engine, so the buses' own restore is the more specific
