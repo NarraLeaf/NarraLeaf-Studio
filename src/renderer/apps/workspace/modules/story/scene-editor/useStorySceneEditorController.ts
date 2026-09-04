@@ -2757,12 +2757,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // fork one speaker into two that merely look alike.
             //
             // This reaches the live blocks - the document held here is a shallow copy - so it is the
-            // one edit in the editor that does not go through StoryService. It rewrites dialogue
-            // payloads in any scene, so the story's asset locks are re-derived after it rather than
-            // left to a scoped sync that only knows about the scene on screen.
-            if (promoteTempSpeaker(document, trimmed, characterId) > 0 && storyId) {
-                storyService?.resyncAssetLocks(storyId);
-            }
+            // one edit in the editor that does not go through StoryService, and so it carries no
+            // document revision, no dirty flag and no undo step of its own.
+            promoteTempSpeaker(document, trimmed, characterId);
         }
         setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);

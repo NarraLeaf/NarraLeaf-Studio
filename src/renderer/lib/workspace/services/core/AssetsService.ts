@@ -39,7 +39,6 @@ import { translate } from "@/lib/i18n";
 import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagManager";
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
-import { AssetLockManager, AssetLockReason } from "../assets/AssetLockManager";
 import {
     collectAssetReferences,
     describeBlockedDelete,
@@ -338,11 +337,6 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public otherService: OtherService | null = null;
     public fileFormatValidator: FileFormatValidator | null = null;
     private readonly thumbnailCache = new Map<string, string>();
-
-    /**
-     * Asset lock manager
-     */
-    private readonly lockManager = new AssetLockManager();
 
     /** Where record edits go instead of into the shard, when something else owns them. */
     private opSink: AssetOpSink | null = null;
@@ -2703,49 +2697,5 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         categoryMapping: Record<number, string>
     ): MagicTagPreview[] {
         return MagicTagManager.generatePreview(template, categoryMapping);
-    }
-
-    // Asset Lock Management APIs
-
-    /**
-     * Lock an asset with a specific reason
-     */
-    public lockAsset(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
-        this.lockManager.lock(assetId, reason, metadata);
-    }
-
-    /**
-     * Unlock an asset for a specific reason
-     */
-    public unlockAsset(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
-        this.lockManager.unlock(assetId, reason, metadata);
-    }
-
-    /**
-     * Check if an asset is locked
-     */
-    public isAssetLocked(assetId: string): boolean {
-        return this.lockManager.isLocked(assetId);
-    }
-
-    /**
-     * Get all locks on an asset
-     */
-    public getAssetLocks(assetId: string): string[] {
-        return this.lockManager.getLockReasons(assetId);
-    }
-
-    /**
-     * Get a formatted lock message for an asset
-     */
-    public getAssetLockMessage(assetId: string): string | null {
-        return this.lockManager.getLockMessage(assetId);
-    }
-
-    /**
-     * Get the lock manager instance (for internal service use)
-     */
-    public getLockManager(): AssetLockManager {
-        return this.lockManager;
     }
 }

@@ -616,12 +616,6 @@ export const assets = {
         paste: "Paste assets",
         rename: "Rename selected asset or group",
     },
-    // Human-readable reasons an asset is locked against deletion (keyed by AssetLockReason).
-    lockReason: {
-        character: "Asset is used by a character",
-        scene: "Asset is used by a scene",
-        editor: "Asset is used by the Editor",
-    },
     previewEditor: {
         loadFailed: "Failed to load this asset.",
     },
