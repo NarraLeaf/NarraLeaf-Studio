@@ -72,6 +72,12 @@ export function TypePopover(props: {
     /** The characters this panel writes to, and the marks they carried when it opened. */
     target: TypeTarget;
     onSet: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null, target: { start: number; end: number }) => void;
+    /**
+     * Leave the typing speed out. A speed is a property of text being revealed a character at a
+     * time, so the control is offered where something types the text out and nowhere else - a
+     * static label on a page sets the other two marks and has no answer for this one.
+     */
+    omitSpeed?: boolean;
     onClose: () => void;
 }) {
     useDismissWhenHidden(props.onClose);
@@ -127,7 +133,7 @@ export function TypePopover(props: {
         }
     };
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 220);
+    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - (props.omitSpeed ? 160 : 220));
     const left = Math.min(props.anchor.left, window.innerWidth - 236);
 
     return createPortal(
@@ -203,25 +209,29 @@ export function TypePopover(props: {
                 <span className="ml-1 text-2xs text-fg-subtle">{t("story.textType.sizeUnit")}</span>
             </TooltipGroup>
 
-            <div className="mt-2 text-2xs font-medium tracking-wide text-fg-muted">{t("story.textType.speed")}</div>
-            <div className="mt-1 flex items-center gap-1.5">
-                <Input
-                    size="sm"
-                    type="number"
-                    min={1}
-                    className="w-20"
-                    value={cps}
-                    placeholder={t("story.textType.speedPlaceholder")}
-                    onChange={event => {
-                        const raw = event.target.value;
-                        setCps(raw);
-                        const numeric = Number(raw.trim());
-                        set("cps", raw.trim() === "" || !Number.isFinite(numeric) || numeric <= 0 ? null : numeric);
-                    }}
-                    onKeyDown={onFieldKeyDown}
-                />
-                <span className="text-2xs text-fg-subtle">{t("story.textType.speedUnit")}</span>
-            </div>
+            {props.omitSpeed ? null : (
+                <>
+                    <div className="mt-2 text-2xs font-medium tracking-wide text-fg-muted">{t("story.textType.speed")}</div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                        <Input
+                            size="sm"
+                            type="number"
+                            min={1}
+                            className="w-20"
+                            value={cps}
+                            placeholder={t("story.textType.speedPlaceholder")}
+                            onChange={event => {
+                                const raw = event.target.value;
+                                setCps(raw);
+                                const numeric = Number(raw.trim());
+                                set("cps", raw.trim() === "" || !Number.isFinite(numeric) || numeric <= 0 ? null : numeric);
+                            }}
+                            onKeyDown={onFieldKeyDown}
+                        />
+                        <span className="text-2xs text-fg-subtle">{t("story.textType.speedUnit")}</span>
+                    </div>
+                </>
+            )}
         </div>,
         document.body,
     );

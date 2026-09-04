@@ -12,6 +12,10 @@ all. What belongs to this entry point alone is the command line, the exit codes 
 The implementation is `src/main/app/application/commandLineBuild.ts`; the flags are parsed in
 `commandLine.ts` and turned into one request by `commandLineBuildPlan.ts`.
 
+Two other entry points share this one's shape, its exit codes and its profile flag —
+`--test` and `--lint`, in [command-line checks](command-line-checks.md). A launch answers one
+question, so a build and a check on one line are refused.
+
 ## One invocation, one artifact set
 
 `--build` is deliberately not a matrix. A run that produced several targets would have to answer
@@ -35,6 +39,10 @@ running the command twice. One variant, one platform, one format, one exit code.
 | `--build-setting` | `key=value`, repeatable; `build.*` keys only | the profile's settings |
 
 Every value-taking flag accepts both `--flag value` and `--flag=value`.
+
+> **On Windows, write a value containing a colon as `--flag=value`.** A launch dies before Studio
+> writes anything when a bare argument looks like `scheme:rest`: `--build-variant a:b` exits with no
+> output and no report, while `--build-variant=a:b` is read normally.
 
 A companion flag given without `--build` is refused rather than ignored: the alternative is a launch
 that opens the editor while the script that wrote the line believes it is building.

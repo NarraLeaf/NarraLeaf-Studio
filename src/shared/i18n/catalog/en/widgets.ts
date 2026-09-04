@@ -189,6 +189,15 @@ export const widgets = {
         title: "Text",
         localizeText: "Localize text",
     },
+    /**
+     * The marks a label's text carries, set over the characters selected in the box above them.
+     * The buttons themselves are named by the story's own keys: a mark on a label is the mark on a
+     * line of dialogue, and reading it by two names is how the two come to look like two features.
+     */
+    textMarks: {
+        title: "Marks",
+        selectHint: "Select the text to mark",
+    },
     frame: {
         title: "Page",
         page: "Page",

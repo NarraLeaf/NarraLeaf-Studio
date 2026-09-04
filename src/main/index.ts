@@ -3,6 +3,7 @@ import { App } from '@/app/app';
 import { decideWindowClosedTeardown } from '@/app/application/windowClosedTeardown';
 import { getMainTranslator } from '@/app/application/i18n';
 import { COMMAND_LINE_BUILD_EXIT_CODES } from '@shared/types/commandLineBuild';
+import { COMMAND_LINE_CHECK_EXIT_CODES } from '@shared/types/commandLineCheck';
 
 const app = App.create({});
 
@@ -92,17 +93,25 @@ app.electronApp.on('open-file', (event, filePath) => {
 // quit() so none of the shutdown work runs - the saves it would try to flush belong to the other
 // process, not to this one.
 if (!app.acquireSingleInstanceLock()) {
-    // Except for a build. Handing over is right for a launch that wants a window - the running
-    // Studio opens it - and wrong for one that wants an exit code: the build would run inside
+    // Except for a headless run. Handing over is right for a launch that wants a window - the
+    // running Studio opens it - and wrong for one that wants an exit code: the job would run inside
     // somebody's session, against a project they have open, while this process reported success it
     // has no way to know about. So it refuses, and says which of the two things happened.
     const build = app.getCommandLineBuild();
+    const check = app.getCommandLineCheck();
     if (build) {
         process.stderr.write(
             '[error] Build: another Studio is already running on this profile, so this build was not started.'
             + ' Pass --build-user-data-dir to give the build a profile of its own.\n',
         );
         app.electronApp.exit(COMMAND_LINE_BUILD_EXIT_CODES['studio-failed']);
+    } else if (check) {
+        const flag = check.kind === 'test' ? '--test-user-data-dir' : '--lint-user-data-dir';
+        process.stderr.write(
+            `[error] ${check.kind === 'test' ? 'Test' : 'Lint'}: another Studio is already running on this`
+            + ` profile, so this check was not started. Pass ${flag} to give it a profile of its own.\n`,
+        );
+        app.electronApp.exit(COMMAND_LINE_CHECK_EXIT_CODES['studio-failed']);
     } else {
         app.logger.info('Another instance is already running; handing over to it.');
         app.electronApp.exit(0);

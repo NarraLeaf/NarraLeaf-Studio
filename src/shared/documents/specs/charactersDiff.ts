@@ -83,6 +83,7 @@ const PROFILE_FIELDS = [
     "portrait",
     "defaultAvatarAssetId",
     "voiceTrackId",
+    "entranceTransform",
 ] as const;
 
 /** Puppet fields, same idea. `kind` is handled above them - a kind switch discards everything else. */

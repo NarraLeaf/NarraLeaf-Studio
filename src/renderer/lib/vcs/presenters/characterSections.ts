@@ -196,6 +196,7 @@ export const CHARACTER_FIELD_NAME_KEY: Readonly<Record<string, TranslationKey>> 
     tags: "characters.properties.tags",
     defaultAvatarAssetId: "characters.properties.defaultAvatar",
     voiceTrackId: "characters.properties.voiceTrack",
+    entranceTransform: "characters.properties.entrance",
     portrait: "characters.preview.portraitTitle",
     // Two the panel shows without labelling: the nicknames printed under a name in the cast list,
     // and the group a row was moved into.

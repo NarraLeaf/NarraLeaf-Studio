@@ -18,7 +18,7 @@ import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex, StoryLiteralValue } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryAssetVariants, StoryDocument, StoryId, StoryLibraryIndex, StoryLiteralValue, StoryTransformProps } from "./story";
 
 export type DevModeEntry =
     | {
@@ -143,6 +143,16 @@ export type DevModeCharacterSummary = {
      * resolving it here would freeze one answer into the bundle.
      */
     voiceTrackId?: string;
+    /**
+     * The transform props this character's `enter` rows fall back to, channel by channel - absent
+     * when the author set none, which is what every character carried before the field existed.
+     *
+     * Carried as authored and merged at compile time rather than pre-merged into the rows: which
+     * channels a row states is a property of the row, and folding the two together here would leave
+     * the bundle unable to say where a number came from - which is exactly what the story inspector
+     * has to show.
+     */
+    entranceTransform?: StoryTransformProps;
     /**
      * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
      * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried

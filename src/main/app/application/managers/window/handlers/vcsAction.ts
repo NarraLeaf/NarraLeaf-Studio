@@ -30,6 +30,7 @@ import type {
 } from "@shared/types/vcs";
 import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -55,6 +56,30 @@ import { IPCHandler } from "./IPCHandler";
  * path leaves the merge open, which is what lets an author decide one file and look at the result
  * before deciding the next. {@link VcsCompleteMergeHandler} is the one that closes it, and it does
  * both halves at once precisely so that nothing else can commit in between.
+ *
+ * # Which project a request may be about
+ *
+ * The handlers that overwrite the working tree out of history take their project from the window
+ * with {@link requireWindowProject}: {@link VcsRestoreRevisionHandler}, and the four merge handlers
+ * that put bytes on disk - {@link VcsResolveConflictsHandler}, {@link VcsCompleteMergeHandler},
+ * {@link VcsRestartConflictsHandler} and {@link VcsAbortMergeHandler}. What they have in common is
+ * the reason: each replaces the author's current files with content out of history, and there is no
+ * undo for that - the previous bytes were never committed, so nothing holds them. A payload naming
+ * another project therefore does not merely act on the wrong project, it destroys work in it.
+ *
+ * Three groups are deliberately still open, and they are different problems rather than one
+ * backlog:
+ *
+ *  - The reads, and the handlers that only add a revision. Naming another project there is still
+ *    wrong, but it discloses or adds rather than destroys.
+ *  - {@link VcsSyncHandler}, which does write the working tree and belongs with the five above by
+ *    that measure. It sits with {@link VcsPublishProjectHandler}, {@link VcsPushHandler} and
+ *    {@link VcsSignInHandler} instead, because those four send a project to a server and the path
+ *    is only half of what they let a caller choose - the address is a payload field on two of them,
+ *    and the account session they use is held per server origin rather than per project. Bounding
+ *    the path there without deciding the rest would read as settled when it is not.
+ *  - {@link VcsInitRepositoryHandler}, which must never be guarded this way at all: the project
+ *    wizard legitimately names a directory that is no window's project.
  */
 
 /**
@@ -186,7 +211,12 @@ export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestor
         window: AppWindow,
         { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"],
     ): Promise<RequestStatus<VcsRestoreResult>> {
-        return this.tryUse(() => window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {}));
+        // The window's project, not the payload's. This is the sharpest of the writers: a whole
+        // versioned tree is rewritten from a revision the caller picks, and the checkpoint taken
+        // first only protects what was committed - anything the author had not committed in the
+        // named project is gone, in a window that never showed them any of it happening.
+        return this.tryUse(() => window.app.getVcsManager()
+            .restoreRevision(requireWindowProject(window, projectPath), revision, options ?? {}));
     }
 }
 
@@ -249,6 +279,14 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
  * has a sentence for it. A path that escapes the project or sits outside version control comes
  * back as a FAILURE, because no comparison can name one - asking for it means a caller built a
  * path it should not have, and turning that into a tidy "not shown" would hide it forever.
+ *
+ * The project is the window's, not the payload's, and that is what keeps the reader narrow. The
+ * guards in `workingFile.ts` all judge the *relative* half - no `..`, nothing absolute, nothing
+ * outside version control, nothing over the ceiling - and they are all relative to a root the
+ * caller used to supply. A renderer naming any root therefore had a general file reader: no
+ * session was opened, the root was never required to be a repository, and the window's own
+ * filesystem grant was never consulted. Bounding the root to this window's project turns it back
+ * into what it is documented as - one file of this project's working tree.
  */
 export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
     readonly name = IPCEventType.vcsReadWorkingFile;
@@ -260,7 +298,10 @@ export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWo
     ): Promise<RequestStatus<VcsWorkingFileRead>> {
         return this.tryUse(async () => {
             try {
-                const bytes = await window.app.getVcsManager().readWorkingFile(request);
+                const bytes = await window.app.getVcsManager().readWorkingFile({
+                    ...request,
+                    projectPath: requireWindowProject(window, request.projectPath),
+                });
                 return { contentBase64: bytes.toString("base64") };
             } catch (error) {
                 if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
@@ -833,7 +874,9 @@ export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResol
         window: AppWindow,
         { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().resolveConflicts(projectPath, paths, choice));
+        // The window's project, not the payload's: `mine` and `theirs` overwrite the named paths.
+        return this.tryUse(() => window.app.getVcsManager()
+            .resolveConflicts(requireWindowProject(window, projectPath), paths, choice));
     }
 }
 
@@ -860,7 +903,10 @@ export class VcsCompleteMergeHandler extends IPCHandler<IPCEventType.vcsComplete
         window: AppWindow,
         { projectPath, decisions, options }: IPCEvents[IPCEventType.vcsCompleteMerge]["data"],
     ): Promise<RequestStatus<VcsMergeCompletion>> {
-        return this.tryUse(() => window.app.getVcsManager().completeMerge(projectPath, decisions, options ?? {}));
+        // The window's project, not the payload's: this writes each decided side over its path and
+        // then commits, so a request about another project both changes it and records the change.
+        return this.tryUse(() => window.app.getVcsManager()
+            .completeMerge(requireWindowProject(window, projectPath), decisions, options ?? {}));
     }
 }
 
@@ -891,7 +937,10 @@ export class VcsRestartConflictsHandler extends IPCHandler<IPCEventType.vcsResta
         window: AppWindow,
         { projectPath, paths }: IPCEvents[IPCEventType.vcsRestartConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().restartConflicts(projectPath, paths));
+        // The window's project, not the payload's. This is the one that throws bytes away on
+        // purpose, which is exactly why it may not be aimed at a project nobody is looking at.
+        return this.tryUse(() => window.app.getVcsManager()
+            .restartConflicts(requireWindowProject(window, projectPath), paths));
     }
 }
 
@@ -911,6 +960,9 @@ export class VcsAbortMergeHandler extends IPCHandler<IPCEventType.vcsAbortMerge>
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsAbortMerge]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().abortMerge(projectPath));
+        // The window's project, not the payload's: a complete rollback of every file the merge
+        // touched, in whichever project is named.
+        return this.tryUse(() => window.app.getVcsManager()
+            .abortMerge(requireWindowProject(window, projectPath)));
     }
 }

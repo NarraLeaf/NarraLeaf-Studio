@@ -776,20 +776,10 @@ export class VersionControlService extends Service<VersionControlService> implem
         return result.data;
     }
 
-    /**
-     * Tell this machine to trust the authority a server signs with, and say whether it
-     * took.
-     *
-     * The decision was made before this is called: the rail shows the authority, its
-     * fingerprint and the server it answers for, and offers this only where the pasted
-     * token vouches for that fingerprint. What is left here is the mechanics, which are
-     * the operating system's and therefore the main process's.
-     */
-    public async trustAuthority(certificatePath: string): Promise<{ installed: boolean; output: string }> {
-        const result = await getInterface().vcs.trustAuthority(this.projectPath(), certificatePath);
-        if (!result.success) throw new Error(result.error);
-        return result.data;
-    }
+    // Trusting a server's certificate authority is not here, and deliberately: it is asked from the
+    // server-trust prompt, a window of its own with no project, and it changes a setting of the
+    // machine rather than anything about a project. Reaching it through a per-project service was
+    // what made the channel look like it needed a project path.
 
     /** Take this account back off the machine: the stored token goes with it. */
     public async signOut(): Promise<void> {

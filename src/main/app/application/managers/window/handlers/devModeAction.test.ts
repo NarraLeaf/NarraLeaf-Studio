@@ -17,8 +17,12 @@ const { normalizeProjectPath } = await import("@shared/utils/recentProject");
 const {
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
+    DevModeGetStatusHandler,
+    DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
     DevModeOpenStoryRowInWorkspaceHandler,
+    DevModeReloadHandler,
+    DevModeStopHandler,
 } = await import("./devModeAction");
 
 type AppWindowLike = Parameters<InstanceType<typeof DevModeOpenStoryRowInWorkspaceHandler>["handle"]>[0];
@@ -248,4 +252,176 @@ describe("a Dev Mode request reaches the workspace of its own project", () => {
             expect(workspace.show.mock.calls.length > 0).toBe(door.noWorkspace === "failed");
         }
     });
+});
+
+/**
+ * Which project a Dev Mode session is started for.
+ *
+ * The sharpest of the four here, and it was the one with nothing on it. Dev Mode compiles the named
+ * project and runs it: its puppet runtimes are imported, its `scripts/` are compiled and mounted,
+ * its plugins get a runtime, and the window that opens holds a recursive grant over that tree. A
+ * build, a preview and a test run all ask the window first; this did not, so a renderer able to send
+ * a message was a renderer able to have somebody else's project run.
+ *
+ * The trust ledger did not cover it either, and could not: the gate inside `DevModeManager.launch`
+ * reads the path it is handed, so a payload naming a project that is trusted - somebody else's,
+ * trusted for its own author's reasons - passed the gate about a project this window was never
+ * opened on. The gate answers "may this project run", never "is this project yours"; that second
+ * question only has an answer here.
+ */
+describe("DevModeLaunchHandler", () => {
+    /** A window on one project, whose Dev Mode manager records what it was asked to launch. */
+    function makeLauncher(projectPath?: string) {
+        const launch = vi.fn(async () => "running");
+        const window = {
+            getProps: () => ({ projectPath }),
+            getApp: () => ({ getDevModeManager: () => ({ launch }) }),
+        } as unknown as AppWindowLike;
+        return { window, launch };
+    }
+
+    const entry = { kind: "surface", surfaceId: "main" } as never;
+
+    it("launches the window's own project", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: mine, entry });
+
+        expect(result.success).toBe(true);
+        // Asserted through to the manager, and with the window's own spelling: two spellings of one
+        // project are two session keys, so which string crosses is not cosmetic.
+        expect(launch).toHaveBeenCalledWith(mine, entry);
+    });
+
+    it("refuses a project this window does not have open, and compiles nothing", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: theirs, entry });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    /** The launcher, settings and the wizard have no project a payload could agree with. */
+    it("refuses a window that has no project open", async () => {
+        const { window, launch } = makeLauncher();
+
+        const result = await new DevModeLaunchHandler().handle(window, { projectPath: mine, entry });
+
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    /** A guard that refused the author their own project would be worse than the hole it closes. */
+    it("accepts the window's own project under another spelling", async () => {
+        const { window, launch } = makeLauncher(mine);
+
+        const result = await new DevModeLaunchHandler().handle(window, {
+            projectPath: mine + path.sep,
+            entry,
+        });
+
+        expect(result.success).toBe(true);
+        expect(launch).toHaveBeenCalledWith(mine, entry);
+    });
+});
+
+/**
+ * The three that drive a session once it is running.
+ *
+ * Not a launch, so not the same harm: these end somebody else's session, recompile what it is
+ * executing, or ask whether they have one at all. They are the same *question* though, and the
+ * answer has to be the same everywhere - a collar that stops a project being started but lets it be
+ * stopped from another window is not a rule, it is a list. Which is why the status probe is here
+ * too, small as it is: it is the channel that says "that project is running", and the workspace
+ * polls it once a second, so an unguarded one is a way to watch a session rather than glimpse it.
+ */
+describe("the Dev Mode session controls take their project from the window", () => {
+    /** A window on one project, whose Dev Mode manager records which project it was driven for. */
+    function makeDriver(projectPath?: string) {
+        const stop = vi.fn(async () => "idle");
+        const reload = vi.fn(async () => "running");
+        const getStatus = vi.fn(() => "running");
+        const window = {
+            getProps: () => ({ projectPath }),
+            getApp: () => ({ getDevModeManager: () => ({ stop, reload, getStatus }) }),
+        } as unknown as AppWindowLike;
+        return { window, stop, reload, getStatus };
+    }
+
+    type Driver = ReturnType<typeof makeDriver>;
+
+    const controls = [
+        {
+            name: "devMode.stop",
+            manager: (driver: Driver) => driver.stop,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new DevModeStopHandler().handle(window, { projectPath }),
+        },
+        {
+            name: "devMode.reload",
+            manager: (driver: Driver) => driver.reload,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new DevModeReloadHandler().handle(window, { projectPath }),
+        },
+        {
+            name: "devMode.getStatus",
+            manager: (driver: Driver) => driver.getStatus,
+            run: (window: AppWindowLike, projectPath: string) =>
+                new DevModeGetStatusHandler().handle(window, { projectPath }),
+        },
+    ] as const;
+
+    for (const control of controls) {
+        it(`${control.name} drives the window's own project`, async () => {
+            const driver = makeDriver(mine);
+
+            const result = await control.run(driver.window, mine);
+
+            expect(result.success).toBe(true);
+            expect(control.manager(driver)).toHaveBeenCalledWith(mine);
+        });
+
+        it(`${control.name} refuses a project this window does not have open`, async () => {
+            const driver = makeDriver(mine);
+
+            const result = await control.run(driver.window, theirs);
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(control.manager(driver)).not.toHaveBeenCalled();
+        });
+
+        it(`${control.name} refuses a window that has no project open`, async () => {
+            const driver = makeDriver();
+
+            const result = await control.run(driver.window, mine);
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(control.manager(driver)).not.toHaveBeenCalled();
+        });
+
+        /**
+         * A refusal has to arrive as a refusal. Two of these three answered synchronously and one
+         * of them never had a `try` at all, so a guard added carelessly would have thrown out of
+         * the handler and reached the renderer as whatever the registry makes of an exception -
+         * without the code the refusal is recognised by.
+         */
+        it(`${control.name} carries the refusal code rather than throwing`, async () => {
+            const driver = makeDriver(mine);
+
+            await expect(Promise.resolve(control.run(driver.window, theirs)))
+                .resolves.toMatchObject({ success: false, code: WINDOW_PROJECT_MISMATCH_CODE });
+        });
+
+        it(`${control.name} accepts the window's own project under another spelling`, async () => {
+            const driver = makeDriver(mine);
+
+            const result = await control.run(driver.window, mine + path.sep);
+
+            expect(result.success).toBe(true);
+            expect(control.manager(driver)).toHaveBeenCalledWith(mine);
+        });
+    }
 });

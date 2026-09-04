@@ -1083,7 +1083,7 @@ interface IUIEditorStateService extends IService {
 interface IDevModeService extends IService {
     getStatus(): DevModeStatus;
     refreshStatus(): Promise<DevModeStatus>;
-    launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus>;
+    launch(entry: DevModeEntry): Promise<DevModeStatus>;
     stop(): Promise<DevModeStatus>;
     reload(): Promise<DevModeStatus>;
     onStatusChanged(handler: (status: DevModeStatus) => void): () => void;
