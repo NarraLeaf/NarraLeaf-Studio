@@ -30,6 +30,7 @@ import type {
 } from "@shared/types/vcs";
 import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -249,6 +250,14 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
  * has a sentence for it. A path that escapes the project or sits outside version control comes
  * back as a FAILURE, because no comparison can name one - asking for it means a caller built a
  * path it should not have, and turning that into a tidy "not shown" would hide it forever.
+ *
+ * The project is the window's, not the payload's, and that is what keeps the reader narrow. The
+ * guards in `workingFile.ts` all judge the *relative* half - no `..`, nothing absolute, nothing
+ * outside version control, nothing over the ceiling - and they are all relative to a root the
+ * caller used to supply. A renderer naming any root therefore had a general file reader: no
+ * session was opened, the root was never required to be a repository, and the window's own
+ * filesystem grant was never consulted. Bounding the root to this window's project turns it back
+ * into what it is documented as - one file of this project's working tree.
  */
 export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
     readonly name = IPCEventType.vcsReadWorkingFile;
@@ -260,7 +269,10 @@ export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWo
     ): Promise<RequestStatus<VcsWorkingFileRead>> {
         return this.tryUse(async () => {
             try {
-                const bytes = await window.app.getVcsManager().readWorkingFile(request);
+                const bytes = await window.app.getVcsManager().readWorkingFile({
+                    ...request,
+                    projectPath: requireWindowProject(window, request.projectPath),
+                });
                 return { contentBase64: bytes.toString("base64") };
             } catch (error) {
                 if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {

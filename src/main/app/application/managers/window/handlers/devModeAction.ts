@@ -33,7 +33,17 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
         { projectPath, entry }: IPCEvents[IPCEventType.devModeLaunch]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeLaunch]["response"]["status"] }>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getDevModeManager().launch(projectPath, entry);
+            // The window's project, not the payload's. Dev Mode compiles and runs the named
+            // project's own code - its puppet runtimes, its `scripts/`, its plugins - and the
+            // window it opens holds a recursive grant over that tree, so which project it is may
+            // not be the caller's choice. A build, a preview and a test run all ask this already;
+            // this was the fourth way to start a project and the only one that did not.
+            //
+            // It also fixes the trust gate behind it, which reads the path it is handed: named
+            // somebody else's project that happens to be trusted, that gate said yes about a
+            // project this window was never opened on.
+            const status = await window.getApp().getDevModeManager()
+                .launch(requireWindowProject(window, projectPath), entry);
             return { status };
         });
     }
