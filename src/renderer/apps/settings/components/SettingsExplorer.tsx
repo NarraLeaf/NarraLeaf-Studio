@@ -206,33 +206,57 @@ export function SettingsExplorer<T>({
         });
     }, []);
 
+    /**
+     * The write a row is still waiting on, per row, and how many have been asked for.
+     *
+     * A row does not refuse a second choice while the first is in flight - see `renderControl` for
+     * why not - so two things have to be true without the author having to wait. The chain keeps the
+     * writes for one row in the order they were made, so the last thing chosen is the last thing
+     * stored; the counter says which of them is still the latest, so a write that lands after a
+     * newer one neither clears the newer pending value nor puts the row back to `saved`.
+     */
+    const commitChains = useRef(new Map<string, Promise<void>>());
+    const commitCounts = useRef(new Map<string, number>());
+
     const handleCommit = useCallback(
-        async (entry: SettingEntry<T>, value: SettingValue) => {
+        (entry: SettingEntry<T>, value: SettingValue) => {
             const id = entry.descriptor.id;
+            const token = (commitCounts.current.get(id) ?? 0) + 1;
+            commitCounts.current.set(id, token);
+            const isLatest = () => commitCounts.current.get(id) === token;
             setErrors(prev => {
                 const next = { ...prev };
                 delete next[id];
                 return next;
             });
             handleSavingState(id, true);
-            try {
-                await onCommit(entry.source, entry.descriptor, value);
-                setPendingInputs(prev => {
-                    const next = { ...prev };
-                    delete next[id];
-                    return next;
-                });
-                setPendingBooleans(prev => {
-                    const next = { ...prev };
-                    delete next[id];
-                    return next;
-                });
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                setErrors(prev => ({ ...prev, [id]: message }));
-            } finally {
-                handleSavingState(id, false);
-            }
+            const run = (commitChains.current.get(id) ?? Promise.resolve()).then(async () => {
+                try {
+                    await onCommit(entry.source, entry.descriptor, value);
+                    if (!isLatest()) {
+                        return;
+                    }
+                    setPendingInputs(prev => {
+                        const next = { ...prev };
+                        delete next[id];
+                        return next;
+                    });
+                    setPendingBooleans(prev => {
+                        const next = { ...prev };
+                        delete next[id];
+                        return next;
+                    });
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    setErrors(prev => ({ ...prev, [id]: message }));
+                } finally {
+                    if (isLatest()) {
+                        handleSavingState(id, false);
+                    }
+                }
+            });
+            commitChains.current.set(id, run);
+            return run;
         },
         [handleSavingState, onCommit],
     );
@@ -245,12 +269,16 @@ export function SettingsExplorer<T>({
             if (entry.descriptor.disabled) {
                 return;
             }
-            const current = Boolean(getValue(entry.source, entry.descriptor));
-            const nextValue = !current;
-            setPendingBooleans(prev => ({ ...prev, [entry.descriptor.id]: nextValue }));
+            const id = entry.descriptor.id;
+            // What the switch is showing, which is not the stored value while a write is in flight.
+            // Reading the stored one would make a second toggle write the value that is already on
+            // its way, and leave the switch showing the opposite of what it just did.
+            const shown = pendingBooleans[id];
+            const nextValue = !(shown !== undefined ? shown : Boolean(getValue(entry.source, entry.descriptor)));
+            setPendingBooleans(prev => ({ ...prev, [id]: nextValue }));
             handleCommit(entry, nextValue);
         },
-        [getValue, handleCommit],
+        [getValue, handleCommit, pendingBooleans],
     );
 
     const setActionConfirming = useCallback((id: string, active: boolean) => {
@@ -363,6 +391,10 @@ export function SettingsExplorer<T>({
                         <Button
                             size="sm"
                             variant={descriptor.danger ? "danger" : "secondary"}
+                            // The one place an in-flight write still closes a control. An Action runs
+                            // something with a side effect of its own - a cache cleared, a file
+                            // written - and starting a second one before the first has answered is
+                            // not a change of mind, it is the same thing happening twice.
                             disabled={isSaving || descriptor.disabled}
                             onClick={() =>
                                 descriptor.skipConfirm
@@ -402,7 +434,7 @@ export function SettingsExplorer<T>({
                         <Switch
                             checked={booleanValue}
                             onCheckedChange={() => handleBooleanToggle(entry)}
-                            disabled={isSaving || descriptor.disabled}
+                            disabled={descriptor.disabled}
                             loading={isSaving}
                             size="md"
                         />
@@ -420,7 +452,6 @@ export function SettingsExplorer<T>({
                             min={min}
                             max={max}
                             step={descriptor.step ?? 1}
-                            disabled={isSaving}
                             // Track the drag locally and only persist on release: committing
                             // per pixel would fire a write + a broadcast to every window on
                             // every frame.
@@ -448,7 +479,7 @@ export function SettingsExplorer<T>({
                         options={selectOptions}
                         value={displayValue}
                         onChange={(value) => handleEnumChange(entry, value as string)}
-                        disabled={isSaving || options.length === 0}
+                        disabled={options.length === 0}
                         placeholder={descriptor.optionLabels?.[displayValue] ?? displayValue}
                     />
                 );
@@ -461,7 +492,7 @@ export function SettingsExplorer<T>({
                             presets={descriptor.options ?? []}
                             presetLabels={descriptor.optionLabels}
                             onChange={(next) => handleEnumChange(entry, next)}
-                            disabled={isSaving || descriptor.disabled}
+                            disabled={descriptor.disabled}
                             ariaLabel={descriptor.label}
                         />
                     </div>
@@ -476,7 +507,6 @@ export function SettingsExplorer<T>({
                             presetLabels={descriptor.optionLabels}
                             presetStacks={descriptor.optionFontStacks}
                             onChange={(next) => handleEnumChange(entry, next)}
-                            disabled={isSaving}
                             ariaLabel={descriptor.label}
                         />
                     </div>
@@ -510,7 +540,6 @@ export function SettingsExplorer<T>({
                                     aria-checked={selected}
                                     aria-label={name}
                                     data-tip={name}
-                                    disabled={isSaving}
                                     onClick={() => handleEnumChange(entry, option)}
                                     // The ring sits outside the swatch so the color the user is
                                     // judging is never overlaid by the selection indicator.
@@ -530,7 +559,6 @@ export function SettingsExplorer<T>({
                                     hex={effectiveHex}
                                     selected={isCustom}
                                     label={t("settings.customColor")}
-                                    disabled={isSaving}
                                     // Live preview while dragging, one write on release: a
                                     // commit persists and broadcasts to every window, and the
                                     // picker's map emits on every pointer move.
@@ -568,7 +596,7 @@ export function SettingsExplorer<T>({
                         // ignored: the descriptor's own description has already been replaced
                         // with the reason, and a field that takes typing it will not keep is
                         // the one thing worse than a field that cannot be typed in.
-                        disabled={isSaving || descriptor.disabled}
+                        disabled={descriptor.disabled}
                     />
                 );
                 if (!descriptor.unit) {
