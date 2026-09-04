@@ -80,6 +80,47 @@ export const plugins = {
         download: "Failed to download plugin",
     },
     /**
+     * The panel's temporary state over one project's dependency table: the plugins the project
+     * declares it needs, and what each row wants done about it.
+     *
+     * The state words are not here. A row's version verdict is written by
+     * `project.dependencies.status`, and a row's own controls borrow the store's and the switch's
+     * words - Install, Update, Enable, Authorize - because the author reads them together with the
+     * list they came from. Only the words this screen is the first to need live here.
+     */
+    dependencies: {
+        title: "Project dependencies",
+        /**
+         * Said by the warning raised when a project opens, and again at the top of the screen that
+         * warning leads to, so the screen confirms what brought the author to it rather than
+         * restating it differently.
+         *
+         * "Not available" covers all three of absent, withheld and switched off on purpose: it is
+         * the one thing true of every row the count includes, and each row then says which of the
+         * three it is.
+         */
+        unavailable: {
+            one: "{count} plugin this project needs is not available.",
+            other: "{count} plugins this project needs are not available.",
+        },
+        allReady: "Every plugin this project needs is available.",
+        /** The warning's action, and the way into the screen. */
+        open: "Open dependencies",
+        installAll: "Install all",
+        /** What a row reports once its remedy has been applied; the other two words are borrowed. */
+        updated: "Updated",
+        authorized: "Authorized",
+        /** A dependency naming a plugin the registry does not publish. There is nothing to press. */
+        notInRegistry: "Not in the registry",
+        /** Published, but not at a version this project can use. */
+        noCompatibleVersion: "No compatible version",
+        task: {
+            running: "Installing dependencies…",
+            done: "Dependencies installed.",
+            partial: "Some plugins were not installed.",
+        },
+    },
+    /**
      * The workspace panel's half: what a plugin is doing *in this window*, which
      * the Launcher cannot say because it has no project open.
      */
@@ -95,8 +136,6 @@ export const plugins = {
             suppressedHint: "The installed version is incompatible with the one this project was authored against. Update it, or update the project's dependency table from Project ▸ App.",
             failed: "Failed to load",
         },
-        // Warned once at load, naming the plugins this project's dependency table turned away.
-        suppressedNotice: "Not loaded for this project: {names}. The installed version is incompatible with the one the project was authored against. See the Plugins panel.",
         // A plugin that changed state while the workspace could not act on it.
         pendingReopen: "Takes effect the next time this project opens.",
         /**
