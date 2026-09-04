@@ -146,7 +146,7 @@ describe("Studio's preload scheduler", () => {
             expect(scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null })).toBeNull();
         });
 
-        it("leaves audio to the audio cache, which decides for itself what streams", () => {
+        it("leaves audio and video out, because nothing here would warm either", () => {
             const scheduler = createStudioPreloadScheduler();
             scheduler.useCompiled(compiledWith({
                 scenes: { "scene-1": sceneOne },
@@ -154,7 +154,7 @@ describe("Studio's preload scheduler", () => {
                     "scene-1": {
                         firstFrame: null,
                         blockOrder: ["row-0"],
-                        byBlock: { "row-0": [{ type: "audio", url: "theme.mp3" }, { type: "image", url: "a.png" }] },
+                        byBlock: { "row-0": [{ type: "audio", url: "theme.mp3" }, { type: "video", url: "clip.mp4" }, { type: "image", url: "a.png" }] },
                     },
                 },
             }));

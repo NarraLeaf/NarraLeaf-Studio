@@ -192,11 +192,26 @@ export function createStudioPreloadScheduler(options?: {
         const entries: PreloadEntry[] = [];
         const seen = new Set<string>();
         const add = (resource: StoryWarmResource, band: PreloadEntry["band"]): void => {
-            if (resource.type === "audio" || seen.has(resource.url)) {
-                // Audio is warmed by the audio cache off the scene's own declaration, not by this
-                // plan: whether a clip decodes or streams is the sound's property, and the plan
-                // carries urls. Recording it in the warm order still earns its keep - it is what
-                // lets a report name the row that wanted a clip.
+            if (resource.type !== "image" || seen.has(resource.url)) {
+                // Only images, for now, and for two different reasons.
+                //
+                // Audio is warmed by the audio cache off the scene's own declaration rather than by
+                // this plan: whether a clip decodes into memory or streams as it plays is a property
+                // of the sound, not of its url.
+                //
+                // Video is left out because nothing here would warm it. This host hands urls back
+                // unchanged, which is exactly right for an image - the browser fetches and decodes
+                // it once - and does nothing at all for a video, since the player holds no video
+                // cache to fill. What genuinely buffers one is the engine's `Video.preload()`,
+                // which mounts a hidden element, and the compiler only emits that for a `/video`
+                // declaration row. Hoisting it to scene start for every clip a scene mentions is
+                // the fix, and it needs a measurement first: it would start buffering every clip in
+                // a scene at once, which is a cost the author currently controls by where the
+                // declaration row sits. Listing video here without that would report warming that
+                // did not happen.
+                //
+                // Recording both in the warm order still earns its keep - it is what lets a report
+                // name the row that wanted a clip.
                 return;
             }
             seen.add(resource.url);
