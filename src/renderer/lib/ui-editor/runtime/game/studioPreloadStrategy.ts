@@ -5,6 +5,7 @@ import type {
     PreloadResource,
     PreloadStrategy,
     Scene,
+    Sound,
 } from "narraleaf-react";
 import type { CompiledNlrStory, SceneWarmOrder, StoryWarmResource } from "./storyCompiler";
 
@@ -134,7 +135,7 @@ export function createStudioPreloadScheduler(options?: {
                 return fallback ? fallback.plan(moment) : null;
             }
             const from = moment.kind === "advance" ? rowIndexOf(order, moment.actionId) : 0;
-            return buildPlan(order, from, moment.kind === "scene");
+            return buildPlan(sceneIdByScene.get(scene) ?? "", order, from, moment.kind === "scene");
         },
 
         /**
@@ -188,16 +189,17 @@ export function createStudioPreloadScheduler(options?: {
         return index < 0 ? 0 : index;
     }
 
-    function buildPlan(order: SceneWarmOrder, from: number, gates: boolean): PreloadPlan {
+    function buildPlan(sceneId: string, order: SceneWarmOrder, from: number, gates: boolean): PreloadPlan {
         const entries: PreloadEntry[] = [];
         const seen = new Set<string>();
         const add = (resource: StoryWarmResource, band: PreloadEntry["band"]): void => {
             if (resource.type !== "image" || seen.has(resource.url)) {
-                // Only images, for now, and for two different reasons.
+                // Only images among the url-named entries, and for two different reasons.
                 //
-                // Audio is warmed by the audio cache off the scene's own declaration rather than by
-                // this plan: whether a clip decodes into memory or streams as it plays is a property
-                // of the sound, not of its url.
+                // Audio is named by element instead, on the plan's own `audio` field - whether a
+                // clip decodes into memory or streams as it plays is a property of the sound rather
+                // than of its url, so the audio cache has to be handed the sound itself. See
+                // `soundsOf` below.
                 //
                 // Video is left out because nothing here would warm it. This host hands urls back
                 // unchanged, which is exactly right for an image - the browser fetches and decodes
@@ -240,8 +242,28 @@ export function createStudioPreloadScheduler(options?: {
         }
         return {
             entries,
+            audio: soundsOf(sceneId),
             keep: [...seen],
             pin: order.firstFrame ? [order.firstFrame] : [],
         };
+    }
+
+    /**
+     * The sounds this scene built, for the audio cache to hold and nothing else to.
+     *
+     * This field is not optional in practice. `retainOnly` is the only thing that warms a scene's
+     * clips *and* the only thing that lets the previous scene's go, and the player calls it from
+     * exactly one place: the plan. A plan that omits it does not fall back to anything - it simply
+     * stops both halves, which is a scene stuttering into its own first line and a session whose
+     * decoded audio never shrinks. That is what a first cut of this file did.
+     *
+     * The compiler's registry is the right source: it holds the scene's configured music under its
+     * own name plus every sound a row created, which is what a scene warms. Voice takes are not in
+     * it - they are scene config keyed by line, fetched when the line plays - and were not in what
+     * the player warmed before either.
+     */
+    function soundsOf(sceneId: string): readonly Sound[] {
+        const sounds = compiled?.sceneElements?.[sceneId]?.sounds;
+        return sounds ? [...sounds.values()] : [];
     }
 }

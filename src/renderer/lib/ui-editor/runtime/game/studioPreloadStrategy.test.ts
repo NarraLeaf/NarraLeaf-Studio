@@ -232,3 +232,54 @@ describe("falling back to the player's own walk", () => {
         expect(asked).toEqual([]);
     });
 });
+
+/**
+ * The audio field is the only thing that warms a scene's clips and the only thing that lets the
+ * previous scene's go - the player calls `retainOnly` from the plan and nowhere else. A plan that
+ * omits it stops both halves silently, which a first cut of this file did.
+ */
+describe("naming the scene's sounds for the audio cache", () => {
+    const theme = { config: { src: "theme.mp3" } };
+    const hit = { config: { src: "hit.wav" } };
+
+    function withSounds(): ReturnType<typeof createStudioPreloadScheduler> {
+        const scheduler = createStudioPreloadScheduler();
+        const compiled = compiledWith({
+            scenes: { "scene-1": sceneOne },
+            warmOrder: { "scene-1": longScene() },
+        }) as unknown as { sceneElements: Record<string, { sounds: Map<string, unknown> }> };
+        compiled.sceneElements = {
+            "scene-1": { sounds: new Map([["bgm", theme], ["hit", hit]]) },
+        };
+        scheduler.useCompiled(compiled as unknown as CompiledNlrStory);
+        return scheduler;
+    }
+
+    it("hands over every sound the scene built, so the cache holds them and only them", () => {
+        const plan = withSounds().plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
+
+        expect(plan.audio).toEqual([theme, hit]);
+    });
+
+    it("keeps naming them as the story advances, so a mid-scene plan does not release them", () => {
+        const plan = withSounds().plan({
+            kind: "advance", actionId: null, scene: sceneOne as never, story: null,
+        }) as PreloadPlan;
+
+        expect(plan.audio).toEqual([theme, hit]);
+    });
+
+    it("answers with an empty set rather than nothing for a scene that built none", () => {
+        const scheduler = createStudioPreloadScheduler();
+        scheduler.useCompiled(compiledWith({
+            scenes: { "scene-1": sceneOne },
+            warmOrder: { "scene-1": longScene() },
+        }));
+
+        const plan = scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
+
+        // Not undefined: the player skips `retainOnly` entirely for a plan with no audio field, so
+        // an absent one would leave the previous scene's clips held for ever.
+        expect(plan.audio).toEqual([]);
+    });
+});
