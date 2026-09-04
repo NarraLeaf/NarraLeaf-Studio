@@ -27,6 +27,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
+
+/** Line endings folded to LF, so a comparison is about content. Null stays null. */
+function foldEndings(text) {
+    return text === null ? null : text.split("\r\n").join("\n");
+}
+
 const { generateDtsBundle } = require("dts-bundle-generator");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -137,7 +143,13 @@ function main() {
 
     if (check) {
         const current = fs.existsSync(OUTPUT) ? fs.readFileSync(OUTPUT, "utf-8") : null;
-        if (current !== rendered) {
+        // Compared with line endings folded, because the question is whether the declarations still
+        // say the same thing - not which platform checked them out. This repository has mixed
+        // endings and git materializes CRLF on Windows, so a byte comparison reported the file
+        // stale on every Windows checkout, whatever was in it. A developer who ran the check there
+        // was told to regenerate a file that was already current, and the regeneration "fixed" it
+        // by rewriting every line.
+        if (foldEndings(current) !== foldEndings(rendered)) {
             console.error(`${path.relative(repoRoot, OUTPUT)} is out of date.`);
             console.error("Run: node scripts/gen-script-api-dts.mjs");
             process.exit(1);
