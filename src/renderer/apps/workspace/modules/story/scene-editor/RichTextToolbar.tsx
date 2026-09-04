@@ -52,28 +52,15 @@ const BTN_ACTIVE = `grid h-6 w-6 place-items-center rounded-md bg-primary/25 tex
  * on the same terms the pointer does.
  */
 const BTN_INERT = `grid h-6 w-6 place-items-center rounded-md text-fg-subtle ${FOCUS_RING}`;
-/** Rendered heights of the two strips, and the breathing room between strip and row. */
-const TOOLBAR_HEIGHT = 24;
-const TOOLBAR_HEIGHT_EXPANDED = 30;
-const TOOLBAR_GAP = 4;
 /**
- * The space a row open for editing keeps clear beneath its line for the strip to sit in.
+ * How far below the row's top edge the strip sits, at most.
  *
- * The story list has no gaps: rows are one line box after another, so a floating strip the size of
- * this one covers a neighbour's words wherever it is put. It therefore sits in space the row itself
- * makes, and this constant is the contract between the two - {@link StoryRow} pads by it, and the
- * placement below never leaves it.
- *
- * Beneath rather than above, and that is the whole of the fix: a band opened above would push the
- * line the author has just clicked out from under their pointer, which is the one motion an editing
- * surface may never make. Opened beneath, the edited line does not move at all and the rows below it
- * shift down by one band - the same thing a line wrapping to two does.
- *
- * The expanded height always, even while the strip is the collapsed chip. The band is then a
- * constant, so expanding the strip does not reflow the scene under the author mid-sentence, and no
- * row has to subscribe to the session's expanded flag to know how tall it should be.
+ * On a single-line row the strip is shorter than the row by less than this, so the expression below
+ * centres it and the cap never applies: the strip lands on the line's own centre. On a row whose
+ * words have wrapped to a paragraph the cap is what applies, and it keeps the strip level with the
+ * FIRST line - the line the row's number, its speaker mark and its diagnostics all align to.
  */
-export const RICH_TEXT_TOOLBAR_BAND_PX = TOOLBAR_HEIGHT_EXPANDED + TOOLBAR_GAP;
+const TOOLBAR_ROW_INSET_MAX = 8;
 
 /**
  * The rect of the nearest ancestor that actually scrolls — the pane the toolbar has to stay inside.
@@ -90,38 +77,63 @@ function scrollClipRect(el: HTMLElement): DOMRect | null {
     return null;
 }
 
+/** The strip's top-left corner, in viewport coordinates. */
+export type RichTextToolbarPlacement = { top: number; left: number };
+
 /**
  * Where the strip sits, in viewport coordinates.
  *
- * Pure, and separate from the effect that measures, because the one thing it guarantees is worth a
- * test of its own: **the strip never rises above the top of the line it belongs to**. The story list
- * has no gaps between rows, so anything over that edge is a sentence some other row is showing - the
- * defect this placement replaced, where the strip was drawn one row box higher and covered the start
- * of the line above.
+ * Pure, and separate from the effect that measures, because the one thing it guarantees carries the
+ * whole design and is worth a test of its own:
  *
- * Three bounds, applied outermost last:
+ * > **The strip is drawn inside the vertical band of the row it belongs to, and inside the pane.
+ * > It is never drawn outside either, so no other row is ever covered.**
  *
- *  - `anchorBottom + TOOLBAR_GAP` is where it wants to be: in the band the row keeps clear beneath
- *    its line (see {@link RICH_TEXT_TOOLBAR_BAND_PX}).
- *  - `paneBottom - height` keeps it inside the scrolling pane, so it cannot float over the panel
- *    below or the tab strip.
- *  - `anchorTop` is the floor under both. A pane too short to hold the band - a row opened with the
- *    pane's bottom edge a few pixels beneath it - costs the strip a few pixels of THIS line rather
- *    than putting it over the one above.
+ * That is a stronger statement than it sounds. The story list has no gaps: a row's text box is
+ * exactly its row's box (`ROW_TEXT_HIT_BLEED` pads and un-margins by the row's own padding), and the
+ * rows tile the pane one after another with nothing between them. So the rows' text boxes partition
+ * the list, and anything held inside one row's band cannot touch another row's words at any scroll
+ * position, in any density, at either edge of the pane. The rule needs no case analysis and there is
+ * no arrangement of rows that defeats it.
  *
- * `paneTop` wins last of all, for a row scrolled half out of the top of its pane: the strip belongs
- * to a line the author can see.
+ * It is also the reason the strip does not ask the row for space. A row that grew when the caret
+ * arrived and shrank when it left would move every line below it twice per edit, and holding still
+ * is worth more than the few pixels of its OWN line the strip covers instead.
+ *
+ * Vertically the strip is centred on the row's first line (see {@link TOOLBAR_ROW_INSET_MAX}) and
+ * then clamped into whatever of the row the pane is currently showing. Horizontally it ends where
+ * the line's own column ends - the row's trailing space, past the last glyph of all but the longest
+ * lines, and short of the row's own controls, which have to stay clickable. A pane too narrow to
+ * hold the strip at that edge gives up the right-hand alignment rather than the pane, so every
+ * control stays on screen.
+ *
+ * `null` when the row has been scrolled far enough out of the pane that the strip would not fit in
+ * what is left of it. Pinning it to the pane's edge instead would put it over a neighbour's words,
+ * which is exactly the defect this placement exists to prevent, and a strip for a line the author
+ * cannot see is not worth that.
  */
-export function richTextToolbarTop(input: {
-    anchorTop: number;
-    anchorBottom: number;
+export function richTextToolbarPlacement(input: {
+    /** The row's box - the band the strip may not leave. */
+    rowTop: number;
+    rowBottom: number;
+    /** The right edge of the row's text column, which the strip's right edge is aligned to. */
+    columnRight: number;
     paneTop: number;
     paneBottom: number;
+    paneLeft: number;
+    width: number;
     height: number;
-}): number {
-    const floor = input.paneBottom - input.height;
-    const wanted = Math.min(input.anchorBottom + TOOLBAR_GAP, floor);
-    return Math.max(input.paneTop, Math.max(input.anchorTop, wanted));
+}): RichTextToolbarPlacement | null {
+    const visibleTop = Math.max(input.rowTop, input.paneTop);
+    const visibleBottom = Math.min(input.rowBottom, input.paneBottom);
+    if (visibleBottom - visibleTop < input.height) {
+        return null;
+    }
+    const wanted = input.rowTop + Math.min(TOOLBAR_ROW_INSET_MAX, Math.max(0, (input.rowBottom - input.rowTop - input.height) / 2));
+    return {
+        top: Math.min(Math.max(wanted, visibleTop), visibleBottom - input.height),
+        left: Math.max(input.paneLeft, input.columnRight - input.width),
+    };
 }
 
 /** Case-insensitive normalized hex key so colors from mixed sources compare reliably. */
@@ -147,10 +159,12 @@ export type RichTextToolbarHandle = {
 };
 
 /**
- * Floating rich-text control strip shown above the row being edited. Rendered in a portal with a
- * high z-index (positioned from the edit box) so it always reliably receives clicks regardless of
- * row stacking. Collapsed to a small chip by default; its expanded state is shared across the whole
- * Studio session (see {@link useRichToolbarExpanded}).
+ * Floating rich-text control strip for the row being edited. Rendered in a portal with a high
+ * z-index (positioned from the edit box) so it always reliably receives clicks regardless of row
+ * stacking, and held inside that row's own band so it never covers another line - see
+ * {@link richTextToolbarPlacement}, which is where the whole of that argument is written down.
+ * Collapsed to a small chip by default; its expanded state is shared across the whole Studio
+ * session (see {@link useRichToolbarExpanded}).
  *
  * Reachable by keyboard as well as by pointer: `Tab` from the field walks in, `Tab`/`Shift+Tab` cycle
  * the controls, `Escape` hands the line back. The two input routes are deliberately not symmetric —
@@ -174,7 +188,17 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useRichToolbarExpanded();
     const stripRef = useRef<HTMLDivElement | null>(null);
-    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+    /**
+     * The positioned box the strip is drawn in, and the thing the placement measures.
+     *
+     * It is rendered before it has anywhere to be - hidden, at the viewport's corner - so that the
+     * first pass through the layout effect below has a real width and height to place. Laid out but
+     * invisible: `visibility: hidden` keeps the box measurable while taking it out of hit testing and
+     * out of the accessibility tree, and React flushes a layout effect's state before the browser
+     * paints, so the unplaced pass is never a frame anybody sees.
+     */
+    const wrapRef = useRef<HTMLDivElement | null>(null);
+    const [pos, setPos] = useState<RichTextToolbarPlacement | null>(null);
     const [palette, setPalette] = useState<{ top: number; left: number } | null>(null);
     const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
     const palettePanelRef = useRef<HTMLDivElement | null>(null);
@@ -236,22 +260,33 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                 setPos(null);
                 return;
             }
-            const rect = anchor.getBoundingClientRect();
-            const clip = scrollClipRect(anchor);
-            // The row has been scrolled out of its pane. A chip still floating over whatever now
-            // occupies that spot reads as part of it, so there is nothing useful to show.
-            if (clip && (rect.bottom <= clip.top || rect.top >= clip.bottom)) {
-                setPos(null);
+            const box = wrapRef.current;
+            if (!box) {
                 return;
             }
-            const top = richTextToolbarTop({
-                anchorTop: rect.top,
-                anchorBottom: rect.bottom,
+            // The ROW, not the field: the guarantee below is stated about the row's band, so it is
+            // the row that has to be measured. (The two are the same rectangle on a text row - see
+            // `ROW_TEXT_HIT_BLEED` - but the row is what the rule is about, and what a regression
+            // would be measured against.)
+            const row = anchor.closest<HTMLElement>("[data-story-row-block-id]") ?? anchor;
+            const rowRect = row.getBoundingClientRect();
+            const column = anchor.getBoundingClientRect();
+            const clip = scrollClipRect(anchor);
+            // Measured rather than declared. The strip's width depends on what this row can do (a
+            // narration line has no expression control) and its height on which of the two forms it
+            // is showing, and a constant that drifted from the rendered box would move the strip out
+            // of its row - which is the one thing the placement may not do.
+            const size = box.getBoundingClientRect();
+            setPos(richTextToolbarPlacement({
+                rowTop: rowRect.top,
+                rowBottom: rowRect.bottom,
+                columnRight: column.right,
                 paneTop: clip ? clip.top : 0,
                 paneBottom: clip ? clip.bottom : globalThis.window.innerHeight,
-                height: expanded ? TOOLBAR_HEIGHT_EXPANDED : TOOLBAR_HEIGHT,
-            });
-            setPos({ top, left: rect.left });
+                paneLeft: clip ? clip.left : 0,
+                width: size.width,
+                height: size.height,
+            }));
         };
         update();
         // Re-measure across the next frames: entering edit mode focuses the row, which can scroll
@@ -498,10 +533,6 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [palette]);
 
-    if (!pos) {
-        return null;
-    }
-
     const strip = expanded ? (
         <TooltipGroup
             ref={stripRef}
@@ -651,10 +682,16 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
 
     return createPortal(
         <>
-            <div className="fixed z-[55]" style={{ top: pos.top, left: pos.left }}>
+            <div
+                ref={wrapRef}
+                className="fixed z-[55]"
+                // Unplaced, it waits in the viewport's corner with nothing to show. It is still laid
+                // out, which is the point: the placement reads its size from here (see `wrapRef`).
+                style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: "hidden" }}
+            >
                 {strip}
             </div>
-            {palette ? (
+            {pos && palette ? (
                 <div
                     ref={palettePanelRef}
                     className="fixed z-[70] w-52 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
@@ -673,7 +710,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     />
                 </div>
             ) : null}
-            {typePanel ? (
+            {pos && typePanel ? (
                 <TypePopover
                     anchor={typePanel}
                     anchorRef={typeBtnRef}
@@ -682,7 +719,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
                     onClose={() => closeType()}
                 />
             ) : null}
-            {ruby ? (
+            {pos && ruby ? (
                 <RubyPopover
                     anchor={ruby}
                     anchorRef={rubyBtnRef}
