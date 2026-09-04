@@ -80,7 +80,9 @@ describe("computeStoryStageSnapshot", () => {
         expect(alice.kind).toBe("image");
         expect(alice.objectName).toBe("char-alice");
         expect(alice.visible).toBe(true);
-        expect(alice.autoFit).toBe(true);
+        // A sprite is drawn at its artwork's pixels: `autoFit` is what a picture covering the stage
+        // asks for, and a character never does.
+        expect(alice.autoFit).toBeFalsy();
         expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: undefined, tags: undefined });
         expect(alice.props).toEqual(expect.objectContaining({
             opacity: 1,

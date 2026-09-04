@@ -19,17 +19,16 @@ function clampAlign(value: number): number {
 /**
  * This character on the stage, at the defaults her entrances fall back to.
  *
- * The numbers this field edits are not readable as numbers: `zoom 0.5353` is what undoes the
- * engine's `autoFit` for one particular piece of artwork, and `yalign 0.0989` is where that
- * artwork's feet land. An author can only get them by measuring the picture - which is the whole
- * reason they were being copied from row to row. So they are drawn instead: place her by dragging,
- * and read the numbers off the channel list underneath.
+ * Where her feet land is not readable as a number - `yalign 0.0989` means nothing until it is a
+ * picture - and neither is how much of the stage she should fill. So they are drawn: place her by
+ * dragging, and read the numbers off the channel list underneath.
  *
- * **The mapping is the runtime's, not an approximation.** `autoFit` sizes a character to the full
- * stage width and takes only the aspect ratio from the artwork; `xalign`/`yalign` are percentages of
- * the stage with the origin at the bottom left, centred by a `-50%/+50%` translate; `zoom`
- * multiplies both scale axes. Same three rules the Story Motion stage and the camera viewfinder
- * draw with - see `nlr-displayable-css-mapping` for where each is verified against the engine.
+ * **The mapping is the runtime's, not an approximation.** The box is the project's own resolution in
+ * shape; a sprite is drawn at its artwork's pixels IN DESIGN SPACE, so its share of the box is its
+ * pixel width over the design width; `xalign`/`yalign` are percentages of the stage with the origin
+ * at the bottom left, centred by a `-50%/+50%` translate; `zoom` multiplies both scale axes. Same
+ * rules the Story Motion stage and the camera viewfinder draw with - see
+ * `nlr-displayable-css-mapping` for where each is verified against the engine.
  *
  * A drag writes nothing until it is released. The pose is rendered from a local draft while the
  * pointer is down, so one placement is one entry in the undo history rather than one per frame -
@@ -65,14 +64,20 @@ export function CharacterEntrancePreview(props: {
         left: `${xalign * 100}%`,
         bottom: `${yalign * 100}%`,
         transform: `translate(-50%, 50%) rotate(${rotation}deg) scale(${zoom * scaleX}, ${zoom * scaleY})`,
-        // `autoFit`, which a character always has: the full stage width, the artwork's aspect ratio.
-        width: "100%",
-        ...(naturalSize ? { aspectRatio: `${naturalSize.width} / ${naturalSize.height}` } : { aspectRatio: "2 / 3" }),
+        // The artwork's own pixels, as a share of the design width - which is what the stage draws
+        // when nothing asks for `autoFit`. Until the picture has loaded there is no share to take,
+        // so the placeholder gets a portrait-shaped half of the stage rather than a guess at pixels.
+        ...(naturalSize
+            ? {
+                width: `${(naturalSize.width / Math.max(1, props.stageSize.width)) * 100}%`,
+                aspectRatio: `${naturalSize.width} / ${naturalSize.height}`,
+            }
+            : { width: "33%", aspectRatio: "2 / 3" }),
         opacity: typeof nlr.opacity === "number" ? nlr.opacity : 1,
         filter: typeof nlr.filter === "string" ? nlr.filter : undefined,
         mixBlendMode: nlr.mixBlendMode as CSSProperties["mixBlendMode"],
         clipPath: typeof nlr.clipPath === "string" ? nlr.clipPath : undefined,
-    }), [naturalSize, nlr, rotation, scaleX, scaleY, xalign, yalign, zoom]);
+    }), [naturalSize, nlr, props.stageSize.width, rotation, scaleX, scaleY, xalign, yalign, zoom]);
 
     const withProps = useCallback((patch: StoryTransformProps): StoryTransformProps => ({
         ...(props.value ?? {}),

@@ -2487,7 +2487,7 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
             if (!rosterSet.has(name)) {
                 return null;
             }
-            const image = getImage(ctx, name, { autoFit: true });
+            const image = getImage(ctx, name);
             return {
                 darken: (darkness, durationMs, easing) => image.darken(
                     Math.min(1, Math.max(0, darkness)),
@@ -3442,7 +3442,6 @@ async function compileCharacterStageAction(
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
         const image = staged ?? getImage(ctx, name, {
-            autoFit: true,
             src: layeredSrc as never,
             initialProps: characterEntrancePose(entranceDefaults, ctx, block.id),
         });
@@ -3484,7 +3483,6 @@ async function compileCharacterStageAction(
     }
 
     const image = staged ?? getImage(ctx, name, {
-        autoFit: true,
         src,
         initialProps: characterEntrancePose(entranceDefaults, ctx, block.id),
     });
@@ -4697,6 +4695,21 @@ function characterNametagConfig(summary: DevModeCharacterSummary | undefined): {
  * a character `enter` row, and the snapshot replay that seeds a mid-scene launch with the stage as
  * it already stood. A row that merely ADDRESSES an image goes through {@link findStageImage} - or
  * {@link findStageCharacterImage} for a portrait - and reports a miss instead.
+ */
+/**
+ * `autoFit` is the background's rule, and only a row that asks for it gets it.
+ *
+ * It scales a displayable's WIDTH to the stage's, taking only the aspect ratio from the artwork - so
+ * a full-width CG covers the stage whatever pixels it was drawn at, which is what it is for. A
+ * character sprite is not a full-width picture, and applying it to one made the artwork's own size
+ * meaningless: a 1600px sprite and a 3000px sprite came out identically stage-wide and both far too
+ * big, so every entrance row had to carry a `zoom` computed from the artwork's pixel size against
+ * the stage's - a number nothing in the interface states, copied down the whole script. Studio asked
+ * for it on every character until now.
+ *
+ * Without it a sprite is drawn at its own pixels in design space: art drawn for a 1920x1080 game
+ * lands at the size it was drawn, and a character that should be smaller says so once, on the
+ * character (`entranceTransform`), rather than on every row that brings her on.
  */
 function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
