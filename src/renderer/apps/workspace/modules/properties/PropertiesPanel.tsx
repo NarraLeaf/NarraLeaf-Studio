@@ -98,6 +98,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
+import { guardInspectorDataForPluginWidget } from "@/lib/plugins/pluginWidgetGuard";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
@@ -1097,7 +1098,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
+                    // Guarded rather than live, because a plugin's own fields read this same object:
+                    // the panel builds one `data` for the whole merged schema, so it is the one part
+                    // of the widget surface the registration wrapper cannot reach. A no-op for
+                    // Studio's own widget types.
+                    data={guardInspectorDataForPluginWidget({ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId })}
                 />
             );
         }
@@ -1751,7 +1756,13 @@ export function ComparisonElementInspector({
              * perform. Stamping it at the source means every field is read-only whatever route it
              * takes, and the guard's clamp remains the second line rather than the only one.
              */
-            return { schema: readOnlySchema(schema), data: { element: subject, elements, documentService: service, surfaceId } };
+            return {
+                schema: readOnlySchema(schema),
+                // The frozen service refuses writes but still answers `getContext()` with the live
+                // workspace, so a plugin widget drawn in a comparison needs the same guard the live
+                // panel applies.
+                data: guardInspectorDataForPluginWidget({ element: subject, elements, documentService: service, surfaceId }),
+            };
         };
 
         const here = inspectorFor(element, document);

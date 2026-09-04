@@ -344,7 +344,7 @@ export default defineRuntimePlugin({
 
 `app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `PluginBlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
 
-widget 渲染器那一侧收的是 `RuntimeWidgetRendererProps`（见 [runtime-api.md](./runtime-api.md)），里面**没有 `hostAdapter`**：宿主给内建渲染器的那份 props 会一路带出存档、本地化、退出应用的整套宿主 API，而插件的 manifest 没有声明过它们。要和 studio 侧 widget module 共用同一个 render，就按 `RuntimeWidgetRendererProps` 写。
+widget 渲染器那一侧收的是 `RuntimeWidgetRendererProps`（见 [runtime-api.md](./runtime-api.md)），里面**没有 `hostAdapter`**：宿主给内建渲染器的那份 props 会一路带出存档、本地化、退出应用的整套宿主 API，而插件的 manifest 没有声明过它们。studio 侧 `PluginWidgetModule.render` 收的是**同一份** props，所以一个 render 函数放进共享模块、两个入口各注册一次就行。
 
 推荐把节点定义放进 `src/nodes.ts` 由两个入口共同 import：studio 入口注册完整定义（palette + 编辑器预览），runtime 入口注册游戏 execute。这样 execute 逻辑只写一次。内建 Gallery 插件（`src/builtin-plugins/gallery/`）是参照实现。
 
