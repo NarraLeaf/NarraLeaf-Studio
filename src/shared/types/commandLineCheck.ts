@@ -12,7 +12,7 @@ import type {
  * one question about the project, and both end in a process exiting on a code a job reads. What
  * differs is which service is asked and what a failure means.
  *
- * The flags, the exit codes and the report are set out for an operator in `docs/command-line.md`.
+ * The flags, the exit codes and the report are set out for an operator in `docs/command-line-checks.md`.
  *
  * ## Why the codes match the build's
  *
@@ -91,8 +91,16 @@ export type CommandLineTestParameterListing = {
     id: string;
     kind: "select" | "boolean";
     label: string;
-    /** Every accepted value, for a `select`. Absent for a `boolean`, which takes true or false. */
-    values?: string[];
+    /**
+     * Every accepted value, for a `select`. Absent for a `boolean`, which takes true or false.
+     *
+     * Both halves, because neither is enough on its own. The line has to carry `value` - a label
+     * follows the editor's language, and a command written against one would stop working when
+     * somebody changed it - while `label` is the only thing that says which of them is which. Some
+     * of these values are generated ids, and a listing that printed those alone would be a lookup
+     * table nobody can look anything up in.
+     */
+    options?: Array<{ value: string; label: string }>;
     /** What the run uses when the line names no value for it. */
     defaultValue?: string;
 };

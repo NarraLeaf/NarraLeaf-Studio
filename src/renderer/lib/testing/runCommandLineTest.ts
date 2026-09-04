@@ -11,7 +11,12 @@ import { ConsoleService, type ConsoleEntry } from "../workspace/services/core/Co
 import { TEST_CONSOLE_CHANNEL, TestRunService } from "./TestRunService";
 import { formatTestText } from "./testText";
 import { resolveTestParameterValue, testParameterId, type ResolvedTestParameter } from "./parameters";
-import { TEST_TERMINAL_STATUSES, type TestParameterValue, type TestRunRecord } from "./types";
+import {
+    TEST_TERMINAL_STATUSES,
+    type RegisteredTest,
+    type TestParameterValue,
+    type TestRunRecord,
+} from "./types";
 
 /**
  * The workspace half of `narraleaf-studio --test` and `--test-list`.
@@ -101,7 +106,14 @@ function describeParameter(parameter: ResolvedTestParameter): CommandLineTestPar
         id: testParameterId(parameter),
         kind: parameter.kind,
         label: formatTestText(parameter.definition.label),
-        ...(parameter.kind === "select" ? { values: parameter.options.map(option => option.value) } : {}),
+        ...(parameter.kind === "select"
+            ? {
+                options: parameter.options.map(option => ({
+                    value: option.value,
+                    label: formatTestText(option.label),
+                })),
+            }
+            : {}),
         ...(fallback === undefined ? {} : { defaultValue: String(fallback) }),
     };
 }
@@ -140,6 +152,59 @@ function coerceParameter(
     };
 }
 
+/**
+ * The registered test the line named, by its id or by the part of it after the owner's prefix.
+ *
+ * The short form exists because of how the ids are spelled and how Windows reads a command line.
+ * Every id is `<owner>:<name>`, and a Windows launch dies on the spot - before this process writes
+ * anything at all - when a bare argument looks like `scheme:rest`, so `--test-id
+ * narraleaf-studio:walkthrough` never reaches Studio unless the operator knows to write it as
+ * `--test-id=narraleaf-studio:walkthrough`. That trap is not this entry point's to fix, but it is
+ * this entry point's to stop being a trap: `--test-id walkthrough` names the same test and carries
+ * no colon.
+ *
+ * It is a lookup, not a second identity. The full id always wins, a short form that two tests answer
+ * to is refused and both are named rather than one being picked, and everything reported afterwards
+ * - the log, the report - carries the full id.
+ */
+function resolveTestId(
+    service: TestRunService,
+    named: string,
+): { ok: true; registered: RegisteredTest } | { ok: false; reason: string } {
+    const exact = service.getTest(named);
+    if (exact) {
+        return { ok: true, registered: exact };
+    }
+    const all = service.listTests();
+    const short = all.filter(test => TEST_ID_SEPARATORS.some(
+        separator => test.definition.id.endsWith(`${separator}${named}`),
+    ));
+    if (short.length === 1) {
+        return { ok: true, registered: short[0] };
+    }
+    const known = all.map(test => test.definition.id).join(", ");
+    if (short.length > 1) {
+        return {
+            ok: false,
+            reason: `--test-id "${named}" names more than one test: ${short.map(test => test.definition.id).join(", ")}.`
+                + " Give the whole id.",
+        };
+    }
+    return {
+        ok: false,
+        reason: `No test is registered as "${named}".${known ? ` This project's Studio has: ${known}.` : ""}`,
+    };
+}
+
+/**
+ * What separates an owner from the rest of an id.
+ *
+ * The registry accepts both - Studio's own tests are `narraleaf-studio:project-diagnostics` while a
+ * plugin's may be `<pluginId>.<name>` - so a short form has to be read against both or it would work
+ * for one kind of test and not the other.
+ */
+const TEST_ID_SEPARATORS = [":", "."] as const;
+
 /** Run one test and report its verdict, then resolve. */
 export async function runCommandLineTest(
     context: WorkspaceContext,
@@ -153,15 +218,13 @@ export async function runCommandLineTest(
     const consoleService = services.get<ConsoleService>(Services.Console);
     const service = services.get<TestRunService>(Services.TestRun);
 
-    const registered = service.getTest(testId);
-    if (!registered) {
-        const known = service.listTests().map(test => test.definition.id).join(", ");
-        reportFailure(
-            `No test is registered as "${testId}".${known ? ` This project's Studio has: ${known}.` : ""}`,
-            "invocation",
-        );
+    const resolved = resolveTestId(service, testId);
+    if (!resolved.ok) {
+        reportFailure(resolved.reason, "invocation");
         return;
     }
+    const registered = resolved.registered;
+    testId = registered.definition.id;
 
     // Before the parameters are read and before availability is asked: both answers are drawn from
     // the project, and a story nobody has opened this session is not loaded yet.

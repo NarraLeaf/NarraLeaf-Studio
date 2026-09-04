@@ -232,9 +232,7 @@ export class CommandLineCheckRun {
             return this.finish("success", null, event);
         }
         if (event.ok) {
-            this.emit("success", event.test
-                ? `${event.test.title} passed`
-                : "no blocking findings");
+            this.emit("success", event.test ? `${event.test.title} passed` : "no blocking findings");
             return this.finish("success", null, event);
         }
         // `refusal` is the workspace saying which half went wrong. Without it the two are one
@@ -243,11 +241,14 @@ export class CommandLineCheckRun {
             ? "invocation"
             : event.refusal === "unavailable"
                 ? "refused"
-                // A run that produced a result and did not pass is the project failing the check.
-                // One that produced nothing and named no refusal is Studio failing to answer.
-                : event.test || event.lint
-                    ? "check-failed"
-                    : "studio-failed";
+                : event.test
+                    ? outcomeForTestStatus(event.test.status)
+                    // A lint sweep that finished and did not pass is the project failing the check.
+                    // Anything that produced nothing and named no refusal is Studio failing to
+                    // answer, which is a different thing to tell a job.
+                    : event.lint
+                        ? "check-failed"
+                        : "studio-failed";
         return this.finish(outcome, event.error ?? "The check did not finish.", event);
     }
 
@@ -264,19 +265,27 @@ export class CommandLineCheckRun {
             return;
         }
         for (const test of tests) {
-            const parameters = test.parameters
-                .map(parameter => parameter.values
-                    ? `${parameter.id}=<${parameter.values.join("|")}>`
-                    : `${parameter.id}=<true|false>`)
-                .join(" ");
             this.emit(test.available ? "info" : "warning", [
                 test.id,
                 `[${test.presentation}]`,
                 `[${test.category}]`,
                 test.title,
                 test.available ? "" : `- unavailable: ${test.unavailableReason ?? "no reason given"}`,
-                parameters ? `- parameters: ${parameters}` : "",
             ].filter(Boolean).join("  "));
+            // A line of its own per parameter, and per accepted value under it. A `select` whose
+            // values are generated ids is exactly the case a one-line summary cannot serve: the
+            // line has to carry the id, and only the label beside it says which one to carry.
+            for (const parameter of test.parameters) {
+                this.emit("info", `    --test-parameter ${parameter.id}=<value>   ${parameter.label}`);
+                if (!parameter.options) {
+                    this.emit("info", `        true | false${parameter.defaultValue === undefined ? "" : `   (default ${parameter.defaultValue})`}`);
+                    continue;
+                }
+                for (const option of parameter.options) {
+                    const isDefault = option.value === parameter.defaultValue;
+                    this.emit("info", `        ${option.value}   ${option.label}${isDefault ? "   (default)" : ""}`);
+                }
+            }
         }
     }
 
@@ -373,7 +382,37 @@ export class CommandLineCheckRun {
     private record(line: CommandLineRunLogLine): void {
         this.log.push(line);
         const source = line.source ? `${line.source}: ` : "";
-        process.stdout.write(`[${line.level}] ${source}${line.message}\n`);
+        const text = `[${line.level}] ${source}${line.message}`;
+        process.stdout.write(`${text}\n`);
+        // And into the profile's own log. Standard output is the stream a job captures, but on
+        // Windows it is buffered by whoever redirected it, so a run that ends without a clean
+        // exit - a renderer that took the process with it - takes its whole console with it and
+        // leaves the operator nothing at all to read. The log file is written as it goes.
+        this.app.logger.info(`[CommandLine] ${text}`);
+    }
+}
+
+/**
+ * What a terminal test status means to a job.
+ *
+ * Only `failed` is the project failing a check. A `skipped` test ran and declined to answer - the
+ * one Studio ships for route coverage skips on a project whose entry scene is chosen at run time -
+ * and calling that a failure would have a nightly job reporting a broken project every night for a
+ * shape the project is allowed to have. It is `refused` for the same reason a windowed test on a
+ * frozen workspace is: the check could not answer, and says nothing about whether the project would
+ * pass. `errored` is the test itself throwing, which is Studio or a plugin malfunctioning rather
+ * than anything the project did.
+ */
+function outcomeForTestStatus(status: NonNullable<CommandLineCheckReport["test"]>["status"]): CommandLineCheckOutcome {
+    switch (status) {
+        case "passed":
+            return "success";
+        case "failed":
+            return "check-failed";
+        case "errored":
+            return "studio-failed";
+        default:
+            return "refused";
     }
 }
 

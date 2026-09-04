@@ -76,10 +76,12 @@ and letting a command line overrule the declaration would make that error reacha
 narraleaf-studio --test /srv/projects/my-game --test-list
 ```
 
-One line per test: the id, the mode, the category, the title, whether it can run right now (and why
-not when it cannot), and the parameters it takes with the values each accepts. With `--test-report`
-the same rows are written to the report as structured data, which is what a script assembling a
-command line reads.
+One line per test: the id, the mode, the category, the title, and whether it can run right now (and
+why not when it cannot). Under it, one line per parameter and one per value that parameter accepts,
+each with the label the picker would have shown for it — some of these values are generated ids, and
+a listing that printed those alone would be a lookup table nobody can look anything up in. With
+`--test-report` the same rows are written to the report as structured data, which is what a script
+assembling a command line reads.
 
 The registry is populated by Studio's own modules **and by every installed plugin**, so the listing
 is a property of the Studio and the profile the run uses — not of the project alone. A run in a
@@ -107,10 +109,21 @@ have started on.
 
 ### What counts as a pass
 
-Only `passed`. `skipped` is the test declining to answer and `cancelled`/`errored` are verdicts the
-host reached about it — none of them is the project having passed a check, and a job that read them
-as a green tick would ship on a check that never ran. The report carries the exact status, so a job
-that wants to treat `skipped` as acceptable can.
+Only `passed` exits 0. The other four are not one bucket:
+
+| Status | Exit | Why |
+| --- | --- | --- |
+| `passed` | 0 `success` | The test answered, and the answer was yes. |
+| `failed` | 1 `check-failed` | The test answered, and the project has to change. |
+| `skipped` | 3 `refused` | The test ran and declined to answer. |
+| `cancelled` | 3 `refused` | Something stopped it. No verdict was reached. |
+| `errored` | 4 `studio-failed` | The test itself threw. Studio or a plugin is at fault, not the project. |
+
+`skipped` is the one worth knowing about: the route-coverage and reachable-endings tests skip on a
+project whose entry scene is chosen at run time, because there is no static answer to give. Calling
+that a failure would have a nightly job reporting a broken project every night for a shape the
+project is allowed to have — and calling it a pass would ship on a check that never ran. The report
+carries the exact status either way.
 
 ## Lint
 

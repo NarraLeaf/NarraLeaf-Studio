@@ -40,6 +40,10 @@ running the command twice. One variant, one platform, one format, one exit code.
 
 Every value-taking flag accepts both `--flag value` and `--flag=value`.
 
+> **On Windows, write a value containing a colon as `--flag=value`.** A launch dies before Studio
+> writes anything when a bare argument looks like `scheme:rest`: `--build-variant a:b` exits with no
+> output and no report, while `--build-variant=a:b` is read normally.
+
 A companion flag given without `--build` is refused rather than ignored: the alternative is a launch
 that opens the editor while the script that wrote the line believes it is building.
 
