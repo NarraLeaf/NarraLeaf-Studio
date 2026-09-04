@@ -32,7 +32,6 @@ import {
     type StoryScriptModule,
     type SurfaceCtx,
     type SurfaceScriptModule,
-    type ValueScriptModule,
     type WidgetHandler,
     type WidgetScriptModule,
 } from "./scriptEvents";
@@ -49,13 +48,18 @@ import {
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Expect<T extends true> = T;
 
-/** Every owner position has a module shape; a new one is a compile error until it does. */
+/**
+ * Every owner position that admits a script has a module shape, and a new one is a compile error
+ * until it does. `widgetValue` is the one that does not: a value binding is written as a blueprint,
+ * refused as a script by the service, the command line and the dialog alike, so `never` is the
+ * honest answer and naming it here is what keeps that deliberate rather than an omission.
+ */
 type OwnersWithoutAModule = {
     [K in BlueprintOwnerRef["kind"]]: [ScriptModuleFor<Extract<BlueprintOwnerRef, { kind: K }>>] extends [never] ? K : never;
 }[BlueprintOwnerRef["kind"]];
 
 type ModuleChecks = [
-    Expect<Equal<OwnersWithoutAModule, never>>,
+    Expect<Equal<OwnersWithoutAModule, "widgetValue">>,
     Expect<Equal<ScriptModuleFor<{ kind: "storyAction"; blueprintId: string }>, StoryScriptModule<"action">>>,
     Expect<Equal<ScriptModuleFor<{ kind: "storyAction"; blueprintId: string; mode: "condition" }>, StoryScriptModule<"condition">>>,
 ];
@@ -130,19 +134,6 @@ const componentModule: ComponentWidgetScriptModule<"nl.button"> = { onMouseClick
 // @ts-expect-error a component definition's script does not hear the keyboard
 const componentHearsKeys: ComponentWidgetScriptModule<"nl.button"> = { onKeyDown() {} };
 
-const valueModule: ValueScriptModule = { default: ctx => ctx.host.game.getPlaytime() };
-
-// @ts-expect-error a value script cannot wait
-const valueWaits: ValueScriptModule = { default: async ctx => ctx.host.game.getPlaytime() };
-
-const valueWrites: ValueScriptModule = {
-    default: ctx => {
-        // @ts-expect-error a value script cannot write
-        void ctx.host.widget.setVisible("x", true);
-        return 0;
-    },
-};
-
 const storyAction: StoryScriptModule = {
     default: async ctx => {
         await ctx.persistent.set("seen-intro", true);
@@ -184,9 +175,6 @@ const authored = [
     sliderSwitchHandler,
     componentModule,
     componentHearsKeys,
-    valueModule,
-    valueWaits,
-    valueWrites,
     storyAction,
     storyReachesHost,
     storyValue,
@@ -259,7 +247,7 @@ function eventsThePaletteOffers(owner: BlueprintOwnerRef, widgetType?: ScriptWid
 describe("script events are held to the node catalogue", () => {
     it("compiles the module shapes and the authored samples", () => {
         expect(moduleChecks).toBeNull();
-        expect(authored).toHaveLength(18);
+        expect(authored).toHaveLength(15);
     });
 
     it("maps every registered head to an event, and On Call alone to none", () => {

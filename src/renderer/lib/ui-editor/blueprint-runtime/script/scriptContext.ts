@@ -8,7 +8,7 @@
  * which adapter serves which tier and to put a name on the parts of the execution context that a
  * graph reads through its nodes.
  *
- * # Three tiers, by contract
+ * # Two tiers, by contract
  *
  * The tier follows from `blueprintContract(owner).invocation` and nothing else:
  *
@@ -19,8 +19,14 @@
  *                      game, no widget, no sound - a row that navigated would be a second way to
  *                      leave a scene. The synchronous modes (`value`, `condition`) get
  *                      {@link StorySyncScriptContext}, which drops the one asynchronous member.
- *  - `valueBinding` -> {@link ValueScriptContext}. The reads the value runtime can re-run every
- *                      time a dependency changes, and nothing that writes.
+ *
+ * There is no third tier: a value binding is written as a blueprint and not as a script, refused
+ * by the service, the command line and the dialog alike. One was designed - a whitelist of reads
+ * the value runtime could re-run - and it is deliberately not here. The value runtime re-runs a
+ * binding when something it read changes, and it learns what was read from the graph's own node
+ * resolvers calling `trackDependency`; a script has no nodes, so every read would have to report
+ * its own dependency, and getting that wrong is a binding that quietly stops updating. Weighed
+ * against one more surface for an author to hold, the answer was no. See `BlueprintValueEvaluator`.
  *
  * # Where the anchor goes
  *
@@ -37,7 +43,6 @@
  * author nothing; removing one is the rework this file exists to avoid.
  */
 
-import type { LiteralValue } from "@shared/types/blueprint/document";
 import type { StoryLiteralValue } from "@shared/types/story";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -224,104 +229,6 @@ export type StoryScriptContext = StorySyncScriptContext & {
 };
 
 // ---------------------------------------------------------------------------
-// Value tier: valueBinding invocation
-// ---------------------------------------------------------------------------
-
-/**
- * The host API reads a value script may make, by family.
- *
- * A value binding is re-run every time something it read changes, so it may only do what is safe
- * to do again: read. The visual graph enforces that with a node whitelist reviewed by hand; this
- * is the same review expressed as member names, and `scriptContext.test.ts` holds it to two
- * things - every member is synchronous, and every member the frozen contract knows is one the
- * contract marks `callableFromBinding`. A member the contract does not know (six families were
- * added after it stopped being extended) is admitted on the first ground alone.
- *
- * What a read through `widget` does that a read from a module-level closure does not: the runtime
- * records it as a dependency of the binding, so the binding re-runs when that property changes.
- * That is the graph's `trackDependency`, and the reason these reads go through `host` rather than
- * through anything a script could reach on its own.
- */
-export const VALUE_SCRIPT_READS = {
-    navigation: ["getPageProps"],
-    layers: ["isMounted"],
-    widget: [
-        "getCommonProperties",
-        "getTextProperties",
-        "getButtonProperties",
-        "getContainerProperties",
-        "getImageProperties",
-        "getSliderProperties",
-        "getSwitchProperties",
-        "getTextInputProperties",
-        "getListProperties",
-        "getDisplayableProperties",
-        "getMeasuredRect",
-        "getFrameProperties",
-    ],
-    state: ["get"],
-    frame: ["getParam"],
-    game: [
-        "isInGame",
-        "isGameOverlay",
-        "getPlaytime",
-        "getTotalPlaytime",
-        "getNametag",
-        "getSpeakerAvatar",
-        "getSpeakerColor",
-        "isDialogWaiting",
-        "getDialogText",
-        "isNarrator",
-        "getCharacter",
-        "getNotifications",
-        "getChoiceCount",
-        "isNvlMode",
-        "isCurrentTextRead",
-        "isTextRead",
-        "isSceneVisited",
-        "getSavedVariable",
-        "isOptionPicked",
-        "isEndingReached",
-        "isDlcInstalled",
-        "listEndings",
-        "canUndoHistory",
-        "canRedoHistory",
-        "getPreference",
-    ],
-    sound: ["resolveElementVolume", "getTrackVolume"],
-    localization: ["getConfig"],
-    voice: ["listLocales"],
-    input: ["isActionHeld", "getDevice"],
-} as const satisfies { [F in keyof BlueprintHostApiRuntime]?: readonly (keyof BlueprintHostApiRuntime[F])[] };
-
-/**
- * The `Extract` is for the compiler, not for safety: the `satisfies` clause above already refuses
- * a name that is not a member of its family, so nothing is silently dropped here.
- */
-export type ValueScriptHost = {
-    [F in keyof typeof VALUE_SCRIPT_READS]: Pick<
-        BlueprintHostApiRuntime[F],
-        Extract<(typeof VALUE_SCRIPT_READS)[F][number], keyof BlueprintHostApiRuntime[F]>
-    >;
-};
-
-/** A value binding hangs off an element on a surface; a component definition has no bindings. */
-export type ValueScriptSelf = Extract<ScriptSelf, { kind: "element" }>;
-
-/**
- * The context of a value script: reads, this drawing's locals, and nothing that waits.
- *
- * `vars` is here because a value graph may use `Get Var` / `Set Var` and `Memo` - a synchronous
- * effect on the blueprint's own locals - and a script that memoises across re-runs wants the same.
- */
-export type ValueScriptContext = {
-    self: ValueScriptSelf;
-    host: ValueScriptHost;
-    surface: ScriptSurfaceTransition;
-    vars: Record<string, unknown>;
-};
-
-// ---------------------------------------------------------------------------
 // Handlers: what each tier's entry point returns
 // ---------------------------------------------------------------------------
 
@@ -340,5 +247,3 @@ export type StoryValueHandler = (ctx: StorySyncScriptContext) => StoryLiteralVal
 /** A condition is tested each time its branch is reached, and coerced with `Boolean(...)`. */
 export type StoryConditionHandler = (ctx: StorySyncScriptContext) => boolean;
 
-/** A value binding's provider. Same ground for the concrete return type as {@link StoryValueHandler}. */
-export type ValueHandler = (ctx: ValueScriptContext) => LiteralValue;

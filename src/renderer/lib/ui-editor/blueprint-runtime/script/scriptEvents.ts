@@ -87,12 +87,10 @@ import type {
     ScriptSelf,
     StoryScriptContext,
     StorySyncScriptContext,
-    ValueScriptContext,
     ScriptWidgetType,
     StoryActionHandler,
     StoryConditionHandler,
     StoryValueHandler,
-    ValueHandler,
 } from "./scriptContext";
 
 // ---------------------------------------------------------------------------
@@ -420,8 +418,6 @@ export type GlobalCtx = GameScriptContext<{ kind: "project" }>;
 /** A story row's context. The synchronous modes get {@link StorySyncCtx} instead. */
 export type StoryCtx = StoryScriptContext;
 export type StorySyncCtx = StorySyncScriptContext;
-/** A value binding's context: the host API's reads, and nothing that waits. */
-export type ValueCtx = ValueScriptContext;
 export type SurfaceCtx = GameScriptContext<SurfaceSelf>;
 export type WidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ElementSelf<W>>;
 export type ComponentWidgetCtx<W extends ScriptWidgetType> = GameScriptContext<ComponentElementSelf<W>>;
@@ -468,8 +464,6 @@ export type ComponentWidgetScriptModule<W extends ScriptWidgetType> = ScriptEven
     Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>
 >;
 
-export type ValueScriptModule = { default: ValueHandler };
-
 export type StoryScriptModule<Mode extends "action" | "value" | "condition" = "action"> = {
     default: Mode extends "value" ? StoryValueHandler : Mode extends "condition" ? StoryConditionHandler : StoryActionHandler;
 };
@@ -492,7 +486,7 @@ export type ScriptModuleFor<
       : Owner extends { kind: "widgetMain" }
         ? WidgetScriptModule<W>
         : Owner extends { kind: "widgetValue" }
-          ? ValueScriptModule
+          ? never
           : Owner extends { kind: "componentWidgetMain" }
             ? ComponentWidgetScriptModule<W>
             : Owner extends { kind: "storyAction"; mode?: infer M }
