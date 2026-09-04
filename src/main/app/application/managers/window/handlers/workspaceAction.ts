@@ -87,12 +87,12 @@ export class WorkspaceReportLoadResultHandler extends IPCHandler<IPCEventType.wo
  * Handed straight to the window, which is where the run that opened it is listening. Nothing else
  * subscribes, and a window nobody opened this way simply has no listeners.
  */
-export class WorkspaceCommandLineBuildHandler extends IPCHandler<IPCEventType.workspaceCommandLineBuild> {
-    readonly name = IPCEventType.workspaceCommandLineBuild;
+export class WorkspaceCommandLineRunHandler extends IPCHandler<IPCEventType.workspaceCommandLineRun> {
+    readonly name = IPCEventType.workspaceCommandLineRun;
     readonly type = IPCMessageType.message;
 
-    public handle(window: AppWindow, event: IPCEvents[IPCEventType.workspaceCommandLineBuild]["data"]) {
-        window.reportCommandLineBuildEvent(event);
+    public handle(window: AppWindow, event: IPCEvents[IPCEventType.workspaceCommandLineRun]["data"]) {
+        window.reportCommandLineRunEvent(event);
         return this.success(void 0 as never);
     }
 }

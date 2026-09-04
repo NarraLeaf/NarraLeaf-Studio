@@ -43,6 +43,7 @@ import { ProjectSessionLockManager } from "./application/managers/projectSession
 import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
+import { CommandLineCheckRun } from "./application/commandLineCheck";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
 import { decideReopenAction } from "./application/reopenAction";
@@ -129,15 +130,16 @@ export type OpenProjectOptions = {
      *
      * Two consequences, and both are the point: the workspace window is created hidden and never
      * focused, and a project that fails to load does not reveal the home screen it was opened from.
-     * Only `--build` passes it - see `commandLineBuild.ts` for why an entry point with no interface
-     * has to say both of those things rather than one.
+     * Only the headless entry points pass it - `--build`, `--test`, `--lint`. See
+     * `commandLineBuild.ts` for why an entry point with no interface has to say both of those
+     * things rather than one.
      */
     background?: boolean;
     /**
-     * Run this build in the workspace instead of opening the editor; carried into the window's
-     * props. See `WindowProps[WindowAppType.Workspace].commandLineBuild`.
+     * Run this job in the workspace instead of opening the editor; carried into the window's props.
+     * See `WindowProps[WindowAppType.Workspace].commandLineRun`.
      */
-    commandLineBuild?: WindowProps[WindowAppType.Workspace]["commandLineBuild"];
+    commandLineRun?: WindowProps[WindowAppType.Workspace]["commandLineRun"];
     /**
      * A live session the window should join once it is up. See the prop of the same name.
      *
@@ -907,17 +909,25 @@ export class App extends BaseApp {
         // through: `openLaunchRequest` queues everything until this flag is set, and a queue that
         // is never drained is a Studio that silently ignores every document dropped on it.
         try {
-            // Before anything else, including the launcher: `--build` is not a window this session
-            // opens on, it is the session. Nothing below it runs - no home screen, no reopen of the
-            // last project, no first-run setup - and the run ends in the process exiting with a
-            // code. See {@link CommandLineBuildRun}.
+            // Before anything else, including the launcher: a headless entry point is not a window
+            // this session opens on, it is the session. Nothing below it runs - no home screen, no
+            // reopen of the last project, no first-run setup - and the run ends in the process
+            // exiting with a code. See {@link CommandLineBuildRun}.
+            const lookup = {
+                resolveDirectory: (candidate: string) => resolveExistingDirectory(candidate),
+                recentProjects: () => this.globalState.recentlyOpened.list(),
+                isProjectDirectory: directoryHoldsProject,
+            };
             const build = this.getCommandLineBuild();
             if (build) {
-                await new CommandLineBuildRun(this, {
-                    resolveDirectory: candidate => resolveExistingDirectory(candidate),
-                    recentProjects: () => this.globalState.recentlyOpened.list(),
-                    isProjectDirectory: directoryHoldsProject,
-                }).run(build);
+                await new CommandLineBuildRun(this, lookup).run(build);
+                return;
+            }
+            // Beside the build and for the same reason: `--test` and `--lint` are not a window this
+            // session opens on, they are the session. See {@link CommandLineCheckRun}.
+            const check = this.getCommandLineCheck();
+            if (check) {
+                await new CommandLineCheckRun(this, lookup).run(check);
                 return;
             }
 
@@ -1763,7 +1773,7 @@ export class App extends BaseApp {
         // Every project that gets a window is on the trust ledger from here on. `openProject`
         // recorded it before putting the question; this covers the launches that do not pass
         // through there, so nothing reaches a window unrecorded.
-        this.recordProjectArrival(props.projectPath, Boolean(props.commandLineBuild));
+        this.recordProjectArrival(props.projectPath, Boolean(props.commandLineRun));
         // Before the document loads, which is what `blockDistrusted` requires: a request made
         // while the first frame is coming up is still a request. A distrusted project reaches
         // nothing remote from its own window - not through fetch, not through an <img>, not
@@ -1986,11 +1996,11 @@ export class App extends BaseApp {
         const pending = this.projectOpenings.get(key);
         // On the ledger before the question, and the question before the window. A project Studio
         // never met is asked about here, over the window the author is looking at, and whatever
-        // they answer the project opens - trusted, or as one to browse. Not for a build with nobody
-        // at the screen, which vouches for itself, and not for a project somebody already has
+        // they answer the project opens - trusted, or as one to browse. Not for a headless run with
+        // nobody at the screen, which vouches for itself, and not for a project somebody already has
         // coming up: its question was put when they asked.
-        this.recordProjectArrival(projectPath, Boolean(options.commandLineBuild));
-        if (!pending && !options.background && !options.commandLineBuild && !this.projectTrustManager.isTrusted(projectPath)) {
+        this.recordProjectArrival(projectPath, Boolean(options.commandLineRun));
+        if (!pending && !options.background && !options.commandLineRun && !this.projectTrustManager.isTrusted(projectPath)) {
             await this.askProjectTrust(opener, projectPath);
         }
         // A replacement loads out of sight and takes the screen only once its project has answered:
@@ -2008,7 +2018,7 @@ export class App extends BaseApp {
             opener,
             {
                 projectPath,
-                ...(options.commandLineBuild ? { commandLineBuild: options.commandLineBuild } : {}),
+                ...(options.commandLineRun ? { commandLineRun: options.commandLineRun } : {}),
                 ...(options.joinLive ? { joinLive: options.joinLive } : {}),
             },
             options.background

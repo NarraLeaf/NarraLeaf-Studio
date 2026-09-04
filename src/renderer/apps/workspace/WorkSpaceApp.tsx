@@ -20,7 +20,7 @@ import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/Preview
 import { StoryRowHighlightBridge } from "./modules/story/scene-editor/StoryRowHighlightBridge";
 import { DevModeStoryRowOpenBridge } from "./modules/story/scene-editor/DevModeStoryRowOpenBridge";
 import { isProjectLockedError, isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
-import { CommandLineBuildHost } from "./CommandLineBuildHost";
+import { CommandLineRunHost } from "./CommandLineRunHost";
 
 /**
  * Main workspace application component
@@ -56,13 +56,14 @@ function WorkspaceContent() {
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
-    const { isInitialized, error, startupStage, retry, commandLineBuild } = useWorkspace();
+    const { isInitialized, error, startupStage, retry, commandLineRun } = useWorkspace();
 
-    // A window opened by `--build` never becomes an editor. Ahead of the two screens below because
-    // it has to answer them too: an overlay this window cannot show would leave the launch waiting
-    // for a build that was never going to start, and an error screen would do the same silently.
-    if (commandLineBuild) {
-        return <CommandLineBuildGate isInitialized={isInitialized} error={error} />;
+    // A window opened by `--build`, `--test` or `--lint` never becomes an editor. Ahead of the two
+    // screens below because it has to answer them too: an overlay this window cannot show would
+    // leave the launch waiting for a run that was never going to start, and an error screen would
+    // do the same silently.
+    if (commandLineRun) {
+        return <CommandLineRunGate isInitialized={isInitialized} error={error} />;
     }
 
     // Say what is taking the time while the workspace boots. The overlay keeps the window blank for
@@ -89,16 +90,16 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The whole of what a command-line build window renders.
+ * The whole of what a command-line run's window renders.
  *
  * Three states and no interface: still starting (wait), failed to start (say so, and let the
- * provider's own `reportLoadResult(false)` end the run), or ready to build.
+ * provider's own `reportLoadResult(false)` end the run), or ready to do the job.
  */
-function CommandLineBuildGate({ isInitialized, error }: { isInitialized: boolean; error: Error | null }) {
+function CommandLineRunGate({ isInitialized, error }: { isInitialized: boolean; error: Error | null }) {
     if (error || !isInitialized) {
         return null;
     }
-    return <CommandLineBuildHost />;
+    return <CommandLineRunHost />;
 }
 
 /**

@@ -37,7 +37,7 @@ import type {
     GamePatchExportRequest,
     LastGameBuildRun,
 } from "./gameBuild";
-import type { CommandLineBuildEvent } from "./commandLineBuild";
+import type { CommandLineRunEvent } from "./commandLineRun";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -390,7 +390,7 @@ export interface RendererPreloadedInterface {
          * it is written, then the outcome. Sent by nothing else - a workspace somebody opened has
          * no command-line build to report on.
          */
-        reportCommandLineBuild(event: CommandLineBuildEvent): void;
+        reportCommandLineRun(event: CommandLineRunEvent): void;
         /**
          * Tell main whether this workspace's project data is frozen; null means it is writable.
          *

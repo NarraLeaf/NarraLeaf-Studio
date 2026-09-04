@@ -27,7 +27,7 @@ import type {
     GamePatchExportRequest,
     LastGameBuildRun,
 } from "@shared/types/gameBuild";
-import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
+import type { CommandLineRunEvent } from "@shared/types/commandLineRun";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type { StudioTaskOverview } from "@shared/types/studioTask";
 import type { StudioClipboardKind } from "@shared/types/studioClipboard";
@@ -309,8 +309,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
-        reportCommandLineBuild: (event: CommandLineBuildEvent) =>
-            ipcClient.send(IPCEventType.workspaceCommandLineBuild, event),
+        reportCommandLineRun: (event: CommandLineRunEvent) =>
+            ipcClient.send(IPCEventType.workspaceCommandLineRun, event),
         reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
             ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>

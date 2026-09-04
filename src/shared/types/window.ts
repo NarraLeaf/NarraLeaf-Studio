@@ -1,5 +1,5 @@
 
-import type { GameBuildRequest } from "./gameBuild";
+import type { CommandLineRunJob } from "./commandLineRun";
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 import type { ProjectTrustPromptProps, ProjectTrustPromptResult } from "./projectTrust";
@@ -55,16 +55,17 @@ export type WindowProps = {
          */
         recoveryReason?: string;
         /**
-         * Run this build and report the result, instead of opening the editor.
+         * Run this job and report the result, instead of opening the editor.
          *
-         * Set only by `--build`. A window prop rather than a message sent once the window is up, for
-         * the reason `recovery` above gives from the other side: it is settled before the first
-         * service starts, so the workspace can come up as the thing it is going to be. In this mode
-         * the shell, the tabs, the plugins and the built-in modules are never mounted - the checks
-         * and the build need services, not an interface, and an interface nobody can see costs a
-         * minute of startup and brings dialogs with nobody to answer them.
+         * Set only by `--build`, `--test` and `--lint`. A window prop rather than a message sent
+         * once the window is up, for the reason `recovery` above gives from the other side: it is
+         * settled before the first service starts, so the workspace can come up as the thing it is
+         * going to be. In this mode the shell, the tabs, the plugins and the built-in modules are
+         * never mounted - the checks, the build and the tests need services, not an interface, and
+         * an interface nobody can see costs a minute of startup and brings dialogs with nobody to
+         * answer them.
          */
-        commandLineBuild?: { request: GameBuildRequest };
+        commandLineRun?: CommandLineRunJob;
         /**
          * A live session this window should join as soon as its services are up.
          *

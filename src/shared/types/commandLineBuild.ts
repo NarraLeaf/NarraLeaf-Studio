@@ -1,9 +1,8 @@
-import type { DevModeConsoleLogLevel } from "./devMode";
+import type { CommandLineRunLogLine } from "./commandLineRun";
 import type { ExperimentalConditionId } from "./experimental";
 import type {
     BuildPreflightFinding,
     GameBuildArch,
-    GameBuildArtifactSize,
     GameBuildFormat,
     GameBuildPlatform,
 } from "./gameBuild";
@@ -71,37 +70,6 @@ export const COMMAND_LINE_BUILD_EXIT_CODES: Record<CommandLineBuildOutcome, numb
 
 /** Report format version. Bumped when a field changes meaning, never when one is added. */
 export const COMMAND_LINE_BUILD_REPORT_SCHEMA = 1;
-
-/** One line of the build log, as the Build console recorded it. */
-export type CommandLineBuildLogLine = {
-    timestamp: number;
-    level: DevModeConsoleLogLevel;
-    /** Which part of the pipeline spoke - "Build", "Lint". Absent for lines that carry no source. */
-    source?: string;
-    message: string;
-};
-
-/**
- * What the workspace tells the main process while a command-line build runs.
- *
- * One event with a discriminated payload rather than two, because the two halves are one stream:
- * the log lines and the outcome arrive in order and are written to one report. A second IPC event
- * would be a second thing to keep in step for no gain.
- */
-export type CommandLineBuildEvent =
-    | ({ kind: "log" } & CommandLineBuildLogLine)
-    | {
-        kind: "finished";
-        /** Whether the build produced its artifacts. */
-        ok: boolean;
-        /** The pipeline's or the refusing check's own message, when it failed. */
-        error?: string;
-        outputDir?: string;
-        artifacts?: string[];
-        artifactSizes?: GameBuildArtifactSize[];
-        startedAt?: number;
-        finishedAt?: number;
-    };
 
 /** What the launch was asked to produce, restated in the report so the file stands alone. */
 export type CommandLineBuildReportRequest = {
@@ -240,5 +208,5 @@ export type CommandLineBuildReport = {
     artifacts: Array<{ path: string; bytes?: number }>;
     /** One sentence saying what went wrong, or null on success. */
     error: string | null;
-    log: CommandLineBuildLogLine[];
+    log: CommandLineRunLogLine[];
 };

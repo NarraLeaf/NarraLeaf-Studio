@@ -12,6 +12,10 @@ all. What belongs to this entry point alone is the command line, the exit codes 
 The implementation is `src/main/app/application/commandLineBuild.ts`; the flags are parsed in
 `commandLine.ts` and turned into one request by `commandLineBuildPlan.ts`.
 
+Two other entry points share this one's shape, its exit codes and its profile flag —
+`--test` and `--lint`, in [command-line checks](command-line-checks.md). A launch answers one
+question, so a build and a check on one line are refused.
+
 ## One invocation, one artifact set
 
 `--build` is deliberately not a matrix. A run that produced several targets would have to answer

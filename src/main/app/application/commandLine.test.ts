@@ -34,6 +34,18 @@ const NO_BUILD = {
     error: null,
 } as const;
 
+const NO_CHECK = {
+    requested: false,
+    kind: null,
+    selector: null,
+    testId: null,
+    list: false,
+    parameters: [],
+    reportPath: null,
+    userDataDir: null,
+    error: null,
+} as const;
+
 describe("parseMainCommandLine", () => {
     it("keeps CDP disabled by default", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js"])).toEqual({
@@ -43,6 +55,7 @@ describe("parseMainCommandLine", () => {
             project: NO_STARTUP_PROJECT,
             launcher: false,
             build: NO_BUILD,
+            check: NO_CHECK,
             cdp: {
                 enabled: false,
                 port: DEFAULT_CDP_PORT,
@@ -63,6 +76,7 @@ describe("parseMainCommandLine", () => {
             project: NO_STARTUP_PROJECT,
             launcher: false,
             build: NO_BUILD,
+            check: NO_CHECK,
             cdp: {
                 enabled: true,
                 port: DEFAULT_CDP_PORT,
@@ -428,5 +442,94 @@ describe("parseMainCommandLine", () => {
 
     it("asks for no build when none was mentioned", () => {
         expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--dev"]).build).toEqual(NO_BUILD);
+    });
+
+    it("asks for no check when none was mentioned", () => {
+        expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--dev"]).check).toEqual(NO_CHECK);
+    });
+
+    it("reads a test run and its parameters", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe",
+            "--test", "C:/games/demo",
+            "--test-id", "narraleaf-studio:reachable-endings",
+            "--test-parameter", "ending=good",
+            "--test-parameter=verbose=true",
+            "--test-report", "out/test.json",
+        ]);
+
+        expect(options.check).toEqual({
+            requested: true,
+            kind: "test",
+            selector: "C:/games/demo",
+            testId: "narraleaf-studio:reachable-endings",
+            list: false,
+            parameters: ["ending=good", "verbose=true"],
+            reportPath: "out/test.json",
+            userDataDir: null,
+            error: null,
+        });
+    });
+
+    it("reads a lint sweep", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--lint=C:/games/demo", "--lint-user-data-dir", "C:/tmp/profile",
+        ]);
+
+        expect(options.check.kind).toBe("lint");
+        expect(options.check.selector).toBe("C:/games/demo");
+        expect(options.check.userDataDir).toBe("C:/tmp/profile");
+        expect(options.check.error).toBeNull();
+    });
+
+    it("treats --test-list as a test request that names no test", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--test", "demo", "--test-list"]);
+
+        expect(options.check.kind).toBe("test");
+        expect(options.check.list).toBe(true);
+        expect(options.check.testId).toBeNull();
+        expect(options.check.error).toBeNull();
+    });
+
+    it("does not take a check flag's value as a path to open", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--lint", "C:/games/demo"]);
+
+        expect(options.openPaths).toEqual([]);
+    });
+
+    it("refuses a check flag given with no value", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--test", "demo", "--test-id"]);
+
+        expect(options.check.requested).toBe(true);
+        expect(options.check.error).toBe("Missing --test-id value: expected the id of a registered test");
+    });
+
+    it("refuses check flags that name a check nothing asked for", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--test-id", "some:test"]);
+
+        expect(options.check.requested).toBe(true);
+        expect(options.check.error)
+            .toBe("Missing --test or --lint: the check flags name a check nothing asked for");
+    });
+
+    it("refuses both checks on one line", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--test", "demo", "--lint", "demo"]);
+
+        expect(options.check.error).toBe("Both --test and --lint were given: one launch answers one question");
+    });
+
+    it("refuses a build and a check on one line", () => {
+        const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build", "demo", "--lint", "demo"]);
+
+        expect(options.check.error)
+            .toBe("A build and a check were given on one line: one launch answers one question");
+    });
+
+    it("keeps the last value when a check flag is given twice", () => {
+        const options = parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--lint", "first", "--lint", "second",
+        ]);
+
+        expect(options.check.selector).toBe("second");
     });
 });

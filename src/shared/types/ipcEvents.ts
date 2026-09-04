@@ -19,7 +19,7 @@ import type {
     GamePatchExportRequest,
     LastGameBuildRun,
 } from "./gameBuild";
-import type { CommandLineBuildEvent } from "./commandLineBuild";
+import type { CommandLineRunEvent } from "./commandLineRun";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
@@ -394,7 +394,7 @@ export enum IPCEventType {
     menuAction = "app.menu.action",
     workspaceMenuSync = "workspace.menu.sync",
     workspaceReportLoadResult = "workspace.reportLoadResult",
-    workspaceCommandLineBuild = "workspace.commandLineBuild",
+    workspaceCommandLineRun = "workspace.commandLineRun",
     workspaceOpenView = "workspace.openView",
     settingsHighlight = "settings.highlight",
 
@@ -3953,10 +3953,10 @@ export type IPCMenuEvents = {
      * build rather than asking a question - a build takes minutes, and no reply timeout is the right
      * one for that.
      */
-    [IPCEventType.workspaceCommandLineBuild]: {
+    [IPCEventType.workspaceCommandLineRun]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
-        data: CommandLineBuildEvent,
+        data: CommandLineRunEvent,
         response: never;
     };
     /**
