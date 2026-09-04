@@ -419,6 +419,9 @@ export function useStoryScenePreviewController(input: {
                 targetBlockId,
                 animations,
                 savedVariables: variableTables?.saved,
+                // The same cast the compile below is handed: the frozen preview poses a character
+                // from this snapshot, so it has to fold her entrance defaults the same way.
+                characters: host.characters,
             });
             if (runId !== runIdRef.current) {
                 return;

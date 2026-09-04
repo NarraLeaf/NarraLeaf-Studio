@@ -572,6 +572,7 @@ export const storyInspector = {
         xOffset: "X offset",
         yOffset: "Y offset",
         params: "Params",
+        fromCharacter: "From the character",
     },
 
     background: {

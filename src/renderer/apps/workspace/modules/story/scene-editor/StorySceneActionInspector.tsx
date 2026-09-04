@@ -104,6 +104,7 @@ import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescr
 import { CameraActionEditor } from "./CameraActionEditor";
 import { AssetField } from "./AssetField";
 import { TransformChannelEditor } from "./TransformChannelEditor";
+import { inheritedCharacterEntranceProps } from "@shared/story/characterEntrance";
 import { useTransformPresets } from "./useTransformPresets";
 import { transformPresetSignature, type ProjectTransformPreset } from "@shared/types/transformPreset";
 import {
@@ -2229,6 +2230,12 @@ function CharacterActionEditor(props: {
                 value={payload.transform}
                 motionTargetKind="character"
                 previewAssetId={transformPreviewAssetId(null, props.characters, payload)}
+                inherited={payload.operation === "enter"
+                    // Only an entrance inherits: every other operation addresses a character already
+                    // on stage, whose props are whatever the rows before it left.
+                    ? inheritedCharacterEntranceProps(selectedCharacter?.profile.getEntranceTransform(), payload.transform)
+                    : undefined}
+                inheritedLabel={t("storyInspector.transform.fromCharacter")}
                 motionLabel={`${selectedCharacter?.profile.getName() ?? payload.objectName ?? t("storyInspector.motionTarget.character")} ${payload.operation}`}
                 storyId={props.storyId}
                 sceneId={props.sceneId}
@@ -2431,6 +2438,9 @@ function TransformPresetEditor(props: {
     motionLabel: string;
     /** The picture the channel previews are drawn on - see `transformPreviewAssetId`. */
     previewAssetId?: string;
+    /** Channels the stage applies that this row does not state - see `TransformChannelEditor`. */
+    inherited?: StoryTransformProps;
+    inheritedLabel?: string;
     storyId: string;
     sceneId: StorySceneId;
     blockId: string;
@@ -2508,6 +2518,8 @@ function TransformPresetEditor(props: {
                         value={props.value}
                         targetKind={props.motionTargetKind}
                         previewAssetId={props.previewAssetId}
+                        inherited={props.inherited}
+                        inheritedLabel={props.inheritedLabel}
                         onChange={props.onChange}
                     />
                 </div>

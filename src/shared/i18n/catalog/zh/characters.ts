@@ -232,6 +232,11 @@ export const characters = {
         voiceTrackMissing: "总线已不存在",
         // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
         voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条总线，即可为该角色单独控制音量",
+        // 登场行未写明的每一项都回落到这里。用的是行上那个动词（`charOp.enter`）的说法
+        entrance: "登场默认值",
+        entranceEmpty: "未设置时，登场行使用舞台的默认值",
+        entranceDrag: "拖动放置",
+        entranceZoom: "拖动缩放",
         select: "选择",
         thumbnailAlt: "缩略图",
         color: "颜色",

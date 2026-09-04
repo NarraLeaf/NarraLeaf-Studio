@@ -10,9 +10,11 @@ import type {
     StoryScene,
     StorySavedVariableDefinition,
     StorySceneVariableDefinition,
+    StoryTransformProps,
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
+import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import {
     declaresStageObject,
     isStoryExpressionEvaluable,
@@ -26,6 +28,7 @@ import { buildMergedVariableView, type MergedPersistentView } from "@shared/vari
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { compareStoryCondition, evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
+import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
 import { translate } from "@/lib/i18n";
 import {
     getCharacterStageObjectName,
@@ -243,6 +246,15 @@ export function computeStoryStageSnapshot(input: {
      * way it does at runtime.
      */
     readPersistent?: (storageKey: string) => StoryLiteralValue | null | undefined;
+    /**
+     * The cast, for the entrance defaults a character carries.
+     *
+     * This walk has to settle a character's props exactly as the compile does, or a launch from a
+     * mid-scene row pre-poses her at one size and the compiled tail plays her at another. Absent is
+     * legal and means no defaults are folded - correct only for a caller that reads the background
+     * or the variables and never a displayable's props.
+     */
+    characters?: readonly DevModeCharacterSummary[];
 }): StoryStageSnapshot {
     const scene = input.document.scenes[input.sceneId];
     if (!scene) {
@@ -261,6 +273,9 @@ export function computeStoryStageSnapshot(input: {
             Object.values(storyPersistentDefs(input.document)),
         )),
         input.readPersistent,
+        new Map((input.characters ?? []).flatMap(character => (
+            character.entranceTransform ? [[character.id, character.entranceTransform] as const] : []
+        ))),
     );
     return walker.run();
 }
@@ -305,6 +320,8 @@ class SnapshotWalker {
         private readonly persistentDefs: Record<string, StorySavedVariableDefinition>,
         /** The host's live persistent store, or undefined when there is none to ask. */
         private readonly readPersistent: ((storageKey: string) => StoryLiteralValue | null | undefined) | undefined,
+        /** characterId → the entrance defaults that character carries; only characters that set one. */
+        private readonly entranceDefaults: ReadonlyMap<string, StoryTransformProps>,
     ) {
         let cursor = targetBlockId ? scene.blocks[targetBlockId] : undefined;
         while (cursor && !this.pathBlockIds.has(cursor.id)) {
@@ -685,7 +702,15 @@ class SnapshotWalker {
             };
         if (payload.operation === "enter") {
             record.visible = true;
-            record.props = mergeTransformProps(record.props, this.finalProps(payload.transform, "show", block.id));
+            // The character's own defaults under the row's bag, by the same merge the compile runs.
+            // A row-precise launch replays this record as the element's constructor pose, so a
+            // character entering here has to settle on the size and baseline she would have had if
+            // the scene had played from the top.
+            const entrance = withCharacterEntranceDefaults(
+                payload.characterId ? this.entranceDefaults.get(payload.characterId) : undefined,
+                payload.transform,
+            );
+            record.props = mergeTransformProps(record.props, this.finalProps(entrance, "show", block.id));
         }
     }
 

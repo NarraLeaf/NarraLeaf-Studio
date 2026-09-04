@@ -137,6 +137,7 @@ import {
     storyTransformPropsConflicts,
     storyTransformPropsToNlr,
 } from "@shared/story/transformProps";
+import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
 import {
     boolProp,
     characterStageName,
@@ -3407,6 +3408,10 @@ async function compileCharacterStageAction(
         return statements;
     }
 
+    // What an `enter` row falls back to on every channel it does not state. Read once here, so the
+    // two appearance branches below cannot disagree about which character's defaults they used.
+    const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
+
     if (payload.operation === "exit" && staged) {
         await bindCharacterPortrait(ctx, payload.characterId, staged);
         const chain = await compileDisplayableOperation(staged, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
@@ -3428,7 +3433,11 @@ async function compileCharacterStageAction(
     const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
-        const image = staged ?? getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        const image = staged ?? getImage(ctx, name, {
+            autoFit: true,
+            src: layeredSrc as never,
+            initialProps: characterEntrancePose(entranceDefaults, ctx, block.id),
+        });
         // An Image built from a single url has no tag groups, and the engine rejects the whole story
         // for a tag change aimed at one - during construction, so the player never starts and the row
         // that caused it is nowhere in the message. That mismatch means an earlier row put this
@@ -3444,7 +3453,8 @@ async function compileCharacterStageAction(
             : payload.tags ?? {};
         const tags = Object.values(selection);
         if (payload.operation === "enter") {
-            const chain = image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
+            const entrance = withCharacterEntranceDefaults(entranceDefaults, payload.transform);
+            const chain = image.char(tags as never).show(createShowTransform(entrance, ctx, block.id) as any);
             statements.push(recordStatement(ctx, chain, block));
             return statements;
         }
@@ -3465,13 +3475,18 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    const image = staged ?? getImage(ctx, name, { autoFit: true, src });
+    const image = staged ?? getImage(ctx, name, {
+        autoFit: true,
+        src,
+        initialProps: characterEntrancePose(entranceDefaults, ctx, block.id),
+    });
     await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
         // transition - its entrance is driven entirely by the show transform. (A transition only
         // applies to `expression`, which swaps a visible character's source.)
-        const chain = image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
+        const entrance = withCharacterEntranceDefaults(entranceDefaults, payload.transform);
+        const chain = image.char(src as any).show(createShowTransform(entrance, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3520,9 +3535,10 @@ async function compileCharacterPuppetAction(
     // the box is never restored. An `Image` under a puppet character's key can have come from
     // nowhere else - a compile of the rows sends a puppet character here on every operation and
     // never builds one - so it reads as "on stage, box not restorable" and the box is built.
+    const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
     const preposed = stagedCharacterElement(ctx, name) instanceof Image;
     const puppet = declaresStageObject(payload) || preposed
-        ? await getPuppetElement(ctx, name, appearance, block.id)
+        ? await getPuppetElement(ctx, name, appearance, block.id, entranceDefaults)
         : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
         return [];
@@ -3554,7 +3570,9 @@ async function compileCharacterPuppetAction(
     const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";
     const transform = payload.operation === "exit"
         ? payload.transform ?? { preset: "fadeOut" as const, durationMs: 250 }
-        : payload.transform;
+        : payload.operation === "enter"
+            ? withCharacterEntranceDefaults(entranceDefaults, payload.transform)
+            : payload.transform;
     const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
     return chain ? [recordStatement(ctx, chain, block)] : [];
 }
@@ -3577,6 +3595,7 @@ async function getPuppetElement(
     objectName: string,
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
     blockId: string,
+    entranceDefaults: StoryTransformProps | undefined,
 ): Promise<Puppet | null> {
     const key = normalizeObjectName(objectName);
     const existing = ctx.puppets.get(key);
@@ -3615,6 +3634,11 @@ async function getPuppetElement(
         ...(appearance.defaultState?.motion ? { motion: appearance.defaultState.motion } : {}),
         ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
         ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
+        // The character's entrance defaults, baked in for the same reason the three channels above
+        // are: `IPuppetUserConfig` extends the engine's transform props and is what survives
+        // `reset()`. The box a backend draws into is scaled and placed exactly as an image is, so a
+        // puppet character is her own size on the same terms.
+        ...(characterEntrancePose(entranceDefaults, ctx, blockId) ?? {}),
     });
     setStableElementId(ctx.elementIdBindings, puppet, `nl:puppet:${ctx.scene.id}:${key}`);
     ctx.puppets.set(key, puppet);
@@ -5567,6 +5591,41 @@ function isOpacityOnly(transform: StoryTransformRef | undefined, opacity: number
         return true;
     }
     return keys.length === 1 && keys[0] === "opacity" && to.opacity === opacity;
+}
+
+/**
+ * The entrance defaults an author set on a character, or `undefined` when they set none.
+ *
+ * A lookup rather than a field on the payload: a row names a character, and how that character is
+ * drawn is the character's answer. Rewriting rows to carry it would put the same number back on
+ * every line, which is the copying this exists to end.
+ */
+function characterEntranceDefaults(ctx: SceneCompileContext, characterId: string | undefined): StoryTransformProps | undefined {
+    return characterId ? ctx.characterSummaries.get(characterId)?.entranceTransform : undefined;
+}
+
+/**
+ * The same defaults as the pose baked into the element's constructor config.
+ *
+ * Belt and braces for the one entrance that cannot merge a bag: a Story Motion states its own
+ * keyframes, so an entrance played as one has nothing to fold defaults into and would bring the
+ * character on at the stage's own scale. Baking them into the config settles that before any
+ * statement runs - and it survives `reset()`, so a character re-entered after `newGame()` is still
+ * her own size.
+ *
+ * Only reached when the element is being created, which for a character row is only ever an
+ * entrance: every other operation goes through `findStageCharacterImage` and reports a miss.
+ */
+function characterEntrancePose(
+    defaults: StoryTransformProps | undefined,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Record<string, unknown> | undefined {
+    if (!defaults) {
+        return undefined;
+    }
+    const props = getInlineTransformProps({ mode: "props", to: defaults }, ctx, blockId);
+    return Object.keys(props).length > 0 ? props : undefined;
 }
 
 function createShowTransform(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Transform {

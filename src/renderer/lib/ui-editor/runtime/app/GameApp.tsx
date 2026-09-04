@@ -3507,6 +3507,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // tail decide every persistent condition from one value instead of two.
                     persistentVariables: bundle.ui.persistentVariables,
                     ...(storyPersistence ? { readPersistent: storyPersistence.readPersistent } : {}),
+                    // A launch replays this snapshot as each element's constructor pose, so the cast
+                    // travels with it: without them a character pre-posed here would enter at the
+                    // stage's own scale and the compiled tail would then play her at her own.
+                    characters: bundle.storyLibrary?.characters,
                 }),
             }
             : undefined;

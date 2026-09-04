@@ -554,6 +554,7 @@ export const storyInspector = {
         xOffset: "X のずれ",
         yOffset: "Y のずれ",
         params: "パラメータ",
+        fromCharacter: "キャラクターから",
     },
 
     background: {

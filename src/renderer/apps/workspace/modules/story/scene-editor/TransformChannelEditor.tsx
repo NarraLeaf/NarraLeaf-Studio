@@ -101,21 +101,40 @@ const MASK_SETTINGS = [
 // Row primitives
 // ---------------------------------------------------------------------------------------------
 
-function ChannelRow(props: { label: string; removeLabel: string; onRemove: () => void; children: ReactNode; below?: ReactNode }) {
+function ChannelRow(props: {
+    label: string;
+    removeLabel: string;
+    /** Absent on an inherited channel: there is nothing on this row to take away. */
+    onRemove?: () => void;
+    children: ReactNode;
+    below?: ReactNode;
+    muted?: boolean;
+}) {
     return (
         <div className="min-w-0">
             <div className="flex items-center gap-2">
-                <FieldLabel as="span" className={CHANNEL_LABEL_CLASS}>{props.label}</FieldLabel>
-                <div className="min-w-0 flex-1">{props.children}</div>
-                <IconButton
-                    size="sm"
-                    variant="ghost"
-                    aria-label={props.removeLabel}
-                    data-tip={props.removeLabel}
-                    onClick={props.onRemove}
+                <FieldLabel
+                    as="span"
+                    className={cn(CHANNEL_LABEL_CLASS, props.muted && "text-secondary")}
                 >
-                    <X className="h-3.5 w-3.5" />
-                </IconButton>
+                    {props.label}
+                </FieldLabel>
+                <div className="min-w-0 flex-1">{props.children}</div>
+                {props.onRemove ? (
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        aria-label={props.removeLabel}
+                        data-tip={props.removeLabel}
+                        onClick={props.onRemove}
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </IconButton>
+                ) : (
+                    // The button's own footprint, kept so an inherited row's control ends where a
+                    // stated one's does instead of running under where the button would be.
+                    <span className="h-7 w-7 shrink-0" aria-hidden="true" />
+                )}
             </div>
             {props.below ? (
                 // A second line, indented by an empty copy of the label column so it lines up with
@@ -800,6 +819,66 @@ function AddChannelPicker(props: {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Inherited channels
+// ---------------------------------------------------------------------------------------------
+
+/** The props one bag holds that the other does not, or holds differently. */
+function changedProps(
+    before: StoryTransformProps | undefined,
+    after: StoryTransformProps | undefined,
+): Partial<StoryTransformProps> {
+    const patch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(after ?? {})) {
+        if (value !== undefined && value !== (before ?? {})[key as keyof StoryTransformProps]) {
+            patch[key] = value;
+        }
+    }
+    return patch as Partial<StoryTransformProps>;
+}
+
+/**
+ * Take an inherited channel over: the edit an author made to it, written onto the row itself.
+ *
+ * Only what the edit changed is copied. Copying the whole inherited bag would make the row state
+ * channels the author never touched, and a row that states a channel has stopped following the
+ * character on it - which is precisely what a later change to the character would then fail to
+ * reach.
+ */
+function takeOverInherited(
+    ref: StoryTransformRef,
+    inherited: StoryTransformProps | undefined,
+    edited: StoryTransformRef,
+): StoryTransformRef {
+    return withTransformProps(ref, changedProps(inherited, edited.to));
+}
+
+/**
+ * A channel added on a row that inherits one: seeded with the inherited value, not the neutral one.
+ *
+ * `add` lands a channel on the value that changes nothing, which on a row with no defaults is the
+ * neutral. On a row inheriting `zoom 0.54`, the value that changes nothing is 0.54 - seeding 1 would
+ * make "add a channel to edit it" resize the character the moment it is added.
+ */
+function seedFromInherited(
+    before: StoryTransformRef,
+    added: StoryTransformRef,
+    inherited: StoryTransformProps | undefined,
+): StoryTransformRef {
+    if (!inherited) {
+        return added;
+    }
+    const introduced = changedProps(before.to, added.to);
+    const seeded: Record<string, unknown> = {};
+    for (const key of Object.keys(introduced)) {
+        const value = inherited[key as keyof StoryTransformProps];
+        if (value !== undefined) {
+            seeded[key] = value;
+        }
+    }
+    return Object.keys(seeded).length > 0 ? withTransformProps(added, seeded) : added;
+}
+
+// ---------------------------------------------------------------------------------------------
 
 export function TransformChannelEditor(props: {
     value: StoryTransformRef | undefined;
@@ -817,6 +896,24 @@ export function TransformChannelEditor(props: {
      * showing an empty frame.
      */
     previewAssetId?: string;
+    /**
+     * Channels this row does not state but the stage will still apply - today a character's entrance
+     * defaults, which an `enter` row inherits channel by channel.
+     *
+     * Shown under a heading of their own with live controls and no remove button: the question they
+     * answer is "why is she that size", and a row that merely omitted the channel cannot answer it.
+     * Editing one writes it onto the row, which is how a channel is taken over - the same gesture as
+     * typing a value into a stated one, and the reason these are not disabled.
+     */
+    inherited?: StoryTransformProps;
+    /** What the inherited channels are inherited FROM, as a heading. Required when `inherited` is. */
+    inheritedLabel?: string;
+    /**
+     * What is being edited. `row` (the default) is a story row's own transform; `characterDefaults`
+     * is the bag a character's entrances fall back to, which holds props and nothing beside them -
+     * so the picker offers only the channels that record can keep.
+     */
+    scope?: "row" | "characterDefaults";
     onChange: (value: StoryTransformRef) => void;
 }) {
     const { t } = useTranslation();
@@ -824,8 +921,16 @@ export function TransformChannelEditor(props: {
     const ref: StoryTransformRef = props.value ?? { mode: "props" };
     const stated = statedTransformChannels(ref);
     const isCamera = props.targetKind === "camera";
-    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text", isCamera });
+    const addable = addableTransformChannels(ref, {
+        isText: props.targetKind === "text",
+        isCamera,
+        isCharacterDefaults: props.scope === "characterDefaults",
+    });
     const removeLabel = t("storyInspector.transformChannel.remove");
+    // The inherited bag as a ref of its own, so every control below can be built by the same
+    // `channelBody` the stated rows use rather than by a second set of read-only renderers.
+    const inheritedRef: StoryTransformRef = { mode: "props", to: props.inherited ?? {} };
+    const inheritedChannels = props.inherited ? statedTransformChannels(inheritedRef) : [];
 
     return (
         <div className="flex flex-col gap-1.5">
@@ -843,6 +948,21 @@ export function TransformChannelEditor(props: {
                     </ChannelRow>
                 );
             })}
+            {inheritedChannels.length > 0 ? (
+                <div className="flex flex-col gap-1.5 pt-1">
+                    <FieldLabel as="span" className="text-secondary">{props.inheritedLabel}</FieldLabel>
+                    {inheritedChannels.map(channel => {
+                        const body = channelBody(channel, inheritedRef, next => {
+                            props.onChange(takeOverInherited(ref, props.inherited, next));
+                        }, t);
+                        return (
+                            <ChannelRow key={`inherited:${channel.id}`} label={channel.label(t)} removeLabel={removeLabel} muted below={body.below}>
+                                {body.control}
+                            </ChannelRow>
+                        );
+                    })}
+                </div>
+            ) : null}
             {/*
               * The card's own row: what can be added on the left, what can be done to the whole
               * transform on the right. The menu is pushed rather than the row justified, so it stays
@@ -855,7 +975,7 @@ export function TransformChannelEditor(props: {
                     previewUrl={preview.url}
                     isCamera={isCamera}
                     t={t}
-                    onAdd={channel => props.onChange(channel.add(ref))}
+                    onAdd={channel => props.onChange(seedFromInherited(ref, channel.add(ref), props.inherited))}
                 />
                 <div className="ml-auto">
                     <TransformCardMenu value={props.value} onChange={props.onChange} />
