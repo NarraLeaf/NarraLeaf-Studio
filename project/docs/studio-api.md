@@ -38,8 +38,8 @@ import {
 | --- | --- |
 | `definePlugin` | 声明插件入口。 |
 | `ui` | Studio 公共 UI kit。 |
-| `AssetType` | 工程资源类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
-| `AssetSource` | 工程资源来源枚举：`Local`、`Remote`。 |
+| `AssetType` | 项目资源类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
+| `AssetSource` | 项目资源来源枚举：`Local`、`Remote`。 |
 | `PanelPosition` | Panel 位置枚举：`Left`、`Right`、`Bottom`。 |
 
 ## PluginApp
@@ -89,7 +89,7 @@ await app.services.storage.writeJson(`${app.plugin.id}.items`, { version: 1, ite
 
 ## app.services.assets
 
-工程资源的插件 facade。
+项目资源的插件 facade。
 
 ```ts
 app.services.assets.getMap();
@@ -422,7 +422,7 @@ ui.Panel.EmptyState(props: { icon?: React.ReactNode; title: React.ReactNode; des
 
 ### AssetSelector
 
-`ui.AssetSelector` 复用 Studio 的工程资源树、搜索、筛选、导入和图片悬停预览。懒加载组件：第一次渲染可能短暂返回 `null`，保持 `visible` 为 `true` 即可。
+`ui.AssetSelector` 复用 Studio 的项目资源树、搜索、筛选、导入和图片悬停预览。懒加载组件：第一次渲染可能短暂返回 `null`，保持 `visible` 为 `true` 即可。
 
 ```ts
 type AssetSelectorProps = {

@@ -8,7 +8,7 @@
 
 ## 适用范围
 
-桌面构建与 Dev Mode。Web 导出无法定位系统指针，节点在那里返回 `unsupported` 并走 `Failed` 出口。工程里存在这两个节点、而构建目标包含 web / android / ios 时，构建控制台按蓝图逐条输出 warning（不阻断构建）。
+桌面构建与 Dev Mode。Web 导出无法定位系统指针，节点在那里返回 `unsupported` 并走 `Failed` 出口。项目里存在这两个节点、而构建目标包含 web / android / ios 时，构建控制台按蓝图逐条输出 warning（不阻断构建）。
 
 主进程侧经 `koffi` 调用系统自带的库：Windows `user32.dll` 的 `SetCursorPos`、macOS ApplicationServices 的 `CGWarpMouseCursorPosition`、Linux `libX11.so.6` 的 `XWarpPointer`。**不引入自建原生二进制**——那正是杀软会反应的形状；`koffi` 是本应用已有并已签名的依赖。库加载发生在调用内部而非模块求值期，缺库的宿主降级为 `unsupported` 而不是启动即崩。Wayland 会话（无 XWayland）报 `unsupported`。
 

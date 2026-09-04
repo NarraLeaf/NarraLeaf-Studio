@@ -133,7 +133,7 @@ export const MENU_BAR_MESSAGES = {
             labelText: "显示名称",
             labelKey: "本地化键",
             labelKeyNone: "不使用本地化键",
-            noKeys: "本工程未声明本地化键",
+            noKeys: "本项目未声明本地化键",
             kindAction: "菜单项",
             kindDynamic: "自动列表",
             kindSubmenu: "子菜单",
@@ -169,7 +169,7 @@ export const MENU_BAR_MESSAGES = {
             actionHistoryRedo: "重做一条历史记录",
             actionToggleFullscreen: "全屏",
             actionFn: "调用函数",
-            frozen: "本工程当前为只读",
+            frozen: "本项目当前为只读",
         },
         ja: {
             addPreset: "既定のメニューバーを追加",

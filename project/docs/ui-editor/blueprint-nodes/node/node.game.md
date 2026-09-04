@@ -231,7 +231,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 ### 存档字段
 
-工程可以声明一份**存档字段**（`editor/save-schema.json`），声明之后这个节点会为每个字段长出一个具名输入引脚，不必再用 `Make JSON Object` 拼对象、也不用手写存储 key。字段在节点卡片上的按钮里编辑，改的是整个工程共用的那一份——写档节点和读档节点因此永远长出同一批引脚。
+项目可以声明一份**存档字段**（`editor/save-schema.json`），声明之后这个节点会为每个字段长出一个具名输入引脚，不必再用 `Make JSON Object` 拼对象、也不用手写存储 key。字段在节点卡片上的按钮里编辑，改的是整个项目共用的那一份——写档节点和读档节点因此永远长出同一批引脚。
 
 - 引脚按**字段 id** 寻址，改字段名只换标签，不会断线。
 - 字段声明的类型**就是**引脚的类型，中间没有映射表。
@@ -286,7 +286,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 存档不存在或没有用户 metadata 时，`metadata` 输出 `null`。
 
-工程声明了存档字段之后，这个节点会为每个字段多长出一个具名输出引脚，`metadata` 输出则原样保留、仍然给出完整的存储对象。
+项目声明了存档字段之后，这个节点会为每个字段多长出一个具名输出引脚，`metadata` 输出则原样保留、仍然给出完整的存储对象。
 
 字段输出**永远有值**：存档里没有这个 key 时给的是该字段配置的默认值。这正是"给已发布的游戏加一个存档字段"安全的原因——老存档照常显示，不会变成一片空白。
 
