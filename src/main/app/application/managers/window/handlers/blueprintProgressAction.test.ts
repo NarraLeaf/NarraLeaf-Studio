@@ -16,8 +16,17 @@ vi.mock("electron", () => ({
  * project's identity decides its name, and that is answered before a byte is written.
  */
 const { writeGameProgressFile, readGameProgressFile } = vi.hoisted(() => ({
-    writeGameProgressFile: vi.fn(async () => ({ outcome: "written", error: null })),
-    readGameProgressFile: vi.fn(async () => ({ outcome: "missing", document: null, error: null })),
+    // The environment and the request are declared but unused: what a test reads back is the
+    // second argument, the progress key, which is the whole of what the guard decides.
+    writeGameProgressFile: vi.fn(async (_environment: unknown, _key: string, _request: unknown) => ({
+        outcome: "written",
+        error: null,
+    })),
+    readGameProgressFile: vi.fn(async (_environment: unknown, _key: string) => ({
+        outcome: "missing",
+        document: null,
+        error: null,
+    })),
 }));
 vi.mock("@shared/utils/gameProgressFile", () => ({ writeGameProgressFile, readGameProgressFile }));
 
