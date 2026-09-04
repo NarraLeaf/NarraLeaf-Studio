@@ -254,6 +254,19 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
     useLayoutEffect(() => {
         let raf1 = 0;
         let raf2 = 0;
+        /**
+         * The row's own height is the one input that changes without a scroll or a window resize:
+         * typing past the end of the line wraps it, and the row grows under the strip. Nothing else
+         * here would notice, and the strip would keep the place it was given while the row was one
+         * line - still inside it, but no longer level with the line it belongs to.
+         *
+         * Attached from inside `update` rather than here, because on the pass this effect makes at
+         * mount the anchor is not attached yet: React runs a child's layout effects before the
+         * parent whose element the anchor names, so `anchorRef.current` is null until the frames
+         * below. Whichever pass first finds a row is the one that starts watching it.
+         */
+        const rowResize = new ResizeObserver(() => update());
+        let observed: HTMLElement | null = null;
         const update = () => {
             const anchor = props.anchorRef.current;
             if (!anchor) {
@@ -269,6 +282,11 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
             // `ROW_TEXT_HIT_BLEED` - but the row is what the rule is about, and what a regression
             // would be measured against.)
             const row = anchor.closest<HTMLElement>("[data-story-row-block-id]") ?? anchor;
+            if (observed !== row) {
+                rowResize.disconnect();
+                rowResize.observe(row);
+                observed = row;
+            }
             const rowRect = row.getBoundingClientRect();
             const column = anchor.getBoundingClientRect();
             const clip = scrollClipRect(anchor);
@@ -301,6 +319,7 @@ export const RichTextToolbar = forwardRef<RichTextToolbarHandle, {
         return () => {
             cancelAnimationFrame(raf1);
             cancelAnimationFrame(raf2);
+            rowResize.disconnect();
             window.removeEventListener("scroll", update, true);
             window.removeEventListener("resize", update);
         };
