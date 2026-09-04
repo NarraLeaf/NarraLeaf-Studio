@@ -165,6 +165,10 @@ export const uiEditor = {
         },
         refs: "{count} refs",
     },
+    canvas: {
+        unknownWidget: "Unknown widget",
+        widgetRenderFailed: "Widget failed to draw",
+    },
     editor: {
         componentNotFound: "Component not found",
         interfaceNotFound: "Interface not found",

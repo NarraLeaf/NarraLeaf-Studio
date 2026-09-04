@@ -562,6 +562,12 @@ export function createPluginApp(
     // One per plugin, shared by every node it registers - the runtime loader
     // hands a node's execute the same `game` object `setup(app)` received.
     const nodeGame = createEditorRuntimePluginGame(descriptor);
+    // Recorded with every widget the plugin contributes: the insert palette says where a widget
+    // came from, and the plugin's own name is what the author knows it by everywhere else.
+    const widgetOwner = {
+        ownerPluginId: descriptor.plugin.id,
+        ownerPluginName: descriptor.manifest.name || descriptor.plugin.id,
+    };
     const guardWidget = (module: PluginWidgetModule): UIWidgetModule => guardPluginWidgetModule(
         descriptor.plugin.id,
         module,
@@ -804,7 +810,7 @@ export function createPluginApp(
                 register: module => {
                     assertDeclaredWidget(descriptor, module.type);
                     const guarded = guardWidget(module);
-                    widgetModuleRegistry.register(guarded, { ownerPluginId: descriptor.plugin.id });
+                    widgetModuleRegistry.register(guarded, widgetOwner);
                     return trackReturn(() => {
                         if (widgetModuleRegistry.get(module.type) === guarded) {
                             widgetModuleRegistry.unregister(module.type);
@@ -817,7 +823,7 @@ export function createPluginApp(
                     }
                     return combine(modules.map(module => {
                         const guarded = guardWidget(module);
-                        widgetModuleRegistry.register(guarded, { ownerPluginId: descriptor.plugin.id });
+                        widgetModuleRegistry.register(guarded, widgetOwner);
                         return trackReturn(() => {
                             if (widgetModuleRegistry.get(module.type) === guarded) {
                                 widgetModuleRegistry.unregister(module.type);

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { Box } from "lucide-react";
 
 import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
@@ -21,6 +22,10 @@ import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/regi
 import type { LintContext, LintLocalizationContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
+import {
+    ensureWidgetModulesRegistered,
+    widgetModuleRegistry,
+} from "../../ui-editor/widget-modules/registryInstance";
 import { UI_LINT_RULES } from "./ui";
 
 /**
@@ -428,6 +433,55 @@ describe("ui/empty-behavior", () => {
                 createTestLintContext({ uiDocument: onePage(art, panel), blueprintDocument: NO_GRAPHS }),
             ),
         ).toEqual([]);
+    });
+});
+
+describe("ui/unknown-widget", () => {
+    const PLUGIN_TYPE = "acme.lab.badge";
+
+    // The rule asks the widget module registry, and the built-in modules are loaded into it on
+    // first use - a large import tree that is already resident in Studio and is not here. Paid once
+    // and out of the way of the assertions, which are otherwise fast.
+    beforeAll(async () => {
+        await ensureWidgetModulesRegistered();
+    }, 60000);
+
+    it("reports an element whose type nothing registers, naming the type", async () => {
+        const findings = await run(
+            "ui/unknown-widget",
+            createTestLintContext({ uiDocument: onePage(element({ id: "badge", type: PLUGIN_TYPE })) }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].ruleId).toBe("ui/unknown-widget");
+        expect(findings[0].messageKey).toBe("lint.rule.uiUnknownWidget.message");
+        expect(findings[0].messageParams).toEqual({ type: PLUGIN_TYPE });
+        expect(findings[0].location.kind === "surface" ? findings[0].location.elementId : null).toBe("badge");
+    });
+
+    it("says nothing about the widgets Studio ships", async () => {
+        const document = onePage(
+            element({ id: "box", type: "nl.container" }),
+            element({ id: "label", type: "nl.text" }),
+        );
+
+        expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("says nothing once the plugin that defines the type is loaded", async () => {
+        widgetModuleRegistry.register({
+            type: PLUGIN_TYPE,
+            displayName: "Lab Badge",
+            icon: Box,
+            createDefaultElement: () => ({ type: PLUGIN_TYPE }),
+            render: () => null,
+        }, { ownerPluginId: "acme.lab", ownerPluginName: "Widget Lab" });
+        try {
+            const document = onePage(element({ id: "badge", type: PLUGIN_TYPE }));
+            expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
+        } finally {
+            widgetModuleRegistry.unregister(PLUGIN_TYPE);
+        }
     });
 });
 

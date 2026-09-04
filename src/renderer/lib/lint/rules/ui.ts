@@ -18,6 +18,10 @@ import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import {
+    ensureWidgetModulesRegistered,
+    widgetModuleRegistry,
+} from "../../ui-editor/widget-modules/registryInstance";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { listBlueprintGraphSites } from "../blueprintSites";
@@ -558,6 +562,47 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
 }
 
 /**
+ * A widget whose type the project cannot load.
+ *
+ * The interface counterpart of `blueprint/unknown-node`, and it arises the same way: widget types
+ * beyond Studio's own come from plugins, so an unknown one means the plugin that defined it is
+ * uninstalled, switched off for this project, or failed to load. The canvas already draws the
+ * element as unknown and keeps its data; what this rule adds is the refusal, because a build that
+ * shipped it would ship a page with a hole where the author placed a control.
+ *
+ * An error rather than a warning for that reason: nothing draws, so what ships is not what was
+ * written, and both gestures that answer it are the author's to make - install the plugin, or
+ * remove the element.
+ *
+ * Naming the type rather than the element: the type is what says which plugin is missing, and an
+ * element id is a generated id nobody can look up.
+ *
+ * The registry is asked as the editor asks it, so a plugin that is loaded and drawing produces no
+ * finding at all. Only the stage pool is swept, for the reason at the head of this file.
+ */
+async function runUnknownWidget(ctx: LintContext): Promise<LintFinding[]> {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    await ensureWidgetModulesRegistered();
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        if (widgetModuleRegistry.has(site.element.type)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/unknown-widget",
+            messageKey: "lint.rule.uiUnknownWidget.message",
+            messageParams: { type: site.element.type },
+            location: surfaceLocation(site.surface, site.element),
+            target: surfaceTarget(site.surface),
+        });
+    }
+    return findings;
+}
+
+/**
  * An instance of a library component the project does not have.
  *
  * A linked instance holds nothing of its own - its whole appearance is the definition it points at,
@@ -811,6 +856,15 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiEmptyBehavior",
         run: ctx => runEmptyBehavior(ctx),
+    },
+    {
+        id: "ui/unknown-widget",
+        category: "ui",
+        // An error, and the same standing `blueprint/unknown-node` has: the type is not in the
+        // build, so the element draws nothing and the game diverges from the page the author sees.
+        defaultSeverity: "error",
+        slug: "uiUnknownWidget",
+        run: ctx => runUnknownWidget(ctx),
     },
     {
         id: "ui/component-missing",
