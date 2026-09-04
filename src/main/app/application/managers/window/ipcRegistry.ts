@@ -1,5 +1,7 @@
 import { IPCMessageType, Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { WINDOW_PROJECT_MISMATCH_CODE } from "@shared/types/window";
+import { reportWindowProjectRefusal } from "../../utils/windowProjectRefusal";
 import { IPCHandler } from "./handlers/IPCHandler";
 import { IPCHost } from "./ipcHost";
 import { getDeniedApiCapability } from "./permissions";
@@ -59,9 +61,13 @@ export class IPCRegistry {
                 return this.ipc.failed(new Error(`API permission denied: ${deniedCapability}`));
             }
             try {
-                return await handler.handle(window, data);
+                const result = await handler.handle(window, data);
+                this.noteProjectRefusal(window, handler.name, result);
+                return result;
             } catch (error) {
-                return this.ipc.failed(error);
+                const failure = this.ipc.failed(error);
+                this.noteProjectRefusal(window, handler.name, failure);
+                return failure;
             }
         });
     }
@@ -78,8 +84,32 @@ export class IPCRegistry {
                 console.warn(`Blocked IPC message ${handler.name}: API permission denied: ${deniedCapability}`);
                 return;
             }
-            void handler.handle(window, data);
+            // A message answers nobody, so what a message handler returns is dropped here - but a
+            // refusal is exactly the thing that has to survive that. The two forwarding channels
+            // are messages and both are guarded, so the outcome is read for that one purpose and
+            // then discarded as before.
+            void Promise.resolve(handler.handle(window, data)).then(
+                result => this.noteProjectRefusal(window, handler.name, result),
+                error => this.noteProjectRefusal(window, handler.name, this.ipc.failed(error)),
+            );
         });
+    }
+
+    /**
+     * Report a refusal raised by `requireWindowProject`, wherever it was raised.
+     *
+     * Read here rather than at each guarded handler, and that is the point: the guard is spreading
+     * across the handler files one tranche at a time, and a rule that each of them must also
+     * remember to log is a rule that will be half-applied. The registry sees every request and
+     * every message, so a channel guarded tomorrow is reported without touching this file.
+     *
+     * Recognised by the code rather than by the sentence, because prose gets reworded and this is
+     * the one refusal in the app that no interface has a remedy for.
+     */
+    private noteProjectRefusal(window: AppWindow, request: string, result: RequestStatus<unknown> | undefined): void {
+        if (result && result.success === false && result.code === WINDOW_PROJECT_MISMATCH_CODE) {
+            reportWindowProjectRefusal(window, request);
+        }
     }
 
     private resolveLiveWindow(sender: Electron.WebContents): AppWindow | undefined {
