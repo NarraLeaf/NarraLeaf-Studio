@@ -69,6 +69,12 @@ export function describeDependencyState(entry: DependencyStateInput): Dependency
     if (!status) {
         return null;
     }
+    // Ahead of `suppressed`, which a hard dependency on an absent plugin also sets: there is
+    // nothing here for Studio to have withheld, and "Off for this project" sends the author to look
+    // for a switch that does not exist. What they need to know is that the plugin is not installed.
+    if (status === "missing") {
+        return { labelKey: "project.dependencies.status.missing", className: DEPENDENCY_STATUS_TEXT_STYLES.missing };
+    }
     if (suppressed) {
         return { labelKey: "project.dependencies.status.suppressed", className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
     }
