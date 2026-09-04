@@ -1213,6 +1213,26 @@ input[type="radio"]:focus {
 }
 
 /*
+ * A text label's marked runs, drawn by the engine's own word renderer.
+ *
+ * The engine sets each word `display: inline-block`, which is right for a line being typed out:
+ * every word is an atomic box, so the reveal can size and place them one at a time. A label is a
+ * paragraph rather than a line, and an atomic box wide enough to need wrapping claims the whole
+ * width of the box it is in - so the first run long enough to wrap would push every run after it
+ * onto a line of its own, with the paragraph ragged where it should read as one flow.
+ *
+ * Inline puts the runs back into one line-breaking context, which is the whole of what a paragraph
+ * needs from them. Nothing else about a word depends on the box: the emphasis marks, the reading
+ * and the upright short runs are all set on or inside the text.
+ *
+ * Direct children only. A reading is a `<ruby>` inside the word, and it is inline-block for its own
+ * reasons.
+ */
+.nl-text-runs > span {
+    display: inline;
+}
+
+/*
  * The translation field, and the brackets that delimit a style range in it.
  *
  * A translator places the line's tags; they never invent one. The bracket is therefore drawn as a

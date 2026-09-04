@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
+import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -34,6 +35,7 @@ import {
     verticalTypographyCss,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { renderVerticalTextContent } from "@/lib/ui-editor/widget-modules/shared/text/VerticalText";
+import { TextRunsBody, useTextRunWords } from "@/lib/ui-editor/widget-modules/shared/text/TextRuns";
 import { useAutoFitFontSize } from "@/lib/ui-editor/widget-modules/shared/text/useAutoFitFontSize";
 import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
@@ -47,7 +49,7 @@ import {
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
-import { getTextProps } from "./helpers";
+import { getTextProps, textValuePatch } from "./helpers";
 import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
@@ -73,9 +75,10 @@ function commitTextEditValue(documentService: UIDocumentService, elementId: stri
     if (docEl?.valueBindings?.[TEXT_VALUE_PROP_PATH]?.kind === "blueprintValue") {
         documentService.clearElementBlueprintValueBinding(elementId, TEXT_VALUE_PROP_PATH);
     }
-    documentService.updateElementProps(elementId, {
-        text: nextText,
-    });
+    documentService.updateElementProps(
+        elementId,
+        docEl ? textValuePatch(docEl, nextText) : { text: nextText },
+    );
 }
 
 export function TextRenderer({
@@ -227,6 +230,12 @@ export function TextRenderer({
         localizationKey: flatProps.localizationKey,
     });
 
+    // Runs are drawn only while they still spell what is on screen: a translated line, a `text`
+    // driven by a value blueprint and a list row's own field all arrive here as a different string,
+    // and each falls back to the plain paragraph rather than to words the label no longer holds.
+    const textRuns = resolveUITextRuns(displayText, p.rich);
+    const textRunWords = useTextRunWords(textRuns);
+
     const effectTextStyle = composeTextEffectStyle(p.effects);
     // Filter / blend on a wrapper affect the subtree; text-shadow must live on the node that owns the glyphs.
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
@@ -237,13 +246,14 @@ export function TextRenderer({
         boxRef: autoFitBoxRef,
         textRef: autoFitTextRef,
         fontSize: fittedFontSize,
-    } = useAutoFitFontSize<HTMLDivElement, HTMLParagraphElement>({
+    } = useAutoFitFontSize<HTMLDivElement, HTMLElement>({
         enabled: Boolean(p.textAutoFit) && !isEditing,
         fontSize: p.fontSize,
         minFontSize: p.textAutoFitMinFontSize,
         vertical: isVerticalWritingMode(p.writingMode),
         signature: [
             displayText,
+            textRuns ? JSON.stringify(textRuns) : "",
             p.fontWeight,
             p.fontStyle,
             p.lineHeight,
@@ -541,19 +551,41 @@ export function TextRenderer({
         );
     }
 
-    const textContent = renderVerticalTextContent(displayText, p);
-    const textNode = textMotionActive ? (
-        <motion.p
-            ref={autoFitTextRef}
-            style={{ ...textBodyStyle, flexShrink: 0 }}
-            initial={false}
-            animate={textAnimate}
-            transition={textTransition}
-        >
+    // A marked label is a `div` holding the engine's words; a plain one is the paragraph it has
+    // always been. The two are kept apart rather than unified because the engine's container is a
+    // `div` of its own, and because a label that carries no runs has to be drawn byte for byte the
+    // way it was before marks existed.
+    const textContent = textRunWords
+        ? (
+            <TextRunsBody
+                words={textRunWords}
+                writingMode={p.writingMode}
+                textOrientation={p.textOrientation}
+                tateChuYoko={p.tateChuYoko}
+                tateChuYokoMaxLength={p.tateChuYokoMaxLength}
+                textWrapMode={p.textWrapMode}
+                fontWeightBold={p.fontWeight === "normal" ? "bold" : 700}
+            />
+        )
+        : renderVerticalTextContent(displayText, p);
+    const textBodyProps = {
+        ref: autoFitTextRef,
+        style: { ...textBodyStyle, flexShrink: 0 } as CSSProperties,
+    };
+    const textNode = textRunWords ? (
+        textMotionActive ? (
+            <motion.div {...textBodyProps} initial={false} animate={textAnimate} transition={textTransition}>
+                {textContent}
+            </motion.div>
+        ) : (
+            <div {...textBodyProps}>{textContent}</div>
+        )
+    ) : textMotionActive ? (
+        <motion.p {...textBodyProps} initial={false} animate={textAnimate} transition={textTransition}>
             {textContent}
         </motion.p>
     ) : (
-        <p ref={autoFitTextRef} style={{ ...textBodyStyle, flexShrink: 0 }}>{textContent}</p>
+        <p {...textBodyProps}>{textContent}</p>
     );
 
     const effectNode = useEffectShell ? (

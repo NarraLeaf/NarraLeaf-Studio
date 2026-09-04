@@ -14,11 +14,21 @@ import type {
 export type { TextOrientation, TextWritingMode };
 
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
+import type { UITextRun } from "@shared/types/ui-editor/textRuns";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 
 export type TextWidgetProps = {
     text: string;
+    /**
+     * The label's text as marked runs, when it carries any.
+     *
+     * `text` stays the plain string and stays what everything else reads - a value binding writes
+     * it, a translation replaces it, a plain field edits it - and these runs are only drawn while
+     * they still spell it (`resolveUITextRuns`). Absent on every label that has never been marked,
+     * which is what keeps the drawing of a plain label exactly what it was.
+     */
+    rich?: UITextRun[];
     /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.text`. */
     localizable?: boolean;
     /** Named localization key reference; takes precedence over the implicit unit. */
