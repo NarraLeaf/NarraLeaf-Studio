@@ -676,8 +676,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         signIn: (projectPath: string, authUrl: string, token: string) =>
             ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,
         /** Changes the machine's trust store. Only a certificate Studio wrote is eligible. */
-        trustAuthority: (projectPath: string, certificatePath: string) =>
-            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { projectPath, certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
+        trustAuthority: (certificatePath: string) =>
+            ipcClient.invoke(IPCEventType.vcsTrustAuthority, { certificatePath }) as Promise<RequestStatus<{ installed: boolean; output: string }>>,
         signOut: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsSignOut, { projectPath }) as Promise<RequestStatus<{ session: null }>>,
         /** Goes to the network. Reads one address and says what is behind it. */
@@ -874,8 +874,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
 
     blueprintExternalLink: {
-        open: (projectPath: string, request: BlueprintOpenExternalRequest) =>
-            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { projectPath, request }) as Promise<
+        open: (request: BlueprintOpenExternalRequest) =>
+            ipcClient.invoke(IPCEventType.blueprintExternalLinkOpen, { request }) as Promise<
                 RequestStatus<{ result: BlueprintOpenExternalResult }>
             >,
         openForPlugin: (pluginId: string, request: BlueprintOpenExternalRequest) =>
