@@ -29,6 +29,7 @@ function appDouble() {
     return {
         hasExperimentalCondition: () => false,
         getCommandLineBuild: () => false,
+        getCommandLineCheck: () => false,
         globalState: { get: (key: string) => (key === "app.language" ? "en" : undefined) },
     };
 }

@@ -113,6 +113,45 @@ export interface BuildCommandLineOptions {
     error: string | null;
 }
 
+/**
+ * What `--test` or `--lint` and their companion flags asked for.
+ *
+ * One shape for both checks rather than one each: they take the same five things (a project, a
+ * report, a profile, and for `--test` a test to run and values to run it with), and a launch may
+ * only ask for one of them, so a second interface would exist only to be checked against the first.
+ * {@link kind} says which was named.
+ *
+ * Every value is kept as the raw string it was typed as. Whether a test id exists, and whether a
+ * parameter value is one the test offers, are decided in the workspace - the only side that has the
+ * registry - and none of it may touch the disk (the same rule `--build` follows).
+ */
+export interface CheckCommandLineOptions {
+    /**
+     * `--test` or `--lint` appeared, whatever else was wrong with the line.
+     *
+     * Separate from {@link selector} for the reason `BuildCommandLineOptions.requested` is: a launch
+     * that asked for a check and got the flags wrong must exit as a bad invocation, not quietly open
+     * the home screen.
+     */
+    requested: boolean;
+    /** Which check was named. Null when none was, or when both were and the line is refused. */
+    kind: "test" | "lint" | null;
+    /** The project folder, or a name to look up in the recently-opened list. */
+    selector: string | null;
+    /** `--test-id`: which registered test to run. */
+    testId: string | null;
+    /** `--test-list`: report what the registry holds instead of running anything. */
+    list: boolean;
+    /** `--test-parameter key=value`, repeatable, as typed. */
+    parameters: string[];
+    /** `--test-report` / `--lint-report`: where to write the JSON report. */
+    reportPath: string | null;
+    /** `--test-user-data-dir` / `--lint-user-data-dir`: the profile this launch runs against. */
+    userDataDir: string | null;
+    /** The first thing wrong with the check flags, in the words the launch prints. */
+    error: string | null;
+}
+
 export interface ExperimentalCommandLineOptions {
     /**
      * `--experimental` was given. Whether it is honoured is a second question - a packaged Studio
@@ -185,6 +224,17 @@ export interface MainCommandLineOptions {
      * See `commandLineBuild.ts` for what the flags come to and `runCommandLineBuild` for the run.
      */
     build: BuildCommandLineOptions;
+    /**
+     * Run one check against this project and exit, with no interface at all.
+     *
+     * `--test` runs a test from the registry the Run > Test picker reads; `--lint` sweeps the rules
+     * the Lint tab and the build gate run. **NOT dev-gated**, for the reason `--build` is not: this
+     * exists for a machine with nobody at the keyboard. Neither opens an interface, neither takes a
+     * positional path, and both end in the process exiting.
+     *
+     * See `commandLineCheck.ts` for what the flags come to and `runCommandLineCheck` for the run.
+     */
+    check: CheckCommandLineOptions;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
     /**
@@ -332,6 +382,86 @@ const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag | BuildListFlag, string> =
 };
 
 /**
+ * The `--test` and `--lint` flags that take a value: which check each belongs to, and which field it
+ * fills.
+ *
+ * One table for both checks, for the reason {@link CheckCommandLineOptions} is one interface. The
+ * `check` half is what refuses a line that names both, and what lets `--lint-report` be recognised
+ * as naming a lint report rather than as a report for whatever ran.
+ */
+const CHECK_VALUE_FLAGS = {
+    "--test": { check: "test", field: "selector" },
+    "--test-id": { check: "test", field: "testId" },
+    "--test-report": { check: "test", field: "reportPath" },
+    "--test-user-data-dir": { check: "test", field: "userDataDir" },
+    "--lint": { check: "lint", field: "selector" },
+    "--lint-report": { check: "lint", field: "reportPath" },
+    "--lint-user-data-dir": { check: "lint", field: "userDataDir" },
+} as const satisfies Record<string, { check: "test" | "lint"; field: "selector" | "testId" | "reportPath" | "userDataDir" }>;
+
+type CheckValueFlag = keyof typeof CHECK_VALUE_FLAGS;
+
+/** `--test-parameter key=value`, which may be given once per parameter. */
+const CHECK_PARAMETER_FLAG = "--test-parameter";
+
+/** `--test-list`, which carries no value. */
+const CHECK_LIST_FLAG = "--test-list";
+
+/** What each check flag says it wants, for the "missing value" message. */
+const CHECK_VALUE_DESCRIPTIONS: Record<CheckValueFlag | typeof CHECK_PARAMETER_FLAG, string> = {
+    "--test": "a project path or a recent project's name",
+    "--test-id": "the id of a registered test",
+    "--test-report": "a file to write the report to",
+    "--test-user-data-dir": "a profile folder for this run",
+    "--test-parameter": "a value the test declared, as id=value",
+    "--lint": "a project path or a recent project's name",
+    "--lint-report": "a file to write the report to",
+    "--lint-user-data-dir": "a profile folder for this run",
+};
+
+function isCheckValueFlag(candidate: string): candidate is CheckValueFlag {
+    return Object.prototype.hasOwnProperty.call(CHECK_VALUE_FLAGS, candidate);
+}
+
+/**
+ * Read one argument as a check flag, in either the `--flag value` or the `--flag=value` form.
+ *
+ * The same shape `readBuildFlag` has, and deliberately a separate function rather than a shared
+ * generic one: the two families fill different records, and the branch that would unify them would
+ * be longer than both.
+ */
+function readCheckFlag(
+    arg: string,
+    next: string | undefined,
+): { flag: CheckValueFlag | typeof CHECK_PARAMETER_FLAG; value: string | null; consumedNext: boolean } | null {
+    if (isCheckValueFlag(arg) || arg === CHECK_PARAMETER_FLAG) {
+        const value = takeValue(next);
+        return { flag: arg, value, consumedNext: value !== null };
+    }
+    const separator = arg.indexOf("=");
+    if (separator === -1) {
+        return null;
+    }
+    const flag = arg.slice(0, separator);
+    if (!isCheckValueFlag(flag) && flag !== CHECK_PARAMETER_FLAG) {
+        return null;
+    }
+    // Only the first "=" separates the flag from its value: `--test-parameter=ending=good` carries a
+    // second one, and splitting on that too would hand the caller half a parameter.
+    const value = arg.slice(separator + 1).trim();
+    return { flag, value: value === "" ? null : value, consumedNext: false };
+}
+
+/** Whether anything but `--test`/`--lint` themselves asked for something about a check. */
+function hasCheckCompanionFlag(check: CheckCommandLineOptions): boolean {
+    return check.testId !== null
+        || check.list
+        || check.parameters.length > 0
+        || check.reportPath !== null
+        || check.userDataDir !== null;
+}
+
+/**
  * Flags whose *next* argument is a value rather than a path.
  *
  * Without this list, `--project demo` would offer "demo" to the open-request resolver as well.
@@ -343,6 +473,8 @@ const VALUE_TAKING_FLAGS = new Set<string>([
     "--dev-reload-port",
     ...Object.keys(BUILD_VALUE_FLAGS),
     ...Object.keys(BUILD_LIST_FLAGS),
+    ...Object.keys(CHECK_VALUE_FLAGS),
+    CHECK_PARAMETER_FLAG,
 ]);
 
 /**
@@ -400,6 +532,20 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         error: null,
     };
     const buildFlagErrors = new Map<BuildValueFlag | BuildListFlag, string>();
+    const check: CheckCommandLineOptions = {
+        requested: false,
+        kind: null,
+        selector: null,
+        testId: null,
+        list: false,
+        parameters: [],
+        reportPath: null,
+        userDataDir: null,
+        error: null,
+    };
+    const checkFlagErrors = new Map<string, string>();
+    /** Both checks named on one line: kept so the refusal survives whichever was read last. */
+    let bothChecksNamed = false;
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -448,6 +594,49 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
                 buildFlagErrors.delete(buildFlag.flag);
             }
             if (buildFlag.consumedNext) {
+                i += 1;
+            }
+            continue;
+        }
+
+        if (arg === CHECK_LIST_FLAG) {
+            check.requested = true;
+            if (check.kind === "lint") {
+                bothChecksNamed = true;
+            }
+            check.kind ??= "test";
+            check.list = true;
+            continue;
+        }
+
+        // One branch for every check flag. `--test` and `--lint` additionally record that a check
+        // was asked for at all, and which one, before the value is read: the launch has to exit as a
+        // bad invocation rather than open the home screen even when the value is the thing missing.
+        const checkFlag = readCheckFlag(arg, argv[i + 1]);
+        if (checkFlag) {
+            if (checkFlag.flag !== CHECK_PARAMETER_FLAG) {
+                const entry = CHECK_VALUE_FLAGS[checkFlag.flag];
+                if (checkFlag.flag === "--test" || checkFlag.flag === "--lint") {
+                    check.requested = true;
+                }
+                if (check.kind !== null && check.kind !== entry.check) {
+                    bothChecksNamed = true;
+                }
+                check.kind ??= entry.check;
+            }
+            if (checkFlag.value === null) {
+                checkFlagErrors.set(
+                    checkFlag.flag,
+                    `Missing ${checkFlag.flag} value: expected ${CHECK_VALUE_DESCRIPTIONS[checkFlag.flag]}`,
+                );
+            } else if (checkFlag.flag === CHECK_PARAMETER_FLAG) {
+                check.parameters.push(checkFlag.value);
+                checkFlagErrors.delete(checkFlag.flag);
+            } else {
+                check[CHECK_VALUE_FLAGS[checkFlag.flag].field] = checkFlag.value;
+                checkFlagErrors.delete(checkFlag.flag);
+            }
+            if (checkFlag.consumedNext) {
                 i += 1;
             }
             continue;
@@ -576,11 +765,34 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         build.error ??= "Missing --build: the build flags name a build nothing asked for";
     }
 
+    // The same three refusals for the checks, in the same order and for the same reasons.
+    const orderedCheckFlags: Array<CheckValueFlag | typeof CHECK_PARAMETER_FLAG> = [
+        ...(Object.keys(CHECK_VALUE_FLAGS) as CheckValueFlag[]),
+        CHECK_PARAMETER_FLAG,
+    ];
+    check.error = orderedCheckFlags
+        .map(flag => checkFlagErrors.get(flag))
+        .find((message): message is string => message !== undefined) ?? null;
+    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check))) {
+        check.requested = true;
+        check.error ??= "Missing --test or --lint: the check flags name a check nothing asked for";
+    }
+    // Two checks on one line, or a check beside a build. Refused rather than resolved in some order:
+    // both would run against the same profile and only one exit code can leave the process, so any
+    // answer here would report a result the launch never asked about.
+    if (bothChecksNamed) {
+        check.requested = true;
+        check.error = "Both --test and --lint were given: one launch answers one question";
+    } else if (check.requested && build.requested) {
+        check.error ??= "A build and a check were given on one line: one launch answers one question";
+    }
+
     return {
         dev: argv.includes("--dev"),
         onboarding: argv.includes("--onboarding"),
         skipOnboarding: argv.includes("--skip-onboarding"),
         build,
+        check,
         project: {
             selector: projectSelector,
             error: projectError,

@@ -190,9 +190,11 @@ import { createSessionGate } from "./sessionGate";
 import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
+import { clearStoryPosition, recordStoryRow, recordStoryScene } from "./lastStoryPosition";
 import {
     applyResumeToLaunchSnapshot,
     buildStoryResumeLaunch,
+    resolveRelaunchStartRow,
     storyResumeNotice,
     toStoryLiteralRecord,
     type StoryResumeState,
@@ -1796,6 +1798,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         return bundle.storyLibrary?.documents[storyId]
             ?? Object.values(bundle.storyLibrary?.documents ?? {}).find(document => document.id === storyId);
     }, [bundle]);
+    /**
+     * The same resolver, reachable from the story-runtime bridge.
+     *
+     * The bridge is deliberately ref-backed so its identity survives every render and every relaunch
+     * (see `storyRuntime`), and this resolver is rebuilt whenever the bundle changes - so it is held
+     * the way the bridge holds everything else it needs.
+     */
+    const resolveRunningStoryDocumentRef = useRef(resolveRunningStoryDocument);
+    useEffect(() => {
+        resolveRunningStoryDocumentRef.current = resolveRunningStoryDocument;
+    }, [resolveRunningStoryDocument]);
 
     /**
      * Every project-level variable this build declares, merged exactly as the editors merge them:
@@ -2330,8 +2343,27 @@ export function GameApp(props: GameAppProps): ReactNode {
             if (!start) {
                 throw new Error("Relaunch: runtime is not ready");
             }
+            const targetSceneId = sceneId ?? request.sceneId;
+            // The row a relaunch names was chosen when the run began, and the author has been editing
+            // the story ever since. A row that has gone is not a failure to catch - the compile takes
+            // it and quietly starts the scene from the top - so it is asked about before launching,
+            // and the relocation is said out loud, the way a hot reload says it.
+            const resolved = resolveRelaunchStartRow({
+                sceneId: targetSceneId,
+                ...(startBlockId ? { startBlockId } : {}),
+                document: resolveRunningStoryDocumentRef.current(),
+            });
+            if (resolved.notice) {
+                hostRef.current.log("warning", `[${hostRef.current.id}] ${resolved.notice}`);
+                hostRef.current.reportIssue?.({ level: "warning", message: resolved.notice, origin: "session" });
+            }
             await start(
-                { storyId: request.storyId, sceneId: sceneId ?? request.sceneId, startBlockId, snapshotId },
+                {
+                    storyId: request.storyId,
+                    sceneId: targetSceneId,
+                    ...(resolved.startBlockId ? { startBlockId: resolved.startBlockId } : {}),
+                    snapshotId,
+                },
                 { forceReinit: true },
             );
         },
@@ -5784,6 +5816,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // compiled with two copies of one scene still resolves by identity. Re-bound per
                 // session, exactly like the play-head stream below.
                 cancelSceneTracking();
+                // A new session has nowhere to be yet. Cleared here rather than in
+                // `cancelSceneTracking`, which also runs while the tree is coming down - including
+                // the teardown a crash causes, which is the one moment the last position is worth
+                // having.
+                clearStoryPosition();
                 const sceneGameState = liveGame.getGameState();
                 if (sceneGameState && nlrSession?.compiled) {
                     const sceneIdByScene = new Map(
@@ -5793,6 +5830,20 @@ export function GameApp(props: GameAppProps): ReactNode {
                         sceneGameState.events.on("event:state.scene.mount", (scene: Scene) => {
                             currentSceneIdRef.current = sceneIdByScene.get(scene) ?? null;
                             currentSceneRef.current = scene;
+                            // Also kept outside the component, for the crash screen: by the time
+                            // that screen is drawn these refs belong to a tree that no longer
+                            // exists, and where the player was is what makes the report readable.
+                            // Names, not ids, because the reader is the author.
+                            const enteredSceneId = currentSceneIdRef.current;
+                            const enteredStory = resolveRunningStoryDocument();
+                            if (enteredSceneId && enteredStory) {
+                                recordStoryScene(
+                                    enteredStory.name,
+                                    enteredStory.scenes[enteredSceneId]?.name || enteredSceneId,
+                                );
+                            } else {
+                                clearStoryPosition();
+                            }
                         }),
                         sceneGameState.events.on("event:state.scene.unmount", (scene: Scene) => {
                             if (currentSceneRef.current === scene) {
@@ -5800,6 +5851,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                             }
                             if (currentSceneIdRef.current === (sceneIdByScene.get(scene) ?? null)) {
                                 currentSceneIdRef.current = null;
+                                // A player who left the story and crashed on the title screen must
+                                // not be reported as having crashed in the last scene they saw.
+                                clearStoryPosition();
                             }
                         }),
                     );
@@ -5810,6 +5864,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 playHead.observe(liveGame.getCurrentActionId());
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
                     playHead.observe(actionId);
+                    // The same row the Dev Mode timeline shows, kept where the crash screen can read
+                    // it after this tree is gone. There is no second tracker for "the current line".
+                    recordStoryRow(playHead.blockId());
                     currentActionListenersRef.current.forEach(listener => {
                         try {
                             listener(actionId);

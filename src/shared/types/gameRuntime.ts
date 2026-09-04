@@ -811,6 +811,49 @@ export type GameRuntimeMenuBridge = {
     onCommand(listener: (itemId: string) => void): () => void;
 };
 
+/**
+ * Where the story had got to, as the crash screen is able to state it.
+ *
+ * Names rather than ids wherever a name exists: the reader is the author, opening the file in a
+ * text editor. The row keeps its id because it has no name of its own and because that id is what
+ * finds the line in the project.
+ *
+ * Null when nothing was running - a failure during boot, or a page the shell drew after the display
+ * process died, which knows nothing about the run that ended with it.
+ */
+export type GameCrashStoryPosition = {
+    storyName: string;
+    sceneName: string;
+    rowId?: string;
+};
+
+/**
+ * What only the page can say about a crash, on its way to the file the player sends.
+ *
+ * Everything else in that file - the build, the machine, the log - is known to the process that
+ * writes it, and is deliberately not stated here: a renderer that has just stopped drawing is the
+ * worst available source for facts something else already holds.
+ */
+export type GameCrashReportRequest = {
+    /** The failure as the crash screen has it, stack included. */
+    details: string;
+    /** The language the shell is speaking, which is the machine's rather than the game's. */
+    language: string;
+    /** Where the story had got to, or null when nothing was running. */
+    story: GameCrashStoryPosition | null;
+};
+
+/**
+ * Whether the report was written, and where it went.
+ *
+ * `path` so the screen can name the file it just made; the message on failure so the player can
+ * repeat it to whoever they are talking to. Neither outcome changes anything else on that screen -
+ * the failure, the copy button and the log path stand whatever this answers.
+ */
+export type GameCrashReportResult =
+    | { outcome: "written"; path: string }
+    | { outcome: "failed"; error: string };
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -907,6 +950,23 @@ export type GameRuntimePreloadBridge = {
     saveScreenshot(): Promise<BlueprintScreenshotResult>;
     /** Show the player the folder those go in. Inert on the same shell, for the same reason. */
     openScreenshotsFolder(): Promise<BlueprintOpenScreenshotsResult>;
+    /**
+     * Write one file about the crash the player is looking at, and show it to them.
+     *
+     * The last step of a crash screen that already showed the failure, offered a copy button and
+     * named the log: the player had a folder path and a clipboard, and the author got whatever they
+     * managed to paste. This produces the single file they can send instead - the log, plus what the
+     * shell knows about the build it came from.
+     *
+     * Absent on the web export, and absence is the whole signal: a page has no log file to gather
+     * and nowhere to leave one, so the crash screen draws no button there rather than a button that
+     * apologises. Absent, too, wherever the preload never ran - which is the case the rest of that
+     * screen is built to survive, and why nothing else on it depends on this.
+     *
+     * Nothing about the file is decided by the caller. The path, the contents and what is left out
+     * of them belong to the process that writes it; see `runtime/main/crashReport`.
+     */
+    saveCrashReport?(request: GameCrashReportRequest): Promise<GameCrashReportResult>;
     /**
      * Register a handler consulted when the user asks to close the window. The main process holds
      * the close open until every registered handler resolves, and closes only if all of them

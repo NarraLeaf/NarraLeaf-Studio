@@ -4670,7 +4670,7 @@ describe("diagnostics carry their origin row", () => {
         expect(compiled.diagnostics[0]?.message).not.toContain("6f1b9d0e");
     });
 
-    it("blames the row for an unparseable command", async () => {
+    it("compiles an unparseable command to nothing, and says nothing about it", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({
                 bad: {
@@ -4684,9 +4684,10 @@ describe("diagnostics carry their origin row", () => {
             sceneId: "scene-1",
         });
 
-        expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "bad", message: "Invalid command, skipped: /show nobody" },
-        ]);
+        // The row is refused by `BuildService`'s own gate and listed by `story/invalid-command`, both
+        // of which an author can act on. A compile that repeats it says it again on every reload,
+        // about a line they are still typing.
+        expect(compiled.diagnostics).toEqual([]);
     });
 });
 

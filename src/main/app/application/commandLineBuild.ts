@@ -9,12 +9,11 @@ import { currentGameBuildPlatform, type GameBuildPlatform } from "@shared/types/
 import {
     COMMAND_LINE_BUILD_EXIT_CODES,
     COMMAND_LINE_BUILD_REPORT_SCHEMA,
-    type CommandLineBuildEvent,
-    type CommandLineBuildLogLine,
     type CommandLineBuildOutcome,
     type CommandLineBuildReport,
     type CommandLineBuildReportExperimental,
 } from "@shared/types/commandLineBuild";
+import type { CommandLineRunEvent, CommandLineRunLogLine } from "@shared/types/commandLineRun";
 import { experimentalCondition } from "@shared/types/experimental";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { BuildCommandLineOptions } from "./commandLine";
@@ -145,7 +144,7 @@ const SIGNABLE_PLATFORMS: readonly GameBuildPlatform[] = ["windows", "macos", "a
 const WORKSPACE_SILENCE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export class CommandLineBuildRun {
-    private readonly log: CommandLineBuildLogLine[] = [];
+    private readonly log: CommandLineRunLogLine[] = [];
     private readonly startedAt = Date.now();
     private reportPath: string | null = null;
     private projectPath: string | null = null;
@@ -417,7 +416,7 @@ export class CommandLineBuildRun {
             }
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
-                commandLineBuild: { request: plan.request },
+                commandLineRun: { kind: "build", request: plan.request },
             });
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
@@ -446,7 +445,7 @@ export class CommandLineBuildRun {
             };
             armDeadline();
 
-            const token = workspace.onCommandLineBuildEvent(event => {
+            const token = workspace.onCommandLineRunEvent(event => {
                 armDeadline();
                 if (event.kind === "log") {
                     const { kind: _kind, ...line } = event;
@@ -478,7 +477,7 @@ export class CommandLineBuildRun {
 
     /** Turn the workspace's own verdict into an outcome. */
     private async finishFromWorkspace(
-        event: Extract<CommandLineBuildEvent, { kind: "finished" }>,
+        event: Extract<CommandLineRunEvent, { kind: "finished" }>,
     ): Promise<void> {
         if (event.ok) {
             for (const artifact of event.artifacts ?? []) {
@@ -511,7 +510,7 @@ export class CommandLineBuildRun {
     private async finish(
         outcome: CommandLineBuildOutcome,
         error: string | null,
-        event?: Extract<CommandLineBuildEvent, { kind: "finished" }>,
+        event?: Extract<CommandLineRunEvent, { kind: "finished" }>,
     ): Promise<void> {
         if (this.finished) {
             return;
@@ -627,7 +626,7 @@ export class CommandLineBuildRun {
      * Nothing a script needs is read off this stream - see the report - so it is free to be the
      * build's own words in the build's own language.
      */
-    private record(line: CommandLineBuildLogLine): void {
+    private record(line: CommandLineRunLogLine): void {
         this.log.push(line);
         const source = line.source ? `${line.source}: ` : "";
         process.stdout.write(`[${line.level}] ${source}${line.message}\n`);

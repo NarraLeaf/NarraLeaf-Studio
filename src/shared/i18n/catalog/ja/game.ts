@@ -49,7 +49,10 @@ export const game = {
         copyDetails: "詳細をコピー",
         copied: "クリップボードにコピーした",
         copyFailed: "コピーできなかった：{error}",
-        logAt: "レポートは {path} にある",
+        saveReport: "レポートを保存",
+        reportSaved: "レポートは {path} にある",
+        reportFailed: "レポートを保存できなかった：{error}",
+        logAt: "ログは {path} にある",
         bridgeUnavailable: "ゲームのランタイムブリッジを読み込めなかった",
     },
     /**

@@ -59,7 +59,7 @@ export type ProjectTrustOrigin =
     | "created"
     /** Remembered in the recent-projects list from before the ledger existed. */
     | "recent"
-    /** Named to `--build` on the command line. */
+    /** Named to a headless entry point - `--build`, `--test`, `--lint` - on the command line. */
     | "command-line";
 
 /**

@@ -1201,22 +1201,19 @@ export function DevModeContent(props: DevModeContentProps) {
     /**
      * The Open Link node's request, handed to the main process.
      *
-     * The project path travels with it because the handler reads the project's own declared
-     * addresses off disk and refuses anything else - the same refusal the shipped game makes, in
-     * the same kind of process. Nothing here consults Studio's own external-link path.
+     * Only the address travels: the handler decides on its scheme, exactly as the shipped game's
+     * main process does, and reads project trust off this window rather than off anything sent
+     * from here. Nothing here consults Studio's own external-link path.
      */
     const openExternal = useCallback<NonNullable<GameAppHost["openExternal"]>>(async request => {
-        if (!projectPath) {
-            return { outcome: "failed", error: "Open Link: no project is open" };
-        }
-        const result = await getInterface().blueprintExternalLink.open(projectPath, request);
+        const result = await getInterface().blueprintExternalLink.open(request);
         if (!result.success) {
             // The channel itself failed, which is Studio malfunctioning rather than the link being
             // refused. Reported on the node's failure branch anyway: the graph has to go somewhere.
             return { outcome: "failed", error: result.error ?? "Open Link failed" };
         }
         return result.data.result;
-    }, [projectPath]);
+    }, []);
 
     /**
      * The two Progress nodes' requests, handed to the main process.
