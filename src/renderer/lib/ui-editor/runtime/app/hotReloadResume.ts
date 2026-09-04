@@ -84,6 +84,50 @@ export function resolveStoryResumeTarget(
     return { kind: "sceneStart", sceneId: position.sceneId };
 }
 
+/**
+ * A relaunch's remembered start row, checked against the story as it is now.
+ *
+ * Asked by every relaunch that names a row: the Scene Snapshot picker replays from the row the run
+ * began at, and the document has been edited since - that is what the author has been doing while it
+ * played. Handed a row that has gone, the compile builds no pre-posed entry scene and
+ * `collectStoryPlaybackPlan` falls back to the top of the scene, so the run restarts somewhere else
+ * and nothing says so. The relocation is invisible precisely because the row is: there is no longer
+ * anything on screen to notice missing.
+ *
+ * The answer is the row or the start of the scene, and deliberately not
+ * {@link StoryResumeTarget}'s middle rung. A resume walks the trail - the rows this run PLAYED - to
+ * find the nearest surviving one before the row it was on. For a row-precise launch that trail
+ * *begins* at the row being asked about, so every surviving entry in it is a row the run reached
+ * AFTER the one that has gone: walking it would land the restart on the furthest row the playthrough
+ * got to, which is not a restart at all. Nothing records where the deleted row sat among its
+ * neighbours, so "a nearby row" is not answerable here - the scene's own start is.
+ */
+export function resolveRelaunchStartRow(params: {
+    sceneId: string;
+    /** The row the relaunch asked for, absent when it asked for the scene from its start. */
+    startBlockId?: string;
+    /** The story as it is NOW - the document the recompile will read. */
+    document: StoryDocument | undefined;
+}): { startBlockId?: string; notice: string | null } {
+    const { sceneId, startBlockId, document } = params;
+    if (!startBlockId) {
+        return { notice: null };
+    }
+    // An empty trail by construction: see above. `resolveStoryResumeTarget` then answers exactly the
+    // two rungs this can take, so a reload and a relaunch decide a missing row the same way rather
+    // than each carrying its own rule.
+    const target = resolveStoryResumeTarget({ sceneId, blockId: startBlockId, trail: [] }, document);
+    if (target.kind === "row") {
+        return { startBlockId, notice: null };
+    }
+    if (target.kind === "sceneStart") {
+        return { notice: "The row this run started from no longer exists; restarted from the start of the scene." };
+    }
+    // The scene itself is gone. Left to the compile to answer, which is the one thing here that
+    // cannot be improved by dropping the row: there is no scene to restart the top of.
+    return { startBlockId, notice: null };
+}
+
 /** Everything a reload lifted off the running game, ready to be laid over a fresh compile. */
 export type StoryResumeState = {
     position: StoryResumePosition;

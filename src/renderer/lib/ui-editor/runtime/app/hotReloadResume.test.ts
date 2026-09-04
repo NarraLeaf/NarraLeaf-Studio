@@ -4,6 +4,7 @@ import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
     applyResumeToLaunchSnapshot,
     buildStoryResumeLaunch,
+    resolveRelaunchStartRow,
     resolveStoryResumeTarget,
     storyResumeNotice,
     toStoryLiteralRecord,
@@ -204,6 +205,49 @@ describe("the launch a reload enters through", () => {
         expect(built.launchRequest).toBe(request);
         expect(built.compileRequest).toBe(request);
         expect(built.target).toBeNull();
+    });
+});
+
+describe("the row a relaunch restarts from", () => {
+    it("keeps a row the edit kept, and says nothing", () => {
+        const resolved = resolveRelaunchStartRow({
+            sceneId: "scene-1",
+            startBlockId: "r2",
+            document: documentWith(["r1", "r2", "r3"]),
+        });
+
+        expect(resolved).toEqual({ startBlockId: "r2", notice: null });
+    });
+
+    it("restarts the scene from its start when the row is gone, and says so", () => {
+        // Deliberately not the resume's "nearest row before it": a relaunch has no trail to walk
+        // that does not consist of rows the run reached AFTER the one being asked about.
+        const resolved = resolveRelaunchStartRow({
+            sceneId: "scene-1",
+            startBlockId: "r3",
+            document: documentWith(["r1", "r2"]),
+        });
+
+        expect(resolved.startBlockId).toBeUndefined();
+        expect(resolved.notice).toContain("restarted from the start of the scene");
+    });
+
+    it("asks nothing of a relaunch that named no row", () => {
+        const resolved = resolveRelaunchStartRow({ sceneId: "scene-1", document: documentWith(["r1"]) });
+
+        expect(resolved).toEqual({ notice: null });
+    });
+
+    it("leaves a relaunch into a scene that has gone to the compile", () => {
+        // Dropping the row would restart the top of a scene that is not there either, which is a
+        // different failure with a worse story: the run would look like it landed somewhere.
+        const resolved = resolveRelaunchStartRow({
+            sceneId: "scene-gone",
+            startBlockId: "r1",
+            document: documentWith(["r1"]),
+        });
+
+        expect(resolved).toEqual({ startBlockId: "r1", notice: null });
     });
 });
 
