@@ -431,11 +431,13 @@ export function SettingsExplorer<T>({
                 const booleanValue = pendingBoolean !== undefined ? pendingBoolean : Boolean(currentValue);
                 return (
                     <div className="flex items-center gap-2">
+                        {/* No `loading`: a loading Switch refuses the click as firmly as a disabled
+                            one does, which would put the swallow back on this row. The write in
+                            flight is shown by the row's own spinner, beside the control. */}
                         <Switch
                             checked={booleanValue}
                             onCheckedChange={() => handleBooleanToggle(entry)}
                             disabled={descriptor.disabled}
-                            loading={isSaving}
                             size="md"
                         />
                     </div>
@@ -672,7 +674,6 @@ export function SettingsExplorer<T>({
             Boolean(onReset) &&
             descriptor.type !== SettingValueType.Action &&
             Boolean(isModified?.(entry.source, descriptor));
-        // Boolean rows differ only in that their control renders its own loader.
         return (
             <div
                 key={descriptor.id}
