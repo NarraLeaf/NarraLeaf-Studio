@@ -55,8 +55,6 @@ function storyServiceReading(readJSON: () => Promise<unknown>): StoryService {
                 switch (id) {
                     case Services.FileSystem:
                         return { readJSON };
-                    case Services.Assets:
-                        return { lockAsset: vi.fn(), unlockAsset: vi.fn() };
                     default:
                         return {};
                 }

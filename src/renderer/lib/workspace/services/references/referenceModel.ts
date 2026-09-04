@@ -277,12 +277,6 @@ export function buildReferenceIndex(references: readonly AssetReference[]): Map<
 // ---------------------------------------------------------------------------
 
 /**
- * Story slice: scene default backgrounds plus every block payload that carries an asset id.
- *
- * Superset of `StoryService.collectSceneAssetLocks` — that walker omits `image.assetId` and
- * `video.assetId`, so an image or video used only from a story block currently reports as unused.
- */
-/**
  * Expands an asset set id to the assets it can resolve to, or null for an ordinary asset.
  *
  * Supplied by `ReferenceService`, which has the project's sets and its library; the model stays a

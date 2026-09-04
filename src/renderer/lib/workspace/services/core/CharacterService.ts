@@ -23,12 +23,10 @@ import {
 import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
 import { UuidService } from "./UuidService";
-import { AssetsService } from "./AssetsService";
 import { createProjectDocumentStorage } from "./DocumentStorage";
 import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
-import { AssetLockReason } from "../assets/AssetLockManager";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 
 /**
@@ -130,11 +128,10 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
         const serviceAssetsService = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
         const uiService = ctx.services.get<UIService>(Services.UI);
-        await depend([filesystemService, assetsService, serviceAssetsService, uuidService, uiService]);
+        await depend([filesystemService, serviceAssetsService, uuidService, uiService]);
         await this.loadCharacters();
     }
 
@@ -310,7 +307,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 }
                 const restored = Character.fromJSON(stored);
                 this.registerCharacter(restored, index >= 0 ? index : undefined);
-                this.lockCharacterAssets(restored);
                 this.markDirty();
                 this.emitChange();
                 // After the character is back, so the rows are pointed at something that resolves.
@@ -331,7 +327,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     /** The deletion itself, so undo's `redo` and the original call cannot drift apart. */
     private removeCharacter(id: string, character: Character, thumbnailId: string | undefined): void {
-        this.unlockCharacterAssets(character);
         if (thumbnailId) {
             void this.getServiceAssetsService().deleteFile(thumbnailId);
         }
@@ -516,9 +511,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
             return;
         }
 
-        for (const character of this.listCharacter()) {
-            this.unlockCharacterAssets(character);
-        }
         for (const id of [...this.characterOrder]) {
             delete this.characters[id];
         }
@@ -583,7 +575,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.registerStore(result.document.characters, result.document.groups);
     }
 
-    /** Take a parsed store into memory: groups first, then the cast, locking the assets each one uses. */
+    /** Take a parsed store into memory: groups first, then the cast. */
     private registerStore(characters: readonly StoredCharacter[] | undefined, groups: Record<string, CharacterGroup> | undefined): void {
         if (groups) {
             Object.values(groups).forEach(group => this.registerGroup(group));
@@ -591,8 +583,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
         for (const config of characters ?? []) {
             const character = Character.fromJSON(config);
             this.registerCharacter(character);
-            // Lock all assets used by this character
-            this.lockCharacterAssets(character);
         }
     }
 
@@ -653,9 +643,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
             }
             this.markDirty();
             this.emitChange();
-        });
-        character.setOnAssetChange((oldAssetId, newAssetId) => {
-            this.updateAssetLock(id, oldAssetId, newAssetId);
         });
     }
 
@@ -736,7 +723,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 } else {
                     const character = Character.fromJSON(record);
                     this.registerCharacter(character);
-                    this.lockCharacterAssets(character);
                 }
                 this.lastKnown.set(record.profile.id, record);
                 // Present only on the creation that undoes a deletion, and it carries the rows rather
@@ -753,9 +739,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
                     return [];
                 }
                 const record = structuredClone(op.character) as StoredCharacter;
-                const before = character.profile.getThumbnail();
                 character.adopt(record);
-                this.updateAssetLock(op.characterId, before, character.profile.getThumbnail());
                 this.lastKnown.set(op.characterId, record);
                 return [];
             }
@@ -950,48 +934,5 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private registerGroup(group: CharacterGroup): void {
         this.groups[group.id] = group;
-    }
-
-    /**
-     * Lock all assets used by a character
-     */
-    private lockCharacterAssets(character: Character): void {
-        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
-        const characterId = character.profile.getId();
-
-        // Poses for a preset character, every layer and layer option for a layered one.
-        for (const assetId of character.profile.appearance.listAssetIds()) {
-            assetsService.lockAsset(assetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
-    }
-
-    /**
-     * Unlock all assets used by a character
-     */
-    private unlockCharacterAssets(character: Character): void {
-        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
-        const characterId = character.profile.getId();
-
-        for (const assetId of character.profile.appearance.listAssetIds()) {
-            assetsService.unlockAsset(assetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
-    }
-
-    /**
-     * Update asset locks when a character's variant asset changes
-     * This should be called by the character appearance when assets change
-     */
-    public updateAssetLock(characterId: string, oldAssetId: string | null, newAssetId: string | null): void {
-        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
-        
-        // Unlock old asset
-        if (oldAssetId) {
-            assetsService.unlockAsset(oldAssetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
-        
-        // Lock new asset
-        if (newAssetId) {
-            assetsService.lockAsset(newAssetId, AssetLockReason.UsedByCharacter, { characterId });
-        }
     }
 }

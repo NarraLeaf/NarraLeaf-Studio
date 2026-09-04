@@ -554,12 +554,6 @@ export const assets = {
         paste: "アセットを貼り付け",
         rename: "選んだアセットまたはグループの名前を変更",
     },
-    // アセットが削除できない理由（AssetLockReason をキーにする）。
-    lockReason: {
-        character: "キャラクターが使っているアセット",
-        scene: "シーンが使っているアセット",
-        editor: "エディタが使っているアセット",
-    },
     previewEditor: {
         loadFailed: "このアセットを読み込めなかった",
     },
