@@ -105,6 +105,14 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
         "The picture is `imageFill.assetId`, not a bare `assetId`. `imageFill.assetId` is also the only "
             + "image prop a value blueprint can drive, which is what makes per-row thumbnails possible.",
     ],
+    "nl.text": [
+        "`text` is the label's plain string and stays the one every other thing reads. A label whose "
+            + "words are marked also carries `rich`, an array of `{text, marks}` runs spelling the same "
+            + "string: `marks` may hold `bold`, `italic`, `color`, `ruby`, `emphasis` "
+            + "(`dot`/`circle`/`sesame`/`under-dot`) and `fontSizeStep` (steps away from the label's own "
+            + "size). The runs are drawn only while they still spell `text`, so a translated line or a "
+            + "`text` driven by a value blueprint falls back to the plain string.",
+    ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "
             + "template read their row through `bind <prop> = field <fieldId>`, and the field ids come from "

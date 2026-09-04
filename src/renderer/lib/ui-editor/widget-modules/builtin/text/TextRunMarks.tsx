@@ -12,7 +12,7 @@ import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { TooltipGroup } from "@/lib/tooltip";
 import { useTranslation } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
-import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 // The two panels that set a run's marks. A dialogue line and a label carry the same marks, so they
 // are set by the same controls rather than by a second pair that would have to be kept in step.
 import { RubyPopover } from "@/apps/workspace/modules/story/scene-editor/RubyPopover";
@@ -118,6 +118,7 @@ export function TextRunMarksEditor(props: {
         : undefined;
     const disabled = props.readOnly === true || !marked;
     const hint = t("widgets.textMarks.selectHint");
+    const swatchColor = parseColorValue(active?.color ?? textProps.color, { hex: "#FFFFFF", alpha: 1 });
 
     return (
         <div className="flex flex-col gap-1.5">
@@ -163,17 +164,29 @@ export function TextRunMarksEditor(props: {
                 >
                     <Italic className="h-3.5 w-3.5" />
                 </ToolbarButton>
-                <ColorPickerTrigger
-                    displayMode="swatch"
-                    allowOpacity={false}
-                    disabled={disabled}
-                    ariaLabel={disabled ? hint : t("story.richText.textColor", { color: active?.color ?? "" })}
-                    value={parseColorValue(active?.color ?? textProps.color, { hex: "#FFFFFF", alpha: 1 })}
-                    onChange={() => undefined}
-                    // A run's colour reaches the engine as a CSS colour, so it is stored as one: a
-                    // link into the project palette has nothing to resolve it on the way out.
-                    onCommit={value => setMark("color", value.hex)}
-                />
+                {/*
+                  * A bare swatch trigger paints nothing of its own - the caller frames it, the way
+                  * the settings picker does. The frame shows the colour the selection carries, or
+                  * the one the label is set in when it carries none of its own.
+                  */}
+                <span
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-md ring-1 ring-inset ring-edge-strong ${
+                        disabled ? "pointer-events-none opacity-50" : ""
+                    }`}
+                    style={{ backgroundColor: colorValueToCss(swatchColor) }}
+                >
+                    <ColorPickerTrigger
+                        displayMode="swatch"
+                        allowOpacity={false}
+                        disabled={disabled}
+                        ariaLabel={disabled ? hint : t("story.richText.textColor", { color: swatchColor.hex })}
+                        value={swatchColor}
+                        onChange={() => undefined}
+                        // A run's colour reaches the engine as a CSS colour, so it is stored as one:
+                        // a link into the project palette has nothing to resolve it on the way out.
+                        onCommit={value => setMark("color", value.hex)}
+                    />
+                </span>
                 <ToolbarButton
                     ref={typeButtonRef}
                     size="xs"
