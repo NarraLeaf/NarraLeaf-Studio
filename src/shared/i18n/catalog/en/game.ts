@@ -53,9 +53,15 @@ export const game = {
         copyDetails: "Copy details",
         copied: "Copied to the clipboard.",
         copyFailed: "Could not copy: {error}",
+        // The one file the player can send. Named for what it is rather than for what it is for:
+        // where it goes next is theirs to decide, and nothing here sends it anywhere.
+        saveReport: "Save report",
+        reportSaved: "The report is in {path}",
+        reportFailed: "Could not save the report: {error}",
         // Shown under every policy: a player who is not being told what went wrong is the one
-        // who most needs to be able to hand the file to somebody who can read it.
-        logAt: "The report is in {path}",
+        // who most needs to be able to hand a file to somebody who can read it. The log, by its
+        // own name, because the report above is now a different file in the same folder.
+        logAt: "The log is in {path}",
         // The failure itself where the page came up but its preload did not, so there is no way
         // through to the pack, the saves or anything else. Named the way the process's own report
         // of a dead renderer is, because both are read by whoever the player sends them to.

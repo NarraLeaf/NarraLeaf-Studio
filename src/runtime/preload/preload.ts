@@ -8,6 +8,8 @@ import {
     GAME_RUNTIME_MENU_COMMAND_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
+    type GameCrashReportRequest,
+    type GameCrashReportResult,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
     type GameRuntimeSidecarBridge,
@@ -241,6 +243,11 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
         ipcRenderer.invoke("runtime:screenshot:save") as Promise<BlueprintScreenshotResult>,
     openScreenshotsFolder: () =>
         ipcRenderer.invoke("runtime:screenshot:openFolder") as Promise<BlueprintOpenScreenshotsResult>,
+    // The one file a player can send after a crash. The page contributes what only it knows; the
+    // log, the build, the machine, the path and what is left out of all of them are the main
+    // process's, which is also the only side that could write a file at all.
+    saveCrashReport: (request: GameCrashReportRequest) =>
+        ipcRenderer.invoke("runtime:crash:saveReport", request) as Promise<GameCrashReportResult>,
     onCloseRequested: (listener: () => boolean | Promise<boolean>) => {
         closeRequestedListeners.add(listener);
         return () => {

@@ -190,6 +190,7 @@ import { createSessionGate } from "./sessionGate";
 import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
+import { clearStoryPosition, recordStoryRow, recordStoryScene } from "./lastStoryPosition";
 import {
     applyResumeToLaunchSnapshot,
     buildStoryResumeLaunch,
@@ -5811,6 +5812,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // compiled with two copies of one scene still resolves by identity. Re-bound per
                 // session, exactly like the play-head stream below.
                 cancelSceneTracking();
+                // A new session has nowhere to be yet. Cleared here rather than in
+                // `cancelSceneTracking`, which also runs while the tree is coming down - including
+                // the teardown a crash causes, which is the one moment the last position is worth
+                // having.
+                clearStoryPosition();
                 const sceneGameState = liveGame.getGameState();
                 if (sceneGameState && nlrSession?.compiled) {
                     const sceneIdByScene = new Map(
@@ -5820,6 +5826,20 @@ export function GameApp(props: GameAppProps): ReactNode {
                         sceneGameState.events.on("event:state.scene.mount", (scene: Scene) => {
                             currentSceneIdRef.current = sceneIdByScene.get(scene) ?? null;
                             currentSceneRef.current = scene;
+                            // Also kept outside the component, for the crash screen: by the time
+                            // that screen is drawn these refs belong to a tree that no longer
+                            // exists, and where the player was is what makes the report readable.
+                            // Names, not ids, because the reader is the author.
+                            const enteredSceneId = currentSceneIdRef.current;
+                            const enteredStory = resolveRunningStoryDocument();
+                            if (enteredSceneId && enteredStory) {
+                                recordStoryScene(
+                                    enteredStory.name,
+                                    enteredStory.scenes[enteredSceneId]?.name || enteredSceneId,
+                                );
+                            } else {
+                                clearStoryPosition();
+                            }
                         }),
                         sceneGameState.events.on("event:state.scene.unmount", (scene: Scene) => {
                             if (currentSceneRef.current === scene) {
@@ -5827,6 +5847,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                             }
                             if (currentSceneIdRef.current === (sceneIdByScene.get(scene) ?? null)) {
                                 currentSceneIdRef.current = null;
+                                // A player who left the story and crashed on the title screen must
+                                // not be reported as having crashed in the last scene they saw.
+                                clearStoryPosition();
                             }
                         }),
                     );
@@ -5837,6 +5860,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 playHead.observe(liveGame.getCurrentActionId());
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
                     playHead.observe(actionId);
+                    // The same row the Dev Mode timeline shows, kept where the crash screen can read
+                    // it after this tree is gone. There is no second tracker for "the current line".
+                    recordStoryRow(playHead.blockId());
                     currentActionListenersRef.current.forEach(listener => {
                         try {
                             listener(actionId);
