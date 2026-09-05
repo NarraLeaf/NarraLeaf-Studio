@@ -7,6 +7,11 @@ import {
     collectRuntimeSurfaceAssetIds,
     preloadRuntimePackAssets,
 } from "./surfaceResourcePreload";
+import {
+    registeredRuntimeFontCssFamily,
+    resetRuntimeFontFacesForTest,
+    runtimeFontCssFamily,
+} from "./runtimeFontFaces";
 
 function makePack(): GameRuntimePackV1 {
     const document: UIDocument = {
@@ -473,5 +478,90 @@ describe("the project's default fonts", () => {
         const { assetIds } = collectRuntimePackAssetIds(pack, home);
         expect(assetIds).toContain("default-font");
         expect(assetIds).not.toContain("builtin:font:serif");
+    });
+});
+
+/**
+ * What the preload does with what the manifest already says.
+ *
+ * The kinds are warmed by four different browser primitives, so getting the kind wrong is either a
+ * wasted round trip or a warm-up that warms nothing. An unprotected pack states the kind outright;
+ * a protected one states nothing at all and has to be asked.
+ */
+describe("deciding what an asset is", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        resetRuntimeFontFacesForTest();
+    });
+
+    function stubImages(): void {
+        class FakeImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            set src(_value: string) {
+                queueMicrotask(() => this.onload?.());
+            }
+        }
+        vi.stubGlobal("Image", FakeImage);
+    }
+
+    it("takes an image from the manifest rather than asking the shell for it", async () => {
+        // A real pack records `application/octet-stream` for every library asset - the packer renames
+        // them all to a content-addressed `.bin` and does not sniff them - so `type` is the only thing
+        // that knows a picture from a film, and reading it is what keeps a boot from opening a second
+        // request per image.
+        const pack = makePack();
+        for (const entry of Object.values(pack.assets.items)) {
+            entry.mimeType = "application/octet-stream";
+            entry.ext = "bin";
+        }
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        const fetched: string[] = [];
+        stubImages();
+        vi.stubGlobal("fetch", (url: string) => {
+            fetched.push(url);
+            return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) });
+        });
+        vi.stubGlobal("FontFace", class {
+            constructor(public readonly family: string) {}
+            load(): Promise<unknown> {
+                return Promise.resolve(this);
+            }
+        });
+        vi.stubGlobal("document", { fonts: { add: () => undefined } });
+
+        const result = await preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 200,
+        });
+
+        expect(result.failed).toEqual([]);
+        expect(fetched).toEqual([]);
+    });
+
+    it("registers a warmed font where the widgets will look for it", async () => {
+        const pack = makePack();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        stubImages();
+        vi.stubGlobal("FontFace", class {
+            constructor(public readonly family: string) {}
+            load(): Promise<unknown> {
+                return Promise.resolve(this);
+            }
+        });
+        vi.stubGlobal("document", { fonts: { add: () => undefined } });
+
+        await preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 200,
+        });
+
+        // The seam the whole warm-up hangs on: a face nobody can find is a face that gets loaded
+        // again by the first widget that needs it.
+        expect(registeredRuntimeFontCssFamily("component-font")).toBe(runtimeFontCssFamily("component-font"));
     });
 });
