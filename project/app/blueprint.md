@@ -76,6 +76,18 @@ out the pins one add writes. They come in groups more often than not, and the
 group is what has to go in the list: one confirm button is `button_1_label` and
 `button_1_pressed`, both of them, or the button is not there.
 
+The catalogue includes the node types the plugins bundled with Studio contribute, because a
+project may be built on them and one of those plugins ships switched off - the shipped skeleton's
+EXTRA screen is built on the Gallery plugin's. `node` says so on the node it belongs to:
+
+```
+node project/app/blueprint.js node "Get Gallery"
+  ...
+  plugin     narraleaf.gallery (bundled with Studio; a project using it depends on it)
+```
+
+A node from a plugin nobody bundles is still unknown here, as it is in the editor.
+
 `--owner` filters to what the add-node palette would offer for that owner kind
 (`globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`,
 `storyAction`); `--widget` narrows a widget owner to one element

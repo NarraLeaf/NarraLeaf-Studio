@@ -246,7 +246,7 @@ const CG_GRID = "5107c0a1-0000-4000-8000-000000000310";
 const RECOLLECTION_GRID = "5107c0a1-0000-4000-8000-000000000320";
 
 /** The full-screen picture the CG grid opens; one press anywhere puts it away. */
-const CG_VIEWER = "5107c0a1-0000-4000-8000-000000000360";
+const CG_VIEWER = "5107c0a1-0000-4000-8000-000000000362";
 
 /** The button the four in-game page rails all place to get back to the title. */
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
@@ -337,7 +337,8 @@ describe("the sounds the starter template makes", () => {
 
     it("the picture viewer says it is closing", () => {
         // Closing the viewer is the same gesture as leaving a screen, so it makes the same sound.
-        assertClickCue(graphFor(CG_VIEWER), BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK, "ui-back");
+        // The press lands on the picture, which is the one row of the list the viewer is built from.
+        assertClickCue(graphFor(CG_VIEWER), BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-back");
     });
 
     it("a scene card answers only when it has a scene to open", () => {
