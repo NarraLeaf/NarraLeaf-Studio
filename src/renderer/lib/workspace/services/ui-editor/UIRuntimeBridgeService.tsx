@@ -14,6 +14,7 @@ import { SurfaceBackgroundImageLayer } from "../../../ui-editor/runtime/surface/
 import { SurfaceElementTree } from "../../../ui-editor/runtime/surface/SurfaceElementTree";
 import { getSurfaceBackgroundColor } from "../../../ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "../../../ui-editor/runtime/useBrandPaletteRevision";
+import { usePluginElementRenderers } from "../../../ui-editor/widget-modules/pluginElementRenderers";
 import { Service } from "../Service";
 import { IUIRuntimeBridgeService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -27,27 +28,43 @@ import { UIDocumentService } from "./UIDocumentService";
  * difference between "the canvas follows the palette" and "the canvas follows it the next time you
  * switch tabs". Subscribing here fixes every caller of `renderSurface` at once, the editing canvas
  * and the panel thumbnails alike.
+ *
+ * The plugin widget types are the second thing that moves under a drawing that was already built,
+ * and for the same reason: an author can switch a plugin on or off with a page open, and the
+ * plugins finish loading after a restored page has already drawn once. Both subscriptions belong to
+ * the frame rather than to the service, because a service has no way to make React draw again.
+ *
+ * The element tree arrives as a callback rather than as `children`, and that is load-bearing: an
+ * element built by the service before the frame renders is referentially the same element on the
+ * frame's next render, so React bails out of the subtree and the redraw reaches the frame's own div
+ * and nothing else. Built here, the tree is a new element each time and the redraw lands on it.
  */
 function BrandedSurfaceFrame({
     surface,
     className,
     style,
-    children,
+    backgroundColor,
+    rendererRegistry,
+    renderContent,
 }: {
     surface: UISurface;
     className: string;
     style: CSSProperties;
-    children: React.ReactNode;
+    /** Overrides the surface's own fill; the component preview draws on nothing. */
+    backgroundColor?: string;
+    rendererRegistry: ElementRendererRegistry;
+    renderContent: () => React.ReactNode;
 }): React.ReactElement {
     useBrandPaletteRevision();
+    usePluginElementRenderers(rendererRegistry);
     return (
         <div
             className={className}
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
-            style={{ ...style, backgroundColor: getSurfaceBackgroundColor(surface) }}
+            style={{ ...style, backgroundColor: backgroundColor ?? getSurfaceBackgroundColor(surface) }}
         >
-            {children}
+            {renderContent()}
         </div>
     );
 }
@@ -96,18 +113,22 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                 surface={surface}
                 className={`ui-editor-surface ${options.className ?? ""}`}
                 style={surfaceStyle}
-            >
-                <SurfaceBackgroundImageLayer surface={surface} />
-                <SurfaceElementTree
-                    document={document}
-                    surface={surface}
-                    rootElement={rootElement}
-                    rendererRegistry={this.rendererRegistry}
-                    hostAdapter={options.hostAdapter}
-                    useAppearanceInspectorPreview
-                    editorChrome={options.editorChrome}
-                />
-            </BrandedSurfaceFrame>
+                rendererRegistry={this.rendererRegistry}
+                renderContent={() => (
+                    <>
+                        <SurfaceBackgroundImageLayer surface={surface} />
+                        <SurfaceElementTree
+                            document={document}
+                            surface={surface}
+                            rootElement={rootElement}
+                            rendererRegistry={this.rendererRegistry}
+                            hostAdapter={options.hostAdapter}
+                            useAppearanceInspectorPreview
+                            editorChrome={options.editorChrome}
+                        />
+                    </>
+                )}
+            />
         );
     }
 
@@ -160,27 +181,28 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             width: rootWidth,
             height: rootHeight,
             overflow: "hidden",
-            backgroundColor: "transparent",
             ...options.style,
         };
 
         return (
-            <div
+            <BrandedSurfaceFrame
+                surface={surface}
                 className={`ui-editor-surface ${options.className ?? ""}`}
-                data-ui-surface-id={surface.id}
-                data-ui-surface-kind={surface.kind}
                 style={surfaceStyle}
-            >
-                <SurfaceElementTree
-                    document={virtualDocument}
-                    surface={surface}
-                    rootElement={rootSnapshot}
-                    rendererRegistry={this.rendererRegistry}
-                    hostAdapter={options.hostAdapter}
-                    useAppearanceInspectorPreview
-                    editorChrome={options.editorChrome ?? false}
-                />
-            </div>
+                backgroundColor="transparent"
+                rendererRegistry={this.rendererRegistry}
+                renderContent={() => (
+                    <SurfaceElementTree
+                        document={virtualDocument}
+                        surface={surface}
+                        rootElement={rootSnapshot}
+                        rendererRegistry={this.rendererRegistry}
+                        hostAdapter={options.hostAdapter}
+                        useAppearanceInspectorPreview
+                        editorChrome={options.editorChrome ?? false}
+                    />
+                )}
+            />
         );
     }
 

@@ -34,6 +34,7 @@ import {
     type RuntimeWidgetRendererProps,
 } from "./runtimePluginApi";
 import type { RuntimePluginHost } from "./runtimePluginHost";
+import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -180,8 +181,27 @@ function bindWidgetRenderer(
 ): ElementRendererDefinition {
     return {
         type,
-        render: (props: ElementRendererProps) => render(narrowWidgetRendererProps(props, game)),
+        // Behind a boundary, and behind a component of its own so the boundary is above the throw:
+        // a plugin's render runs inside the game's surface tree, and without one a widget that
+        // throws unmounts the page it is on. See `WidgetRenderBoundary`.
+        render: (props: ElementRendererProps) => React.createElement(
+            WidgetRenderBoundary,
+            { type },
+            React.createElement(PluginWidgetRenderer, { render, props, game }),
+        ),
     };
+}
+
+function PluginWidgetRenderer({
+    render,
+    props,
+    game,
+}: {
+    render: RuntimeWidgetRendererDef["render"];
+    props: ElementRendererProps;
+    game: RuntimePluginGame;
+}): React.ReactElement | null {
+    return render(narrowWidgetRendererProps(props, game));
 }
 
 function narrowWidgetRendererProps(

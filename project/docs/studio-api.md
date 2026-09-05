@@ -247,9 +247,15 @@ app.services.widgets.list();
 app.services.widgets.has(type);
 ```
 
-`UIWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu 工厂。完整类型见 `src/renderer/lib/ui-editor/widget-modules`。
+`PluginWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu/floating toolbar 工厂。
 
-游戏渲染面由 runtime entry 提供：`app.game.widgets.register({ type, render })`（见 [runtime-api.md](./runtime-api.md)）。那一侧收的是收窄过的 `RuntimeWidgetRendererProps`，**没有 `hostAdapter`**；`UIWidgetModule.render` 收的是编辑器那份更宽的 props。要两个 entry 复用同一个 render，就把它按 `RuntimeWidgetRendererProps` 写——那份 props 的 `dispatchEvent` 与 `game` 是可选的，所以它同时也是一个合法的 `UIWidgetModule["render"]`；反过来不行。
+`render` 收的就是 runtime entry 那份 `RuntimeWidgetRendererProps`，两侧完全一样，**都没有 `hostAdapter`**——所以"一个 render 两个 entry 复用"是字面成立的，直接把渲染函数放进共享模块即可。游戏渲染面仍由 runtime entry 注册：`app.game.widgets.register({ type, render })`（见 [runtime-api.md](./runtime-api.md)）。
+
+其余几个工厂拿到的 `documentService` / `stateService` 是 `PluginWidgetDocumentApi` / `PluginWidgetEditorStateApi`——**不是 Studio 的服务实例**。它们能做的是控件本分的事：读整份界面文档，写元素的 props / layout / animation / extra / 列表条目接线，以及把一串写入并成一次撤销（`runSurfaceHistoryTransaction`）。表以外的成员会**抛错**而不是返回 undefined，错误里写着该走哪个 API。
+
+原因是 Studio 自己的 `UIWidgetModule` 交出来的是活的 `UIDocumentService`：`Service.getContext()` 是 public，`getContext().services.get(...)` 就是工作区服务注册表，往下是按窗口默认授权、对整个工程递归读写的文件系统——插件权限提示里说过插件拿不到的那一套。插件要文件系统走 `app.privileged.fs.*`，那里按插件自己的授权检查。
+
+`get` / `list` 回答的是 `PluginWidgetTypeInfo`（`type` / `displayName` / `extends` / `ownerPluginId`），不是模块对象本身。
 
 ## app.services.blueprintNodes
 

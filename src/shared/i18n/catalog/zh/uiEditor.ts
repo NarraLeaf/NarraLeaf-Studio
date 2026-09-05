@@ -152,6 +152,10 @@ export const uiEditor = {
         },
         refs: "{count} 处引用",
     },
+    canvas: {
+        unknownWidget: "未知控件",
+        widgetRenderFailed: "控件绘制失败",
+    },
     editor: {
         componentNotFound: "未找到组件",
         interfaceNotFound: "未找到界面",

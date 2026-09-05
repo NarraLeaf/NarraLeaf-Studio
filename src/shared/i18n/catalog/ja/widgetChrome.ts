@@ -5,6 +5,7 @@ export const widgetChrome = {
         insert: "{name} を挿入",
         drawing: "{name} を描画中：キャンバス上でドラッグして作成",
         moreInsertElements: "その他の挿入要素",
+        fromPlugin: "{plugin} が提供",
         components: "コンポーネント",
         openComponentLibrary: "コンポーネントライブラリを開く",
         componentLibrary: "コンポーネントライブラリ",

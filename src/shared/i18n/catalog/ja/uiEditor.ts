@@ -154,6 +154,10 @@ export const uiEditor = {
         },
         refs: "参照 {count}",
     },
+    canvas: {
+        unknownWidget: "不明なウィジェット",
+        widgetRenderFailed: "ウィジェットの描画に失敗",
+    },
     editor: {
         componentNotFound: "コンポーネントが見つからない",
         interfaceNotFound: "インターフェースが見つからない",

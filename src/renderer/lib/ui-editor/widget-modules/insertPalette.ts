@@ -14,6 +14,11 @@ export type InsertPaletteConfigEntry = {
 export type InsertPaletteEntry = {
     readonly module: UIWidgetModule;
     readonly placement: InsertPalettePlacement;
+    /**
+     * The plugin this widget came from, as the plugin names itself. Absent for the built-in
+     * widgets, which are Studio's own and belong to nobody.
+     */
+    readonly ownerPluginName?: string;
 };
 
 /**
@@ -73,8 +78,39 @@ export function resolveInsertPaletteEntries(
         });
 }
 
+/**
+ * The widget types plugins currently contribute, as palette entries.
+ *
+ * Read from the module registry rather than from a second list, so a plugin switched off in the
+ * plugins panel leaves the palette at the same moment it stops drawing. The order is the plugin's
+ * name and then the widget's, which is the order the author reads them in; the registry's own
+ * insertion order is the order plugins happened to load in, and says nothing.
+ *
+ * Always in the overflow menu. The primary row is icons with no labels - a widget nobody has seen
+ * before cannot say what it is or where it came from there, and the overflow rows carry both.
+ *
+ * No surface filtering: `surfaceKinds` and `stageSlots` exist for the built-in widgets that only
+ * make sense in one engine slot, and a plugin has no way to declare either.
+ */
+export function listPluginInsertPaletteEntries(): InsertPaletteEntry[] {
+    const entries: InsertPaletteEntry[] = [];
+    for (const module of widgetModuleRegistry.list()) {
+        const ownerPluginName = widgetModuleRegistry.getOwnerName(module.type);
+        if (!ownerPluginName) {
+            continue;
+        }
+        entries.push({ module, placement: "overflow", ownerPluginName });
+    }
+    return entries.sort((left, right) =>
+        (left.ownerPluginName ?? "").localeCompare(right.ownerPluginName ?? "")
+        || left.module.displayName.localeCompare(right.module.displayName));
+}
+
 export function listInsertPaletteEntries(surface?: InsertPaletteSurfaceFilter): InsertPaletteEntry[] {
-    return resolveInsertPaletteEntries(DEFAULT_INSERT_PALETTE_CONFIG, undefined, surface);
+    return [
+        ...resolveInsertPaletteEntries(DEFAULT_INSERT_PALETTE_CONFIG, undefined, surface),
+        ...listPluginInsertPaletteEntries(),
+    ];
 }
 
 export function listInsertPaletteModules(surface?: InsertPaletteSurfaceFilter): UIWidgetModule[] {

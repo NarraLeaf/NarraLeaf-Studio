@@ -19,6 +19,7 @@ import {
 import { DEFAULT_UI_SURFACE_SIZE } from "@shared/constants/ui-editor";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
+import { usePluginElementRenderers } from "@/lib/ui-editor/widget-modules/pluginElementRenderers";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { useBlueprintRuntimeCore, type BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -99,6 +100,10 @@ export function useStoryPreviewGameUi(input: {
     onIssueRef.current = onIssue;
 
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
+    // The preview draws the author's Game UI, so it draws plugin widgets through the plugin's
+    // studio entry - the same path the interface canvas uses. The game's own runtime entries are
+    // loaded in the Dev Mode window, not in this one.
+    usePluginElementRenderers(rendererRegistry);
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     const lifecycleRef = useRef(new SurfaceLifecycleOrchestrator());
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});

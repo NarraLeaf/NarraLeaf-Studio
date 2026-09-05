@@ -9,6 +9,7 @@ import { Select } from "@/lib/components/elements";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
+import { usePluginElementRenderers } from "@/lib/ui-editor/widget-modules/pluginElementRenderers";
 import { createEditorHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/editorHostAdapter";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
 import type { RowReveal } from "../DocumentChangeList";
@@ -288,6 +289,10 @@ interface SurfaceColumnProps {
 
 function SurfaceColumn(props: SurfaceColumnProps) {
     const { t } = useTranslation();
+    // A page under comparison may place a widget a plugin contributes, and the comparison is where
+    // an author looks to see what a revision did to it. The plugin's own render is what draws it
+    // here too - there is no second, read-only drawing of a widget.
+    usePluginElementRenderers(RENDERER_REGISTRY);
     const { document, surfaceId, size, scale, masks, selected, onSelect, onUnplaced } = props;
     const surface = findSurface(document, surfaceId);
     const frameRef = useRef<HTMLDivElement | null>(null);

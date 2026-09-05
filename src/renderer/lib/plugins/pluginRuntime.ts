@@ -18,6 +18,7 @@ import {
     type PluginMessageBundle,
     type PluginTranslator,
     type PluginVoiceUnitEntry,
+    type PluginWidgetTypeInfo,
 } from "@/plugin";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import type {
@@ -26,15 +27,17 @@ import type {
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
-import { translate } from "@/lib/i18n";
 import { workspacePluginSession } from "./workspacePluginSession";
-import { openPluginsPanel } from "@/apps/workspace/modules/plugins/openPluginsPanel";
 import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { guardPluginAction, guardPluginActionGroup, guardPluginPanel } from "./pluginWorkspaceGuard";
+import { guardPluginWidgetModule } from "./pluginWidgetGuard";
+import type { PluginWidgetModule } from "./pluginWidgetApi";
+import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import { collectDeclaredBlueprintFns } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
@@ -194,20 +197,11 @@ function suppressedPluginIds(ctx: WorkspaceContext): Set<string> {
 async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
     const descriptors = await fetchWorkspacePluginDescriptors();
     const suppressed = suppressedPluginIds(ctx);
+    // Withheld plugins are not announced from here. The workspace already warns about every
+    // dependency it cannot meet - absent, withheld, or switched off - from the resolution itself,
+    // and leads to the screen that can act on all three. A second toast for one of those three
+    // would say the same thing in different words, and offer less.
     const eligible = descriptors.filter(descriptor => !suppressed.has(descriptor.plugin.id));
-
-    const skipped = descriptors.filter(descriptor => suppressed.has(descriptor.plugin.id));
-    if (skipped.length > 0) {
-        const names = skipped.map(descriptor => descriptor.manifest.name).join(", ");
-        ctx.services.get<UIService>(Services.UI).notifications.warning(
-            translate("plugins.workspace.suppressedNotice", { names }),
-            undefined,
-            [{
-                label: translate("plugins.workspace.openPanel"),
-                onClick: () => openPluginsPanel(ctx, { pluginId: skipped[0].plugin.id }),
-            }],
-        );
-    }
 
     const loadResults = await Promise.all(
         eligible.map(descriptor => loadWorkspacePlugin(ctx, descriptor)),
@@ -355,6 +349,26 @@ function assertDeclaredBlueprintNode(descriptor: WorkspacePluginDescriptor, type
             "Declare it so Studio can statically validate projects that use it.",
         );
     }
+}
+
+/**
+ * What `app.services.widgets.get` / `.list` answer with.
+ *
+ * A registered module is a host object whose callbacks are handed the editor services, so it is not
+ * something to pass out by reference - the plugin's own modules are wrapped before they are stored
+ * (see `pluginWidgetGuard`) and Studio's built-ins never were. A name and a type id is what a plugin
+ * can act on: whether to contribute a variant of a type, or what to call one in its own interface.
+ */
+function describeWidgetType(module: UIWidgetModule | undefined): PluginWidgetTypeInfo | undefined {
+    if (!module) {
+        return undefined;
+    }
+    return {
+        type: module.type,
+        displayName: module.displayName,
+        extends: module.extends,
+        ownerPluginId: widgetModuleRegistry.getOwner(module.type),
+    };
 }
 
 function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: string): void {
@@ -544,9 +558,22 @@ export function createPluginApp(
     const localization = ctx.services.get<LocalizationService>(Services.Localization);
     const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
     const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+    const uiEditorState = ctx.services.get<UIEditorStateService>(Services.UIEditorState);
     // One per plugin, shared by every node it registers - the runtime loader
     // hands a node's execute the same `game` object `setup(app)` received.
     const nodeGame = createEditorRuntimePluginGame(descriptor);
+    // Recorded with every widget the plugin contributes: the insert palette says where a widget
+    // came from, and the plugin's own name is what the author knows it by everywhere else.
+    const widgetOwner = {
+        ownerPluginId: descriptor.plugin.id,
+        ownerPluginName: descriptor.manifest.name || descriptor.plugin.id,
+    };
+    const guardWidget = (module: PluginWidgetModule): UIWidgetModule => guardPluginWidgetModule(
+        descriptor.plugin.id,
+        module,
+        nodeGame,
+        { documentService: uiDocument, stateService: uiEditorState },
+    );
 
     // Every registration a plugin makes through this app object is recorded
     // so the host can reclaim it on unload, even if the plugin's own cleanup
@@ -775,11 +802,17 @@ export function createPluginApp(
                 },
             },
             widgets: {
+                // What the registry holds is never the plugin's own module: the host calls a widget
+                // back from the canvas, the properties panel, the docker bar and both context menus,
+                // and every one of those hands over a live workspace service whose `getContext()`
+                // reaches the service registry. `guardPluginWidgetModule` is the binding that stands
+                // in front of all of them - see `pluginWidgetGuard`.
                 register: module => {
                     assertDeclaredWidget(descriptor, module.type);
-                    widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
+                    const guarded = guardWidget(module);
+                    widgetModuleRegistry.register(guarded, widgetOwner);
                     return trackReturn(() => {
-                        if (widgetModuleRegistry.get(module.type) === module) {
+                        if (widgetModuleRegistry.get(module.type) === guarded) {
                             widgetModuleRegistry.unregister(module.type);
                         }
                     });
@@ -789,16 +822,20 @@ export function createPluginApp(
                         assertDeclaredWidget(descriptor, module.type);
                     }
                     return combine(modules.map(module => {
-                        widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
+                        const guarded = guardWidget(module);
+                        widgetModuleRegistry.register(guarded, widgetOwner);
                         return trackReturn(() => {
-                            if (widgetModuleRegistry.get(module.type) === module) {
+                            if (widgetModuleRegistry.get(module.type) === guarded) {
                                 widgetModuleRegistry.unregister(module.type);
                             }
                         });
                     }));
                 },
-                get: type => widgetModuleRegistry.get(type),
-                list: () => widgetModuleRegistry.list(),
+                get: type => describeWidgetType(widgetModuleRegistry.get(type)),
+                list: () => widgetModuleRegistry.list().flatMap(module => {
+                    const info = describeWidgetType(module);
+                    return info ? [info] : [];
+                }),
                 has: type => widgetModuleRegistry.has(type),
             },
             interface: {
