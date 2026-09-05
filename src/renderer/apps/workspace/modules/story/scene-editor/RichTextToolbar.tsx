@@ -72,8 +72,14 @@ const TOOLBAR_GAP = 4;
  * The expanded height always, even while the strip is the collapsed chip. The band is then a
  * constant, so expanding the strip does not reflow the scene under the author mid-sentence, and no
  * row has to subscribe to the session's expanded flag to know how tall it should be.
+ *
+ * The gap counts TWICE, because the strip is centred in the band rather than hung from its top edge.
+ * Sized to the strip plus a single gap, the expanded strip filled the band exactly: four pixels of
+ * air above it and none at all beneath, its bottom border on the next row's first pixel. The
+ * collapsed chip, six pixels shorter, left all of its slack under itself instead. Either way the
+ * control sat off-centre in the one box that is there to hold it.
  */
-export const RICH_TEXT_TOOLBAR_BAND_PX = TOOLBAR_HEIGHT_EXPANDED + TOOLBAR_GAP;
+export const RICH_TEXT_TOOLBAR_BAND_PX = TOOLBAR_HEIGHT_EXPANDED + TOOLBAR_GAP * 2;
 
 /**
  * The rect of the nearest ancestor that actually scrolls — the pane the toolbar has to stay inside.
@@ -101,8 +107,10 @@ function scrollClipRect(el: HTMLElement): DOMRect | null {
  *
  * Three bounds, applied outermost last:
  *
- *  - `anchorBottom + TOOLBAR_GAP` is where it wants to be: in the band the row keeps clear beneath
- *    its line (see {@link RICH_TEXT_TOOLBAR_BAND_PX}).
+ *  - Centred in the band the row keeps clear beneath its line (see {@link RICH_TEXT_TOOLBAR_BAND_PX})
+ *    is where it wants to be. The band is one height for both strips, so a fixed gap can only centre
+ *    one of them; the slack is halved instead, and never let below `TOOLBAR_GAP` — the strip belongs
+ *    to the line above it and may not come nearer to it than that.
  *  - `paneBottom - height` keeps it inside the scrolling pane, so it cannot float over the panel
  *    below or the tab strip.
  *  - `anchorTop` is the floor under both. A pane too short to hold the band - a row opened with the
@@ -120,7 +128,10 @@ export function richTextToolbarTop(input: {
     height: number;
 }): number {
     const floor = input.paneBottom - input.height;
-    const wanted = Math.min(input.anchorBottom + TOOLBAR_GAP, floor);
+    // Half the band's spare height above the strip, so the other half is left beneath it. Whichever
+    // strip is showing then has the same air on both sides of it instead of resting on one edge.
+    const gap = Math.max(TOOLBAR_GAP, Math.round((RICH_TEXT_TOOLBAR_BAND_PX - input.height) / 2));
+    const wanted = Math.min(input.anchorBottom + gap, floor);
     return Math.max(input.paneTop, Math.max(input.anchorTop, wanted));
 }
 

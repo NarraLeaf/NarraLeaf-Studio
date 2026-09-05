@@ -15,6 +15,8 @@ import { RICH_TEXT_TOOLBAR_BAND_PX, richTextToolbarTop } from "./RichTextToolbar
 
 /** A 30px strip, the taller of the two the component renders. */
 const HEIGHT = 30;
+/** The collapsed chip, which is what a row opened for editing shows until the strip is expanded. */
+const COLLAPSED_HEIGHT = 24;
 const PANE = { paneTop: 120, paneBottom: 880 };
 
 describe("richTextToolbarTop", () => {
@@ -54,5 +56,18 @@ describe("richTextToolbarTop", () => {
         // The row pads by this and the placement above lives inside it; a band shorter than the
         // strip plus its gap would put the strip back over the next row.
         expect(RICH_TEXT_TOOLBAR_BAND_PX).toBeGreaterThanOrEqual(HEIGHT + 4);
+    });
+
+    it("centres both strips in that band", () => {
+        // The band is one height whichever strip is showing, so a fixed gap under the line can only
+        // ever centre one of them: the expanded strip used to end on the band's last pixel - and so
+        // on the next row's first - while the collapsed chip left its whole slack underneath.
+        const box = { anchorTop: 400, anchorBottom: 436, ...PANE };
+        for (const height of [HEIGHT, COLLAPSED_HEIGHT]) {
+            const top = richTextToolbarTop({ ...box, height });
+            const above = top - box.anchorBottom;
+            const below = box.anchorBottom + RICH_TEXT_TOOLBAR_BAND_PX - (top + height);
+            expect(above).toBe(below);
+        }
     });
 });
