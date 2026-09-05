@@ -4,7 +4,7 @@ import fs from "fs";
 import net from "net";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
-import chokidar, { type FSWatcher } from "chokidar";
+import { ProjectFileWatcher, isIgnoredProjectFile, watchProjectFiles } from "../../utils/projectFileWatcher";
 import { type UtilityProcess } from "electron";
 import { WebSocket } from "ws";
 import { App } from "@/app/app";
@@ -14,7 +14,6 @@ import {
     normalizeGameBuildArch,
 } from "@shared/types/gameBuild";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { buildDependencyPlatformKey } from "../build/preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
@@ -25,7 +24,7 @@ import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntim
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
-import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { forgetWatchedPath, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
@@ -39,7 +38,7 @@ type PreviewSession = {
     controlPort: number;
     controlToken: string;
     process: ChildProcess | null;
-    watcher: FSWatcher | null;
+    watcher: ProjectFileWatcher | null;
     /**
      * `mtimeMs:size` per watched file, as of the last event this project's watch accepted. Carried
      * across relaunches rather than rebuilt with the session - see {@link PreviewManager.launchNow}.
@@ -577,7 +576,7 @@ export class PreviewManager {
         const assetsRoot = path.join(projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
-        session.watcher = chokidar.watch(
+        session.watcher = watchProjectFiles(
             [
                 uidocPath,
                 uigraphsPath,
@@ -587,26 +586,22 @@ export class PreviewManager {
                 assetsContentRoot,
                 assetsRoot,
             ],
-            // See DevModeManager: the atomic writer's scratch siblings are not project changes.
-            // `alwaysStat` so `watchedFileChanged` has a modification time and a size to compare;
-            // without it every reported change would have to be taken at face value, and the compile
-            // this watch belongs to reads every asset in the project.
-            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN, alwaysStat: true },
+            { ignored: file => isIgnoredProjectFile(projectPath, file) },
+            (file, stats) => {
+                if (!stats) {
+                    forgetWatchedPath(session.fileIdentities, file);
+                    this.scheduleRelaunch(session, "unlink", file);
+                    return;
+                }
+                // A file this watch has not seen before has no recorded identity, so an appearing file
+                // arrives here as a change - which is what it is to a preview that has to be rebuilt.
+                if (!watchedFileChanged(session.fileIdentities, file, stats)) {
+                    return;
+                }
+                this.scheduleRelaunch(session, "change", file);
+            },
+            error => this.app.logger.warn("[Preview] project file watch failed", error),
         );
-        session.watcher.on("add", (file, stats) => {
-            rememberWatchedFile(session.fileIdentities, file, stats);
-            this.scheduleRelaunch(session, "add", file);
-        });
-        session.watcher.on("change", (file, stats) => {
-            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
-                return;
-            }
-            this.scheduleRelaunch(session, "change", file);
-        });
-        session.watcher.on("unlink", file => {
-            session.fileIdentities.delete(file);
-            this.scheduleRelaunch(session, "unlink", file);
-        });
     }
 
     private scheduleRelaunch(session: PreviewSession, event: string, file: string): void {
@@ -656,7 +651,7 @@ export class PreviewManager {
         if (!session.watcher) {
             return;
         }
-        void session.watcher.close();
+        session.watcher.close();
         session.watcher = null;
     }
 

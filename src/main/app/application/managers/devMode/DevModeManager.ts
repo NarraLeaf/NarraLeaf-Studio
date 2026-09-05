@@ -1,13 +1,12 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
-import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
+import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 import path from "path";
 import crypto from "crypto";
-import chokidar, { FSWatcher } from "chokidar";
+import { ProjectFileWatcher, isIgnoredProjectFile, watchProjectFiles } from "../../utils/projectFileWatcher";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
-import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
@@ -16,7 +15,7 @@ import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
-import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { forgetWatchedPath, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -41,7 +40,7 @@ type DevModeSession = {
     window: AppWindow<WindowAppType.DevMode> | null;
     windowReady: boolean;
     revision: number;
-    watcher: FSWatcher | null;
+    watcher: ProjectFileWatcher | null;
     /**
      * `mtimeMs:size` per watched file, as of the last event this session accepted. See
      * {@link DevModeManager.fileContentChanged}.
@@ -641,40 +640,26 @@ export class DevModeManager {
         // follows is the only thing that makes editing outside Studio feel like editing inside it.
         const scriptsRoot = path.join(session.projectPath, SCRIPTS_DIR);
         this.emitVerbose(session, "watching project files for Dev Mode reload");
-        session.watcher = chokidar.watch(
+        session.watcher = watchProjectFiles(
             [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot, scriptsRoot],
-            // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
-            // it into place. Reporting it would schedule a reload against a file that is already
-            // gone, on top of the reload the rename itself triggers.
-            // `alwaysStat` so `fileContentChanged` has a modification time and a size to compare;
-            // without it every reported change would have to be taken at face value.
-            {
-                ignoreInitial: true,
-                // The dependency tree under `scripts/` is the reason this is a list rather than one
-                // pattern: an `npm install` there is tens of thousands of files, and watching them
-                // would cost a reload on every one and enough handles to stall the session. What a
-                // script imports from it is already inside the bundle esbuild produced.
-                ignored: [ATOMIC_WRITE_TEMP_PATTERN, `**/${SCRIPTS_MODULES_DIR}/**`, `**/${SCRIPTS_GENERATED_DIR}/**`],
-                alwaysStat: true,
+            { ignored: file => isIgnoredProjectFile(session.projectPath, file) },
+            (file, stats) => {
+                if (!stats) {
+                    forgetWatchedPath(session.fileIdentities, file);
+                    this.noteAssetChange(session, assetsRoot, file);
+                    this.scheduleReload(session, "unlink", file);
+                    return;
+                }
+                // A file this watch has not seen before has no recorded identity, so this is also how
+                // an appearing file is reported: unknown counts as changed.
+                if (!watchedFileChanged(session.fileIdentities, file, stats)) {
+                    return;
+                }
+                this.noteAssetChange(session, assetsRoot, file);
+                this.scheduleReload(session, "change", file);
             },
+            error => this.app.logger.warn("[DevMode] project file watch failed", error),
         );
-        session.watcher.on("add", (file, stats) => {
-            rememberWatchedFile(session.fileIdentities, file, stats);
-            this.noteAssetChange(session, assetsRoot, file);
-            this.scheduleReload(session, "add", file);
-        });
-        session.watcher.on("change", (file, stats) => {
-            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
-                return;
-            }
-            this.noteAssetChange(session, assetsRoot, file);
-            this.scheduleReload(session, "change", file);
-        });
-        session.watcher.on("unlink", file => {
-            session.fileIdentities.delete(file);
-            this.noteAssetChange(session, assetsRoot, file);
-            this.scheduleReload(session, "unlink", file);
-        });
     }
 
     /**
@@ -818,7 +803,7 @@ export class DevModeManager {
         if (!session.watcher) {
             return;
         }
-        void session.watcher.close();
+        session.watcher.close();
         session.watcher = null;
     }
 
