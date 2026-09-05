@@ -75,6 +75,7 @@ import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
 import { currentWindowScale, scaledDesign } from "@shared/utils/windowGeometry";
 import { createDevModePuppetHost, listDevModePuppetBackendModules } from "../devModePuppetHost";
 import { registerDevModePuppetHost } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
+import { clearDevModeAssetUrls, publishDevModeAssetUrls } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -1061,6 +1062,22 @@ export function DevModeContent(props: DevModeContentProps) {
     const assetUrlsRef = useRef<Map<string, string>>(new Map());
     const assetUrlPrewarmRef = useRef<{ revision: string; done: Promise<void> } | null>(null);
 
+    /**
+     * Take the published map away the moment the assets under it may have moved.
+     *
+     * A grant token is derived from the file's size and modification time, so an asset the author
+     * replaced mints a different one and the URL in the map 404s. The map is refilled by the next
+     * prewarm, which happens when the next compile asks for it - and between the reload and that
+     * moment, a widget reading a stale URL would draw nothing. Cleared here rather than left to
+     * expire, so the fallback for that window is the single-asset route, which is what every widget
+     * used before the map existed.
+     */
+    const assetPrewarmKey = bundle ? devModeAssetPrewarmKey(bundle) : "";
+    useEffect(() => {
+        clearDevModeAssetUrls();
+        assetUrlPrewarmRef.current = null;
+    }, [assetPrewarmKey]);
+
     const prewarmStoryAssetUrls = useCallback<NonNullable<GameAppHost["prewarmStoryAssetUrls"]>>(() => {
         const current = bundleRef.current;
         const revision = current ? devModeAssetPrewarmKey(current) : "";
@@ -1074,9 +1091,15 @@ export function DevModeContent(props: DevModeContentProps) {
                 // Not an error the author can act on, and not one the run has to stop for: every
                 // asset is still reachable one at a time, which is how this worked before.
                 assetUrlsRef.current = new Map();
+                publishDevModeAssetUrls(assetUrlsRef.current);
                 return;
             }
             assetUrlsRef.current = new Map(Object.entries(result.data.urls));
+            // Published to the window, not kept for the compile alone. Every widget that draws a
+            // picture used to ask the main process for a grant of its own, so the same file arrived
+            // under one URL here and a different one there - one round trip per widget, and nothing
+            // warmed in advance could be the thing the interface then drew. See `devModeAssetUrls`.
+            publishDevModeAssetUrls(assetUrlsRef.current);
         })();
         assetUrlPrewarmRef.current = { revision, done };
         return done;

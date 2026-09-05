@@ -8,6 +8,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { UIEditorFontFaceService } from "@/lib/workspace/services/ui-editor/UIEditorFontFaceService";
 import { getInterface } from "@/lib/app/bridge";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { resolveDevModeAssetUrl } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 import {
     getActiveProjectFontIds,
     resolveFontStackIds,
@@ -212,7 +213,9 @@ async function resolveDevModeFont(assetId: string): Promise<ResolvedFont> {
         return { assetId, cssFamily: cached.cssFamily, error: null };
     }
     try {
-        const url = resolveGameRuntimeAssetUrl(assetId) ?? await resolveDevModeFontUrl(assetId);
+        const url = resolveGameRuntimeAssetUrl(assetId)
+            ?? resolveDevModeAssetUrl(assetId)
+            ?? await resolveDevModeFontUrl(assetId);
         const cssFamily = devModeCssFamilyForAssetId(assetId);
         const fontFace = new FontFace(cssFamily, `url(${url})`);
         await fontFace.load();
