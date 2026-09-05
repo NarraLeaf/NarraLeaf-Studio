@@ -193,6 +193,14 @@ function PaletteDockerBar({
                     >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{mod.displayName}</span>
+                        {/*
+                          * Which plugin put this here. Only plugin widgets carry it, so the row
+                          * that says nothing is Studio's own - the author does not have to read a
+                          * label to know that.
+                          */}
+                        {entry.ownerPluginName ? (
+                            <span className="shrink-0 text-2xs text-fg-subtle">{entry.ownerPluginName}</span>
+                        ) : null}
                     </button>
                 );
             })}

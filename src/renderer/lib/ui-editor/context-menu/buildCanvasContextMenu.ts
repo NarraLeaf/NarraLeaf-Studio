@@ -2,6 +2,7 @@ import { addElementState, canAddElementState } from "@/lib/ui-editor/widget-modu
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { buildInsertWidgetSubmenu } from "./insertWidgetMenuItems";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
@@ -25,14 +26,10 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         });
     }
 
-    const insertSubmenu = widgetModules.map(mod => ({
-        id: `insert-${mod.type}`,
-        label: mod.displayName,
-        onClick: () => {
-            actions.hideMenu();
-            actions.insertType(mod.type);
-        },
-    }));
+    const insertSubmenu = buildInsertWidgetSubmenu(widgetModules, "insert-", type => {
+        actions.hideMenu();
+        actions.insertType(type);
+    });
     if (insertSubmenu.length > 0) {
         items.push({
             id: "insert",
