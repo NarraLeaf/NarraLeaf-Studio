@@ -6,6 +6,7 @@ import type {
     PreloadStrategy,
     Scene,
     Sound,
+    Video,
 } from "narraleaf-react";
 import type { CompiledNlrStory, SceneWarmOrder, StoryWarmResource } from "./storyCompiler";
 
@@ -174,9 +175,13 @@ export function createStudioPreloadScheduler(options?: {
                 return;
             }
             const blockId = blockIdByUrl.get(resource.src);
+            // A clip is played rather than shown, and what it lacked was buffering rather than a
+            // warm cache. Same report, and the difference is worth saying: an author reading
+            // "shown without being warmed" about a movie would go looking for the wrong thing.
+            const what = resource.type === "video" ? "Played without being buffered" : "Shown without being warmed";
             report(blockId
-                ? `Shown without being warmed: ${resource.src} (first asked for by row ${blockId}).`
-                : `Shown without being warmed, and no row asked for it: ${resource.src}.`);
+                ? `${what}: ${resource.src} (first asked for by row ${blockId}).`
+                : `${what}, and no row asked for it: ${resource.src}.`);
         },
     };
 
@@ -212,26 +217,15 @@ export function createStudioPreloadScheduler(options?: {
         const seen = new Set<string>();
         const add = (resource: StoryWarmResource, band: PreloadEntry["band"]): void => {
             if (resource.type !== "image" || seen.has(resource.url)) {
-                // Only images among the url-named entries, and for two different reasons.
+                // Only images among the url-named entries, and audio and video are named by element
+                // instead - each for its own reason, and both because a url is not enough.
                 //
-                // Audio is named by element instead, on the plan's own `audio` field - whether a
-                // clip decodes into memory or streams as it plays is a property of the sound rather
-                // than of its url, so the audio cache has to be handed the sound itself. See
-                // `soundsOf` below.
-                //
-                // Video is left out because nothing here would warm it. This host hands urls back
-                // unchanged, which is exactly right for an image - the browser fetches and decodes
-                // it once - and does nothing at all for a video, since the player holds no video
-                // cache to fill. What genuinely buffers one is the engine's `Video.preload()`,
-                // which mounts a hidden element, and the compiler only emits that for a `/video`
-                // declaration row. Hoisting it to scene start for every clip a scene mentions is
-                // the fix, and it needs a measurement first: it would start buffering every clip in
-                // a scene at once, which is a cost the author currently controls by where the
-                // declaration row sits. Listing video here without that would report warming that
-                // did not happen.
-                //
-                // Recording both in the warm order still earns its keep - it is what lets a report
-                // name the row that wanted a clip.
+                // Whether a sound decodes into memory or streams as it plays is a property of the
+                // sound rather than of its url, so the audio cache has to be handed the sound
+                // itself (`soundsOf` below). Warming a video is putting its element on the stage
+                // early, and the element that buffered has to be the one that plays, so the plan
+                // names the clip (`videosOf` below). Neither could be expressed as a url the player
+                // fetches, which is why `entries` is images and nothing else.
                 return;
             }
             seen.add(resource.url);
@@ -261,9 +255,41 @@ export function createStudioPreloadScheduler(options?: {
         return {
             entries,
             audio: soundsOf(sceneId),
+            video: videosOf(order, from),
             keep: [...seen],
             pin: order.firstFrame ? [order.firstFrame] : [],
         };
+    }
+
+    /**
+     * The clips the rows from here on will play, nearest first.
+     *
+     * Every clip ahead of the play head, not a window of them, and deliberately without a number
+     * saying how many: the player admits them one at a time and stops at its own ceiling, so what
+     * is really being fetched at any moment follows the connection rather than anything decided
+     * here. A count in this file would be a second, worse answer to a question the player is
+     * already answering with better information - and one nobody could tune without knowing how
+     * fast the reader's disk is.
+     *
+     * Rows BEHIND the play head are left out because the story has already run them: a clip a
+     * `/video` row declared is on the stage on the author's own instruction, and the player does
+     * not touch those. This is also what makes a one-row `/show` of a clip behave like a
+     * declaration row placed earlier - the plan gives both the same head start, and neither depends
+     * on where the author happened to put a row.
+     */
+    function videosOf(order: SceneWarmOrder, from: number): readonly Video[] {
+        const upcoming: Video[] = [];
+        const seen = new Set<Video>();
+        for (let index = Math.max(0, from); index < order.blockOrder.length; index++) {
+            for (const resource of order.byBlock[order.blockOrder[index]] ?? []) {
+                if (resource.type !== "video" || !resource.video || seen.has(resource.video)) {
+                    continue;
+                }
+                seen.add(resource.video);
+                upcoming.push(resource.video);
+            }
+        }
+        return upcoming;
     }
 
     /**
