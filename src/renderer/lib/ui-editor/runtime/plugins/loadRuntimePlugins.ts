@@ -585,6 +585,19 @@ function buildCapabilityDomains(
         }
     }
 
+    if (declared.has("diagnostics")) {
+        const backend = host.diagnostics;
+        if (!backend) {
+            unavailable("diagnostics");
+        } else {
+            // No `unavailable` for "the game has not started yet": every reader here answers null
+            // until a session exists, which is a state a plugin polling for numbers meets on every
+            // launch and must handle anyway. Withholding the member instead would make a normal
+            // moment indistinguishable from a shell that cannot report at all.
+            domains.diagnostics = { imageCache: () => backend.imageCache() };
+        }
+    }
+
     if (declared.has("menu")) {
         const backend = host.menu;
         if (!backend) {

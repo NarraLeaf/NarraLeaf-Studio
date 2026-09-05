@@ -382,6 +382,51 @@ export type RuntimePluginMenu = {
     set(spec: GameMenuSpec): Promise<void>;
 };
 
+/**
+ * What the engine's image cache is holding, against what it is allowed to hold. All sizes in bytes.
+ *
+ * Restated here rather than re-exported from the engine because a plugin cannot import
+ * `narraleaf-react` - the only module specifiers it can resolve are `narraleaf-studio/*` and React.
+ * The shape is the engine's `ImageCacheStats`; if that grows a field, this is the second place.
+ */
+export type RuntimePluginImageCacheStats = {
+    /** Sources the cache holds a url for. */
+    entries: number;
+    /**
+     * Bytes of fetched image data the cache is keeping alive.
+     *
+     * **Zero is a real answer, not a missing one.** A host that serves its own assets hands the
+     * player urls instead of bytes, and then the player holds none: what the images cost lives in
+     * the browser's cache, outside anything this can count. A reader that shows this as "memory
+     * used" will report an improvement that did not happen - see {@link entries}, which still
+     * counts, and the decoded figures below, which are the ones with a budget behind them.
+     */
+    blobBytes: number;
+    /** Sources whose decoded bitmap the cache is holding. */
+    decodedEntries: number;
+    /** Estimated size of those bitmaps, at width x height x 4 bytes each. */
+    decodedBytes: number;
+    /** Entries nothing may evict right now: shown by a mounted element, or pinned by the scene. */
+    pinned: number;
+    /** The budgets in force. `Infinity` where the game removed one. */
+    budget: {
+        blobBytes: number;
+        decodedBytes: number;
+    };
+};
+
+/**
+ * `diagnostics` — what the player's caches weigh.
+ *
+ * Every member answers null before a game session exists, which is the ordinary state during
+ * `setup()`. A plugin polls this; there is no change event, because a cache that announced every
+ * eviction would cost more to watch than to run.
+ */
+export type RuntimePluginDiagnostics = {
+    /** The engine's image cache, or null when no session is live. */
+    imageCache(): RuntimePluginImageCacheStats | null;
+};
+
 /** `assets` — turn an asset id from the pack into a URL this shell can load. */
 export type RuntimePluginAssets = {
     url(assetId: string): string;
@@ -513,6 +558,8 @@ export type RuntimePluginGame = {
     menu?: RuntimePluginMenu;
     /** Present with `"story.compile"`. */
     story?: RuntimePluginStory;
+    /** Present with `"diagnostics"`. */
+    diagnostics?: RuntimePluginDiagnostics;
     /** Present when `contributes.sidecars` is non-empty. */
     sidecar?: RuntimePluginSidecars;
     /** Present when `contributes.externalLinks` is non-empty. */

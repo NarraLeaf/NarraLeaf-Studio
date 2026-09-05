@@ -97,6 +97,7 @@ export const pluginPermission = {
             locale: "Read the game language and the project's localized text",
             menu: "Provide the game's menu bar",
             storyCompile: "Take part in compiling stories, and add actions to lines it did not write",
+            diagnostics: "Read how much memory the game’s caches are using",
         },
     },
     button: {

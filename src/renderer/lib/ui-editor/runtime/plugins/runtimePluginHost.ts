@@ -23,6 +23,7 @@ import type {
 } from "@shared/types/blueprint/externalLink";
 import type {
     RuntimePluginEventMap,
+    RuntimePluginImageCacheStats,
     RuntimePluginSaveMetadata,
     RuntimePluginStateChange,
     RuntimePluginStateScope,
@@ -153,6 +154,17 @@ export type RuntimePluginNavigationBackend = {
  * sidecar, Dev Mode may not wire saves, and a bare test harness supplies none of
  * it.
  */
+/**
+ * The diagnostics backend: what the running game is holding, or null when nothing is running.
+ *
+ * A getter rather than a subscription on purpose. What it reports changes on every fetch and every
+ * eviction, so an event for each would be a firehose that costs more to deliver than the numbers are
+ * worth; a profiler samples it on its own clock.
+ */
+export type RuntimePluginDiagnosticsBackend = {
+    imageCache(): RuntimePluginImageCacheStats | null;
+};
+
 export type RuntimePluginHost = {
     store?: RuntimePluginStoreBackend;
     events?: RuntimePluginEventBackend;
@@ -164,4 +176,5 @@ export type RuntimePluginHost = {
     sidecar?: RuntimePluginSidecarBackend;
     navigation?: RuntimePluginNavigationBackend;
     menu?: RuntimePluginMenuBackend;
+    diagnostics?: RuntimePluginDiagnosticsBackend;
 };

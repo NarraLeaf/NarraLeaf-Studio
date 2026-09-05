@@ -718,6 +718,17 @@ export class RuntimePluginHostController {
             overlay: {
                 mount: (ownerPluginId, render) => this.overlays.mount(ownerPluginId, render),
             },
+            diagnostics: {
+                /**
+                 * Straight off the live session, and null whenever there is not one.
+                 *
+                 * Nothing is cached or sampled here: a profiler asks on its own clock and wants the
+                 * reading at the moment it asked, and holding a copy would only let it go stale
+                 * between two evictions. The optional chain covers the ordinary gaps - no session
+                 * during boot, no game state before the player mounts - rather than any failure.
+                 */
+                imageCache: () => this.session?.liveGame.getGameState()?.getImageCache()?.getStats() ?? null,
+            },
             locale: {
                 current: () => this.readLocale(),
                 onChange: listener => {

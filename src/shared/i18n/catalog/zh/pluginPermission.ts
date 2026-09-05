@@ -80,6 +80,7 @@ export const pluginPermission = {
             locale: "读取游戏语言与项目的本地化文案",
             menu: "提供游戏窗口的菜单栏",
             storyCompile: "参与剧情的编译，并在它没有写过的对白上追加动作",
+            diagnostics: "读取游戏缓存占用了多少内存",
         },
     },
     button: {
