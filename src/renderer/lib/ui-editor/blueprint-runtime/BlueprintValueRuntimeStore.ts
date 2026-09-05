@@ -498,9 +498,23 @@ export class BlueprintValueRuntimeStore {
             if (!result.returned) {
                 return;
             }
+            const nextValue = coerceValue(result.value, entry.input.valueType);
+            /**
+             * Silent when the graph came back with the answer it gave last time.
+             *
+             * `refreshAll` re-runs every started entry whenever any state key is written, so a page
+             * of bound widgets re-resolves in full for a write that concerns one of them - or none.
+             * Announcing each of those rebuilds the whole element tree to produce the tree it just
+             * produced. A value that is genuinely new still announces, which is the only case the
+             * subscriber can act on.
+             *
+             * Compared with `Object.is`, so a value type that resolves to a fresh object counts as
+             * changed and behaves exactly as it did before this guard existed.
+             */
+            const changed = !entry.hasResolved || !Object.is(entry.resolvedValue, nextValue);
             entry.hasResolved = true;
-            entry.resolvedValue = coerceValue(result.value, entry.input.valueType);
-            if (!this.disposed && this.entries.get(entry.input.key) === entry) {
+            entry.resolvedValue = nextValue;
+            if (changed && !this.disposed && this.entries.get(entry.input.key) === entry) {
                 this.announceChange();
             }
         } catch (err) {

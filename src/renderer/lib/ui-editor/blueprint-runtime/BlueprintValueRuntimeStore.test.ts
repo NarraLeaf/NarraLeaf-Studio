@@ -338,6 +338,13 @@ function hostAdapterForDocument(
     } as unknown as UIHostAdapter;
 }
 
+/** Let every pending evaluation and the store's own microtask announcement settle. */
+async function drainMicrotasks(): Promise<void> {
+    for (let i = 0; i < 8; i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+}
+
 async function waitFor(assertion: () => void): Promise<void> {
     let lastError: unknown;
     for (let i = 0; i < 20; i += 1) {
@@ -509,6 +516,52 @@ describe("BlueprintValueRuntimeStore", () => {
         merged = mergeElementWithBlueprintValues(document.elements.text!, "surface", store);
         expect(merged.props?.text).toBe("");
         expect(changes).toBeGreaterThanOrEqual(2);
+    });
+
+    it("says nothing when a re-resolve produces the value it produced last time", async () => {
+        /**
+         * `refreshAll` re-runs every entry whenever any state key is written, and the subscriber's
+         * answer to a change is to rebuild the surface's whole element tree. A page of bound widgets
+         * therefore rebuilt in full for a write that concerned one of them - or none - and produced
+         * the tree it had just produced.
+         */
+        const { document, surface } = uiDocument();
+        let nametag: string | null = "Nattou";
+        let changes = 0;
+        const store = new BlueprintValueRuntimeStore(() => {
+            changes += 1;
+        });
+        const hostAdapter = hostAdapterForDocument(document, undefined, {
+            getNametag: () => nametag,
+        });
+
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: blueprintDocument(gameNametagGraph()),
+            persistentVariables: {},
+            hostAdapter,
+        });
+
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "text", "text", "bp-value").value).toBe("Nattou");
+        });
+        const afterFirstResolve = changes;
+        expect(afterFirstResolve).toBeGreaterThan(0);
+
+        store.refreshAll();
+        store.refreshAll();
+        await drainMicrotasks();
+
+        expect(changes).toBe(afterFirstResolve);
+
+        nametag = "YouKi";
+        store.refreshAll();
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "text", "text", "bp-value").value).toBe("YouKi");
+        });
+
+        expect(changes).toBe(afterFirstResolve + 1);
     });
 
     it("merges resolved button labels", async () => {
