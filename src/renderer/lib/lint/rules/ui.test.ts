@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Box } from "lucide-react";
 
 import { encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
@@ -22,10 +22,7 @@ import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/regi
 import type { LintContext, LintLocalizationContext } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintRule, LintRuleId } from "../types";
-import {
-    ensureWidgetModulesRegistered,
-    widgetModuleRegistry,
-} from "../../ui-editor/widget-modules/registryInstance";
+import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { UI_LINT_RULES } from "./ui";
 
 /**
@@ -439,12 +436,32 @@ describe("ui/empty-behavior", () => {
 describe("ui/unknown-widget", () => {
     const PLUGIN_TYPE = "acme.lab.badge";
 
-    // The rule asks the widget module registry, and the built-in modules are loaded into it on
-    // first use - a large import tree that is already resident in Studio and is not here. Paid once
-    // and out of the way of the assertions, which are otherwise fast.
-    beforeAll(async () => {
-        await ensureWidgetModulesRegistered();
-    }, 60000);
+    /**
+     * Stand-ins for the widget catalogue, rather than the catalogue itself: loading the real one is
+     * the whole built-in widget tree, which the rule deliberately does not pull in either. What is
+     * under test is "the registry answers for this type", not which types Studio ships.
+     */
+    function registerWidget(type: string, owner?: { ownerPluginId: string; ownerPluginName: string }) {
+        widgetModuleRegistry.register({
+            type,
+            displayName: type,
+            icon: Box,
+            createDefaultElement: () => ({ type }),
+            render: () => null,
+        }, owner);
+    }
+
+    beforeEach(() => {
+        registerWidget("nl.root");
+        registerWidget("nl.container");
+        registerWidget("nl.text");
+    });
+
+    afterEach(() => {
+        for (const type of ["nl.root", "nl.container", "nl.text", PLUGIN_TYPE]) {
+            widgetModuleRegistry.unregister(type);
+        }
+    });
 
     it("reports an element whose type nothing registers, naming the type", async () => {
         const findings = await run(
@@ -459,7 +476,7 @@ describe("ui/unknown-widget", () => {
         expect(findings[0].location.kind === "surface" ? findings[0].location.elementId : null).toBe("badge");
     });
 
-    it("says nothing about the widgets Studio ships", async () => {
+    it("says nothing about a type the registry answers for", async () => {
         const document = onePage(
             element({ id: "box", type: "nl.container" }),
             element({ id: "label", type: "nl.text" }),
@@ -469,19 +486,21 @@ describe("ui/unknown-widget", () => {
     });
 
     it("says nothing once the plugin that defines the type is loaded", async () => {
-        widgetModuleRegistry.register({
-            type: PLUGIN_TYPE,
-            displayName: "Lab Badge",
-            icon: Box,
-            createDefaultElement: () => ({ type: PLUGIN_TYPE }),
-            render: () => null,
-        }, { ownerPluginId: "acme.lab", ownerPluginName: "Widget Lab" });
-        try {
-            const document = onePage(element({ id: "badge", type: PLUGIN_TYPE }));
-            expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
-        } finally {
-            widgetModuleRegistry.unregister(PLUGIN_TYPE);
+        registerWidget(PLUGIN_TYPE, { ownerPluginId: "acme.lab", ownerPluginName: "Widget Lab" });
+        const document = onePage(element({ id: "badge", type: PLUGIN_TYPE }));
+
+        expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
+    });
+
+    it("says nothing at all when the catalogue is not loaded", async () => {
+        // Not a workspace, so the rule cannot tell an unknown type from a not-yet-loaded one.
+        // Reporting here would report every element in the project.
+        for (const type of ["nl.root", "nl.container", "nl.text"]) {
+            widgetModuleRegistry.unregister(type);
         }
+        const document = onePage(element({ id: "badge", type: PLUGIN_TYPE }));
+
+        expect(await run("ui/unknown-widget", createTestLintContext({ uiDocument: document }))).toEqual([]);
     });
 });
 

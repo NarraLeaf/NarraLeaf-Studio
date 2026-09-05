@@ -18,10 +18,7 @@ import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
-import {
-    ensureWidgetModulesRegistered,
-    widgetModuleRegistry,
-} from "../../ui-editor/widget-modules/registryInstance";
+import { widgetModuleRegistry } from "../../ui-editor/widget-modules/registryInstance";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import { listBlueprintGraphSites } from "../blueprintSites";
@@ -579,13 +576,19 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
  *
  * The registry is asked as the editor asks it, so a plugin that is loaded and drawing produces no
  * finding at all. Only the stage pool is swept, for the reason at the head of this file.
+ *
+ * An empty registry is not a project with no widgets, and is treated the way a null document is:
+ * `Service.initializeAll` loads the widget catalogue before any workspace service exists, so
+ * nothing registered at all means a caller that is not a workspace - and judging that would report
+ * every element in the project. The catalogue is deliberately not loaded from here: it is the whole
+ * built-in widget tree, and a rule that pulled it in would cost seconds in a sweep that is meant to
+ * be cheap.
  */
-async function runUnknownWidget(ctx: LintContext): Promise<LintFinding[]> {
+function runUnknownWidget(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
-    if (!document) {
+    if (!document || widgetModuleRegistry.list().length === 0) {
         return [];
     }
-    await ensureWidgetModulesRegistered();
     const findings: LintFinding[] = [];
     for (const site of listSurfaceElements(document)) {
         if (widgetModuleRegistry.has(site.element.type)) {

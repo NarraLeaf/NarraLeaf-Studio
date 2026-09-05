@@ -12,7 +12,9 @@ import { ElementRendererRegistry } from "../runtime/ElementRendererRegistry";
 import type { ElementRendererProps } from "../runtime/ElementRendererRegistry";
 import { widgetModuleRegistry } from "./registryInstance";
 import { listPluginInsertPaletteEntries } from "./insertPalette";
+import type { PluginWidgetModule } from "@/lib/plugins/pluginWidgetApi";
 import { guardPluginWidgetModule } from "@/lib/plugins/pluginWidgetGuard";
+import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import { syncPluginElementRenderers } from "./pluginElementRenderers";
 import type { UIWidgetModule } from "./types";
 
@@ -119,19 +121,20 @@ describe("plugin element renderers", () => {
         // two, because a bridge that reached past the module would hand the plugin `hostAdapter`
         // and every host API behind it - the escalation `pluginWidgetGuard` was written to stop.
         let seen: Record<string, unknown> | null = null;
+        const pluginModule: PluginWidgetModule = {
+            type: DRAWN_TYPE,
+            displayName: "Lab Badge",
+            icon: Box,
+            createDefaultElement: () => ({ type: DRAWN_TYPE }),
+            render: props => {
+                seen = props as unknown as Record<string, unknown>;
+                return null;
+            },
+        };
         const guarded = guardPluginWidgetModule(
             OWNER,
-            {
-                type: DRAWN_TYPE,
-                displayName: "Lab Badge",
-                icon: Box,
-                createDefaultElement: () => ({ type: DRAWN_TYPE }),
-                render: props => {
-                    seen = props as unknown as Record<string, unknown>;
-                    return null;
-                },
-            } as unknown as Parameters<typeof guardPluginWidgetModule>[1],
-            { log: () => undefined } as unknown as Parameters<typeof guardPluginWidgetModule>[2],
+            pluginModule,
+            { log: () => undefined } as unknown as RuntimePluginGame,
             {
                 documentService: { getDocument: () => ({ elements: {} }) } as never,
                 stateService: { getSelection: () => ({ type: "none" }) } as never,
