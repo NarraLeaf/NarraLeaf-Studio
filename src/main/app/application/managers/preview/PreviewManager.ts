@@ -26,6 +26,7 @@ import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
@@ -40,6 +41,8 @@ type PreviewSession = {
     controlToken: string;
     process: ChildProcess | null;
     watcher: FSWatcher | null;
+    /** The asset library's own watch; see {@link watchSubtree}. Null when chokidar covers it. */
+    assetWatcher: SubtreeWatcher | null;
     /**
      * `mtimeMs:size` per watched file, as of the last event this project's watch accepted. Carried
      * across relaunches rather than rebuilt with the session - see {@link PreviewManager.launchNow}.
@@ -310,6 +313,7 @@ export class PreviewManager {
             controlToken: crypto.randomBytes(32).toString("hex"),
             process: null,
             watcher: null,
+            assetWatcher: null,
             // Handed on from the session this launch replaces, because a relaunch is exactly when
             // this matters: compiling copies every asset the preview ships, which moves their access
             // times, and a watch that had learnt nothing yet would take each of those events as an
@@ -577,16 +581,24 @@ export class PreviewManager {
         const assetsRoot = path.join(projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
+        // One handle for the whole asset tree instead of chokidar's one per file and per directory
+        // in it - `watchSubtree` has the measurement. `assetsRoot` covers `assets/content` and the
+        // metadata shards beside it, which is why both drop out of the list below together.
+        session.assetWatcher = watchSubtree(assetsRoot, session.fileIdentities, file => {
+            this.scheduleRelaunch(session, "change", file);
+        });
+        const documentPaths = [
+            uidocPath,
+            uigraphsPath,
+            storyRoot,
+            characterStorePath,
+        ];
+        if (!session.assetWatcher) {
+            // No recursive watch to be had here. Back to what this always did.
+            documentPaths.push(blueprintMetaPath, assetsContentRoot, assetsRoot);
+        }
         session.watcher = chokidar.watch(
-            [
-                uidocPath,
-                uigraphsPath,
-                storyRoot,
-                characterStorePath,
-                blueprintMetaPath,
-                assetsContentRoot,
-                assetsRoot,
-            ],
+            documentPaths,
             // See DevModeManager: the atomic writer's scratch siblings are not project changes.
             // `alwaysStat` so `watchedFileChanged` has a modification time and a size to compare;
             // without it every reported change would have to be taken at face value, and the compile
@@ -653,6 +665,10 @@ export class PreviewManager {
     }
 
     private disposeWatcher(session: PreviewSession): void {
+        if (session.assetWatcher) {
+            session.assetWatcher.close();
+            session.assetWatcher = null;
+        }
         if (!session.watcher) {
             return;
         }
