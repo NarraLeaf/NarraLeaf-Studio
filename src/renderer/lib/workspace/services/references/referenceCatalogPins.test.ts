@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
+import { registerBuiltInPluginBlueprintNodes } from "@/lib/blueprint-cli/builtinPluginNodes";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_FONT,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -29,6 +30,11 @@ import path from "path";
 /** The same projection `ReferenceService` makes; kept here so the assertion drives the real path. */
 function assetPinsFromCatalogue(nodeType: string): readonly BlueprintAssetPin[] | null {
     registerCoreBlueprintNodes();
+    // The starter template's EXTRA screen is built on the Gallery plugin's nodes, and the walk this
+    // drives runs in a Studio where that plugin has registered them. A registry without them would
+    // report every one as a gap - the mechanism answering "I do not know this node", not "this node
+    // has an unresolved asset".
+    registerBuiltInPluginBlueprintNodes();
     if (!blueprintNodeRegistry.get(nodeType)) {
         return null;
     }

@@ -102,6 +102,36 @@
     "confirm.toTitleAnswer": {
       "sourceText": "返回标题"
     },
+    "extra.categoryCg": {
+      "sourceText": "CG"
+    },
+    "extra.categoryMusic": {
+      "sourceText": "音乐"
+    },
+    "extra.categoryScene": {
+      "sourceText": "回想"
+    },
+    "extra.categoryVoice": {
+      "sourceText": "语音"
+    },
+    "extra.emptyCg": {
+      "sourceText": "还没有解锁任何图片。"
+    },
+    "extra.emptyMusic": {
+      "sourceText": "还没有解锁任何曲目。"
+    },
+    "extra.emptyScene": {
+      "sourceText": "还没有可以回想的场景。"
+    },
+    "extra.emptyVoice": {
+      "sourceText": "还没有解锁任何语音。"
+    },
+    "extra.progress": {
+      "sourceText": "{unlocked} / {total}"
+    },
+    "extra.title": {
+      "sourceText": "鉴赏"
+    },
     "load.autoSaves": {
       "sourceText": "自动存档"
     },
@@ -114,6 +144,9 @@
     "menu.continue": {
       "sourceText": "继续"
     },
+    "menu.extra": {
+      "sourceText": "鉴赏"
+    },
     "menu.load": {
       "sourceText": "加载"
     },
@@ -122,9 +155,6 @@
     },
     "menu.save": {
       "sourceText": "保存"
-    },
-    "menu.scenes": {
-      "sourceText": "场景"
     },
     "menu.settings": {
       "sourceText": "设置"
@@ -158,9 +188,6 @@
     },
     "scenes.sceneLastLight": {
       "sourceText": "最后的光"
-    },
-    "scenes.title": {
-      "sourceText": "场景"
     },
     "slot.empty": {
       "sourceText": "无存档"

@@ -182,7 +182,7 @@ function assertClickCue(graph: Graph, headType: string, clipName: string): void 
 }
 
 /**
- * The rail entries each in-game page authors for itself, and the one the Scenes page carries.
+ * The rail entries each in-game page authors for itself, and the one the Extra page carries.
  *
  * Title is not among them: it is the one entry that is the same on every rail - never the page you
  * are standing on, so never wearing the active look - and the four pages place one component
@@ -192,8 +192,14 @@ const RAIL_ENTRIES = ["Save", "Load", "Config", "Back"];
 
 /** Every button that answers a click, and the clip it uses. Back is the one that means undo. */
 const CLICKS: readonly { page: string; button: string; clip: string }[] = [
-    ...["Start", "Continue", "Load", "Config", "Quit", "Scenes"].map(button => ({
+    ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({
         page: "Title",
+        button,
+        clip: "ui-confirm",
+    })),
+    // The Extra page's four segments, which switch its content pane the way Config's two do.
+    ...["CG", "Recollection", "Music", "Voice"].map(button => ({
+        page: "Extra",
         button,
         clip: "ui-confirm",
     })),
@@ -212,21 +218,31 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
     ...["Log", "Save", "Load"].flatMap(page =>
         RAIL_ENTRIES.map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
     ),
-    { page: "Scenes", button: "Back", clip: "ui-back" },
+    { page: "Extra", button: "Back", clip: "ui-back" },
 ];
 
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
 const HOVERS: readonly { page: string; button: string }[] = [
-    ...["Start", "Continue", "Load", "Config", "Quit", "Scenes"].map(button => ({ page: "Title", button })),
+    ...["Start", "Continue", "Load", "Config", "Quit", "Extra"].map(button => ({ page: "Title", button })),
     ...["Config", "Log", "Save", "Load"].flatMap(page => RAIL_ENTRIES.map(button => ({ page, button }))),
-    { page: "Scenes", button: "Back" },
+    { page: "Extra", button: "Back" },
+    // The segment rail is a menu, so it answers the pointer the way the nav rails do.
+    ...["CG", "Recollection", "Music", "Voice"].map(button => ({ page: "Extra", button })),
 ];
 
 /** The card the save and load pages both place; its Hit area is what answers a press. */
 const SAVE_CARD = "387326a1-5514-4ee2-9d73-48fbe03de0b8";
 
-/** The card the Scenes page places once per scene. */
+/**
+ * The scene card, which the component library still holds and no page places any more: the Scenes
+ * page became the Extra screen's Recollection segment, whose rows come out of the gallery. It is
+ * asserted here because its cue is still one of the cues the template declares, and because the
+ * gate in front of it is the shape a row that may be locked has to keep.
+ */
 const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
+
+/** The Extra screen's recollection grid, whose rows start the scene they point at. */
+const RECOLLECTION_GRID = "5107c0a1-0000-4000-8000-000000000320";
 
 /** The button the four in-game page rails all place to get back to the title. */
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
@@ -254,10 +270,15 @@ describe("the sounds the starter template makes", () => {
         );
         // Counted rather than sampled: the cases below each know which of these they mean, and this
         // is what says nobody sprinkled one more somewhere outside them.
-        // 1 save/load card + 1 scene card + 2 list rows + 2 dialog answers, plus the Title button's
-        // click and hover, plus the buttons each page still authors for itself. Each of the three
-        // was one cue per placement while the pages held copies of it; they place them now.
-        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 6 + 2);
+        // 1 save/load card + 1 scene card + 2 list rows + 2 dialog answers + the Extra screen's
+        // recollection row, plus the Title button's click and hover, plus the buttons each page
+        // still authors for itself. Each of the three was one cue per placement while the pages
+        // held copies of it; they place them now.
+        //
+        // The music and voice rows are deliberately not among them: the sound such a row makes is
+        // the clip it plays, and two sounds for one press is one too many. Nor is a CG tile, which
+        // answers nothing at all.
+        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 7 + 2);
     });
 
     it.each(CLICKS)("$page ▸ $button answers a click with $clip, before it acts", ({ page, button, clip }) => {
@@ -296,6 +317,16 @@ describe("the sounds the starter template makes", () => {
     ])("a row of $page ▸ $list answers being picked", ({ page, list }) => {
         const graph = graphFor(oneOn(page, list, "nl.list").id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         assertClickCue(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
+    });
+
+    it("a recollection tile answers only when the row is unlocked", () => {
+        // The same shape as the scene card below, for the same reason: a locked row's press ends at
+        // the gate, and a cue in front of it would answer a press that does nothing.
+        const graph = graphFor(RECOLLECTION_GRID, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const gate = next(graph, click.id, "then");
+        expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+        assertCue(next(graph, gate.id, "true"), "ui-confirm");
     });
 
     it("a scene card answers only when it has a scene to open", () => {

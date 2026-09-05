@@ -74,8 +74,12 @@ const blueprints = Object.values(
  *
  * Not the title (nothing is ever under it), and not the Game UI slot surfaces — a dialogue band or
  * a quick menu is drawn by the stage rather than opened over it, so there is no page to close.
+ *
+ * Extra is in the list although it is only ever reached from the title, where the pair degrades to
+ * the `Go back` alone: what is asserted is that a screen has one way off it and that both routes
+ * agree, which is as true of a screen with nothing underneath.
  */
-const SCREENS = ["Log", "Config", "Load", "Save", "Scenes"] as const;
+const SCREENS = ["Log", "Config", "Load", "Save", "Extra"] as const;
 
 function surfaceNamed(name: string): Surface {
     const surface = document.surfaces.find(candidate => candidate.name === name);

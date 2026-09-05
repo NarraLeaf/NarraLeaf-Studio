@@ -102,6 +102,36 @@
     "confirm.toTitleAnswer": {
       "sourceText": "タイトルへ"
     },
+    "extra.categoryCg": {
+      "sourceText": "CG"
+    },
+    "extra.categoryMusic": {
+      "sourceText": "音楽"
+    },
+    "extra.categoryScene": {
+      "sourceText": "回想"
+    },
+    "extra.categoryVoice": {
+      "sourceText": "ボイス"
+    },
+    "extra.emptyCg": {
+      "sourceText": "解放された CG はまだありません。"
+    },
+    "extra.emptyMusic": {
+      "sourceText": "解放された楽曲はまだありません。"
+    },
+    "extra.emptyScene": {
+      "sourceText": "回想できるシーンはまだありません。"
+    },
+    "extra.emptyVoice": {
+      "sourceText": "解放されたボイスはまだありません。"
+    },
+    "extra.progress": {
+      "sourceText": "{unlocked} / {total}"
+    },
+    "extra.title": {
+      "sourceText": "鑑賞"
+    },
     "load.autoSaves": {
       "sourceText": "オートセーブ"
     },
@@ -114,6 +144,9 @@
     "menu.continue": {
       "sourceText": "つづきから"
     },
+    "menu.extra": {
+      "sourceText": "鑑賞"
+    },
     "menu.load": {
       "sourceText": "ロード"
     },
@@ -122,9 +155,6 @@
     },
     "menu.save": {
       "sourceText": "セーブ"
-    },
-    "menu.scenes": {
-      "sourceText": "シーン"
     },
     "menu.settings": {
       "sourceText": "設定"
@@ -158,9 +188,6 @@
     },
     "scenes.sceneLastLight": {
       "sourceText": "最後の光"
-    },
-    "scenes.title": {
-      "sourceText": "シーン"
     },
     "slot.empty": {
       "sourceText": "データなし"

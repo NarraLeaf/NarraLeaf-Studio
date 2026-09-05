@@ -302,6 +302,46 @@
       "status": "translated",
       "target": "Return to title"
     },
+    "key:extra.categoryMusic": {
+      "sourceHash": "fnv1a:e76cd5ed",
+      "status": "translated",
+      "target": "Music"
+    },
+    "key:extra.categoryScene": {
+      "sourceHash": "fnv1a:37027476",
+      "status": "translated",
+      "target": "Recollection"
+    },
+    "key:extra.categoryVoice": {
+      "sourceHash": "fnv1a:bca1bebc",
+      "status": "translated",
+      "target": "Voice"
+    },
+    "key:extra.emptyCg": {
+      "sourceHash": "fnv1a:ef7364b9",
+      "status": "translated",
+      "target": "No pictures unlocked yet."
+    },
+    "key:extra.emptyMusic": {
+      "sourceHash": "fnv1a:1e69ea86",
+      "status": "translated",
+      "target": "No tracks unlocked yet."
+    },
+    "key:extra.emptyScene": {
+      "sourceHash": "fnv1a:c28ee556",
+      "status": "translated",
+      "target": "No scenes to revisit yet."
+    },
+    "key:extra.emptyVoice": {
+      "sourceHash": "fnv1a:df26a542",
+      "status": "translated",
+      "target": "No voice lines unlocked yet."
+    },
+    "key:extra.title": {
+      "sourceHash": "fnv1a:83138286",
+      "status": "translated",
+      "target": "Extra"
+    },
     "key:load.autoSaves": {
       "sourceHash": "fnv1a:6a0a2620",
       "status": "translated",
@@ -322,6 +362,11 @@
       "status": "translated",
       "target": "Continue"
     },
+    "key:menu.extra": {
+      "sourceHash": "fnv1a:83138286",
+      "status": "translated",
+      "target": "Extra"
+    },
     "key:menu.load": {
       "sourceHash": "fnv1a:48ff805f",
       "status": "translated",
@@ -336,11 +381,6 @@
       "sourceHash": "fnv1a:e66653cc",
       "status": "translated",
       "target": "Save"
-    },
-    "key:menu.scenes": {
-      "sourceHash": "fnv1a:4f2677b7",
-      "status": "translated",
-      "target": "Scenes"
     },
     "key:menu.settings": {
       "sourceHash": "fnv1a:6243fa06",
@@ -396,11 +436,6 @@
       "sourceHash": "fnv1a:7f025da4",
       "status": "translated",
       "target": "Last light"
-    },
-    "key:scenes.title": {
-      "sourceHash": "fnv1a:4f2677b7",
-      "status": "translated",
-      "target": "Scenes"
     },
     "key:slot.empty": {
       "sourceHash": "fnv1a:d5c75554",

@@ -90,14 +90,36 @@ function clearState(ctx: BehaviorNodeExecutionContext): void {
     delete ctx.blueprintLocals[flowStateKey(ctx.node.id)];
 }
 
-function resolveInput(ctx: BehaviorNodeExecutionContext, pinId: string, fallback?: unknown): unknown {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
+/**
+ * Everything a data pin needs to resolve, taken off the execution rather than picked from it.
+ *
+ * Written once because picking is how a pin ends up resolving against half a context: a branch that
+ * left out the row being drawn read every `Get Item Field` feeding its condition as nothing, so
+ * "only when this row is unlocked" was a gate that never opened - while the same node feeding the
+ * node after it read the row perfectly. A partial context fails silently and looks like a wrong
+ * value, so there is one builder and every resolve in this file goes through it.
+ */
+function resolveRuntime(ctx: BehaviorNodeExecutionContext) {
+    return {
         hostAdapter: ctx.hostAdapter,
         eventPayload: ctx.eventPayload,
         listItemScope: ctx.listItemScope,
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
-    });
+        valueExecution: ctx.valueExecution,
+    };
+}
+
+function resolveInput(ctx: BehaviorNodeExecutionContext, pinId: string, fallback?: unknown): unknown {
+    const value = resolveDataPinValue(
+        ctx.graph,
+        ctx.node.id,
+        pinId,
+        ctx.params,
+        ctx.blueprintLocals,
+        0,
+        resolveRuntime(ctx),
+    );
     return value === undefined ? fallback : value;
 }
 
@@ -307,11 +329,7 @@ function executeSkipDelay(ctx: BehaviorNodeExecutionContext) {
 }
 
 function executeBooleanBranch(ctx: BehaviorNodeExecutionContext, truePort: string, falsePort: string) {
-    const conditionValue = resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        executionOwner: ctx.executionOwner,
-    });
+    const conditionValue = resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, resolveRuntime(ctx));
     return { nextPort: Boolean(conditionValue) ? truePort : falsePort };
 }
 
@@ -331,11 +349,7 @@ function executeIfElse(ctx: BehaviorNodeExecutionContext) {
     const conditionPins = ["condition", ...dynamicConditionPins];
     for (const conditionPinId of conditionPins) {
         const conditionValue = conditionPinId === "condition"
-            ? resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
-                  hostAdapter: ctx.hostAdapter,
-                  eventPayload: ctx.eventPayload,
-                  executionOwner: ctx.executionOwner,
-              })
+            ? resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, resolveRuntime(ctx))
             : resolveInput(ctx, conditionPinId, false);
         if (toBlueprintBoolean(conditionValue)) {
             return { nextPort: thenPortForIfElseConditionPin(conditionPinId) };
@@ -637,14 +651,15 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "value", kind: "input", semantic: "data", valueType: "any", label: "Value" },
         ],
         execute: ctx => {
-            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-                valueExecution: ctx.valueExecution,
-            });
+            const value = resolveDataPinValue(
+                ctx.graph,
+                ctx.node.id,
+                "value",
+                ctx.params,
+                ctx.blueprintLocals,
+                0,
+                resolveRuntime(ctx),
+            );
             ctx.valueExecution?.returnValue(value);
             // Producing the return value ends this execution path (no `next`).
             return { nextPort: undefined };

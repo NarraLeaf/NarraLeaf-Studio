@@ -18,10 +18,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { blueprintNodeRegistry, registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import { registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
 import { BLUEPRINT_GRAPH_KINDS, BLUEPRINT_OWNER_KINDS, describeNode, formatNodeDetail } from "./catalog";
 import { COMMANDS, USAGE } from "./cli";
 
 registerCoreBlueprintNodes();
+// The document names a bundled plugin's node, so the registry it is held against has to be the
+// one the CLI itself builds.
+registerBuiltInPluginBlueprintNodes();
 
 const GUIDE_PATH = path.resolve(__dirname, "../../../../project/app/blueprint.md");
 const GUIDE = fs.readFileSync(GUIDE_PATH, "utf8");
