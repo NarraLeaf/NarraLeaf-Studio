@@ -57445,6 +57445,7 @@
       "props": {
         "fitMode": "cover",
         "backgroundColor": "nlbrand:surface.sunken",
+        "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
@@ -57616,6 +57617,7 @@
       "props": {
         "fitMode": "cover",
         "backgroundColor": "nlbrand:surface.sunken",
+        "fillType": "image",
         "fillVisible": true,
         "borderWidth": 0,
         "borderStyle": "none",
@@ -58075,7 +58077,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-05T18:34:58.549Z"
+    "updatedAt": "2026-09-05T18:45:32.626Z"
   },
   "structs": {
     "extra.galleryEntry": {
