@@ -29,7 +29,11 @@ import {
 import type { UIGraph } from "@shared/types/ui-editor/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
+
+/** Nothing here reaches the host; the branch reads the row and writes a local. */
+const HOST = { host: "player", blueprintRuntime: { surfaceId: "surface" } } as unknown as UIHostAdapter;
 
 const STRUCT: UIStructDef = {
     id: "row",
@@ -69,7 +73,13 @@ function branchGraph(branchType: string, truePort: string, falsePort: string): U
 
 async function run(graph: UIGraph, scope: UIListItemScope): Promise<unknown> {
     const locals: Record<string, unknown> = {};
-    await executeGraph({ graph, entry: graph.entries.main, blueprintLocals: locals, listItemScope: scope });
+    await executeGraph({
+        graph,
+        entry: graph.entries.main,
+        hostAdapter: HOST,
+        blueprintLocals: locals,
+        listItemScope: scope,
+    });
     return locals.took;
 }
 
