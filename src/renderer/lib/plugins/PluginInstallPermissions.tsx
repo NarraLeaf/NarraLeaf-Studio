@@ -86,6 +86,7 @@ const RUNTIME_CAPABILITY_KEYS: Record<PluginRuntimeCapability, TranslationKey> =
     "locale": "pluginPermission.permissions.runtimeCapability.locale",
     "menu": "pluginPermission.permissions.runtimeCapability.menu",
     "story.compile": "pluginPermission.permissions.runtimeCapability.storyCompile",
+    "diagnostics": "pluginPermission.permissions.runtimeCapability.diagnostics",
 };
 
 /**
