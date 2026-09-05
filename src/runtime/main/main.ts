@@ -351,6 +351,16 @@ let closeDecisionSeq = 0;
  * after which the window closes (the default is to close unless a blueprint cancels it).
  */
 const CLOSE_DECISION_TIMEOUT_MS = 60 * 1000;
+/**
+ * Upper bound on how long a window that has been told to close is given to actually go away before
+ * it is destroyed outright.
+ *
+ * Closing is not the instant operation it looks like: Chromium dispatches `beforeunload` and
+ * `unload` into the page and waits for the answer, and the page is a running game - the busiest
+ * thread in the process. A renderer that has stopped answering would otherwise leave a window
+ * ordered off screen that is never destroyed, which is a leak nobody can see.
+ */
+const CLOSE_TEARDOWN_DEADLINE_MS = 3000;
 
 /**
  * The active resource backend. Established once at startup; every packaged read
@@ -1072,6 +1082,10 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     let closeDecisionPending = false;
     win.on("close", event => {
         if (isQuitting || closeApproved || win.isDestroyed()) {
+            // Nothing is holding this close any more, so everything from here to the window
+            // disappearing is teardown - the renderer's unload handlers and the page process going
+            // away, neither of which the player has any reason to watch the window sit through.
+            retireWindowFromScreen(win);
             return;
         }
         event.preventDefault();
@@ -1172,6 +1186,33 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         });
     }
     return win;
+}
+
+/**
+ * Take a closing window off screen, and destroy it if the close does not finish in time.
+ *
+ * The hide is the point. A close that has been approved still has to run the page's `beforeunload`
+ * and `unload` handlers and tear the page process down, and until that finishes the window is on
+ * screen and answering nothing - which on macOS is a spinning cursor over a window that will not go
+ * away. Ordered out first, the same work happens with nothing to look at.
+ *
+ * A fullscreen window on macOS is left where it is: hiding it orders it out of a Space the system
+ * then has to collapse on its own, which looks worse than the wait it saves.
+ */
+function retireWindowFromScreen(win: BrowserWindow): void {
+    if (win.isDestroyed()) {
+        return;
+    }
+    if (win.isVisible() && !(process.platform === "darwin" && win.isFullScreen())) {
+        win.hide();
+    }
+    // Unreferenced so a quit that is otherwise finished is not held open by this timer.
+    setTimeout(() => {
+        if (!win.isDestroyed()) {
+            logRuntime("warning", "[Window] the window did not finish closing in time; destroying it");
+            win.destroy();
+        }
+    }, CLOSE_TEARDOWN_DEADLINE_MS).unref();
 }
 
 /**
