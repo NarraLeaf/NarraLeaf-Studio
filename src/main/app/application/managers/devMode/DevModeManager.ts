@@ -84,6 +84,17 @@ export class DevModeManager {
     private static readonly CloseDecisionTimeoutMs = 60 * 1000;
 
     /**
+     * Upper bound on how long a Dev Mode window that has been told to close is given to actually go
+     * away before it is destroyed outright.
+     *
+     * Closing is not the instant operation it looks like: Chromium dispatches `beforeunload` and
+     * `unload` into the page and waits for the answer, and the page is a running game - the busiest
+     * renderer Studio has. A page that never answers would otherwise leave a window hidden but
+     * never destroyed, which is a leak nobody can see.
+     */
+    private static readonly CloseTeardownDeadlineMs = 3000;
+
+    /**
      * Live sessions, one per project.
      *
      * Keyed rather than a single field because two projects can be open at once, and each owns its
@@ -441,7 +452,36 @@ export class DevModeManager {
         if (window.isClosed() || this.app.isQuitting()) {
             return;
         }
+        this.retireWindow(window);
+    }
+
+    /**
+     * Close the Dev Mode window, and take it off screen before the close has finished.
+     *
+     * The hide is the point. Closing still has to run the page's `beforeunload` and `unload`
+     * handlers and tear the page process down, and until that finishes the window is on screen and
+     * answering nothing - which on macOS is a spinning cursor over a window that will not go away.
+     * Ordered out first, the same teardown happens with nothing to look at.
+     *
+     * A fullscreen window on macOS is left where it is: hiding it orders it out of a Space the
+     * system then has to collapse on its own, which looks worse than the wait it saves.
+     */
+    private retireWindow(window: AppWindow<WindowAppType.DevMode>): void {
+        if (window.isClosed()) {
+            return;
+        }
+        const win = window.win;
+        if (win.isVisible() && !(process.platform === "darwin" && win.isFullScreen())) {
+            win.hide();
+        }
         window.forceClose();
+        // Unreferenced so a quit that is otherwise finished is not held open by this timer.
+        setTimeout(() => {
+            if (!win.isDestroyed()) {
+                this.app.logger.warn("[DevMode] the window did not finish closing in time; destroying it");
+                win.destroy();
+            }
+        }, DevModeManager.CloseTeardownDeadlineMs).unref();
     }
 
     private async requestBlueprintCloseDecision(window: AppWindow<WindowAppType.DevMode>): Promise<boolean> {
@@ -696,7 +736,7 @@ export class DevModeManager {
             // forceClose bypasses the blueprint close guard: a programmatic stop (Quit Application
             // node, workspace stop button, relaunch) is not the user closing the window, so it must
             // not fire the On Window Close Requested event.
-            session.window.forceClose();
+            this.retireWindow(session.window);
         }
         this.forgetSession(session);
         await this.discardSnapshot(session);

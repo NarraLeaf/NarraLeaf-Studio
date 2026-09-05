@@ -87,7 +87,17 @@ function fakeWindow(): FakeWindow {
         isClosed: () => window.closed,
         isDestroyed: () => window.closed,
         show: () => undefined,
-        win: { focus: () => undefined, on: () => undefined },
+        // The window handle the manager reaches through to take a closing window off screen
+        // before its page has finished tearing down - see `DevModeManager.retireWindow`.
+        win: {
+            focus: () => undefined,
+            on: () => undefined,
+            isVisible: () => !window.closed,
+            isFullScreen: () => false,
+            hide: () => undefined,
+            isDestroyed: () => window.closed,
+            destroy: () => undefined,
+        },
         onClose: (handler: () => void) => closeHandlers.push(handler),
         onReady: () => undefined,
         setCloseGuard: () => undefined,

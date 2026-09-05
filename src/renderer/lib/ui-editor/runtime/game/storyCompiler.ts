@@ -618,6 +618,15 @@ export type CompiledSceneElements = {
      * them by - `bgm` for the music channel, the derived object name for a `/sound`.
      */
     sounds: Map<string, Sound>;
+    /**
+     * Clips this scene's compile built, keyed by the object name a `/video` row addresses.
+     *
+     * Published for the same reason the sounds are: the preload plan names a clip by ELEMENT and
+     * not by url, because warming one means putting that element on the stage early and the element
+     * that buffered has to be the one that plays. The warm order records urls, so this is the other
+     * half of the lookup.
+     */
+    videos: Map<string, Video>;
 };
 
 export type CompiledNlrStory = {
@@ -947,6 +956,16 @@ export type StoryWarmResource = {
     /** Audio is here as well as images and video: the plan the player takes carries all three. */
     type: "image" | "video" | "audio";
     url: string;
+    /**
+     * The clip this row built, for a video.
+     *
+     * A url is enough for an image, which the player fetches and caches under it. It is not enough
+     * for a video: warming one means putting its element on the stage early, and the element that
+     * buffered has to be the one that plays. The engine's plan therefore names `Video` objects, and
+     * this is where the row that resolved the asset hands one over. Absent for images and audio,
+     * and absent for a video whose element could not be built.
+     */
+    video?: Video;
 };
 
 type CompileInput = {
@@ -1297,7 +1316,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
-        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds };
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds, videos: ctx.videos };
     }
 
     // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
@@ -1926,7 +1945,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         diagnostics,
         characters: ctx.characters,
         avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
-        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds } },
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds, videos: ctx.videos } },
         playbackStop,
     };
 }
@@ -4903,6 +4922,9 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
     const video = new Video({ src: url, muted: muted ?? false });
     setStableElementId(ctx.elementIdBindings, video, `nl:video:${ctx.scene.id}:${name}`);
     ctx.videos.set(name, video);
+    // The warm order recorded the url a moment ago, when the asset resolved. Only here is there an
+    // element to go with it, and the element is what a preload plan can actually warm.
+    recordWarmedVideoElement(ctx, blockId, url, video);
     return video;
 }
 
@@ -6738,6 +6760,32 @@ function recordWarmedAsset(
     }
     if (!existing.some(resource => resource.url === url)) {
         existing.push({type: assetType, url});
+    }
+}
+
+/**
+ * Attach the clip a row built to the url the same row resolved.
+ *
+ * Separate from {@link recordWarmedAsset} because the two know different halves at different
+ * moments: the url is known when the asset resolves, and the element only exists once the row has
+ * decided what to build with it. A row that resolves a video url and builds nothing - a diagnostic
+ * path, a reference audit - leaves the entry url-only, which is exactly what it is.
+ */
+function recordWarmedVideoElement(
+    ctx: SceneCompileContext,
+    blockId: string,
+    url: string,
+    video: Video,
+): void {
+    const resources = ctx.warmOrder?.byBlock[blockId];
+    if (!resources) {
+        return;
+    }
+    for (const resource of resources) {
+        if (resource.type === "video" && resource.url === url && !resource.video) {
+            resource.video = video;
+            return;
+        }
     }
 }
 

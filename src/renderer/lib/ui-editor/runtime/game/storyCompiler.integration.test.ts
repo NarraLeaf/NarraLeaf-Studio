@@ -2695,6 +2695,33 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(typesOf("reveal")).toContain("displayable:applyTransform");
     });
 
+    it("hands the warm order the clip a video row built, not only its url", async () => {
+        // The preload plan names a clip by element, because warming one means putting that element
+        // on the stage early and the element that buffered has to be the one that plays. A url is
+        // all the warm order can record when the asset resolves, so the row that builds the clip
+        // has to come back and say which element it built.
+        const blocks: Record<string, StoryBlock> = {
+            video: {
+                id: "video", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "video", operation: "create", objectName: "opening", assetId: "asset-opening" },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["video"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            collectWarmOrder: true,
+        });
+
+        const resources = compiled.sceneWarmOrder?.["scene-1"]?.byBlock["video"] ?? [];
+        expect(resources).toEqual([{
+            type: "video",
+            url: "nlr://asset-opening",
+            video: compiled.sceneElements?.["scene-1"]?.videos.get("opening"),
+        }]);
+        expect(compiled.sceneElements?.["scene-1"]?.videos.get("opening")).toBeDefined();
+    });
+
     it("compiles /vfx onto one Vfx, declaring on create and clamping its knobs", async () => {
         const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,
