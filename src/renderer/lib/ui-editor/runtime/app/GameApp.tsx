@@ -715,7 +715,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     // Same shape, same reason, for the preference store: the listener belongs to one `Game`.
     const playerPreferencesRef = useRef<(() => void) | null>(null);
     const startStoryInGameRef = useRef<
-        ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
+        ((
+            request: DevModeStartStoryRequest,
+            options?: { forceReinit?: boolean; inheritSavedGame?: unknown },
+        ) => Promise<void>) | null
     >(null);
     /** The player's way into a story, held open while a boot is still running. */
     const storyStartGate = useMemo(
@@ -4319,7 +4322,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             // How the page was pushed decides it: an entry opened as a game overlay is drawn over a
             // running playthrough, and one opened as a page is not.
             isGameOverlay: () => entry.presentation === "gameOverlay",
-            startStory: startStoryInGame,
+            // The gate, not the runtime's own start - the same one a slot surface gets. Start Game
+            // is a button on a page, and in Dev Mode that page is drawn while the story is still
+            // compiling behind it; without the wait the press takes the slow path and races the
+            // boot's mount for the story it is already warming.
+            startStory: storyStartGate,
             widgetPatches: {
                 setByScope: setWidgetPatchesByScope,
                 byScopeRef: widgetPatchesByScopeRef,
@@ -4787,7 +4794,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // is over a running game is that page's answer, not one of its own.
                     isGameOverlay: () =>
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
-                    startStory: startStoryInGame,
+                    // As the page around it; see `createStoryStartGate`.
+                    startStory: storyStartGate,
                     widgetPatches: {
                         setByScope: setWidgetPatchesByScope,
                         byScopeRef: widgetPatchesByScopeRef,

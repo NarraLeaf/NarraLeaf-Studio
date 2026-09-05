@@ -62,7 +62,10 @@ type BridgeOptionKey<K extends keyof CreateBlueprintHostApiRuntimeOptions> = K;
  *
  * Every one of them is either the runtime this drawing runs in, a fact about *which* surface it
  * is, plumbing that has to point back at this host's own adapter, or - in the case of
- * `onStartStory` - a capability the three hosts deliberately reach differently.
+ * `onStartStory` - a capability a slot surface's shell is handed along with the rest of its
+ * bindings, so it travels with the binding rather than with the capability set. All three hosts
+ * now put the same thing in it: the boot gate (see `createStoryStartGate`), which is what stops a
+ * Start Game pressed while the story is still compiling from racing the boot that is compiling it.
  * {@link buildGameHostApiOptions} sets all of them from a {@link GameHostSurfaceBinding},
  * unconditionally, so none of them can go missing either.
  *
