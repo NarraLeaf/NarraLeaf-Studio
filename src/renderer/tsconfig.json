@@ -22,6 +22,12 @@
     // and every mapping below is already written relative to this file, which
     // is all `baseUrl: "."` ever meant here. Resolution under 5.x is unchanged.
     "paths": {
+      // The blueprint CLI registers the node definitions the bundled plugins contribute, so this
+      // project reaches into src/builtin-plugins, whose modules import the plugin API by the bare
+      // specifier an installed plugin uses. Same mapping as src/builtin-plugins/tsconfig.json, and
+      // pointed at the live source for the same reason: a change to the plugin API that breaks a
+      // bundled plugin fails here immediately rather than after the types package is regenerated.
+      "narraleaf-studio/plugin": ["./plugin/index.ts"],
       "@/*": ["./*"],
       "@shared/*": ["../shared/*"],
       "@lib/*": ["./lib/*"],

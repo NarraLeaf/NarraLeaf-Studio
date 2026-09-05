@@ -102,6 +102,36 @@
     "confirm.toTitleAnswer": {
       "sourceText": "Return to title"
     },
+    "extra.categoryCg": {
+      "sourceText": "CG"
+    },
+    "extra.categoryMusic": {
+      "sourceText": "Music"
+    },
+    "extra.categoryScene": {
+      "sourceText": "Recollection"
+    },
+    "extra.categoryVoice": {
+      "sourceText": "Voice"
+    },
+    "extra.emptyCg": {
+      "sourceText": "No pictures unlocked yet."
+    },
+    "extra.emptyMusic": {
+      "sourceText": "No tracks unlocked yet."
+    },
+    "extra.emptyScene": {
+      "sourceText": "No scenes to revisit yet."
+    },
+    "extra.emptyVoice": {
+      "sourceText": "No voice lines unlocked yet."
+    },
+    "extra.progress": {
+      "sourceText": "{unlocked} / {total}"
+    },
+    "extra.title": {
+      "sourceText": "Extra"
+    },
     "load.autoSaves": {
       "sourceText": "Auto saves"
     },
@@ -114,6 +144,9 @@
     "menu.continue": {
       "sourceText": "Continue"
     },
+    "menu.extra": {
+      "sourceText": "Extra"
+    },
     "menu.load": {
       "sourceText": "Load"
     },
@@ -122,9 +155,6 @@
     },
     "menu.save": {
       "sourceText": "Save"
-    },
-    "menu.scenes": {
-      "sourceText": "Scenes"
     },
     "menu.settings": {
       "sourceText": "Settings"
@@ -158,9 +188,6 @@
     },
     "scenes.sceneLastLight": {
       "sourceText": "Last light"
-    },
-    "scenes.title": {
-      "sourceText": "Scenes"
     },
     "slot.empty": {
       "sourceText": "No Data"

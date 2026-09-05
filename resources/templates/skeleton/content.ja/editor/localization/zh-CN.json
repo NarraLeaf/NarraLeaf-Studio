@@ -317,6 +317,56 @@
       "status": "translated",
       "target": "返回标题"
     },
+    "key:extra.categoryCg": {
+      "sourceHash": "fnv1a:79da17ef",
+      "status": "translated",
+      "target": "CG"
+    },
+    "key:extra.categoryMusic": {
+      "sourceHash": "fnv1a:e76cd5ed",
+      "status": "translated",
+      "target": "音乐"
+    },
+    "key:extra.categoryScene": {
+      "sourceHash": "fnv1a:37027476",
+      "status": "translated",
+      "target": "回想"
+    },
+    "key:extra.categoryVoice": {
+      "sourceHash": "fnv1a:bca1bebc",
+      "status": "translated",
+      "target": "语音"
+    },
+    "key:extra.emptyCg": {
+      "sourceHash": "fnv1a:ef7364b9",
+      "status": "translated",
+      "target": "还没有解锁任何图片。"
+    },
+    "key:extra.emptyMusic": {
+      "sourceHash": "fnv1a:1e69ea86",
+      "status": "translated",
+      "target": "还没有解锁任何曲目。"
+    },
+    "key:extra.emptyScene": {
+      "sourceHash": "fnv1a:c28ee556",
+      "status": "translated",
+      "target": "还没有可以回想的场景。"
+    },
+    "key:extra.emptyVoice": {
+      "sourceHash": "fnv1a:df26a542",
+      "status": "translated",
+      "target": "还没有解锁任何语音。"
+    },
+    "key:extra.progress": {
+      "sourceHash": "fnv1a:ca6c0303",
+      "status": "translated",
+      "target": "{unlocked} / {total}"
+    },
+    "key:extra.title": {
+      "sourceHash": "fnv1a:83138286",
+      "status": "translated",
+      "target": "鉴赏"
+    },
     "key:load.autoSaves": {
       "sourceHash": "fnv1a:6a0a2620",
       "status": "translated",
@@ -337,6 +387,11 @@
       "status": "reviewed",
       "target": "继续"
     },
+    "key:menu.extra": {
+      "sourceHash": "fnv1a:83138286",
+      "status": "translated",
+      "target": "鉴赏"
+    },
     "key:menu.load": {
       "sourceHash": "fnv1a:48ff805f",
       "status": "reviewed",
@@ -351,11 +406,6 @@
       "sourceHash": "fnv1a:e66653cc",
       "status": "reviewed",
       "target": "保存"
-    },
-    "key:menu.scenes": {
-      "sourceHash": "fnv1a:4f2677b7",
-      "status": "translated",
-      "target": "场景"
     },
     "key:menu.settings": {
       "sourceHash": "fnv1a:6243fa06",
@@ -411,11 +461,6 @@
       "sourceHash": "fnv1a:7f025da4",
       "status": "translated",
       "target": "最后的光"
-    },
-    "key:scenes.title": {
-      "sourceHash": "fnv1a:4f2677b7",
-      "status": "translated",
-      "target": "场景"
     },
     "key:slot.empty": {
       "sourceHash": "fnv1a:d5c75554",

@@ -307,6 +307,56 @@
       "status": "translated",
       "target": "タイトルへ"
     },
+    "key:extra.categoryCg": {
+      "sourceHash": "fnv1a:79da17ef",
+      "status": "translated",
+      "target": "CG"
+    },
+    "key:extra.categoryMusic": {
+      "sourceHash": "fnv1a:584a1d74",
+      "status": "translated",
+      "target": "音楽"
+    },
+    "key:extra.categoryScene": {
+      "sourceHash": "fnv1a:f700652c",
+      "status": "translated",
+      "target": "回想"
+    },
+    "key:extra.categoryVoice": {
+      "sourceHash": "fnv1a:27d1a499",
+      "status": "translated",
+      "target": "ボイス"
+    },
+    "key:extra.emptyCg": {
+      "sourceHash": "fnv1a:680b06f2",
+      "status": "translated",
+      "target": "解放された CG はまだありません。"
+    },
+    "key:extra.emptyMusic": {
+      "sourceHash": "fnv1a:ac517245",
+      "status": "translated",
+      "target": "解放された楽曲はまだありません。"
+    },
+    "key:extra.emptyScene": {
+      "sourceHash": "fnv1a:3448c160",
+      "status": "translated",
+      "target": "回想できるシーンはまだありません。"
+    },
+    "key:extra.emptyVoice": {
+      "sourceHash": "fnv1a:4b2305c4",
+      "status": "translated",
+      "target": "解放されたボイスはまだありません。"
+    },
+    "key:extra.progress": {
+      "sourceHash": "fnv1a:ca6c0303",
+      "status": "translated",
+      "target": "{unlocked} / {total}"
+    },
+    "key:extra.title": {
+      "sourceHash": "fnv1a:7d069c89",
+      "status": "translated",
+      "target": "鑑賞"
+    },
     "key:load.autoSaves": {
       "sourceHash": "fnv1a:c13c80d4",
       "status": "translated",
@@ -327,6 +377,11 @@
       "status": "translated",
       "target": "つづきから"
     },
+    "key:menu.extra": {
+      "sourceHash": "fnv1a:7d069c89",
+      "status": "translated",
+      "target": "鑑賞"
+    },
     "key:menu.load": {
       "sourceHash": "fnv1a:68afa209",
       "status": "translated",
@@ -341,11 +396,6 @@
       "sourceHash": "fnv1a:4d2d5d68",
       "status": "translated",
       "target": "セーブ"
-    },
-    "key:menu.scenes": {
-      "sourceHash": "fnv1a:8c5a5640",
-      "status": "translated",
-      "target": "シーン"
     },
     "key:menu.settings": {
       "sourceHash": "fnv1a:4b058728",
@@ -401,11 +451,6 @@
       "sourceHash": "fnv1a:63546e65",
       "status": "translated",
       "target": "最後の光"
-    },
-    "key:scenes.title": {
-      "sourceHash": "fnv1a:8c5a5640",
-      "status": "translated",
-      "target": "シーン"
     },
     "key:slot.empty": {
       "sourceHash": "fnv1a:fd6263ee",

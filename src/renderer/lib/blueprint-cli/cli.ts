@@ -19,6 +19,7 @@ import { listScriptLayers } from "@shared/blueprint/blueprintLayers";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import { builtInPluginOwnerOf, registerBuiltInPluginBlueprintNodes } from "./builtinPluginNodes";
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import {
     BLUEPRINT_GRAPH_KINDS,
@@ -131,6 +132,7 @@ const COMMANDS: Record<string, CommandSpec> = {
 
 export function runCli(argv: readonly string[], io: CliIo): number {
     registerCoreBlueprintNodes();
+    registerBuiltInPluginBlueprintNodes();
     const command = argv.find(token => !token.startsWith("--")) ?? "";
     const askedForHelp = command === "help" || argv.includes("--help") || argv.includes("-h");
     if (askedForHelp || !command) {
@@ -215,7 +217,17 @@ function commandNode(args: Args, io: CliIo): number {
         io.err(`No node type "${resolved}".`);
         return 2;
     }
-    io.out(args.flags.json === true ? JSON.stringify(detail, null, 2) : formatNodeDetail(detail));
+    const plugin = builtInPluginOwnerOf(resolved);
+    if (args.flags.json === true) {
+        io.out(JSON.stringify(plugin ? { ...detail, plugin } : detail, null, 2));
+        return 0;
+    }
+    io.out(formatNodeDetail(detail));
+    if (plugin) {
+        // Said rather than left to the category name: a project using this node needs that plugin
+        // installed and switched on, and the bundled ones do not all ship switched on.
+        io.out(`  plugin     ${plugin} (bundled with Studio; a project using it depends on it)`);
+    }
     return 0;
 }
 

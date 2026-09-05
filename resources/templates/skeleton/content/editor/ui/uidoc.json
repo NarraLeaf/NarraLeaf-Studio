@@ -90,7 +90,7 @@
     },
     {
       "id": "afa4f872-ce72-4456-a86b-a8edc1594316",
-      "name": "Scenes",
+      "name": "Extra",
       "host": "app",
       "kind": "appSurface",
       "designSize": {
@@ -53224,15 +53224,20 @@
     "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65": {
       "id": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
       "type": "nl.container",
-      "name": "Config",
+      "name": "Extra",
       "parentId": "2475e4b4-922a-42be-86a8-3bf2309116aa",
       "childrenIds": [
         "5270fa6a-54b2-416d-8da2-fc73ef03f50e",
         "59da63be-cfb9-40b4-a216-d6a4caf369e9",
         "39ef8ddd-7373-4d4d-b6f6-9f80b54759c2",
-        "92e2f22e-6ced-4b2a-8946-9f234294b7d6",
-        "0c09b343-25ce-4f0c-909c-4b49b5d8141f",
-        "21137ab3-ec1a-47cf-a1f4-1a4cc545acf8"
+        "5107c0a1-0000-4000-8000-000000000350",
+        "5107c0a1-0000-4000-8000-000000000300",
+        "5107c0a1-0000-4000-8000-000000000310",
+        "5107c0a1-0000-4000-8000-000000000320",
+        "5107c0a1-0000-4000-8000-000000000330",
+        "5107c0a1-0000-4000-8000-000000000340",
+        "5107c0a1-0000-4000-8000-000000000351",
+        "5107c0a1-0000-4000-8000-000000000360"
       ],
       "layout": {
         "x": 0,
@@ -54398,7 +54403,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "Scenes",
+        "text": "Extra",
         "fontSize": 40,
         "color": "nlbrand:text.primary",
         "fontWeight": "600",
@@ -54569,7 +54574,7 @@
             }
           ]
         },
-        "localizationKey": "scenes.title"
+        "localizationKey": "extra.title"
       }
     },
     "39ef8ddd-7373-4d4d-b6f6-9f80b54759c2": {
@@ -54943,1153 +54948,10 @@
         }
       }
     },
-    "92e2f22e-6ced-4b2a-8946-9f234294b7d6": {
-      "id": "92e2f22e-6ced-4b2a-8946-9f234294b7d6",
-      "type": "nl.container",
-      "name": "Scene 1",
-      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
-      "childrenIds": [],
-      "layout": {
-        "x": 360,
-        "y": 220,
-        "width": 456,
-        "height": 348,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "layoutKind": "free",
-        "stackDirection": "vertical",
-        "stackGap": 8,
-        "stackPaddingTop": 0,
-        "stackPaddingRight": 0,
-        "stackPaddingBottom": 0,
-        "stackPaddingLeft": 0,
-        "stackAlignItems": "stretch",
-        "stackJustifyContent": "start",
-        "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
-        "borderRadius": 4,
-        "borderRadiusTL": 0,
-        "borderRadiusTR": 0,
-        "borderRadiusBL": 0,
-        "borderRadiusBR": 0,
-        "borderRadiusLinked": true,
-        "borderColor": "nlbrand:container.border",
-        "borderWidth": 1,
-        "borderStyle": "solid",
-        "backgroundImage": "",
-        "backgroundFit": "cover",
-        "fillType": "color",
-        "fillVisible": true,
-        "fillOpacity": 1,
-        "strokeVisible": true,
-        "strokeOpacity": 1,
-        "strokeAlign": "center",
-        "strokeSide": "all",
-        "borderJoin": "miter",
-        "cornerAdvanced": false,
-        "clipContent": true,
-        "transformOffsetX": 0,
-        "transformOffsetY": 0,
-        "transformScale": 1,
-        "transformRotation": 0,
-        "transformOpacity": 1,
-        "appearance": {
-          "defaultVariantId": "default",
-          "variants": [
-            {
-              "id": "default",
-              "name": "Default",
-              "propertyGroups": [
-                {
-                  "key": "backgroundColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:surface.raised"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadius",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 4
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusLinked",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:container.border"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "solid"
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundImage",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundFit",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "cover"
-                    }
-                  ]
-                },
-                {
-                  "key": "imageFill",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "fillType",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "color"
-                    }
-                  ]
-                },
-                {
-                  "key": "fillVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "fillOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeAlign",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "center"
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeSide",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "all"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderJoin",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "miter"
-                    }
-                  ]
-                },
-                {
-                  "key": "cornerAdvanced",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetX",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetY",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformScale",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "transformRotation",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBackgroundBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectInnerShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlend",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectFilter",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "extra": {
-        "componentLink": {
-          "componentId": "5107c0a1-0000-4000-8000-000000000100",
-          "linked": true,
-          "params": {
-            "sceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
-            "nameKey": "scenes.sceneCorridor"
-          }
-        }
-      }
-    },
-    "0c09b343-25ce-4f0c-909c-4b49b5d8141f": {
-      "id": "0c09b343-25ce-4f0c-909c-4b49b5d8141f",
-      "type": "nl.container",
-      "name": "Scene 2",
-      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
-      "childrenIds": [],
-      "layout": {
-        "x": 850,
-        "y": 220,
-        "width": 456,
-        "height": 348,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "layoutKind": "free",
-        "stackDirection": "vertical",
-        "stackGap": 8,
-        "stackPaddingTop": 0,
-        "stackPaddingRight": 0,
-        "stackPaddingBottom": 0,
-        "stackPaddingLeft": 0,
-        "stackAlignItems": "stretch",
-        "stackJustifyContent": "start",
-        "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
-        "borderRadius": 4,
-        "borderRadiusTL": 0,
-        "borderRadiusTR": 0,
-        "borderRadiusBL": 0,
-        "borderRadiusBR": 0,
-        "borderRadiusLinked": true,
-        "borderColor": "nlbrand:container.border",
-        "borderWidth": 1,
-        "borderStyle": "solid",
-        "backgroundImage": "",
-        "backgroundFit": "cover",
-        "fillType": "color",
-        "fillVisible": true,
-        "fillOpacity": 1,
-        "strokeVisible": true,
-        "strokeOpacity": 1,
-        "strokeAlign": "center",
-        "strokeSide": "all",
-        "borderJoin": "miter",
-        "cornerAdvanced": false,
-        "clipContent": true,
-        "transformOffsetX": 0,
-        "transformOffsetY": 0,
-        "transformScale": 1,
-        "transformRotation": 0,
-        "transformOpacity": 1,
-        "appearance": {
-          "defaultVariantId": "default",
-          "variants": [
-            {
-              "id": "default",
-              "name": "Default",
-              "propertyGroups": [
-                {
-                  "key": "backgroundColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:surface.raised"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadius",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 4
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusLinked",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:container.border"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "solid"
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundImage",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundFit",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "cover"
-                    }
-                  ]
-                },
-                {
-                  "key": "imageFill",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "fillType",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "color"
-                    }
-                  ]
-                },
-                {
-                  "key": "fillVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "fillOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeAlign",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "center"
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeSide",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "all"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderJoin",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "miter"
-                    }
-                  ]
-                },
-                {
-                  "key": "cornerAdvanced",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetX",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetY",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformScale",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "transformRotation",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBackgroundBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectInnerShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlend",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectFilter",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "extra": {
-        "componentLink": {
-          "componentId": "5107c0a1-0000-4000-8000-000000000100",
-          "linked": true,
-          "params": {
-            "sceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6",
-            "nameKey": "scenes.sceneClubroom"
-          }
-        }
-      }
-    },
-    "21137ab3-ec1a-47cf-a1f4-1a4cc545acf8": {
-      "id": "21137ab3-ec1a-47cf-a1f4-1a4cc545acf8",
-      "type": "nl.container",
-      "name": "Scene 3",
-      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
-      "childrenIds": [],
-      "layout": {
-        "x": 1340,
-        "y": 220,
-        "width": 456,
-        "height": 348,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "layoutKind": "free",
-        "stackDirection": "vertical",
-        "stackGap": 8,
-        "stackPaddingTop": 0,
-        "stackPaddingRight": 0,
-        "stackPaddingBottom": 0,
-        "stackPaddingLeft": 0,
-        "stackAlignItems": "stretch",
-        "stackJustifyContent": "start",
-        "scrollAxis": "y",
-        "backgroundColor": "nlbrand:surface.raised",
-        "borderRadius": 4,
-        "borderRadiusTL": 0,
-        "borderRadiusTR": 0,
-        "borderRadiusBL": 0,
-        "borderRadiusBR": 0,
-        "borderRadiusLinked": true,
-        "borderColor": "nlbrand:container.border",
-        "borderWidth": 1,
-        "borderStyle": "solid",
-        "backgroundImage": "",
-        "backgroundFit": "cover",
-        "fillType": "color",
-        "fillVisible": true,
-        "fillOpacity": 1,
-        "strokeVisible": true,
-        "strokeOpacity": 1,
-        "strokeAlign": "center",
-        "strokeSide": "all",
-        "borderJoin": "miter",
-        "cornerAdvanced": false,
-        "clipContent": true,
-        "transformOffsetX": 0,
-        "transformOffsetY": 0,
-        "transformScale": 1,
-        "transformRotation": 0,
-        "transformOpacity": 1,
-        "appearance": {
-          "defaultVariantId": "default",
-          "variants": [
-            {
-              "id": "default",
-              "name": "Default",
-              "propertyGroups": [
-                {
-                  "key": "backgroundColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:surface.raised"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadius",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 4
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusLinked",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:container.border"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "solid"
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundImage",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundFit",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "cover"
-                    }
-                  ]
-                },
-                {
-                  "key": "imageFill",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "fillType",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "color"
-                    }
-                  ]
-                },
-                {
-                  "key": "fillVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "fillOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeAlign",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "center"
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeSide",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "all"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderJoin",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "miter"
-                    }
-                  ]
-                },
-                {
-                  "key": "cornerAdvanced",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetX",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetY",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformScale",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "transformRotation",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBackgroundBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectInnerShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlend",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectFilter",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "extra": {
-        "componentLink": {
-          "componentId": "5107c0a1-0000-4000-8000-000000000100",
-          "linked": true,
-          "params": {
-            "sceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33",
-            "nameKey": "scenes.sceneLastLight"
-          }
-        }
-      }
-    },
     "4dd1f9ff-a1ad-42d0-b672-738d9d4d6f47": {
       "id": "4dd1f9ff-a1ad-42d0-b672-738d9d4d6f47",
       "type": "nl.button",
-      "name": "Scenes",
+      "name": "Extra",
       "parentId": "b674b641-fd04-4871-b47c-0888c71eabe9",
       "childrenIds": [],
       "layout": {
@@ -56101,7 +54963,7 @@
         "opacity": 1
       },
       "props": {
-        "label": "Scenes",
+        "label": "Extra",
         "fontSize": 30,
         "color": "nlbrand:text.primary",
         "fontWeight": "normal",
@@ -56182,7 +55044,7 @@
             }
           ]
         },
-        "localizationKey": "menu.scenes"
+        "localizationKey": "menu.extra"
       }
     },
     "config-mute-row": {
@@ -57568,6 +56430,1641 @@
           ]
         }
       }
+    },
+    "5107c0a1-0000-4000-8000-000000000350": {
+      "id": "5107c0a1-0000-4000-8000-000000000350",
+      "type": "nl.text",
+      "name": "Progress",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [],
+      "layout": {
+        "x": 880,
+        "y": 74,
+        "width": 400,
+        "height": 54,
+        "visible": true
+      },
+      "props": {
+        "text": "",
+        "fontSize": 26,
+        "color": "nlbrand:text.muted",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000300": {
+      "id": "5107c0a1-0000-4000-8000-000000000300",
+      "type": "nl.container",
+      "name": "Category rail",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000301",
+        "5107c0a1-0000-4000-8000-000000000302",
+        "5107c0a1-0000-4000-8000-000000000303",
+        "5107c0a1-0000-4000-8000-000000000304"
+      ],
+      "layout": {
+        "x": 360,
+        "y": 190,
+        "width": 240,
+        "height": 700,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000301": {
+      "id": "5107c0a1-0000-4000-8000-000000000301",
+      "type": "nl.button",
+      "name": "CG",
+      "parentId": "5107c0a1-0000-4000-8000-000000000300",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 240,
+        "height": 52,
+        "visible": true
+      },
+      "props": {
+        "label": "CG",
+        "fontSize": 25,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "fillOpacity": 0,
+        "borderRadius": 4,
+        "paddingX": 20,
+        "paddingY": 8,
+        "clipContent": true,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.2
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.28
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "extra.categoryCg"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000302": {
+      "id": "5107c0a1-0000-4000-8000-000000000302",
+      "type": "nl.button",
+      "name": "Recollection",
+      "parentId": "5107c0a1-0000-4000-8000-000000000300",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 62,
+        "width": 240,
+        "height": 52,
+        "visible": true
+      },
+      "props": {
+        "label": "Recollection",
+        "fontSize": 25,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "fillOpacity": 0,
+        "borderRadius": 4,
+        "paddingX": 20,
+        "paddingY": 8,
+        "clipContent": true,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.2
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.28
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "extra.categoryScene"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000303": {
+      "id": "5107c0a1-0000-4000-8000-000000000303",
+      "type": "nl.button",
+      "name": "Music",
+      "parentId": "5107c0a1-0000-4000-8000-000000000300",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 124,
+        "width": 240,
+        "height": 52,
+        "visible": true
+      },
+      "props": {
+        "label": "Music",
+        "fontSize": 25,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "fillOpacity": 0,
+        "borderRadius": 4,
+        "paddingX": 20,
+        "paddingY": 8,
+        "clipContent": true,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.2
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.28
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "extra.categoryMusic"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000304": {
+      "id": "5107c0a1-0000-4000-8000-000000000304",
+      "type": "nl.button",
+      "name": "Voice",
+      "parentId": "5107c0a1-0000-4000-8000-000000000300",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 186,
+        "width": 240,
+        "height": 52,
+        "visible": true
+      },
+      "props": {
+        "label": "Voice",
+        "fontSize": 25,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "fillOpacity": 0,
+        "borderRadius": 4,
+        "paddingX": 20,
+        "paddingY": 8,
+        "clipContent": true,
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "Default",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:container.border"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "selected",
+              "name": "Selected",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0.2
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.28
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "none"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "localizationKey": "extra.categoryVoice"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000310": {
+      "id": "5107c0a1-0000-4000-8000-000000000310",
+      "type": "nl.list",
+      "name": "CG grid",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000311"
+      ],
+      "layout": {
+        "x": 660,
+        "y": 190,
+        "width": 1140,
+        "height": 700,
+        "visible": true
+      },
+      "props": {
+        "itemStructId": "extra.galleryEntry",
+        "itemKeyFieldId": "id",
+        "repeatDirection": "horizontal",
+        "repeatWrap": true,
+        "itemGap": 20,
+        "placeholderCount": 3,
+        "dragContentScroll": true,
+        "scrollbar": {
+          "enabled": true,
+          "side": "right",
+          "visibility": "auto",
+          "thickness": 8,
+          "contentInset": 4,
+          "minThumbLength": 24,
+          "trackStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.08,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "thumbStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.34,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "trackElementId": null,
+          "thumbElementId": null
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000311": {
+      "id": "5107c0a1-0000-4000-8000-000000000311",
+      "type": "nl.container",
+      "name": "Tile",
+      "parentId": "5107c0a1-0000-4000-8000-000000000310",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000312",
+        "5107c0a1-0000-4000-8000-000000000314",
+        "5107c0a1-0000-4000-8000-000000000315"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 366,
+        "height": 206,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.sunken",
+        "fillVisible": true,
+        "borderRadius": 4,
+        "borderColor": "nlbrand:container.border",
+        "borderWidth": 1,
+        "borderStyle": "solid",
+        "clipContent": true
+      },
+      "extra": {
+        "listSlot": "itemTemplate"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000312": {
+      "id": "5107c0a1-0000-4000-8000-000000000312",
+      "type": "nl.image",
+      "name": "Art",
+      "parentId": "5107c0a1-0000-4000-8000-000000000311",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 366,
+        "height": 206,
+        "visible": true
+      },
+      "props": {
+        "fitMode": "cover",
+        "backgroundColor": "nlbrand:surface.sunken",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true,
+        "imageFill": {
+          "mode": "cover"
+        }
+      },
+      "valueBindings": {
+        "imageFill.assetId": {
+          "kind": "listItemField",
+          "fieldId": "image"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000314": {
+      "id": "5107c0a1-0000-4000-8000-000000000314",
+      "type": "nl.container",
+      "name": "Name plate",
+      "parentId": "5107c0a1-0000-4000-8000-000000000311",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 150,
+        "width": 366,
+        "height": 56,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.overlay",
+        "fillVisible": true,
+        "fillOpacity": 0.85,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000315": {
+      "id": "5107c0a1-0000-4000-8000-000000000315",
+      "type": "nl.text",
+      "name": "Name",
+      "parentId": "5107c0a1-0000-4000-8000-000000000311",
+      "childrenIds": [],
+      "layout": {
+        "x": 16,
+        "y": 150,
+        "width": 334,
+        "height": 56,
+        "visible": true
+      },
+      "props": {
+        "text": "Artwork",
+        "fontSize": 22,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap"
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "listItemField",
+          "fieldId": "name"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000320": {
+      "id": "5107c0a1-0000-4000-8000-000000000320",
+      "type": "nl.list",
+      "name": "Recollection grid",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000321"
+      ],
+      "layout": {
+        "x": 660,
+        "y": 190,
+        "width": 1140,
+        "height": 700,
+        "visible": false
+      },
+      "props": {
+        "itemStructId": "extra.galleryEntry",
+        "itemKeyFieldId": "id",
+        "repeatDirection": "horizontal",
+        "repeatWrap": true,
+        "itemGap": 20,
+        "placeholderCount": 3,
+        "dragContentScroll": true,
+        "scrollbar": {
+          "enabled": true,
+          "side": "right",
+          "visibility": "auto",
+          "thickness": 8,
+          "contentInset": 4,
+          "minThumbLength": 24,
+          "trackStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.08,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "thumbStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.34,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "trackElementId": null,
+          "thumbElementId": null
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000321": {
+      "id": "5107c0a1-0000-4000-8000-000000000321",
+      "type": "nl.container",
+      "name": "Tile",
+      "parentId": "5107c0a1-0000-4000-8000-000000000320",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000322",
+        "5107c0a1-0000-4000-8000-000000000324",
+        "5107c0a1-0000-4000-8000-000000000325"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 366,
+        "height": 206,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.sunken",
+        "fillVisible": true,
+        "borderRadius": 4,
+        "borderColor": "nlbrand:container.border",
+        "borderWidth": 1,
+        "borderStyle": "solid",
+        "clipContent": true
+      },
+      "extra": {
+        "listSlot": "itemTemplate"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000322": {
+      "id": "5107c0a1-0000-4000-8000-000000000322",
+      "type": "nl.image",
+      "name": "Art",
+      "parentId": "5107c0a1-0000-4000-8000-000000000321",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 366,
+        "height": 206,
+        "visible": true
+      },
+      "props": {
+        "fitMode": "cover",
+        "backgroundColor": "nlbrand:surface.sunken",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true,
+        "imageFill": {
+          "mode": "cover"
+        }
+      },
+      "valueBindings": {
+        "imageFill.assetId": {
+          "kind": "listItemField",
+          "fieldId": "image"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000324": {
+      "id": "5107c0a1-0000-4000-8000-000000000324",
+      "type": "nl.container",
+      "name": "Name plate",
+      "parentId": "5107c0a1-0000-4000-8000-000000000321",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 150,
+        "width": 366,
+        "height": 56,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.overlay",
+        "fillVisible": true,
+        "fillOpacity": 0.85,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000325": {
+      "id": "5107c0a1-0000-4000-8000-000000000325",
+      "type": "nl.text",
+      "name": "Name",
+      "parentId": "5107c0a1-0000-4000-8000-000000000321",
+      "childrenIds": [],
+      "layout": {
+        "x": 16,
+        "y": 150,
+        "width": 334,
+        "height": 56,
+        "visible": true
+      },
+      "props": {
+        "text": "Artwork",
+        "fontSize": 22,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap"
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "listItemField",
+          "fieldId": "name"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000330": {
+      "id": "5107c0a1-0000-4000-8000-000000000330",
+      "type": "nl.list",
+      "name": "Music rows",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000331"
+      ],
+      "layout": {
+        "x": 660,
+        "y": 190,
+        "width": 1140,
+        "height": 700,
+        "visible": false
+      },
+      "props": {
+        "itemStructId": "extra.galleryEntry",
+        "itemKeyFieldId": "id",
+        "repeatDirection": "vertical",
+        "repeatWrap": false,
+        "itemGap": 12,
+        "placeholderCount": 4,
+        "dragContentScroll": true,
+        "scrollbar": {
+          "enabled": true,
+          "side": "right",
+          "visibility": "auto",
+          "thickness": 8,
+          "contentInset": 4,
+          "minThumbLength": 24,
+          "trackStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.08,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "thumbStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.34,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "trackElementId": null,
+          "thumbElementId": null
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000331": {
+      "id": "5107c0a1-0000-4000-8000-000000000331",
+      "type": "nl.container",
+      "name": "Row",
+      "parentId": "5107c0a1-0000-4000-8000-000000000330",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000333",
+        "5107c0a1-0000-4000-8000-000000000332",
+        "5107c0a1-0000-4000-8000-000000000334"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1108,
+        "height": 64,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      },
+      "extra": {
+        "listSlot": "itemTemplate"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000333": {
+      "id": "5107c0a1-0000-4000-8000-000000000333",
+      "type": "nl.text",
+      "name": "Play mark",
+      "parentId": "5107c0a1-0000-4000-8000-000000000331",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 40,
+        "height": 64,
+        "visible": true
+      },
+      "props": {
+        "text": "▶",
+        "fontSize": 20,
+        "color": "nlbrand:text.subtle",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000332": {
+      "id": "5107c0a1-0000-4000-8000-000000000332",
+      "type": "nl.text",
+      "name": "Name",
+      "parentId": "5107c0a1-0000-4000-8000-000000000331",
+      "childrenIds": [],
+      "layout": {
+        "x": 56,
+        "y": 0,
+        "width": 1052,
+        "height": 64,
+        "visible": true
+      },
+      "props": {
+        "text": "Music track",
+        "fontSize": 24,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center"
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "listItemField",
+          "fieldId": "name"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000334": {
+      "id": "5107c0a1-0000-4000-8000-000000000334",
+      "type": "nl.container",
+      "name": "Rule",
+      "parentId": "5107c0a1-0000-4000-8000-000000000331",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 63,
+        "width": 1108,
+        "height": 1,
+        "visible": true
+      },
+      "props": {
+        "backgroundColor": "nlbrand:surface.overlay",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000340": {
+      "id": "5107c0a1-0000-4000-8000-000000000340",
+      "type": "nl.list",
+      "name": "Voice rows",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000341"
+      ],
+      "layout": {
+        "x": 660,
+        "y": 190,
+        "width": 1140,
+        "height": 700,
+        "visible": false
+      },
+      "props": {
+        "itemStructId": "extra.galleryEntry",
+        "itemKeyFieldId": "id",
+        "repeatDirection": "vertical",
+        "repeatWrap": false,
+        "itemGap": 12,
+        "placeholderCount": 4,
+        "dragContentScroll": true,
+        "scrollbar": {
+          "enabled": true,
+          "side": "right",
+          "visibility": "auto",
+          "thickness": 8,
+          "contentInset": 4,
+          "minThumbLength": 24,
+          "trackStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.08,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "thumbStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.34,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "trackElementId": null,
+          "thumbElementId": null
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000341": {
+      "id": "5107c0a1-0000-4000-8000-000000000341",
+      "type": "nl.container",
+      "name": "Row",
+      "parentId": "5107c0a1-0000-4000-8000-000000000340",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000343",
+        "5107c0a1-0000-4000-8000-000000000342",
+        "5107c0a1-0000-4000-8000-000000000344"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1108,
+        "height": 64,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      },
+      "extra": {
+        "listSlot": "itemTemplate"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000343": {
+      "id": "5107c0a1-0000-4000-8000-000000000343",
+      "type": "nl.text",
+      "name": "Play mark",
+      "parentId": "5107c0a1-0000-4000-8000-000000000341",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 40,
+        "height": 64,
+        "visible": true
+      },
+      "props": {
+        "text": "▶",
+        "fontSize": 20,
+        "color": "nlbrand:text.subtle",
+        "textAlign": "center",
+        "textVerticalAlign": "center",
+        "textWrapMode": "nowrap"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000342": {
+      "id": "5107c0a1-0000-4000-8000-000000000342",
+      "type": "nl.text",
+      "name": "Name",
+      "parentId": "5107c0a1-0000-4000-8000-000000000341",
+      "childrenIds": [],
+      "layout": {
+        "x": 56,
+        "y": 0,
+        "width": 1052,
+        "height": 64,
+        "visible": true
+      },
+      "props": {
+        "text": "Line",
+        "fontSize": 24,
+        "color": "nlbrand:text.primary",
+        "textAlign": "left",
+        "textVerticalAlign": "center"
+      },
+      "valueBindings": {
+        "text": {
+          "kind": "listItemField",
+          "fieldId": "name"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000344": {
+      "id": "5107c0a1-0000-4000-8000-000000000344",
+      "type": "nl.container",
+      "name": "Rule",
+      "parentId": "5107c0a1-0000-4000-8000-000000000341",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 63,
+        "width": 1108,
+        "height": 1,
+        "visible": true
+      },
+      "props": {
+        "backgroundColor": "nlbrand:surface.overlay",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000351": {
+      "id": "5107c0a1-0000-4000-8000-000000000351",
+      "type": "nl.text",
+      "name": "Empty note",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [],
+      "layout": {
+        "x": 660,
+        "y": 190,
+        "width": 1140,
+        "height": 54,
+        "visible": false
+      },
+      "props": {
+        "text": "",
+        "fontSize": 26,
+        "color": "nlbrand:text.subtle",
+        "textAlign": "left",
+        "textVerticalAlign": "center"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000360": {
+      "id": "5107c0a1-0000-4000-8000-000000000360",
+      "type": "nl.container",
+      "name": "Viewer",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000361"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "visible": false
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:background",
+        "fillVisible": true,
+        "fillOpacity": 1,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000361": {
+      "id": "5107c0a1-0000-4000-8000-000000000361",
+      "type": "nl.image",
+      "name": "Viewer art",
+      "parentId": "5107c0a1-0000-4000-8000-000000000360",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "visible": true
+      },
+      "props": {
+        "fitMode": "contain",
+        "backgroundColor": "nlbrand:background",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "imageFill": {
+          "mode": "contain"
+        }
+      }
     }
   },
   "actions": {
@@ -57628,6 +58125,53 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-02T23:51:35.966Z"
+    "updatedAt": "2026-09-05T17:34:38.648Z"
+  },
+  "structs": {
+    "extra.galleryEntry": {
+      "id": "extra.galleryEntry",
+      "fields": [
+        {
+          "id": "id",
+          "key": "id",
+          "type": "string"
+        },
+        {
+          "id": "name",
+          "key": "name",
+          "type": "string"
+        },
+        {
+          "id": "image",
+          "key": "image",
+          "type": "image"
+        },
+        {
+          "id": "unlocked",
+          "key": "unlocked",
+          "type": "boolean"
+        },
+        {
+          "id": "audioAssetId",
+          "key": "audioAssetId",
+          "type": "string"
+        },
+        {
+          "id": "storyId",
+          "key": "storyId",
+          "type": "string"
+        },
+        {
+          "id": "sceneId",
+          "key": "sceneId",
+          "type": "string"
+        },
+        {
+          "id": "startBlockId",
+          "key": "startBlockId",
+          "type": "string"
+        }
+      ]
+    }
   }
 }
