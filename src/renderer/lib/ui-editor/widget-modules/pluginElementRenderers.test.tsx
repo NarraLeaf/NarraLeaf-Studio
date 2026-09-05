@@ -12,6 +12,7 @@ import { ElementRendererRegistry } from "../runtime/ElementRendererRegistry";
 import type { ElementRendererProps } from "../runtime/ElementRendererRegistry";
 import { widgetModuleRegistry } from "./registryInstance";
 import { listPluginInsertPaletteEntries } from "./insertPalette";
+import { guardPluginWidgetModule } from "@/lib/plugins/pluginWidgetGuard";
 import { syncPluginElementRenderers } from "./pluginElementRenderers";
 import type { UIWidgetModule } from "./types";
 
@@ -111,6 +112,39 @@ describe("plugin element renderers", () => {
 
         expect(screen.getByText("healthy")).toBeTruthy();
         expect(screen.getByText(THROWING_TYPE)).toBeTruthy();
+    });
+
+    it("draws through the guarded module, so the plugin still never sees the host adapter", () => {
+        // The narrowing lives on the module the registry holds; this closes the loop between the
+        // two, because a bridge that reached past the module would hand the plugin `hostAdapter`
+        // and every host API behind it - the escalation `pluginWidgetGuard` was written to stop.
+        let seen: Record<string, unknown> | null = null;
+        const guarded = guardPluginWidgetModule(
+            OWNER,
+            {
+                type: DRAWN_TYPE,
+                displayName: "Lab Badge",
+                icon: Box,
+                createDefaultElement: () => ({ type: DRAWN_TYPE }),
+                render: props => {
+                    seen = props as unknown as Record<string, unknown>;
+                    return null;
+                },
+            } as unknown as Parameters<typeof guardPluginWidgetModule>[1],
+            { log: () => undefined } as unknown as Parameters<typeof guardPluginWidgetModule>[2],
+            {
+                documentService: { getDocument: () => ({ elements: {} }) } as never,
+                stateService: { getSelection: () => ({ type: "none" }) } as never,
+            },
+        );
+        widgetModuleRegistry.register(guarded, { ownerPluginId: OWNER, ownerPluginName: "Widget Lab" });
+
+        const registry = new ElementRendererRegistry();
+        syncPluginElementRenderers(registry);
+        render(registry.get(DRAWN_TYPE)!.render(rendererProps(DRAWN_TYPE))!);
+
+        expect(seen).not.toBeNull();
+        expect(seen!).not.toHaveProperty("hostAdapter");
     });
 
     it("lists a plugin's widgets in the palette, attributed to the plugin, in the overflow", () => {
