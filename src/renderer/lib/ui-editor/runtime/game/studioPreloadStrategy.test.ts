@@ -146,7 +146,7 @@ describe("Studio's preload scheduler", () => {
             expect(scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null })).toBeNull();
         });
 
-        it("leaves audio and video out, because nothing here would warm either", () => {
+        it("keeps audio and video out of the url-named entries, which only images belong in", () => {
             const scheduler = createStudioPreloadScheduler();
             scheduler.useCompiled(compiledWith({
                 scenes: { "scene-1": sceneOne },
@@ -162,6 +162,68 @@ describe("Studio's preload scheduler", () => {
             const plan = scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
 
             expect(plan.entries.map(entry => entry.src)).toEqual(["a.png"]);
+        });
+    });
+
+    describe("the clips a scene is about to play", () => {
+        const opening = { id: "opening" };
+        const ending = { id: "ending" };
+
+        /** A scene that plays one clip early and another near the end. */
+        function sceneWithClips(): SceneWarmOrder {
+            const byBlock: Record<string, { type: "image" | "video"; url: string; video?: object }[]> = {};
+            const blockOrder: string[] = [];
+            for (let index = 0; index < 10; index++) {
+                const blockId = `row-${index}`;
+                blockOrder.push(blockId);
+                byBlock[blockId] = [{ type: "image", url: `sprite-${index}.png` }];
+            }
+            byBlock["row-2"] = [{ type: "video", url: "opening.mp4", video: opening }];
+            byBlock["row-8"] = [{ type: "video", url: "ending.mp4", video: ending }];
+            return { firstFrame: "bg.png", blockOrder, byBlock } as unknown as SceneWarmOrder;
+        }
+
+        function schedulerWithClips() {
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(compiledWith({
+                scenes: { "scene-1": sceneOne },
+                warmOrder: { "scene-1": sceneWithClips() },
+                actions: [{ staticId: "a-5", blockId: "row-5" }],
+            }));
+            return scheduler;
+        }
+
+        it("names them in the order the rows play them", () => {
+            const plan = schedulerWithClips()
+                .plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
+
+            expect(plan.video).toEqual([opening, ending]);
+        });
+
+        it("drops the ones the reader has gone past, which the story has on the stage already", () => {
+            const plan = schedulerWithClips().plan({
+                kind: "advance", actionId: "a-5", scene: sceneOne as never, story: null,
+            }) as PreloadPlan;
+
+            expect(plan.video).toEqual([ending]);
+        });
+
+        it("says nothing about a clip whose element the compile could not build", () => {
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(compiledWith({
+                scenes: { "scene-1": sceneOne },
+                warmOrder: {
+                    "scene-1": {
+                        firstFrame: null,
+                        blockOrder: ["row-0"],
+                        byBlock: { "row-0": [{ type: "video", url: "broken.mp4" }] },
+                    },
+                },
+            }));
+
+            const plan = scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
+
+            expect(plan.video).toEqual([]);
         });
     });
 
