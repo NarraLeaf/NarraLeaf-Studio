@@ -17,6 +17,7 @@ import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -42,6 +43,8 @@ type DevModeSession = {
     windowReady: boolean;
     revision: number;
     watcher: FSWatcher | null;
+    /** The asset library's own watch; see {@link watchSubtree}. Null when chokidar covers it. */
+    assetWatcher: SubtreeWatcher | null;
     /**
      * `mtimeMs:size` per watched file, as of the last event this session accepted. See
      * {@link DevModeManager.fileContentChanged}.
@@ -328,6 +331,7 @@ export class DevModeManager {
             windowReady: false,
             revision: 0,
             watcher: null,
+            assetWatcher: null,
             fileIdentities: new Map(),
             assetRevision: 0,
             pendingBundle: null,
@@ -601,8 +605,21 @@ export class DevModeManager {
         // follows is the only thing that makes editing outside Studio feel like editing inside it.
         const scriptsRoot = path.join(session.projectPath, SCRIPTS_DIR);
         this.emitVerbose(session, "watching project files for Dev Mode reload");
+        // The asset library is watched apart from the documents, and by one handle rather than by
+        // one per file in it: see `watchSubtree` for the three seconds of blocked event loop that
+        // buys back. Nothing downstream loses anything by it - an asset that moved bumps the
+        // session's asset revision and schedules a reload, whichever of the two it was.
+        session.assetWatcher = watchSubtree(assetsContentRoot, session.fileIdentities, file => {
+            this.noteAssetChange(session, assetsRoot, file);
+            this.scheduleReload(session, "change", file);
+        });
+        const documentPaths = [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, scriptsRoot];
+        if (!session.assetWatcher) {
+            // No recursive watch to be had here. Back to what this always did.
+            documentPaths.push(assetsContentRoot);
+        }
         session.watcher = chokidar.watch(
-            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot, scriptsRoot],
+            documentPaths,
             // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
             // it into place. Reporting it would schedule a reload against a file that is already
             // gone, on top of the reload the rename itself triggers.
@@ -775,6 +792,10 @@ export class DevModeManager {
     }
 
     private disposeWatcher(session: DevModeSession): void {
+        if (session.assetWatcher) {
+            session.assetWatcher.close();
+            session.assetWatcher = null;
+        }
         if (!session.watcher) {
             return;
         }
