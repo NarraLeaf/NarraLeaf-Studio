@@ -53236,8 +53236,7 @@
         "5107c0a1-0000-4000-8000-000000000320",
         "5107c0a1-0000-4000-8000-000000000330",
         "5107c0a1-0000-4000-8000-000000000340",
-        "5107c0a1-0000-4000-8000-000000000351",
-        "5107c0a1-0000-4000-8000-000000000360"
+        "5107c0a1-0000-4000-8000-000000000351"
       ],
       "layout": {
         "x": 0,
@@ -58016,98 +58015,6 @@
         "textAlign": "left",
         "textVerticalAlign": "center"
       }
-    },
-    "5107c0a1-0000-4000-8000-000000000360": {
-      "id": "5107c0a1-0000-4000-8000-000000000360",
-      "type": "nl.container",
-      "name": "看图面板",
-      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
-      "childrenIds": [
-        "5107c0a1-0000-4000-8000-000000000362"
-      ],
-      "layout": {
-        "x": 0,
-        "y": 0,
-        "width": 1920,
-        "height": 1080,
-        "visible": false
-      },
-      "props": {
-        "layoutKind": "free",
-        "backgroundColor": "nlbrand:background",
-        "fillVisible": true,
-        "fillOpacity": 1,
-        "borderWidth": 0,
-        "borderStyle": "none",
-        "clipContent": true
-      }
-    },
-    "5107c0a1-0000-4000-8000-000000000361": {
-      "id": "5107c0a1-0000-4000-8000-000000000361",
-      "type": "nl.image",
-      "name": "看图面板插图",
-      "parentId": "5107c0a1-0000-4000-8000-000000000362",
-      "childrenIds": [],
-      "layout": {
-        "x": 0,
-        "y": 0,
-        "width": 1920,
-        "height": 1080,
-        "visible": true
-      },
-      "props": {
-        "fitMode": "contain",
-        "backgroundColor": "nlbrand:background",
-        "fillVisible": true,
-        "borderWidth": 0,
-        "borderStyle": "none",
-        "imageFill": {
-          "mode": "contain"
-        }
-      },
-      "valueBindings": {
-        "imageFill.assetId": {
-          "kind": "listItemField",
-          "fieldId": "image"
-        }
-      },
-      "extra": {
-        "listSlot": "itemTemplate"
-      }
-    },
-    "5107c0a1-0000-4000-8000-000000000362": {
-      "id": "5107c0a1-0000-4000-8000-000000000362",
-      "type": "nl.list",
-      "name": "看图面板图片",
-      "parentId": "5107c0a1-0000-4000-8000-000000000360",
-      "childrenIds": [
-        "5107c0a1-0000-4000-8000-000000000361"
-      ],
-      "layout": {
-        "x": 0,
-        "y": 0,
-        "width": 1920,
-        "height": 1080,
-        "visible": true
-      },
-      "props": {
-        "itemStructId": "extra.galleryEntry",
-        "itemKeyFieldId": "id",
-        "repeatDirection": "vertical",
-        "repeatWrap": false,
-        "itemGap": 0,
-        "placeholderCount": 1,
-        "scrollbar": {
-          "enabled": false,
-          "side": "right",
-          "visibility": "auto",
-          "thickness": 8,
-          "contentInset": 4,
-          "minThumbLength": 24,
-          "trackElementId": null,
-          "thumbElementId": null
-        }
-      }
     }
   },
   "actions": {
@@ -58168,7 +58075,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-05T17:56:33.475Z"
+    "updatedAt": "2026-09-05T18:34:58.549Z"
   },
   "structs": {
     "extra.galleryEntry": {

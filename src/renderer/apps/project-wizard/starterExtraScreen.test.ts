@@ -5,7 +5,7 @@
  * the voices - and one screen, because they share a chrome and differ only in what fills the pane.
  * Read off the shipped files rather than a fixture: what is asserted is what an author receives.
  *
- * Three of the claims here are the ones most likely to be undone by somebody tidying up:
+ * Four of the claims here are the ones most likely to be undone by somebody tidying up:
  *
  * 1. **CG and Recollection wrap; Music and Voice do not.** A picture is what identifies a CG, so it
  *    gets a tile; a track is a title and something to press and a voice line is text to read, so
@@ -16,7 +16,15 @@
  *    projection has already replaced a locked entry's picture with the placeholder and its name
  *    with the mask, so a condition in the template would be a second answer to a settled question -
  *    and the kind that fails open.
- * 3. **The screen is reached from the title menu and from nowhere else.** Playing a recollection
+ * 3. **A CG tile answers nothing, and that is deliberate.** Opening the picture at full size is the
+ *    obvious next thing and is not here: a write made from inside a list row is addressed to that
+ *    row's own drawing (`resolveDisplayableTargetElementId` and `resolveListElementId` in
+ *    `blueprint-nodes/built-in/elementNodes.ts` both append `ctx.instanceKey` whatever the `Element`
+ *    node points at), so a row cannot show, fill or hide anything outside itself - the write lands
+ *    on an address nothing reads and nothing says so. Until a row can address the screen it is
+ *    drawn on, a viewer would be a press that half works. The tiles therefore advertise nothing:
+ *    no pointer cursor, no hover state, no cue.
+ * 4. **The screen is reached from the title menu and from nowhere else.** Playing a recollection
  *    goes through `Start Game`, which replaces the current playthrough; return semantics were never
  *    built. The line that makes that safe is not a check inside the screen - a control that
  *    silently does nothing is worse - it is that the only way in is a title-screen button, and the
@@ -248,6 +256,19 @@ describe("the starter template's EXTRA screen", () => {
         const rail = on("Nav rail", "nl.container");
         const buttons = descendants(rail.id).filter(element => element.type === "nl.button");
         expect(buttons.map(button => button.name)).toEqual(["Back"]);
+    });
+
+    it("leaves a CG tile answering nothing, rather than half-answering", () => {
+        // See the note at the top: a row cannot address anything outside itself, so the press that
+        // would open the picture is left out entirely rather than wired to something that half
+        // works. Nothing on the tile advertises one.
+        const grid = on("CG grid", "nl.list");
+        expect(graphsFor(grid.id).flatMap(graph =>
+            Object.values(graph.nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)))
+            .toEqual([]);
+        for (const element of descendants(grid.id)) {
+            expect((element.props ?? {}).cursor, `${element.name} offers a pointer`).toBeUndefined();
+        }
     });
 
     it("starts a recollection from the row that was pressed, once it is unlocked", () => {
