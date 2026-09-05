@@ -8910,7 +8910,7 @@
       },
       "0f6a6b28-4caa-49a9-94f6-7d2ce24ff29b": {
         "id": "0f6a6b28-4caa-49a9-94f6-7d2ce24ff29b",
-        "name": "回想条目",
+        "name": "记录条目",
         "owner": {
           "kind": "componentWidgetMain",
           "componentId": "d3f603c4-ca2d-4404-82be-a935fd0bd9eb",

@@ -11,6 +11,10 @@ import {
 import type { ProjectAppConfiguration } from "@/lib/workspace/project/configuration";
 import { ProjectData } from "../types";
 import { encodeProjectConfig, getProjectConfigFileName, type ProjectConfigData } from "@shared/utils/nlproj";
+import {
+    PROJECT_DEPENDENCY_SCHEMA_VERSION,
+    type ProjectPluginDependency,
+} from "@shared/types/pluginDependencies";
 
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -128,12 +132,21 @@ export class ProjectService {
             // first revision is the project the author received rather than an empty
             // one that grew its content in a second commit.
             if (projectData.contentTemplateId) {
-                const templateLocales = await this.applyProjectTemplate(
+                const scaffolded = await this.applyProjectTemplate(
                     basePath,
                     projectData.contentTemplateId,
                     projectData.sourceLocale.trim(),
                 );
-                await this.registerTemplateLocales(projectConfigPath, projectConfig, templateLocales);
+                const withLocales = await this.registerTemplateLocales(
+                    projectConfigPath,
+                    projectConfig,
+                    scaffolded.locales,
+                );
+                await this.registerTemplateDependencies(
+                    projectConfigPath,
+                    withLocales,
+                    scaffolded.dependencies,
+                );
             }
 
             // LAST, and only after every file above is on disk: the first revision is a snapshot of
@@ -192,12 +205,80 @@ export class ProjectService {
         projectPath: string,
         templateId: string,
         locale: string,
-    ): Promise<string[]> {
+    ): Promise<{ locales: string[]; dependencies: string[] }> {
         const result = await getInterface().projectTemplates.scaffold(templateId, projectPath, locale);
         if (!result.success) {
             throw new Error(result.error || translate("wizard.validation.templateFailed"));
         }
-        return result.data?.locales ?? [];
+        return {
+            locales: result.data?.locales ?? [],
+            dependencies: result.data?.dependencies ?? [],
+        };
+    }
+
+    /**
+     * Record the plugins the template's content is built on into the project it just wrote.
+     *
+     * The dependency table is otherwise derived by scanning the documents, and that scan can only
+     * attribute a node type to a plugin that is loaded - which a plugin the author has never
+     * switched on is not, and two of the bundled ones ship switched off. So a project made from a
+     * template that uses one would declare nothing, and its screens would be a page of unknown
+     * nodes with nothing on screen saying why. Declared here, the plugin panel raises the warning
+     * on the first open and offers the one press that turns it on.
+     *
+     * A second write of a file written moments ago, like the languages above and for the same
+     * reason: the config has to exist before the template lands, and this is only knowable after.
+     *
+     * A failure does not fail the project. Everything the author asked for is on disk; what they
+     * lose is the prompt, and the next save's own scan writes the table anyway once the plugin is
+     * on. Refusing to finish here would cost them the project over a hint.
+     */
+    private static async registerTemplateDependencies(
+        configPath: string,
+        config: ProjectConfigData,
+        pluginIds: readonly string[],
+    ): Promise<void> {
+        if (pluginIds.length === 0) {
+            return;
+        }
+        try {
+            const listed = await getInterface().plugins.list();
+            if (!listed.success || !listed.data) {
+                throw new Error(listed.success ? "Plugin list response was empty" : (listed.error ?? "unknown"));
+            }
+            const installed = new Map(listed.data.plugins.map(plugin => [plugin.pluginId, plugin] as const));
+            const plugins: ProjectPluginDependency[] = [];
+            for (const id of [...pluginIds].sort()) {
+                const match = installed.get(id);
+                if (!match) {
+                    // Nothing to record a version against, and an entry without one is dropped by
+                    // the table's own reader. The scan will pick it up if the plugin ever arrives.
+                    continue;
+                }
+                plugins.push({
+                    id,
+                    name: match.manifest.name,
+                    publisher: match.manifest.publisher,
+                    builtIn: match.builtIn,
+                    authoredVersion: match.manifest.version,
+                    // The template's screens are built on types this plugin owns, so the documents
+                    // do not work without it.
+                    hard: true,
+                    // Left for the scan: which types are used is a fact about the documents, and
+                    // the scan reads them. What cannot be derived is the dependency itself.
+                    usedBy: {},
+                });
+            }
+            if (plugins.length === 0) {
+                return;
+            }
+            throwException(await BaseFileSystemService.writeRaw(configPath, encodeProjectConfig({
+                ...config,
+                dependencies: { schemaVersion: PROJECT_DEPENDENCY_SCHEMA_VERSION, plugins },
+            })));
+        } catch (error) {
+            console.warn("[Wizard] Project created, but its plugin dependencies were not recorded:", error);
+        }
     }
 
     /**
@@ -225,16 +306,16 @@ export class ProjectService {
         configPath: string,
         config: ProjectConfigData,
         codes: string[],
-    ): Promise<void> {
+    ): Promise<ProjectConfigData> {
         const app = config.app as ProjectAppConfiguration | undefined;
         const existing = app?.localization;
         if (!existing || !isValidLocaleCode(existing.sourceLocale)) {
-            return;
+            return config;
         }
         const known = new Set(existing.locales.map(entry => entry.code));
         const added = codes.filter(code => isValidLocaleCode(code) && !known.has(code));
         if (!added.length) {
-            return;
+            return config;
         }
         const next: ProjectConfigData = {
             ...config,
@@ -250,6 +331,7 @@ export class ProjectService {
             },
         };
         throwException(await BaseFileSystemService.writeRaw(configPath, encodeProjectConfig(next)));
+        return next;
     }
 
     /**

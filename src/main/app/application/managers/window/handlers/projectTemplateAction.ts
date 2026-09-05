@@ -2,7 +2,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
 import { PROJECT_TEMPLATES_DIR } from "@shared/constants/projectTemplate";
-import { listProjectTemplates, scaffoldProjectFromTemplate } from "../../projectTemplates";
+import { listProjectTemplates, scaffoldProjectFromTemplate, type ScaffoldResult } from "../../projectTemplates";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -32,7 +32,7 @@ export class ProjectTemplateScaffoldHandler extends IPCHandler<IPCEventType.proj
     public async handle(
         window: AppWindow,
         data: IPCEvents[IPCEventType.projectTemplateScaffold]["data"],
-    ): Promise<RequestStatus<{ filesCopied: number; locales: string[]; contentLocale?: string }>> {
+    ): Promise<RequestStatus<ScaffoldResult>> {
         return this.tryUse(() => scaffoldProjectFromTemplate(
             window.app.resolveResource(PROJECT_TEMPLATES_DIR),
             data.templateId,

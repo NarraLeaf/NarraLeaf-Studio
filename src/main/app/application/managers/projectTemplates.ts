@@ -34,6 +34,9 @@ import {
 /** `id` comes from the renderer, so it must not be able to name a directory elsewhere. */
 const SAFE_TEMPLATE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 
+/** The shape a plugin id has, so a malformed manifest cannot write nonsense into a project's table. */
+const SAFE_PLUGIN_ID = /^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*$/;
+
 /** Where a project keeps its translations, relative to the project root. */
 const TEMPLATE_LOCALIZATION_DIR = ["editor", "localization"] as const;
 
@@ -138,6 +141,7 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
     }
     const designSizes = asStageSizes(record.designSizes);
     const contentLocales = Object.keys(asContentLocales(record.contentLocales)).sort();
+    const dependencies = asPluginIds(record.dependencies);
     return {
         id,
         name,
@@ -147,7 +151,23 @@ async function readManifest(templatesDir: string, id: string): Promise<ProjectTe
         designSize: asStageSize(record.designSize),
         designSizes: designSizes.length > 0 ? designSizes : undefined,
         contentLocales: contentLocales.length > 0 ? contentLocales : undefined,
+        dependencies: dependencies.length > 0 ? dependencies : undefined,
     };
+}
+
+/** A plugin id the template names as its own dependency; anything else in the list is dropped. */
+function asPluginIds(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const ids: string[] = [];
+    for (const entry of value) {
+        const id = asString(entry).trim();
+        if (SAFE_PLUGIN_ID.test(id) && !ids.includes(id)) {
+            ids.push(id);
+        }
+    }
+    return ids.sort();
 }
 
 function asStageSize(value: unknown): StageSize | undefined {
@@ -223,6 +243,17 @@ async function copyTree(sourceDir: string, targetDir: string, relativePath = "")
     return copied;
 }
 
+/** What a scaffold leaves behind, beyond the files themselves. */
+export type ScaffoldResult = {
+    filesCopied: number;
+    /** The languages the finished project has translations for. */
+    locales: string[];
+    /** Plugin ids the template declares its content depends on. */
+    dependencies: string[];
+    /** The language variant of the content that landed, when one did. */
+    contentLocale?: string;
+};
+
 /**
  * Copy a bundled template's content over a project that has just been written.
  *
@@ -240,7 +271,7 @@ export async function scaffoldProjectFromTemplate(
     templateId: string,
     projectPath: string,
     locale?: string,
-): Promise<{ filesCopied: number; locales: string[]; contentLocale?: string }> {
+): Promise<ScaffoldResult> {
     if (!SAFE_TEMPLATE_ID.test(templateId)) {
         throw new Error(`Unsafe project template id: ${templateId}`);
     }
@@ -256,7 +287,7 @@ export async function scaffoldProjectFromTemplate(
     if (!stat?.isDirectory()) {
         // A template with a manifest and no content is a metadata-only entry; it
         // produces the plain skeleton rather than failing the author's creation.
-        return { filesCopied: 0, locales: [] };
+        return { filesCopied: 0, locales: [], dependencies: [] };
     }
     let filesCopied = await copyTree(resolvedContent, projectPath);
     const contentLocale = await applyContentLocale(templateDir, projectPath, locale);
@@ -269,6 +300,9 @@ export async function scaffoldProjectFromTemplate(
         // not the ones the base content shipped.
         locales: await readScaffoldedLocales(projectPath),
         filesCopied,
+        // Handed back rather than written here: the table needs each plugin's installed
+        // version, which the window that asked for the scaffold is the side that can read.
+        dependencies: asPluginIds((await readManifestRecord(templateDir))?.dependencies),
         ...(contentLocale ? { contentLocale: contentLocale.code } : {}),
     };
 }

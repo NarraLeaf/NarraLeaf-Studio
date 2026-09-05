@@ -3787,9 +3787,16 @@ export type IPCUITemplateEvents = {
         },
         // `locales` are the language codes the scaffolded project ends up with a translation file
         // for; the creator registers them, because the registry lives in the `.nlproj` it is about
-        // to write and a template never carries one. `contentLocale` is the language the content
-        // itself turned out to be written in, when a variant was used.
-        response: { filesCopied: number; locales: string[]; contentLocale?: string };
+        // to write and a template never carries one. `dependencies` are the plugin ids the template
+        // declares its content is built on, recorded into the same file for the same reason.
+        // `contentLocale` is the language the content itself turned out to be written in, when a
+        // variant was used.
+        response: {
+            filesCopied: number;
+            locales: string[];
+            dependencies: string[];
+            contentLocale?: string;
+        };
     };
 };
 

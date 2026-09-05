@@ -3447,13 +3447,13 @@
     },
     {
       "id": "d3f603c4-ca2d-4404-82be-a935fd0bd9eb",
-      "name": "回想条目",
+      "name": "记录条目",
       "rootElementId": "5e17fd1c-4934-4ca0-acf8-3e2bcc409ee5",
       "elements": {
         "5e17fd1c-4934-4ca0-acf8-3e2bcc409ee5": {
           "id": "5e17fd1c-4934-4ca0-acf8-3e2bcc409ee5",
           "type": "nl.container",
-          "name": "回想条目",
+          "name": "记录条目",
           "parentId": null,
           "childrenIds": [
             "302aa825-c3c9-454b-aab6-c66071e3a07d",
@@ -34578,7 +34578,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "回想条目",
+        "text": "记录条目",
         "fontSize": 18,
         "color": "nlbrand:text.subtle",
         "fontWeight": "normal",
@@ -34754,7 +34754,7 @@
     "677a94b8-3c54-4222-8561-1f82fdd8812f": {
       "id": "677a94b8-3c54-4222-8561-1f82fdd8812f",
       "type": "nl.container",
-      "name": "回想条目",
+      "name": "记录条目",
       "parentId": "fc17c8c1-0dcf-489d-853b-fcb368b9d267",
       "childrenIds": [],
       "layout": {
