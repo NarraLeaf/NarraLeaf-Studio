@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import * as path from "path";
 import { watchSubtree, type SubtreeWatcher } from "./subtreeWatcher";
@@ -84,5 +84,47 @@ describe("watchSubtree", () => {
     it("answers null for a root that is not there, so the caller keeps its chokidar list", () => {
         expect(watchSubtree(path.join(tmpdir(), "nls-subtree-absent-" + Date.now()), new Map(), () => {}))
             .toBeNull();
+    });
+});
+
+/**
+ * The one that matters most, and the one this watcher got wrong when it replaced chokidar: on
+ * Windows the recursive watch is asked for `FILE_NOTIFY_CHANGE_LAST_ACCESS` along with everything
+ * else, so *reading* a file reports it as changed. A Dev Mode session reads every asset the game
+ * shows, so a reload scheduled for a read is a reload scheduled by the game itself - and the next
+ * run reads them again.
+ */
+describe("watchSubtree and a file that is only read", () => {
+    it("says nothing about a read", async () => {
+        const root = await makeTree();
+        const file = path.join(root, "ab", "cd", "shard.bin");
+        await writeFile(file, "one");
+        const written = await stat(file);
+        const reported: string[] = [];
+        track(watchSubtree(root, new Map(), name => reported.push(name)));
+
+        // The access itself, stated rather than performed: whether reading a file updates its
+        // access time is a per-volume Windows policy, so a test that read the file would pass on
+        // the machines where the defect cannot happen and prove nothing on the ones where it can.
+        // What arrives at the watch either way is an event for a file whose CONTENTS are untouched.
+        await readFile(file);
+        await utimes(file, new Date(), written.mtime);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        expect(reported).toEqual([]);
+    });
+
+    it("still reports the write that follows the read", async () => {
+        const root = await makeTree();
+        const file = path.join(root, "ab", "cd", "shard.bin");
+        await writeFile(file, "one");
+        const reported: string[] = [];
+        track(watchSubtree(root, new Map(), name => reported.push(name)));
+
+        await readFile(file);
+        await writeFile(file, "a longer second version");
+        await waitFor(reported);
+
+        expect(reported.some(name => name.endsWith("shard.bin"))).toBe(true);
     });
 });

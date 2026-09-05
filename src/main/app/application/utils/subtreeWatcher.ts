@@ -1,7 +1,7 @@
 import { watch, type FSWatcher } from "fs";
 import { stat } from "fs/promises";
 import * as path from "path";
-import { watchedFileChanged } from "./watchedFileIdentity";
+import { rememberWatchedFile, watchedFileChanged } from "./watchedFileIdentity";
 import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/atomicWriteTemp";
 
 /**
@@ -25,6 +25,23 @@ import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/atomicWriteTemp";
  * whatever Node's own implementation does - which is at worst the per-directory watching this
  * replaces. Where it cannot be had at all, or where the root does not exist yet, this answers null
  * and the caller keeps the root in its chokidar list, which is what every caller did before.
+ *
+ * ## Reading a file is not changing it
+ *
+ * The raw watch is coarser than chokidar's add/change/unlink, and the difference is not academic.
+ * libuv asks Windows for `FILE_NOTIFY_CHANGE_LAST_ACCESS` along with everything else, so on a
+ * volume that keeps access times, **opening a file reports it as changed** - MEASURED on a real
+ * project: twenty reads of untouched asset shards, eleven change notifications. The tree this
+ * watches is the one a running game reads from, so taking those at face value made every game that
+ * showed a picture schedule the reload that restarted it, which read the pictures again.
+ *
+ * So an event is only a change when the file behind it was written **since this watch began**.
+ * Nothing else can be, and a read cannot move a modification time. The identity check behind that
+ * one is what stops a file the author really did edit from re-reporting on every later read of it.
+ *
+ * That comparison is against this machine's clock, which is the same assumption the identity check
+ * beside it already makes. A project tree whose modification times run behind the clock reading
+ * them - one on a share with a skewed clock - would have an edit read as untouched.
  */
 export type SubtreeWatcher = {
     close(): void;
@@ -43,6 +60,9 @@ export function watchSubtree(
     }
 
     let closed = false;
+    // Everything under the root is as the watch found it. A file whose modification time is not
+    // newer than this has not been written since, whatever the notification says.
+    const startedAt = Date.now();
     // A tree that goes away under the watch - the project moved, the drive was unplugged - is not
     // something to reload into, and an unhandled `error` on an FSWatcher takes the process with it.
     watcher.on("error", () => {});
@@ -69,8 +89,15 @@ export function watchSubtree(
                 onChange(file);
                 return;
             }
-            // The same filter the named documents get, for the same reason: a `change` that leaves
-            // size and modification time alone is about when the file was read, not what it says.
+            if (stats.mtimeMs <= startedAt) {
+                // Untouched since the watch began, so this notification is about something other
+                // than its contents - an access, an attribute. Remembered rather than dropped, so
+                // that a later write to it is compared against what is on disk now.
+                rememberWatchedFile(identities, file, stats);
+                return;
+            }
+            // The same filter the named documents get: one write arrives as several notifications,
+            // and every later read of a file that was written under this watch arrives as one more.
             // Only files carry an identity - a directory event is reported as it arrives.
             if (stats.isFile() && !watchedFileChanged(identities, file, stats)) {
                 return;
