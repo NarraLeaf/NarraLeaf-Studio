@@ -77,9 +77,10 @@ export const pluginPermission = {
             savesWrite: "覆盖玩家的存档，并读取存档（会替换当前进度）",
             uiOverlay: "在游戏画面上叠加显示内容",
             assets: "解析游戏内置资产的地址",
-            locale: "读取游戏语言与工程的本地化文案",
+            locale: "读取游戏语言与项目的本地化文案",
             menu: "提供游戏窗口的菜单栏",
             storyCompile: "参与剧情的编译，并在它没有写过的对白上追加动作",
+            diagnostics: "读取游戏缓存占用了多少内存",
         },
     },
     button: {

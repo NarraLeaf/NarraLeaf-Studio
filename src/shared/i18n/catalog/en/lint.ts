@@ -294,6 +294,13 @@ export const lint = {
             description: "A clickable widget nothing listens to",
             message: "Nothing runs when this is clicked",
         },
+        uiUnknownWidget: {
+            title: "Unknown widget type",
+            description: "A widget whose type the project cannot load",
+            // Names the type, for the reason `blueprintUnknownNode` does: the locator points at the
+            // page and the element, and the type is what says which plugin is missing.
+            message: "{type} is not loaded, so this widget will not be drawn in the game",
+        },
         uiComponentMissing: {
             title: "Missing component",
             description: "An instance of a component the project does not have",

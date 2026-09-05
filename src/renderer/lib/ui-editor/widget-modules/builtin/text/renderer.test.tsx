@@ -352,3 +352,89 @@ describe("TextRenderer vertical typography", () => {
         expect(container.querySelector("p")!.textContent).toBe("第12話 Prologue");
     });
 });
+
+describe("TextRenderer marked runs", () => {
+    function renderWithProps(props: Record<string, unknown>) {
+        const document = createDocument(String(props.text ?? "Text"));
+        Object.assign(document.elements.text.props!, props);
+        createServices(document);
+        return { document, ...renderText(document, previewHostAdapter()) };
+    }
+
+    it("draws the reading over the characters it was written for", () => {
+        const { container } = renderWithProps({
+            text: "山田さん",
+            rich: [
+                { text: "山田", marks: { ruby: "やまだ" } },
+                { text: "さん" },
+            ],
+        });
+        const ruby = container.querySelector("ruby")!;
+        expect(ruby.querySelector("rt")!.textContent).toBe("やまだ");
+        expect(ruby.textContent).toBe("やまだ山田");
+        expect(container.textContent).toBe("やまだ山田さん");
+    });
+
+    it("sets each mark on the run that carries it", () => {
+        const { container } = renderWithProps({
+            text: "abcde",
+            rich: [
+                { text: "a", marks: { bold: true } },
+                { text: "b", marks: { italic: true } },
+                { text: "c", marks: { color: "#ff0000" } },
+                { text: "d", marks: { emphasis: "under-dot" } },
+                { text: "e", marks: { fontSizeStep: 2 } },
+            ],
+        });
+        const words = [...container.querySelectorAll(".nl-text-runs > span")] as HTMLElement[];
+        expect(words.map(word => word.textContent)).toEqual(["a", "b", "c", "d", "e"]);
+        expect(words[0].style.fontWeight).toBe("bold");
+        expect(words[1].style.fontStyle).toBe("italic");
+        expect(words[2].style.color).toBe("rgb(255, 0, 0)");
+        expect(words[3].style.textEmphasis).toBe("filled dot");
+        expect(words[3].style.textEmphasisPosition).toBe("under right");
+        // A step is a share of the line, so it is written relative to it rather than in pixels.
+        expect(words[4].style.fontSize).toBe("1.2656em");
+    });
+
+    it("draws a plain label exactly as it did before marks existed", () => {
+        const { container } = renderWithProps({ text: "Plain" });
+        expect(container.querySelector("p")!.textContent).toBe("Plain");
+        expect(container.querySelector(".nl-text-runs")).toBeNull();
+    });
+
+    it("falls back to the plain paragraph when the runs no longer spell the text", () => {
+        const { container } = renderWithProps({
+            text: "Translated",
+            rich: [{ text: "Original", marks: { bold: true } }],
+        });
+        expect(container.querySelector(".nl-text-runs")).toBeNull();
+        expect(container.querySelector("p")!.textContent).toBe("Translated");
+    });
+
+    it("keeps the marks an inline edit did not reach", () => {
+        const document = createDocument("Hello world");
+        document.elements.text.props!.rich = [
+            { text: "Hello " },
+            { text: "world", marks: { bold: true } },
+        ];
+        const services = createServices(document);
+        const canvas = renderText(document, canvasHostAdapter(services));
+
+        act(() => {
+            beginInlineTextEdit(services.stateService as never, SURFACE.id, "text");
+        });
+        const textarea = canvas.container.querySelector("textarea")!;
+        fireEvent.change(textarea, { target: { value: "Goodbye world" } });
+        clockMs += 1_000;
+        act(() => {
+            fireEvent.blur(textarea);
+        });
+
+        expect(document.elements.text.props?.text).toBe("Goodbye world");
+        expect(document.elements.text.props?.rich).toEqual([
+            { text: "Goodbye " },
+            { text: "world", marks: { bold: true } },
+        ]);
+    });
+});

@@ -105,8 +105,8 @@ Manifest 字段：
 | `key` | `string` | 插件内唯一。**不需要**以插件 ID 为前缀（存储本身已按插件分区）。只作存储键，永不显示。 |
 | `label` | `string` | 作者看到的字段名，不能为空。 |
 | `description` | `string` | 可选。一句话说明这个值是干什么的。 |
-| `type` | `"text" \| "secret"` | `text` 存进工程（随版本控制走）；`secret` 不存——工程里存的是一个 handle，值本身封存在填写它的那台机器上。 |
-| `scope` | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在工程一级，App Tag 变体不能各说各的。 |
+| `type` | `"text" \| "secret"` | `text` 存进项目（随版本控制走）；`secret` 不存——项目里存的是一个 handle，值本身封存在填写它的那台机器上。 |
+| `scope` | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在项目一级，App Tag 变体不能各说各的。 |
 | `platforms` | `GameBuildPlatform[]` | 可选，缺省表示所有平台。空数组会被判为清单错误。 |
 | `required` | `boolean` | 可选。缺这个值的构建会被拒绝。 |
 
@@ -254,6 +254,44 @@ Promise<void>
 Promise<() => void | Promise<void>>
 ```
 
+## 贡献界面控件（`app.services.widgets`）
+
+一个 widget type 由 studio 入口注册作者化的那一半，runtime 入口注册游戏里画它的那一半，两边都要在
+manifest 的 `contributes.widgets` 里声明这个 type：
+
+```ts
+app.services.widgets.registerMany([{
+  type: `${app.plugin.id}.badge`,
+  displayName: "Badge",
+  icon: BadgeIcon,
+  createDefaultElement: () => ({ name: "Badge", layout: { x: 0, y: 0, width: 240, height: 80 }, props: { label: "" } }),
+  render: BadgeRenderer,
+  createInspector: () => ({ id: `${app.plugin.id}.badge.inspector`, title: "Badge", fields: [...] }),
+}]);
+```
+
+注册之后：
+
+- 它出现在**插入面板的溢出菜单**里，行上带插件名；画布右键与图层大纲的「插入」子菜单同样列出它，
+  行的悬停文案写「来自 <插件名>」。主行是**没有文字的图标**，所以插件 widget 一律放在溢出里。
+- 它在**编辑器画布**里由这个 `render` 画（面板缩略图、组件预览、版本比较的两栏也走同一条），
+  在**游戏**里由 runtime 入口注册的渲染器画。
+- `createInspector` 的字段出现在属性面板里，与 Studio 自己的布局行合成一张表。
+- 元素的数据由文档保管，与 type 认不认得无关。
+
+### 插件不在时会发生什么
+
+作者的项目可以在没装、被禁用或加载失败的插件下打开：元素**原样留在文档里**，画布上画一块
+「未知控件」并写出 type，项目检查报 `ui/unknown-widget`（error，会挡构建），依赖表里那一行说明插件
+是缺失还是被禁用。**不要在这上面自己造一套兜底**——`render` 返回 `null` 或画一个占位反而会让作者
+以为控件是好的。
+
+### `render` 抛错只毁掉这一个控件
+
+编辑器画布与游戏都把插件的 `render` 放在错误边界后面：抛错的那个元素变成「控件绘制失败」并写出
+type，错误进控制台，同一页上别的控件照常画。这是宿主的兜底，不是可以依赖的错误处理——
+渲染器该自己处理拿不到的数据。
+
 ## 扩展文本编辑器（`app.services.textEditor`）
 
 Studio 的文本编辑器（Other 分类里 `.txt` / `.md` / `.ini` 等资产的 Monaco 标签页）只提供编辑本身：
@@ -344,7 +382,7 @@ export default defineRuntimePlugin({
 
 `app.game.blueprintNodes.register` 只读取 `type`、`displayName`、`execute` 三个字段，所以可以直接传入与 studio 入口共享的完整 `PluginBlueprintNodeDef` 对象。node type 必须以插件 ID 为前缀。
 
-widget 渲染器那一侧收的是 `RuntimeWidgetRendererProps`（见 [runtime-api.md](./runtime-api.md)），里面**没有 `hostAdapter`**：宿主给内建渲染器的那份 props 会一路带出存档、本地化、退出应用的整套宿主 API，而插件的 manifest 没有声明过它们。要和 studio 侧 widget module 共用同一个 render，就按 `RuntimeWidgetRendererProps` 写。
+widget 渲染器那一侧收的是 `RuntimeWidgetRendererProps`（见 [runtime-api.md](./runtime-api.md)），里面**没有 `hostAdapter`**：宿主给内建渲染器的那份 props 会一路带出存档、本地化、退出应用的整套宿主 API，而插件的 manifest 没有声明过它们。studio 侧 `PluginWidgetModule.render` 收的是**同一份** props，所以一个 render 函数放进共享模块、两个入口各注册一次就行。
 
 推荐把节点定义放进 `src/nodes.ts` 由两个入口共同 import：studio 入口注册完整定义（palette + 编辑器预览），runtime 入口注册游戏 execute。这样 execute 逻辑只写一次。内建 Gallery 插件（`src/builtin-plugins/gallery/`）是参照实现。
 
@@ -513,5 +551,7 @@ export default definePlugin({
 | 蓝图节点/widget 注册抛错 | type 没有以插件 ID 为前缀，或没有在 manifest `contributes.blueprintNodes` / `contributes.widgets` 中声明。 |
 | Preview 启动报 "Plugin validation failed" | 项目用到的插件节点/widget 缺运行时提供方：插件被禁用/未安装、没有 `entries.runtime`、版本与项目记录不兼容，或该 type 未列入 `contributes`。 |
 | widget 在编辑器可见但游戏中不渲染 | runtime 入口没有 `app.game.widgets.register` 该类型的渲染器。 |
+| 画布上是「未知控件」 | 该 type 没有注册：插件未装、被禁用、加载失败，或 studio 入口没有 `app.services.widgets.register`。 |
+| 画布上是「控件绘制失败」 | 这个元素的 `render` 抛错了，堆栈在窗口的 DevTools 控制台里。 |
 | 文件操作被拒绝 | manifest 权限路径、mode、recursive 或插件版本授权不匹配。 |
 | action/panel/widget 覆盖内建项 | 贡献 ID 没有用插件 ID 前缀。 |

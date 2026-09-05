@@ -6,6 +6,7 @@ import { Workspace } from "@/lib/workspace/workspace";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
+import type { PluginWidgetModule } from "./pluginWidgetApi";
 import type { ActionDefinition, PanelDefinition } from "@/apps/workspace/registry/types";
 
 describe("plugin runtime", () => {
@@ -154,11 +155,14 @@ describe("createPluginApp disposal", () => {
         app.services.ui.actions.register({ id: "test-plugin.a1" } as any);
         app.services.ui.actions.registerGroup({ id: "test-plugin.g1" } as any);
         app.services.ui.keybindings.register({ id: "test-plugin.k1" } as any);
-        const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
+        const widget = { type: "test-plugin.widget" } as unknown as PluginWidgetModule;
         app.services.widgets.register(widget);
         app.services.blueprintNodes.registerDynamicSelectOptionsSource("s1", () => []);
 
-        expect(widgetModuleRegistry.get("test-plugin.widget")).toBe(widget);
+        // The registry holds the guard's binding, never the plugin's own module - see
+        // `pluginWidgetGuard`.
+        expect(widgetModuleRegistry.get("test-plugin.widget")).not.toBe(widget);
+        expect(widgetModuleRegistry.get("test-plugin.widget")?.type).toBe("test-plugin.widget");
 
         dispose();
 
@@ -335,7 +339,7 @@ describe("createPluginApp disposal", () => {
         const { ctx } = createFakeContext();
         const { app } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        expect(() => app.services.widgets.register({ type: "test-plugin.undeclared-widget" } as unknown as UIWidgetModule))
+        expect(() => app.services.widgets.register({ type: "test-plugin.undeclared-widget" } as unknown as PluginWidgetModule))
             .toThrow(/contributes\.widgets/);
         expect(widgetModuleRegistry.has("test-plugin.undeclared-widget")).toBe(false);
     });
@@ -408,7 +412,7 @@ describe("createPluginApp disposal", () => {
         const { ctx } = createFakeContext();
         const { app, dispose } = createPluginApp(ctx, descriptor, {} as PluginApp["privileged"]);
 
-        const widget = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
+        const widget = { type: "test-plugin.widget" } as unknown as PluginWidgetModule;
         const replacement = { type: "test-plugin.widget" } as unknown as UIWidgetModule;
         app.services.widgets.register(widget);
         widgetModuleRegistry.register(replacement);

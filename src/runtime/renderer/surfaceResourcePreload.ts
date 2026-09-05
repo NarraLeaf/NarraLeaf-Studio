@@ -4,6 +4,7 @@ import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import type { GameRuntimeAssetManifestEntry, GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { UI_ASSET_ID_PROPERTY_NAMES } from "@shared/build/uiAssetSlots";
+import { loadRuntimeFontFace } from "./runtimeFontFaces";
 
 export const RUNTIME_SURFACE_PRELOAD_TIMEOUT_MS = 10_000;
 
@@ -251,10 +252,23 @@ function kindFromMediaType(mediaType: string | null | undefined): PreloadKind | 
     return null;
 }
 
+/**
+ * What the pack's own manifest says an asset is, when it says anything.
+ *
+ * All four kinds are read off `type`, the image one included. Leaving image out was not a smaller
+ * list, it was a round trip: a real pack records `{type:"image", ext:"bin",
+ * mimeType:"application/octet-stream"}` for a library picture - the packer renames every asset to a
+ * content-addressed `.bin` and does not sniff it - so every image fell through to
+ * {@link probePreloadKind} and asked the shell what it was holding. The manifest had the answer all
+ * along, and a protected build, which ships no manifest, still probes exactly as before.
+ *
+ * `ext` is compared without its dot, which is how the manifest stores it. The list used to be
+ * written with dots and so matched nothing, ever; the font case was carried entirely by `type`.
+ */
 function kindFromEntry(entry: GameRuntimeAssetManifestEntry | undefined): PreloadKind | null {
     const type = entry?.type?.toLowerCase() ?? "";
-    const ext = entry?.ext?.toLowerCase() ?? "";
-    if (type.includes("font") || [".ttf", ".otf", ".woff", ".woff2"].includes(ext)) {
+    const ext = entry?.ext?.toLowerCase().replace(/^\./, "") ?? "";
+    if (type.includes("font") || ["ttf", "otf", "woff", "woff2"].includes(ext)) {
         return "font";
     }
     if (type.includes("audio")) {
@@ -262,6 +276,9 @@ function kindFromEntry(entry: GameRuntimeAssetManifestEntry | undefined): Preloa
     }
     if (type.includes("video")) {
         return "video";
+    }
+    if (type.includes("image")) {
+        return "image";
     }
     return kindFromMediaType(entry?.mimeType);
 }
@@ -292,22 +309,14 @@ async function probePreloadKind(url: string): Promise<PreloadKind | null> {
     }
 }
 
-function fontFamilyForAssetId(assetId: string): string {
-    return `nlRuntimeFont_${assetId.replace(/[^a-zA-Z0-9]/g, "_")}`;
-}
-
+/**
+ * Warm a typeface by registering it, through the registry the widgets read.
+ *
+ * Registering rather than merely fetching is the whole point of warming a font: the bytes alone
+ * would leave every text widget to build a `FontFace` of its own. See `runtimeFontFaces`.
+ */
 async function preloadFont(assetId: string, url: string): Promise<void> {
-    if (typeof FontFace === "undefined" || typeof document === "undefined") {
-        await fetch(url).then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-        });
-        return;
-    }
-    const face = new FontFace(fontFamilyForAssetId(assetId), `url("${url.replace(/"/g, '\\"')}")`);
-    const loaded = await face.load();
-    document.fonts.add(loaded);
+    await loadRuntimeFontFace(assetId, url);
 }
 
 function preloadImage(url: string): Promise<void> {

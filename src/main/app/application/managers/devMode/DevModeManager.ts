@@ -1,12 +1,13 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
-import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
+import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import path from "path";
 import crypto from "crypto";
-import { ProjectFileWatcher, isIgnoredProjectFile, watchProjectFiles } from "../../utils/projectFileWatcher";
+import chokidar, { FSWatcher } from "chokidar";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
+import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type { RevisionId } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
@@ -15,7 +16,8 @@ import { devModeDiskBundleSource } from "./pipeline/bundleAssembler";
 import type { DevModeBundleSource } from "./pipeline/types";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
-import { forgetWatchedPath, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
+import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
 import { resolveDevModeLaunchSource } from "./revisionLaunchSource";
 import { removeRevisionSnapshots } from "../vcs/revisionSnapshot";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -40,7 +42,9 @@ type DevModeSession = {
     window: AppWindow<WindowAppType.DevMode> | null;
     windowReady: boolean;
     revision: number;
-    watcher: ProjectFileWatcher | null;
+    watcher: FSWatcher | null;
+    /** The asset library's own watch; see {@link watchSubtree}. Null when chokidar covers it. */
+    assetWatcher: SubtreeWatcher | null;
     /**
      * `mtimeMs:size` per watched file, as of the last event this session accepted. See
      * {@link DevModeManager.fileContentChanged}.
@@ -338,6 +342,7 @@ export class DevModeManager {
             windowReady: false,
             revision: 0,
             watcher: null,
+            assetWatcher: null,
             fileIdentities: new Map(),
             assetRevision: 0,
             pendingBundle: null,
@@ -640,26 +645,53 @@ export class DevModeManager {
         // follows is the only thing that makes editing outside Studio feel like editing inside it.
         const scriptsRoot = path.join(session.projectPath, SCRIPTS_DIR);
         this.emitVerbose(session, "watching project files for Dev Mode reload");
-        session.watcher = watchProjectFiles(
-            [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, assetsContentRoot, scriptsRoot],
-            { ignored: file => isIgnoredProjectFile(session.projectPath, file) },
-            (file, stats) => {
-                if (!stats) {
-                    forgetWatchedPath(session.fileIdentities, file);
-                    this.noteAssetChange(session, assetsRoot, file);
-                    this.scheduleReload(session, "unlink", file);
-                    return;
-                }
-                // A file this watch has not seen before has no recorded identity, so this is also how
-                // an appearing file is reported: unknown counts as changed.
-                if (!watchedFileChanged(session.fileIdentities, file, stats)) {
-                    return;
-                }
-                this.noteAssetChange(session, assetsRoot, file);
-                this.scheduleReload(session, "change", file);
+        // The asset library is watched apart from the documents, and by one handle rather than by
+        // one per file in it: see `watchSubtree` for the three seconds of blocked event loop that
+        // buys back. Nothing downstream loses anything by it - an asset that moved bumps the
+        // session's asset revision and schedules a reload, whichever of the two it was.
+        session.assetWatcher = watchSubtree(assetsContentRoot, session.fileIdentities, file => {
+            this.noteAssetChange(session, assetsRoot, file);
+            this.scheduleReload(session, "change", file);
+        });
+        const documentPaths = [uidocPath, uigraphsPath, storyRoot, localizationRoot, characterStorePath, brandPath, blueprintMetaPath, scriptsRoot];
+        if (!session.assetWatcher) {
+            // No recursive watch to be had here. Back to what this always did.
+            documentPaths.push(assetsContentRoot);
+        }
+        session.watcher = chokidar.watch(
+            documentPaths,
+            // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
+            // it into place. Reporting it would schedule a reload against a file that is already
+            // gone, on top of the reload the rename itself triggers.
+            // `alwaysStat` so `fileContentChanged` has a modification time and a size to compare;
+            // without it every reported change would have to be taken at face value.
+            {
+                ignoreInitial: true,
+                // The dependency tree under `scripts/` is the reason this is a list rather than one
+                // pattern: an `npm install` there is tens of thousands of files, and watching them
+                // would cost a reload on every one and enough handles to stall the session. What a
+                // script imports from it is already inside the bundle esbuild produced.
+                ignored: [ATOMIC_WRITE_TEMP_PATTERN, `**/${SCRIPTS_MODULES_DIR}/**`, `**/${SCRIPTS_GENERATED_DIR}/**`],
+                alwaysStat: true,
             },
-            error => this.app.logger.warn("[DevMode] project file watch failed", error),
         );
+        session.watcher.on("add", (file, stats) => {
+            rememberWatchedFile(session.fileIdentities, file, stats);
+            this.noteAssetChange(session, assetsRoot, file);
+            this.scheduleReload(session, "add", file);
+        });
+        session.watcher.on("change", (file, stats) => {
+            if (!watchedFileChanged(session.fileIdentities, file, stats)) {
+                return;
+            }
+            this.noteAssetChange(session, assetsRoot, file);
+            this.scheduleReload(session, "change", file);
+        });
+        session.watcher.on("unlink", file => {
+            session.fileIdentities.delete(file);
+            this.noteAssetChange(session, assetsRoot, file);
+            this.scheduleReload(session, "unlink", file);
+        });
     }
 
     /**
@@ -800,10 +832,14 @@ export class DevModeManager {
     }
 
     private disposeWatcher(session: DevModeSession): void {
+        if (session.assetWatcher) {
+            session.assetWatcher.close();
+            session.assetWatcher = null;
+        }
         if (!session.watcher) {
             return;
         }
-        session.watcher.close();
+        void session.watcher.close();
         session.watcher = null;
     }
 

@@ -47,6 +47,28 @@ describe("the project's own names, as types", () => {
         expect(rendered).toContain("type SurfaceId = never;");
     });
 
+    it("tells a fact it does not have apart from one the project has none of", () => {
+        // `never` is an assertion - "this project declares none" - and the writer that runs when a
+        // project opens has not read the story documents, so it cannot make it about scenes. The
+        // two answers are rendered differently, and the written file says which one it is.
+        const ungathered = renderProjectDeclarations(facts({ scenes: null }));
+        expect(ungathered).toContain("type SceneId = string;");
+        expect(ungathered).toContain("Scenes live in the story documents");
+
+        const none = renderProjectDeclarations(facts({ scenes: [] }));
+        expect(none).toContain("type SceneId = never;");
+
+        const some = renderProjectDeclarations(facts({ scenes: [{ id: "s-2", name: "Two" }, { id: "s-1", name: "One" }] }));
+        expect(some).toContain('type SceneId = "s-1" | "s-2";');
+    });
+
+    it("names the project's input actions", () => {
+        const rendered = renderProjectDeclarations(
+            facts({ inputActions: [{ id: "advance", name: "Advance" }, { id: "skip", name: "Skip" }] }),
+        );
+        expect(rendered).toContain('type InputActionId = "advance" | "skip";');
+    });
+
     it("gives each element a context alias of its own widget type", () => {
         const rendered = renderProjectDeclarations(
             facts({
@@ -130,14 +152,17 @@ describe("the host API half of the declarations", () => {
             "WidgetCtx",
             "ComponentWidgetCtx",
             "StoryCtx",
-            "ValueCtx",
+            "StorySyncCtx",
             "ScriptEvent",
             "WidgetHandler",
         ]) {
             // A name Studio writes into a starter file and the declarations do not export is a
-            // fresh script blueprint that does not compile.
+            // fresh script that does not compile.
             expect(SCRIPT_API_DECLARATIONS, name).toContain(`export type ${name}`);
         }
+        // And the one a value binding would have used, which is not offered: the slot takes a
+        // blueprint, so shipping the type would be offering an author something refused three ways.
+        expect(SCRIPT_API_DECLARATIONS).not.toContain("ValueCtx");
     });
 
     it("resolves with nothing installed", () => {

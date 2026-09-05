@@ -22,7 +22,6 @@ import type {
   IconButtonSelection,
   InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
-import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
@@ -40,6 +39,7 @@ import {
   isVerticalWritingMode,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { getTextProps } from "./helpers";
+import { TextRunMarksEditor } from "./TextRunMarks";
 import type {
   TextAlign,
   TextOrientation,
@@ -166,24 +166,13 @@ const TextBlueprintValueField = createBlueprintValueField({
       name: liveElement.name ?? translate("widgets.defaults.text.name"),
     }),
   getLiteralValue: ({ liveElement }) => getTextProps(liveElement).text,
-  renderLiteralEditor: ({ data, liveElement }) => {
-    const textProps = getTextProps(liveElement);
-    return (
-      <DraftTextInput
-        multiline
-        className="min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs text-fg outline-none focus:border-primary/70 focus:ring-1 focus:ring-primary/40"
-        value={textProps.text}
-        rows={4}
-        draftResetKey={liveElement.id}
-        readCommittedValue={() =>
-          getTextProps(data.documentService.getDocument().elements[liveElement.id] ?? liveElement).text
-        }
-        onCommit={next => {
-          data.documentService.updateElementProps(liveElement.id, { text: next });
-        }}
-      />
-    );
-  },
+  renderLiteralEditor: ({ data, liveElement, readOnly }) => (
+    <TextRunMarksEditor
+      documentService={data.documentService}
+      element={liveElement}
+      readOnly={readOnly}
+    />
+  ),
 });
 
 type Translator = ReturnType<typeof i18nStore.getTranslator>["t"];

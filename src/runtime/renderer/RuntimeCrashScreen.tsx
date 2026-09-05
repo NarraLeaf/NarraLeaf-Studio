@@ -1,12 +1,22 @@
 import { useState, type ReactNode } from "react";
+import type { GameCrashStoryPosition } from "@shared/types/gameRuntime";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
 import { getShellLocale } from "./shellLocale";
+import { canSaveCrashReport, saveCrashReport } from "./crashReport";
 import { getRuntimeCrashPolicy, getRuntimeShellLogPath } from "./crashPolicy";
 
 interface RuntimeCrashScreenProps {
     /** The failure, already flattened. Carries a stack when there was one. */
     details: string;
+    /**
+     * Where the story had got to, for the report file. Taken by the boundary as it unwound, because
+     * by the time this screen renders the run it describes has been torn down.
+     *
+     * Absent on the screen the shell draws after the display process died: that page never ran the
+     * game, and has nothing to say about the session that went with it.
+     */
+    story?: GameCrashStoryPosition | null;
     /** Called instead of a plain page reload where the shell has a better way back. */
     onRestart?: () => void;
 }
@@ -23,8 +33,15 @@ interface RuntimeCrashScreenProps {
  * Restarting is a page reload rather than anything cleverer. The game reopens at its title screen
  * with every save on disk untouched, which is the honest promise; trying to resume from a tree
  * that has just thrown would be a guess about state nobody can check.
+ *
+ * The report button is the last step of that: showing the failure and naming the log left the player
+ * with a folder path and a clipboard, and the author with whatever they managed to paste. It writes
+ * one file - the log plus what the build knows about itself - and shows it to them in their file
+ * manager, on their own machine and nowhere else. It is drawn only where the shell can actually
+ * write one, and nothing else on this screen depends on it: a write that fails leaves the copy
+ * button and the log path exactly as they are.
  */
-export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenProps): ReactNode {
+export function RuntimeCrashScreen({ details, story = null, onRestart }: RuntimeCrashScreenProps): ReactNode {
     const { t } = useTranslation();
     const [copyState, setCopyState] = useState<{ ok: boolean; text: string } | null>(null);
     /**
@@ -44,6 +61,24 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
      * is no bridge to ask. Absent on the web export, which has no log file to name.
      */
     const logPath = getRuntimeShellLogPath();
+    /**
+     * Asked once, at render: a shell either has somewhere to write a file or it does not, and the
+     * answer cannot change while this screen is up. False on the web export and wherever the preload
+     * never ran, and the screen then draws no button at all - an affordance that cannot work is
+     * worse than none, and everything else here is untouched by its absence.
+     */
+    const [canSaveReport] = useState(canSaveCrashReport);
+    const [reportState, setReportState] = useState<{ ok: boolean; text: string } | null>(null);
+    const [savingReport, setSavingReport] = useState(false);
+
+    const handleSaveReport = async () => {
+        setSavingReport(true);
+        const result = await saveCrashReport(details, story);
+        setSavingReport(false);
+        setReportState(result.outcome === "written"
+            ? { ok: true, text: t("game.crash.reportSaved", { path: result.path }) }
+            : { ok: false, text: t("game.crash.reportFailed", { error: result.error }) });
+    };
 
     const handleCopy = async () => {
         try {
@@ -87,13 +122,35 @@ ${t("game.crash.logAt", { path: logPath })}` : details);
                     <h1 className="text-lg font-medium">{t("game.crash.title")}</h1>
                     <p className="mt-2 text-sm text-white/60">{t("game.crash.detail")}</p>
 
-                    <button
-                        type="button"
-                        onClick={handleRestart}
-                        className="mt-6 inline-flex min-h-9 items-center rounded-md border border-white/20 bg-white/10 px-4 text-sm text-white transition-colors hover:bg-white/20"
-                    >
-                        {t("game.crash.restart")}
-                    </button>
+                    {/* Wraps, because a 480px window is a size this screen has to work at and two
+                        buttons on one line do not fit there. */}
+                    <div className="mt-6 flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={handleRestart}
+                            className="inline-flex min-h-9 items-center rounded-md border border-white/20 bg-white/10 px-4 text-sm text-white transition-colors hover:bg-white/20"
+                        >
+                            {t("game.crash.restart")}
+                        </button>
+                        {canSaveReport && (
+                            <button
+                                type="button"
+                                onClick={() => void handleSaveReport()}
+                                disabled={savingReport}
+                                className="inline-flex min-h-9 items-center rounded-md border border-white/20 px-4 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+                            >
+                                {t("game.crash.saveReport")}
+                            </button>
+                        )}
+                    </div>
+                    {reportState && (
+                        <p
+                            className={`nl-selectable-text mt-3 select-text break-all text-xs ${reportState.ok ? "text-white/50" : "text-red-300"}`}
+                            role="status"
+                        >
+                            {reportState.text}
+                        </p>
+                    )}
 
                     {showDetails && (
                         <details className="mt-6">

@@ -26,21 +26,19 @@ export function watchedFileIdentity(stats?: Pick<Stats, "mtimeMs" | "size">): st
 }
 
 /**
- * Forget a path that has gone, and anything that was underneath it.
+ * Record what a file looks like without treating it as a change.
  *
- * A recursive watch reports a deleted directory by name and says nothing about the files it held, so
- * an exact-key removal would leave their identities behind. Restoring that directory from a backup
- * or a version control checkout puts the same bytes back, and the stale identities would then match
- * and suppress the reload the restore needs.
+ * For the `add` events a watcher reports: the reload they schedule is already decided, and what
+ * this leaves behind is the baseline the next `change` event on that file is measured against.
  */
-export function forgetWatchedPath(identities: Map<string, string>, file: string): void {
-    identities.delete(file);
-    const prefix = file.endsWith("/") || file.endsWith("\\") ? file : `${file}/`;
-    const alternate = `${file}\\`;
-    for (const known of identities.keys()) {
-        if (known.startsWith(prefix) || known.startsWith(alternate)) {
-            identities.delete(known);
-        }
+export function rememberWatchedFile(
+    identities: Map<string, string>,
+    file: string,
+    stats?: Pick<Stats, "mtimeMs" | "size">,
+): void {
+    const identity = watchedFileIdentity(stats);
+    if (identity) {
+        identities.set(file, identity);
     }
 }
 

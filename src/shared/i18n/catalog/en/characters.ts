@@ -262,6 +262,13 @@ export const characters = {
         // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
         // help and the author has to go and make a bus first.
         voiceTrackEmpty: "Add a bus under Voice in Project ▸ Game to give this character its own volume control.",
+        // What an `enter` row falls back to on every channel it does not state. Named for the
+        // operation the rows carry (`charOp.enter`), which is the word an author already reads on
+        // the row itself.
+        entrance: "Entrance defaults",
+        entranceEmpty: "Entrance rows use the stage's own values until this is set.",
+        entranceDrag: "Drag to place",
+        entranceZoom: "Drag to scale",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

@@ -11,6 +11,7 @@ import {
     resolveCharacterAvatarAssetUrl,
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
+import { resolveDevModeAssetUrl } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
@@ -282,6 +283,20 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
 
         // Dev Mode without workspace context should still resolve assets through IPC.
         if (!assetsService) {
+            // Unless the window has published its own map, which a Dev Mode window does: it resolves
+            // every asset in the project once and warms the interface from that map, so reading it
+            // here is what makes the picture this widget draws the picture that was warmed - rather
+            // than a second grant for the same file, fetched again. See `devModeAssetUrls`.
+            const published = resolveDevModeAssetUrl(assetId);
+            if (published) {
+                if (urlRef.current) {
+                    URL.revokeObjectURL(urlRef.current);
+                    urlRef.current = null;
+                }
+                setState({ url: published, metadata: null, loading: false, error: null });
+                return;
+            }
+
             if (workspaceValue) {
                 setState({
                     url: null,

@@ -33,7 +33,17 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
         { projectPath, entry }: IPCEvents[IPCEventType.devModeLaunch]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeLaunch]["response"]["status"] }>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getDevModeManager().launch(projectPath, entry);
+            // The window's project, not the payload's. Dev Mode compiles and runs the named
+            // project's own code - its puppet runtimes, its `scripts/`, its plugins - and the
+            // window it opens holds a recursive grant over that tree, so which project it is may
+            // not be the caller's choice. A build, a preview and a test run all ask this already;
+            // this was the fourth way to start a project and the only one that did not.
+            //
+            // It also fixes the trust gate behind it, which reads the path it is handed: named
+            // somebody else's project that happens to be trusted, that gate said yes about a
+            // project this window was never opened on.
+            const status = await window.getApp().getDevModeManager()
+                .launch(requireWindowProject(window, projectPath), entry);
             return { status };
         });
     }
@@ -47,8 +57,14 @@ export class DevModeStopHandler extends IPCHandler<IPCEventType.devModeStop> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.devModeStop]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeStop]["response"]["status"] }>> {
-        const status = await window.getApp().getDevModeManager().stop(projectPath);
-        return this.success({ status });
+        // The window's project, not the payload's. Both windows that stop a session - the workspace
+        // and the Dev Mode window itself - are opened on the project they are stopping, so the
+        // payload never had a choice to make; without this, ending somebody else's test run was one
+        // message away.
+        return this.tryUse(async () => ({
+            status: await window.getApp().getDevModeManager()
+                .stop(requireWindowProject(window, projectPath)),
+        }));
     }
 }
 
@@ -265,7 +281,10 @@ export class DevModeReloadHandler extends IPCHandler<IPCEventType.devModeReload>
         { projectPath }: IPCEvents[IPCEventType.devModeReload]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeReload]["response"]["status"] }>> {
         return this.tryUse(async () => {
-            const status = await window.getApp().getDevModeManager().reload(projectPath);
+            // The window's project, not the payload's. A reload recompiles the project and swaps
+            // what the running session is executing, which is a launch by another name.
+            const status = await window.getApp().getDevModeManager()
+                .reload(requireWindowProject(window, projectPath));
             return { status };
         });
     }
@@ -279,8 +298,16 @@ export class DevModeGetStatusHandler extends IPCHandler<IPCEventType.devModeGetS
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.devModeGetStatus]["data"],
     ): RequestStatus<{ status: IPCEvents[IPCEventType.devModeGetStatus]["response"]["status"] }> {
-        const status = window.getApp().getDevModeManager().getStatus(projectPath);
-        return this.success({ status });
+        // The window's project, not the payload's. The status of another author's session is not
+        // much on its own, but this is the one channel that answers "is that project running", and
+        // it is polled - which is how a session is watched rather than merely glimpsed.
+        try {
+            const status = window.getApp().getDevModeManager()
+                .getStatus(requireWindowProject(window, projectPath));
+            return this.success({ status });
+        } catch (error) {
+            return this.failed(error);
+        }
     }
 }
 

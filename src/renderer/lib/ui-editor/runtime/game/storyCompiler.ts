@@ -137,6 +137,7 @@ import {
     storyTransformPropsConflicts,
     storyTransformPropsToNlr,
 } from "@shared/story/transformProps";
+import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
 import {
     boolProp,
     characterStageName,
@@ -617,6 +618,15 @@ export type CompiledSceneElements = {
      * them by - `bgm` for the music channel, the derived object name for a `/sound`.
      */
     sounds: Map<string, Sound>;
+    /**
+     * Clips this scene's compile built, keyed by the object name a `/video` row addresses.
+     *
+     * Published for the same reason the sounds are: the preload plan names a clip by ELEMENT and
+     * not by url, because warming one means putting that element on the stage early and the element
+     * that buffered has to be the one that plays. The warm order records urls, so this is the other
+     * half of the lookup.
+     */
+    videos: Map<string, Video>;
 };
 
 export type CompiledNlrStory = {
@@ -707,6 +717,14 @@ export type CompiledNlrStory = {
     sceneBackgroundMusicAssetIds?: Record<string, string>;
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
+    /**
+     * What each scene's rows asked to have ready, in the order they asked - keyed by Studio scene id.
+     *
+     * Present only when the host set {@link CompileInput.collectWarmOrder}. This is what lets the
+     * player be told what to warm rather than left to guess it from a static walk; see
+     * {@link SceneWarmOrder}.
+     */
+    sceneWarmOrder?: Record<string, SceneWarmOrder>;
     /** Continuous stage previews only: why the compiled playback tail ends. */
     playbackStop?: StoryPlaybackStop;
 };
@@ -894,6 +912,60 @@ type SceneCompileContext = {
      * plugin's darkens would show the author a stage the row does not describe.
      */
     pluginInjections?: Map<string, { before: NlrStatement[]; after: NlrStatement[] }>;
+    /**
+     * Every media url this scene resolved, in the order the compiler reached it, with the row that
+     * asked for it.
+     *
+     * Recorded so the player can be told what to warm and when instead of having to guess. The
+     * engine's own answer is a static walk of the scene's action tree, which knows what a scene
+     * uses *anywhere in it* and nothing about order - on a real project that is most of the library
+     * for one painted background. This is the same question answered by the thing that already
+     * walked the rows in order.
+     *
+     * Absent when the compile is not building a warm order (see {@link CompileInput.collectWarmOrder}):
+     * every reference audit and save-anchor compile in the build pipeline goes through here too, and
+     * none of them has a player to tell.
+     */
+    warmOrder?: SceneWarmOrder;
+};
+
+/**
+ * What one scene wants warm, in the order its rows ask for it.
+ *
+ * Rows rather than a flat list of urls, because the point of recording the order is to be able to
+ * say "the next few rows" at runtime - and the play head names a row, not a url. A row that
+ * resolves nothing is still listed: dropping it would make the distance between two rows depend on
+ * what they happened to show.
+ */
+export type SceneWarmOrder = {
+    /**
+     * The url the scene opens with, or null when it opens on a colour or on nothing.
+     *
+     * This is the only image the first painted frame cannot do without, and the only one worth
+     * holding a loading screen for.
+     */
+    firstFrame: string | null;
+    /** Block ids in compile order - which is row order within a scene, and a tree walk across branches. */
+    blockOrder: string[];
+    /** Media each block resolved, keyed by block id. Deduplicated within the block. */
+    byBlock: Record<string, StoryWarmResource[]>;
+};
+
+/** One thing a row asked the player to have ready. */
+export type StoryWarmResource = {
+    /** Audio is here as well as images and video: the plan the player takes carries all three. */
+    type: "image" | "video" | "audio";
+    url: string;
+    /**
+     * The clip this row built, for a video.
+     *
+     * A url is enough for an image, which the player fetches and caches under it. It is not enough
+     * for a video: warming one means putting its element on the stage early, and the element that
+     * buffered has to be the one that plays. The engine's plan therefore names `Video` objects, and
+     * this is where the row that resolved the asset hands one over. Absent for images and audio,
+     * and absent for a video whose element could not be built.
+     */
+    video?: Video;
 };
 
 type CompileInput = {
@@ -912,6 +984,14 @@ type CompileInput = {
      * know the size to bake at either; that follows the project's stage, which the host owns.
      */
     resolveWeatherClip?: (ref: WeatherSeedRef) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * Record what each scene's rows ask to have ready, in the order they ask for it.
+     *
+     * Only a host with a player to tell should set this: it is what the player's preload strategy
+     * plans from, and the reference audits and save-anchor compiles that share this compiler have
+     * nobody to hand it to. See {@link SceneWarmOrder}.
+     */
+    collectWarmOrder?: boolean;
     /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
@@ -1120,6 +1200,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         localization,
     });
     const allScenes = scenesBuild.scenes;
+    // Built only for a host that has a player to tell. Every reference audit and save-anchor compile
+    // in the build pipeline comes through here as well, and recording an order for those would be
+    // work nobody reads.
+    const sceneWarmOrder: Record<string, SceneWarmOrder> | null = input.collectWarmOrder ? {} : null;
 
     // Single Storable-backed namespace seeded with every saved variable's default. "Every" spans both
     // authoring surfaces since `saved` became a registry scope: the project registry's saved entries
@@ -1201,6 +1285,11 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             actionIdBindings,
             elementIdBindings,
             nextActionIndex,
+            ...(sceneWarmOrder ? {warmOrder: sceneWarmOrder[scene.id] = {
+                firstFrame: scenesBuild.initialBackgroundUrls?.[scene.id] ?? null,
+                blockOrder: [],
+                byBlock: {},
+            }} : {}),
         };
         // Let the registered plugin compile passes read this scene and say what they attach around
         // each row. Before the seeds and before any row compiles, because `compileBlock` reads the
@@ -1227,7 +1316,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
-        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds };
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds, videos: ctx.videos };
     }
 
     // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
@@ -1292,6 +1381,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         savedVariables,
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
+        ...(sceneWarmOrder ? { sceneWarmOrder } : {}),
         diagnostics,
         characters,
         avatarAssetIdByUrl,
@@ -1855,7 +1945,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         diagnostics,
         characters: ctx.characters,
         avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
-        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds } },
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds, videos: ctx.videos } },
         playbackStop,
     };
 }
@@ -2004,6 +2094,8 @@ async function createNlrScenes(input: {
     scenes: Record<string, Scene>;
     setVoiceLocale: (locale: string) => boolean;
     getVoicePlayback: (unitId: string) => { src: string; busId: string } | null;
+    /** The image each scene opens on, by Studio scene id; absent for a scene opening on a colour. */
+    initialBackgroundUrls: Record<string, string>;
 }> {
     const scenes: Record<string, Scene> = {};
 
@@ -2107,6 +2199,9 @@ async function createNlrScenes(input: {
     // Document order decides WHICH of the two colliding scenes gets blamed - the later one, as with
     // duplicate labels. Reading the record would hand that verdict to whichever id sorts lower.
     const namesSeen = new Set<string>();
+    // The one image a scene's first painted frame cannot do without, per scene. Collected here
+    // because this is where it is resolved, and needed by the warm order, which is built later.
+    const initialBackgroundUrls: Record<string, string> = {};
     for (const scene of listScenesInDocumentOrder(input.document)) {
         const runtimeName = scene.runtimeName || scene.name || scene.id;
         if (namesSeen.has(runtimeName)) {
@@ -2136,6 +2231,7 @@ async function createNlrScenes(input: {
         } = {};
         if (background) {
             config.background = background;
+            initialBackgroundUrls[scene.id] = background;
         }
         const sceneVoices = voicesForScene?.get(scene.id);
         if (sceneVoices) {
@@ -2172,7 +2268,7 @@ async function createNlrScenes(input: {
             }
         }
     }
-    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback };
+    return { scenes, setVoiceLocale: applyLocale, getVoicePlayback, initialBackgroundUrls };
 }
 
 async function resolveSceneInitialBackground(input: {
@@ -2486,7 +2582,7 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
             if (!rosterSet.has(name)) {
                 return null;
             }
-            const image = getImage(ctx, name, { autoFit: true });
+            const image = getImage(ctx, name);
             return {
                 darken: (darkness, durationMs, easing) => image.darken(
                     Math.min(1, Math.max(0, darkness)),
@@ -2658,10 +2754,18 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
     }
 
     if (block.kind === "invalid") {
-        // Skipped rather than fatal so preview still runs: a half-typed command is a normal thing to
-        // have on screen while writing. `error` (not `warning`) is what stops it there - a production
-        // build refuses on error diagnostics, so an unfinished line cannot ship quietly.
-        diagnostic(ctx, "error", block.id, `Invalid command, skipped: ${block.payload.source}`);
+        // A line that has not resolved yet: nothing to emit, and nothing said about it here.
+        //
+        // It used to raise an `error`, on the reasoning that a production build refuses on error
+        // diagnostics. That was never true of this compiler - it runs inside the game at startup,
+        // never in the packer, so what actually stops an unresolved line from shipping is
+        // `BuildService`'s own gate (`collectInvalidStoryBlocks`), which refuses before a single
+        // scene is compiled. The row is already reported in the two places an author can act on it:
+        // drawn in the reject colour with the reason beside it, and listed by `story/invalid-command`
+        // in the lint report. Repeating it here bought a fourth telling that fires once per compile
+        // per row - twice for a row-precise launch, which compiles its scene both normally and as the
+        // entry - so an author writing with Dev Mode open was told they had broken something on every
+        // reload, about a line they were in the middle of typing.
         return [];
     }
 
@@ -3407,6 +3511,10 @@ async function compileCharacterStageAction(
         return statements;
     }
 
+    // What an `enter` row falls back to on every channel it does not state. Read once here, so the
+    // two appearance branches below cannot disagree about which character's defaults they used.
+    const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
+
     if (payload.operation === "exit" && staged) {
         await bindCharacterPortrait(ctx, payload.characterId, staged);
         const chain = await compileDisplayableOperation(staged, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
@@ -3428,7 +3536,10 @@ async function compileCharacterStageAction(
     const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
-        const image = staged ?? getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        const image = staged ?? getImage(ctx, name, {
+            src: layeredSrc as never,
+            initialProps: characterEntrancePose(entranceDefaults, ctx, block.id),
+        });
         // An Image built from a single url has no tag groups, and the engine rejects the whole story
         // for a tag change aimed at one - during construction, so the player never starts and the row
         // that caused it is nowhere in the message. That mismatch means an earlier row put this
@@ -3444,7 +3555,8 @@ async function compileCharacterStageAction(
             : payload.tags ?? {};
         const tags = Object.values(selection);
         if (payload.operation === "enter") {
-            const chain = image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
+            const entrance = withCharacterEntranceDefaults(entranceDefaults, payload.transform);
+            const chain = image.char(tags as never).show(createShowTransform(entrance, ctx, block.id) as any);
             statements.push(recordStatement(ctx, chain, block));
             return statements;
         }
@@ -3465,13 +3577,17 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    const image = staged ?? getImage(ctx, name, { autoFit: true, src });
+    const image = staged ?? getImage(ctx, name, {
+        src,
+        initialProps: characterEntrancePose(entranceDefaults, ctx, block.id),
+    });
     await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
         // transition - its entrance is driven entirely by the show transform. (A transition only
         // applies to `expression`, which swaps a visible character's source.)
-        const chain = image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
+        const entrance = withCharacterEntranceDefaults(entranceDefaults, payload.transform);
+        const chain = image.char(src as any).show(createShowTransform(entrance, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3520,9 +3636,10 @@ async function compileCharacterPuppetAction(
     // the box is never restored. An `Image` under a puppet character's key can have come from
     // nowhere else - a compile of the rows sends a puppet character here on every operation and
     // never builds one - so it reads as "on stage, box not restorable" and the box is built.
+    const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
     const preposed = stagedCharacterElement(ctx, name) instanceof Image;
     const puppet = declaresStageObject(payload) || preposed
-        ? await getPuppetElement(ctx, name, appearance, block.id)
+        ? await getPuppetElement(ctx, name, appearance, block.id, entranceDefaults)
         : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
         return [];
@@ -3554,7 +3671,9 @@ async function compileCharacterPuppetAction(
     const operation = payload.operation === "exit" ? "hide" : payload.operation === "move" ? "transform" : "show";
     const transform = payload.operation === "exit"
         ? payload.transform ?? { preset: "fadeOut" as const, durationMs: 250 }
-        : payload.transform;
+        : payload.operation === "enter"
+            ? withCharacterEntranceDefaults(entranceDefaults, payload.transform)
+            : payload.transform;
     const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
     return chain ? [recordStatement(ctx, chain, block)] : [];
 }
@@ -3577,6 +3696,7 @@ async function getPuppetElement(
     objectName: string,
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
     blockId: string,
+    entranceDefaults: StoryTransformProps | undefined,
 ): Promise<Puppet | null> {
     const key = normalizeObjectName(objectName);
     const existing = ctx.puppets.get(key);
@@ -3615,6 +3735,11 @@ async function getPuppetElement(
         ...(appearance.defaultState?.motion ? { motion: appearance.defaultState.motion } : {}),
         ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
         ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
+        // The character's entrance defaults, baked in for the same reason the three channels above
+        // are: `IPuppetUserConfig` extends the engine's transform props and is what survives
+        // `reset()`. The box a backend draws into is scaled and placed exactly as an image is, so a
+        // puppet character is her own size on the same terms.
+        ...(characterEntrancePose(entranceDefaults, ctx, blockId) ?? {}),
     });
     setStableElementId(ctx.elementIdBindings, puppet, `nl:puppet:${ctx.scene.id}:${key}`);
     ctx.puppets.set(key, puppet);
@@ -4666,6 +4791,21 @@ function characterNametagConfig(summary: DevModeCharacterSummary | undefined): {
  * it already stood. A row that merely ADDRESSES an image goes through {@link findStageImage} - or
  * {@link findStageCharacterImage} for a portrait - and reports a miss instead.
  */
+/**
+ * `autoFit` is the background's rule, and only a row that asks for it gets it.
+ *
+ * It scales a displayable's WIDTH to the stage's, taking only the aspect ratio from the artwork - so
+ * a full-width CG covers the stage whatever pixels it was drawn at, which is what it is for. A
+ * character sprite is not a full-width picture, and applying it to one made the artwork's own size
+ * meaningless: a 1600px sprite and a 3000px sprite came out identically stage-wide and both far too
+ * big, so every entrance row had to carry a `zoom` computed from the artwork's pixel size against
+ * the stage's - a number nothing in the interface states, copied down the whole script. Studio asked
+ * for it on every character until now.
+ *
+ * Without it a sprite is drawn at its own pixels in design space: art drawn for a 1920x1080 game
+ * lands at the size it was drawn, and a character that should be smaller says so once, on the
+ * character (`entranceTransform`), rather than on every row that brings her on.
+ */
 function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
@@ -4782,6 +4922,9 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
     const video = new Video({ src: url, muted: muted ?? false });
     setStableElementId(ctx.elementIdBindings, video, `nl:video:${ctx.scene.id}:${name}`);
     ctx.videos.set(name, video);
+    // The warm order recorded the url a moment ago, when the asset resolved. Only here is there an
+    // element to go with it, and the element is what a preload plan can actually warm.
+    recordWarmedVideoElement(ctx, blockId, url, video);
     return video;
 }
 
@@ -5567,6 +5710,41 @@ function isOpacityOnly(transform: StoryTransformRef | undefined, opacity: number
         return true;
     }
     return keys.length === 1 && keys[0] === "opacity" && to.opacity === opacity;
+}
+
+/**
+ * The entrance defaults an author set on a character, or `undefined` when they set none.
+ *
+ * A lookup rather than a field on the payload: a row names a character, and how that character is
+ * drawn is the character's answer. Rewriting rows to carry it would put the same number back on
+ * every line, which is the copying this exists to end.
+ */
+function characterEntranceDefaults(ctx: SceneCompileContext, characterId: string | undefined): StoryTransformProps | undefined {
+    return characterId ? ctx.characterSummaries.get(characterId)?.entranceTransform : undefined;
+}
+
+/**
+ * The same defaults as the pose baked into the element's constructor config.
+ *
+ * Belt and braces for the one entrance that cannot merge a bag: a Story Motion states its own
+ * keyframes, so an entrance played as one has nothing to fold defaults into and would bring the
+ * character on at the stage's own scale. Baking them into the config settles that before any
+ * statement runs - and it survives `reset()`, so a character re-entered after `newGame()` is still
+ * her own size.
+ *
+ * Only reached when the element is being created, which for a character row is only ever an
+ * entrance: every other operation goes through `findStageCharacterImage` and reports a miss.
+ */
+function characterEntrancePose(
+    defaults: StoryTransformProps | undefined,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Record<string, unknown> | undefined {
+    if (!defaults) {
+        return undefined;
+    }
+    const props = getInlineTransformProps({ mode: "props", to: defaults }, ctx, blockId);
+    return Object.keys(props).length > 0 ? props : undefined;
 }
 
 function createShowTransform(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Transform {
@@ -6529,7 +6707,7 @@ async function resolveAsset(
     blockId: string,
     variants?: StoryAssetVariants,
 ): Promise<string | null> {
-    return resolveAssetUrlCached({
+    const url = await resolveAssetUrlCached({
         assetId: variants
             ? resolveVariantReference({
                 variants,
@@ -6545,6 +6723,70 @@ async function resolveAsset(
         assetUrlCache: ctx.assetUrlCache,
         diagnostics: ctx.diagnostics,
     });
+    recordWarmedAsset(ctx, blockId, assetType, url);
+    return url;
+}
+
+/**
+ * Note that a row asked for a piece of media, so the player can be told to have it ready.
+ *
+ * Here rather than at the twenty-odd call sites because this is the one place every scene-scoped
+ * asset reference passes through, which is also the reason the warm order can be trusted: a
+ * reference that skipped this would be one the player is never told about, and the row that shows it
+ * would fetch on demand with nothing to say why.
+ *
+ * Fonts and puppet models are not recorded. Neither is shown by an element the player's image cache
+ * knows about - a font is loaded by the document and a model by its own backend - so naming them in
+ * a plan would ask the cache to hold something it cannot show.
+ */
+function recordWarmedAsset(
+    ctx: SceneCompileContext,
+    blockId: string,
+    assetType: StoryAssetKind,
+    url: string | null,
+): void {
+    const order = ctx.warmOrder;
+    if (!order || !url) {
+        return;
+    }
+    if (assetType !== "image" && assetType !== "video" && assetType !== "audio") {
+        return;
+    }
+    const existing = order.byBlock[blockId];
+    if (!existing) {
+        order.blockOrder.push(blockId);
+        order.byBlock[blockId] = [{type: assetType, url}];
+        return;
+    }
+    if (!existing.some(resource => resource.url === url)) {
+        existing.push({type: assetType, url});
+    }
+}
+
+/**
+ * Attach the clip a row built to the url the same row resolved.
+ *
+ * Separate from {@link recordWarmedAsset} because the two know different halves at different
+ * moments: the url is known when the asset resolves, and the element only exists once the row has
+ * decided what to build with it. A row that resolves a video url and builds nothing - a diagnostic
+ * path, a reference audit - leaves the entry url-only, which is exactly what it is.
+ */
+function recordWarmedVideoElement(
+    ctx: SceneCompileContext,
+    blockId: string,
+    url: string,
+    video: Video,
+): void {
+    const resources = ctx.warmOrder?.byBlock[blockId];
+    if (!resources) {
+        return;
+    }
+    for (const resource of resources) {
+        if (resource.type === "video" && resource.url === url && !resource.video) {
+            resource.video = video;
+            return;
+        }
+    }
 }
 
 async function resolveAssetUrlCached(input: {

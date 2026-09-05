@@ -34,7 +34,8 @@ import {
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
-import { preloadGateFor } from "@shared/types/preload";
+import { createDefaultPreloadStrategy } from "narraleaf-react";
+import { normalizePreloadConfiguration, preloadGatesWholeScene } from "@shared/types/preload";
 import {
     isAutoSaveId,
     isReservedSaveId,
@@ -119,6 +120,10 @@ import {
     type StoryEndingReach,
 } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
+    createStudioPreloadScheduler,
+    type StudioPreloadScheduler,
+} from "@/lib/ui-editor/runtime/game/studioPreloadStrategy";
+import {
     isStoryVisited,
     readStoryVisitedIds,
     STORY_VISITED_OPTIONS_KEY,
@@ -190,9 +195,11 @@ import { createSessionGate } from "./sessionGate";
 import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
+import { clearStoryPosition, recordStoryRow, recordStoryScene } from "./lastStoryPosition";
 import {
     applyResumeToLaunchSnapshot,
     buildStoryResumeLaunch,
+    resolveRelaunchStartRow,
     storyResumeNotice,
     toStoryLiteralRecord,
     type StoryResumeState,
@@ -708,7 +715,10 @@ export function GameApp(props: GameAppProps): ReactNode {
     // Same shape, same reason, for the preference store: the listener belongs to one `Game`.
     const playerPreferencesRef = useRef<(() => void) | null>(null);
     const startStoryInGameRef = useRef<
-        ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
+        ((
+            request: DevModeStartStoryRequest,
+            options?: { forceReinit?: boolean; inheritSavedGame?: unknown },
+        ) => Promise<void>) | null
     >(null);
     /** The player's way into a story, held open while a boot is still running. */
     const storyStartGate = useMemo(
@@ -1796,6 +1806,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         return bundle.storyLibrary?.documents[storyId]
             ?? Object.values(bundle.storyLibrary?.documents ?? {}).find(document => document.id === storyId);
     }, [bundle]);
+    /**
+     * The same resolver, reachable from the story-runtime bridge.
+     *
+     * The bridge is deliberately ref-backed so its identity survives every render and every relaunch
+     * (see `storyRuntime`), and this resolver is rebuilt whenever the bundle changes - so it is held
+     * the way the bridge holds everything else it needs.
+     */
+    const resolveRunningStoryDocumentRef = useRef(resolveRunningStoryDocument);
+    useEffect(() => {
+        resolveRunningStoryDocumentRef.current = resolveRunningStoryDocument;
+    }, [resolveRunningStoryDocument]);
 
     /**
      * Every project-level variable this build declares, merged exactly as the editors merge them:
@@ -2330,8 +2351,27 @@ export function GameApp(props: GameAppProps): ReactNode {
             if (!start) {
                 throw new Error("Relaunch: runtime is not ready");
             }
+            const targetSceneId = sceneId ?? request.sceneId;
+            // The row a relaunch names was chosen when the run began, and the author has been editing
+            // the story ever since. A row that has gone is not a failure to catch - the compile takes
+            // it and quietly starts the scene from the top - so it is asked about before launching,
+            // and the relocation is said out loud, the way a hot reload says it.
+            const resolved = resolveRelaunchStartRow({
+                sceneId: targetSceneId,
+                ...(startBlockId ? { startBlockId } : {}),
+                document: resolveRunningStoryDocumentRef.current(),
+            });
+            if (resolved.notice) {
+                hostRef.current.log("warning", `[${hostRef.current.id}] ${resolved.notice}`);
+                hostRef.current.reportIssue?.({ level: "warning", message: resolved.notice, origin: "session" });
+            }
             await start(
-                { storyId: request.storyId, sceneId: sceneId ?? request.sceneId, startBlockId, snapshotId },
+                {
+                    storyId: request.storyId,
+                    sceneId: targetSceneId,
+                    ...(resolved.startBlockId ? { startBlockId: resolved.startBlockId } : {}),
+                    snapshotId,
+                },
                 { forceReinit: true },
             );
         },
@@ -3435,6 +3475,15 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const compiledStoryCacheRef = useRef<CompiledStoryCacheEntry | null>(null);
 
+    /**
+     * The mounted session's preload scheduler, so a later compile can be pointed at it.
+     *
+     * The scheduler is handed to `new Game()` and lives as long as the session does, while the
+     * compile it plans from is replaced on every hot reload. Keeping the handle here is what lets
+     * the second compile take effect without remounting the player.
+     */
+    const preloadSchedulerRef = useRef<StudioPreloadScheduler | null>(null);
+
     const compileStoryDocument = useCallback(async (
         request: DevModeStartStoryRequest,
     ): Promise<CompiledNlrStory> => {
@@ -3507,6 +3556,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // tail decide every persistent condition from one value instead of two.
                     persistentVariables: bundle.ui.persistentVariables,
                     ...(storyPersistence ? { readPersistent: storyPersistence.readPersistent } : {}),
+                    // A launch replays this snapshot as each element's constructor pose, so the cast
+                    // travels with it: without them a character pre-posed here would enter at the
+                    // stage's own scale and the compiled tail would then play her at her own.
+                    characters: bundle.storyLibrary?.characters,
                 }),
             }
             : undefined;
@@ -3558,6 +3611,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                           host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc, bundle.vfx)),
                   }
                 : {}),
+            // What each scene's rows ask to have ready, in the order they ask. This is the whole of
+            // what `createStudioPreloadScheduler` plans from: the player's own answer is a static
+            // walk that knows what a scene uses anywhere in it and nothing about when, which on a
+            // real project is a chapter's artwork warmed in order to paint one background.
+            collectWarmOrder: true,
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             // The saved half of the same registry. This is the call both shipping runtimes go through
@@ -3909,6 +3967,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             choiceMenus,
         });
         const onStageNode = slots.onStageNode;
+        // Studio plans the warming, and hands the player urls rather than bytes. Built per session
+        // because it is handed to `new Game()` and holds the compile it plans from - a hot reload
+        // points the same scheduler at the new one through `useCompiled`.
+        const preloadScheduler = createStudioPreloadScheduler({
+            gateOnWholeScene: preloadGatesWholeScene(normalizePreloadConfiguration(bundle.preload).behavior),
+        });
+        preloadScheduler.useCompiled(compiled);
+        preloadScheduler.useMissingReport(message => host.log("warning", `[preload] ${message}`));
+        preloadSchedulerRef.current = preloadScheduler;
         const game = createNlrGameWithGameUi({
             width,
             height,
@@ -3929,8 +3996,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The author's pause length, from the bundle. A bundle written before the setting
             // carries nothing and gets the engine's own value, which is what those builds shipped.
             ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
-            ...(bundle.preload ? { preloadGate: preloadGateFor(bundle.preload.behavior) } : {}),
+            preload: preloadScheduler,
         });
+        // What the scheduler falls back on for a scene Studio has no warm order for - the synthetic
+        // scene a row-precise launch enters through, above all. It has to be set after the game
+        // exists, which is after the scheduler, because the engine's own strategy reads its config.
+        preloadScheduler.useFallback(createDefaultPreloadStrategy(game));
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
         // two views of one storage in the engine, so the buses' own restore is the more specific
@@ -4251,7 +4322,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             // How the page was pushed decides it: an entry opened as a game overlay is drawn over a
             // running playthrough, and one opened as a page is not.
             isGameOverlay: () => entry.presentation === "gameOverlay",
-            startStory: startStoryInGame,
+            // The gate, not the runtime's own start - the same one a slot surface gets. Start Game
+            // is a button on a page, and in Dev Mode that page is drawn while the story is still
+            // compiling behind it; without the wait the press takes the slow path and races the
+            // boot's mount for the story it is already warming.
+            startStory: storyStartGate,
             widgetPatches: {
                 setByScope: setWidgetPatchesByScope,
                 byScopeRef: widgetPatchesByScopeRef,
@@ -4719,7 +4794,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // is over a running game is that page's answer, not one of its own.
                     isGameOverlay: () =>
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
-                    startStory: startStoryInGame,
+                    // As the page around it; see `createStoryStartGate`.
+                    startStory: storyStartGate,
                     widgetPatches: {
                         setByScope: setWidgetPatchesByScope,
                         byScopeRef: widgetPatchesByScopeRef,
@@ -5780,6 +5856,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // compiled with two copies of one scene still resolves by identity. Re-bound per
                 // session, exactly like the play-head stream below.
                 cancelSceneTracking();
+                // A new session has nowhere to be yet. Cleared here rather than in
+                // `cancelSceneTracking`, which also runs while the tree is coming down - including
+                // the teardown a crash causes, which is the one moment the last position is worth
+                // having.
+                clearStoryPosition();
                 const sceneGameState = liveGame.getGameState();
                 if (sceneGameState && nlrSession?.compiled) {
                     const sceneIdByScene = new Map(
@@ -5789,6 +5870,20 @@ export function GameApp(props: GameAppProps): ReactNode {
                         sceneGameState.events.on("event:state.scene.mount", (scene: Scene) => {
                             currentSceneIdRef.current = sceneIdByScene.get(scene) ?? null;
                             currentSceneRef.current = scene;
+                            // Also kept outside the component, for the crash screen: by the time
+                            // that screen is drawn these refs belong to a tree that no longer
+                            // exists, and where the player was is what makes the report readable.
+                            // Names, not ids, because the reader is the author.
+                            const enteredSceneId = currentSceneIdRef.current;
+                            const enteredStory = resolveRunningStoryDocument();
+                            if (enteredSceneId && enteredStory) {
+                                recordStoryScene(
+                                    enteredStory.name,
+                                    enteredStory.scenes[enteredSceneId]?.name || enteredSceneId,
+                                );
+                            } else {
+                                clearStoryPosition();
+                            }
                         }),
                         sceneGameState.events.on("event:state.scene.unmount", (scene: Scene) => {
                             if (currentSceneRef.current === scene) {
@@ -5796,6 +5891,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                             }
                             if (currentSceneIdRef.current === (sceneIdByScene.get(scene) ?? null)) {
                                 currentSceneIdRef.current = null;
+                                // A player who left the story and crashed on the title screen must
+                                // not be reported as having crashed in the last scene they saw.
+                                clearStoryPosition();
                             }
                         }),
                     );
@@ -5806,6 +5904,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 playHead.observe(liveGame.getCurrentActionId());
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
                     playHead.observe(actionId);
+                    // The same row the Dev Mode timeline shows, kept where the crash screen can read
+                    // it after this tree is gone. There is no second tracker for "the current line".
+                    recordStoryRow(playHead.blockId());
                     currentActionListenersRef.current.forEach(listener => {
                         try {
                             listener(actionId);

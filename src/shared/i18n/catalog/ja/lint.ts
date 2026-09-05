@@ -282,6 +282,11 @@ export const lint = {
             description: "クリックできるが、動作が何も割り当てられていないウィジェット",
             message: "クリックしても何も実行されない",
         },
+        uiUnknownWidget: {
+            title: "不明なウィジェット型",
+            description: "型を読み込めないウィジェット",
+            message: "{type} が読み込まれていないため、このウィジェットはゲームで描画されない",
+        },
         uiComponentMissing: {
             title: "存在しないコンポーネント",
             description: "プロジェクトにないコンポーネントのインスタンス",

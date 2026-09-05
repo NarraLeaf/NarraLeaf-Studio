@@ -45,6 +45,7 @@ import {
     isMainDevMode,
     parseMainCommandLine,
     type BuildCommandLineOptions,
+    type CheckCommandLineOptions,
     type ExperimentalCommandLineOptions,
 } from "./commandLine";
 import {
@@ -863,6 +864,18 @@ export class BaseApp {
     }
 
     /**
+     * What `--test` or `--lint` asked for, or null when this launch asked for neither.
+     *
+     * The same rules {@link getCommandLineBuild} is written under, for the same reasons: not
+     * dev-gated, and answered whenever one of the two flags appeared at all, so a launch that meant
+     * to check something and mistyped a flag ends as a bad invocation rather than on the home
+     * screen with nobody there to read it.
+     */
+    public getCommandLineCheck(): CheckCommandLineOptions | null {
+        return this.commandLine.check.requested ? this.commandLine.check : null;
+    }
+
+    /**
      * What the command line asked experimental mode for, before anything decided whether it could
      * be honoured.
      *
@@ -1007,14 +1020,23 @@ export class BaseApp {
      * The parser refuses the flag outright when no build was asked for.
      */
     private setupUserDataDir(): void {
+        // Whichever headless entry point asked for one. They cannot both be on the same line - the
+        // parser refuses that - so there is exactly one answer here, and the flag families are kept
+        // apart only so each reads as a flag of the job it belongs to.
         const build = this.commandLine.build;
-        if (build.requested && build.userDataDir) {
-            const userDataPath = path.resolve(process.cwd(), build.userDataDir);
+        const check = this.commandLine.check;
+        const requested = build.requested && build.userDataDir
+            ? build.userDataDir
+            : check.requested && check.userDataDir
+                ? check.userDataDir
+                : null;
+        if (requested) {
+            const userDataPath = path.resolve(process.cwd(), requested);
             // Created here rather than left to Electron: the log sink, the global state and the
             // vault all open files under it within the next few statements.
             fs.mkdirSync(userDataPath, { recursive: true });
             this.electronApp.setPath("userData", userDataPath);
-            this.logger.info(`[App] Build profile: ${userDataPath}`);
+            this.logger.info(`[App] Command-line profile: ${userDataPath}`);
             return;
         }
         if (!this.electronApp.isPackaged) {
@@ -1025,10 +1047,10 @@ export class BaseApp {
     }
 
     /**
-     * Take the GPU out of a command-line build.
+     * Take the GPU out of a headless command-line run.
      *
-     * A `--build` run draws nothing anybody will see: its one window is created hidden and the
-     * process exits when the build ends. What it does do is run wherever the job runs, and a
+     * A `--build`, `--test` or `--lint` run draws nothing anybody will see: its one window is
+     * created hidden and the process exits when the run ends. What it does do is run wherever the job runs, and a
      * machine reached over SSH has no window server for a GPU process to attach to - on macOS that
      * is `GPU process isn't usable. Goodbye.` and a launch that never reaches `ready`.
      *
@@ -1039,7 +1061,7 @@ export class BaseApp {
      * Must happen before `ready`, which is why it is in the constructor beside `configureCdp`.
      */
     private configureHeadlessBuild(): void {
-        if (!this.commandLine.build.requested) {
+        if (!this.commandLine.build.requested && !this.commandLine.check.requested) {
             return;
         }
         this.electronApp.disableHardwareAcceleration();

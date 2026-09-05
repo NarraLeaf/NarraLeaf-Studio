@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IPCMessageType, Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { ApiCapability } from "@shared/types/pluginPermissions";
-import { WindowAppType } from "@shared/types/window";
+import { WINDOW_PROJECT_MISMATCH_CODE, WindowAppType } from "@shared/types/window";
 
 const { ipcMainMock } = vi.hoisted(() => {
     const handlers = new Map<string, (event: any, data: any) => Promise<any>>();
@@ -33,6 +33,10 @@ const { ipcMainMock } = vi.hoisted(() => {
 vi.mock("electron", () => ({
     ipcMain: ipcMainMock,
 }));
+
+const { reportWindowProjectRefusal } = vi.hoisted(() => ({ reportWindowProjectRefusal: vi.fn() }));
+
+vi.mock("../../utils/windowProjectRefusal", () => ({ reportWindowProjectRefusal }));
 
 import { IPCRegistry } from "./ipcRegistry";
 import { IPCHandler } from "./handlers/IPCHandler";
@@ -72,6 +76,30 @@ class ThrowingRequestHandler extends IPCHandler<IPCEventType> {
     }
 }
 
+/** A handler refusing the way `requireWindowProject` makes one refuse. */
+class RefusingRequestHandler extends IPCHandler<IPCEventType> {
+    readonly name = "refusing-request" as IPCEventType;
+    readonly type = IPCMessageType.request as never;
+
+    public async handle(): Promise<RequestStatus<any>> {
+        return this.failed(Object.assign(new Error("no such project"), {
+            code: WINDOW_PROJECT_MISMATCH_CODE,
+        }));
+    }
+}
+
+/** The same, on a channel that answers nobody: the two forwarding channels are messages. */
+class RefusingMessageHandler extends IPCHandler<IPCEventType> {
+    readonly name = "refusing-message" as IPCEventType;
+    readonly type = IPCMessageType.message as never;
+
+    public handle(): RequestStatus<any> {
+        return this.failed(Object.assign(new Error("no such project"), {
+            code: WINDOW_PROJECT_MISMATCH_CODE,
+        }));
+    }
+}
+
 function createRegistry(windows: AppWindow[]): IPCRegistry {
     const bySender = new Map(windows.map(w => [w.getWebContents().id, w]));
     return new IPCRegistry(
@@ -86,9 +114,16 @@ async function invokeChannel(channel: string, senderId: number, data: unknown): 
     return handler!({ sender: { id: senderId } }, data);
 }
 
+function sendMessage(channel: string, senderId: number, data: unknown): void {
+    const listener = ipcMainMock.listeners.get(channel);
+    expect(listener).toBeDefined();
+    listener!({ sender: { id: senderId } }, data);
+}
+
 describe("IPCRegistry", () => {
     beforeEach(() => {
         ipcMainMock.reset();
+        reportWindowProjectRefusal.mockClear();
     });
 
     it("routes a request to the window matching the sender", async () => {
@@ -135,6 +170,36 @@ describe("IPCRegistry", () => {
 
         const result = await invokeChannel("narraleaf-studio:throwing-request", 1, {});
         expect(result).toMatchObject({ success: false, error: "handler exploded" });
+    });
+
+    /**
+     * A refusal for naming another project is reported from here rather than from each guarded
+     * handler, and that is the point of putting it here: the guard is spreading across the handler
+     * files a few at a time, and a rule that every one of them must also remember to log is a rule
+     * that will be half-applied. Recognised by the code, because prose gets reworded.
+     */
+    it("reports a refusal that named another project, however the handler raised it", async () => {
+        const workspace = createFakeWindow(WindowAppType.Workspace, 1);
+        createRegistry([workspace]).initialize([
+            new RefusingRequestHandler(),
+            new RefusingMessageHandler(),
+            new ThrowingRequestHandler(),
+        ]);
+
+        await invokeChannel("narraleaf-studio:refusing-request", 1, {});
+        expect(reportWindowProjectRefusal).toHaveBeenCalledWith(workspace, "refusing-request");
+
+        // A message answers nobody, so its refusal would otherwise be dropped along with its return
+        // value - which is exactly the failure the console line exists to prevent.
+        reportWindowProjectRefusal.mockClear();
+        sendMessage("narraleaf-studio:refusing-message", 1, {});
+        await Promise.resolve();
+        expect(reportWindowProjectRefusal).toHaveBeenCalledWith(workspace, "refusing-message");
+
+        // An ordinary failure is not one of these and must not be announced as one.
+        reportWindowProjectRefusal.mockClear();
+        await invokeChannel("narraleaf-studio:throwing-request", 1, {});
+        expect(reportWindowProjectRefusal).not.toHaveBeenCalled();
     });
 
     it("registers each event exactly once and rejects duplicates", () => {

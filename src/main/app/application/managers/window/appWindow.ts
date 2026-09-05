@@ -1,7 +1,7 @@
 import fs from "fs";
 import { dialog } from "electron";
 import { AppEventToken } from "@shared/types/app";
-import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
+import type { CommandLineRunEvent } from "@shared/types/commandLineRun";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { App } from "@/app/app";
@@ -350,26 +350,26 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     }
 
     /**
-     * Subscribers to this window's command-line build, if it was opened to run one.
+     * Subscribers to this window's command-line run, if it was opened to do one.
      *
-     * A plain list rather than the window's event manager, because a command-line build is not a
+     * A plain list rather than the window's event manager, because a command-line run is not a
      * window event: exactly one run owns this window, the run subscribes before the page loads, and
      * nothing else in Studio has any business hearing about it.
      */
-    private commandLineBuildListeners: Array<(event: CommandLineBuildEvent) => void> = [];
+    private commandLineRunListeners: Array<(event: CommandLineRunEvent) => void> = [];
 
-    /** The renderer's half of a `--build` run; see `WorkspaceCommandLineBuildHandler`. */
-    public reportCommandLineBuildEvent(event: CommandLineBuildEvent): void {
-        for (const listener of [...this.commandLineBuildListeners]) {
+    /** The renderer's half of a headless run; see `WorkspaceCommandLineRunHandler`. */
+    public reportCommandLineRunEvent(event: CommandLineRunEvent): void {
+        for (const listener of [...this.commandLineRunListeners]) {
             listener(event);
         }
     }
 
-    public onCommandLineBuildEvent(fn: (event: CommandLineBuildEvent) => void): AppEventToken {
-        this.commandLineBuildListeners.push(fn);
+    public onCommandLineRunEvent(fn: (event: CommandLineRunEvent) => void): AppEventToken {
+        this.commandLineRunListeners.push(fn);
         return {
             cancel: () => {
-                this.commandLineBuildListeners = this.commandLineBuildListeners.filter(listener => listener !== fn);
+                this.commandLineRunListeners = this.commandLineRunListeners.filter(listener => listener !== fn);
             },
         };
     }

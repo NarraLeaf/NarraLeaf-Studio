@@ -56,6 +56,17 @@ export class ElementRendererRegistry {
         }
     }
 
+    /**
+     * Drop one type's renderer.
+     *
+     * Registration is not always for the life of the host: a plugin contributes widget types and
+     * can be switched off while a page is open, and a type left behind would keep drawing through
+     * code the host has already unloaded.
+     */
+    public unregister(type: string): void {
+        this.renderers.delete(type);
+    }
+
     public get(type: string): ElementRendererDefinition | undefined {
         return this.renderers.get(type);
     }

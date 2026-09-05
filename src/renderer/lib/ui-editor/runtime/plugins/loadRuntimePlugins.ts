@@ -34,6 +34,7 @@ import {
     type RuntimeWidgetRendererProps,
 } from "./runtimePluginApi";
 import type { RuntimePluginHost } from "./runtimePluginHost";
+import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -180,8 +181,27 @@ function bindWidgetRenderer(
 ): ElementRendererDefinition {
     return {
         type,
-        render: (props: ElementRendererProps) => render(narrowWidgetRendererProps(props, game)),
+        // Behind a boundary, and behind a component of its own so the boundary is above the throw:
+        // a plugin's render runs inside the game's surface tree, and without one a widget that
+        // throws unmounts the page it is on. See `WidgetRenderBoundary`.
+        render: (props: ElementRendererProps) => React.createElement(
+            WidgetRenderBoundary,
+            { type },
+            React.createElement(PluginWidgetRenderer, { render, props, game }),
+        ),
     };
+}
+
+function PluginWidgetRenderer({
+    render,
+    props,
+    game,
+}: {
+    render: RuntimeWidgetRendererDef["render"];
+    props: ElementRendererProps;
+    game: RuntimePluginGame;
+}): React.ReactElement | null {
+    return render(narrowWidgetRendererProps(props, game));
 }
 
 function narrowWidgetRendererProps(
@@ -562,6 +582,19 @@ function buildCapabilityDomains(
                 onChange: listener => backend.onChange(listener),
                 text: key => backend.text(key),
             };
+        }
+    }
+
+    if (declared.has("diagnostics")) {
+        const backend = host.diagnostics;
+        if (!backend) {
+            unavailable("diagnostics");
+        } else {
+            // No `unavailable` for "the game has not started yet": every reader here answers null
+            // until a session exists, which is a state a plugin polling for numbers meets on every
+            // launch and must handle anyway. Withholding the member instead would make a normal
+            // moment indistinguishable from a shell that cannot report at all.
+            domains.diagnostics = { imageCache: () => backend.imageCache() };
         }
     }
 

@@ -91,7 +91,6 @@ function createHarness() {
                     case Services.History: return history;
                     case Services.FileSystem: return fs;
                     case Services.Uuid: return { generate: uuid };
-                    case Services.Assets: return { lockAsset: vi.fn(), unlockAsset: vi.fn() };
                     case Services.Project: return {};
                     default: throw new Error(`Unexpected service ${id}`);
                 }

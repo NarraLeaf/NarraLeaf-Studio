@@ -63,6 +63,7 @@ const EXPECTED_RULE_IDS: readonly LintRuleId[] = [
     "ui/unlocalized-text",
     "ui/page-unreachable",
     "ui/empty-behavior",
+    "ui/unknown-widget",
     "ui/component-missing",
     "ui/frame-target-missing",
     "ui/list-item-field-missing",
@@ -96,7 +97,7 @@ const ZH_KEYS = flattenCatalog(zh);
 describe("lint rule registry", () => {
     it("contains exactly the planned rule set", () => {
         expect([...LINT_RULES].map(rule => rule.id).sort()).toEqual([...EXPECTED_RULE_IDS].sort());
-        expect(LINT_RULES).toHaveLength(68);
+        expect(LINT_RULES).toHaveLength(69);
     });
 
     it("gives every rule a unique id", () => {

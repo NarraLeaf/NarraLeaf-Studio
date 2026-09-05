@@ -30,6 +30,7 @@ import type {
 } from "@shared/types/vcs";
 import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -55,6 +56,53 @@ import { IPCHandler } from "./IPCHandler";
  * path leaves the merge open, which is what lets an author decide one file and look at the result
  * before deciding the next. {@link VcsCompleteMergeHandler} is the one that closes it, and it does
  * both halves at once precisely so that nothing else can commit in between.
+ *
+ * # Which project a request may be about
+ *
+ * The handlers that overwrite the working tree out of history take their project from the window
+ * with {@link requireWindowProject}: {@link VcsRestoreRevisionHandler}, {@link VcsSyncHandler}, and
+ * the four merge handlers that put bytes on disk - {@link VcsResolveConflictsHandler},
+ * {@link VcsCompleteMergeHandler}, {@link VcsRestartConflictsHandler} and
+ * {@link VcsAbortMergeHandler}. What they have in common is the reason: each replaces the author's
+ * current files with content out of history, and there is no undo for that - the previous bytes
+ * were never committed, so nothing holds them. A payload naming another project therefore does not
+ * merely act on the wrong project, it destroys work in it.
+ *
+ * {@link VcsPushHandler} and {@link VcsSignInHandler} take theirs from the window too, on the
+ * weaker ground that their only caller is the workspace's own version rail and it has never had
+ * another project to name.
+ *
+ * # The assertion does NOT close the handlers that talk to a server
+ *
+ * `sync`, `push`, `signIn` and {@link VcsPublishProjectHandler} send a project, or an account's
+ * credentials, somewhere else. Which project is one of two things a caller picks there, and the
+ * other one - where it goes - is bounded nowhere:
+ *
+ *  - `remoteOrigin` is a payload field of {@link VcsPublishProjectHandler}, never compared with the
+ *    remote the project's own `.lore/config.toml` names. Publishing then REWRITES that file, and
+ *    every later push and sync reads the address out of it, so one call moves where a project
+ *    reports to from then on.
+ *  - A session and its token are held per server origin and belong to the account, not to a
+ *    project. Any project pointed at the same origin borrows them, and `withServerSession` replays
+ *    the stored token, so a push succeeds against a server nobody signed in to from this window.
+ *  - {@link VcsSignInHandler}'s `authUrl` is a payload field that OVERRIDES the address the token
+ *    itself carries, and the token is presented to whatever host it names. Which project the path
+ *    resolves to has no bearing on that.
+ *  - None of the four is in `DISTRUSTED_OPERATIONS`, and none consults the window's file-system
+ *    grant.
+ *
+ * So this family is not closed and nothing here should be read as saying it is. Closing it needs a
+ * decision about what a server session is scoped to, which is a larger question than any handler.
+ *
+ * Two groups are deliberately still open, and they are different problems rather than one backlog:
+ *
+ *  - The reads, and the handlers that only add a revision. Naming another project there is still
+ *    wrong, but it discloses or adds rather than destroys.
+ *  - {@link VcsInitRepositoryHandler} and {@link VcsPublishProjectHandler}, which must never be
+ *    guarded this way at all: the project wizard legitimately names a directory that is no window's
+ *    project, and the launcher's server tab publishes a project the wizard has just made for it,
+ *    from a window with no project of its own. Both want a gate on where the request may reach,
+ *    which is not the question this one answers.
  */
 
 /**
@@ -186,7 +234,12 @@ export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestor
         window: AppWindow,
         { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"],
     ): Promise<RequestStatus<VcsRestoreResult>> {
-        return this.tryUse(() => window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {}));
+        // The window's project, not the payload's. This is the sharpest of the writers: a whole
+        // versioned tree is rewritten from a revision the caller picks, and the checkpoint taken
+        // first only protects what was committed - anything the author had not committed in the
+        // named project is gone, in a window that never showed them any of it happening.
+        return this.tryUse(() => window.app.getVcsManager()
+            .restoreRevision(requireWindowProject(window, projectPath), revision, options ?? {}));
     }
 }
 
@@ -249,6 +302,14 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
  * has a sentence for it. A path that escapes the project or sits outside version control comes
  * back as a FAILURE, because no comparison can name one - asking for it means a caller built a
  * path it should not have, and turning that into a tidy "not shown" would hide it forever.
+ *
+ * The project is the window's, not the payload's, and that is what keeps the reader narrow. The
+ * guards in `workingFile.ts` all judge the *relative* half - no `..`, nothing absolute, nothing
+ * outside version control, nothing over the ceiling - and they are all relative to a root the
+ * caller used to supply. A renderer naming any root therefore had a general file reader: no
+ * session was opened, the root was never required to be a repository, and the window's own
+ * filesystem grant was never consulted. Bounding the root to this window's project turns it back
+ * into what it is documented as - one file of this project's working tree.
  */
 export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
     readonly name = IPCEventType.vcsReadWorkingFile;
@@ -260,7 +321,10 @@ export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWo
     ): Promise<RequestStatus<VcsWorkingFileRead>> {
         return this.tryUse(async () => {
             try {
-                const bytes = await window.app.getVcsManager().readWorkingFile(request);
+                const bytes = await window.app.getVcsManager().readWorkingFile({
+                    ...request,
+                    projectPath: requireWindowProject(window, request.projectPath),
+                });
                 return { contentBase64: bytes.toString("base64") };
             } catch (error) {
                 if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
@@ -460,6 +524,12 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
  * certificate, a silent port, an unresolvable name and an endpoint speaking plain HTTP
  * with one identical sentence, and the interface has to tell an author which of those
  * four they are looking at.
+ *
+ * The project is the window's rather than the payload's, and that bounds one small thing: whose
+ * `.lore/config.toml` is read for the server to sign in to. It does not bound where the token is
+ * sent - `authUrl` overrides the address the token itself names - nor whose session is written,
+ * because a session belongs to the account and to a server origin rather than to a project. See
+ * the note at the top of this file before reading the assertion as a closed door.
  */
 export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
     readonly name = IPCEventType.vcsSignIn;
@@ -470,8 +540,12 @@ export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
         { projectPath, authUrl, token }: IPCEvents[IPCEventType.vcsSignIn]["data"],
     ): Promise<RequestStatus<VcsSignInOutcome>> {
         return this.tryUse(async () => {
+            // Outside the try, so that a refusal stays a failed call. Inside it, a mismatch would
+            // be one more thing the catch below has to tell from a transport problem, and the
+            // panel would be asked to draw a sentence for something no author can act on.
+            const own = requireWindowProject(window, projectPath);
             try {
-                const result = await window.app.getVcsManager().signIn(projectPath, { authUrl, token });
+                const result = await window.app.getVcsManager().signIn(own, { authUrl, token });
                 return { ok: true as const, ...result };
             } catch (error) {
                 // A refused sign-in travels as a successful call carrying a refusal, not as a
@@ -608,7 +682,20 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
     }
 }
 
-/** Put the project that is open on to a server, in the three steps that make it reachable. */
+/**
+ * Put a project on to a server, in the three steps that make it reachable.
+ *
+ * **Deliberately not bounded to the window's project**, unlike the three handlers next to it.
+ * Making a project on a server starts in the launcher: its server tab has the wizard write the
+ * project on this disk and then sends it, from a window that has no project of its own. An
+ * assertion here would refuse that, which is the whole of one of the two ways a project reaches a
+ * server.
+ *
+ * So this is left open knowingly, and it is the widest of the four: as well as naming the project,
+ * a caller names `remoteOrigin` freely, and step three rewrites that project's own
+ * `.lore/config.toml` to point at it. What it wants is a gate on the destination and on which
+ * account credential may be spent, not on which project - see the note at the top of this file.
+ */
 export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublishProject> {
     readonly name = IPCEventType.vcsPublishProject;
     readonly type = IPCMessageType.request;
@@ -696,6 +783,10 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
  * Writes nothing locally, so a failure leaves the project untouched. A diverged branch
  * comes back as a failure carrying the backend's own sentence - which names the remedy
  * (sync first) and is more useful than anything this layer could substitute.
+ *
+ * The project is the window's rather than the payload's, which bounds whose revisions are
+ * uploaded and nothing else. Where they go is read off that project's own `.lore/config.toml`,
+ * and the credential used is the account's for that origin - see the note at the top of this file.
  */
 export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
     readonly name = IPCEventType.vcsPush;
@@ -705,7 +796,8 @@ export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsPush]["data"],
     ): Promise<RequestStatus<VcsPushResult>> {
-        return this.tryUse(() => window.app.getVcsManager().push(projectPath));
+        return this.tryUse(() =>
+            window.app.getVcsManager().push(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -720,6 +812,15 @@ export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
  * and a merge must not land on top of uncommitted work. Conflicts come back as a
  * SUCCESS carrying `conflicts`, because by then most of the tree is already written;
  * a caller that read that as a failure would leave the author believing nothing changed.
+ *
+ * The project is the window's rather than the payload's, and it belongs with the restore and the
+ * merge writers for their reason: files on disk are replaced with content out of history and
+ * nothing holds what was there. It reaches further than they do first, because the flush of
+ * pending saves that opens it settles the auto-save debt of whatever window has that project open.
+ *
+ * That bounds which project is written. It does not bound which server the revisions come FROM -
+ * that address is read off the project's `.lore/config.toml`, which publishing rewrites. See the
+ * note at the top of this file.
  */
 export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
     readonly name = IPCEventType.vcsSync;
@@ -729,7 +830,8 @@ export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsSync]["data"],
     ): Promise<RequestStatus<VcsSyncResult>> {
-        return this.tryUse(() => window.app.getVcsManager().sync(projectPath));
+        return this.tryUse(() =>
+            window.app.getVcsManager().sync(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -833,7 +935,9 @@ export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResol
         window: AppWindow,
         { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().resolveConflicts(projectPath, paths, choice));
+        // The window's project, not the payload's: `mine` and `theirs` overwrite the named paths.
+        return this.tryUse(() => window.app.getVcsManager()
+            .resolveConflicts(requireWindowProject(window, projectPath), paths, choice));
     }
 }
 
@@ -860,7 +964,10 @@ export class VcsCompleteMergeHandler extends IPCHandler<IPCEventType.vcsComplete
         window: AppWindow,
         { projectPath, decisions, options }: IPCEvents[IPCEventType.vcsCompleteMerge]["data"],
     ): Promise<RequestStatus<VcsMergeCompletion>> {
-        return this.tryUse(() => window.app.getVcsManager().completeMerge(projectPath, decisions, options ?? {}));
+        // The window's project, not the payload's: this writes each decided side over its path and
+        // then commits, so a request about another project both changes it and records the change.
+        return this.tryUse(() => window.app.getVcsManager()
+            .completeMerge(requireWindowProject(window, projectPath), decisions, options ?? {}));
     }
 }
 
@@ -891,7 +998,10 @@ export class VcsRestartConflictsHandler extends IPCHandler<IPCEventType.vcsResta
         window: AppWindow,
         { projectPath, paths }: IPCEvents[IPCEventType.vcsRestartConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().restartConflicts(projectPath, paths));
+        // The window's project, not the payload's. This is the one that throws bytes away on
+        // purpose, which is exactly why it may not be aimed at a project nobody is looking at.
+        return this.tryUse(() => window.app.getVcsManager()
+            .restartConflicts(requireWindowProject(window, projectPath), paths));
     }
 }
 
@@ -911,6 +1021,9 @@ export class VcsAbortMergeHandler extends IPCHandler<IPCEventType.vcsAbortMerge>
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsAbortMerge]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().abortMerge(projectPath));
+        // The window's project, not the payload's: a complete rollback of every file the merge
+        // touched, in whichever project is named.
+        return this.tryUse(() => window.app.getVcsManager()
+            .abortMerge(requireWindowProject(window, projectPath)));
     }
 }

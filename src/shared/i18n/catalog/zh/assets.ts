@@ -460,11 +460,6 @@ export const assets = {
         paste: "粘贴资产",
         rename: "重命名选中的资产或分组",
     },
-    lockReason: {
-        character: "资产正被某个角色使用",
-        scene: "资产正被某个场景使用",
-        editor: "资产正被编辑器使用",
-    },
     previewEditor: {
         loadFailed: "资产加载失败",
     },

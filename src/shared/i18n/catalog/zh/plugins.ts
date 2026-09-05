@@ -70,6 +70,25 @@ export const plugins = {
         registry: "无法连接到插件注册表",
         download: "下载插件失败",
     },
+    dependencies: {
+        title: "项目依赖",
+        unavailable: {
+            one: "本项目需要的 {count} 个插件不可用",
+            other: "本项目需要的 {count} 个插件不可用",
+        },
+        allReady: "本项目需要的插件均可用",
+        open: "打开依赖",
+        installAll: "全部安装",
+        updated: "已更新",
+        authorized: "已授权",
+        notInRegistry: "不在注册表中",
+        noCompatibleVersion: "无兼容版本",
+        task: {
+            running: "正在安装依赖…",
+            done: "依赖已安装",
+            partial: "部分插件未安装",
+        },
+    },
     workspace: {
         reload: "在此工作区重新载入",
         activity: {
@@ -81,7 +100,6 @@ export const plugins = {
             suppressedHint: "已安装的版本与本项目所依赖的版本不兼容；更新插件，或在「项目 ▸ 应用」中重新扫描依赖表",
             failed: "载入失败",
         },
-        suppressedNotice: "本项目未载入这些插件：{names}；已安装的版本与项目所依赖的版本不兼容，详见「插件」面板",
         pendingReopen: "下次打开本项目时生效",
         restartHint: "部分插件修改可能需要重启工作区才能生效",
         restart: "重启",

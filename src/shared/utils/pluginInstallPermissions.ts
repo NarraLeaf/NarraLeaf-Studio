@@ -94,6 +94,8 @@ function describeRuntimeCapability(capability: PluginRuntimeCapability): string 
             return "resolve packaged asset URLs";
         case "locale":
             return "read and follow the game language";
+        case "diagnostics":
+            return "read what the game’s image and audio caches are holding";
         default:
             return capability;
     }

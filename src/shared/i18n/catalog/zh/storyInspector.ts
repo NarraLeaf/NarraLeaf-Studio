@@ -495,6 +495,7 @@ export const storyInspector = {
         xOffset: "X 偏移",
         yOffset: "Y 偏移",
         params: "参数",
+        fromCharacter: "来自角色",
     },
     background: {
         image: "图片",

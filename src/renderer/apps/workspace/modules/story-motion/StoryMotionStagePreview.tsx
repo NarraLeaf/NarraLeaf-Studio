@@ -41,9 +41,10 @@ export function StoryMotionStagePreview(props: {
     // taking only the aspect ratio from the image's intrinsic pixels; a non-autoFit image
     // keeps its natural pixel footprint. Match whichever the bound target uses so the
     // preview scale lines up with the runtime instead of appearing shrunk or blown up.
-    // The camera is autoFit by nature: what it moves IS the stage rectangle.
+    // The camera is autoFit by nature: what it moves IS the stage rectangle. A character is not -
+    // her sprite is drawn at its own pixels, like any other displayable that states nothing.
     const isCamera = props.target.kind === "camera";
-    const autoFit = props.target.autoFit ?? (props.target.kind === "character" || isCamera);
+    const autoFit = props.target.autoFit ?? isCamera;
     const stageWidth = props.stageSize?.width ?? 0;
     const frameSize = useMemo(() => {
         if (!naturalSize) {

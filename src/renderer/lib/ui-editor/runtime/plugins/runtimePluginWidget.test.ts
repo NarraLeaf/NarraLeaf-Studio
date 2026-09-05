@@ -12,12 +12,14 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { pathToFileURL } from "url";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { NormalizedPluginManifestV2, RuntimePluginDescriptor } from "@shared/types/plugins";
 import { ElementRendererRegistry, type ElementRendererProps } from "../ElementRendererRegistry";
 import type { UIHostAdapter } from "../types";
+import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
 import { loadRuntimePlugins } from "./loadRuntimePlugins";
 import type { RuntimePluginGame, RuntimeWidgetRendererProps } from "./runtimePluginApi";
 
@@ -163,6 +165,20 @@ async function loadWidgetPlugin(): Promise<{ widgetType: string; registry: Eleme
     return { widgetType: `${pluginId}${WIDGET_SUFFIX}`, registry };
 }
 
+/**
+ * Draw the element the registry returns, rather than calling the plugin's render directly.
+ *
+ * The binding puts a boundary and a component in front of the plugin's function - one widget that
+ * throws must not unmount the page it is on - so the plugin only runs once React renders what the
+ * registry handed back. Calling it any other way would be testing the wrapper.
+ *
+ * Static markup rather than a DOM: this file drives the real loader, which imports the plugin
+ * entry off disk, and that import only resolves under the node environment.
+ */
+function drawWidget(registry: ElementRendererRegistry, widgetType: string, props: ElementRendererProps): void {
+    renderToStaticMarkup(registry.get(widgetType)!.render(props)!);
+}
+
 describe("plugin widget renderers", () => {
     beforeEach(async () => {
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-plugin-widget-"));
@@ -178,7 +194,7 @@ describe("plugin widget renderers", () => {
         const { widgetType, registry } = await loadWidgetPlugin();
         const hostAdapter = liveAdapter(vi.fn(async () => undefined));
 
-        registry.get(widgetType)!.render(hostProps(widgetType, hostAdapter));
+        drawWidget(registry, widgetType, hostProps(widgetType, hostAdapter));
 
         const props = capture().props;
         expect(props).toBeDefined();
@@ -195,7 +211,7 @@ describe("plugin widget renderers", () => {
         const { widgetType, registry } = await loadWidgetPlugin();
         const given = hostProps(widgetType, liveAdapter(vi.fn(async () => undefined)));
 
-        registry.get(widgetType)!.render(given);
+        drawWidget(registry, widgetType, given);
 
         const props = capture().props!;
         expect(props.element).toBe(given.element);
@@ -214,7 +230,7 @@ describe("plugin widget renderers", () => {
         const { widgetType, registry } = await loadWidgetPlugin();
         const dispatch = vi.fn(async () => undefined);
 
-        registry.get(widgetType)!.render(hostProps(widgetType, liveAdapter(dispatch)));
+        drawWidget(registry, widgetType, hostProps(widgetType, liveAdapter(dispatch)));
         await capture().props!.dispatchEvent!("mouseClick", { x: 1 });
 
         expect(dispatch).toHaveBeenCalledTimes(1);
@@ -231,7 +247,7 @@ describe("plugin widget renderers", () => {
         const dispatch = vi.fn(async () => undefined);
         const other: UIListItemScope = { key: "row-4", index: 4, count: 5, item: { id: "d" } };
 
-        registry.get(widgetType)!.render(hostProps(widgetType, liveAdapter(dispatch)));
+        drawWidget(registry, widgetType, hostProps(widgetType, liveAdapter(dispatch)));
         await capture().props!.dispatchEvent!("itemClick", undefined, { listItemScope: other, instanceKey: "k" });
 
         expect(dispatch).toHaveBeenCalledWith("badge", "itemClick", undefined, {
@@ -240,10 +256,21 @@ describe("plugin widget renderers", () => {
         });
     });
 
+    it("puts a boundary in front of the plugin, naming the type it stands for", async () => {
+        const { widgetType, registry } = await loadWidgetPlugin();
+
+        const drawn = registry.get(widgetType)!.render(hostProps(widgetType, { host: "app" }));
+
+        // What the boundary then does with a throw is `WidgetRenderBoundary`'s own test; what
+        // matters here is that the binding never hands the host the plugin's render bare.
+        expect(drawn!.type).toBe(WidgetRenderBoundary);
+        expect((drawn!.props as { type: string }).type).toBe(widgetType);
+    });
+
     it("dispatches nothing, rather than throwing, where there is no blueprint runtime", async () => {
         const { widgetType, registry } = await loadWidgetPlugin();
 
-        registry.get(widgetType)!.render(hostProps(widgetType, { host: "app" }));
+        drawWidget(registry, widgetType, hostProps(widgetType, { host: "app" }));
 
         await expect(capture().props!.dispatchEvent!("mouseClick")).resolves.toBeUndefined();
     });

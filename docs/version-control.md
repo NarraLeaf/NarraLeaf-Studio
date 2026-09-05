@@ -572,7 +572,7 @@ globals**。所以：
 - 一次真同步之后，作者自己的提交**和从服务器收到的修订**都读得出来（收到的 `other.json`
   69 字节，本地此前从没有过这份内容）——同步只是**下载**片段，不新写内容；
 - 两个互不相干的服务器仓库放在同一个进程里，published → 克隆 A → 同步 A → 同步 B 四个阶段
-  逐个读，**A、B 全程都读得出**——没有跨工程波及；
+  逐个读，**A、B 全程都读得出**——没有跨项目波及；
 - **已发布的 V5a 没有因此受损**，同步之后不需要让作者重启。
 
 **唯一会踩到它的是写回管线自己**：冲突解决之后那次 commit 如果走在线 globals，作者刚解决出来的
@@ -668,9 +668,9 @@ was left undecided」）：
 2. 这是唯一一处「已解决 vs 未解决」在仓库里读得出来的地方，但**只在一次被拒的提交之后**才成立，
    §4.24 那条（附属文件在普通 resolve 之后照样在）没有被推翻。
 
-### 4.33 冲突文件让**整个工程打不开** —— 而这不是 Lore 的缺陷，是 §4.23 的直接后果
+### 4.33 冲突文件让**整个项目打不开** —— 而这不是 Lore 的缺陷，是 §4.23 的直接后果
 
-真机复现（无需服务端）：一个留着未完成合并的工程用 Studio 打开，工作区**根本起不来**：
+真机复现（无需服务端）：一个留着未完成合并的项目用 Studio 打开，工作区**根本起不来**：
 
 ```
 Failed to initialize workspace
@@ -679,7 +679,7 @@ Failed to parse JSON from <project>/editor/story/index.json
 
 链条是死的：§4.23 说 automerge 把 diff3 标记写进冲突文件 → 那份文件不再是合法 JSON →
 `editor/story/index.json` 在工作区启动时就要解析 → `Service.initializeAll` 抛错 → 失败屏。
-失败屏只提供「重试 / 打开启动器 / 打开别的工程」，**没有一条通向合并**。也就是说
+失败屏只提供「重试 / 打开启动器 / 打开别的项目」，**没有一条通向合并**。也就是说
 **一旦真的有东西要解决，解决界面就够不着了**——而「关掉窗口第二天再回来」正是 §4.24
 那套附属文件探测存在的理由。
 
@@ -697,7 +697,7 @@ Failed to parse JSON from <project>/editor/story/index.json
    的结果上。
 
 三条边界：**没有冲突路径的合并不装**（automerge 全合上了，磁盘上就是要提交的东西）；
-**版本控制答不上来就照常打开**（可选能力，不能让它挡住开工程）；**合并结束/放弃时必须先
+**版本控制答不上来就照常打开**（可选能力，不能让它挡住开项目）；**合并结束/放弃时必须先
 `clearMergeConflictReads()` 再重读**——提交会删掉附属文件，还挂着替换去重读会把每份冲突
 文档读成「不存在」，作者刚解决出来的东西会被默认值顶掉。
 
@@ -786,17 +786,17 @@ LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:4150
 `certificate`：不是缺陷，是这台机器不认识那个新 CA。可行的做法是**整份复制一台已经被信任的台子**
 （`tls/` 一起复制——证书按主机名签、跟端口无关），端口整组错开再起。
 
-❗ **每条远端 spec 都会在服务器上留一个工程登记**，而它们不会自己消失（拿掉登记是一次 Team 调用，
+❗ **每条远端 spec 都会在服务器上留一个项目登记**，而它们不会自己消失（拿掉登记是一次 Team 调用，
 测试进程没有 Team 会话）。所以跑之前先复制一份台子、跑完把复制的那份整个删掉，比事后去共用台子上
 一条条摘干净省事得多。真要摘：`DELETE FROM projects WHERE ...`，就是 `projects.forget` 做的事。
 
-### 4.36 ❗ 克隆不会把历史本身带下来，于是克隆出来的工程**没有历史**（已修）
+### 4.36 ❗ 克隆不会把历史本身带下来，于是克隆出来的项目**没有历史**（已修）
 
-实测：一个已经有四个修订的工程，克隆下来之后每一次**本地**历史读都是
-`revisionHistory: Not found`；而 Studio 的读全是离线的，所以版本轨对刚加入工程的人说
-**「还没有版本」**——而那份工程明明有历史。比较、合并基、「改了什么」都跟着没东西可走。
+实测：一个已经有四个修订的项目，克隆下来之后每一次**本地**历史读都是
+`revisionHistory: Not found`；而 Studio 的读全是离线的，所以版本轨对刚加入项目的人说
+**「还没有版本」**——而那份项目明明有历史。比较、合并基、「改了什么」都跟着没东西可走。
 
-一个只有**一个**修订的工程看不到这个（tip 后面没东西可缺），这是它一直没被发现的原因之一；
+一个只有**一个**修订的项目看不到这个（tip 后面没东西可缺），这是它一直没被发现的原因之一；
 另一个是**失败与「真的没有版本」在屏幕上长得一模一样**。
 
 测量（同一份克隆，依次）：
@@ -820,7 +820,7 @@ LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:4150
 失败只记日志：克隆已经落盘，把它变成「克隆失败」会给作者留一个非空目录、向导再也不肯往里克隆。
 
 守卫：`clonedHistory.integration.test.ts`（需服务器）——断言是在**上不了网的 globals** 上做的，
-否则一次在线读怎么都会绿。夹具必须推四个修订，一个修订的工程证不了任何事。
+否则一次在线读怎么都会绿。夹具必须推四个修订，一个修订的项目证不了任何事。
 
 ⚠ `signInRecovery.test.ts` 盯的是克隆的**调用顺序**，所以它多了 `history` + `release` 两步。
 
@@ -857,7 +857,7 @@ authLoginWithToken: exchanging external token:
 ——`diagnoseEndpoint` 读的是 Node 自带的机构表，而后端客户端读的是操作系统那份，
 所以一个「本账号已信任的私有 CA」在探针眼里是不受信的、在登录时却好用。
 
-### 4.38 刚克隆的工程一打开就有一项「谁也没改过」的变更 —— 是收敛，不是缺陷
+### 4.38 刚克隆的项目一打开就有一项「谁也没改过」的变更 —— 是收敛，不是缺陷
 
 真机实测过的现象：克隆下来、打开，版本轨立刻显示 `editor/ui/uidoc.json` 已修改，作者什么都没做。
 查下来**不是版本控制的问题，是界面文档的加载期收敛**，而且它按设计只发生一次。
@@ -871,27 +871,27 @@ authLoginWithToken: exchanging external token:
 | `mainSurfaceChanged` | 主表面或它的根元素不在 |
 | `flowLayoutsChanged` | 流式布局的子元素坐标不在归位 |
 
-**一次实测的两条**（同一台机器、同一份构建，各复制一份工程再打开）：
+**一次实测的两条**（同一台机器、同一份构建，各复制一份项目再打开）：
 
-- **v11 的工程** → `uidoc.json` 改成 v12，外加新建 `editor/save-schema.json`：两项变更。
+- **v11 的项目** → `uidoc.json` 改成 v12，外加新建 `editor/save-schema.json`：两项变更。
   v12 是 2026-08-27 19:50 `7c56f44a7` 抬的，而那天晚上看到这个现象的克隆正好是 v11。
-- **v12 的工程**（版本已经跟本构建一致）→ **照样改**。diff 是
+- **v12 的项目**（版本已经跟本构建一致）→ **照样改**。diff 是
   `nl.image` 的三个 `props.assetId` 折进 `imageFill`（2026-08-28 `d1d494d8e`，见
   `legacy-image-props-fold`）加一个 `meta.updatedAt`。
 
-**第二次打开同一份工程，文件逐字节不变**——收敛成立。所以这是「旧形状被就地改写一次」，
+**第二次打开同一份项目，文件逐字节不变**——收敛成立。所以这是「旧形状被就地改写一次」，
 不是每次打开都脏。
 
-**新建的工程碰不到**：出厂骨架模板已经是收敛后的形状（v12、5 个 `nl.image` 全无旧属性）。
+**新建的项目碰不到**：出厂骨架模板已经是收敛后的形状（v12、5 个 `nl.image` 全无旧属性）。
 守卫在 `src/renderer/apps/project-wizard/starterTemplateSettled.test.ts`：七条断言逐条对应
 上表那四个理由，每条都做过 non-vacuous 验证（把模板改坏，对应那条必红）。
 
 **混版本不在射程内，这是裁决而不是疏漏**（2026-08-28，用户）。Studio 还没发布，眼下正是在为发布
 **砍掉**更早的兼容形状，所以「一队人跑着两个 Studio 版本」这个人群目前不存在：地板以下的文档直接
-拒绝，收敛把还在的旧形状一次改写掉，都是有意的。上面那段现象因此只会落在**本机的老工程**上，
+拒绝，收敛把还在的旧形状一次改写掉，都是有意的。上面那段现象因此只会落在**本机的老项目**上，
 打开一次就过去了。
 
-发布之后混版本才成立，届时要面对的是这三件事，先记在这里免得重新推导一遍：老工程升级格式时，
+发布之后混版本才成立，届时要面对的是这三件事，先记在这里免得重新推导一遍：老项目升级格式时，
 ① 版本轨只说「1 项变更 · 界面页面」，没有一句话说那是格式升级；② 升级一旦提交，仍在旧 Studio 上
 的人**硬拒**读不了（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION`，"UI document schema is newer
 than this Studio version"）；③ 不提交则人人背着同一项幽灵改动，每次合并都撞。**发布前不要动它。**
@@ -928,30 +928,30 @@ loreserver --config /opt/loreserver/config
 
 loreserver 本身不动，它只负责验签。这是个几百行的服务，不是一个平台。
 
-### 5.3.1 把一个**已有的本地工程**连到服务器（已实现，2026-07-31）
+### 5.3.1 把一个**已有的本地项目**连到服务器（已实现，2026-07-31）
 
 这是最常见的起点：作者先在本机启用了版本控制（离线建库），后来才有服务器。**它能连上，不需要重新
 clone**，但**连接是两件事，只做第一件会静默地半成功**。
 
 作者面的三步：
 
-1. 打开工程 → 版本轨道 → **连接服务器**；
+1. 打开项目 → 版本轨道 → **连接服务器**；
 2. 填**一个字段**，形如 `lore://studio.example.lan:41337/my-game`。
-   **末尾那一段是工程在服务器上的名字**，也就是队友 clone 时要用的那一串（见下面第 2 条）；
-3. **上传到服务器**（push）。之后队友在启动器里用**从服务器获取工程**加同一个地址就能拿到。
+   **末尾那一段是项目在服务器上的名字**，也就是队友 clone 时要用的那一串（见下面第 2 条）；
+3. **上传到服务器**（push）。之后队友在启动器里用**从服务器获取项目**加同一个地址就能拿到。
 
 底下实际发生的（`VcsManager.setRemote` → `remote.ts`）：
 
 ```
 写 .lore/config.toml 的 remote_url          # 纯本地，只改这一行
-  → 在一个临时空目录里 repositoryCreate(online, {repositoryUrl, id: 本工程的 repositoryId})
+  → 在一个临时空目录里 repositoryCreate(online, {repositoryUrl, id: 本项目的 repositoryId})
                                             # ← 登记，没有它就是下面第 1 条
   → 失败则把 remote_url 回滚               # 要么两件都成，要么一件都不留
 ```
 
 **三条实测坑，每条都会让上面这段看起来可以省掉：**
 
-1. **只写 `remote_url` 会得到一个「推得上去、clone 不下来」的工程。**
+1. **只写 `remote_url` 会得到一个「推得上去、clone 不下来」的项目。**
    push 返回成功、`repositoryStatus` 报 `remoteBranchExists: true`——而 `repositoryClone`
    **按名字、按仓库 id、按仓库自己的 `name` 全部答 `Not found`**。
    **只有 `repositoryCreate` 会在服务器上登记仓库，push 不会**，而 `repositoryCreate` 拒绝在已经是
@@ -966,9 +966,9 @@ clone**，但**连接是两件事，只做第一件会静默地半成功**。
 **断开**（`setRemote(null)`）是纯本地的：写回未配置占位符，服务器上的东西一概不动。
 
 > **占位符的历史包袱**：旧占位符是 `lore://127.0.0.1:41337/local`，剥掉路径之后就是
-> **loreserver 的默认地址**，而它写进了**每一个 Studio 建过的工程**。今天已换成
+> **loreserver 的默认地址**，而它写进了**每一个 Studio 建过的项目**。今天已换成
 > `lore://unconfigured.invalid/none`（RFC 2606，永远解析不了），并且
-> `isVcsRemoteConfigured` **把新旧两个占位符都当作「没配」**——老工程不迁移也不会被误判成已连接。
+> `isVcsRemoteConfigured` **把新旧两个占位符都当作「没配」**——老项目不迁移也不会被误判成已连接。
 
 ### 5.4 命名
 
@@ -1095,26 +1095,58 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | [lore/abi/upstream.json](../src/main/app/application/managers/vcs/lore/abi/upstream.json) | 从 SDK 生成物提取的 ABI 快照（420 结构体 / 131 函数 / 226 tag），进版本库 |
 | [lore/library.ts](../src/main/app/application/managers/vcs/lore/library.ts) | 惰性 `koffi.load`、`LORE_LIB_PATH`、asar 解包、按需绑定 + `LoreCapabilityError` |
 | [lore/values.ts](../src/main/app/application/managers/vcs/lore/values.ts) | 显式编解码，非法标识符**抛错不补零**；路径越界防护 |
-| [lore/events.ts](../src/main/app/application/managers/vcs/lore/events.ts) | 32 个事件解码器，回调内即拷贝 |
+| [lore/events.ts](../src/main/app/application/managers/vcs/lore/events.ts) | 49 个事件解码器，回调内即拷贝 |
 | [lore/call.ts](../src/main/app/application/managers/vcs/lore/call.ts) | 单 trampoline、异步 off-thread、注册/注销配对、`PATH_IGNORE` 转异常、错误带 Rust `file:line` |
-| [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 22 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / diff / 读 blob / 分支 |
+| [lore/verbs.ts](../src/main/app/application/managers/vcs/lore/verbs.ts) | 39 个有类型的操作：建库 / 状态 / 暂存 / 提交 / 历史 / 元数据 / 树 / 分支 / 合并 / 推送同步 / 克隆 / 登录 |
+
+上面这层之上是按题目分开的模块，`VcsManager` 只做 session 与串行化，具体动作都在这里：
+
+| 文件 | 职责 |
+|---|---|
+| [repository.ts](../src/main/app/application/managers/vcs/repository.ts) | 建库与读状态；Lore 的数字 file action 在这里映成字符串联合，是两侧词汇的分界 |
 | [revisionReader.ts](../src/main/app/application/managers/vcs/revisionReader.ts) | `blobAt` / `blobsAt` / `readRevisionGraph` / `mergeBase` / `threeWay` / `changedPaths` |
+| [workingFile.ts](../src/main/app/application/managers/vcs/workingFile.ts) | 比较的**工作树那一侧**：一个仓库相对路径的当前字节，越界与超限分别是拒绝和失败 |
+| [workingSet.ts](../src/main/app/application/managers/vcs/workingSet.ts) | 工作集在磁盘上的遍历（策略在 `@shared/vcs/workingSet`） |
+| [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts) | 恢复：先打检查点、只增不退、只碰工作集，模块内不允许 `recursive:true` |
+| [revisionSnapshot.ts](../src/main/app/application/managers/vcs/revisionSnapshot.ts) | 把一个修订写成一个普通工程目录（Dev Mode 跑历史修订靠它，见 §9.2 之外的路径驱动约束） |
+| [merge.ts](../src/main/app/application/managers/vcs/merge.ts) | 合并状态与逐路径取舍；`~base` / `~mine` / `~theirs` 的读法 |
+| [mergeDocument.ts](../src/main/app/application/managers/vcs/mergeDocument.ts) | 冲突的第二档：逐处改动地和解一份文档 |
+| [diff/](../src/main/app/application/managers/vcs/diff) | 比较的呈现层：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，见 §9.1 |
+| [remote.ts](../src/main/app/application/managers/vcs/remote.ts) | 唯一需要 `offline: false` 的模块：推送、同步、克隆 |
+| [serverApi.ts](../src/main/app/application/managers/vcs/serverApi.ts) · [serverDiscovery.ts](../src/main/app/application/managers/vcs/serverDiscovery.ts) | 一次 HTTPS 请求，与「问一个地址背后是什么」 |
+| [serverSession.ts](../src/main/app/application/managers/vcs/serverSession.ts) · [serverTokens.ts](../src/main/app/application/managers/vcs/serverTokens.ts) · [serverPassword.ts](../src/main/app/application/managers/vcs/serverPassword.ts) | 登录与令牌保管。**会话按服务器 origin 存在账户级**，不属于任何一个工程 |
+| [serverProjects.ts](../src/main/app/application/managers/vcs/serverProjects.ts) · [serverProjectsSession.ts](../src/main/app/application/managers/vcs/serverProjectsSession.ts) | 服务器上的工程清单，REST 与长连接两条同形的读法 |
+| [localRepositories.ts](../src/main/app/application/managers/vcs/localRepositories.ts) | 不开库就判断本机已经有哪些仓库（Lore 的库锁是独占且阻塞的，所以这条不能开库） |
+| [authorityTrust.ts](../src/main/app/application/managers/vcs/authorityTrust.ts) | 把签名端的 CA 装进本机信任库——全 Studio 唯一改操作系统设置的地方 |
+
+接线与两侧类型：
+
+| 文件 | 职责 |
+|---|---|
 | [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
-| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 10 个 IPC handler：9 读 + `initRepository` |
+| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 42 个 IPC handler：**21 读**（什么都不改，含只走网络不记录的 `probeServer` / `getSyncState`）· **12 个动工程目录的**（建库 / 提交 / 检查点 / 恢复 / 设置远端 / 五个合并动作 / 同步 / 克隆）· **9 个服务器与账户动作**（登录三种 / 登出 / 加服务器 / 刷新 / 忘记 / 推送 / 发布）。谁可以指名哪个工程见下 |
 | [shared/vcs/workingSet.ts](../src/shared/vcs/workingSet.ts) | 工作集**策略**（谓词 + 忽略文件），两进程共用一份；走磁盘的遍历留在 main |
 | [VersionControlService.ts](../src/renderer/lib/workspace/services/core/VersionControlService.ts) | 渲染进程服务：可用性缓存、状态快照与订阅、历史缓存 |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
 
-测试（`yarn vitest run src/main/app/application/managers/vcs/`，201 个）：
+测试（`yarn vitest run src/main/app/application/managers/vcs/`，52 个文件 **724 个用例**，其中 28 个 skip；打真 DLL 的
+那批叫 `*.integration.test.ts`）。挑出值得点名的：
 
 | 文件 | 覆盖 |
 |---|---|
-| [abi/definitions.test.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) | 161 断言，逐字段比对 `upstream.json` |
+| [abi/definitions.test.ts](../src/main/app/application/managers/vcs/lore/abi/definitions.test.ts) | 244 个，逐字段比对 `upstream.json` |
 | [lore.integration.test.ts](../src/main/app/application/managers/vcs/lore/lore.integration.test.ts) | 17 个，打真 DLL：写路径、读路径、编码拒绝、回调生命周期（250 次连续调用不耗尽 koffi 回调池） |
-| [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 8 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
-| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 6 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
+| [repository.integration.test.ts](../src/main/app/application/managers/vcs/repository.integration.test.ts) | 22 个：建库、状态、暂存与 §4.17 那个扫描副作用 |
+| [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 19 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
+| [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 10 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
+| [merge.integration.test.ts](../src/main/app/application/managers/vcs/merge.integration.test.ts) | 19 个：合并状态、逐路径取舍、关闭合并；`mergeSpike*.integration` 是它的四组前置实测 |
+| [diff/](../src/main/app/application/managers/vcs/diff) 七个 `.test.ts` | 111 个：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，加一份登记表 |
+| [serverSession.test.ts](../src/main/app/application/managers/vcs/serverSession.test.ts) · [serverDiscovery.test.ts](../src/main/app/application/managers/vcs/serverDiscovery.test.ts) · [publish.test.ts](../src/main/app/application/managers/vcs/publish.test.ts) | 22 / 21 / 13 个：登录、探测地址、发布的三步 |
 | [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
 | [pluggability.test.ts](../src/main/app/application/managers/vcs/pluggability.test.ts) | 3 个：静态导入图里没有 `lore/`，且这个断言非空 |
+
+IPC 那一层的测试不在这个目录下：
+[vcsAction.test.ts](../src/main/app/application/managers/window/handlers/vcsAction.test.ts)（35 个）管的是**一次请求可以指名哪个工程**。
 
 构建侧：`koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了
 external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
@@ -1125,24 +1157,57 @@ external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src
 window[RendererInterfaceKey].vcs
 ```
 
+42 个方法，与 `vcsAction.ts` 的 handler 一一对应。逐条的语义写在
+[renderer.ts](../src/shared/types/renderer.ts) 的声明上，这里只列需要先知道的那几条与全部分组：
+
 | 方法 | 返回 |
 |---|---|
 | `getAvailability()` | `{available}` 或 `{available:false, reason, detail}` — **先问这个** |
 | `isRepository(projectPath)` | `{isRepository}`；后端不可用时为 `false`，不抛 |
 | `getInfo(projectPath)` | `{root, repositoryId, head?, headNumber, branch}` — **纯读**，走 `repositoryStatus(scan:false, revisionOnly:true)`，不触发 §4.17 |
-| `initRepository(projectPath, options?)` | `{root, repositoryId, head?, headNumber, branch}` — **唯一的写**，见下 |
 | `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
-| `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — **唯一会覆写作者文件的调用**，见下 |
-| `getHistory(projectPath, limit?)` | `{entries: [{revision, number, parents}]}` |
-| `readBlob(projectPath, revision, path)` | `{contentBase64}` |
-| `getChangedPaths(projectPath, from, to)` | `{paths}` |
-| `getThreeWay(projectPath, mine, theirs, path)` | `{baseRevision?, base?, mine, theirs}`（均 base64） |
-| `getMergeBase(projectPath, a, b)` | `{base?}` |
+| `getSyncState(projectPath)` | **这一面上唯一走网络的读**，服务器不在时约 2s，禁止开工程时调或按定时器调 |
+| `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — 见下 |
+| `sync(projectPath)` | `VcsSyncResult`；**会覆写作者文件**，冲突是**成功**答案而不是失败 |
 
-**写侧现在有四个**：`initRepository`（V1）、`commit` / `checkpoint`（V2）、`restoreRevision`（V4）。前三个都只会
-**新增一个修订**，够不到冲突，所以不需要 resolve UI 先存在。`restoreRevision` 也不需要，理由不同且值得写下来：
-它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。真正有两边的写
-（merge）仍然故意缺席。
+其余按题目分组：读历史与内容（`getHistory` / `readBlob` / `readWorkingFile` / `readRevisionDocuments` /
+`getChangedPaths`）· 比较（`diffRevisions` / `diffWorkingTree` / `getThreeWay` / `getMergeBase`）·
+合并（`getMergeState` / `getMergeDocument` / `resolveConflicts` / `completeMerge` / `unresolveConflicts` /
+`restartConflicts` / `abortMerge`）· 记录（`initRepository` / `commit` / `checkpoint`）·
+服务器绑定（`getRemote` / `setRemote`）· 账户与服务器（`getServerSession` / `signIn` / `signInWithPassword` /
+`signOut` / `trustAuthority` / `probeServer` / `listServers` / `addServer` / `refreshServer` / `forgetServer`）·
+传输（`push` / `sync` / `clone` / `publishProject` / `listLocalRepositories`）。
+
+**会动工程目录的有十二个**，分三类看：只**新增一个修订**的 `initRepository`（V1）、`commit` / `checkpoint`（V2）——
+够不到冲突，所以不需要 resolve UI 先存在；**用历史覆写工作树**的 `restoreRevision`（V4）、四个落字节的合并动作
+（`resolveConflicts` / `completeMerge` / `restartConflicts` / `abortMerge`）与 `sync`，外加只改仓库里合并状态的
+`unresolveConflicts`；以及只改配置或写新目录的 `setRemote` 与 `clone`。`publishProject` 不在这十二个里算，但它的
+第三步**也会改写 `.lore/config.toml`**。`restoreRevision` 不需要 resolve UI 的理由和前三个不同且值得写下来：
+它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。
+
+### 一次请求可以指名哪个工程
+
+`projectPath` 是渲染层填的字段，而 IPC 注册表是全进程一份、按 sender 找窗口的，所以**任何窗口都能发这 42 条里的
+任何一条**。会用历史覆盖工作树的六个——`restoreRevision` 与四个合并写，加 `sync`——因此用
+`requireWindowProject(window, projectPath)` 把工程取自**窗口自己的 props** 而不是 payload：这几条替换掉的字节从未
+被提交过，没有任何东西留着它们，指错工程不是「动了错的工程」而是**在那个工程里毁掉了工作**。`push` 与 `signIn`
+同样断言，理由弱一些：调用点只有工作区自己的版本轨。比较用 `normalizeProjectPath`（`D:\Game` 与 `d:\game` 是一个
+工程两个 session key），拒绝时把窗口自己的拼法交给下游，并且**不在日志里写出被指名的那个路径**——它不是这个作者的
+工程。拒绝会经 `ipcRegistry` 落到该窗口工程的日志面板上（`windowProjectRefusal.ts`）。
+
+⚠ **断言路径没有关上「把工程送上服务器」这一族**，别把它读成关上了：
+
+- `publishProject` 的 `remoteOrigin` 是 payload 字段，从不与该工程 `.lore/config.toml` 里的 remote 比对，而发布的
+  第三步**会改写那个文件**——之后 push / sync 从文件读地址，于是静默跟着换了目标；
+- **会话与令牌按服务器 origin 存在账户级**，不属于工程，任何指向同一个 origin 的工程都借得到，
+  `withServerSession` 还会自己重放令牌；
+- `signIn` 的 `authUrl` 是 payload 字段，且**优先于令牌自带的地址**，令牌就送到它指的主机；
+- 这一族没有信任闸（`DISTRUSTED_OPERATIONS` 里没有 VCS 条目），也不查窗口的文件系统授权。
+
+`publishProject` 还**故意没有**路径断言：启动器的服务器页会让向导先把工程写到本机再送上去，而那个窗口自己没有工程，
+断言会把「在服务器上新建一个工程」这条路整条堵死。要关的是「可以送到哪里、可以花账户的哪份凭据」，
+不是「哪个工程」——这需要先决定服务器会话到底以什么为作用域，比任何单个 handler 都大。
+`initRepository` 同理不能断言：向导合法地指一个还不是任何窗口工程的新目录。
 
 `restoreRevision` 的三条硬约束（细节见 [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts)）：
 
@@ -1176,7 +1241,7 @@ window[RendererInterfaceKey].vcs
 - **索引每份文档恒占一行**，与它内部有多少条改动、走的哪一档、被截断与否都无关。行尾放改动数。
   多数文档就是一个文件；一份 document set（见 §9.2）由 manifest 加成员组成，同样只占一行。
 - **详情区一次只挂一个 presenter**（`ChangeDetailHost`，`data-change-presenter` 是它的抓手）。
-- 文件按**分类**分组（故事／人物／界面／素材／本地化／音频／工程／其他，见
+- 文件按**分类**分组（故事／人物／界面／素材／本地化／音频／项目／其他，见
   `renderer/lib/vcs/changeCategory.ts`），组头带文件数，超过 `GROUP_COLLAPSE_THRESHOLD` 默认折叠。
 - **caveat 每组一次，绝不逐行**：哪些文件没被完整比较是组级的一句话，具体原因在各自的详情里。
 
@@ -1205,7 +1270,7 @@ window[RendererInterfaceKey].vcs
 **判据挂在 provider 上**：读了文件头的才配 `content`，`headBytes === 0` 的留在 `opaque`。
 
 ⚠ **资产内容按 asset id 分片存放，文件名没有扩展名**（`assets/content/99/55/3d15abb…`）。
-任何按路径判类型的逻辑在真实工程上都会全部落空——`contentClass.ts` 因此在扩展名判不出时
+任何按路径判类型的逻辑在真实项目上都会全部落空——`contentClass.ts` 因此在扩展名判不出时
 按魔数嗅探。**写这类逻辑前先看真实路径长什么样，别照着测试夹具想象。**
 
 ### 两列蒙版：界面与蓝图
@@ -1293,7 +1358,7 @@ window[RendererInterfaceKey].vcs
 - **剧本画不出来的改动仍然走改动行**（文档名、章节的场景表），排在剧本前面。一条都不丢，
   上一条／下一条走过的仍然是同一个总数。
 - **说话人按版本读**：角色表也按那一半的版本解析，所以改名前后两列各自显示各自的名字。
-  资产名与工程变量名是**按当前工程**读的，同 `useVersionedAssets` 读预览语言的取舍。
+  资产名与项目变量名是**按当前项目**读的，同 `useVersionedAssets` 读预览语言的取舍。
 
 ## 9.2 一份文档由多个文件组成：document set
 
@@ -1327,8 +1392,8 @@ window[RendererInterfaceKey].vcs
 
 `DIFF_PATH_LIMIT`（2000）已更名为 **`DIFF_UNIT_LIMIT`**，数值不变。旧的前提是「一个文件就是一份
 文档」；一旦一份文档能是很多文件，这个前提就朝最贵的方向失效：**四部 560 场景的故事是 2244 个文件、
-4 份文档**，按路径数它会超限，于是**整个工程里每一份文档**——人物、译文、素材——都会被报成「未读取」，
-只因为作者没碰过的某个故事很大。现在先折叠再计数；没注册 set 的工程数出来的和以前一模一样。
+4 份文档**，按路径数它会超限，于是**整个项目里每一份文档**——人物、译文、素材——都会被报成「未读取」，
+只因为作者没碰过的某个故事很大。现在先折叠再计数；没注册 set 的项目数出来的和以前一模一样。
 
 数值没有上调，这是刻意的：调大是吸收同一道算术的另一种办法，只买到再翻一倍的时间，
 **错的是单位不是数字**。
@@ -1409,7 +1474,7 @@ settle 之后 set 只重写**字节真的变了**的那些文件；settle 后的
      判据写在函数注释里：一条决策存在的理由就是两侧不同，先画双方一致的部分等于先画不是问题的那部分。
   3. ✅ 名字被截成 `s…` 随 1 一起消失。
   4. ✅ 合并期间作者的文件在磁盘上带着 `<<<<<<< ours` / `||||||| original` / `>>>>>>> theirs`，
-     这是设计（见 §4.23 与 merge 冻结的注释）。曾经**只有重新打开工程**能正确面对它：
+     这是设计（见 §4.23 与 merge 冻结的注释）。曾经**只有重新打开项目**能正确面对它：
      `workspaceProjectPreflight` 在任何文档被解析之前装上替身与冻结，而**刚刚同步出冲突的那个窗口
      按原样重读**，于是故事面板空白、仪表盘 0 场景，还没有冻结保护。
      现在同步走进同一个状态：`sync` 在重读之前调用 `WorkspaceFreezeService.showMergeConflicts`，
@@ -1419,11 +1484,11 @@ settle 之后 set 只重写**字节真的变了**的那些文件；settle 后的
      ⚠ **不 flush**：到这一步工作树已经被改写，flush 等于把编辑器手里的合并前内容写回去，
      正是这道冻结要拦的那次写。
      **恢复模式不再被提议**——它是为「没人说得清的损坏」准备的，而合并说得清自己，出路是把合并
-     做完或放弃（`useRecoveryOffer` 问仓库有没有未完成的合并，**不是问冻结**：冻结在开工程时
+     做完或放弃（`useRecoveryOffer` 问仓库有没有未完成的合并，**不是问冻结**：冻结在开项目时
      才 armed，答不了「刚刚同步出冲突的这个窗口」）。
   5. ✅ 4 修好之后那两条红色通知不再出现（它们本来就是 4 的后果）。剩下的那处自相矛盾也修了：
-     面板顶栏从前**无条件**写「该工程的两个版本正在合并」，于是合并一结束，它就和自己面板正文里
-     那句「该工程没有正在进行的合并」当面顶牛——一屏两个答案，错的那个还在上面。
+     面板顶栏从前**无条件**写「该项目的两个版本正在合并」，于是合并一结束，它就和自己面板正文里
+     那句「该项目没有正在进行的合并」当面顶牛——一屏两个答案，错的那个还在上面。
      现在走 `mergeHeadingKey(state)`：有合并才说合并，没有就退回面板自己的名字（「合并」），
      那句话不主张任何事。⚠ **它收的是 state 不是布尔**：`null` 是「还没人问过」，
      把它折进「没有合并」等于把一个仅仅是**大概率**的判断摆上屏幕。
@@ -1442,13 +1507,13 @@ settle 之后 set 只重写**字节真的变了**的那些文件；settle 后的
     （`Second line, rewritten on B.` / `Ben adds a line.`）；
   - 状态栏 `当前不保存任何改动 · 有一次合并尚未完成，在版本面板中完成合并后恢复保存`，
     轨道上是 `合并进行中 · 有 2 个文件要选保留哪一边 · 完成合并`；
-  - 界面上**没有**「恢复模式」，也没有「该工程未能正常加载」。
+  - 界面上**没有**「恢复模式」，也没有「该项目未能正常加载」。
 
   **5 与 6 的目视验收（同日，同一台服务器、同一次冲突）**：
 
   - 通知从两行路径变成 `有 2 个文件在本地和服务器上都被修改过： Harbour 界面页面`；
-  - 合并进行中时顶栏是「该工程的两个版本正在合并」；按「放弃合并」并确认之后，**同一个还开着的
-    标签页**里那句降到 0 次，顶栏变成「合并」、正文是「该工程没有正在进行的合并」，
+  - 合并进行中时顶栏是「该项目的两个版本正在合并」；按「放弃合并」并确认之后，**同一个还开着的
+    标签页**里那句降到 0 次，顶栏变成「合并」、正文是「该项目没有正在进行的合并」，
     「当前不保存任何改动」也一并消失（冻结随合并结束解除），故事面板仍是
     `Harbour · Chapter 1（1）· Scene 1 · 2 行`。
 - **`ui-document` / `ui-graphs` 没有 `merge3`，这是裁决不是欠账**：两个作者各自重排同一个界面树，

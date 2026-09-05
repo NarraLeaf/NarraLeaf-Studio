@@ -3,7 +3,7 @@ import {
     DEFAULT_PRELOAD_CONFIGURATION,
     PRELOAD_BEHAVIORS,
     normalizePreloadConfiguration,
-    preloadGateFor,
+    preloadGatesWholeScene,
 } from "./preload";
 
 describe("normalizePreloadConfiguration", () => {
@@ -25,19 +25,19 @@ describe("normalizePreloadConfiguration", () => {
      * and the position an author has to choose deliberately is the one that waits.
      */
     it("defaults to the behavior that does not hold the game back", () => {
-        expect(preloadGateFor(DEFAULT_PRELOAD_CONFIGURATION.behavior)).toBe("firstFrame");
+        expect(preloadGatesWholeScene(DEFAULT_PRELOAD_CONFIGURATION.behavior)).toBe(false);
     });
 });
 
-describe("preloadGateFor", () => {
-    it("maps each behavior onto an engine gate", () => {
-        expect(preloadGateFor("auto")).toBe("firstFrame");
-        expect(preloadGateFor("blocking")).toBe("scene");
+describe("preloadGatesWholeScene", () => {
+    it("maps each behavior onto what the first frame waits for", () => {
+        expect(preloadGatesWholeScene("auto")).toBe(false);
+        expect(preloadGatesWholeScene("blocking")).toBe(true);
     });
 
     it("has an answer for every behavior the picker offers", () => {
         for (const behavior of PRELOAD_BEHAVIORS) {
-            expect(["firstFrame", "scene"]).toContain(preloadGateFor(behavior));
+            expect(typeof preloadGatesWholeScene(behavior)).toBe("boolean");
         }
     });
 });

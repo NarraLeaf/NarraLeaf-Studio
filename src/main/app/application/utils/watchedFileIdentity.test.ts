@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forgetWatchedPath, watchedFileChanged, watchedFileIdentity } from "./watchedFileIdentity";
+import { rememberWatchedFile, watchedFileChanged, watchedFileIdentity } from "./watchedFileIdentity";
 
 /**
  * The guard that stops a running Dev Mode or Preview session from scheduling reloads of itself.
@@ -52,7 +52,7 @@ describe("watchedFileChanged", () => {
     it("reports an edit that follows any number of reads", () => {
         const identities = new Map<string, string>();
         const stats = { mtimeMs: 1_700_000_000_000, size: 4096 };
-        watchedFileChanged(identities, asset, stats);
+        rememberWatchedFile(identities, asset, stats);
 
         expect(watchedFileChanged(identities, asset, stats)).toBe(false);
         expect(watchedFileChanged(identities, asset, { mtimeMs: 1_700_000_000_500, size: 4096 })).toBe(true);
@@ -61,7 +61,7 @@ describe("watchedFileChanged", () => {
 
     it("takes an event with no stats at face value", () => {
         const identities = new Map<string, string>();
-        watchedFileChanged(identities, asset, { mtimeMs: 1_700_000_000_000, size: 4096 });
+        rememberWatchedFile(identities, asset, { mtimeMs: 1_700_000_000_000, size: 4096 });
 
         expect(watchedFileChanged(identities, asset, undefined)).toBe(true);
     });
@@ -69,36 +69,29 @@ describe("watchedFileChanged", () => {
     it("keeps files apart", () => {
         const identities = new Map<string, string>();
         const stats = { mtimeMs: 1_700_000_000_000, size: 4096 };
-        watchedFileChanged(identities, asset, stats);
+        rememberWatchedFile(identities, asset, stats);
 
         expect(watchedFileChanged(identities, "assets/content/bg/street.png", stats)).toBe(true);
     });
 });
 
-describe("forgetWatchedPath", () => {
-    it("forgets the files under a directory that has gone", () => {
-        // A recursive watch names the directory and says nothing about what was inside it. Left
-        // behind, those identities would match again if the directory came back byte for byte -
-        // from a backup or a version control checkout - and suppress the reload that restore needs.
-        const identities = new Map([
-            ["assets/content/ab/sprite.png", "1:2"],
-            ["assets/content/ab/voice.ogg", "3:4"],
-            ["assets/content/abc/other.png", "5:6"],
-        ]);
+describe("rememberWatchedFile", () => {
+    const voice = "assets/content/voice/line.ogg";
 
-        forgetWatchedPath(identities, "assets/content/ab");
+    it("records a baseline without claiming a change", () => {
+        const identities = new Map<string, string>();
+        const stats = { mtimeMs: 1_700_000_000_000, size: 4096 };
 
-        expect([...identities.keys()]).toEqual(["assets/content/abc/other.png"]);
+        rememberWatchedFile(identities, voice, stats);
+
+        expect(watchedFileChanged(identities, voice, stats)).toBe(false);
     });
 
-    it("forgets a single file without touching its siblings", () => {
-        const identities = new Map([
-            ["assets/content/ab/sprite.png", "1:2"],
-            ["assets/content/ab/voice.ogg", "3:4"],
-        ]);
+    it("leaves nothing behind when the watcher reported no stats", () => {
+        const identities = new Map<string, string>();
 
-        forgetWatchedPath(identities, "assets/content/ab/sprite.png");
+        rememberWatchedFile(identities, voice, undefined);
 
-        expect([...identities.keys()]).toEqual(["assets/content/ab/voice.ogg"]);
+        expect(identities.size).toBe(0);
     });
 });

@@ -2,7 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { DEFAULT_LOCALE } from "@shared/i18n";
 import { i18nStore } from "@/lib/i18n/store";
 import type { GameBuildRequest, GameBuildStateSnapshot } from "@shared/types/gameBuild";
-import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
+import type { CommandLineRunEvent } from "@shared/types/commandLineRun";
 import { Services, type WorkspaceContext } from "../services/services";
 import { BUILD_CONSOLE_CHANNEL, BuildService } from "../services/core/BuildService";
 import { ConsoleService, type ConsoleEntry } from "../services/core/ConsoleService";
@@ -34,7 +34,7 @@ import { ConsoleService, type ConsoleEntry } from "../services/core/ConsoleServi
  */
 
 /** How the build's console reaches the launch: one line per entry, in order. */
-function toLogEvent(entry: ConsoleEntry): CommandLineBuildEvent {
+function toLogEvent(entry: ConsoleEntry): CommandLineRunEvent {
     return {
         kind: "log",
         timestamp: entry.timestamp,
@@ -78,7 +78,7 @@ export async function runCommandLineBuild(
         if (event.channel !== BUILD_CONSOLE_CHANNEL || event.reason !== "append" || !event.entry) {
             return;
         }
-        workspace.reportCommandLineBuild(toLogEvent(event.entry));
+        workspace.reportCommandLineRun(toLogEvent(event.entry));
     });
 
     try {
@@ -95,7 +95,7 @@ export async function runCommandLineBuild(
                 });
             });
 
-        workspace.reportCommandLineBuild({
+        workspace.reportCommandLineRun({
             kind: "finished",
             ok: settled.status === "done",
             ...(settled.error ? { error: settled.error } : {}),
@@ -109,7 +109,7 @@ export async function runCommandLineBuild(
         // A throw here is this window failing, not the project failing, and the launch has to hear
         // something either way: without a report it would sit until its deadline and then say the
         // workspace never answered, which is true but says nothing about what went wrong.
-        workspace.reportCommandLineBuild({
+        workspace.reportCommandLineRun({
             kind: "finished",
             ok: false,
             error: error instanceof Error ? error.message : String(error),

@@ -65,8 +65,6 @@ function mountStoryService(document: unknown) {
                 switch (id) {
                     case Services.FileSystem:
                         return fs;
-                    case Services.Assets:
-                        return { lockAsset: vi.fn(), unlockAsset: vi.fn() };
                     default:
                         return {};
                 }

@@ -142,6 +142,7 @@ export type LintRuleId =
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
+    | "ui/unknown-widget"
     | "ui/component-missing"
     | "ui/frame-target-missing"
     | "ui/list-item-field-missing"

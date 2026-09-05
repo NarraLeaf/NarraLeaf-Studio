@@ -203,9 +203,17 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         if (!blueprintBindingContext || !valueRuntime) {
             return undefined;
         }
+        /**
+         * Re-resolve, and say nothing else.
+         *
+         * The tree also reads state directly - a `widgetProp` binding is answered out of the store
+         * during the walk - but the host that owns this tree subscribes to the very same store and
+         * says so through `hostRenderTick`, so bumping here as well spent a second full rebuild of
+         * every element on one write. What only this side can know is whether re-resolving produced
+         * a different value, and the store announces that itself.
+         */
         const onStateChanged = () => {
             valueRuntime.refreshAll();
-            setBindingTick(tick => tick + 1);
         };
         const disposers = [
             blueprintBindingContext.surfaceState.subscribe(onStateChanged),
@@ -232,6 +240,18 @@ function areSurfaceElementTreeInputsEqual(
     // Only a host that promised its document is a snapshot may be told "nothing changed" - see
     // `staticDocument`. Everyone else falls through to a plain re-render, exactly as before.
     if (next.staticDocument !== true) {
+        return false;
+    }
+    /**
+     * A tree that reads a store during its own walk may only be memoised by a host that says when
+     * that store moved.
+     *
+     * `widgetProp` bindings are answered out of the surface state store inside `renderElementTree`,
+     * where no prop can see them; `hostRenderTick` is the host promising to report it. Refusing to
+     * memoise without one is what makes that promise safe to depend on - the failure it prevents is
+     * a page whose bound widgets quietly stop updating, which nothing else here would catch.
+     */
+    if (next.blueprintBindingContext && next.hostRenderTick === undefined) {
         return false;
     }
     const previousKeys = Object.keys(previous) as (keyof SurfaceElementTreeContentProps)[];

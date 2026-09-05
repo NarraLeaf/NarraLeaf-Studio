@@ -97,6 +97,7 @@ export const pluginPermission = {
             locale: "ゲームの言語とプロジェクトのローカライズ文言を読む",
             menu: "ゲームウィンドウのメニューバーを提供する",
             storyCompile: "ストーリーのコンパイルに加わり、自分が書いていない行にも演出を足す",
+            diagnostics: "ゲームのキャッシュが使っているメモリ量を読む",
         },
     },
     button: {

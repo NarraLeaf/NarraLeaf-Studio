@@ -278,6 +278,11 @@ export const lint = {
             description: "可点击的控件没有任何事件监听",
             message: "点击后不会执行任何内容",
         },
+        uiUnknownWidget: {
+            title: "未知的控件类型",
+            description: "项目无法加载其类型的控件",
+            message: "{type} 未加载，因此该控件不会在游戏中绘制",
+        },
         uiComponentMissing: {
             title: "缺失的组件",
             description: "引用了项目中不存在的组件的实例",

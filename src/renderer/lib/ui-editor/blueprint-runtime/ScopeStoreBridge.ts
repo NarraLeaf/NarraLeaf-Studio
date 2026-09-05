@@ -1,4 +1,4 @@
-import { SurfaceStateStore } from "./SurfaceStateStore";
+import { isUnchangedStateWrite, SurfaceStateStore } from "./SurfaceStateStore";
 
 type ScopeMapListener = () => void;
 
@@ -35,7 +35,13 @@ export class ScopeStoreBridge {
     }
 
     public globalSet(key: string, value: unknown): void {
+        // Silent when it writes what is already there - see `isUnchangedStateWrite`. Global state has
+        // the wider blast radius of the two: every surface currently mounted rebuilds its tree.
+        const unchanged = isUnchangedStateWrite(this.globalValues, key, value);
         this.globalValues.set(key, value);
+        if (unchanged) {
+            return;
+        }
         this.notifyGlobals();
     }
 

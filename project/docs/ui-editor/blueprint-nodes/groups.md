@@ -206,7 +206,7 @@ Global 节点组默认具有：
 - `blueprint.event.head.keyUp` - 运行时窗口指定键抬起事件
 - `blueprint.event.head.anyKeyDown` - 运行时窗口任意键按下事件
 - `blueprint.event.head.anyKeyUp` - 运行时窗口任意键抬起事件
-- `blueprint.event.head.action` - 工程声明的输入操作被触发事件，卡片上的 `Action` 决定监听哪一个
+- `blueprint.event.head.action` - 项目声明的输入操作被触发事件，卡片上的 `Action` 决定监听哪一个
 - Input 节点组
 
 ## Surface
@@ -230,7 +230,7 @@ Surface 节点组默认具有：
 
 ## Input
 
-Input 节点组读取工程声明的输入操作词表。绑定写在词表和各个界面上，不写在图里，所以这里的节点只认操作的名字。
+Input 节点组读取项目声明的输入操作词表。绑定写在词表和各个界面上，不写在图里，所以这里的节点只认操作的名字。
 
 Input 节点组默认具有：
 - `blueprint.input.isActionHeld` - 指定输入操作当前是否按住，纯节点

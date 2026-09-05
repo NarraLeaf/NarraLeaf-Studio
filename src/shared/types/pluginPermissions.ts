@@ -181,6 +181,24 @@ export const PluginRuntimeCapability = {
      * declared.
      */
     StoryCompile: "story.compile",
+    /**
+     * `app.game.diagnostics` — read what the player's caches are holding.
+     *
+     * The lightest of the list to grant and the easiest to misread as heavier than it is. Nothing
+     * here is authored data: it reports how many images the engine is holding, how many bytes those
+     * cost, and what budgets they are being held against. It reads no story, no save and no
+     * variable, and every member is a read - there is nothing to set.
+     *
+     * It is its own capability rather than free like `data` and `config` because a plugin that
+     * watches memory is a plugin that runs continuously and reports numbers about the player's
+     * machine, and an author should see that named at install. The performance inspector is the
+     * plugin this exists for.
+     *
+     * Absent until a game session is live, which is the same rule every other engine-backed member
+     * follows: a plugin's `setup()` runs during boot, and asking then answers null rather than
+     * throwing.
+     */
+    Diagnostics: "diagnostics",
 } as const;
 
 export type PluginRuntimeCapability = typeof PluginRuntimeCapability[keyof typeof PluginRuntimeCapability];
@@ -191,11 +209,11 @@ export const PLUGIN_RUNTIME_CAPABILITIES: readonly PluginRuntimeCapability[] =
 /**
  * The capabilities that can name a story scene, and so decide what a variant's package must keep.
  *
- * **Empty, and that is a reading of the nine above rather than an omission.** Go through them: a
+ * **Empty, and that is a reading of the list above rather than an omission.** Go through them: a
  * store holds the plugin's own keys, events observe what the game already did, state reads and
  * writes story variables, saves list and load slots the game itself compiled, an overlay draws on
- * top, assets resolve packaged URLs, and locale reads the language. None of them takes a scene, and
- * none of them starts one.
+ * top, assets resolve packaged URLs, locale reads the language, and diagnostics reports what the
+ * caches weigh. None of them takes a scene, and none of them starts one.
  *
  * This replaced "does the package carry any plugin at all", which was the whole feature's undoing:
  * the built-in Gallery ships in every package and declares `store` + `events`, so every project had

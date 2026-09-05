@@ -1401,6 +1401,8 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     if (!couldAlreadyBeShowing || transitionVisibleMs(block.payload.transition) <= 0) {
                         continue;
                     }
+                    // No cast: this rule reads the background and nothing else, and a character's
+                    // entrance defaults cannot reach a background prop.
                     const snapshot = computeStoryStageSnapshot({
                         document: entry.document,
                         sceneId: scene.id,

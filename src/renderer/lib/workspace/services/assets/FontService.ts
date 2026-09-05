@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import type { FontCoverageResult } from "@shared/typography/fontCoverage";
+import { sniffFontFormat } from "@shared/typography/fontFormats";
 import { AssetData, AssetType, FontAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
@@ -63,7 +64,7 @@ export class FontService extends AssetServiceBase {
 
     public async readFontFromBuffer(asset: Asset<AssetType.Font>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Font>>> {
         const size = buffer.byteLength;
-        const format = this.detectFontFormat(asset);
+        const format = this.detectFontFormat(asset, buffer);
 
         try {
             const metadata = await this.getFontMetadata(buffer, format);
@@ -101,8 +102,21 @@ export class FontService extends AssetServiceBase {
         return {};
     }
 
-    private detectFontFormat(asset: Asset): string {
-        return asset.ext ?? this.detectFromName(asset.name);
+    /**
+     * What format this font is, asked of the bytes before the name.
+     *
+     * The name is a guess and the bytes are a statement, and the guess fails in a way that is not
+     * visible: an asset with no `ext` and no dot in its name - what every library entry written by
+     * anything other than Studio's own import looks like, the shipped skeleton's included - guessed
+     * `"unknown"`, and `UIEditorFontFaceService` reads a format it has no `format()` hint for as one
+     * it cannot draw. So a perfectly ordinary TrueType was reported to the author as
+     * "Font format is not supported in the editor" and the canvas drew the interface font instead.
+     *
+     * The name still answers when the bytes cannot - a file too short to carry a tag, or a format
+     * this build does not know - so nothing that worked before stops working.
+     */
+    private detectFontFormat(asset: Asset, buffer?: Uint8Array): string {
+        return sniffFontFormat(buffer) ?? asset.ext ?? this.detectFromName(asset.name);
     }
 
     private detectFromName(name: string): string {

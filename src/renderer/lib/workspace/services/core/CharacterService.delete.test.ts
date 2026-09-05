@@ -43,7 +43,6 @@ function createHarness() {
     const service = new CharacterService();
 
     const files = new Map<string, Uint8Array>();
-    const locks: string[] = [];
     let nextId = 0;
 
     const serviceAssets = {
@@ -62,11 +61,6 @@ function createHarness() {
             return { ok: true as const, data: undefined };
         }),
     };
-    const assets = {
-        lockAsset: vi.fn((assetId: string) => void locks.push(`lock:${assetId}`)),
-        unlockAsset: vi.fn((assetId: string) => void locks.push(`unlock:${assetId}`)),
-    };
-
     /**
      * The story library, as far as a deletion is concerned: documents in memory, and a write that
      * lands payloads on them the way `StoryService.updateBlocks` does.
@@ -100,7 +94,6 @@ function createHarness() {
                     case Services.History: return history;
                     case Services.Story: return stories;
                     case Services.ServiceAssets: return serviceAssets;
-                    case Services.Assets: return assets;
                     case Services.Uuid: return { generate: () => `id-${++nextId}` };
                     case Services.UI: return { showError: vi.fn() };
                     case Services.FileSystem: return {};
@@ -111,7 +104,7 @@ function createHarness() {
     };
     history.setContext(context);
     service.setContext(context);
-    return { service, history, files, locks, serviceAssets, assets, stories, addStory, payloadOf };
+    return { service, history, files, serviceAssets, stories, addStory, payloadOf };
 }
 
 describe("CharacterService deletion", () => {
@@ -261,23 +254,5 @@ describe("CharacterService deletion", () => {
         const { service, history } = createHarness();
         expect(await service.deleteCharacter("nobody")).toBe(false);
         expect(history.canUndo(projectHistoryScope())).toBe(false);
-    });
-
-    it("re-locks the restored character's assets", async () => {
-        const { service, history, locks } = createHarness();
-        const character = service.createCharacter("Ada");
-        character.profile.appearance.createPose("Idle");
-        const poses = character.profile.appearance.getPoses();
-        character.profile.appearance.setPoseAsset(poses[0].id, "asset-7");
-        locks.length = 0;
-
-        await service.deleteCharacter(character.profile.getId());
-        expect(locks).toContain("unlock:asset-7");
-
-        history.undo(projectHistoryScope());
-        await history.settled();
-        // Without this the restored character would render but the asset would look unused, and
-        // deleting it afterwards would not even warn.
-        expect(locks).toContain("lock:asset-7");
     });
 });

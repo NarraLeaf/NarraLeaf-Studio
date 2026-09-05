@@ -16,7 +16,17 @@ import type {
     RuntimeBlueprintNodeContext,
     RuntimeBlueprintNodeExecute,
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
-import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules";
+import type {
+    PluginWidgetContextMenuContext,
+    PluginWidgetDockerBarContext,
+    PluginWidgetDocumentApi,
+    PluginWidgetEditorStateApi,
+    PluginWidgetFloatingToolbarContext,
+    PluginWidgetInspectorContext,
+    PluginWidgetInspectorData,
+    PluginWidgetLayoutSizeFieldContext,
+    PluginWidgetModule,
+} from "@/lib/plugins/pluginWidgetApi";
 import type {
     PluginTextEditorActionDef,
     PluginTextEditorLanguageDef,
@@ -61,6 +71,32 @@ export type {
     BlueprintInspectorParamSelectOption,
     BlueprintNodePinDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
+export type {
+    PluginWidgetContextMenuContext,
+    PluginWidgetDockerBarContext,
+    PluginWidgetDocumentApi,
+    PluginWidgetEditorStateApi,
+    PluginWidgetFloatingToolbarContext,
+    PluginWidgetInspectorContext,
+    PluginWidgetInspectorData,
+    PluginWidgetLayoutSizeFieldContext,
+    PluginWidgetModule,
+};
+
+/**
+ * What a plugin can learn about a widget type it did not register.
+ *
+ * The registry itself holds host objects, so what comes back is the answer to the question a plugin
+ * can act on - does this type exist, and what is it called - rather than the module behind it.
+ */
+export type PluginWidgetTypeInfo = {
+    type: string;
+    displayName: string;
+    /** The widget type this one specialises, when it specialises one. */
+    extends?: string;
+    /** The plugin that contributed it, absent for Studio's own widgets. */
+    ownerPluginId?: string;
+};
 
 /**
  * A blueprint node as a *plugin* writes it: everything a node declares about itself, with the
@@ -576,11 +612,18 @@ export type PluginServices = {
             error(message: string): void;
         };
     };
+    /**
+     * Contribute a widget type to the interface editor; see {@link PluginWidgetModule}.
+     *
+     * `get` and `list` answer with a type's name rather than with its module. A widget module is
+     * the host's own object - Studio's built-ins carry the editor services in their callbacks - and
+     * "which types exist" is the whole of what a plugin can act on.
+     */
     widgets: {
-        register(module: UIWidgetModule): PluginCleanup;
-        registerMany(modules: UIWidgetModule[]): PluginCleanup;
-        get(type: string): UIWidgetModule | undefined;
-        list(): UIWidgetModule[];
+        register(module: PluginWidgetModule): PluginCleanup;
+        registerMany(modules: PluginWidgetModule[]): PluginCleanup;
+        get(type: string): PluginWidgetTypeInfo | undefined;
+        list(): PluginWidgetTypeInfo[];
         has(type: string): boolean;
     };
     story: {

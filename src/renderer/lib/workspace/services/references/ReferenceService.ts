@@ -77,9 +77,10 @@ const DESIGN_SLICE_LOCATION = "Default fonts";
  *  - character: `CharacterService.subscribe`
  *  - design: `BrandService.onFontsChanged` (the project's default font stack)
  *
- * This supersedes `AssetLockManager` as the answer to "is this referenced". The lock manager only
- * ever covered story blocks and character variants, so an image used solely from a widget or a
- * blueprint node reported as unused — the delete guard let it through without a warning.
+ * This is the whole of the answer to "is this referenced", and the only thing `deleteAsset`
+ * consults. What came before covered story blocks and character variants alone, so an image used
+ * solely from a widget or a blueprint node reported as unused and the delete guard let it through
+ * without a warning.
  *
  * Every slice also reports what it could not read, and {@link getIndexResult} is the honest answer
  * to "does this index cover the project". A caller that deletes on this index's word has to consult

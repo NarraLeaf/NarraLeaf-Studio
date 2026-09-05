@@ -22,6 +22,7 @@ import {
     newerRuntimePackSchemaVersion,
     normalizeGameCrashPolicy,
     type GameCrashPolicy,
+    type GameCrashReportRequest,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
 import {
@@ -91,6 +92,7 @@ import { BLUEPRINT_SCREENSHOTS_DIR_NAME } from "@shared/types/blueprint/screensh
 import { openScreenshotsFolder, writeScreenshotFile } from "@shared/utils/screenshotFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { writeCrashReport, type CrashReportBuild } from "./crashReport";
 import { buildGameMenuTemplate } from "./gameMenu";
 import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
 import { resolveShellText, type ShellText } from "./shellText";
@@ -296,6 +298,15 @@ const logRuntime = installRuntimeLogSink(userDataDir);
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 /** The game's own name, once the pack has been read. Titles the crash dialogs. */
 let loadedPackName: string | null = null;
+/**
+ * What the pack says about the build this is, kept for the crash report.
+ *
+ * Copied out when the pack is read rather than read back from it at the moment it is wanted: a crash
+ * report is asked for by a page that has just stopped drawing, and the most likely crash of all is
+ * the one that happened while the pack was still being read. Null until then, which the report
+ * states rather than papers over - "this build does not say" is a fact about the failure.
+ */
+let loadedBuildIdentity: CrashReportBuild | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
@@ -1347,6 +1358,19 @@ function applyRuntimeAppIdentity(pack: GameRuntimePackV1): void {
     // Also the title of any error box after this point. Before it there is no name to use, which
     // is itself a fact worth keeping honest rather than papering over with the product's name.
     loadedPackName = pack.project.name;
+    loadedBuildIdentity = {
+        gameName: pack.project.name,
+        gameVersion: pack.project.version ?? null,
+        studioVersion: pack.runtimeVersion ?? null,
+        engineVersion: pack.engineVersion ?? null,
+        mode: pack.mode ?? null,
+        builtAt: pack.generatedAt ?? null,
+        // The revision only; the branch is not in a pack at all, and deliberately - a build made on
+        // a branch the author named after a plot twist would be announcing it to every player.
+        projectRevision: pack.projectRevision
+            ? { id: pack.projectRevision.id, number: pack.projectRevision.number }
+            : null,
+    };
     app.setName(pack.project.name);
     app.setAboutPanelOptions({
         applicationName: pack.project.name,
@@ -1827,6 +1851,53 @@ function registerRuntimeIpc(): void {
         directory: screenshotsDir(),
         openPath: directory => shell.openPath(directory),
     }));
+    /*
+     * The crash screen's report file.
+     *
+     * Here because this is the process that can do it: the log is this side's, so is the profile
+     * directory, and so is the machine the game is running on. The page states only what a page
+     * knows - the failure it is drawing and where the story had got to - and nothing about the path
+     * comes from it.
+     *
+     * `showItemInFolder` rather than opening the file: the player is being handed something to send,
+     * so what they want is the file selected in a window they can drag it out of. It starts nothing
+     * of ours, which is why it needs no gate of its own.
+     */
+    ipcMain.handle("runtime:crash:saveReport", (_event, request: GameCrashReportRequest) => {
+        const result = writeCrashReport({
+            userDataDir,
+            // Read defensively rather than trusted: this arrives from a renderer that has just
+            // stopped drawing, and a malformed field must not be the second failure.
+            request: {
+                details: String(request?.details ?? ""),
+                language: String(request?.language ?? ""),
+                story: request?.story
+                    ? {
+                        storyName: String(request.story.storyName ?? ""),
+                        sceneName: String(request.story.sceneName ?? ""),
+                        ...(request.story.rowId ? { rowId: String(request.story.rowId) } : {}),
+                    }
+                    : null,
+            },
+            build: loadedBuildIdentity,
+            machine: {
+                platform: process.platform,
+                arch: process.arch,
+                osRelease: os.release(),
+                electron: process.versions.electron ?? null,
+                chrome: process.versions.chrome ?? null,
+            },
+            homeDirectory: os.homedir(),
+            reveal: filePath => shell.showItemInFolder(filePath),
+        });
+        logRuntime(
+            result.outcome === "written" ? "info" : "warning",
+            result.outcome === "written"
+                ? `[Crash] Wrote the crash report to ${result.path}`
+                : `[Crash] Could not write the crash report: ${result.error}`,
+        );
+        return result;
+    });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {
         mainWindow?.setFullScreen(fullscreen === true);

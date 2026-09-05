@@ -2,6 +2,7 @@ import { addElementState, canAddElementState } from "@/lib/ui-editor/widget-modu
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { buildInsertWidgetSubmenu } from "./insertWidgetMenuItems";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import { appendAlignSubmenu } from "./appendAlignSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
@@ -47,14 +48,10 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     }
 
     if (!rowElement) {
-        const insertSubmenu = widgetModules.map(mod => ({
-            id: `outline-blank-insert-${mod.type}`,
-            label: mod.displayName,
-            onClick: () => {
-                actions.hideMenu();
-                actions.insertChildInOutline(mod.type);
-            },
-        }));
+        const insertSubmenu = buildInsertWidgetSubmenu(widgetModules, "outline-blank-insert-", type => {
+            actions.hideMenu();
+            actions.insertChildInOutline(type);
+        });
         if (insertSubmenu.length > 0) {
             items.push({
                 id: "insert",
@@ -94,14 +91,10 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
     const isRoot = rowElement.type === ROOT || isComponentEditorRootElement(rowElement);
 
     if (insertParentIdForRow) {
-        const insertSubmenu = widgetModules.map(mod => ({
-            id: `outline-insert-${mod.type}`,
-            label: mod.displayName,
-            onClick: () => {
-                actions.hideMenu();
-                actions.insertChildInOutline(mod.type);
-            },
-        }));
+        const insertSubmenu = buildInsertWidgetSubmenu(widgetModules, "outline-insert-", type => {
+            actions.hideMenu();
+            actions.insertChildInOutline(type);
+        });
         items.push({
             id: "insert-child",
             label: translate("uiEditor.contextMenu.insertChild"),
