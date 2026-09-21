@@ -480,6 +480,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         const rendered = isComponentEdit
             ? runtimeBridge.renderDocumentSurface({
                 document: documentService.getDocument(),
+                // A Page widget in the definition draws a project page, whose elements this
+                // editor's own document does not carry.
+                pageDocument: baseDocumentService?.getDocument(),
                 surfaceId,
                 hostAdapter,
                 className,
@@ -496,7 +499,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         }
         // Renders no node of its own, so the canvas keeps the shape the interaction layer measures.
         return <MotionConfig reducedMotion="never">{rendered}</MotionConfig>;
-    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
+    }, [baseDocumentService, documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
 
     const applyTool = useCallback(
         (nextTool: UITool) => {
