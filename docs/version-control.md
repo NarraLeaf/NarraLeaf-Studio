@@ -1108,14 +1108,14 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | [workingFile.ts](../src/main/app/application/managers/vcs/workingFile.ts) | 比较的**工作树那一侧**：一个仓库相对路径的当前字节，越界与超限分别是拒绝和失败 |
 | [workingSet.ts](../src/main/app/application/managers/vcs/workingSet.ts) | 工作集在磁盘上的遍历（策略在 `@shared/vcs/workingSet`） |
 | [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts) | 恢复：先打检查点、只增不退、只碰工作集，模块内不允许 `recursive:true` |
-| [revisionSnapshot.ts](../src/main/app/application/managers/vcs/revisionSnapshot.ts) | 把一个修订写成一个普通工程目录（Dev Mode 跑历史修订靠它，见 §9.2 之外的路径驱动约束） |
+| [revisionSnapshot.ts](../src/main/app/application/managers/vcs/revisionSnapshot.ts) | 把一个修订写成一个普通项目目录（Dev Mode 跑历史修订靠它，见 §9.2 之外的路径驱动约束） |
 | [merge.ts](../src/main/app/application/managers/vcs/merge.ts) | 合并状态与逐路径取舍；`~base` / `~mine` / `~theirs` 的读法 |
 | [mergeDocument.ts](../src/main/app/application/managers/vcs/mergeDocument.ts) | 冲突的第二档：逐处改动地和解一份文档 |
-| [diff/](../src/main/app/application/managers/vcs/diff) | 比较的呈现层：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，见 §9.1 |
+| [diff/](../src/main/app/application/managers/vcs/diff) | 比较的呈现层：内容 / 文档 / 文档集 / 修订 / 工作树 / 项目配置各一份 presenter，见 §9.1 |
 | [remote.ts](../src/main/app/application/managers/vcs/remote.ts) | 唯一需要 `offline: false` 的模块：推送、同步、克隆 |
 | [serverApi.ts](../src/main/app/application/managers/vcs/serverApi.ts) · [serverDiscovery.ts](../src/main/app/application/managers/vcs/serverDiscovery.ts) | 一次 HTTPS 请求，与「问一个地址背后是什么」 |
 | [serverSession.ts](../src/main/app/application/managers/vcs/serverSession.ts) · [serverTokens.ts](../src/main/app/application/managers/vcs/serverTokens.ts) · [serverPassword.ts](../src/main/app/application/managers/vcs/serverPassword.ts) | 登录与令牌保管。**登录按服务器 origin 存在账户级**；哪个项目用它另记一张表，见 [serverSessionScope.ts](../src/main/app/application/managers/vcs/serverSessionScope.ts) 与下文「登录按 (服务器, 项目) 作用」 |
-| [serverProjects.ts](../src/main/app/application/managers/vcs/serverProjects.ts) · [serverProjectsSession.ts](../src/main/app/application/managers/vcs/serverProjectsSession.ts) | 服务器上的工程清单，REST 与长连接两条同形的读法 |
+| [serverProjects.ts](../src/main/app/application/managers/vcs/serverProjects.ts) · [serverProjectsSession.ts](../src/main/app/application/managers/vcs/serverProjectsSession.ts) | 服务器上的项目清单，REST 与长连接两条同形的读法 |
 | [localRepositories.ts](../src/main/app/application/managers/vcs/localRepositories.ts) | 不开库就判断本机已经有哪些仓库（Lore 的库锁是独占且阻塞的，所以这条不能开库） |
 | [authorityTrust.ts](../src/main/app/application/managers/vcs/authorityTrust.ts) | 把签名端的 CA 装进本机信任库——全 Studio 唯一改操作系统设置的地方 |
 
@@ -1124,7 +1124,7 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | 文件 | 职责 |
 |---|---|
 | [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
-| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) · [vcsServerSessionAction.ts](../src/main/app/application/managers/window/handlers/vcsServerSessionAction.ts) | 43 个 IPC handler：**21 读**（什么都不改，含只走网络不记录的 `probeServer` / `getSyncState`）· **12 个动工程目录的**（建库 / 提交 / 检查点 / 恢复 / 设置远端 / 五个合并动作 / 同步 / 克隆）· **10 个服务器与账户动作**（登录三种 / 登出 / 加服务器 / 刷新 / 忘记 / 推送 / 发布 / 使用登录）。`useServerSession` 单独一个文件，其余 42 个在 `vcsAction.ts`。谁可以指名哪个工程见下 |
+| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) · [vcsServerSessionAction.ts](../src/main/app/application/managers/window/handlers/vcsServerSessionAction.ts) | 43 个 IPC handler：**21 读**（什么都不改，含只走网络不记录的 `probeServer` / `getSyncState`）· **12 个动项目目录的**（建库 / 提交 / 检查点 / 恢复 / 设置远端 / 五个合并动作 / 同步 / 克隆）· **10 个服务器与账户动作**（登录三种 / 登出 / 加服务器 / 刷新 / 忘记 / 推送 / 发布 / 使用登录）。`useServerSession` 单独一个文件，其余 42 个在 `vcsAction.ts`。谁可以指名哪个项目见下 |
 | [shared/vcs/workingSet.ts](../src/shared/vcs/workingSet.ts) | 工作集**策略**（谓词 + 忽略文件），两进程共用一份；走磁盘的遍历留在 main |
 | [VersionControlService.ts](../src/renderer/lib/workspace/services/core/VersionControlService.ts) | 渲染进程服务：可用性缓存、状态快照与订阅、历史缓存 |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
@@ -1140,13 +1140,13 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | [revisionReader.integration.test.ts](../src/main/app/application/managers/vcs/revisionReader.integration.test.ts) | 19 个，打真 DLL：blob 字节精确、三路合并、add/add 的 base 缺失 |
 | [revisionReader.test.ts](../src/main/app/application/managers/vcs/revisionReader.test.ts) | 10 个纯逻辑：LCA，含 criss-cross 的稳定裁决 |
 | [merge.integration.test.ts](../src/main/app/application/managers/vcs/merge.integration.test.ts) | 19 个：合并状态、逐路径取舍、关闭合并；`mergeSpike*.integration` 是它的四组前置实测 |
-| [diff/](../src/main/app/application/managers/vcs/diff) 七个 `.test.ts` | 111 个：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，加一份登记表 |
+| [diff/](../src/main/app/application/managers/vcs/diff) 七个 `.test.ts` | 111 个：内容 / 文档 / 文档集 / 修订 / 工作树 / 项目配置各一份 presenter，加一份登记表 |
 | [serverSession.test.ts](../src/main/app/application/managers/vcs/serverSession.test.ts) · [serverDiscovery.test.ts](../src/main/app/application/managers/vcs/serverDiscovery.test.ts) · [publish.test.ts](../src/main/app/application/managers/vcs/publish.test.ts) | 22 / 21 / 13 个：登录、探测地址、发布的三步 |
 | [backend.test.ts](../src/main/app/application/managers/vcs/backend.test.ts) | 6 个降级测试（含 Intel Mac / Windows ARM64 路径） |
 | [pluggability.test.ts](../src/main/app/application/managers/vcs/pluggability.test.ts) | 3 个：静态导入图里没有 `lore/`，且这个断言非空 |
 
 IPC 那一层的测试不在这个目录下：
-[vcsAction.test.ts](../src/main/app/application/managers/window/handlers/vcsAction.test.ts)（35 个）管的是**一次请求可以指名哪个工程**。
+[vcsAction.test.ts](../src/main/app/application/managers/window/handlers/vcsAction.test.ts)（35 个）管的是**一次请求可以指名哪个项目**。
 
 构建侧：`koffi` 在 [build-main.js](../project/build/build-main.js) 与 [dev-electron.js](../project/app/dev-electron.js) 里标了
 external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src/main/index.ts) 的 `window-closed` 上。
@@ -1166,7 +1166,7 @@ window[RendererInterfaceKey].vcs
 | `isRepository(projectPath)` | `{isRepository}`；后端不可用时为 `false`，不抛 |
 | `getInfo(projectPath)` | `{root, repositoryId, head?, headNumber, branch}` — **纯读**，走 `repositoryStatus(scan:false, revisionOnly:true)`，不触发 §4.17 |
 | `getStatus(projectPath)` | `VcsStatus`；**会扫描**，只能按需调，理由见 §4.17 |
-| `getSyncState(projectPath)` | **这一面上唯一走网络的读**，服务器不在时约 2s，禁止开工程时调或按定时器调 |
+| `getSyncState(projectPath)` | **这一面上唯一走网络的读**，服务器不在时约 2s，禁止打开项目时调或按定时器调 |
 | `restoreRevision(projectPath, revision, options?)` | `{from, checkpoint, revision, filesWritten, filesRemoved}` — 见下 |
 | `sync(projectPath)` | `VcsSyncResult`；**会覆写作者文件**，冲突是**成功**答案而不是失败 |
 
@@ -1178,14 +1178,14 @@ window[RendererInterfaceKey].vcs
 `signOut` / `trustAuthority` / `probeServer` / `listServers` / `addServer` / `refreshServer` / `forgetServer`）·
 传输（`push` / `sync` / `clone` / `publishProject` / `listLocalRepositories`）。
 
-**会动工程目录的有十二个**，分三类看：只**新增一个修订**的 `initRepository`（V1）、`commit` / `checkpoint`（V2）——
+**会动项目目录的有十二个**，分三类看：只**新增一个修订**的 `initRepository`（V1）、`commit` / `checkpoint`（V2）——
 够不到冲突，所以不需要 resolve UI 先存在；**用历史覆写工作树**的 `restoreRevision`（V4）、四个落字节的合并动作
 （`resolveConflicts` / `completeMerge` / `restartConflicts` / `abortMerge`）与 `sync`，外加只改仓库里合并状态的
 `unresolveConflicts`；以及只改配置或写新目录的 `setRemote` 与 `clone`。`publishProject` 不在这十二个里算，但它的
 第三步**也会改写 `.lore/config.toml`**。`restoreRevision` 不需要 resolve UI 的理由和前三个不同且值得写下来：
 它**不合并**——把某个修订的内容写到工作树上，再把结果记成一个新修订，从头到尾只有一边。
 
-### 一次请求可以指名哪个工程
+### 一次请求可以指名哪个项目
 
 `projectPath` 是渲染层填的字段，而 IPC 注册表是全进程一份、按 sender 找窗口的，所以**任何窗口都能发这 43 条里的
 任何一条**。因此凡是指名项目的 handler 都用 `requireWindowProject(window, projectPath)` 把项目取自**窗口自己的
@@ -1283,7 +1283,7 @@ Team 协作（在线成员、房间、附件）在工作区里**只对「用」�
 - **索引每份文档恒占一行**，与它内部有多少条改动、走的哪一档、被截断与否都无关。行尾放改动数。
   多数文档就是一个文件；一份 document set（见 §9.2）由 manifest 加成员组成，同样只占一行。
 - **详情区一次只挂一个 presenter**（`ChangeDetailHost`，`data-change-presenter` 是它的抓手）。
-- 文件按**分类**分组（故事／人物／界面／素材／本地化／音频／项目／其他，见
+- 文件按**分类**分组（故事／角色／界面／资产／本地化／音频／项目／其他，见
   `renderer/lib/vcs/changeCategory.ts`），组头带文件数，超过 `GROUP_COLLAPSE_THRESHOLD` 默认折叠。
 - **caveat 每组一次，绝不逐行**：哪些文件没被完整比较是组级的一句话，具体原因在各自的详情里。
 
@@ -1434,7 +1434,7 @@ Team 协作（在线成员、房间、附件）在工作区里**只对「用」�
 
 `DIFF_PATH_LIMIT`（2000）已更名为 **`DIFF_UNIT_LIMIT`**，数值不变。旧的前提是「一个文件就是一份
 文档」；一旦一份文档能是很多文件，这个前提就朝最贵的方向失效：**四部 560 场景的故事是 2244 个文件、
-4 份文档**，按路径数它会超限，于是**整个项目里每一份文档**——人物、译文、素材——都会被报成「未读取」，
+4 份文档**，按路径数它会超限，于是**整个项目里每一份文档**——角色、译文、资产——都会被报成「未读取」，
 只因为作者没碰过的某个故事很大。现在先折叠再计数；没注册 set 的项目数出来的和以前一模一样。
 
 数值没有上调，这是刻意的：调大是吸收同一道算术的另一种办法，只买到再翻一倍的时间，

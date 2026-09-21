@@ -19,7 +19,7 @@ export const documents = {
             dlc: "DLC",
             assetSets: "资产集",
             audioTracks: "音轨",
-            characters: "人物",
+            characters: "角色",
         },
     },
 } as const;
