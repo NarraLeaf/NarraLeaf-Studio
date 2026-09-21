@@ -74,10 +74,7 @@ import {
 import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
-import type {
-    NestedSurfaceRuntime,
-    SurfaceBlueprintBindingContext,
-} from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/pageAnimation";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
@@ -167,6 +164,7 @@ import {
 import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import { buildGameHostApiOptions, type GameHostCapabilities } from "./gameHostApiOptions";
+import { buildPageHostAdapterBundle, cacheHostAdapterBundles } from "./hostAdapterBundles";
 import { createFocusMuteController, type FocusMuteOutput } from "./focusMute";
 import {
     createGameUiSlotComponents,
@@ -238,7 +236,7 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
-import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
+import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
     GameAppHost,
@@ -621,6 +619,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         core.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, table);
     }, [bundle.storyLibrary, core]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
+    // The table itself; the state beside it is only what makes a write re-render. Every writer sets
+    // this first and never the other way round - see `WidgetPatchesByScope` for why an effect
+    // copying the state back into it would lose writes.
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const navigation = useMemo(() => new NavigationController(), []);
     const navState = useSurfaceNavigation(navigation);
@@ -1112,10 +1113,6 @@ export function GameApp(props: GameAppProps): ReactNode {
      * dependency of the other.
      */
     const applyFocusMuteRef = useRef<(() => void) | null>(null);
-
-    useEffect(() => {
-        widgetPatchesByScopeRef.current = widgetPatchesByScope;
-    }, [widgetPatchesByScope]);
 
     useEffect(() => {
         studioPageHiddenForGameRef.current = studioPageHiddenForGame;
@@ -4316,22 +4313,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         return () => onTestControlsChanged(null);
     }, [activeSurface, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
 
-    const createHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
+    const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
             return null;
         }
-        const runtimeScopeId = entry.runtimeScopeId;
-        let hostAdapter: UIHostAdapter | null = null;
-        const hostApi = createDevModeBlueprintHostApi(buildGameHostApiOptions(gameHostCapabilities, {
-            document: bundle.ui.uidoc,
-            scope: core.scopeBridge,
-            emit: event => core.debug.emit(event),
-            activeSurfaceId: surface.id,
-            runtimeScopeId,
-            pageProps: entry.props,
-            // How the page was pushed decides it: an entry opened as a game overlay is drawn over a
-            // running playthrough, and one opened as a page is not.
-            isGameOverlay: () => entry.presentation === "gameOverlay",
+        return buildPageHostAdapterBundle({
+            core,
+            capabilities: gameHostCapabilities,
+            bundle,
             // The gate, not the runtime's own start - the same one a slot surface gets. Start Game
             // is a button on a page, and in Dev Mode that page is drawn while the story is still
             // compiling behind it; without the wait the press takes the slow path and races the
@@ -4341,34 +4330,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setByScope: setWidgetPatchesByScope,
                 byScopeRef: widgetPatchesByScopeRef,
             },
-            resolveHostAdapter: () => hostAdapter,
-        }));
-        hostAdapter = createDevModeBlueprintHostAdapter({
-            bundle,
-            surface,
-            runtimeScopeId,
-            scopeBridge: core.scopeBridge,
-            debug: core.debug,
-            hostApi,
-            executionManager: core.executionManager,
-        });
-        const bindingContext: SurfaceBlueprintBindingContext = {
-            blueprintDocument: bundle.ui.localBlueprints,
-            persistentVariables: bundle.ui.persistentVariables,
-            surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
-            debug: core.debug,
-            coalescer: core.bindingDebugCoalescer,
-            globalState: {
-                get: key => core.scopeBridge.globalGet(key),
-                subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
-            },
-            pageProps: entry.props,
-        };
-        return {
-            hostAdapter,
-            bindingContext,
-            runtimeScopeId,
-        } satisfies HostAdapterBundle;
+        }, entry, surface);
     }, [
         bundle,
         core,
@@ -4380,12 +4342,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         widgetPatchesByScopeRef,
     ]);
 
+    /**
+     * The host an entry is drawn with - its layer's, and the one every dispatch below reaches it
+     * through. One per entry: see `hostAdapterBundles` for what went wrong while there were two.
+     */
+    const hostAdapterBundleFor = useMemo(
+        () => cacheHostAdapterBundles(buildHostAdapterBundle),
+        [buildHostAdapterBundle],
+    );
+
+    /**
+     * The active page's host, for everything this component dispatches to the page itself: key
+     * presses and the actions they raise, the menu bar, window and preference events, a close
+     * request. The very bundle the page's layer draws with, so a graph run from any of those reads
+     * and writes the page the player is looking at.
+     */
     const hostAdapterBundle = useMemo(() => {
         if (!activeEntry || !activeSurface) {
             return null;
         }
-        return createHostAdapterBundle(activeEntry, activeSurface);
-    }, [activeEntry, activeSurface, createHostAdapterBundle]);
+        return hostAdapterBundleFor(activeEntry, activeSurface);
+    }, [activeEntry, activeSurface, hostAdapterBundleFor]);
 
     /*
      * The menu bar: the port the rows act through, the controller that draws them, and the seam a
@@ -6016,7 +5993,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     surface={surface}
                                     rendererRegistry={rendererRegistry}
                                     scale={scale}
-                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    hostAdapterBundleFor={hostAdapterBundleFor}
                                     widgetPatchesByScope={widgetPatchesByScope}
                                     widgetPatchesByScopeRef={widgetPatchesByScopeRef}
                                     widgetRuntimeStore={widgetRuntimeStore}
@@ -6062,7 +6039,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     surface={surface}
                                     rendererRegistry={rendererRegistry}
                                     scale={scale}
-                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    hostAdapterBundleFor={hostAdapterBundleFor}
                                     widgetPatchesByScope={widgetPatchesByScope}
                                     widgetPatchesByScopeRef={widgetPatchesByScopeRef}
                                     widgetRuntimeStore={widgetRuntimeStore}

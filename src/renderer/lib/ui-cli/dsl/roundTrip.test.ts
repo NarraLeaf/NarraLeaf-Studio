@@ -14,7 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { compileUiFile } from "./compile";
 import { parseUiFile } from "./parse";
 import { printUiDocument } from "./print";
@@ -65,5 +65,40 @@ describe("the .ui text format", () => {
         expect(compiled.surfaces).toHaveLength(1);
         expect(compiled.surfaces[0].dropped).toEqual([]);
         expect(compiled.surfaces[0].surface).toEqual(surface);
+    });
+
+    it("carries a label's marks through, spelled the same way on a button as on a text label", () => {
+        const runs = [{ text: "山田", marks: { ruby: "やまだ" } }, { text: "さん", marks: { bold: true } }];
+        const source = [
+            'surface "S" id=s kind=appSurface size=800x600',
+            "    Root: nl.root id=root @0,0 800x600",
+            "        Name: nl.text id=name @0,0 200x40",
+            "            text = 山田さん",
+            `            rich = ${JSON.stringify(runs)}`,
+            "        Go: nl.button id=go @0,60 200x40",
+            "            label = 山田さん",
+            `            rich = ${JSON.stringify(runs)}`,
+            "",
+        ].join("\n");
+        const first = compileUiFile(parseUiFile(source));
+        expect(first.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+        expect(first.surfaces[0].elements.go.props).toEqual({ label: "山田さん", rich: runs });
+        expect(first.surfaces[0].elements.name.props).toEqual({ text: "山田さん", rich: runs });
+
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "d",
+            name: "d",
+            surfaces: [first.surfaces[0].surface],
+            elements: first.surfaces[0].elements,
+        };
+        const printed = printUiDocument(document, { includeSharedTables: false });
+        const richLines = printed.split("\n").map(line => line.trim()).filter(line => line.startsWith("rich = "));
+        expect(richLines).toEqual([`rich = ${JSON.stringify(runs)}`, `rich = ${JSON.stringify(runs)}`]);
+
+        const second = compileUiFile(parseUiFile(printed), { existing: document });
+        expect(second.surfaces[0].dropped).toEqual([]);
+        expect(second.surfaces[0].elements.go).toEqual(document.elements.go);
+        expect(second.surfaces[0].elements.name).toEqual(document.elements.name);
     });
 });

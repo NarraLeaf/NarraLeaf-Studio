@@ -1,8 +1,11 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
-import type { UITextRun } from "@shared/types/ui-editor/textRuns";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
-import { applyPlainTextToUITextRuns, normalizeUITextRuns } from "@shared/types/ui-editor/textRuns";
+import { normalizeUITextRuns } from "@shared/types/ui-editor/textRuns";
 import { normalizeVerticalTypography } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
+import {
+    plainTextEditPatch,
+    type MarkedLabelProps,
+} from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
 import { defaultTextWidgetProps, type TextWidgetProps } from "./types";
 
 /**
@@ -46,18 +49,22 @@ export function getTextProps(element: UIElement): TextWidgetProps {
     };
 }
 
+/** A text label keeps its string in `text` and its runs beside it in `rich`. */
+export const TEXT_MARKED_LABEL: MarkedLabelProps = {
+    read: element => {
+        const props = getTextProps(element);
+        return { text: props.text, rich: props.rich, color: props.color };
+    },
+    write: (text, rich) => ({ text, rich }),
+};
+
 /**
  * The props patch that writes a label's text from a box that holds plain text.
  *
  * Both plain editors go through this one: the box in the inspector and the label typed on the
  * canvas. A plain box can only hand back a string, so the marks are carried across it - the stretch
- * that changed is written afresh, the rest of the paragraph keeps what it was set in. Leaving this
- * to each caller is how one of them ends up dropping every reading in a paragraph because one word
- * was corrected.
+ * that changed is written afresh, the rest of the paragraph keeps what it was set in.
  */
-export function textValuePatch(element: UIElement, nextText: string): { text: string; rich: UITextRun[] | undefined } {
-    return {
-        text: nextText,
-        rich: applyPlainTextToUITextRuns(getTextProps(element).rich, nextText),
-    };
+export function textValuePatch(element: UIElement, nextText: string): Record<string, unknown> {
+    return plainTextEditPatch(TEXT_MARKED_LABEL, element, nextText);
 }

@@ -349,8 +349,11 @@ describe("stage slot surface rebuilt drawing", () => {
      * the drawing shows, so a host API rebuilt with an empty mirror dropped exactly the writes that
      * put an element *back* to its authored value - and the previous speaker's avatar stayed on the
      * narration line that replaced them.
+     *
+     * Read live rather than handed over once: a copy taken when the host API is built is the same
+     * defect a step later, for any write made after it by another host API on the scope.
      */
-    it("hands the host API what this scope is already showing", () => {
+    it("reads what this scope is showing from the host's own table", () => {
         const runtimeScopeId = stageSlotRuntimeScopeId("session", "dialog" as UIStageSlotId, surface.id, 0);
         const painted = { avatar: { props: { imageFill: { mode: "cover", assetId: "avatar-a" } } } };
 
@@ -358,13 +361,28 @@ describe("stage slot surface rebuilt drawing", () => {
             widgetPatchesByScopeRef: { current: { [runtimeScopeId]: painted } },
         } as unknown as Partial<GameUiSlotHostOptions>);
 
-        expect(options.initialWidgetPatches).toBe(painted);
+        expect(options.readWidgetPatches?.()).toBe(painted);
     });
 
-    it("hands nothing to a scope nothing has drawn on", () => {
+    it("sees a write that lands after the host API was built", () => {
+        const runtimeScopeId = stageSlotRuntimeScopeId("session", "dialog" as UIStageSlotId, surface.id, 0);
+        const table = { current: {} as Record<string, Record<string, unknown>> };
+
+        const options = renderShell({}, {
+            widgetPatchesByScopeRef: table,
+        } as unknown as Partial<GameUiSlotHostOptions>);
+        expect(options.readWidgetPatches?.()).toBeUndefined();
+
+        const painted = { avatar: { visible: false } };
+        table.current = { [runtimeScopeId]: painted };
+
+        expect(options.readWidgetPatches?.()).toBe(painted);
+    });
+
+    it("reads nothing for a scope nothing has drawn on", () => {
         const options = renderShell({});
 
-        expect(options.initialWidgetPatches).toBeUndefined();
+        expect(options.readWidgetPatches?.()).toBeUndefined();
     });
 });
 

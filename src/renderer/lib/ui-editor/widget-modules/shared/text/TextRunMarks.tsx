@@ -19,7 +19,7 @@ import { RubyPopover } from "@/apps/workspace/modules/story/scene-editor/RubyPop
 import { TypePopover } from "@/apps/workspace/modules/story/scene-editor/TypePopover";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
-import { getTextProps, textValuePatch } from "./helpers";
+import { plainTextEditPatch, type MarkedLabelProps } from "./markedLabel";
 
 const TEXT_AREA_CLASS =
     "min-h-[88px] w-full resize-y rounded-md border border-edge bg-surface-sunken px-2 py-1.5 text-xs "
@@ -44,17 +44,22 @@ function anchorOf(element: HTMLElement | null): Anchor | null {
  * canvas, at the size, colour and writing direction the label is really set in, which is where an
  * author is looking when they decide a word needs a reading over it.
  *
- * Every write goes out as one patch carrying both `text` and `rich`: the box may be a keystroke or
- * two ahead of the document, and reading the marks against a string the document has not caught up
- * with is how an offset lands on the wrong character.
+ * Every write goes out as one patch carrying both the string and `rich`: the box may be a keystroke
+ * or two ahead of the document, and reading the marks against a string the document has not caught
+ * up with is how an offset lands on the wrong character.
+ *
+ * The same editor serves every widget that draws a label of its own; `label` says which props hold
+ * it, and is expected to be a module-level constant rather than an object built per render.
  */
 export function TextRunMarksEditor(props: {
     documentService: UIDocumentService;
     element: UIElement;
+    /** Which props of the element hold the label. */
+    label: MarkedLabelProps;
     readOnly?: boolean;
 }) {
     const { t } = useTranslation();
-    const { documentService, element } = props;
+    const { documentService, element, label } = props;
     useUIDocumentRevision(documentService);
     const areaRef = useRef<(HTMLTextAreaElement & HTMLInputElement) | null>(null);
     const rubyButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -63,8 +68,11 @@ export function TextRunMarksEditor(props: {
     const [ruby, setRuby] = useState<Anchor | null>(null);
     const [type, setType] = useState<Anchor | null>(null);
 
-    const live = documentService.getDocument().elements[element.id] ?? element;
-    const textProps = getTextProps(live);
+    const readStored = useCallback(
+        () => label.read(documentService.getDocument().elements[element.id] ?? element),
+        [documentService, element, label],
+    );
+    const textProps = readStored();
 
     useEffect(() => {
         const read = () => {
@@ -98,12 +106,12 @@ export function TextRunMarksEditor(props: {
         if (end <= start) {
             return;
         }
-        const stored = getTextProps(documentService.getDocument().elements[element.id] ?? element);
+        const stored = readStored();
         const base = stored.text === text ? stored.rich : applyPlainTextToUITextRuns(stored.rich, text);
-        documentService.updateElementProps(element.id, {
-            text,
-            rich: setUITextRunMark(base, text, start, end, key, value),
-        });
+        documentService.updateElementProps(
+            element.id,
+            label.write(text, setUITextRunMark(base, text, start, end, key, value)),
+        );
         // The press moved the focus off the box; the selection it was written for goes back on it,
         // so a second mark lands on the same characters without the author reselecting them.
         requestAnimationFrame(() => {
@@ -111,7 +119,7 @@ export function TextRunMarksEditor(props: {
             area.setSelectionRange(start, end);
             setSelection({ start, end });
         });
-    }, [documentService, element]);
+    }, [documentService, element.id, label, readStored]);
 
     const active: UITextRunMarks | undefined = marked
         ? uiTextRunMarksInRange(textProps.rich, textProps.text, selection.start, selection.end)
@@ -130,12 +138,10 @@ export function TextRunMarksEditor(props: {
                 rows={4}
                 readOnly={props.readOnly}
                 draftResetKey={element.id}
-                readCommittedValue={() =>
-                    getTextProps(documentService.getDocument().elements[element.id] ?? element).text
-                }
+                readCommittedValue={() => readStored().text}
                 onCommit={next => {
                     const stored = documentService.getDocument().elements[element.id] ?? element;
-                    documentService.updateElementProps(element.id, textValuePatch(stored, next));
+                    documentService.updateElementProps(element.id, plainTextEditPatch(label, stored, next));
                 }}
             />
             <TooltipGroup className="flex items-center gap-1">

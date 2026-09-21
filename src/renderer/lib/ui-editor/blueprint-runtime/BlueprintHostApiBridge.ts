@@ -176,6 +176,31 @@ export type DevModeWidgetRuntimePatch = {
         Partial<Pick<BlueprintDisplayableProperties, "rotation" | "opacity">>;
 };
 
+/**
+ * One write laid over what a drawing already had, later winning.
+ *
+ * `props` is merged rather than replaced: each write states only the properties it changed, and a
+ * shallow spread would drop everything an earlier write had put there. Every other field is one
+ * fact, so last-writer-wins is what they mean.
+ *
+ * The one merge there is. A host keeps the patches its drawings are painted from and a host API
+ * reads them back, and the two have to agree on what a sequence of writes adds up to - a second
+ * merge rule anywhere would make a widget read back something other than what is on screen.
+ */
+export function mergeWidgetPatch(
+    previous: DevModeWidgetRuntimePatch | undefined,
+    patch: DevModeWidgetRuntimePatch,
+): DevModeWidgetRuntimePatch {
+    const merged: DevModeWidgetRuntimePatch = { ...(previous ?? {}), ...patch };
+    if (previous?.props || patch.props) {
+        merged.props = { ...(previous?.props ?? {}), ...(patch.props ?? {}) };
+    }
+    return merged;
+}
+
+/** How the widget readers below see a drawing's runtime patches: one address at a time. */
+type WidgetPatchReader = { get(address: string): DevModeWidgetRuntimePatch | undefined };
+
 export type BlueprintElementFlushPayload = {
     element: BlueprintElementRef;
 };
@@ -1080,18 +1105,28 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsLayerMounted?: (handle: string) => boolean;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     /**
-     * What the host has already written over the authored record for this runtime scope.
+     * Everything written over the authored record for this runtime scope, by anyone, read live.
      *
-     * A drawing outlives the host API that paints it: the Game UI dialog box is rebuilt whenever the
-     * gap between two lines outlives the engine's replacement grace, and the patches it painted are
-     * kept by the host so the box comes back looking as it did. Every setter below compares the
-     * value it is given against what the drawing currently shows and writes nothing when they agree,
-     * so a host API that started from the authored record alone skipped exactly the writes that put
-     * an element *back* to what the author wrote - the previous speaker's avatar stayed on a
-     * narration line, because narration asks for no avatar and no avatar is what the widget was
-     * authored with.
+     * The host keeps the patches its drawings are painted from; this is that table for this scope,
+     * and `onWidgetPatch` has to have laid a write into it (by {@link mergeWidgetPatch})
+     * before it returns. Given this, the host API keeps no copy of its own, and every widget read
+     * and every "did this change?" guard answers from what is on screen.
+     *
+     * A copy was what this used to be, taken when the host API was built, and it went wrong twice.
+     * A drawing outlives the host API that paints it - the Game UI dialog box is rebuilt whenever
+     * the gap between two lines outlives the engine's replacement grace - and a rebuild that started
+     * empty skipped exactly the writes that put an element *back* to what the author wrote: the
+     * previous speaker's avatar stayed on a narration line. Seeding the copy fixed that one and not
+     * the general case, which is two host APIs on one scope at once. Neither saw the other's writes,
+     * so a graph run from one read whatever the scope had shown when that one was built - a key
+     * press asking "is the viewer open?" was told no while the viewer was plainly on screen,
+     * because the click that opened it ran on the other. A graph still running on a host API that
+     * has since been rebuilt (a `Delay` loop across a story start) is the same case.
+     *
+     * Absent where nothing else paints the scope - the editor's own preview, a test - and the host
+     * API then keeps its own table, merged the same way.
      */
-    initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
+    readWidgetPatches?: () => Readonly<Record<string, DevModeWidgetRuntimePatch>> | undefined;
     /**
      * A write changed a widget, so it flushes. `elementId` is the element the listening heads name;
      * `address` is the drawing the write landed on, which the widget's own graph runs in.
@@ -1213,7 +1248,7 @@ function requireDocumentElement(document: UIDocument, elementId: string, label: 
 
 function readPatchedDocumentElement(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): UIElement | undefined {
     const element = readDocumentElement(document, elementId);
@@ -1232,7 +1267,7 @@ function readPatchedDocumentElement(
 
 function readPatchedElementLayout(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): UIElement["layout"] {
     const element = requireDocumentElement(document, elementId, "displayable");
@@ -1244,7 +1279,7 @@ function readPatchedElementLayout(
 
 function readDisplayableSurfaceTopLeft(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): { x: number; y: number } {
     requireDocumentElement(document, elementId, "displayable");
@@ -1253,7 +1288,7 @@ function readDisplayableSurfaceTopLeft(
 
 function readDisplayableParentSurfaceTopLeft(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): { x: number; y: number } {
     const element = requireDocumentElement(document, elementId, "displayable");
@@ -1468,7 +1503,7 @@ function jsonEquals(a: unknown, b: unknown): boolean {
  */
 function withWidgetPropOverride(
     element: UIElement,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): UIElement {
     const props = overrides.get(address)?.props;
@@ -1477,7 +1512,7 @@ function withWidgetPropOverride(
 
 function readTextProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintTextProperties {
     const el = withWidgetPropOverride(assertTextElement(document, address), overrides, address);
@@ -1603,7 +1638,7 @@ function readSwitchProperties(
 function readDisplayableProperties(
     document: UIDocument,
     elementId: string,
-    runtimePatches?: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    runtimePatches?: WidgetPatchReader,
 ): BlueprintDisplayableProperties {
     const layout = readPatchedElementLayout(document, runtimePatches, elementId);
     const patch = runtimePatches?.get(elementId);
@@ -1688,7 +1723,7 @@ function variantDisplayableOpacityTransition(
 function readEffectiveDisplayableProperties(
     document: UIDocument,
     widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimePatches: WidgetPatchReader,
     runtimeScopeId: string | undefined,
     activeSurfaceId: string,
     elementId: string,
@@ -1734,7 +1769,7 @@ function readVariantId(document: UIDocument, widgetRuntimeStore: WidgetRuntimeSt
 function readCommonProperties(
     document: UIDocument,
     widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimePatches: WidgetPatchReader,
     scopedKey: string,
     elementId: string,
 ): BlueprintWidgetCommonProperties {
@@ -1810,7 +1845,7 @@ function patchButtonDefaultCursorAppearance(
 
 function readButtonProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintButtonProperties {
     const p = getButtonProps(withWidgetPropOverride(assertButtonElement(document, address), overrides, address));
@@ -1823,7 +1858,7 @@ function readButtonProperties(
 
 function readContainerProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintContainerProperties {
     const el = withWidgetPropOverride(assertContainerElement(document, address), overrides, address);
@@ -1832,7 +1867,7 @@ function readContainerProperties(
 
 function readImageProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintImageProperties {
     const p = getRectangleLikeProps(withWidgetPropOverride(assertImageElement(document, address), overrides, address));
@@ -1858,7 +1893,7 @@ function readFrameProperties(document: UIDocument, elementId: string): Blueprint
 
 function readEffectiveFrameProperties(
     document: UIDocument,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimePatches: WidgetPatchReader,
     elementId: string,
 ): BlueprintFrameProperties {
     const current = readFrameProperties(document, elementId);
@@ -2600,15 +2635,26 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
-        initialWidgetPatches,
+        readWidgetPatches,
     } =
         options;
     const stateScopeId = runtimeScopeId ?? activeSurfaceId;
     const currentPageProps = normalizeJsonRecord(pageProps);
     const pendingFlushElementIds = new Set<string>();
-    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>(
-        Object.entries(initialWidgetPatches ?? {}),
-    );
+    /**
+     * This host API's own table, kept only when the host does not share its own - see
+     * `readWidgetPatches` for why sharing is the rule wherever a game runs.
+     */
+    const ownPatches = readWidgetPatches ? null : new Map<string, DevModeWidgetRuntimePatch>();
+    /**
+     * What this scope's drawings show over the authored record, one address at a time.
+     *
+     * Read-only on purpose: the only way in is {@link emitWidgetPatch}, so a write reaches the
+     * drawing and every reader by one road, and there is no second copy to fall out of step with it.
+     */
+    const runtimePatches: WidgetPatchReader = {
+        get: address => (ownPatches ? ownPatches.get(address) : readWidgetPatches?.()?.[address]),
+    };
     type DisplayableAnimationWaitReason = "completed" | "stopped";
 
     const displayableAnimationWaiters = new Map<
@@ -2617,11 +2663,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
     >();
     let flushScheduled = false;
 
+    /**
+     * Lay one write over a drawing: the host's table (which the drawing is painted from and every
+     * host API on the scope reads), or this host API's own when it has none to share.
+     */
     const emitWidgetPatch = (
         elementId: string,
         patch: DevModeWidgetRuntimePatch,
         options?: { widgetStateChanged?: boolean },
     ) => {
+        ownPatches?.set(elementId, mergeWidgetPatch(ownPatches.get(elementId), patch));
         onWidgetPatch(elementId, patch);
         widgetRuntimeStore.notifyRuntimePatchesChanged(options);
     };
@@ -2650,11 +2701,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
      * Write props for one drawing.
      *
      * Takes the whole next bag rather than a delta, because that is what each setter already
-     * computes - and the merge below keeps the properties this write did not mention.
+     * computes - and {@link mergeWidgetPatch} keeps the properties this write did not mention.
      */
     const writeWidgetProps = (address: string, props: Record<string, unknown>) => {
-        const previous = runtimePatches.get(address) ?? {};
-        runtimePatches.set(address, { ...previous, props: { ...(previous.props ?? {}), ...props } });
         emitWidgetPatch(address, { props });
     };
 
@@ -3126,10 +3175,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                     elementId,
                 ).visible;
-                runtimePatches.set(elementId, {
-                    ...(runtimePatches.get(elementId) ?? {}),
-                    visible,
-                });
                 emitWidgetPatch(elementId, { visible });
                 if (previous !== visible) {
                     scheduleElementFlush(elementId);
@@ -3150,10 +3195,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                     elementId,
                 ).enabled;
-                runtimePatches.set(elementId, {
-                    ...(runtimePatches.get(elementId) ?? {}),
-                    enabled,
-                });
                 emitWidgetPatch(elementId, { enabled });
                 if (previous !== enabled) {
                     scheduleElementFlush(elementId);
@@ -3188,7 +3229,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ...previousPatch,
                         layout,
                     };
-                    runtimePatches.set(elementId, nextPatch);
                     emitWidgetPatch(elementId, nextPatch);
                 }
                 const opacityTransition = variantDisplayableOpacityTransition(document, elementId, targetVariant);
@@ -3667,7 +3707,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (Object.keys(nextPatch.layout ?? {}).length === 0) {
                         delete nextPatch.layout;
                     }
-                    runtimePatches.set(elementId, nextPatch);
                     emitWidgetPatch(elementId, nextPatch);
                     const next = readEffectiveDisplayableProperties(
                         document,
@@ -3772,7 +3811,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                                         ...layoutPatch,
                                     },
                                 };
-                                runtimePatches.set(elementId, nextPatch);
                             }
                             const baseChanged = Object.keys(basePatch).length > 0
                                 ? widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, basePatch, { silent: true })
@@ -3855,7 +3893,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             params,
                         },
                     };
-                    runtimePatches.set(elementId, nextPatch);
                     emitWidgetPatch(elementId, nextPatch);
                     scheduleElementFlush(elementId);
                 } finally {

@@ -87,7 +87,7 @@ type SurfaceBoundOptionKey = BridgeOptionKey<
     | "onStartStory"
     | "onWidgetPatch"
     | "onElementFlush"
-    | "initialWidgetPatches"
+    | "readWidgetPatches"
     | "frameParams"
     | "onFrameEmit"
 >;
@@ -169,8 +169,8 @@ export type GameHostSurfaceBinding = {
     /**
      * Where the runtime widget patches of every scope live.
      *
-     * The same pair at all three hosts, but the writes and the seed are per scope, so the builder
-     * needs both this and `runtimeScopeId` to derive `onWidgetPatch` and `initialWidgetPatches`.
+     * The same pair at all three hosts, but the writes and the reads are per scope, so the builder
+     * needs both this and `runtimeScopeId` to derive `onWidgetPatch` and `readWidgetPatches`.
      */
     widgetPatches: {
         setByScope: Dispatch<SetStateAction<WidgetPatchesByScope>>;
@@ -231,13 +231,12 @@ export function buildGameHostApiOptions(
         onElementFlush: (elementId, payload, address) => {
             dispatchWidgetFlushInDrawing(binding.resolveHostAdapter()?.blueprintRuntime, elementId, payload, address);
         },
-        // What this scope is already showing. A host API rebuilt for a scope that is already drawn
-        // has to start from what is on screen: every widget setter writes nothing when the value it
-        // is given already matches the drawing, so a rebuild with an empty mirror drops exactly the
-        // writes that put an element *back* to its authored value. A Game UI slot is rebuilt
-        // mid-scene whenever the engine rekeys its box, and that is how the previous speaker's
-        // avatar used to stay on the narration line that replaced them.
-        initialWidgetPatches: widgetPatches.byScopeRef.current[runtimeScopeId],
+        // What this scope is showing, read at the moment a graph asks rather than copied when the
+        // host API is built. The ref is the table the drawing is painted from and `onWidgetPatch`
+        // above writes it synchronously, so every host API on one scope - the page's own, one
+        // rebuilt under a graph still running, a Game UI slot rekeyed mid-scene - reads back
+        // exactly what is on screen, whichever of them wrote it.
+        readWidgetPatches: () => widgetPatches.byScopeRef.current[runtimeScopeId],
         ...(binding.frame
             ? { frameParams: binding.frame.params, onFrameEmit: binding.frame.emit }
             : {}),

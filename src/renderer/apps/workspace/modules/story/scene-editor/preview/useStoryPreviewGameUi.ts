@@ -107,10 +107,9 @@ export function useStoryPreviewGameUi(input: {
     const widgetRuntimeStore = useMemo(() => new WidgetRuntimeStateStore(), []);
     const lifecycleRef = useRef(new SurfaceLifecycleOrchestrator());
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
+    // The table itself, written before the state by every writer; see `WidgetPatchesByScope` for why
+    // it is never copied back from the state.
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
-    useEffect(() => {
-        widgetPatchesByScopeRef.current = widgetPatchesByScope;
-    }, [widgetPatchesByScope]);
 
     // Refs shared by the Game UI slots and the LiveGame callbacks across a session.
     const choiceMenus = useMemo(() => createChoiceMenus(), []);
