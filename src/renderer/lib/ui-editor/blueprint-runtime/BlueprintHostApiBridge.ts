@@ -2655,12 +2655,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
     const runtimePatches: WidgetPatchReader = {
         get: address => (ownPatches ? ownPatches.get(address) : readWidgetPatches?.()?.[address]),
     };
-    type DisplayableAnimationWaitReason = "completed" | "stopped";
-
-    const displayableAnimationWaiters = new Map<
-        string,
-        Set<(reason: DisplayableAnimationWaitReason) => void>
-    >();
     let flushScheduled = false;
 
     /**
@@ -2745,50 +2739,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     id,
                 );
             }
-        });
-    };
-
-    const notifyDisplayableAnimationDone = (
-        animationId: string,
-        reason: DisplayableAnimationWaitReason = "stopped",
-    ): void => {
-        const waiters = displayableAnimationWaiters.get(animationId);
-        if (!waiters || waiters.size === 0) {
-            return;
-        }
-        displayableAnimationWaiters.delete(animationId);
-        for (const resolve of Array.from(waiters)) {
-            resolve(reason);
-        }
-    };
-
-    const waitForDisplayableAnimation = async (
-        animationId: string,
-        waitMs: number,
-    ): Promise<DisplayableAnimationWaitReason> => {
-        if (waitMs <= 0) {
-            return "completed";
-        }
-        return new Promise<DisplayableAnimationWaitReason>(resolve => {
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
-            const finish = (reason: DisplayableAnimationWaitReason) => {
-                if (timeoutId !== undefined) {
-                    clearTimeout(timeoutId);
-                }
-                const waiters = displayableAnimationWaiters.get(animationId);
-                waiters?.delete(finish);
-                if (waiters?.size === 0) {
-                    displayableAnimationWaiters.delete(animationId);
-                }
-                resolve(reason);
-            };
-            let waiters = displayableAnimationWaiters.get(animationId);
-            if (!waiters) {
-                waiters = new Set<(reason: DisplayableAnimationWaitReason) => void>();
-                displayableAnimationWaiters.set(animationId, waiters);
-            }
-            waiters.add(finish);
-            timeoutId = setTimeout(() => finish("completed"), waitMs);
         });
     };
 
@@ -3750,7 +3700,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             return motion;
                         }
                     }
-                    const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
+                    // Waited on in the store, not in this host API: a `Stop Animation` that ends it
+                    // may come from any graph of the game, and this host API may be replaced under
+                    // this very wait (see `waitForDisplayableMotion`).
+                    const waitReason = await widgetRuntimeStore.waitForDisplayableMotion(motion.id, waitMs);
                     // Hold-mode motions ("after: hold") commit their final pose into persistent
                     // state on natural completion and release the one-shot motion slot in the
                     // same update: absolute x/y (commitLayoutOnComplete), rotation, and opacity
@@ -3858,7 +3811,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (cleared) {
                         scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
                     }
-                    notifyDisplayableAnimationDone(animationId, "stopped");
+                    widgetRuntimeStore.settleDisplayableMotionWaits(animationId, "stopped");
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -1546,6 +1546,39 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             vi.useRealTimers();
         }
     });
+
+    it("wakes a wait started on another host API of the game when the animation is stopped", async () => {
+        // A page's host API is rebuilt whenever the game's capabilities are, under any graph still
+        // waiting on the old one - and a `Stop Animation` reaches the animation by id from any graph
+        // of the game. When each host API kept its own waiters, the stop cleared the motion and woke
+        // nobody: the waiting graph slept until the animation's full length had passed.
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const waiting = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            const stopping = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            let resolved = false;
+            const animation = waiting.widget.animateDisplayable("image", {
+                id: "animation:rebuilt",
+                target: { opacity: [0, 1] },
+                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+                resetOnComplete: true,
+            }).then(result => {
+                resolved = true;
+                return result;
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await stopping.widget.stopDisplayableAnimation("animation:rebuilt");
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(resolved).toBe(true);
+            await expect(animation).resolves.toMatchObject({ id: "animation:rebuilt" });
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
 
 /**
