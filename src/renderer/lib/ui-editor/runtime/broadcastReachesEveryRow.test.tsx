@@ -12,10 +12,11 @@
  *
  * Comments in English per project convention.
  */
-import { cleanup, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_FOCUS_CHANGED,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
@@ -155,6 +156,35 @@ describe("a broadcast", () => {
         await page.runtime.dispatchBroadcastEvent!("ping", null);
 
         expect(page.logs).toEqual([]);
+    });
+});
+
+describe("a key press", () => {
+    // Not a fan-out the runtime runs: each drawing listens for keys itself, with its own drawing.
+    // Pinned here beside the broadcast because the two are meant to agree - every row hears it.
+    it("reaches a widget in a list row once in every row, reading that row", async () => {
+        page = createRowRuntime(
+            [blueprintOf("bp-mark", { kind: "widgetMain", surfaceId: LAB, elementId: "mark" }, {
+                key: {
+                    graph: graphOf({
+                        nodes: {
+                            head: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                            name: rowName,
+                            log: { type: BLUEPRINT_NODE_TYPE_LOG },
+                        },
+                        exec: ["head", "log"],
+                        data: [["name", "value", "log", "value"]],
+                    }),
+                },
+            })],
+            { document: labDocument },
+        );
+        renderLabPage(page);
+        const running = page;
+
+        fireEvent.keyDown(window, { key: "k", code: "KeyK" });
+
+        await waitFor(() => expect([...running.logs].sort()).toEqual(["Alpha", "Bravo", "Charlie"]));
     });
 });
 

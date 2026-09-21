@@ -94,7 +94,7 @@ export type NestedSurfaceRuntimeInput = {
      * The page inside a frame talks back to it through this. A frame is drawn in a row or a
      * placement like any other widget, and the nested page's runtime cannot know which, so it is
      * handed the frame's own dispatch rather than the frame's id: sent as the bare id, a page event
-     * from a frame inside a component looked for the frame on the page and was dropped.
+     * from a frame in a list row reached the frame's graph with no row to read.
      */
     dispatchFrameEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
 };
