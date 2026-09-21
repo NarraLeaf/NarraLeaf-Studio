@@ -78,6 +78,14 @@ export type LiveProjectIdentity = {
     projectPath: string;
     /** The Team server's data origin, or null for a project that points at none. */
     remoteOrigin: string | null;
+    /**
+     * Whether the author has said this project uses the sign-in held for that server.
+     *
+     * A room is reached with the account's sign-in, and a project's window reaches a server that way
+     * only for a project that said yes - the main process refuses the rest. So a session reads this
+     * before it asks the server anything, and an entry the author asked for puts the question first.
+     */
+    signedIn: boolean;
 };
 
 /** The rooms on one server, with the origin already baked in. */
@@ -640,6 +648,11 @@ export type LiveSessionDeps = {
     instance(): Promise<string | null>;
     /** What this window has open, or null when it has no repository. */
     project(): Promise<LiveProjectIdentity | null>;
+    /**
+     * Ask the author whether this project uses the sign-in held for its server, in Studio's own
+     * window, and say whether it does now. Only ever called for an entry the author asked for.
+     */
+    askSignIn(): Promise<boolean>;
     /** The rooms on this project's server. Null where the project points at none. */
     rooms(remoteOrigin: string): LiveRooms;
     story: LiveStoryPort;

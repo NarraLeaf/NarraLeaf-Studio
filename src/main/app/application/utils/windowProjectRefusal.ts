@@ -37,6 +37,37 @@ export function resetWindowProjectRefusalReporting(): void {
 }
 
 /**
+ * Why a window's request was refused, of the refusals this file reports.
+ *
+ *  - `project`: it named a project other than the window's own (`requireWindowProject`).
+ *  - `sign-in-unused`: it asked a server something as the account, and the window's project does
+ *    not use the sign-in held there (`teamWindowReach.ts`).
+ *  - `server-off-limits`: it asked a server something no window of its kind asks.
+ *
+ * One family because they are one event from the author's side - a window asked for something that
+ * is not its business, nothing was done, and no interface has a remedy to offer - and because the
+ * reasons that justify the line, the throttle and the silence about what was named are the same for
+ * all three.
+ */
+export type WindowRefusalReason = "project" | "sign-in-unused" | "server-off-limits";
+
+/** What each reason says: once for the application log, once for the author's console. */
+const REFUSAL_SENTENCES: Record<WindowRefusalReason, { log: string; console: string }> = {
+    project: {
+        log: "the request named a project other than the window's own",
+        console: "it named a project other than the one open in this window, so nothing was done.",
+    },
+    "sign-in-unused": {
+        log: "the window's project does not use the sign-in held for that server",
+        console: "this project does not use the sign-in held for that server, so nothing was sent to it.",
+    },
+    "server-off-limits": {
+        log: "a window of this kind does not reach servers as the signed-in account",
+        console: "this window does not reach servers as the signed-in account, so nothing was sent.",
+    },
+};
+
+/**
  * Say, where the author can find it, that a request was refused for naming another project.
  *
  * # Why this exists at all
@@ -72,18 +103,31 @@ export function resetWindowProjectRefusalReporting(): void {
  * The severity question is whether the result deviates severely from what was expected, not whether
  * the author will find the line annoying. An operation that was asked for and did not happen, with
  * nothing else anywhere to say so, is exactly that.
+ *
+ * # The other reasons
+ *
+ * A request that spoke to a server as the account, from a window whose project does not use that
+ * sign-in or that never speaks to servers, is reported here too - see {@link WindowRefusalReason}.
+ * The server it named is left out for the same reason the project is: the line is about what did
+ * not happen in this window, and it is written for a window that may be running somebody else's
+ * code.
  */
-export function reportWindowProjectRefusal(window: AppWindow, request: string): void {
+export function reportWindowProjectRefusal(
+    window: AppWindow,
+    request: string,
+    reason: WindowRefusalReason = "project",
+): void {
     const app = window.getApp();
     const own = windowProjectPath(window);
-    app.logger.warn(
-        `[Project] Refused ${request}: the request named a project other than the window's own`,
-    );
+    const said = REFUSAL_SENTENCES[reason];
+    app.logger.warn(`[Project] Refused ${request}: ${said.log}`);
     if (!own) {
         return;
     }
 
-    const key = `${window.getWebContents().id}:${request}`;
+    // The reason is part of the key: a window refused two different things by one request is two
+    // facts, and folding one into the other's count would say the wrong one.
+    const key = `${window.getWebContents().id}:${request}:${reason}`;
     const now = Date.now();
     const seen = recentRefusals.get(key);
     if (seen && now - seen.lastReportedAt < REPORT_INTERVAL_MS) {
@@ -99,8 +143,7 @@ export function reportWindowProjectRefusal(window: AppWindow, request: string): 
     emitWorkspaceConsoleLog(app, own, {
         level: "error",
         source: "Project",
-        message: `Refused ${request}: it named a project other than the one open in this window, `
-            + "so nothing was done."
+        message: `Refused ${request}: ${said.console}`
             + (folded > 0 ? ` ${folded} more like it were refused since the last of these lines.` : ""),
     });
 }

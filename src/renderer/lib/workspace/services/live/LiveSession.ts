@@ -349,7 +349,7 @@ export class LiveSession {
         }
         this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
-            const ready = await this.ready();
+            const ready = await this.ready(true);
             if ("kind" in ready) {
                 return this.failEntry(ready);
             }
@@ -485,7 +485,7 @@ export class LiveSession {
         }
         this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
-            const ready = await this.ready();
+            const ready = await this.ready(true);
             if ("kind" in ready) {
                 return this.failEntry(ready);
             }
@@ -646,10 +646,12 @@ export class LiveSession {
             return "settled";
         }
         try {
-            const ready = await this.ready();
+            const ready = await this.ready(false);
             if ("kind" in ready) {
                 // A project on no server, or no repository at all, is settled: nothing about it will
-                // change by asking again. Not having been given an instance id yet is the opposite.
+                // change by asking again. So is one that does not use the sign-in there - it is
+                // not asked here, and nothing here would change the answer. Not having been given an
+                // instance id yet is the opposite.
                 return ready.kind === "no-instance" ? "ask-again" : "settled";
             }
             const listed = await ready.rooms.list(ready.project.repositoryId);
@@ -2587,15 +2589,33 @@ export class LiveSession {
         return refusal === null ? null : { kind: "frozen", refusal };
     }
 
-    private async ready(): Promise<
+    /**
+     * Everything entering needs from the server's side, or why it cannot be had.
+     *
+     * `ask` is whether this entry is one the author asked for. Only those put the sign-in question:
+     * a window taking up a room a reload left behind does it on its own while the workspace opens,
+     * and a question raised from nowhere as a project opens is not one an author can answer.
+     */
+    private async ready(ask: boolean): Promise<
         { project: LiveProjectIdentity; instance: string; rooms: LiveRooms } | LiveEntryFailure
     > {
-        const project = await this.deps.project();
+        let project = await this.deps.project();
         if (project === null) {
             return { kind: "no-repository" };
         }
         if (project.remoteOrigin === null) {
             return { kind: "no-server" };
+        }
+        if (!project.signedIn) {
+            if (!ask || !(await this.deps.askSignIn())) {
+                return { kind: "sign-in-unused" };
+            }
+            // Read again rather than assumed: the answer is the main process's record, and the
+            // server the project points at could have changed while the question was up.
+            project = await this.deps.project();
+            if (project === null || project.remoteOrigin === null || !project.signedIn) {
+                return { kind: "sign-in-unused" };
+            }
         }
         const instance = await this.deps.instance();
         if (instance === null) {

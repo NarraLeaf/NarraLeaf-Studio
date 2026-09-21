@@ -824,6 +824,28 @@ export class VersionControlService extends Service<VersionControlService> implem
     }
 
     /**
+     * Ask whether this project uses the sign-in held for a server it is not connected to yet, and
+     * answer with where it stands with that server.
+     *
+     * The server picker's question. What a server holds is read over the account's sign-in, and a
+     * project reaches a server that way only once the author has said it uses the sign-in there - so
+     * a project being pointed somewhere new is asked at the moment the author chooses where, rather
+     * than shown a list it may not read or asked a moment later when they press Create.
+     */
+    public async useServerSessionAt(remoteOrigin: string): Promise<VcsProjectServerSession> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.useServerSession(this.projectPath(), remoteOrigin);
+        if (!result.success) throw vcsCallFailed(result);
+        // Announced like the project's own: where the server asked about is the one the project is
+        // already on, every surface showing its sign-in has to read it again.
+        if (result.data.session !== null) this.events.emit("serverChanged", undefined);
+        return result.data;
+    }
+
+    /**
      * Sign in with a token the server's operator issued.
      *
      * **A refusal comes back as a value, not as a thrown error.** A token that has

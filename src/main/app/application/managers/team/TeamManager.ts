@@ -21,6 +21,11 @@
  *    take it away from the other. See {@link TopicHolders}.
  *  - **The fan-out.** An event arrives once and reaches every window that asked for that
  *    topic, and none of the others.
+ *  - **Which window may use the account at all.** A sign-in serves a (server, project) pair only
+ *    once the author has said so, so what a window may reach is decided from the window rather than
+ *    from anything it sends - see `teamWindowReach.ts`. The handlers ask {@link reachOf} before
+ *    they call in here, and the fan-out asks it again before delivering, so a project that stops
+ *    using the sign-in stops hearing from the server too.
  *
  * Nothing here decides what an event means. A payload is carried to the renderer as it
  * arrived, because the shapes belong to the protocol and the screens that read them.
@@ -36,10 +41,13 @@ import type {
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 
+import { windowProjectPath } from "../../utils/windowProject";
+import { readSessionUses, sessionStanding, SESSION_USES_KEY } from "../vcs/serverSessionScope";
 import { recallServerToken } from "../vcs/serverTokens";
 import { installationId, machineLabel, studioAgent } from "./clientInstance";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
 import { TeamTransfers } from "./TeamTransfers";
+import { teamAllows, teamReach, type TeamReach } from "./teamWindowReach";
 
 /**
  * What this needs of a client, which is what a test stands in for.
@@ -192,6 +200,63 @@ export class TeamManager {
         const client = this.clientFor(remoteOrigin);
         if (client === null) return { ok: false, problem: this.whyNot(remoteOrigin) };
         return await client.call(method, params);
+    }
+
+    /**
+     * Take back something said on a server, over a session that is already open.
+     *
+     * For the calls `teamWindowReach.ts` lets a workspace make after its project stopped using the
+     * sign-in: withdrawing its presence and leaving a room. **Never opens a session to do it.** A
+     * server with no session open has heard nothing from this installation that could be taken back,
+     * so the answer is the empty acknowledgement those calls are answered with anyway - and opening
+     * one would be presenting the account's token for a project the author just said must not.
+     */
+    async letGo(remoteOrigin: string, method: string, params?: unknown): Promise<TeamCallOutcome> {
+        const client = this.clients.get(remoteOrigin);
+        if (client === undefined) return { ok: true, value: {} };
+        return await client.call(method, params);
+    }
+
+    /* ------------------------------------------------------------------ who may ask */
+
+    /**
+     * Where one window stands with one server - see `teamWindowReach.ts` for what each answer
+     * allows.
+     *
+     * Read afresh on every question rather than remembered per window, because the answer changes
+     * under a window that stays open: the author says yes or no from the Team panel, or signs in as
+     * somebody else, and the next request has to see that.
+     */
+    reachOf(window: AppWindow, remoteOrigin: string | null): TeamReach {
+        return teamReach({
+            windowType: window.getWindowType(),
+            projectPath: windowProjectPath(window),
+            remoteOrigin,
+            usesSignIn: (projectPath, origin) => this.projectUsesSignIn(projectPath, origin),
+        });
+    }
+
+    /**
+     * Whether the author said this project uses the sign-in held for this server, for the account
+     * signed in there now. The same reading `VcsManager` makes before it presents a token.
+     */
+    private projectUsesSignIn(projectPath: string, remoteOrigin: string): boolean {
+        return sessionStanding({
+            sessions: this.servers(),
+            uses: readSessionUses(this.app.getGlobalState().get(SESSION_USES_KEY)),
+            remoteOrigin,
+            projectPath,
+        }).kind === "granted";
+    }
+
+    /** Whether a window is one this server's news may go to - whatever it was once allowed. */
+    private mayHear(window: AppWindow, remoteOrigin: string, op: "subscribe" | "open"): boolean {
+        try {
+            return teamAllows(this.reachOf(window, remoteOrigin), { op });
+        } catch (error) {
+            this.app.logger.debug(`[Team] Could not tell where a window stands: ${String(error)}`);
+            return false;
+        }
     }
 
     async subscribe(
@@ -353,6 +418,10 @@ export class TeamManager {
         for (const window of this.app.windowManager.getWindows()) {
             if (window.isClosed() || window.isDestroyed()) continue;
             if (!holders.has(window.getWebContents().id)) continue;
+            // Asked again rather than trusted from when it subscribed: a project whose author has
+            // since said it does not use this sign-in hears nothing more on it, whether or not its
+            // window got round to letting the topic go.
+            if (!this.mayHear(window, remoteOrigin, "subscribe")) continue;
             try {
                 window.sendIpcEvent(IPCEventType.teamEvent, { remoteOrigin, ...event });
             } catch (error) {
@@ -362,15 +431,17 @@ export class TeamManager {
     }
 
     /**
-     * Say where a server stands, to every window.
+     * Say where a server stands, to every window that may open it.
      *
      * Not only to the windows holding a topic on it: the state of a connection is drawn
      * beside a server wherever one is listed, and a window that is showing the list has
-     * not subscribed to anything.
+     * not subscribed to anything. But not to a window that could not have opened it either -
+     * the state names the account and what it is called there, which is the account's to show.
      */
     private announce(connection: TeamConnection): void {
         for (const window of this.app.windowManager.getWindows()) {
             if (window.isClosed() || window.isDestroyed()) continue;
+            if (!this.mayHear(window, connection.remoteOrigin, "open")) continue;
             try {
                 window.sendIpcEvent(IPCEventType.teamConnectionChanged, { connection });
             } catch (error) {

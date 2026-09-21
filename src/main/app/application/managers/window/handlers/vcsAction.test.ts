@@ -507,6 +507,22 @@ describe("the handlers that reach a server", () => {
             expect(manager.useServerSession.mock.calls[0][0]).toBe(mine);
         });
 
+        /**
+         * The server picker's question: the author has chosen a server this project is not on yet,
+         * and what that server holds is not listed for this project until they say it uses the
+         * sign-in there. The server is carried; the project is still the window's.
+         */
+        it("puts it about a server the project is not connected to, when one is named", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            await new VcsUseServerSessionHandler().handle(window, {
+                projectPath: mine,
+                remoteOrigin: "lore://elsewhere.example:7000",
+            });
+
+            expect(manager.useServerSession.mock.calls[0]).toEqual([mine, "lore://elsewhere.example:7000"]);
+        });
+
         it("will not put it about a project this window does not have open", async () => {
             const { window, manager } = makeServerWindow(mine);
 

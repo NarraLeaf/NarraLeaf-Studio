@@ -16,6 +16,12 @@ import { IPCHandler } from "./IPCHandler";
  *
  * Separate from `vcsAction.ts` because it is the one handler on the surface whose purpose is the
  * sign-in question itself, rather than a request that may lead to it.
+ *
+ * The server may be named, for the one moment a project is asked about a server it is not connected
+ * to: the server picker, where an author has chosen a destination and what that server holds cannot
+ * be listed for this project until they have said it uses the sign-in there. Naming one lets a
+ * caller choose which question is put, never what the answer is - and the question only goes up for
+ * a server this installation holds a sign-in for.
  */
 export class VcsUseServerSessionHandler extends IPCHandler<IPCEventType.vcsUseServerSession> {
     readonly name = IPCEventType.vcsUseServerSession;
@@ -23,9 +29,11 @@ export class VcsUseServerSessionHandler extends IPCHandler<IPCEventType.vcsUseSe
 
     public async handle(
         window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsUseServerSession]["data"],
+        { projectPath, remoteOrigin }: IPCEvents[IPCEventType.vcsUseServerSession]["data"],
     ): Promise<RequestStatus<VcsProjectServerSession>> {
-        return this.tryUse(() =>
-            window.app.getVcsManager().useServerSession(requireWindowProject(window, projectPath)));
+        return this.tryUse(() => window.app.getVcsManager().useServerSession(
+            requireWindowProject(window, projectPath),
+            typeof remoteOrigin === "string" && remoteOrigin.length > 0 ? remoteOrigin : undefined,
+        ));
     }
 }

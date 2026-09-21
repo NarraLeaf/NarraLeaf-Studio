@@ -976,8 +976,11 @@ export interface RendererPreloadedInterface {
          * The question goes up in a window of Studio's own and the main process records the
          * answer; what comes back is where the project stands afterwards. Asks even where the
          * answer was once no - calling this is the author asking again.
+         *
+         * `remoteOrigin` asks about a server the project is not connected to yet, and the answer is
+         * then about that server.
          */
-        useServerSession(projectPath: string): Promise<RequestStatus<VcsProjectServerSession>>;
+        useServerSession(projectPath: string, remoteOrigin?: string): Promise<RequestStatus<VcsProjectServerSession>>;
         /**
          * Sign this installation in to this project's server with a token its operator
          * issued.

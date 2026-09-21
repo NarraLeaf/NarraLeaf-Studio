@@ -412,6 +412,15 @@ export interface VersionSurface {
      */
     useServerSession: () => Promise<void>;
     /**
+     * Ask whether this project uses the sign-in held for a server it is not on yet - the one an
+     * author has just chosen for it - and say whether it does now.
+     *
+     * The server picker's question: what that server holds cannot be read for this project until
+     * the author has said so. Resolves false for a no, a question closed unanswered, or a server this
+     * machine holds no sign-in for.
+     */
+    askToUseServer: (remoteOrigin: string) => Promise<boolean>;
+    /**
      * This project's repository id, or null before the identity read lands.
      *
      * **The only identity that survives a rename**, and therefore the only honest way to
@@ -1184,6 +1193,22 @@ export function useVersionSurface(): VersionSurface {
         }
     }, [services, busy]);
 
+    const askToUseServer = useCallback(async (remoteOrigin: string): Promise<boolean> => {
+        if (!services) {
+            return false;
+        }
+        // Not `busy`: the question is a window of its own, and the dialog that asked it holds its
+        // own state while it is up. Marking the whole surface busy would grey out a rail the author
+        // is not looking at.
+        try {
+            const next = await services.versionControl.useServerSessionAt(remoteOrigin);
+            return next.session !== null;
+        } catch (thrown) {
+            if (alive.current) setFailure(describeFailure(thrown));
+            return false;
+        }
+    }, [services]);
+
     const pushToRemote = useCallback(async (): Promise<boolean> => {
         if (!services || busy !== null) {
             return false;
@@ -1353,6 +1378,7 @@ export function useVersionSurface(): VersionSurface {
         serverSession,
         availableSession,
         useServerSession,
+        askToUseServer,
         repositoryId,
         signOutOfServer,
         pushToRemote,

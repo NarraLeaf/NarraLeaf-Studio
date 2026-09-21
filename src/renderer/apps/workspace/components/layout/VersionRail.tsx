@@ -30,6 +30,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { VcsChangeKind, VcsFileChange, VcsServerProject, VcsServerSession, VcsSyncState } from "@shared/types/vcs";
 import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
@@ -1037,6 +1038,19 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
     return held;
 }
 
+/**
+ * Whether the author has said this project uses the sign-in held for a server.
+ *
+ * Read off the listing's `usedBy`, which the main process works out from the recorded answers for
+ * the account signed in there now - the same record that decides what this window may ask that
+ * server. An empty path answers no: a window that cannot name its project cannot find it listed.
+ */
+function projectUsesSignInAt(server: VcsServerSession, projectPath: string): boolean {
+    if (projectPath === "") return false;
+    const own = normalizeProjectPath(projectPath);
+    return (server.usedBy ?? []).some(user => normalizeProjectPath(user.path) === own);
+}
+
 export function ServerPickerDialog({ surface, isOpen, onClose }: {
     surface: VersionSurface;
     isOpen: boolean;
@@ -1050,6 +1064,51 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     const [name, setName] = useState("");
     const [adding, setAdding] = useState(false);
     const running = surface.busy !== null;
+
+    /**
+     * The servers whose sign-in the author has said, while this dialog was up, this project uses.
+     *
+     * **Why the dialog asks at all.** What a server holds is read over the account's sign-in, and a
+     * project reaches a server that way only once the author has said it uses the sign-in there - the
+     * main process refuses anything else from a project's window. Choosing where a project goes is
+     * exactly the moment that question is about, so it is put when a server is chosen here, and the
+     * list follows the answer. Asked later - when Create is pressed - it would come after the author
+     * had typed a name against a list they could not see.
+     *
+     * Added to rather than replaced: a server read again from the listing, or the project's own
+     * sign-in re-read after the answer, must not take away one the author has just said yes to.
+     */
+    const [agreed, setAgreed] = useState<ReadonlySet<string>>(() => new Set());
+    /** The server a question is up about, or null. */
+    const [asking, setAsking] = useState<string | null>(null);
+    const projectPath = context?.project.getConfig().projectPath ?? "";
+
+    useEffect(() => {
+        if (!isOpen) setAgreed(new Set());
+    }, [isOpen]);
+
+    /** Whether this project uses the sign-in held for this server, by any of the three reckonings. */
+    const usesSignIn = (remoteOrigin: string): boolean =>
+        agreed.has(remoteOrigin)
+        || surface.serverSession?.remoteOrigin === remoteOrigin
+        || servers.some(server => server.remoteOrigin === remoteOrigin && projectUsesSignInAt(server, projectPath));
+
+    /**
+     * Choose a server, and put the sign-in question about it where the project does not use it yet.
+     *
+     * Choosing the row that is already chosen asks too: the dialog opens on the project's own server,
+     * and pressing it is how an author who has not answered for it says they want to.
+     */
+    const choose = (remoteOrigin: string) => {
+        setChoice(remoteOrigin);
+        if (asking !== null || usesSignIn(remoteOrigin)) return;
+        setAsking(remoteOrigin);
+        void surface.askToUseServer(remoteOrigin)
+            .then(uses => {
+                if (uses) setAgreed(current => new Set([...current, remoteOrigin]));
+            })
+            .finally(() => setAsking(null));
+    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -1079,7 +1138,9 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
 
     /** The server chosen out of the list, as opposed to nothing chosen yet. */
     const picked = choice === NO_SERVER || choice === UNKNOWN_SERVER ? null : choice;
-    const held = useServerProjects(isOpen ? picked : null);
+    /** Whether what the chosen server holds may be read for this project - see {@link agreed}. */
+    const pickedUsable = picked !== null && usesSignIn(picked);
+    const held = useServerProjects(isOpen && pickedUsable ? picked : null);
 
     /**
      * The project on that server that IS this project, or null because it is not there yet.
@@ -1115,7 +1176,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
 
     /** What this project will answer to on the destination, whichever of the two acts it is. */
     const chosenName = mine !== null ? mine.name : wanted;
-    const ready = picked !== null && chosenName !== "" && nameProblem === null && !held.reading;
+    const ready = picked !== null && chosenName !== "" && nameProblem === null && !held.reading && asking === null;
 
     /**
      * Put this project on the chosen server: record it there, point at it, send it.
@@ -1147,7 +1208,9 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                     onAdded={session => {
                         // Chosen as well as listed: somebody who just added a server did it
                         // to use it, and leaving the list unselected would ask them to pick
-                        // the row they were looking at a moment ago.
+                        // the row they were looking at a moment ago. Signing in from inside a
+                        // project is also that project's answer, so there is nothing to ask.
+                        setAgreed(current => new Set([...current, session.remoteOrigin]));
                         void reload().then(() => setChoice(session.remoteOrigin));
                     }}
                     onClose={() => setAdding(false)}
@@ -1210,7 +1273,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                                 key={server.remoteOrigin}
                                 session={server}
                                 chosen={choice === server.remoteOrigin}
-                                onChoose={() => setChoice(server.remoteOrigin)}
+                                onChoose={() => choose(server.remoteOrigin)}
                                 data-server-choice={server.remoteOrigin}
                             />
                         ))}
@@ -1241,6 +1304,16 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                                 <p className="text-xs text-fg-subtle">{t(`${key}.reading`)}</p>
                             )}
 
+                            {/* The project does not use the sign-in here, so what the server holds
+                                is not read - and the name is asked for the way it is where a list
+                                could not be read. Pressing the row puts the question; pressing
+                                Create puts it too. Said as the state it is, not as a problem. */}
+                            {!pickedUsable && asking === null && (
+                                <p data-vcs-seam="picker-sign-in-unused" className="text-xs text-fg-subtle">
+                                    {t("workspace.shell.team.signInUnused")}
+                                </p>
+                            )}
+
                             {!held.reading && held.problem !== null && (
                                 // The list could not be read, so the dialog knows nothing about
                                 // what is on that server - and asks for a name the way it did
@@ -1255,7 +1328,10 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                                 </p>
                             )}
 
-                            {!held.reading && mine === null && (
+                            {/* Not while the sign-in question is up: what the author is asked for
+                                here depends on the answer - a server that already holds this
+                                project needs no name at all. */}
+                            {!held.reading && mine === null && asking === null && (
                                 <>
                                     <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
                                     <Input

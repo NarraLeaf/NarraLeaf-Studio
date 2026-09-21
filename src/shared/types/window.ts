@@ -159,6 +159,26 @@ export type WindowProps = {
 export const WINDOW_PROJECT_MISMATCH_CODE = "window/project-mismatch";
 
 /**
+ * A window asked a server something as this installation's account, and its project does not use
+ * that account's sign-in there.
+ *
+ * A sign-in serves a (server, project) pair only once the author has said so, and a project window
+ * reaches a server as the account only for a project that did. Studio's own screens do not ask in
+ * that state - they read whether the project uses the sign-in first, and put the question to the
+ * author where one is due - so like {@link WINDOW_PROJECT_MISMATCH_CODE} this arrives from a
+ * renderer that has gone wrong or is being driven, and it is a code for the same reasons.
+ */
+export const WINDOW_SIGN_IN_UNUSED_CODE = "window/sign-in-unused";
+
+/**
+ * A window asked a server something that no window of its kind asks.
+ *
+ * Dev Mode, the prompts and the raw window never speak to a server; Settings and the project wizard
+ * only ever list what one holds. A request from one of them outside that is not one Studio makes.
+ */
+export const WINDOW_SERVER_OFF_LIMITS_CODE = "window/server-off-limits";
+
+/**
  * What happens to a window that was opened *from* another one when that other one goes away.
  *
  * `"dependent"` is the answer for a prompt: it asks a question on behalf of the window that raised

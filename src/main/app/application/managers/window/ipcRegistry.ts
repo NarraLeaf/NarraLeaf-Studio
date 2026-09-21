@@ -1,11 +1,27 @@
 import { IPCMessageType, Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import { WINDOW_PROJECT_MISMATCH_CODE } from "@shared/types/window";
-import { reportWindowProjectRefusal } from "../../utils/windowProjectRefusal";
+import {
+    WINDOW_PROJECT_MISMATCH_CODE,
+    WINDOW_SERVER_OFF_LIMITS_CODE,
+    WINDOW_SIGN_IN_UNUSED_CODE,
+} from "@shared/types/window";
+import { reportWindowProjectRefusal, type WindowRefusalReason } from "../../utils/windowProjectRefusal";
 import { IPCHandler } from "./handlers/IPCHandler";
 import { IPCHost } from "./ipcHost";
 import { getDeniedApiCapability } from "./permissions";
 import type { AppWindow } from "./appWindow";
+
+/**
+ * The refusal codes the registry reports on, and what each is reported as.
+ *
+ * A code rather than a class or a sentence, because the code is what survives the trip through
+ * `RequestStatus` - and a refusal raised in a handler file nobody here has read is still recognised.
+ */
+const WINDOW_REFUSALS: ReadonlyMap<string, WindowRefusalReason> = new Map<string, WindowRefusalReason>([
+    [WINDOW_PROJECT_MISMATCH_CODE, "project"],
+    [WINDOW_SIGN_IN_UNUSED_CODE, "sign-in-unused"],
+    [WINDOW_SERVER_OFF_LIMITS_CODE, "server-off-limits"],
+]);
 
 /**
  * Process-wide IPC handler registry.
@@ -96,7 +112,8 @@ export class IPCRegistry {
     }
 
     /**
-     * Report a refusal raised by `requireWindowProject`, wherever it was raised.
+     * Report a refusal raised by `requireWindowProject`, or by the Team channels' check of which
+     * window may speak to a server as the account, wherever it was raised.
      *
      * Read here rather than at each guarded handler, and that is the point: the guard is spreading
      * across the handler files one tranche at a time, and a rule that each of them must also
@@ -107,8 +124,12 @@ export class IPCRegistry {
      * the one refusal in the app that no interface has a remedy for.
      */
     private noteProjectRefusal(window: AppWindow, request: string, result: RequestStatus<unknown> | undefined): void {
-        if (result && result.success === false && result.code === WINDOW_PROJECT_MISMATCH_CODE) {
-            reportWindowProjectRefusal(window, request);
+        if (!result || result.success !== false || typeof result.code !== "string") {
+            return;
+        }
+        const reason = WINDOW_REFUSALS.get(result.code);
+        if (reason !== undefined) {
+            reportWindowProjectRefusal(window, request, reason);
         }
     }
 

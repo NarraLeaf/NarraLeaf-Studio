@@ -80,6 +80,12 @@ export type LiveEntryFailure =
     | { kind: "frozen"; refusal: LiveSessionEntryRefusal }
     /** This project points at no Team server, so there is no room to open or join. */
     | { kind: "no-server" }
+    /**
+     * This project does not use the sign-in held for its server - never asked, or answered no - so
+     * nothing can be asked of the server for it. An entry the author asked for puts the question
+     * before it gets here; this is the answer that was not yes.
+     */
+    | { kind: "sign-in-unused" }
     /** The window has not been given an instance id by the server yet. */
     | { kind: "no-instance" }
     /** No repository, so there is no revision a session could open on. */
