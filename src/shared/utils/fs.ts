@@ -678,6 +678,8 @@ export class Fs {
                         return { code: FsRejectErrorCode.NOT_A_DIR, message: nodeError.message };
                     case 'EIO':
                         return { code: FsRejectErrorCode.IO_ERROR, message: nodeError.message };
+                    case 'ENOSPC':
+                        return { code: FsRejectErrorCode.NO_SPACE, message: nodeError.message };
                     default:
                         return { code: FsRejectErrorCode.UNKNOWN, message: nodeError.message };
                 }

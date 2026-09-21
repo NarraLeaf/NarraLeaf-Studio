@@ -705,10 +705,17 @@ export const workspace = {
         // 「まだ試している」と書く。
         save: {
             failedTitle: "{file} を保存できなかった",
-            failedDetailTransient: "裏で再試行を続けている。{error}",
-            failedDetailPermanent: "これが直るまで、再試行しても変わらない。{error}",
+            failedDetailTransient: "裏で再試行を続けている",
+            failedDetailPermanent: "これが直るまで、再試行しても変わらない",
+            failedDetailWithReason: "{reason}。{retry}",
+            reason: {
+                permissionDenied: "ファイルが読み取り専用か、Studio に書き込み権限がない",
+                folderMissing: "保存先のフォルダーが存在しない",
+                diskFull: "ディスクの空き容量がない",
+            },
             retry: "いますぐ再試行",
             consoleFailed: "書き込み失敗（{code}、{attempt} 回目）：{path} · {error}",
+            consoleFailedNotRetried: "書き込み失敗（{code}、再試行なし）：{path} · {error}",
             consoleRecovered: "書き込み成功：{path}",
             flushFailed: "{label} を書き出せなかった：{error}",
             // 読む側。ディスクにはあるが解釈できないドキュメント。「Studio が作業を食べたのか」という

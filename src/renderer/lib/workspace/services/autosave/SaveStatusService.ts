@@ -12,6 +12,7 @@ import { Services, type WorkspaceContext } from "../services";
 import { ConsoleService } from "../core/ConsoleService";
 import { FileSystemService, type FsWriteOutcome } from "../core/FileSystem";
 import { UIService } from "../core/UIService";
+import { describeWriteFailureReason } from "../core/writeFailureReason";
 import { NotificationType } from "../ui/types";
 import type { DebouncedSaver, SaveState } from "./DebouncedSaver";
 
@@ -52,8 +53,29 @@ type RegisteredSaver = {
 const TRANSIENT_FS_ERROR_CODES: ReadonlySet<FsRejectErrorCode> = new Set([
     FsRejectErrorCode.IO_ERROR,
     FsRejectErrorCode.IPC_ERROR,
+    FsRejectErrorCode.NO_SPACE,
     FsRejectErrorCode.UNKNOWN,
 ]);
+
+/**
+ * The toast's second line: whether a retry can help, and what the disk said when that is something
+ * the author can act on.
+ *
+ * Never the error's own message. That is the system's, in English whatever the interface speaks; it
+ * names the scratch file an atomic write renames from rather than the file in the title; and before
+ * the protocol handler passed the filesystem's code through, it was the one-use grant URL the write
+ * had gone to. The console line keeps it in full.
+ */
+export function describeSaveFailureDetail(
+    failure: Pick<SaveFailure, "code" | "transient">,
+    t: typeof translate = translate,
+): string {
+    const retry = t(failure.transient
+        ? "workspace.shell.save.failedDetailTransient"
+        : "workspace.shell.save.failedDetailPermanent");
+    const reason = describeWriteFailureReason(failure, t);
+    return reason ? t("workspace.shell.save.failedDetailWithReason", { reason, retry }) : retry;
+}
 
 function fileNameOf(path: string): string {
     const parts = path.split(/[\\/]/);
@@ -83,6 +105,8 @@ export class SaveStatusService extends Service<SaveStatusService> {
     private readonly toasts = new Map<string, string>();
     /** path → notification id for documents that could not be *read*. See {@link reportUnreadableDocument}. */
     private readonly corruptToasts = new Map<string, string>();
+    /** Files whose writer reports its own failures. See {@link registerCallerReportedFile}. */
+    private readonly callerReportedFiles = new Set<string>();
     private readonly listeners = new Set<() => void>();
     private unobserveWrites: (() => void) | null = null;
     private unobserveFreeze: (() => void) | null = null;
@@ -116,6 +140,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.failures.clear();
         this.toasts.clear();
         this.corruptToasts.clear();
+        this.callerReportedFiles.clear();
         this.frozenToast = null;
     }
 
@@ -127,9 +152,34 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.failures.clear();
         this.toasts.clear();
         this.corruptToasts.clear();
+        this.callerReportedFiles.clear();
         this.frozenToast = null;
         this.pendingEdits.clear();
         this.notifyChanged();
+    }
+
+    /**
+     * Leave the reporting of one file's failed writes to the code that writes it.
+     *
+     * For a file written once per change - a change the author just made, whose surface is waiting
+     * on the answer - where a failure is thrown back to that surface and nothing owes the disk a
+     * second attempt. The project file is the one: `ProjectService` keeps its cached manifest at
+     * what was last written, the setting goes back to that value, and the surface says the file
+     * could not be saved.
+     *
+     * Everything this service would otherwise do about such a failure is false. Its notice says the
+     * write is being retried, and no saver retries it; its status-bar cell says a save is owed, and
+     * none is; its "Retry now" flushes the savers, none of which writes this file. So a failure on a
+     * file registered here goes to the Storage console and nowhere else.
+     *
+     * Returns the deregistration. A project switch clears every registration, and the writer's own
+     * `init` makes it again.
+     */
+    public registerCallerReportedFile(path: string): () => void {
+        this.callerReportedFiles.add(path);
+        return () => {
+            this.callerReportedFiles.delete(path);
+        };
     }
 
     /**
@@ -401,7 +451,17 @@ export class SaveStatusService extends Service<SaveStatusService> {
             this.clearFailure(outcome.path);
             return;
         }
-        this.recordFailure(outcome.path, outcome.error?.code ?? FsRejectErrorCode.UNKNOWN, outcome.error?.message ?? "");
+        const code = outcome.error?.code ?? FsRejectErrorCode.UNKNOWN;
+        const message = outcome.error?.message ?? "";
+        if (this.callerReportedFiles.has(outcome.path)) {
+            this.logStorage("error", translate("workspace.shell.save.consoleFailedNotRetried", {
+                path: outcome.path,
+                code,
+                error: message,
+            }));
+            return;
+        }
+        this.recordFailure(outcome.path, code, message);
     }
 
     private recordFailure(path: string, code: FsRejectErrorCode, message: string): void {
@@ -431,9 +491,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
                 const id = notifications.showSticky({
                     type: NotificationType.Error,
                     message: translate("workspace.shell.save.failedTitle", { file: fileNameOf(path) }),
-                    detail: failure.transient
-                        ? translate("workspace.shell.save.failedDetailTransient", { error: message })
-                        : translate("workspace.shell.save.failedDetailPermanent", { error: message }),
+                    detail: describeSaveFailureDetail(failure),
                     actions: [
                         {
                             label: translate("workspace.shell.save.retry"),

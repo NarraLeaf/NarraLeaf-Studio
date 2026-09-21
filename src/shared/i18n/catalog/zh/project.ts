@@ -95,6 +95,10 @@ export const project = {
         live: "实时会话期间，项目自身的设置是只读的。这里还能编辑的，就是会话携带的那些。",
         frozen: "项目被冻结期间，项目自身的设置是只读的。",
     },
+    writeFailed: {
+        plain: "无法保存项目文件",
+        withReason: "无法保存项目文件；{reason}",
+    },
     details: {
         nameLabel: "应用名称",
         namePlaceholder: "应用名称",

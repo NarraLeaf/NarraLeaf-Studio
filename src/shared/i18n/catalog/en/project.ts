@@ -100,6 +100,15 @@ export const project = {
         live: "The project's own settings are read-only during a live session. What is still editable here is what the session carries.",
         frozen: "The project's own settings are read-only while the project is frozen.",
     },
+    // A change to a project setting that did not reach the project file, from any surface that
+    // changes one. Named as the file, because that is what the author can go and look at, and
+    // followed by what the disk said when that is something to act on
+    // (`workspace.shell.save.reason`). The change is not kept - the setting goes back to what the
+    // file holds - so nothing here speaks of trying again.
+    writeFailed: {
+        plain: "Could not save the project file.",
+        withReason: "Could not save the project file. {reason}",
+    },
     details: {
         nameLabel: "Application Name",
         namePlaceholder: "Application name",

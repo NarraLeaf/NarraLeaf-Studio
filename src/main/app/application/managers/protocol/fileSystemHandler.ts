@@ -494,10 +494,13 @@ export class FileSystemHashHandler implements ProtocolHandler {
             }
 
             if (!result.ok) {
+                // The filesystem's own error, code and all, rather than a line of text: the renderer
+                // tells the author what went wrong by that code - a file that is read-only, a folder
+                // that is gone - and a status line cannot carry it.
                 return {
                     statusCode: 500,
-                    headers: { "Content-Type": "text/plain" },
-                    data: `Failed to write file: ${result.error.message}`
+                    headers: { "Content-Type": "application/json" },
+                    data: JSON.stringify({ error: result.error })
                 };
             }
 

@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createTranslator, SUPPORTED_LOCALES } from "@shared/i18n";
+import { FsRejectErrorCode, type FsRejectError } from "@shared/types/os";
 import { decodeProjectConfig, encodeProjectConfig } from "@shared/utils/nlproj";
-import { ProjectService } from "./ProjectService";
+import { describeProjectFileWriteFailure, ProjectFileWriteError, ProjectService } from "./ProjectService";
 import { Services, type WorkspaceContext } from "../services";
 import type { ProjectConfig } from "../../project/project";
 
@@ -29,12 +31,16 @@ function mount(initial: ProjectConfig) {
         list: async () => ({ ok: true, data: [{ name: "Demo", ext: ".nlproj", type: "file" }] }),
         readRaw: async () => ({ ok: true, data: disk.bytes }),
     };
+    const saveStatus = { registerCallerReportedFile: vi.fn(() => () => undefined) };
     const ctx = {
         project: { getConfig: () => ({ projectPath: PROJECT_PATH }) } as unknown as WorkspaceContext["project"],
         services: {
             get: (serviceId: Services) => {
                 if (serviceId === Services.FileSystem) {
                     return filesystem;
+                }
+                if (serviceId === Services.SaveStatus) {
+                    return saveStatus;
                 }
                 throw new Error(`Unexpected service lookup: ${serviceId}`);
             },
@@ -85,7 +91,8 @@ describe("ProjectService security configuration", () => {
  */
 function mountHeldDisk(initial: ProjectConfig) {
     const disk = { bytes: encodeProjectConfig(initial as never) };
-    const held: { bytes: Uint8Array; settle: (ok: boolean) => void }[] = [];
+    const saveStatus = { registerCallerReportedFile: vi.fn(() => () => undefined) };
+    const held: { bytes: Uint8Array; settle: (ok: boolean, error?: Partial<FsRejectError>) => void }[] = [];
     let inFlight = 0;
     let mostInFlight = 0;
     let reads = 0;
@@ -100,13 +107,13 @@ function mountHeldDisk(initial: ProjectConfig) {
             mostInFlight = Math.max(mostInFlight, inFlight);
             held.push({
                 bytes,
-                settle: ok => {
+                settle: (ok, error) => {
                     inFlight -= 1;
                     if (ok) {
                         disk.bytes = bytes;
                         resolve({ ok: true, data: undefined });
                     } else {
-                        resolve({ ok: false, error: { message: "disk full" } });
+                        resolve({ ok: false, error: error ?? { message: "disk full" } });
                     }
                 },
             });
@@ -119,24 +126,28 @@ function mountHeldDisk(initial: ProjectConfig) {
                 if (serviceId === Services.FileSystem) {
                     return filesystem;
                 }
+                if (serviceId === Services.SaveStatus) {
+                    return saveStatus;
+                }
                 throw new Error(`Unexpected service lookup: ${serviceId}`);
             },
         },
     } as WorkspaceContext;
 
     /** Let the next queued write through (or refuse it), then give the queue a turn to move on. */
-    async function release(ok = true): Promise<void> {
+    async function release(ok = true, error?: Partial<FsRejectError>): Promise<void> {
         await flush();
         const next = held.shift();
         if (!next) {
             throw new Error("No write is waiting");
         }
-        next.settle(ok);
+        next.settle(ok, error);
         await flush();
     }
 
     return {
         ctx,
+        saveStatus,
         release,
         pending: () => held.length,
         mostInFlight: () => mostInFlight,
@@ -209,7 +220,7 @@ describe("ProjectService manifest writes", () => {
         await disk.release(false);
         await disk.release();
 
-        expect(await refusal).toBe("disk full");
+        expect(await refusal).toBe("Could not save the project file.");
         await after;
         // The refused change is on neither the disk nor the copy the panel reads back.
         expect(disk.onDisk().app?.window?.startFullscreen ?? false).toBe(false);
@@ -234,5 +245,67 @@ describe("ProjectService manifest writes", () => {
 
         // A read that overtook the write would have put `false` back, for the next write to build on.
         expect(service.getSecurityConfiguration().encryptAssets).toBe(true);
+    });
+});
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+describe("ProjectService when the project file cannot be written", () => {
+    it("hands the refusal back as the sentence an author reads, with what the disk said", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        const refused = service.updateWindowConfiguration({ resizable: false }).then(() => null, (error: unknown) => error);
+        await disk.release(false, {
+            code: FsRejectErrorCode.PERMISSION_DENIED,
+            message: "EPERM: operation not permitted, rename 'D:/projects/demo/Demo.nlproj.nltmp' -> 'D:/projects/demo/Demo.nlproj'",
+        });
+        const error = await refused;
+
+        expect(error).toBeInstanceOf(ProjectFileWriteError);
+        expect((error as ProjectFileWriteError).message).toBe(
+            "Could not save the project file. The file is read-only, or Studio is not allowed to write to it.",
+        );
+        // The system's own message is kept for the log, and only there.
+        expect((error as ProjectFileWriteError).fsError.code).toBe(FsRejectErrorCode.PERMISSION_DENIED);
+    });
+
+    it("never repeats the transport's message, which named the one-use grant URL", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        const refused = service.updateWindowConfiguration({ resizable: false }).then(() => null, (error: Error) => error.message);
+        await disk.release(false, {
+            code: FsRejectErrorCode.IPC_ERROR,
+            message: "Failed to write file to app://fs/3f2a9c: Internal Server Error",
+        });
+
+        expect(await refused).toBe("Could not save the project file.");
+    });
+
+    it("tells the save-failure notice that failures of this file are its own to report", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        expect(disk.saveStatus.registerCallerReportedFile).toHaveBeenCalledWith(expect.stringMatching(/Demo\.nlproj$/));
+    });
+
+    it.each(SUPPORTED_LOCALES)("says it without a URL or an id, and names the reason where there is one (%s)", locale => {
+        const t = createTranslator(locale).t;
+        const plain = describeProjectFileWriteFailure({ code: FsRejectErrorCode.IPC_ERROR }, t);
+        const readOnly = describeProjectFileWriteFailure({ code: FsRejectErrorCode.PERMISSION_DENIED }, t);
+        const full = describeProjectFileWriteFailure({ code: FsRejectErrorCode.NO_SPACE }, t);
+
+        expect(plain).toBe(t("project.writeFailed.plain"));
+        expect(readOnly).toContain(t("workspace.shell.save.reason.permissionDenied"));
+        expect(full).toContain(t("workspace.shell.save.reason.diskFull"));
+        for (const sentence of [plain, readOnly, full]) {
+            expect(sentence).not.toMatch(/app:\/\//);
+            expect(sentence).not.toMatch(UUID);
+            expect(sentence).not.toMatch(/\{\w+\}/);
+        }
     });
 });
