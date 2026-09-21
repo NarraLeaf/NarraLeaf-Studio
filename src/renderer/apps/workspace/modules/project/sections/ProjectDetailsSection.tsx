@@ -160,6 +160,9 @@ function DetailField({
     // Typed since the field last took the stored value, and not yet sent. The stored value moving
     // underneath (this field's own earlier write landing, or a reload) must not take that away.
     const edited = useRef(false);
+    // Set by Escape for the blur it causes: that blur runs the handler this render created, which
+    // still holds the typed draft, so without it the edit Escape abandons is the one that is sent.
+    const abandoning = useRef(false);
 
     useEffect(() => {
         if (!edited.current && inFlight === 0) {
@@ -174,6 +177,10 @@ function DetailField({
 
     const commit = useCallback(async () => {
         edited.current = false;
+        if (abandoning.current) {
+            abandoning.current = false;
+            return;
+        }
         if (draft === (sending.current ?? initialValue)) {
             return;
         }
@@ -220,13 +227,20 @@ function DetailField({
                     value={draft}
                     onChange={edit}
                     disabled={frozen.disabled}
+                    onFocus={() => {
+                        abandoning.current = false;
+                    }}
                     onBlur={() => void commit()}
                     onKeyDown={event => {
                         if (event.key === "Enter") {
                             event.currentTarget.blur();
                         }
                         if (event.key === "Escape") {
-                            setDraft(initialValue);
+                            // Back to what the field last stood for: the text still being written, if
+                            // there is one, rather than the stored value it is about to replace.
+                            abandoning.current = true;
+                            edited.current = false;
+                            setDraft(sending.current ?? initialValue);
                             event.currentTarget.blur();
                         }
                     }}
