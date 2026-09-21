@@ -112,6 +112,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
+    VcsProjectServerSession,
     VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -441,6 +442,7 @@ export enum IPCEventType {
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
     vcsGetServerSession = "vcs.getServerSession",
+    vcsUseServerSession = "vcs.useServerSession",
     vcsSignIn = "vcs.signIn",
     vcsSignOut = "vcs.signOut",
     vcsProbeServer = "vcs.probeServer",
@@ -1533,12 +1535,30 @@ export type IPCVcsEvents = {
         data: { projectPath: string },
         response: VcsSyncState;
     };
-    /** Local read: who this installation is signed in to this project's server as. */
+    /**
+     * Local read: the sign-in this project uses at its server, and the one it could.
+     *
+     * `session` is null for a project that does not use the sign-in held for its server - never
+     * asked, or answered no - and that sign-in is then `available`, so an interface can offer it.
+     */
     [IPCEventType.vcsGetServerSession]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: { projectPath: string },
-        response: { session: VcsServerSession | null };
+        response: VcsProjectServerSession;
+    };
+    /**
+     * Ask the author, in a window of Studio's own, whether this project uses the sign-in held for
+     * its server; answer with where that leaves it.
+     *
+     * The answer is the author's and the main process records it. Nothing in the payload can
+     * stand in for it - the payload names the project, and only the window's own.
+     */
+    [IPCEventType.vcsUseServerSession]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string },
+        response: VcsProjectServerSession;
     };
     /**
      * **Goes to the network**, twice: the sign-in endpoint and then the server itself.
@@ -1570,7 +1590,10 @@ export type IPCVcsEvents = {
         data: { certificatePath: string },
         response: { installed: boolean; output: string };
     };
-    /** Local: clears the stored token as well as Studio's record of whose it was. */
+    /**
+     * Local: this project stops using the sign-in held for its server. The sign-in stays on the
+     * machine for the projects that use it; `vcs.forgetServer` takes it off.
+     */
     [IPCEventType.vcsSignOut]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -1628,6 +1651,11 @@ export type IPCVcsEvents = {
      *
      * The outcome answers for the first step alone; the other two refuse by throwing,
      * with the same sentences `vcs.setRemote` and `vcs.push` already refuse with.
+     *
+     * From a project's window `projectPath` must be that window's project, and the project has to
+     * use the sign-in held for `remoteOrigin` - the author is asked if it does not. From a window
+     * with no project it is the launcher publishing a project it has just made, which must have no
+     * server yet and uses that sign-in from then on.
      */
     [IPCEventType.vcsPublishProject]: {
         type: IPCMessageType.request,
@@ -1640,7 +1668,12 @@ export type IPCVcsEvents = {
      *
      * The token carries the address of the endpoint that issued it and of the server it is
      * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
-     * are the corrections for a token that names neither, and are empty otherwise.
+     * are the corrections for a token that names neither, and are empty otherwise; an `authUrl`
+     * the token does not name is refused rather than used.
+     *
+     * Made from a project's window, the sign-in is that project's answer to the sign-in question
+     * and it uses the sign-in from then on. Made from anywhere else, it serves no project until one
+     * is asked.
      *
      * `description` is what the probe a moment ago answered, passed on so that adding a
      * server does not reach the same address twice for the same sentence.
@@ -1709,7 +1742,12 @@ export type IPCVcsEvents = {
         data: { projectPath: string },
         response: VcsSyncResult;
     };
-    /** No project session: there is no repository at `destination` until this finishes. */
+    /**
+     * No project session: there is no repository at `destination` until this finishes.
+     *
+     * From the wizard, which has no project, the copy is made with the sign-in held for that
+     * server and the new project uses it. From a project's window the copy is anonymous.
+     */
     [IPCEventType.vcsClone]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,

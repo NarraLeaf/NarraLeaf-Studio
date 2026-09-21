@@ -14,7 +14,7 @@ export const projectTrust = {
     window: "Project Trust",
     title: "Trust this project?",
     // The state until the author agrees, in one sentence: what still works, and what does not.
-    untrusted: "Studio did not create this project. Until it is trusted, it can be edited but not run, previewed, built or tested.",
+    untrusted: "Studio did not create this project. Until it is trusted, it can be edited but not run, previewed, built, tested or synced with its server.",
     // The cost of agreeing, without softening it.
     meaning: "Once trusted, the code this project ships runs on this machine.",
     later: "This can be changed under Trusted projects in Settings.",

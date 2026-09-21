@@ -98,7 +98,7 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -962,12 +962,22 @@ export interface RendererPreloadedInterface {
          */
         getSyncState(projectPath: string): Promise<RequestStatus<VcsSyncState>>;
         /**
-         * Who this installation is signed in to this project's server as, or null.
+         * The sign-in this project uses at its server, and the one it could.
          *
-         * A LOCAL read - no socket - so a panel may ask it on open. Null on a project
-         * whose server does not ask who is calling, which is every bare `loreserver`.
+         * A LOCAL read - no socket - so a panel may ask it on open. `session` is null on a
+         * project whose server does not ask who is calling, which is every bare `loreserver`,
+         * and on one that does not use the sign-in held for its server - never asked, or
+         * answered no - which then comes back as `available`.
          */
-        getServerSession(projectPath: string): Promise<RequestStatus<{ session: VcsServerSession | null }>>;
+        getServerSession(projectPath: string): Promise<RequestStatus<VcsProjectServerSession>>;
+        /**
+         * Ask whether this project uses the sign-in held for its server.
+         *
+         * The question goes up in a window of Studio's own and the main process records the
+         * answer; what comes back is where the project stands afterwards. Asks even where the
+         * answer was once no - calling this is the author asking again.
+         */
+        useServerSession(projectPath: string): Promise<RequestStatus<VcsProjectServerSession>>;
         /**
          * Sign this installation in to this project's server with a token its operator
          * issued.
@@ -992,7 +1002,12 @@ export interface RendererPreloadedInterface {
          * project of its own.
          */
         trustAuthority(certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
-        /** Clear the stored token and Studio's record of whose it was. Local. */
+        /**
+         * Stop this project using the sign-in held for its server. Local.
+         *
+         * Per project: the sign-in stays on this machine for the projects that use it, and
+         * taking it off altogether is `forgetServer`.
+         */
         signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
         /**
          * Ask an `nlteam://` address what is behind it.

@@ -15,7 +15,7 @@ import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { SPELLCHECK_LANGUAGE_DEFAULT } from "@shared/types/spellcheck";
 import { PersistentState } from "@shared/utils/persistentState";
-import type { VcsServerSession } from "@shared/types/vcs";
+import type { VcsServerSession, VcsSessionUse } from "@shared/types/vcs";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
 export interface GlobalStateType extends Record<string, any> {
@@ -446,6 +446,19 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "versionControl.serverSessions": VcsServerSession[];
     /**
+     * Which project uses which of those sign-ins, one row per (server, project) the author has
+     * answered for.
+     *
+     * A sign-in above belongs to the account; a project acts as that account only once the author
+     * has said it does, and this is where that is kept - see `VcsSessionUse`. A project with no row
+     * here is asked the first time a request it makes needs the sign-in, which is also how every
+     * sign-in stored before this record existed reaches its projects: none of them has a row, so
+     * each is asked once.
+     *
+     * Written by the main process alone, like the two beside it (`MAIN_OWNED_STATE_KEYS`).
+     */
+    "versionControl.serverSessionProjects": VcsSessionUse[];
+    /**
      * The token this installation signs in to each server with, sealed.
      *
      * Keyed by the same `remoteOrigin` the sessions are, and holding
@@ -567,6 +580,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
+    "versionControl.serverSessionProjects": [],
     "versionControl.serverTokens": {},
     // `team.installationId` deliberately has no default; see its declaration above. A
     // default would be written to disk on first read and every installation would then

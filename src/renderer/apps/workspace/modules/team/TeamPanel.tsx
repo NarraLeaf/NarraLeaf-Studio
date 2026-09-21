@@ -89,15 +89,21 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
     const { t } = useTranslation();
     const [picking, setPicking] = useState(false);
     const [adding, setAdding] = useState(false);
-    const { remote, serverSession, syncState, busy } = surface;
+    const { remote, serverSession, availableSession, syncState, busy } = surface;
     const running = busy !== null;
+    // A sign-in this machine holds for that server and this project does not use: never asked,
+    // or answered no. Told apart from having no account there at all, because the remedy is one
+    // row that puts the question rather than signing in again.
+    const unused = remote !== null && serverSession === null && availableSession !== null;
+    const noAccount = !unused && (surface.remoteNeedsSignIn || (!serverSession && remote !== null));
     const verdict = teamServerFace(team.state, syncState);
-    // The name the server answers to. `serverSession` is null for a server this machine has no
-    // account on, and that is the single case with no name to read - its address is then all
-    // there is to call it by.
+    // The name the server answers to, from whichever sign-in this machine holds for it - the one
+    // this project uses, or the one it could. A server this machine has no account on is the
+    // single case with no name to read, and its address is then all there is to call it by.
+    const known = serverSession ?? availableSession;
     const name = remote === null
         ? null
-        : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
+        : known ? serverDisplayName(known) : serverHost(remote);
     // What this project is called on that server, which is what a collaborator clones by and
     // the one part of the address worth reading. Empty for an address that carries no name.
     const projectName = remote === null ? "" : parseVcsRemoteUrl(remote)?.name ?? "";
@@ -193,9 +199,16 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                             a copy somebody sent, or a server that was signed out of - and where a
                             connect was refused for want of one. The remedy is the same in both
                             cases and it is the row underneath. */}
-                        {(surface.remoteNeedsSignIn || (!serverSession && remote !== null)) && (
+                        {noAccount && (
                             <p data-team-seam="needs-account" className="mb-2 text-2xs text-warning">
                                 {t("workspace.shell.team.noAccountHere")}
+                            </p>
+                        )}
+                        {/* Not a warning: a project that has not been asked, or was asked and
+                            answered no, is in a state the author chose or has yet to choose. */}
+                        {unused && (
+                            <p data-team-seam="sign-in-unused" className="mb-2 text-2xs text-fg-muted">
+                                {t("workspace.shell.team.signInUnused")}
                             </p>
                         )}
                         {serverSession ? (
@@ -213,6 +226,9 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                                     onClick={() => void surface.signOutOfServer()}
                                     disabled={running}
                                     data-team-seam="sign-out"
+                                    // Signing out here is this project's alone; the sign-in stays
+                                    // on this machine for the others, and Settings is where it goes.
+                                    data-tip={t("workspace.shell.team.signOutHint")}
                                     className="shrink-0 text-2xs text-fg-subtle transition-colors cursor-default hover:text-fg disabled:opacity-50"
                                 >
                                     {t("workspace.shell.versionControl.server.signIn.signOut")}
@@ -242,7 +258,16 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
                                 disabled={running}
                             />
                         )}
-                        {(surface.remoteNeedsSignIn || (!serverSession && remote !== null)) && (
+                        {unused && availableSession !== null && (
+                            <TeamAction
+                                label={t("workspace.shell.team.useSignIn", {
+                                    name: availableSession.account.displayName,
+                                })}
+                                onClick={() => void surface.useServerSession()}
+                                disabled={running}
+                            />
+                        )}
+                        {(noAccount || unused) && (
                             <TeamAction
                                 label={t("workspace.shell.versionControl.server.picker.add")}
                                 onClick={() => setAdding(true)}
