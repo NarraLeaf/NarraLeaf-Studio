@@ -297,6 +297,53 @@ describe("the question itself", () => {
     });
 });
 
+/**
+ * The server picker's question. An author choosing where a project goes has to be able to see what
+ * that server already holds - and a listing is the sign-in at work, so it waits on the same answer as
+ * everything else. The question is put about the chosen server rather than the project's own.
+ */
+describe("asking about a server the project is not on yet", () => {
+    const ELSEWHERE = "lore://elsewhere.example.lan:41337";
+    const BEA: VcsServerSession = {
+        ...ADA,
+        authUrl: "https://elsewhere.example.lan:41402",
+        remoteOrigin: ELSEWHERE,
+        account: { ...ADA.account, userId: "u-bea", displayName: "Bea" },
+    };
+
+    beforeEach(() => {
+        state.set("versionControl.serverSessions", [ADA, BEA]);
+    });
+
+    it("puts the question about that server, and records the answer for that pair alone", async () => {
+        const after = await manager.useServerSession(PROJECT_A, ELSEWHERE);
+
+        expect(asker).toHaveBeenCalledTimes(1);
+        expect(asker.mock.calls[0]![0].session.remoteOrigin).toBe(ELSEWHERE);
+        expect(after).toEqual({ session: BEA, available: null, declined: false });
+        expect(uses()).toEqual([expect.objectContaining({ remoteOrigin: ELSEWHERE, userId: "u-bea" })]);
+        // The project's own server was not what was asked about, and is still unanswered.
+        expect(uses().some(row => row.remoteOrigin === ORIGIN)).toBe(false);
+    });
+
+    it("answers where the author said no, and it stays a no", async () => {
+        asker.mockResolvedValueOnce(false);
+
+        const after = await manager.useServerSession(PROJECT_A, ELSEWHERE);
+
+        expect(after).toEqual({ session: null, available: BEA, declined: true });
+        expect(uses()).toEqual([expect.objectContaining({ remoteOrigin: ELSEWHERE, userId: null })]);
+    });
+
+    it("asks nothing about a server this installation holds no sign-in for", async () => {
+        const after = await manager.useServerSession(PROJECT_A, "lore://nowhere.example.lan:41337");
+
+        expect(asker).not.toHaveBeenCalled();
+        expect(after).toEqual({ session: null, available: null, declined: false });
+        expect(uses()).toEqual([]);
+    });
+});
+
 describe("the name a version records", () => {
     it("is the account's only for a project that uses the sign-in", async () => {
         await manager.push(PROJECT_A);

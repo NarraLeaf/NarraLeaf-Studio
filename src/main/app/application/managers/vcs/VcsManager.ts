@@ -2066,11 +2066,28 @@ export class VcsManager extends Manager {
      * What the Team panel's "use this sign-in" row does. It asks even where the answer was once no:
      * pressing it is the author asking again. The question goes up in a window of its own and the
      * answer is recorded here - nothing the caller sends can stand in for it.
+     *
+     * `remoteOrigin` puts the same question about a server the project is not connected to: the
+     * server picker, where an author has just chosen where the project goes and what that server
+     * holds cannot be read for this project until they have said it uses the sign-in there. The
+     * answer comes back about that server, from the record alone - nothing is shown as signed in
+     * on the strength of it, so the backend is not asked to confirm it.
      */
-    public async useServerSession(projectPath: string): Promise<VcsProjectServerSession> {
+    public async useServerSession(projectPath: string, remoteOrigin?: string): Promise<VcsProjectServerSession> {
         this.refuseDistrustedServerUse(projectPath);
-        await this.settleSessionUse(projectPath, await this.remoteOriginOf(projectPath), "explicit");
-        return this.getServerSession(projectPath);
+        const own = await this.remoteOriginOf(projectPath);
+        const asked = remoteOrigin ?? own;
+        await this.settleSessionUse(projectPath, asked, "explicit");
+        if (asked === own) return this.getServerSession(projectPath);
+        const standing = this.sessionStandingOf(projectPath, asked);
+        switch (standing.kind) {
+            case "granted":
+                return { session: standing.session, available: null, declined: false };
+            case "none":
+                return { session: null, available: null, declined: false };
+            default:
+                return { session: null, available: standing.session, declined: standing.kind === "declined" };
+        }
     }
 
     /**

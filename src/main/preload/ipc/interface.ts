@@ -673,8 +673,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         getServerSession: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<VcsProjectServerSession>>,
         /** Raises Studio's own sign-in question for this project; the answer is recorded by the host. */
-        useServerSession: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.vcsUseServerSession, { projectPath }) as Promise<RequestStatus<VcsProjectServerSession>>,
+        useServerSession: (projectPath: string, remoteOrigin?: string) =>
+            ipcClient.invoke(
+                IPCEventType.vcsUseServerSession,
+                remoteOrigin === undefined ? { projectPath } : { projectPath, remoteOrigin },
+            ) as Promise<RequestStatus<VcsProjectServerSession>>,
         /** Goes to the network. The token is not stored here and does not come back. */
         signIn: (projectPath: string, authUrl: string, token: string) =>
             ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,

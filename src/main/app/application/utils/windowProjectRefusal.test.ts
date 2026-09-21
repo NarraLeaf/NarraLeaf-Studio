@@ -141,3 +141,34 @@ describe("reportWindowProjectRefusal", () => {
         expect(emitWorkspaceConsoleLog).toHaveBeenCalledTimes(3);
     });
 });
+
+/**
+ * The Team channels' refusals, which share the line: a window that asked a server something as the
+ * account while its project does not use that sign-in, or a window that never speaks to servers.
+ */
+describe("reportWindowProjectRefusal, for a request to a server", () => {
+    it("says the project does not use the sign-in, rather than that it named another project", () => {
+        reportWindowProjectRefusal(windowOn(MINE), "team.call", "sign-in-unused");
+
+        expect(lastLine().message).toContain("team.call");
+        expect(lastLine().message).toContain("does not use the sign-in");
+        expect(lastLine().message).not.toContain("named a project");
+        expect(lastLine().level).toBe("error");
+    });
+
+    it("says a window of its kind does not reach servers", () => {
+        reportWindowProjectRefusal(windowOn(MINE), "team.subscribe", "server-off-limits");
+
+        expect(lastLine().message).toContain("does not reach servers");
+    });
+
+    /** Two reasons from one request of one window are two facts, not one repeated. */
+    it("throttles each reason apart", () => {
+        const window = windowOn(MINE);
+        reportWindowProjectRefusal(window, "team.call", "sign-in-unused");
+        reportWindowProjectRefusal(window, "team.call", "sign-in-unused");
+        reportWindowProjectRefusal(window, "team.call", "server-off-limits");
+
+        expect(emitWorkspaceConsoleLog).toHaveBeenCalledTimes(2);
+    });
+});

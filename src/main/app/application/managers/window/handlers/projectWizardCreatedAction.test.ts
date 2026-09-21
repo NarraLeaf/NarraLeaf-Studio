@@ -106,3 +106,32 @@ describe("ProjectWizardCreatedHandler", () => {
         expect(recordArrival).not.toHaveBeenCalled();
     });
 });
+
+/**
+ * What the launch handler later reads to decide whether the launcher may be handed the folder: the
+ * wizard's report, as this handler checked it, and nothing it refused.
+ */
+describe("what a wizard is remembered as having made", () => {
+    it("is the folder it reported and this handler accepted", async () => {
+        const { wizardCreatedProject } = await import("./projectWizardCreatedAction");
+        const { window } = makeWindow(WindowAppType.ProjectWizard, [root]);
+
+        expect(wizardCreatedProject(window, created)).toBe(false);
+        await new ProjectWizardCreatedHandler().handle(window, { projectPath: created });
+
+        expect(wizardCreatedProject(window, created)).toBe(true);
+        expect(wizardCreatedProject(window, `${created}${path.sep}`)).toBe(true);
+        expect(wizardCreatedProject(window, empty)).toBe(false);
+    });
+
+    it("is nothing it was refused", async () => {
+        const { wizardCreatedProject } = await import("./projectWizardCreatedAction");
+        const { window } = makeWindow(WindowAppType.ProjectWizard, [created]);
+
+        await new ProjectWizardCreatedHandler().handle(window, { projectPath: ungranted });
+        await new ProjectWizardCreatedHandler().handle(window, { projectPath: empty });
+
+        expect(wizardCreatedProject(window, ungranted)).toBe(false);
+        expect(wizardCreatedProject(window, empty)).toBe(false);
+    });
+});

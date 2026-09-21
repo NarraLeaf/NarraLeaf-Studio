@@ -36,6 +36,8 @@ const ENTRY_FAILURES: Record<LiveEntryFailure["kind"], TranslationKey> = {
     // there are five of those.
     frozen: "workspace.shell.team.liveBlockedSession",
     "no-server": "workspace.shell.team.liveNoServer",
+    // The same sentence the Team panel says it in, where the row that changes the answer is.
+    "sign-in-unused": "workspace.shell.team.signInUnused",
     "no-instance": "workspace.shell.team.liveNoInstance",
     "no-repository": "workspace.shell.team.liveNoRepository",
     "no-revision": "workspace.shell.team.liveNoRevision",
@@ -90,6 +92,8 @@ const ENTRY_REMEDIES: Record<LiveEntryFailure["kind"], TranslationKey | null> = 
     frozen: null,
     // Both sentences are instructions already.
     "no-server": null,
+    // The author was just asked and did not say yes; the Team panel offers the sign-in by name.
+    "sign-in-unused": null,
     "no-revision": null,
     "no-instance": "workspace.shell.team.liveNoInstanceNext",
     "no-repository": "workspace.shell.team.liveNoRepositoryNext",

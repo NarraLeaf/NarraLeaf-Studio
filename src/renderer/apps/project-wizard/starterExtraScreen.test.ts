@@ -16,20 +16,28 @@
  *    The catalog's projection has already replaced a locked entry's picture with the placeholder
  *    (or with nothing) and its name with the mask, so no picture or name in the template is
  *    conditioned on the lock - that would be a second answer to a settled question, and the kind
- *    that fails open. The lock state is read for one thing only: to make a locked cell *look*
- *    locked rather than empty. A tile gets a dark backdrop with a padlock drawn from plain
- *    containers, and a row gets the same padlock at a third of the size where its play mark would
- *    be. It is built from no picture, because the project that most needs it - a new one, where
- *    nothing is unlocked - has no art to give it. The backdrop sits *beneath* the art, so a
- *    silhouette the author did set (`lockedImageAssetId`) paints over it; and it is not drawn at
- *    all on an unlocked row, so an unlocked tile is exactly what it was without it.
- * 3. **A CG tile answers nothing yet, and advertises nothing.** Opening the picture at full size is
- *    the obvious next thing and is not here yet. The tiles were built when a write made from inside
- *    a list row was addressed to that row's own drawing whatever it named, so a row could not show,
- *    fill or hide anything outside itself. A row now addresses the drawing its target is really in
- *    (`resolveUIWidgetAddressFromDrawing` in `@shared/types/ui-editor/widgetDrawing`), so a viewer
- *    can be written plainly; until one is, the tiles keep advertising nothing - no pointer cursor,
- *    no hover state, no cue - because a cue for a press that does nothing is worse than none.
+ *    that fails open. The lock state is read for two things only: to make a locked cell *look*
+ *    locked rather than empty, and to decide whether a cell offers a press at all (claim 3). A
+ *    tile gets a dark backdrop with a padlock drawn from plain containers, and a row gets the same
+ *    padlock at a third of the size where its play mark would be. It is built from no picture,
+ *    because the project that most needs it - a new one, where nothing is unlocked - has no art to
+ *    give it. The backdrop sits *beneath* the art, so a silhouette the author did set
+ *    (`lockedImageAssetId`) paints over it; and it is not drawn at all on an unlocked row, so an
+ *    unlocked tile is exactly what it was without it.
+ * 3. **An unlocked CG tile opens its picture at full size; a locked one does nothing and promises
+ *    nothing.** The press is the grid's Item Click, and it writes straight out of the row: the
+ *    pressed artwork's unlocked pictures, read off the row and starting at the one the tile shows,
+ *    into a page variable, and then the viewer - an element the row does not contain - shown. No
+ *    broadcast, no relay. That is only possible because a row addresses the drawing its target is
+ *    really in (`resolveUIWidgetAddressFromDrawing` in `@shared/types/ui-editor/widgetDrawing`); a
+ *    row used to be unable to show, fill or hide anything outside itself. The viewer's picture is
+ *    drawn the way the tile's art is - a row whose `image` field an image reads - and fills itself
+ *    as it appears, the way every pane here does. From there it is the GalGame convention: each
+ *    press steps to the artwork's next unlocked variant and the one after the last closes the
+ *    viewer, as does a right click or the page's dismiss action, and the board under it is never
+ *    touched. The pointer and the hover frame live on a hit area drawn only for an unlocked row, so
+ *    a locked tile advertises nothing - a cue for a press that does nothing is worse than none. The
+ *    recollection tile, whose unlocked press starts its scene, carries the same hit area.
  * 4. **The screen is reached from the title menu and from nowhere else.** Playing a recollection
  *    goes through `Start Game`, which replaces the current playthrough; return semantics were never
  *    built. The line that makes that safe is not a check inside the screen - a control that
@@ -40,11 +48,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT,
+    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PAGE_BACK,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 
@@ -55,6 +75,7 @@ type Blueprint = {
     id: string;
     owner: { kind: string; surfaceId?: string; elementId?: string };
     graphs: { events: Record<string, { graph: Graph }> };
+    members?: { variables?: Record<string, { id: string; name: string; valueType?: string }> };
 };
 type Element = {
     id: string;
@@ -147,6 +168,50 @@ function wired(graph: Graph, from: string, fromPort: string, to: string, toPort:
     return graph.edges.some(edge =>
         edge.from.nodeId === from && edge.from.port === fromPort
         && edge.to.nodeId === to && edge.to.port === toPort);
+}
+
+/** The one node wired into a data input. */
+function feeding(graph: Graph, nodeId: string, port: string): GraphNode {
+    const edges = graph.edges.filter(edge => edge.to.nodeId === nodeId && edge.to.port === port);
+    expect(edges, `${nodeId}.${port} is fed ${edges.length} times`).toHaveLength(1);
+    return graph.nodes[edges[0]!.from.nodeId]!;
+}
+
+/** The element an element input points at, read off the `Element` node wired into it. */
+function elementAt(graph: Graph, nodeId: string, port = "element"): string {
+    const ref = feeding(graph, nodeId, port);
+    expect(ref.type).toBe(BLUEPRINT_NODE_TYPE_ELEMENT_REF);
+    return String(ref.params?.elementId ?? "");
+}
+
+/**
+ * Every node that runs once an execution output fires. Every node on these screens takes execution
+ * on a pin named `in`, so following the edges into `in` walks the execution path and nothing else.
+ */
+function runsAfter(graph: Graph, nodeId: string, port: string): Set<string> {
+    const reached = new Set<string>();
+    const pending = graph.edges
+        .filter(edge => edge.from.nodeId === nodeId && edge.from.port === port && edge.to.port === "in")
+        .map(edge => edge.to.nodeId);
+    while (pending.length > 0) {
+        const next = pending.pop()!;
+        if (reached.has(next)) {
+            continue;
+        }
+        reached.add(next);
+        for (const edge of graph.edges) {
+            if (edge.from.nodeId === next && edge.to.port === "in") {
+                pending.push(edge.to.nodeId);
+            }
+        }
+    }
+    return reached;
+}
+
+/** The nodes of one type that run once an execution output fires. */
+function ranAfter(graph: Graph, nodeId: string, port: string, type: string): GraphNode[] {
+    const reached = runsAfter(graph, nodeId, port);
+    return Object.values(graph.nodes).filter(node => node.type === type && reached.has(node.id));
 }
 
 /** The four segments, the kind each reads, and whether its pane is a grid or a list of rows. */
@@ -253,18 +318,20 @@ describe("the starter template's EXTRA screen", () => {
                 }
             }
         }
-        // The lock state decides only the locked look, and on a row, whether the play mark
-        // promises a press that would do something.
+        // The lock state decides only the locked look, and whether a cell promises a press that
+        // would do something: a tile's hit area, a row's play mark.
         expect(shownOnlyWhen).toEqual([
             "CG grid ▸ Locked backdrop ▸ locked",
+            "CG grid ▸ Hit area ▸ unlocked",
             "Recollection grid ▸ Locked backdrop ▸ locked",
+            "Recollection grid ▸ Hit area ▸ unlocked",
             "Music rows ▸ Play mark ▸ unlocked",
             "Music rows ▸ Locked mark ▸ locked",
             "Voice rows ▸ Play mark ▸ unlocked",
             "Voice rows ▸ Locked mark ▸ locked",
         ]);
-        // Two tiles' picture, name and locked backdrop; two rows' name, play mark and lock.
-        expect(bound).toBe(12);
+        // Two tiles' picture, name, locked backdrop and hit area; two rows' name, play mark and lock.
+        expect(bound).toBe(14);
     });
 
     it.each(SEGMENTS.filter(segment => segment.wraps))(
@@ -377,17 +444,251 @@ describe("the starter template's EXTRA screen", () => {
         expect(buttons.map(button => button.name)).toEqual(["Back"]);
     });
 
-    it("leaves a CG tile answering nothing, rather than half-answering", () => {
-        // See the note at the top: a row cannot address anything outside itself, so the press that
-        // would open the picture is left out entirely rather than wired to something that half
-        // works. Nothing on the tile advertises one.
-        const grid = on("CG grid", "nl.list");
-        expect(graphsFor(grid.id).flatMap(graph =>
-            Object.values(graph.nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)))
-            .toEqual([]);
-        for (const element of descendants(grid.id)) {
-            expect((element.props ?? {}).cursor, `${element.name} offers a pointer`).toBeUndefined();
-        }
+    it.each(SEGMENTS.filter(segment => segment.wraps))(
+        "gives an unlocked $button tile a pointer and a hover frame, and a locked one neither",
+        ({ list }) => {
+            // Both tiles answer an unlocked press - a CG opens, a recollection plays - and nothing
+            // else. The cue lives on a hit area drawn over the whole tile (last child, so over the
+            // art and the name plate) and only for an unlocked row, so a locked tile shows no
+            // pointer and no hover state: it promises nothing because it does nothing.
+            const grid = on(list, "nl.list");
+            const tile = document.elements[grid.childrenIds?.[0] ?? ""]!;
+            const children = (tile.childrenIds ?? []).map(id => document.elements[id]!);
+            const hit = children.at(-1)!;
+            expect(hit.name).toBe("Hit area");
+            // A button because it is the one widget that owns a pointer; its label stays empty.
+            expect(hit.type).toBe("nl.button");
+            expect(hit.props?.label).toBe("");
+            expect(hit.props?.cursor).toBe("pointer");
+            expect(hit.valueBindings?.["layout.visible"]).toEqual({ kind: "listItemField", fieldId: "unlocked" });
+            const box = tile.layout as { width: number; height: number };
+            expect(hit.layout).toMatchObject({ x: 0, y: 0, width: box.width, height: box.height });
+
+            // At rest it paints nothing, so an unlocked tile that is not hovered is the tile it was.
+            expect(hit.props?.fillVisible).toBe(false);
+            expect(hit.props?.borderColor).toBe("transparent");
+            // Hovered, it takes the look the screen's other pressable things take: a brand wash and
+            // the strong border.
+            const appearance = hit.props?.appearance as {
+                variants: { id: string; propertyGroups: { key: string; rows: { conditions: unknown; value: unknown }[] }[] }[];
+            };
+            const groups = appearance.variants.find(variant => variant.id === "default")?.propertyGroups ?? [];
+            const hovered = (key: string): unknown =>
+                groups.find(group => group.key === key)?.rows
+                    .find(row => (row.conditions as { hovered?: boolean } | null)?.hovered === true)?.value;
+            expect(hovered("borderColor")).toBe("nlbrand:border.strong");
+            expect(hovered("backgroundColor")).toBe("nlbrand:primary");
+            expect(hovered("fillVisible")).toBe(true);
+
+            // And nothing else in the grid offers a pointer, so the cue cannot leak onto a locked row.
+            for (const element of descendants(grid.id)) {
+                if (element.id !== hit.id) {
+                    expect((element.props ?? {}).cursor, `${element.name} offers a pointer`).toBeUndefined();
+                }
+            }
+        },
+    );
+
+    describe("the CG viewer", () => {
+        /**
+         * The pieces every claim below is about. Looked up per test rather than once for the block,
+         * so a screen that lost one of them fails the claims that need it instead of the whole file.
+         */
+        const parts = () => {
+            const grid = on("CG grid", "nl.list");
+            const page = blueprints.find(candidate =>
+                candidate.owner.kind === "surfaceMain" && candidate.owner.surfaceId === EXTRA.id);
+            expect(page, "the Extra page has no blueprint").toBeDefined();
+            return {
+                viewer: on("Viewer", "nl.container"),
+                picture: on("Picture", "nl.list"),
+                open: graphWith(grid.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK),
+                page: page!,
+                queue: Object.values(page!.members?.variables ?? {})
+                    .find(variable => variable.name === "Viewer pictures"),
+            };
+        };
+
+        /** A `Set Var` or `Get Var` naming the page's queue, from whichever blueprint it sits in. */
+        const namesQueue = (node: GraphNode): boolean => {
+            const { page, queue } = parts();
+            const ref = String(node.params?.variableId ?? "");
+            return Boolean(queue) && (ref === queue!.id || ref === `bp:${page.id}:${queue!.id}`);
+        };
+
+        /** What an element write does, as `[element, property, value]`. */
+        const writes = (graph: Graph, nodes: GraphNode[]): unknown[][] =>
+            nodes.map(node => [elementAt(graph, node.id), node.params?.property, node.params?.value]);
+
+        it("is one full-screen picture above the whole screen, hidden until a tile is pressed", () => {
+            const { viewer, picture } = parts();
+            // Outside every list and drawn last, so it covers the rail, the board and the title, and
+            // a press anywhere lands on it.
+            const screen = on("Extra", "nl.container");
+            expect(screen.childrenIds?.at(-1)).toBe(viewer.id);
+            expect(viewer.layout).toMatchObject({ x: 0, y: 0, width: 1920, height: 1080, visible: false });
+            expect(viewer.childrenIds).toEqual([picture.id]);
+            expect(String(viewer.props?.backgroundColor)).toMatch(/^nlbrand:/);
+
+            // The picture is a row, drawn the way a tile draws its art: a list holding the one row
+            // on screen, whose image reads that row's `image` field. Not an image widget the graph
+            // writes an asset into - an asset pin fed a computed value is a hole in the reference
+            // index, so every project made from this template would ask before deleting any image
+            // and have every build refused (`refuseOnTrimCoverageGaps` in `BuildService`; the
+            // template is held to no holes by `referenceCatalogPins.test.ts`).
+            expect(picture.layout).toMatchObject({ x: 0, y: 0, width: 1920, height: 1080 });
+            expect(picture.props?.itemStructId).toBe("extra.galleryPicture");
+            expect((picture.props?.scrollbar as { enabled?: boolean } | undefined)?.enabled).toBe(false);
+            expect(picture.props?.dragContentScroll).toBe(false);
+            const fields = document.structs?.["extra.galleryPicture"]?.fields.map(field => [field.key, field.type]);
+            expect(fields).toEqual([["id", "string"], ["image", "image"]]);
+
+            const art = document.elements[picture.childrenIds?.[0] ?? ""]!;
+            expect(picture.childrenIds).toHaveLength(1);
+            expect(art.type).toBe("nl.image");
+            expect(art.valueBindings?.["imageFill.assetId"]).toEqual({ kind: "listItemField", fieldId: "image" });
+            // The whole stage, fitted rather than cropped: a CG that is not 16:9 is letterboxed.
+            expect(art.layout).toMatchObject({ x: 0, y: 0, width: 1920, height: 1080 });
+            expect((art.props?.imageFill as { mode?: string } | undefined)?.mode).toBe("contain");
+        });
+
+        it("opens on the pressed tile's own picture, straight from the Item Click, and not at all when locked", () => {
+            const { viewer, picture, open } = parts();
+            const head = only(open, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+            const gate = only(open, BLUEPRINT_NODE_TYPE_FLOW_IF);
+            expect(wired(open, head.id, "then", gate.id, "in")).toBe(true);
+            const condition = feeding(open, gate.id, "condition");
+            expect(condition.type).toBe(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD);
+            expect(condition.params?.field).toBe("unlocked");
+
+            // A locked tile is inert: nothing at all runs on that side of the gate.
+            expect(open.edges.some(edge => edge.from.nodeId === gate.id && edge.from.port === "false")).toBe(false);
+
+            // Unlocked: the press queues the pressed artwork's pictures, read off the row - its `id`,
+            // and the variant it is showing, `coverVariantId`, which the queue starts at - and then
+            // shows the viewer. Both writes leave the row: one to the page, one to an element the
+            // row does not contain, addressed directly. No broadcast and no relay.
+            const fill = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue);
+            expect(fill).toHaveLength(1);
+            expect(feeding(open, only(open, `${GALLERY}.getVariants`).id, "artworkId").params?.field).toBe("id");
+            expect(feeding(open, only(open, BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND).id, "value").params?.field)
+                .toBe("coverVariantId");
+            const reveal = ranAfter(open, fill[0]!.id, "next", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY);
+            expect(writes(open, reveal)).toEqual([[viewer.id, "visible", true]]);
+            expect(Object.values(open.nodes).filter(node => node.type.startsWith("blueprint.broadcast"))).toEqual([]);
+
+            // The picture fills itself as it appears, with the head of the queue - the way every
+            // pane on this screen fills itself on Init. The press cannot hand the hidden viewer its
+            // row instead: a list drops its content when it unmounts, and in Dev Mode React unmounts
+            // it once on the way in, so content given to a list before it is drawn is gone by the
+            // time it is.
+            const own = graphWith(picture.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+            const init = only(own, BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+            const [set] = ranAfter(own, init.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS);
+            expect(set, "the viewer's picture never fills itself").toBeDefined();
+            expect(elementAt(own, set!.id, "list")).toBe(picture.id);
+            const first = feeding(own, set!.id, "items");
+            expect(first.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE);
+            expect([first.params?.start, first.params?.end]).toEqual([0, 1]);
+            expect(namesQueue(feeding(own, first.id, "array"))).toBe(true);
+        });
+
+        it("steps through the artwork's unlocked pictures, from the one on the tile, and closes after the last", () => {
+            const { viewer, picture, open, queue } = parts();
+            // The pictures still to show belong to the page, so the grid that opens the viewer and
+            // the viewer that steps through it read and write the same list.
+            expect(queue, "the Extra page declares the viewer's queue").toBeDefined();
+            expect(queue!.valueType).toBe("array");
+
+            const gate = only(open, BLUEPRINT_NODE_TYPE_FLOW_IF);
+            const pictures = only(open, `${GALLERY}.getVariants`);
+            expect(runsAfter(open, gate.id, "true").has(pictures.id)).toBe(true);
+            // Only what the player has unlocked, of the artwork whose tile was pressed.
+            expect(pictures.params?.onlyUnlocked).toBe(true);
+            // Turned to start at the variant the tile shows, so the head of the queue is the picture
+            // that was pressed and every unlocked one comes up once: the pictures from it to the end,
+            // then the ones before it.
+            const start = only(open, BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND);
+            expect(start.params?.key).toBe("id");
+            const [keep] = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue);
+            const order = feeding(open, keep!.id, "value");
+            expect(order.type).toBe("blueprint.collection.arrayConcat");
+            const after = feeding(open, order.id, "a");
+            const before = feeding(open, order.id, "b");
+            expect([after.type, before.type]).toEqual([
+                BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
+                BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
+            ]);
+            expect(open.edges.some(edge => edge.to.nodeId === after.id && edge.to.port === "start")).toBe(true);
+            expect(open.edges.some(edge => edge.to.nodeId === before.id && edge.to.port === "end")).toBe(true);
+            expect(before.params?.start).toBe(0);
+
+            // Each press drops the picture on screen from the queue; an empty queue closes the
+            // viewer, and anything else hands the viewer the new head.
+            const step = graphWith(viewer.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+            const click = only(step, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+            const drop = only(step, BLUEPRINT_NODE_TYPE_LOCAL_SET);
+            expect(namesQueue(drop)).toBe(true);
+            expect(wired(step, click.id, "then", drop.id, "in")).toBe(true);
+            const rest = feeding(step, drop.id, "value");
+            expect(rest.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT);
+            expect(rest.params?.index).toBe(0);
+            expect(namesQueue(feeding(step, rest.id, "array"))).toBe(true);
+
+            const branch = only(step, BLUEPRINT_NODE_TYPE_FLOW_IF);
+            expect(wired(step, drop.id, "next", branch.id, "in")).toBe(true);
+            const empty = feeding(step, branch.id, "condition");
+            expect(empty.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY);
+            expect(namesQueue(feeding(step, empty.id, "array"))).toBe(true);
+
+            const closes = ranAfter(step, branch.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY);
+            expect(writes(step, closes)).toEqual([[viewer.id, "visible", false]]);
+            expect(ranAfter(step, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toEqual([]);
+            const [next] = ranAfter(step, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS);
+            expect(next, "a press with pictures left does not put the next one up").toBeDefined();
+            expect(elementAt(step, next!.id, "list")).toBe(picture.id);
+            // The next picture is the head of what is left, and only the head.
+            const head = feeding(step, next!.id, "items");
+            expect(head.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE);
+            expect([head.params?.start, head.params?.end]).toEqual([0, 1]);
+            expect(namesQueue(feeding(step, head.id, "array"))).toBe(true);
+        });
+
+        it("closes on a right click and on the page's dismiss action, and only leaves the screen when it is shut", () => {
+            const { viewer, page } = parts();
+            // A right click on the picture closes it at once, emptying the queue as it goes so the
+            // page never takes a closed viewer for an open one.
+            const cancel = graphWith(viewer.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
+            const right = only(cancel, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
+            expect(ranAfter(cancel, right.id, "then", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue)).toHaveLength(1);
+            expect(writes(cancel, ranAfter(cancel, right.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
+                .toEqual([[viewer.id, "visible", false]]);
+
+            // Escape is the page's dismiss action. With the viewer open it closes the viewer and the
+            // page stays; with nothing open it leaves the screen, as it always did.
+            //
+            // The page asks its queue, not the viewer's visibility, and that is load-bearing: a key
+            // press is dispatched through the host GameApp keeps for the active page, which is not
+            // the host the page's own widget graphs write through, and it does not see their writes.
+            // Asked whether the viewer is visible it answers "no", and Escape leaves the screen from
+            // under an open picture. Page variables live in one store that every host reads.
+            const dismiss = Object.values(page.graphs.events).map(entry => entry.graph).find(graph =>
+                Object.values(graph.nodes).some(node =>
+                    node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION && node.params?.actionId === "dismiss"));
+            expect(dismiss, "the Extra page does not answer dismiss").toBeDefined();
+            const head = only(dismiss!, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
+            const branch = only(dismiss!, BLUEPRINT_NODE_TYPE_FLOW_IF);
+            expect(wired(dismiss!, head.id, "then", branch.id, "in")).toBe(true);
+            const shut = feeding(dismiss!, branch.id, "condition");
+            expect(shut.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY);
+            expect(namesQueue(feeding(dismiss!, shut.id, "array"))).toBe(true);
+
+            expect(ranAfter(dismiss!, branch.id, "true", BLUEPRINT_NODE_TYPE_PAGE_BACK)).toHaveLength(1);
+            expect(ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_PAGE_BACK)).toEqual([]);
+            expect(ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue)).toHaveLength(1);
+            expect(writes(dismiss!, ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
+                .toEqual([[viewer.id, "visible", false]]);
+        });
     });
 
     it("starts a recollection from the row that was pressed, once it is unlocked", () => {

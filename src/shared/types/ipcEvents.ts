@@ -1553,11 +1553,15 @@ export type IPCVcsEvents = {
      *
      * The answer is the author's and the main process records it. Nothing in the payload can
      * stand in for it - the payload names the project, and only the window's own.
+     *
+     * `remoteOrigin` asks about a server the project is not connected to yet: the one an author has
+     * just chosen for it, before anything on that server can be listed for this project. The answer
+     * is then about that server. Absent means the project's own.
      */
     [IPCEventType.vcsUseServerSession]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { projectPath: string },
+        data: { projectPath: string; remoteOrigin?: string },
         response: VcsProjectServerSession;
     };
     /**

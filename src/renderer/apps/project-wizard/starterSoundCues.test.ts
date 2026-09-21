@@ -244,6 +244,9 @@ const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
 /** The Extra screen's recollection grid, whose rows start the scene they point at. */
 const RECOLLECTION_GRID = "5107c0a1-0000-4000-8000-000000000320";
 
+/** The Extra screen's CG grid, whose rows open their picture in the screen's viewer. */
+const CG_GRID = "5107c0a1-0000-4000-8000-000000000310";
+
 /** The button the four in-game page rails all place to get back to the title. */
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
 
@@ -271,14 +274,15 @@ describe("the sounds the starter template makes", () => {
         // Counted rather than sampled: the cases below each know which of these they mean, and this
         // is what says nobody sprinkled one more somewhere outside them.
         // 1 save/load card + 1 scene card + 2 list rows + 2 dialog answers + the Extra screen's
-        // recollection row, plus the Title button's click and hover, plus the buttons each page
-        // still authors for itself. Each of the three was one cue per placement while the pages
-        // held copies of it; they place them now.
+        // recollection and CG rows, plus the Title button's click and hover, plus the buttons each
+        // page still authors for itself. Each of the three was one cue per placement while the
+        // pages held copies of it; they place them now.
         //
         // The music and voice rows are deliberately not among them: the sound such a row makes is
-        // the clip it plays, and two sounds for one press is one too many. Nor is a CG tile, which
-        // answers nothing at all.
-        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 7 + 2);
+        // the clip it plays, and two sounds for one press is one too many. Nor is a press inside
+        // the CG viewer: stepping to the next picture and closing after the last are paging, not
+        // choosing, and a confirm sound on every page turn is noise.
+        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 8 + 2);
     });
 
     it.each(CLICKS)("$page ▸ $button answers a click with $clip, before it acts", ({ page, button, clip }) => {
@@ -317,6 +321,15 @@ describe("the sounds the starter template makes", () => {
     ])("a row of $page ▸ $list answers being picked", ({ page, list }) => {
         const graph = graphFor(oneOn(page, list, "nl.list").id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         assertClickCue(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
+    });
+
+    it("a CG tile answers only when the row is unlocked", () => {
+        // A locked tile opens nothing, so it must not answer as if it had.
+        const graph = graphFor(CG_GRID, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const gate = next(graph, click.id, "then");
+        expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+        assertCue(next(graph, gate.id, "true"), "ui-confirm");
     });
 
     it("a recollection tile answers only when the row is unlocked", () => {

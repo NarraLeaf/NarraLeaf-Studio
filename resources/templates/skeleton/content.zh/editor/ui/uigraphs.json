@@ -23,7 +23,7 @@
           "events": {
             "global": {
               "id": "global",
-              "name": "Global",
+              "name": "全局",
               "graph": {
                 "nodes": {
                   "global.appBoot": {
@@ -41,7 +41,7 @@
                     "id": "global.welcomeText",
                     "type": "blueprint.data.stringLiteral",
                     "params": {
-                      "value": "Hello, World! Welcome to NarraLeaf Studio"
+                      "value": "你好，世界！欢迎使用 NarraLeaf Studio"
                     },
                     "meta": {
                       "editorLayout": {
@@ -91,14 +91,14 @@
             },
             "ui-cues": {
               "id": "ui-cues",
-              "name": "UI cues",
+              "name": "界面音效",
               "graph": {
                 "nodes": {
                   "cueConfirmHead": {
                     "id": "cueConfirmHead",
                     "type": "blueprint.fn.head",
                     "params": {
-                      "name": "UI confirm cue"
+                      "name": "界面确认音"
                     },
                     "meta": {
                       "editorLayout": {
@@ -125,7 +125,7 @@
                     "id": "cueHoverHead",
                     "type": "blueprint.fn.head",
                     "params": {
-                      "name": "UI hover cue"
+                      "name": "界面悬停音"
                     },
                     "meta": {
                       "editorLayout": {
@@ -152,7 +152,7 @@
                     "id": "cueBackHead",
                     "type": "blueprint.fn.head",
                     "params": {
-                      "name": "UI back cue"
+                      "name": "界面返回音"
                     },
                     "meta": {
                       "editorLayout": {
@@ -258,7 +258,7 @@
           "events": {
             "36146c4d-8eb7-4aef-bf5f-e9c13a6a420c": {
               "id": "36146c4d-8eb7-4aef-bf5f-e9c13a6a420c",
-              "name": "Close the log",
+              "name": "关闭记录",
               "graph": {
                 "nodes": {
                   "head": {
@@ -392,7 +392,7 @@
           "events": {
             "0c0e8c6f-f2bd-488f-a0f1-7faf94a16e9e": {
               "id": "0c0e8c6f-f2bd-488f-a0f1-7faf94a16e9e",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -425,7 +425,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -454,7 +454,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -530,7 +530,7 @@
           "events": {
             "6b95dad6-5d52-41b7-9d40-aada0158ec0b": {
               "id": "6b95dad6-5d52-41b7-9d40-aada0158ec0b",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -563,7 +563,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -592,7 +592,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -668,7 +668,7 @@
           "events": {
             "dd342855-db21-4496-8cc7-05bbbfb2a81e": {
               "id": "dd342855-db21-4496-8cc7-05bbbfb2a81e",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -701,7 +701,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -730,7 +730,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -827,7 +827,7 @@
           "events": {
             "b9f2fb12-c31f-4555-8945-a148e7375c9f": {
               "id": "b9f2fb12-c31f-4555-8945-a148e7375c9f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -869,7 +869,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
+                        "name": "界面返回音",
                         "params": [],
                         "returns": []
                       }
@@ -898,7 +898,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -1026,7 +1026,7 @@
           "events": {
             "8b66c10b-a56a-4df5-a452-c4b960463ac2": {
               "id": "8b66c10b-a56a-4df5-a452-c4b960463ac2",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -1156,7 +1156,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -1442,7 +1442,7 @@
           "events": {
             "8e9a94c8-1513-434e-aa17-2a6115a1082b": {
               "id": "8e9a94c8-1513-434e-aa17-2a6115a1082b",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -2581,7 +2581,7 @@
           "events": {
             "00dee1b4-56db-40c1-917c-038b280dbd4f": {
               "id": "00dee1b4-56db-40c1-917c-038b280dbd4f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -2614,7 +2614,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -2643,7 +2643,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -2719,7 +2719,7 @@
           "events": {
             "c80832be-4046-4536-a27d-2c4406e35ff7": {
               "id": "c80832be-4046-4536-a27d-2c4406e35ff7",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -2752,7 +2752,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -2781,7 +2781,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -2878,7 +2878,7 @@
           "events": {
             "03e2d03f-7b02-4096-89b5-f52a59dcaae1": {
               "id": "03e2d03f-7b02-4096-89b5-f52a59dcaae1",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -2911,7 +2911,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -2940,7 +2940,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -3016,7 +3016,7 @@
           "events": {
             "992d40a9-6e75-4ec8-8af1-b273b080a1c5": {
               "id": "992d40a9-6e75-4ec8-8af1-b273b080a1c5",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -3058,7 +3058,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
+                        "name": "界面返回音",
                         "params": [],
                         "returns": []
                       }
@@ -3087,7 +3087,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -3236,7 +3236,7 @@
           "events": {
             "55a8a0e2-00f7-4ada-ab08-a3456ea6bbb4": {
               "id": "55a8a0e2-00f7-4ada-ab08-a3456ea6bbb4",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -3394,7 +3394,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -3550,7 +3550,7 @@
           "events": {
             "24e71e74-958b-41ad-9597-df6ea8f1970f": {
               "id": "24e71e74-958b-41ad-9597-df6ea8f1970f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -3708,7 +3708,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -3906,7 +3906,7 @@
           "events": {
             "041e768c-1e97-425a-ae54-97fe671a1401": {
               "id": "041e768c-1e97-425a-ae54-97fe671a1401",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -4453,7 +4453,7 @@
           "events": {
             "46c1dea5-6231-4c03-95e9-70712c6083af": {
               "id": "46c1dea5-6231-4c03-95e9-70712c6083af",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -5216,7 +5216,7 @@
           "events": {
             "7b6386ab-830f-47e7-bc40-b80ce8479f8f": {
               "id": "7b6386ab-830f-47e7-bc40-b80ce8479f8f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -5316,7 +5316,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -5432,7 +5432,7 @@
           "events": {
             "18793b2d-b731-429a-b037-dd3b8612ff81": {
               "id": "18793b2d-b731-429a-b037-dd3b8612ff81",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -5532,7 +5532,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -5690,7 +5690,7 @@
           "events": {
             "b2f5871e-4925-4f1a-9b3f-4fb925dab421": {
               "id": "b2f5871e-4925-4f1a-9b3f-4fb925dab421",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -5779,7 +5779,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -5885,7 +5885,7 @@
           "events": {
             "2ca2fa41-3e18-4d82-a5ec-883ec2d0dc3a": {
               "id": "2ca2fa41-3e18-4d82-a5ec-883ec2d0dc3a",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -5974,7 +5974,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -6143,7 +6143,7 @@
           "events": {
             "65511f81-829a-4a46-ae51-38b6e57f7d53": {
               "id": "65511f81-829a-4a46-ae51-38b6e57f7d53",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -6742,7 +6742,7 @@
           "events": {
             "36a9cd83-1387-4b12-8d49-dbdf7a52a8af": {
               "id": "36a9cd83-1387-4b12-8d49-dbdf7a52a8af",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -7345,7 +7345,7 @@
           "events": {
             "6d811ac8-22e2-4d83-ad72-3e802eb3cc4a": {
               "id": "6d811ac8-22e2-4d83-ad72-3e802eb3cc4a",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -7948,7 +7948,7 @@
           "events": {
             "17386de4-5bdb-45db-b5a9-6589274343ec": {
               "id": "17386de4-5bdb-45db-b5a9-6589274343ec",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -9473,7 +9473,7 @@
           "events": {
             "4f24f822-bb64-4c35-aecd-f4be80221638": {
               "id": "4f24f822-bb64-4c35-aecd-f4be80221638",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -9607,7 +9607,7 @@
           "events": {
             "53cb17ec-c6ca-47a7-b90d-2af58a65fa41": {
               "id": "53cb17ec-c6ca-47a7-b90d-2af58a65fa41",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -9640,7 +9640,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -9669,7 +9669,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -9766,7 +9766,7 @@
           "events": {
             "5874a471-c53b-48c2-8183-20f2d254d939": {
               "id": "5874a471-c53b-48c2-8183-20f2d254d939",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -9799,7 +9799,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -9828,7 +9828,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -9904,7 +9904,7 @@
           "events": {
             "6282ff75-fc11-42f8-ae30-b7279e0fc5e6": {
               "id": "6282ff75-fc11-42f8-ae30-b7279e0fc5e6",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -9937,7 +9937,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -9966,7 +9966,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -10042,7 +10042,7 @@
           "events": {
             "60387d2d-372b-4364-b5e0-300fea176484": {
               "id": "60387d2d-372b-4364-b5e0-300fea176484",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -10084,7 +10084,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
+                        "name": "界面返回音",
                         "params": [],
                         "returns": []
                       }
@@ -10113,7 +10113,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -10261,7 +10261,7 @@
           "events": {
             "396d3f93-d0fb-4bb1-b9c9-07b44f41ae20": {
               "id": "396d3f93-d0fb-4bb1-b9c9-07b44f41ae20",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -10383,7 +10383,7 @@
           "events": {
             "e8485fce-2cf6-4eae-9b46-a97604a0be76": {
               "id": "e8485fce-2cf6-4eae-9b46-a97604a0be76",
-              "name": "Advance or restore the dialogue",
+              "name": "推进对话或还原对话",
               "graph": {
                 "nodes": {
                   "head": {
@@ -10493,7 +10493,7 @@
             },
             "1e7f25a2-3a04-413d-9adc-b24eb1a7c958": {
               "id": "1e7f25a2-3a04-413d-9adc-b24eb1a7c958",
-              "name": "Open the log",
+              "name": "打开记录",
               "graph": {
                 "nodes": {
                   "head": {
@@ -10542,7 +10542,7 @@
             },
             "249cb93d-8446-4d0a-b0da-cfaabf791e31": {
               "id": "249cb93d-8446-4d0a-b0da-cfaabf791e31",
-              "name": "Hide the dialogue",
+              "name": "隐藏对话",
               "graph": {
                 "nodes": {
                   "head": {
@@ -10779,7 +10779,7 @@
           "events": {
             "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3": {
               "id": "0d2f6a41-5b7c-4f18-9c0e-6a4d18b2e7c3",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "init.get": {
@@ -10986,7 +10986,7 @@
           "events": {
             "68339d15-c353-44a9-9d50-993702b978d6": {
               "id": "68339d15-c353-44a9-9d50-993702b978d6",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11235,7 +11235,7 @@
           "events": {
             "e6c6bcb4-b979-43a4-bbf6-241ed0aeeda2": {
               "id": "e6c6bcb4-b979-43a4-bbf6-241ed0aeeda2",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11484,7 +11484,7 @@
           "events": {
             "6078ea6a-fb8d-4436-843c-3e143f627bc4": {
               "id": "6078ea6a-fb8d-4436-843c-3e143f627bc4",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11555,7 +11555,7 @@
           "events": {
             "0d4d70ac-b137-4a0a-b976-f3be71efeb48": {
               "id": "0d4d70ac-b137-4a0a-b976-f3be71efeb48",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11626,7 +11626,7 @@
           "events": {
             "9d30f1bf-f6a0-4126-8766-647f0928afcb": {
               "id": "9d30f1bf-f6a0-4126-8766-647f0928afcb",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11697,7 +11697,7 @@
           "events": {
             "dbe6e460-24ec-4344-93a9-01047ef77c7d": {
               "id": "dbe6e460-24ec-4344-93a9-01047ef77c7d",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11767,7 +11767,7 @@
           "events": {
             "85f64114-1689-4312-b02b-f0f6c87994fb": {
               "id": "85f64114-1689-4312-b02b-f0f6c87994fb",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11901,7 +11901,7 @@
           "events": {
             "fdd022b3-3347-47a3-86fc-55edc03e4782": {
               "id": "fdd022b3-3347-47a3-86fc-55edc03e4782",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -11934,7 +11934,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -11963,7 +11963,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -12060,7 +12060,7 @@
           "events": {
             "49d6d536-f9a6-4f0f-91c0-a9194c336fbc": {
               "id": "49d6d536-f9a6-4f0f-91c0-a9194c336fbc",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -12093,7 +12093,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -12122,7 +12122,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -12198,7 +12198,7 @@
           "events": {
             "9d17a173-9a04-4dde-a38a-24989d433ccf": {
               "id": "9d17a173-9a04-4dde-a38a-24989d433ccf",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -12231,7 +12231,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -12260,7 +12260,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -12336,7 +12336,7 @@
           "events": {
             "786b65bb-9313-42ff-a0a1-03bcd4965bc8": {
               "id": "786b65bb-9313-42ff-a0a1-03bcd4965bc8",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -12378,7 +12378,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
+                        "name": "界面返回音",
                         "params": [],
                         "returns": []
                       }
@@ -12407,7 +12407,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -12619,7 +12619,7 @@
           "events": {
             "a7c32230-11aa-4b4d-9309-08c169602a45": {
               "id": "a7c32230-11aa-4b4d-9309-08c169602a45",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -12653,7 +12653,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -12682,7 +12682,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -12758,7 +12758,7 @@
           "events": {
             "a1a0e2ea-6c1b-4034-ac33-9ce70c9952d0": {
               "id": "a1a0e2ea-6c1b-4034-ac33-9ce70c9952d0",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -12958,7 +12958,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -12987,7 +12987,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -13283,7 +13283,7 @@
           "events": {
             "2275f95b-b3ea-4e44-8551-6ebe72eeb110": {
               "id": "2275f95b-b3ea-4e44-8551-6ebe72eeb110",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -13316,7 +13316,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -13345,7 +13345,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -13421,7 +13421,7 @@
           "events": {
             "3484c6dd-e516-4a84-a133-89efb6fd1f7e": {
               "id": "3484c6dd-e516-4a84-a133-89efb6fd1f7e",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -13454,7 +13454,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -13483,7 +13483,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -13559,7 +13559,7 @@
           "events": {
             "8ac9d557-b711-4510-8d9f-e4a9c35d2b81": {
               "id": "8ac9d557-b711-4510-8d9f-e4a9c35d2b81",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -13610,7 +13610,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -13639,7 +13639,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -13891,7 +13891,7 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -14111,7 +14111,7 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -14227,7 +14227,7 @@
           "events": {
             "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a": {
               "id": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e7a",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -14304,7 +14304,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
+                        "name": "界面返回音",
                         "params": [],
                         "returns": []
                       }
@@ -14322,7 +14322,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -14582,7 +14582,7 @@
           "events": {
             "b1a7c0de-0001-4a10-9f01-0a1b2c3d4e5f": {
               "id": "b1a7c0de-0001-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -14714,7 +14714,7 @@
           "events": {
             "a5e0c0de-0002-4a10-9f01-0a1b2c3d4e5f": {
               "id": "a5e0c0de-0002-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -14857,7 +14857,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -15190,7 +15190,7 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "Init",
+              "name": "初始化",
               "graph": {
                 "nodes": {
                   "af0893d4-d48d-4d25-bc67-17f5bb6f013d": {
@@ -15258,7 +15258,7 @@
             },
             "v03222618-0000-4a10-9f01-0a1b2c3d4e5f": {
               "id": "v03222618-0000-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -15441,7 +15441,7 @@
           "events": {
             "init": {
               "id": "init",
-              "name": "Init",
+              "name": "初始化",
               "graph": {
                 "nodes": {
                   "95bca7ac-f384-4884-822d-075366221676": {
@@ -15509,7 +15509,7 @@
             },
             "vd1de46e5-0000-4a10-9f01-0a1b2c3d4e5f": {
               "id": "vd1de46e5-0000-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -15669,7 +15669,7 @@
           "events": {
             "c9e0c0de-0003-4a10-9f01-0a1b2c3d4e5f": {
               "id": "c9e0c0de-0003-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -15731,7 +15731,7 @@
           "events": {
             "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19": {
               "id": "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19",
-              "name": "Layer 1",
+              "name": "关闭查看器或离开页面",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -15747,14 +15747,49 @@
                       }
                     }
                   },
+                  "showing": {
+                    "id": "showing",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "idle": {
+                    "id": "idle",
+                    "type": "blueprint.collection.arrayIsEmpty",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "gate": {
+                    "id": "gate",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
                   "nClear": {
                     "id": "nClear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 140,
-                        "y": 0
+                        "x": 560,
+                        "y": -120
                       }
                     }
                   },
@@ -15764,8 +15799,61 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
+                        "x": 840,
+                        "y": -120
+                      }
+                    }
+                  },
+                  "none": {
+                    "id": "none",
+                    "type": "blueprint.data.jsonMakeArray",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
                         "x": 560,
-                        "y": 0
+                        "y": 260
+                      }
+                    }
+                  },
+                  "forget": {
+                    "id": "forget",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 120
+                      }
+                    }
+                  },
+                  "viewer": {
+                    "id": "viewer",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 120
                       }
                     }
                   }
@@ -15775,6 +15863,36 @@
                     "from": {
                       "nodeId": "n1",
                       "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "showing",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "idle",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "idle",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "true"
                     },
                     "to": {
                       "nodeId": "nClear",
@@ -15790,6 +15908,46 @@
                       "nodeId": "n2",
                       "port": "in"
                     }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "none",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "forget",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "viewer",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "element"
+                    }
                   }
                 ],
                 "meta": {
@@ -15802,7 +15960,13 @@
           "functions": {}
         },
         "members": {
-          "variables": {},
+          "variables": {
+            "5107c0a1-0000-4000-8000-000000000410": {
+              "id": "5107c0a1-0000-4000-8000-000000000410",
+              "name": "查看器图片",
+              "valueType": "array"
+            }
+          },
           "fields": {},
           "functions": {}
         },
@@ -15871,7 +16035,7 @@
           "events": {
             "992d40a9-6e75-4ec8-8af1-b273b080a1c5": {
               "id": "992d40a9-6e75-4ec8-8af1-b273b080a1c5",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -15913,7 +16077,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueBackHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI back cue",
+                        "name": "界面返回音",
                         "params": [],
                         "returns": []
                       }
@@ -15942,7 +16106,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -16085,7 +16249,7 @@
           "events": {
             "e1e0c0de-0007-4a10-9f01-0a1b2c3d4e5f": {
               "id": "e1e0c0de-0007-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -16118,7 +16282,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -16147,7 +16311,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -16523,7 +16687,7 @@
           "events": {
             "69df5b3e-7764-4004-ad9e-6820bc7a2557": {
               "id": "69df5b3e-7764-4004-ad9e-6820bc7a2557",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -17181,14 +17345,14 @@
           "events": {
             "b47dd155-d2ca-45d9-b1fe-f76d73d1f56d": {
               "id": "b47dd155-d2ca-45d9-b1fe-f76d73d1f56d",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
                     "id": "n1",
                     "type": "blueprint.fn.head",
                     "params": {
-                      "name": "Refresh slot"
+                      "name": "刷新存档位"
                     },
                     "meta": {
                       "editorLayout": {
@@ -17556,7 +17720,7 @@
                     "params": {
                       "fnRef": "fn:5107c0a1-0000-4000-8000-000000000010:n1",
                       "__fnSignatureSnapshot": {
-                        "name": "Refresh slot",
+                        "name": "刷新存档位",
                         "params": [],
                         "returns": []
                       }
@@ -17985,7 +18149,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -18136,7 +18300,7 @@
                     "params": {
                       "fnRef": "fn:5107c0a1-0000-4000-8000-000000000010:n1",
                       "__fnSignatureSnapshot": {
-                        "name": "Refresh slot",
+                        "name": "刷新存档位",
                         "params": [],
                         "returns": []
                       }
@@ -18154,7 +18318,7 @@
                     "params": {
                       "fnRef": "fn:5107c0a1-0000-4000-8000-000000000010:n1",
                       "__fnSignatureSnapshot": {
-                        "name": "Refresh slot",
+                        "name": "刷新存档位",
                         "params": [],
                         "returns": []
                       }
@@ -19581,7 +19745,7 @@
           "events": {
             "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f": {
               "id": "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -19817,7 +19981,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -20206,7 +20370,7 @@
           "events": {
             "5107c0a1-0000-4000-8000-000000000211": {
               "id": "5107c0a1-0000-4000-8000-000000000211",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -20294,7 +20458,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -20323,7 +20487,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -20538,7 +20702,7 @@
           "events": {
             "5b0dddaf-9d21-4cd3-8161-f35251fe645d": {
               "id": "5b0dddaf-9d21-4cd3-8161-f35251fe645d",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -20558,7 +20722,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -20754,7 +20918,7 @@
           "events": {
             "03bf596d-fbc7-4250-a970-5e5479743c73": {
               "id": "03bf596d-fbc7-4250-a970-5e5479743c73",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -20774,7 +20938,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -20964,7 +21128,7 @@
           "events": {
             "c6a6b142-aace-42fb-804d-365bf79aa59e": {
               "id": "c6a6b142-aace-42fb-804d-365bf79aa59e",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -20984,7 +21148,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -21289,7 +21453,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -21555,7 +21719,7 @@
           "events": {
             "fe35d905-7e0e-4886-9420-941684515827": {
               "id": "fe35d905-7e0e-4886-9420-941684515827",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -21575,7 +21739,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -21880,7 +22044,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -22146,7 +22310,7 @@
           "events": {
             "e491902b-b978-4309-860d-24186d6bdef0": {
               "id": "e491902b-b978-4309-860d-24186d6bdef0",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -22166,7 +22330,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -22471,7 +22635,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -22737,7 +22901,7 @@
           "events": {
             "2936df43-73be-4666-8c07-e4a5d2ba60be": {
               "id": "2936df43-73be-4666-8c07-e4a5d2ba60be",
-              "name": "Layer 1",
+              "name": "图层 1",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -22757,7 +22921,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -23062,7 +23226,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI hover cue",
+                        "name": "界面悬停音",
                         "params": [],
                         "returns": []
                       }
@@ -23323,12 +23487,13 @@
         },
         "graphs": {
           "eventIds": [
-            "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142"
+            "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142",
+            "46decee7-87e4-4174-85ef-b81957fa78db"
           ],
           "events": {
             "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142": {
               "id": "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142",
-              "name": "Fill",
+              "name": "填充列表",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -23771,6 +23936,452 @@
                   "graphKind": "event"
                 }
               }
+            },
+            "46decee7-87e4-4174-85ef-b81957fa78db": {
+              "id": "46decee7-87e4-4174-85ef-b81957fa78db",
+              "name": "打开图片",
+              "graph": {
+                "nodes": {
+                  "c1": {
+                    "id": "c1",
+                    "type": "blueprint.event.head.itemClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "unlocked": {
+                    "id": "unlocked",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "unlocked"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "gate": {
+                    "id": "gate",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "sfx.open": {
+                    "id": "sfx.open",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "界面确认音",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "artwork": {
+                    "id": "artwork",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "id"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "pictures": {
+                    "id": "pictures",
+                    "type": "narraleaf.gallery.getVariants",
+                    "params": {
+                      "onlyUnlocked": true,
+                      "__inlineLiteralPins": [
+                        "onlyUnlocked"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "all": {
+                    "id": "all",
+                    "type": "blueprint.data.memo",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "shownId": {
+                    "id": "shownId",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "coverVariantId"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "shownAt": {
+                    "id": "shownAt",
+                    "type": "blueprint.collection.arrayFind",
+                    "params": {
+                      "key": "id",
+                      "__inlineLiteralPins": [
+                        "key"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "from": {
+                    "id": "from",
+                    "type": "blueprint.data.memo",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "fromShown": {
+                    "id": "fromShown",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "beforeShown": {
+                    "id": "beforeShown",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {
+                      "start": 0,
+                      "__inlineLiteralPins": [
+                        "start"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 440
+                      }
+                    }
+                  },
+                  "order": {
+                    "id": "order",
+                    "type": "blueprint.collection.arrayConcat",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1960,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "keep": {
+                    "id": "keep",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "viewerRef": {
+                    "id": "viewerRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "open": {
+                    "id": "open",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "c1",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "unlocked",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "true"
+                    },
+                    "to": {
+                      "nodeId": "sfx.open",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "sfx.open",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "pictures",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "artwork",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "pictures",
+                      "port": "artworkId"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictures",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "all",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictures",
+                      "port": "entries"
+                    },
+                    "to": {
+                      "nodeId": "all",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "from",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "shownAt",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "shownId",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "shownAt",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "shownAt",
+                      "port": "index"
+                    },
+                    "to": {
+                      "nodeId": "from",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "from",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "keep",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "fromShown",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "from",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "fromShown",
+                      "port": "start"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictures",
+                      "port": "count"
+                    },
+                    "to": {
+                      "nodeId": "fromShown",
+                      "port": "end"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "beforeShown",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "from",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "beforeShown",
+                      "port": "end"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "fromShown",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "order",
+                      "port": "a"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "beforeShown",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "order",
+                      "port": "b"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "order",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "keep",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "keep",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "open",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "viewerRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "open",
+                      "port": "element"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
             }
           },
           "functionIds": [],
@@ -23799,7 +24410,7 @@
           "events": {
             "59d73792-f362-4f75-907d-bbb2791abad0": {
               "id": "59d73792-f362-4f75-907d-bbb2791abad0",
-              "name": "Fill",
+              "name": "填充列表",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -24245,7 +24856,7 @@
             },
             "02e2f23b-bcd2-4acb-b076-8c26209180f8": {
               "id": "02e2f23b-bcd2-4acb-b076-8c26209180f8",
-              "name": "Open",
+              "name": "打开",
               "graph": {
                 "nodes": {
                   "c1": {
@@ -24289,7 +24900,7 @@
                     "params": {
                       "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
                       "__fnSignatureSnapshot": {
-                        "name": "UI confirm cue",
+                        "name": "界面确认音",
                         "params": [],
                         "returns": []
                       }
@@ -24456,7 +25067,7 @@
           "events": {
             "c26df84b-5454-484c-8689-93ef501dda79": {
               "id": "c26df84b-5454-484c-8689-93ef501dda79",
-              "name": "Fill",
+              "name": "填充列表",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -24902,7 +25513,7 @@
             },
             "26fa46f5-6b11-4570-99dd-9b8be0fb9d82": {
               "id": "26fa46f5-6b11-4570-99dd-9b8be0fb9d82",
-              "name": "Open",
+              "name": "打开",
               "graph": {
                 "nodes": {
                   "c1": {
@@ -25041,7 +25652,7 @@
           "events": {
             "c6a39cdb-a3dc-4231-a168-af454f398917": {
               "id": "c6a39cdb-a3dc-4231-a168-af454f398917",
-              "name": "Fill",
+              "name": "填充列表",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -25487,7 +26098,7 @@
             },
             "77c2ea5a-3f48-4365-805b-c6f14c092081": {
               "id": "77c2ea5a-3f48-4365-805b-c6f14c092081",
-              "name": "Open",
+              "name": "打开",
               "graph": {
                 "nodes": {
                   "c1": {
@@ -25591,6 +26202,600 @@
                     "to": {
                       "nodeId": "play",
                       "port": "assetId"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "feaa6f24-fc87-4c21-9893-cc8f6e65be68": {
+        "id": "feaa6f24-fc87-4c21-9893-cc8f6e65be68",
+        "name": "查看器",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+          "elementId": "5107c0a1-0000-4000-8000-000000000400"
+        },
+        "graphs": {
+          "eventIds": [
+            "859d8f13-1c65-451d-a515-4f8687f382f7",
+            "6ee3b57e-91da-4e06-b1fe-3183618391d1"
+          ],
+          "events": {
+            "859d8f13-1c65-451d-a515-4f8687f382f7": {
+              "id": "859d8f13-1c65-451d-a515-4f8687f382f7",
+              "name": "下一张图片或关闭",
+              "graph": {
+                "nodes": {
+                  "click": {
+                    "id": "click",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "showing": {
+                    "id": "showing",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "rest": {
+                    "id": "rest",
+                    "type": "blueprint.collection.arrayRemoveAt",
+                    "params": {
+                      "index": 0,
+                      "__inlineLiteralPins": [
+                        "index"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "drop": {
+                    "id": "drop",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "left": {
+                    "id": "left",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "done": {
+                    "id": "done",
+                    "type": "blueprint.collection.arrayIsEmpty",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "gate": {
+                    "id": "gate",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "selfRef": {
+                    "id": "selfRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": -260
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": -120
+                      }
+                    }
+                  },
+                  "queue": {
+                    "id": "queue",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "next": {
+                    "id": "next",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {
+                      "start": 0,
+                      "end": 1,
+                      "__inlineLiteralPins": [
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "pictureRef": {
+                    "id": "pictureRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000401",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "show": {
+                    "id": "show",
+                    "type": "blueprint.element.list.setItems",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 120
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "click",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "drop",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "showing",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "rest",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "rest",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "drop",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "drop",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "left",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "done",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "done",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "true"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "selfRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "queue",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "next",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "next",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "items"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictureRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "list"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "6ee3b57e-91da-4e06-b1fe-3183618391d1": {
+              "id": "6ee3b57e-91da-4e06-b1fe-3183618391d1",
+              "name": "右键关闭",
+              "graph": {
+                "nodes": {
+                  "click": {
+                    "id": "click",
+                    "type": "blueprint.event.head.rightClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "none": {
+                    "id": "none",
+                    "type": "blueprint.data.jsonMakeArray",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "forget": {
+                    "id": "forget",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "selfRef": {
+                    "id": "selfRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "click",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "none",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "forget",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "selfRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "element"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "0eaeedae-9657-4664-a951-2bd253b589e1": {
+        "id": "0eaeedae-9657-4664-a951-2bd253b589e1",
+        "name": "图片",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+          "elementId": "5107c0a1-0000-4000-8000-000000000401"
+        },
+        "graphs": {
+          "eventIds": [
+            "f98afaff-834f-4275-8fb7-fa19c9ac39e6"
+          ],
+          "events": {
+            "f98afaff-834f-4275-8fb7-fa19c9ac39e6": {
+              "id": "f98afaff-834f-4275-8fb7-fa19c9ac39e6",
+              "name": "填充列表",
+              "graph": {
+                "nodes": {
+                  "n1": {
+                    "id": "n1",
+                    "type": "blueprint.event.head.init",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "queue": {
+                    "id": "queue",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "head": {
+                    "id": "head",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {
+                      "start": 0,
+                      "end": 1,
+                      "__inlineLiteralPins": [
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "selfRef": {
+                    "id": "selfRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000401",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "fill": {
+                    "id": "fill",
+                    "type": "blueprint.element.list.setItems",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "n1",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "queue",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "head",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "head",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "items"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "selfRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "list"
                     }
                   }
                 ],
@@ -26301,12 +27506,18 @@
       },
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000340": {
         "blueprintId": "57e76c84-c97b-47b7-8c2b-0e05ac7e6175"
+      },
+      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000400": {
+        "blueprintId": "feaa6f24-fc87-4c21-9893-cc8f6e65be68"
+      },
+      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000401": {
+        "blueprintId": "0eaeedae-9657-4664-a951-2bd253b589e1"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-05T18:35:06.564Z"
+    "updatedAt": "2026-09-21T05:40:18.996Z"
   }
 }

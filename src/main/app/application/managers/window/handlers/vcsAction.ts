@@ -88,9 +88,10 @@ import { IPCHandler } from "./IPCHandler";
  *    `requireWindowProjectOrWriteGrant`: the window's own project if it has one, and otherwise only a
  *    folder the window was granted to write.
  *  - {@link VcsPublishProjectHandler} is also asked by the launcher's server tab, about a project the
- *    wizard has just made for it, again from a window with no project. From such a window it takes the
- *    payload's project, which the manager holds to having no server yet; from a window that has a
- *    project, only that one - see its own note.
+ *    wizard has just made for it, again from a window with no project. It is bounded the same way,
+ *    and the launcher holds its write grant because the wizard's launch handler hands it one on the
+ *    folder the wizard reported creating - see its own note. The manager further holds a publish from
+ *    such a window to a project with no server yet.
  *
  * # Whose credential a request to a server spends
  *
@@ -712,14 +713,21 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
 /**
  * Put a project on to a server, in the three steps that make it reachable.
  *
- * **Only half bounded to the window's project**, unlike every other handler here. Making a project
- * on a server starts in the launcher: its server tab has the wizard write the project on this disk
- * and then sends it, from a window that has no project of its own. An assertion that applied to
- * every window would refuse that, which is the whole of one of the two ways a project reaches a
- * server.
+ * **Bounded the way `vcs.initRepository` is, not the way the rest of this file is.** Making a
+ * project on a server starts in the launcher: its server tab has the wizard write the project on
+ * this disk and then sends it, from a window that has no project of its own. An assertion that
+ * applied to every window would refuse that, which is the whole of one of the two ways a project
+ * reaches a server.
  *
- * So a window with no project may name one, and a window with a project may name only its own. The
- * two are told apart to the manager as well: the launcher's publish is its own act - the author
+ * So a window with a project may name only its own, and a window with none may name only a
+ * directory it holds a write grant over (`requireWindowProjectOrWriteGrant`). The launcher never
+ * wrote the project - the wizard did, through its own grant, and that grant dies with the wizard -
+ * so the wizard's launch handler hands the launcher a grant on exactly the folder it created, and
+ * only when the wizard was opened to put a project on a server. Without that, any window with no
+ * project could name any repository on this disk that is not on a server yet, and the manager would
+ * register it, point it at the author's server and send its whole history.
+ *
+ * The two are told apart to the manager as well: the launcher's publish is its own act - the author
  * picked that server and asked for a project on it - and is held to a project with no server yet,
  * while a project's window has the sign-in question put, even after a no. See the note at the top
  * of this file.
@@ -732,13 +740,15 @@ export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublish
         window: AppWindow,
         { projectPath, remoteOrigin, name }: IPCEvents[IPCEventType.vcsPublishProject]["data"],
     ): Promise<RequestStatus<VcsPublishOutcome>> {
-        return this.tryUse(() => {
+        return this.tryUse(async () => {
             // A project's own window publishes that project and nothing else. A window with none -
             // the launcher's server tab - publishes the project the wizard has just made for the
-            // server the author picked there, which the manager holds to having no server yet.
+            // server the author picked there, which it was handed a grant on, and which the manager
+            // holds to having no server yet.
             const own = windowProjectPath(window);
+            const named = await requireWindowProjectOrWriteGrant(window, projectPath);
             return window.app.getVcsManager().publishProject(
-                own === null ? projectPath : requireWindowProject(window, projectPath),
+                named,
                 remoteOrigin,
                 name,
                 { newProject: own === null },

@@ -1,4 +1,5 @@
 import path from "path";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
@@ -6,6 +7,22 @@ import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+
+/**
+ * The folders each wizard window reported creating, as this handler checked them.
+ *
+ * Kept per window and for its lifetime only, which is what a `WeakMap` keyed by the window gives.
+ * Read by the wizard's launch handler when the window closes: a wizard opened to put a project on a
+ * server hands the folder to the window that opened it, and only a folder recorded here - one the
+ * wizard held a write grant over and that held a project by the time it said so - is handed on.
+ */
+const createdByWizard = new WeakMap<AppWindow, Set<string>>();
+
+/** Whether this wizard window reported creating the project at this path. */
+export function wizardCreatedProject(window: AppWindow, projectPath: unknown): boolean {
+    if (typeof projectPath !== "string" || projectPath.length === 0) return false;
+    return createdByWizard.get(window)?.has(normalizeProjectPath(path.resolve(projectPath))) ?? false;
+}
 
 /**
  * The wizard reporting a project it has just written, so that it opens as Studio's own.
@@ -43,6 +60,9 @@ export class ProjectWizardCreatedHandler extends IPCHandler<IPCEventType.project
         if (!await holdsProjectConfig(resolved)) {
             return this.failed(new Error(`No project configuration was found in ${resolved}`));
         }
+        const created = createdByWizard.get(window) ?? new Set<string>();
+        created.add(normalizeProjectPath(resolved));
+        createdByWizard.set(window, created);
         const recorded = window.app.projectTrustManager.recordArrival(resolved, "created", new Date().toISOString());
         window.app.logger.info("[Trust] Studio created", resolved);
         return this.success({ recorded });
