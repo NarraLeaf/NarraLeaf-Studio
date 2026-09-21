@@ -533,6 +533,23 @@ export function readUnlockedVariantIds(value: unknown, artworks: GalleryArtwork[
     return unlocked;
 }
 
+/**
+ * The member an unlocked entry is shown by: its cover once the player has unlocked the cover, and
+ * otherwise the first member they have unlocked.
+ *
+ * An entry counts as unlocked as soon as *any* of its members is, so the authored cover alone is
+ * the wrong answer: a player who has reached only the second differential would find the first -
+ * a picture they have never seen - on the grid cell, and at full size in a viewer that opens on
+ * the cell's picture. The same holds for an album's cover track.
+ */
+export function resolveShownVariant(artwork: GalleryArtwork, unlocked: Set<string>): GalleryVariant | null {
+    const cover = resolveCoverVariant(artwork);
+    if (cover && unlocked.has(cover.id)) {
+        return cover;
+    }
+    return artwork.variants.find(variant => unlocked.has(variant.id)) ?? cover;
+}
+
 /** True when any variant of the artwork is unlocked. */
 export function isArtworkUnlocked(artwork: GalleryArtwork, unlocked: Set<string>): boolean {
     return artwork.variants.some(variant => unlocked.has(variant.id));
@@ -564,20 +581,27 @@ export type GalleryEntryView = {
     locked: boolean;
     variantCount: number;
     unlockedCount: number;
-    /** Cover art while unlocked, the locked placeholder otherwise; null when neither exists. */
+    /**
+     * The shown member's art while unlocked (see `resolveShownVariant`), the locked placeholder
+     * otherwise; null when neither exists.
+     */
     image: GalleryImageAssetValue | null;
     /** Same asset as `image` in bare-string form, for writes to `imageFill.assetId`. */
     assetId: string;
     thumbnail: GalleryImageAssetValue | null;
     thumbnailAssetId: string;
+    /**
+     * The member `image` is drawn from while unlocked, so a viewer can find it among the entry's
+     * variants and start there. The authored cover while locked.
+     */
     coverVariantId: string;
     /**
-     * `music` / `voice`: the cover member's clip, ready for Play Sound. Empty
+     * `music` / `voice`: the shown member's clip, ready for Play Sound. Empty
      * while locked, like the art.
      */
     audioAssetId: string;
     durationSec: number;
-    /** `voice`: the cover member's unit id, for Resolve Voice Asset. */
+    /** `voice`: the shown member's unit id, for Resolve Voice Asset. */
     voiceUnitId: string;
     /** `scene`: where Start Game should replay from. Empty while locked. */
     storyId: string;
@@ -648,7 +672,7 @@ export function projectGalleryEntries(
         if (!isUnlocked && (artwork.hidden || options.onlyUnlocked)) {
             continue;
         }
-        const cover = resolveCoverVariant(artwork);
+        const cover = isUnlocked ? resolveShownVariant(artwork, unlocked) : resolveCoverVariant(artwork);
         const assetId = isUnlocked
             ? cover?.imageAssetId ?? null
             : lockedPlaceholderAssetId(artwork, store.settings);
