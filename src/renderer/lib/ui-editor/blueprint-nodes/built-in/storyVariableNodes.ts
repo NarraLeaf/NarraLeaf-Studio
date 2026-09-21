@@ -24,6 +24,7 @@ import type { StoryVariableRuntimeAccess } from "../../runtime/types";
 import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { savedVariableStateKey } from "../../blueprint-runtime/blueprintStateWrites";
 
 type ExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
@@ -140,6 +141,9 @@ const savedGetNode: BlueprintNodeDef = {
     inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
     execute: ctx => {
         const id = requireVariableId(ctx, "savedVariableId", "Saved variable");
+        // A value binding that reaches this through a Fn shows the value; it has to hear the next
+        // write to it, from a screen or from the story.
+        ctx.valueExecution?.trackState?.(savedVariableStateKey(id));
         const storyRuntime = ctx.hostAdapter.storyRuntime;
         if (storyRuntime) {
             return { nextPort: "next", outputValues: { value: storyRuntime.savedVar.get(id), found: true } };

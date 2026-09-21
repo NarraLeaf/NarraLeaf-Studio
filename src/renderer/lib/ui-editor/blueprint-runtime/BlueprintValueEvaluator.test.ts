@@ -126,6 +126,7 @@ describe("Blueprint Value evaluator", () => {
             returned: true,
             value: "literal",
             dependencies: [],
+            stateReads: [],
         });
     });
 
@@ -247,6 +248,7 @@ describe("Blueprint Value evaluator", () => {
             returned: true,
             value: "From B",
             dependencies: [{ surfaceId: "surface", elementId: "text-b", propPath: "props.text" }],
+            stateReads: [],
         });
     });
 
@@ -273,6 +275,7 @@ describe("Blueprint Value evaluator", () => {
             returned: true,
             value: 42,
             dependencies: [{ surfaceId: "surface", elementId: "slider-b", propPath: "props.value" }],
+            stateReads: [],
         });
     });
 

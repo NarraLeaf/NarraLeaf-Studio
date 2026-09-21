@@ -1,4 +1,10 @@
 import { isUnchangedStateWrite, SurfaceStateStore } from "./SurfaceStateStore";
+import {
+    announceBlueprintStateWrite,
+    EVERY_PERSISTENT_STATE_KEY,
+    isStateWriteNoticeable,
+    persistentStateKey,
+} from "./blueprintStateWrites";
 
 type ScopeMapListener = () => void;
 
@@ -85,12 +91,18 @@ export class ScopeStoreBridge {
     }
 
     private applyPersistenceLocally(key: string, value: unknown): void {
+        const previous = this.persistenceValues.get(key);
         if (value === undefined) {
             this.persistenceValues.delete(key);
         } else {
             this.persistenceValues.set(key, value);
         }
         this.notifyPersistence();
+        // Whoever wrote it - a blueprint, a story line, the game itself - a value binding that read
+        // this key through `Get Persistent` shows it.
+        if (isStateWriteNoticeable(previous, value)) {
+            announceBlueprintStateWrite(persistentStateKey(key));
+        }
     }
 
     private async writePersistenceThrough(key: string, value: unknown): Promise<void> {
@@ -111,6 +123,7 @@ export class ScopeStoreBridge {
         if (!adapter) {
             this.persistenceValues.clear();
             this.notifyPersistence();
+            announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
             return;
         }
         void this.reloadPersistenceSnapshot().catch(() => undefined);
@@ -133,6 +146,7 @@ export class ScopeStoreBridge {
             }
         }
         this.notifyPersistence();
+        announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
     }
 
     public async persistenceGetAsync(key: string): Promise<unknown> {
@@ -181,6 +195,7 @@ export class ScopeStoreBridge {
         this.persistenceValues.clear();
         this.notifyGlobals();
         this.notifyPersistence();
+        announceBlueprintStateWrite(EVERY_PERSISTENT_STATE_KEY);
     }
 
     private notifyGlobals(): void {

@@ -56,6 +56,13 @@ export type BlueprintDebugEvent =
            * the global blueprint, which belongs to no surface.
            */
           surfaceId?: string;
+          /**
+           * Present when the graph was stopped for running its whole step budget without once
+           * waiting - a loop that would otherwise have held the window forever. The node it was
+           * stopped at and the event head the run started from, by the English names their
+           * definitions declare, so a host can word the stop itself and name both.
+           */
+          stepLimit?: { steps: number; nodeName: string; headName: string };
       };
 
 export type BlueprintDebugEventLogLevel = "error" | "warning" | "log" | "verbose";
