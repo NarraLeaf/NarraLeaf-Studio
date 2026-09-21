@@ -28,6 +28,10 @@ import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
 import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHost";
+import {
+    describeAssetResolutionFailure,
+    type AssetResolutionFailure,
+} from "@/lib/ui-editor/runtime/assetResolution";
 import type { Translator } from "@shared/i18n";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -282,6 +286,52 @@ export function runtimePluginFailureIssue(
         pluginName: failure.pluginName,
         message: t("devMode.issues.pluginEntryFailed", { plugin: failure.pluginName, error: failure.error }),
     };
+}
+
+/**
+ * The asset failures a ledger holds, as issues: one per distinct sentence on each surface.
+ *
+ * The ledger has one entry per failing drawing, and a gallery whose twelve cells are drawn from one
+ * template element fails twelve times in the same way. Collapsing here - on exactly the identity
+ * {@link runtimeIssueKey} gives the list - is what keeps "one issue per element, property and failure"
+ * true, and what lets the caller retire an issue by its key once no drawing is failing that way.
+ *
+ * An error rather than a warning: the author placed a picture and the player gets a blank space, so
+ * what ships is not what was made - the same reason a story row naming a missing image is an error.
+ */
+export function assetResolutionIssues(
+    failures: readonly AssetResolutionFailure[],
+    assetNames: Readonly<Record<string, string>> | undefined,
+    t: Translator["t"],
+): GameAppRuntimeIssue[] {
+    const issues = new Map<string, GameAppRuntimeIssue>();
+    for (const failure of failures) {
+        const message = describeAssetResolutionFailure(failure, assetNames, t);
+        const key = `${failure.site.surfaceId}\u0000${message}`;
+        if (!issues.has(key)) {
+            issues.set(key, { level: "error", origin: "interface", surfaceId: failure.site.surfaceId, message });
+        }
+    }
+    return [...issues.values()];
+}
+
+/**
+ * Take `retired` out of the list and put `arrived` in, the newest at the front.
+ *
+ * For a reporter that knows when a problem has ENDED, which the others do not: a row that threw
+ * cannot un-throw, but a picture that failed can be drawn after all. Retired by key rather than by
+ * entry id, so an entry that collapsed a repeat into itself is still found.
+ */
+export function reconcileRuntimeIssues(
+    current: readonly LocatedRuntimeIssue[],
+    retired: ReadonlySet<string>,
+    arrived: readonly LocatedRuntimeIssue[],
+): LocatedRuntimeIssue[] {
+    let next = retired.size > 0 ? current.filter(issue => !retired.has(runtimeIssueKey(issue))) : [...current];
+    for (const issue of arrived) {
+        next = appendRuntimeIssue(next, issue);
+    }
+    return next;
 }
 
 /**

@@ -59,12 +59,15 @@ import { RuntimeIssueStrip } from "./RuntimeIssueStrip";
 import { RuntimeIssuesPanel } from "./RuntimeIssuesPanel";
 import {
     appendRuntimeIssue,
+    assetResolutionIssues,
     blueprintDebugEventIssue,
     locateRuntimeIssue,
+    reconcileRuntimeIssues,
     runtimeIssueKey,
     runtimePluginFailureIssue,
     type LocatedRuntimeIssue,
 } from "./runtimeIssueModel";
+import { AssetResolutionLedger, type AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
 import { formatKeybinding } from "@/lib/workspace/services/ui/keybindingFormat";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useDevModeRuntimePlugins } from "../hooks/useDevModeRuntimePlugins";
@@ -1011,6 +1014,65 @@ export function DevModeContent(props: DevModeContentProps) {
         setAcknowledgedKeys(NO_ACKNOWLEDGED_KEYS);
         setAcknowledgedSessionError(null);
     }, [bundle?.bundleId, bundle?.revision]);
+
+    /**
+     * Pictures the running game asked for and did not get, from every widget on every surface.
+     *
+     * Kept as a ledger of failing drawings rather than appended as they come, because unlike every
+     * other report here this kind can END: a picture that failed can be drawn after all - the value
+     * bound to it changed, the page was revisited after the file came back - and an issue left behind
+     * for a picture now on screen is a report of something that is not happening. So the ledger is
+     * read whole after each change, and what it no longer holds is retired from the list.
+     */
+    const [assetLedger] = useState(() => new AssetResolutionLedger());
+    /** The keys this window last put in the list for it, which is what a retirement is measured from. */
+    const assetIssueKeysRef = useRef<ReadonlySet<string>>(new Set());
+    const translateRef = useRef(t);
+    translateRef.current = t;
+    const publishAssetIssues = useCallback((listWasCleared: boolean) => {
+        const current = bundleRef.current;
+        if (!current) {
+            return;
+        }
+        const located = assetResolutionIssues(
+            assetLedger.failures(),
+            current.storyLibrary?.assetNames,
+            translateRef.current,
+        ).map(issue => locateRuntimeIssue(current, issue, ""));
+        const previous = listWasCleared ? new Set<string>() : assetIssueKeysRef.current;
+        const next = new Map(located.map(issue => [runtimeIssueKey(issue), issue]));
+        assetIssueKeysRef.current = new Set(next.keys());
+        const retired = new Set([...previous].filter(key => !next.has(key)));
+        const arrived: LocatedRuntimeIssue[] = [];
+        for (const [key, issue] of next) {
+            if (!previous.has(key)) {
+                issueSeqRef.current += 1;
+                arrived.push({ ...issue, id: `issue-${issueSeqRef.current}` });
+            }
+        }
+        if (retired.size === 0 && arrived.length === 0) {
+            return;
+        }
+        setRuntimeIssues(list => reconcileRuntimeIssues(list, retired, arrived));
+    }, [assetLedger]);
+    const reportAssetResolution = useCallback<AssetResolutionReporter>(report => {
+        if (assetLedger.apply(report)) {
+            publishAssetIssues(false);
+        }
+    }, [assetLedger, publishAssetIssues]);
+    /**
+     * After the reset above, on the same bundle change and so after it: put back what is still
+     * failing on screen. Declared after that effect on purpose - effects run in order, and the other
+     * way round the reset would wipe this.
+     *
+     * A drawing that is still failing does not report again (nothing about it changed), so without
+     * this a hot reload - every save in Studio - would silently drop a picture that is still blank.
+     * Failures whose drawings are gone are forgotten here, like every other issue on a reload.
+     */
+    useEffect(() => {
+        assetLedger.forgetReleased();
+        publishAssetIssues(true);
+    }, [assetLedger, bundle?.bundleId, bundle?.revision, publishAssetIssues]);
     const dismissIssue = useCallback((id: string) => {
         setRuntimeIssues(previous => previous.filter(issue => issue.id !== id));
     }, []);
@@ -1757,6 +1819,7 @@ export function DevModeContent(props: DevModeContentProps) {
             disposeMessage: "Dev Mode runtime disposed",
             log,
             reportIssue,
+            reportAssetResolution,
             resolveStoryAssetUrl,
             // Dev Mode shows its interface without waiting for the story to compile and warm;
             // see GameAppHost for what that trades away.
@@ -1811,6 +1874,7 @@ export function DevModeContent(props: DevModeContentProps) {
         listPuppetBackendModules,
         reportBootProgress,
         reportIssue,
+        reportAssetResolution,
         resolveStoryAssetUrl,
         prewarmStoryAssetUrls,
         resolveWeatherClip,

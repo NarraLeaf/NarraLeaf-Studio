@@ -3,6 +3,8 @@ import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import type { AssetResolutionSite, AssetSlot } from "@/lib/ui-editor/runtime/assetResolution";
+import { useAssetResolutionReport } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import {
     getVideoPreviewRestartGeneration,
     isVideoPreviewPlaying,
@@ -57,7 +59,7 @@ function useVideoPreviewState(elementId: string, enabled: boolean): { playing: b
 }
 
 export function VideoRenderer(props: WidgetRendererProps) {
-    const { element, hostAdapter } = props;
+    const { element, hostAdapter, surface, instanceKey } = props;
     const videoProps = getVideoProps(element);
     const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -82,8 +84,42 @@ export function VideoRenderer(props: WidgetRendererProps) {
     // answer the build wrote is on this element and nowhere else.
     const sourceAssetId = useLocalizedAssetId(element, videoProps.assetId);
     const posterAssetId = useLocalizedAssetId(element, videoProps.posterAssetId);
-    const { url: sourceUrl } = useAssetObjectUrl(sourceAssetId, "video");
-    const { url: posterUrl } = useAssetObjectUrl(posterAssetId, "image");
+    const sourceAnswer = useAssetObjectUrl(sourceAssetId, "video");
+    const posterAnswer = useAssetObjectUrl(posterAssetId, "image");
+    const sourceUrl = sourceAnswer.url;
+    const posterUrl = posterAnswer.url;
+
+    /**
+     * Say what became of the clip and the poster, in a running game (the canvas mounts no reporter).
+     *
+     * The clip is also watched at the element: a grant can resolve for a file that is gone, and a
+     * clip the browser cannot decode fails there too, and in both cases the box is left empty. The
+     * poster has no load event of its own to watch - the element loads it silently - so only its
+     * lookup is reported.
+     */
+    const [sourceLoadFailedUrl, setSourceLoadFailedUrl] = useState<string | null>(null);
+    const slotSite = (slot: AssetSlot): AssetResolutionSite | null => (
+        surface
+            ? {
+                  surfaceId: surface.id,
+                  elementId: element.id,
+                  ownerName: element.name?.trim() || element.type,
+                  slot,
+                  instanceKey: instanceKey ?? "",
+              }
+            : null
+    );
+    useAssetResolutionReport(slotSite("videoClip"), {
+        requested: sourceAssetId ?? null,
+        wanted: true,
+        answer: sourceAnswer,
+        loadFailedUrl: sourceLoadFailedUrl,
+    });
+    useAssetResolutionReport(slotSite("videoPoster"), {
+        requested: posterAssetId ?? null,
+        wanted: true,
+        answer: posterAnswer,
+    });
 
     const preview = useVideoPreviewState(element.id, !isLiveHost);
     const shouldPlay = isLiveHost ? videoProps.autoplay : preview.playing;
@@ -159,6 +195,7 @@ export function VideoRenderer(props: WidgetRendererProps) {
                     onEnded={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
                     onPause={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, false)}
                     onPlay={isLiveHost ? undefined : () => setVideoPreviewPlaying(element.id, true)}
+                    onError={() => setSourceLoadFailedUrl(sourceUrl)}
                 />
             ) : null}
         </RectangleChromeRenderer>

@@ -4,6 +4,7 @@ import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import { useAssetResolutionReport } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
 import {
@@ -114,6 +115,8 @@ function assignMotionTransition(
 
 export function RectangleChromeRenderer({
     element,
+    surface,
+    instanceKey,
     children,
     hostAdapter,
     clipContent = true,
@@ -465,9 +468,41 @@ export function RectangleChromeRenderer({
     // project-wide table for a reader to enumerate. In the editor there is no map and the hook hands
     // the id straight through, where `useAssetObjectUrl` resolves the set against the live library.
     const fillAssetId = useLocalizedAssetId(element, activeFill?.assetId ?? null);
-    const { url: assetUrl } = useAssetObjectUrl(fillAssetId ?? null);
+    const assetAnswer = useAssetObjectUrl(fillAssetId ?? null);
+    const assetUrl = assetAnswer.url;
     const displayUrl = assetUrl ?? (legacyImageUrl ? legacyImageUrl : null);
     const shouldRenderImage = props.fillType === "image";
+
+    /**
+     * The asset URL the `<img>` below could not load or decode, if it failed.
+     *
+     * A URL is not a picture: a file removed from disk after its grant was minted, or bytes that are
+     * not an image, both resolve and then fail in the element. Only the asset's own URL is recorded -
+     * a legacy `backgroundImage` string standing in for it is not an asset, and its failure is not
+     * this slot's to report.
+     */
+    const [imageLoadFailedUrl, setImageLoadFailedUrl] = useState<string | null>(null);
+    const onImageError = assetUrl && displayUrl === assetUrl ? () => setImageLoadFailedUrl(assetUrl) : undefined;
+    // Only in a running game - the editor canvas mounts no reporter, and this does nothing there.
+    // Only while the fill is actually drawn: an image fill left behind under a colour fill, or one
+    // the author has hidden, cannot fail anyone.
+    useAssetResolutionReport(
+        surface
+            ? {
+                  surfaceId: surface.id,
+                  elementId: element.id,
+                  ownerName: element.name?.trim() || element.type,
+                  slot: "imageFill",
+                  instanceKey: instanceKey ?? "",
+              }
+            : null,
+        {
+            requested: fillAssetId ?? null,
+            wanted: shouldRenderImage && props.fillVisible && Boolean(activeMode),
+            answer: assetAnswer,
+            loadFailedUrl: imageLoadFailedUrl,
+        },
+    );
     const isCropEditing =
         Boolean(activeMode) &&
         activeMode !== "tile" &&
@@ -643,6 +678,7 @@ export function RectangleChromeRenderer({
                         src={displayUrl}
                         alt=""
                         draggable={false}
+                        onError={onImageError}
                         initial={false}
                         animate={cropMotionAnimate}
                         transition={imageTransition}
@@ -667,6 +703,7 @@ export function RectangleChromeRenderer({
                     src={displayUrl}
                     alt=""
                     draggable={false}
+                    onError={onImageError}
                     style={cropStaticStyle}
                 />
             );
@@ -698,6 +735,7 @@ export function RectangleChromeRenderer({
                     src={displayUrl}
                     alt=""
                     draggable={false}
+                    onError={onImageError}
                     initial={false}
                     animate={imageAnimate}
                     transition={imageTransition}
@@ -723,6 +761,7 @@ export function RectangleChromeRenderer({
                 src={displayUrl}
                 alt=""
                 draggable={false}
+                onError={onImageError}
                 style={fillStaticStyle}
             />
         );

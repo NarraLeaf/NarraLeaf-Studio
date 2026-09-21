@@ -24,6 +24,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import type { AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
 import type { GameBootProgress } from "./bootTiming";
 import type { SaveLoadOutcome } from "./saveLoad";
 
@@ -281,6 +282,20 @@ export type GameAppHost = {
      * (the packaged game — it has no editor to point into) loses nothing it had before.
      */
     reportIssue?: (issue: GameAppRuntimeIssue) => void;
+    /**
+     * What became of each asset a widget on a surface asked for - drawn, not asked for, or failed
+     * and at which step - and when that drawing goes away.
+     *
+     * Without it a picture that could not be had was a blank space and nothing else: the reason
+     * stayed in the widget's own state, no console line, no issue. Facts rather than sentences,
+     * because the sentence depends on the project's asset table (is the asset gone, or only
+     * unreadable?), which the host has and the widget does not. Dev Mode keeps a ledger of the
+     * failures and puts them in the issue list; the packaged game writes one log line per failure.
+     *
+     * Widgets reach it through `AssetResolutionReporterContext`, which the app provides from this.
+     * Reports arrive when an outcome changes, never per render.
+     */
+    reportAssetResolution?: AssetResolutionReporter;
     resolveStoryAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,

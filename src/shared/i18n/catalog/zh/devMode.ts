@@ -23,6 +23,11 @@ export const devMode = {
         // See the English catalog: a plugin that does run here, whose runtime entry threw.
         pluginEntryFailed: "{plugin} 载入失败：{error}。本次会话不会注册它的蓝图节点与控件",
         pluginListFailed: "无法读取运行时插件列表：{error}。本次会话不会载入任何插件",
+        // See the English catalog: a widget asked for an asset and drew nothing.
+        assetMissing: "“{element}”的“{property}”引用了本项目中已不存在的资产",
+        assetUnreadable: "“{element}”的“{property}”引用的资产无法读取",
+        assetUnreadableNamed: "“{element}”的“{property}”引用的资产“{asset}”无法读取",
+        assetNotAsset: "“{element}”的“{property}”的值不是资产",
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         stack: "调用栈",
