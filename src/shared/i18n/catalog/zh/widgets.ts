@@ -206,6 +206,7 @@ export const widgets = {
         missingPage: "缺少页面",
         targetNotPage: "目标不是页面",
         pageLoopBlocked: "已阻止页面循环",
+        leadsBackHere: "会绕回此处",
         previewUnavailable: "页面预览不可用",
         pageRootMissing: "缺少页面根元素",
     },

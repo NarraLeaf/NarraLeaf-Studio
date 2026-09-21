@@ -67,14 +67,22 @@ describe("the component editor's document", () => {
     });
 
     it("lets a Page widget in the definition name a project page", () => {
-        const edited = createComponentDocumentServiceAdapter(base, "cardDef").getDocument();
+        const adapter = createComponentDocumentServiceAdapter(base, "cardDef");
 
         expect(getUIFrameTargetInvalidReason({
-            document: edited,
-            sourceSurfaceId: getComponentEditorSurfaceId("cardDef"),
+            document: adapter.getPageDocument(),
+            host: { kind: "component", componentId: "cardDef" },
             frameElementId: "window",
             targetSurfaceId: "child",
         })).toBeNull();
+    });
+
+    it("answers where pages lead with the project's document, whose pages carry their elements", () => {
+        const adapter = createComponentDocumentServiceAdapter(base, "cardDef");
+
+        // The view holds the definition's elements only; the page document holds the pages' too.
+        expect(adapter.getDocument().elements.childText).toBeUndefined();
+        expect(adapter.getPageDocument()).toBe(document);
     });
 
     it("draws that page on the component editor's canvas", () => {
