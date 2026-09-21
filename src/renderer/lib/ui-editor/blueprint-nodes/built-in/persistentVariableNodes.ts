@@ -11,7 +11,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 function cloneLiteralValue(value: LiteralValue | undefined): unknown {
@@ -97,13 +97,7 @@ export const persistentVariableBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const variable = resolvePersistentVariable(ctx);
-            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const value = resolveNodeInput(ctx, "value");
             await api.persistence.set(variable.storageKey, value);
             return { nextPort: "next" };
         },

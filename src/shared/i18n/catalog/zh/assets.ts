@@ -74,6 +74,12 @@ export const assets = {
         notSaved: "当前不保存该类别的改动",
         notSavedDetail: "无法读取 {file}，没有内容被覆盖",
     },
+    reference: {
+        missing: "该资产已不在本项目中",
+        unreadable: "该资产无法读取",
+        unreadableNamed: "资产“{asset}”无法读取",
+        notAsset: "该值不是资产",
+    },
     overview: {
         loading: "正在读取资产库…",
         failed: "无法读取资产库",
@@ -361,6 +367,12 @@ export const assets = {
         partial: "已导出 {exported} 个文件，{failed} 个未能导出",
         partialTitle: "部分文件未能导出",
         failed: "导出失败：{error}",
+        reason: {
+            permissionDenied: "访问被拒绝",
+            sourceMissing: "项目文件夹中缺少该文件",
+            diskFull: "磁盘已满",
+            copyFailed: "无法复制该文件",
+        },
     },
     selector: {
         selectType: "选择 {type}",

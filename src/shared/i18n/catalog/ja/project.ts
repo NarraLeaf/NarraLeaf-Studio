@@ -98,6 +98,10 @@ export const project = {
         live: "ライブセッション中は、プロジェクト自身の設定は読み取り専用。ここでまだ編集できるものが、セッションの運んでいるもの。",
         frozen: "プロジェクトが凍結されている間は、プロジェクト自身の設定は読み取り専用。",
     },
+    writeFailed: {
+        plain: "プロジェクトファイルを保存できなかった",
+        withReason: "プロジェクトファイルを保存できなかった。{reason}",
+    },
     details: {
         nameLabel: "アプリケーション名",
         namePlaceholder: "アプリケーション名",

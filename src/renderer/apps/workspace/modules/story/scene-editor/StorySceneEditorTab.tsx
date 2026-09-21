@@ -21,6 +21,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { StoryActionCreatorPanel } from "./StoryActionCreatorPanel";
@@ -221,6 +222,7 @@ export function StorySceneOverviewBlock(props: {
     const selectButtonRef = useRef<HTMLButtonElement | null>(null);
     const backgroundAssetId = scene.defaultBackgroundAssetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(backgroundAssetId);
+    const backgroundNotice = useAssetFieldNotice(backgroundAssetId, Boolean(error));
     const workspace = useWorkspace();
     // The same field the scene inspector edits, so it offers the same choices. It was the one
     // surface of `defaultBackgroundAssetId` that did not, which read as the panel and the card
@@ -452,9 +454,9 @@ export function StorySceneOverviewBlock(props: {
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
                         </div>
-                        {backgroundAssetId && error ? (
+                        {backgroundNotice ? (
                             <div className="mt-1 text-2xs text-warning/90">
-                                {t("story.sceneEditor.backgroundResolveError", { error })}
+                                {backgroundNotice}
                             </div>
                         ) : null}
                     </div>

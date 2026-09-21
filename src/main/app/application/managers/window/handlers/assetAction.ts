@@ -215,9 +215,11 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                     }
                     exportedCount += 1;
                 } catch (error) {
+                    const code = (error as NodeJS.ErrnoException | null)?.code;
                     failures.push({
                         relativePath: relativePath || "(unnamed)",
                         reason: error instanceof Error ? error.message : String(error),
+                        ...(typeof code === "string" ? { code } : {}),
                     });
                 }
             }

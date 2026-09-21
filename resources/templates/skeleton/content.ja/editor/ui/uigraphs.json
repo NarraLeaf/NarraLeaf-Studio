@@ -15731,7 +15731,7 @@
           "events": {
             "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19": {
               "id": "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19",
-              "name": "Layer 1",
+              "name": "Close the viewer, or leave",
               "graph": {
                 "nodes": {
                   "n1": {
@@ -15747,14 +15747,49 @@
                       }
                     }
                   },
+                  "showing": {
+                    "id": "showing",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "idle": {
+                    "id": "idle",
+                    "type": "blueprint.collection.arrayIsEmpty",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "gate": {
+                    "id": "gate",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
                   "nClear": {
                     "id": "nClear",
                     "type": "blueprint.page.clear",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 140,
-                        "y": 0
+                        "x": 560,
+                        "y": -120
                       }
                     }
                   },
@@ -15764,8 +15799,61 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
+                        "x": 840,
+                        "y": -120
+                      }
+                    }
+                  },
+                  "none": {
+                    "id": "none",
+                    "type": "blueprint.data.jsonMakeArray",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
                         "x": 560,
-                        "y": 0
+                        "y": 260
+                      }
+                    }
+                  },
+                  "forget": {
+                    "id": "forget",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 120
+                      }
+                    }
+                  },
+                  "viewer": {
+                    "id": "viewer",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 120
                       }
                     }
                   }
@@ -15775,6 +15863,36 @@
                     "from": {
                       "nodeId": "n1",
                       "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "showing",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "idle",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "idle",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "true"
                     },
                     "to": {
                       "nodeId": "nClear",
@@ -15790,6 +15908,46 @@
                       "nodeId": "n2",
                       "port": "in"
                     }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "none",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "forget",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "viewer",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "element"
+                    }
                   }
                 ],
                 "meta": {
@@ -15802,7 +15960,13 @@
           "functions": {}
         },
         "members": {
-          "variables": {},
+          "variables": {
+            "5107c0a1-0000-4000-8000-000000000410": {
+              "id": "5107c0a1-0000-4000-8000-000000000410",
+              "name": "Viewer pictures",
+              "valueType": "array"
+            }
+          },
           "fields": {},
           "functions": {}
         },
@@ -23323,7 +23487,8 @@
         },
         "graphs": {
           "eventIds": [
-            "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142"
+            "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142",
+            "46decee7-87e4-4174-85ef-b81957fa78db"
           ],
           "events": {
             "9bc6dc44-6c3e-46b8-858f-ec78a5bf2142": {
@@ -23764,6 +23929,452 @@
                     "to": {
                       "nodeId": "showEmpty",
                       "port": "value"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "46decee7-87e4-4174-85ef-b81957fa78db": {
+              "id": "46decee7-87e4-4174-85ef-b81957fa78db",
+              "name": "Open the picture",
+              "graph": {
+                "nodes": {
+                  "c1": {
+                    "id": "c1",
+                    "type": "blueprint.event.head.itemClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "unlocked": {
+                    "id": "unlocked",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "unlocked"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "gate": {
+                    "id": "gate",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "sfx.open": {
+                    "id": "sfx.open",
+                    "type": "blueprint.fn.call",
+                    "params": {
+                      "fnRef": "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead",
+                      "__fnSignatureSnapshot": {
+                        "name": "UI confirm cue",
+                        "params": [],
+                        "returns": []
+                      }
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "artwork": {
+                    "id": "artwork",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "id"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "pictures": {
+                    "id": "pictures",
+                    "type": "narraleaf.gallery.getVariants",
+                    "params": {
+                      "onlyUnlocked": true,
+                      "__inlineLiteralPins": [
+                        "onlyUnlocked"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "all": {
+                    "id": "all",
+                    "type": "blueprint.data.memo",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "shownId": {
+                    "id": "shownId",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "coverVariantId"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "shownAt": {
+                    "id": "shownAt",
+                    "type": "blueprint.collection.arrayFind",
+                    "params": {
+                      "key": "id",
+                      "__inlineLiteralPins": [
+                        "key"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "from": {
+                    "id": "from",
+                    "type": "blueprint.data.memo",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "fromShown": {
+                    "id": "fromShown",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "beforeShown": {
+                    "id": "beforeShown",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {
+                      "start": 0,
+                      "__inlineLiteralPins": [
+                        "start"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 440
+                      }
+                    }
+                  },
+                  "order": {
+                    "id": "order",
+                    "type": "blueprint.collection.arrayConcat",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1960,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "keep": {
+                    "id": "keep",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "viewerRef": {
+                    "id": "viewerRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "open": {
+                    "id": "open",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": true
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "c1",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "unlocked",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "true"
+                    },
+                    "to": {
+                      "nodeId": "sfx.open",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "sfx.open",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "pictures",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "artwork",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "pictures",
+                      "port": "artworkId"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictures",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "all",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictures",
+                      "port": "entries"
+                    },
+                    "to": {
+                      "nodeId": "all",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "from",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "shownAt",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "shownId",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "shownAt",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "shownAt",
+                      "port": "index"
+                    },
+                    "to": {
+                      "nodeId": "from",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "from",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "keep",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "fromShown",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "from",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "fromShown",
+                      "port": "start"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictures",
+                      "port": "count"
+                    },
+                    "to": {
+                      "nodeId": "fromShown",
+                      "port": "end"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "all",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "beforeShown",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "from",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "beforeShown",
+                      "port": "end"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "fromShown",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "order",
+                      "port": "a"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "beforeShown",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "order",
+                      "port": "b"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "order",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "keep",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "keep",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "open",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "viewerRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "open",
+                      "port": "element"
                     }
                   }
                 ],
@@ -25609,6 +26220,600 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "feaa6f24-fc87-4c21-9893-cc8f6e65be68": {
+        "id": "feaa6f24-fc87-4c21-9893-cc8f6e65be68",
+        "name": "ビューアー",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+          "elementId": "5107c0a1-0000-4000-8000-000000000400"
+        },
+        "graphs": {
+          "eventIds": [
+            "859d8f13-1c65-451d-a515-4f8687f382f7",
+            "6ee3b57e-91da-4e06-b1fe-3183618391d1"
+          ],
+          "events": {
+            "859d8f13-1c65-451d-a515-4f8687f382f7": {
+              "id": "859d8f13-1c65-451d-a515-4f8687f382f7",
+              "name": "Next picture, or close",
+              "graph": {
+                "nodes": {
+                  "click": {
+                    "id": "click",
+                    "type": "blueprint.event.head.mouseClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "showing": {
+                    "id": "showing",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "rest": {
+                    "id": "rest",
+                    "type": "blueprint.collection.arrayRemoveAt",
+                    "params": {
+                      "index": 0,
+                      "__inlineLiteralPins": [
+                        "index"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "drop": {
+                    "id": "drop",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "left": {
+                    "id": "left",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "done": {
+                    "id": "done",
+                    "type": "blueprint.collection.arrayIsEmpty",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "gate": {
+                    "id": "gate",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "selfRef": {
+                    "id": "selfRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": -260
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": -120
+                      }
+                    }
+                  },
+                  "queue": {
+                    "id": "queue",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "next": {
+                    "id": "next",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {
+                      "start": 0,
+                      "end": 1,
+                      "__inlineLiteralPins": [
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "pictureRef": {
+                    "id": "pictureRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000401",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "show": {
+                    "id": "show",
+                    "type": "blueprint.element.list.setItems",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 120
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "click",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "drop",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "showing",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "rest",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "rest",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "drop",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "drop",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "left",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "done",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "done",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "gate",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "true"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "selfRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "queue",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "next",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "next",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "items"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "pictureRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "list"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            },
+            "6ee3b57e-91da-4e06-b1fe-3183618391d1": {
+              "id": "6ee3b57e-91da-4e06-b1fe-3183618391d1",
+              "name": "Close on right click",
+              "graph": {
+                "nodes": {
+                  "click": {
+                    "id": "click",
+                    "type": "blueprint.event.head.rightClick",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "none": {
+                    "id": "none",
+                    "type": "blueprint.data.jsonMakeArray",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "forget": {
+                    "id": "forget",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "selfRef": {
+                    "id": "selfRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "close": {
+                    "id": "close",
+                    "type": "blueprint.element.displayable.setProperty",
+                    "params": {
+                      "property": "visible",
+                      "value": false
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "click",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "none",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "forget",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "forget",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "selfRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "element"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "0eaeedae-9657-4664-a951-2bd253b589e1": {
+        "id": "0eaeedae-9657-4664-a951-2bd253b589e1",
+        "name": "画像",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+          "elementId": "5107c0a1-0000-4000-8000-000000000401"
+        },
+        "graphs": {
+          "eventIds": [
+            "f98afaff-834f-4275-8fb7-fa19c9ac39e6"
+          ],
+          "events": {
+            "f98afaff-834f-4275-8fb7-fa19c9ac39e6": {
+              "id": "f98afaff-834f-4275-8fb7-fa19c9ac39e6",
+              "name": "Fill",
+              "graph": {
+                "nodes": {
+                  "n1": {
+                    "id": "n1",
+                    "type": "blueprint.event.head.init",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 0,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "queue": {
+                    "id": "queue",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "head": {
+                    "id": "head",
+                    "type": "blueprint.collection.arraySlice",
+                    "params": {
+                      "start": 0,
+                      "end": 1,
+                      "__inlineLiteralPins": [
+                        "start",
+                        "end"
+                      ]
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "selfRef": {
+                    "id": "selfRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000401",
+                      "elementType": "nl.list"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "fill": {
+                    "id": "fill",
+                    "type": "blueprint.element.list.setItems",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 0
+                      }
+                    }
+                  }
+                },
+                "edges": [
+                  {
+                    "from": {
+                      "nodeId": "n1",
+                      "port": "then"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "queue",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "head",
+                      "port": "array"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "head",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "items"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "selfRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "fill",
+                      "port": "list"
+                    }
+                  }
+                ],
+                "meta": {
+                  "graphKind": "event"
+                }
+              }
+            }
+          },
+          "functionIds": [],
+          "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -26301,12 +27506,18 @@
       },
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000340": {
         "blueprintId": "57e76c84-c97b-47b7-8c2b-0e05ac7e6175"
+      },
+      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000400": {
+        "blueprintId": "feaa6f24-fc87-4c21-9893-cc8f6e65be68"
+      },
+      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000401": {
+        "blueprintId": "0eaeedae-9657-4664-a951-2bd253b589e1"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-05T18:35:06.564Z"
+    "updatedAt": "2026-09-21T05:40:18.996Z"
   }
 }

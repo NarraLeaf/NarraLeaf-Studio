@@ -1087,7 +1087,6 @@ export const story = {
         sceneMusicIntroLoop: "Plays {from}s, loops {loop}s to {to}s",
         sceneMusicFromIn: "Starts at {from}s",
         sceneMusicWholeClip: "Whole clip",
-        backgroundResolveError: "Image asset could not be resolved: {error}",
         selectDefaultBackground: "Select Default Background",
         tabInvalid: "Story scene editor tab is invalid.",
         loadingScene: "Loading story scene…",

@@ -25,6 +25,7 @@ import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { resolveUIElementDrawingKey } from "@shared/types/ui-editor/widgetDrawing";
 import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
@@ -135,6 +136,22 @@ function emitExecutionError(input: {
 }
 
 /**
+ * The drawing whose variables a widget's blueprint uses while it answers an event: the drawing the
+ * widget itself is in, as seen from the drawing the event came from.
+ *
+ * For almost every event the two are the same - a label in a row is pressed in that row. A list is
+ * the exception that makes this worth asking: Item Click, Item Hover and Item Render are the list's
+ * own events and run in the row they are about, but the list is not inside any of its rows. Keying
+ * its variables by the row gave every row a private, freshly defaulted copy of them, so a `Set Var`
+ * in Item Click was invisible to the list's Init, to its scroll handler and to the next row's
+ * click - it ran, and nothing ever read it. The same rule that sends a row's writes to the drawing
+ * their target is in (`widgetDrawing.ts`) answers this for the list's own id.
+ */
+function ownerDrawingKey(document: UIDocument, elementId: string, instanceKey: string | undefined): string | undefined {
+    return instanceKey ? resolveUIElementDrawingKey(document, elementId, instanceKey) : undefined;
+}
+
+/**
  * The `ctx` a script handler is called with, from what a dispatch has in hand.
  *
  * One place rather than three, because the three dispatch paths differ only in which self they can
@@ -148,7 +165,10 @@ function buildDispatchScriptContext(input: {
     blueprint: Blueprint;
     runtimeScopeId?: string;
     elementId?: string;
-    elementInstanceKey?: string;
+    /** The drawing the owning widget is in, which keys `vars` - see {@link ownerDrawingKey}. */
+    ownerDrawingKey?: string;
+    /** The drawing the event is running in, which the element ids a script names are read from. */
+    instanceKey?: string;
     self: ScriptSelf;
     /** Present only where an event can be stopped - a widget's. A surface or the project has none. */
     eventControl?: BehaviorGraphEventControl;
@@ -164,13 +184,14 @@ function buildDispatchScriptContext(input: {
         self: input.self,
         hostAdapter: input.hostAdapter,
         hostApi,
+        instanceKey: input.instanceKey,
         vars: acquireBlueprintExecutionLocals({
             blueprintDocument: input.blueprintDocument,
             currentBlueprintId: input.blueprint.id,
             surfaceId: input.self.kind === "surface" || input.self.kind === "element" ? input.self.surfaceId : undefined,
             runtimeScopeId: input.runtimeScopeId,
             elementId: input.elementId,
-            elementInstanceKey: input.elementInstanceKey,
+            elementInstanceKey: input.ownerDrawingKey,
         }),
         signal: input.signal,
         // A script says `ctx.stopPropagation()` where a graph places `Stop Propagation` or
@@ -204,7 +225,8 @@ async function runScriptBlueprintHandler(input: {
     runtimeScopeId?: string;
     surfaceId?: string;
     elementId?: string;
-    elementInstanceKey?: string;
+    ownerDrawingKey?: string;
+    instanceKey?: string;
     eventControl?: BehaviorGraphEventControl;
     executionManager?: BlueprintExecutionManager;
     allowClosedScopeExecution?: boolean;
@@ -227,7 +249,8 @@ async function runScriptBlueprintHandler(input: {
             blueprint: input.blueprint,
             runtimeScopeId: input.runtimeScopeId,
             elementId: input.elementId,
-            elementInstanceKey: input.elementInstanceKey,
+            ownerDrawingKey: input.ownerDrawingKey,
+            instanceKey: input.instanceKey,
             eventControl: input.eventControl,
             self: input.self,
             signal: execution?.signal,
@@ -735,6 +758,7 @@ export async function dispatchBlueprintUiEvent(options: {
     if (!bp) {
         return false;
     }
+    const variablesDrawingKey = ownerDrawingKey(document, elementId, instanceKey);
     // The script layers first, then the graph ones below. Both run: a layer answers an event or it
     // does not, and which of the two it is written in decides nothing about whether its siblings
     // also answer. This used to return here, because a slot was a script or a graph as a whole.
@@ -753,13 +777,15 @@ export async function dispatchBlueprintUiEvent(options: {
             runtimeScopeId,
             surfaceId,
             elementId,
-            elementInstanceKey: instanceKey,
+            ownerDrawingKey: variablesDrawingKey,
+            instanceKey,
             eventControl,
             executionManager: options.executionManager,
             allowClosedScopeExecution: options.allowClosedScopeExecution,
             self: scriptSelfOf({
                 surfaceId,
                 componentId,
+                componentParams,
                 elementId,
                 widgetType: el?.type,
                 row: scriptRowOf(listItemScope),
@@ -805,7 +831,7 @@ export async function dispatchBlueprintUiEvent(options: {
         surfaceId,
         runtimeScopeId,
         elementId,
-        elementInstanceKey: instanceKey,
+        elementInstanceKey: variablesDrawingKey,
     });
 
     try {
@@ -1616,6 +1642,19 @@ export async function invokeBlueprintFnCall(options: {
      * author typed - a failure that looks like the write never happened.
      */
     callerInstanceKey?: string;
+    /**
+     * The list row the call came from, carried into the body for the reason the instance key is:
+     * a fn is a piece of the calling graph pulled out to be named, and a piece of an Item Click still
+     * means the row that was pressed. Without it `Get Item Field` inside the body read nothing, so
+     * moving three nodes out of Item Click into a fn quietly changed what they did.
+     */
+    callerListItemScope?: UIListItemScope | null;
+    /**
+     * The document the caller's drawing is described by, so the body's variables can be kept in the
+     * drawing the fn's owner is in (see {@link ownerDrawingKey}). Absent for a caller outside any
+     * drawing, which is also the one case where there is nothing to work out.
+     */
+    document?: UIDocument;
     runtimeScopeId?: string;
     fnRef: string;
     args: Record<string, unknown>;
@@ -1664,6 +1703,12 @@ export async function invokeBlueprintFnCall(options: {
                   surfaceId,
                   runtimeScopeId,
                   elementId: declElementId,
+                  // The owner's variables where its own events keep them: a fn on a list called
+                  // from Item Click sees what Init set, and one on a card sees this placement's.
+                  elementInstanceKey:
+                      declElementId && options.document
+                          ? ownerDrawingKey(options.document, declElementId, options.callerInstanceKey)
+                          : undefined,
               },
     );
     // Seed declared parameter pins with caller args (bound by stable pinId; extras ignored).
@@ -1692,6 +1737,7 @@ export async function invokeBlueprintFnCall(options: {
         blueprintLocals,
         executionOwner,
         instanceKey: options.callerInstanceKey,
+        listItemScope: options.callerListItemScope ?? null,
         persistentVariables: options.persistentVariables,
         maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
         signal: options.signal,

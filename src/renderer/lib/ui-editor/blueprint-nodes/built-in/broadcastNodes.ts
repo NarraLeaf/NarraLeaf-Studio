@@ -9,7 +9,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 export const broadcastBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -40,24 +40,12 @@ export const broadcastBlueprintNodes: BlueprintNodeDef[] = [
                 throw new BlueprintGraphExecutionError("Broadcast runtime is unavailable", ctx.node.id);
             }
             const eventName = String(
-                resolveDataPinValue(ctx.graph, ctx.node.id, "event", ctx.params, ctx.blueprintLocals, 0, {
-                    hostAdapter: ctx.hostAdapter,
-                    eventPayload: ctx.eventPayload,
-                    listItemScope: ctx.listItemScope,
-                    instanceKey: ctx.instanceKey,
-                    executionOwner: ctx.executionOwner,
-                }) ?? "",
+                resolveNodeInput(ctx, "event") ?? "",
             ).trim();
             if (!eventName) {
                 throw new BlueprintGraphExecutionError("Missing broadcast event name", ctx.node.id);
             }
-            const data = resolveDataPinValue(ctx.graph, ctx.node.id, "data", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const data = resolveNodeInput(ctx, "data");
             await runtime.dispatchBroadcastEvent(eventName, data, ctx.executionOwner?.elementId);
             return { nextPort: "next" };
         },

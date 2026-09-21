@@ -89,7 +89,7 @@ import {
     type BlueprintNodePinDef,
 } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIDisplayableMotionValue } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -372,14 +372,7 @@ function displayableAnimationControlNode(input: {
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function cleanTokenPart(value: string | undefined): string {

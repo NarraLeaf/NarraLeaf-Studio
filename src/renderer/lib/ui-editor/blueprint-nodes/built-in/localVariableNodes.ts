@@ -9,7 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VARIABLE_TYPE_OPTIONS } from "@shared/types/blueprint/variableTypes";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 const VARIABLE_TYPE_SELECT_OPTIONS = BLUEPRINT_VARIABLE_TYPE_OPTIONS.map(option => ({
     value: option.value,
@@ -57,21 +57,7 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
             if (!vid || !ctx.blueprintLocals) {
                 return { nextPort: "next" };
             }
-            ctx.blueprintLocals[vid] = resolveDataPinValue(
-                ctx.graph,
-                ctx.node.id,
-                "value",
-                ctx.params,
-                ctx.blueprintLocals,
-                0,
-                {
-                    hostAdapter: ctx.hostAdapter,
-                    eventPayload: ctx.eventPayload,
-                    listItemScope: ctx.listItemScope,
-                    instanceKey: ctx.instanceKey,
-                    executionOwner: ctx.executionOwner,
-                },
-            );
+            ctx.blueprintLocals[vid] = resolveNodeInput(ctx, "value");
             return { nextPort: "next" };
         },
     },

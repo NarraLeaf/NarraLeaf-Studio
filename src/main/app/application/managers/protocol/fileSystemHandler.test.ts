@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageManager } from "../storageManager";
 import type { AppWindow } from "../window/appWindow";
 import { encodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
+import { FsRejectErrorCode } from "@shared/types/os";
 import { FileSystemHandler, FileSystemHashHandler } from "./fileSystemHandler";
 
 vi.mock("electron", () => ({
@@ -372,5 +373,51 @@ describe("FileSystemHashHandler and the code a window may run", () => {
         const model = await handler.handle(makeRequest(`${hash}/model.moc3`));
         expect(model.statusCode).toBe(200);
         expect(model.headers["Content-Type"]).not.toBe("text/plain; charset=utf-8");
+    });
+});
+
+/**
+ * A single-file write the disk refuses. The renderer words the failure for the author from the
+ * filesystem's code - a read-only file, a folder that is gone - so the answer has to carry the code,
+ * and it must not be the grant URL the write went to, which names nothing anyone can act on.
+ */
+describe("FileSystemHashHandler refused writes", () => {
+    let tempDir: string;
+    let storageManager: StorageManager;
+    let handler: FileSystemHashHandler;
+
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-refused-"));
+        storageManager = new StorageManager({
+            logger: { error: vi.fn(), warn: vi.fn() },
+        } as any);
+        handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("answers with the filesystem's own error, code and all, as JSON", async () => {
+        // A file where the target's folder should be: no platform can create the scratch file.
+        const blocker = path.join(tempDir, "not-a-folder");
+        await fs.writeFile(blocker, "x");
+        const target = path.join(blocker, "Demo.nlproj");
+        const hash = storageManager.allocateHash(target, true, "write", 1);
+        storageManager.updateStatus(hash, "ready");
+
+        const body = new TextEncoder().encode("bytes");
+        const response = await handler.handle({
+            url: `app://fs/${hash}`,
+            method: "PUT",
+            arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+        } as unknown as Request);
+
+        expect(response.statusCode).toBe(500);
+        expect(response.headers?.["Content-Type"]).toBe("application/json");
+        const error = JSON.parse(String(response.data)).error as { code: string; message: string };
+        expect(Object.values(FsRejectErrorCode)).toContain(error.code);
+        expect(error.message).not.toContain("app://");
+        expect(error.message).not.toContain(hash);
     });
 });

@@ -759,13 +759,27 @@ export const workspace = {
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
         // "Storage" console channel carries. A failed write retries on a backoff that never gives
-        // up, so the wording says "still trying" rather than "lost".
+        // up, so the wording says "still trying" rather than "lost". The toast carries what the disk
+        // said only as a `reason` below: the system's own message is English, names the scratch file
+        // an atomic write renames from, and goes to the console line instead.
         save: {
             failedTitle: "Could not save {file}",
-            failedDetailTransient: "Still retrying in the background. {error}",
-            failedDetailPermanent: "Retrying fails until this is fixed. {error}",
+            failedDetailTransient: "Still retrying in the background.",
+            failedDetailPermanent: "Retrying fails until this is fixed.",
+            // `{retry}` is one of the two sentences above.
+            failedDetailWithReason: "{reason} {retry}",
+            // What the disk said, for the failures an author can do something about. Any other
+            // failure is named only in the console line.
+            reason: {
+                permissionDenied: "The file is read-only, or Studio is not allowed to write to it.",
+                folderMissing: "The folder it belongs in no longer exists.",
+                diskFull: "The disk is full.",
+            },
             retry: "Retry now",
             consoleFailed: "write failed ({code}, attempt {attempt}): {path} · {error}",
+            // A file whose writer reports its own failures and keeps nothing to try again (the project
+            // file): no toast from here, and no attempt count, because there is no second attempt.
+            consoleFailedNotRetried: "write failed ({code}), not retried: {path} · {error}",
             consoleRecovered: "write succeeded: {path}",
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads

@@ -122,6 +122,18 @@ export const assets = {
         notSavedDetail: "{file} could not be read. Nothing is written over it.",
     },
     /**
+     * The line under a field that names an asset (an image fill, a background, a font) when that
+     * asset did not come. The same three kinds as Dev Mode's issue list (`devMode.issues.asset*`),
+     * without the element and the property it spells out - the field this sits under is both. Never
+     * the id: for an asset that is no longer in the project it names nothing the author can find.
+     */
+    reference: {
+        missing: "This asset is no longer in this project.",
+        unreadable: "This asset could not be read.",
+        unreadableNamed: "“{asset}” could not be read.",
+        notAsset: "This value is not an asset.",
+    },
+    /**
      * The read-only asset overview page. "Actual" and "If trimmed" are load-bearing: a build still
      * packages the whole assets directory, and nothing on this page changes that - so no string
      * here may read as though reference-based trimming were in effect, or as though the second
@@ -516,6 +528,14 @@ export const assets = {
         partial: "Exported {exported} files, {failed} could not be exported.",
         partialTitle: "Some files were not exported",
         failed: "Export failed: {error}",
+        // What the disk said when a copy failed, worded from its error code: the system's message
+        // quotes the path the file was read from, which is the asset's id split into folders.
+        reason: {
+            permissionDenied: "Access was denied.",
+            sourceMissing: "The file is missing from the project folder.",
+            diskFull: "The disk is full.",
+            copyFailed: "The file could not be copied.",
+        },
     },
     selector: {
         selectType: "Select {type}",

@@ -89,6 +89,45 @@ function reportWriteOutcome(path: string, result: FsRequestResult<void>): FsRequ
     return result;
 }
 
+const FS_REJECT_ERROR_CODES: ReadonlySet<string> = new Set(Object.values(FsRejectErrorCode));
+
+/**
+ * A request to a grant URL that did not answer 200, named by the file it was for.
+ *
+ * Never by the URL. The URL is a one-use grant (`app://fs/<hash>`) that names nothing an author, a
+ * log reader or a support request can do anything with, and these messages reach the interface -
+ * the save-failure notice prints them, and so does every caller that shows an error's message.
+ */
+function transportFailure(verb: "read" | "write", path: string, response: Response): FsRejectError {
+    return {
+        code: FsRejectErrorCode.IPC_ERROR,
+        message: `Failed to ${verb} ${path}: ${response.status} ${response.statusText}`.trimEnd(),
+    };
+}
+
+/**
+ * What a `PUT` that did not answer 200 says went wrong.
+ *
+ * The protocol handler answers a failed write with the filesystem's own error as JSON, so the code
+ * that says a file is read-only or its folder is gone reaches the caller as that code - and from
+ * there the save-failure notice, which words it for the author and decides whether trying again can
+ * help. Anything else (a grant the handler no longer holds, a fault inside it) is a transport
+ * failure.
+ */
+async function writeFailure(path: string, response: Response): Promise<FsRejectError> {
+    try {
+        const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } } | null;
+        const code = body?.error?.code;
+        const message = body?.error?.message;
+        if (typeof code === "string" && FS_REJECT_ERROR_CODES.has(code) && typeof message === "string") {
+            return { code: code as FsRejectErrorCode, message };
+        }
+    } catch {
+        // Not the handler's JSON: one of its plain-text answers, or no body at all.
+    }
+    return transportFailure("write", path, response);
+}
+
 export class BaseFileSystemService {
     /**
      * Watch every write this module performs. Returns an unsubscribe.
@@ -371,10 +410,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: {
-                    code: FsRejectErrorCode.IPC_ERROR,
-                    message: `Failed to fetch file from ${url}: ${response.statusText}`,
-                }
+                error: transportFailure("read", path, response),
             };
         }
         return {
@@ -395,10 +431,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: {
-                    code: FsRejectErrorCode.IPC_ERROR,
-                    message: `Failed to fetch file from ${url}: ${response.statusText}`,
-                }
+                error: transportFailure("read", path, response),
             };
         }
         return {
@@ -421,10 +454,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: {
-                    code: FsRejectErrorCode.IPC_ERROR,
-                    message: `Failed to write file to ${url}: ${response.statusText}`,
-                }
+                error: await writeFailure(path, response),
             };
         }
 
@@ -469,7 +499,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return sameForAll({
                 code: FsRejectErrorCode.IPC_ERROR,
-                message: `Failed to write ${entries.length} file(s) to ${url}: ${response.statusText}`,
+                message: `Failed to write ${entries.length} file(s): ${response.status} ${response.statusText}`,
             });
         }
 
@@ -482,7 +512,7 @@ export class BaseFileSystemService {
         if (!Array.isArray(results) || results.length !== entries.length) {
             return sameForAll({
                 code: FsRejectErrorCode.IPC_ERROR,
-                message: `Batched write to ${url} did not report one result per file`,
+                message: `A batched write of ${entries.length} file(s) did not report one result per file`,
             });
         }
         return results as FsRequestResult<void>[];
@@ -505,10 +535,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: {
-                    code: FsRejectErrorCode.IPC_ERROR,
-                    message: `Failed to write file to ${url}: ${response.statusText}`,
-                }
+                error: await writeFailure(path, response),
             };
         }
 

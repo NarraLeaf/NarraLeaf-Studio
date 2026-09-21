@@ -676,10 +676,17 @@ export const workspace = {
         // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
         save: {
             failedTitle: "无法保存 {file}",
-            failedDetailTransient: "正在后台继续重试；{error}",
-            failedDetailPermanent: "在此问题修复之前重试无效；{error}",
+            failedDetailTransient: "正在后台继续重试",
+            failedDetailPermanent: "在此问题修复之前重试无效",
+            failedDetailWithReason: "{reason}；{retry}",
+            reason: {
+                permissionDenied: "文件为只读，或 Studio 没有写入权限",
+                folderMissing: "所在的文件夹已不存在",
+                diskFull: "磁盘已满",
+            },
             retry: "立即重试",
             consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} · {error}",
+            consoleFailedNotRetried: "写入失败（{code}，不重试）：{path} · {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。

@@ -110,6 +110,12 @@ export const assets = {
         notSaved: "この区分の変更は保存されていない",
         notSavedDetail: "{file} を読めなかった。上書きもしていない",
     },
+    reference: {
+        missing: "このプロジェクトに存在しないアセットを参照している",
+        unreadable: "参照するアセットを読み込めない",
+        unreadableNamed: "アセット「{asset}」を読み込めない",
+        notAsset: "値がアセットではない",
+    },
     /**
      * 読み取り専用のアセット概要ページ。「実際」と「切り詰めた場合」は要となる語。ビルドは
      * いまも assets ディレクトリ全体をパッケージしていて、このページは何も変えない。だから
@@ -455,6 +461,12 @@ export const assets = {
         partial: "{exported} ファイルを書き出し、{failed} ファイルは書き出せなかった",
         partialTitle: "書き出せなかったファイルがある",
         failed: "書き出しに失敗：{error}",
+        reason: {
+            permissionDenied: "アクセスが拒否された",
+            sourceMissing: "プロジェクトフォルダーにファイルがない",
+            diskFull: "ディスクの空き容量がない",
+            copyFailed: "ファイルをコピーできなかった",
+        },
     },
     selector: {
         selectType: "{type} を選択",

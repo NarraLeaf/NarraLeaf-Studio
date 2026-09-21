@@ -116,7 +116,6 @@ export const properties = {
         projectDefault: "项目默认字体",
         projectSection: "项目",
         choose: "选择字体",
-        loadError: "字体无法加载（{error}）；在资产有效之前，预览使用回退字体",
         select: "选择字体",
     },
     imageFill: {
@@ -131,7 +130,6 @@ export const properties = {
         selectHint: "点击打开资产浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "图片资产无法解析（{error}）；在该资产存在之前，预览不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",

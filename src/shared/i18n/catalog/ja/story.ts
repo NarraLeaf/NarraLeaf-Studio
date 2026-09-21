@@ -976,7 +976,6 @@ export const story = {
         sceneMusicIntroLoop: "{from} 秒から再生し、{loop} 秒から {to} 秒をループ",
         sceneMusicFromIn: "{from} 秒から始める",
         sceneMusicWholeClip: "クリップ全体",
-        backgroundResolveError: "画像アセットを解決できなかった：{error}",
         selectDefaultBackground: "既定の背景を選択",
         tabInvalid: "ストーリーのシーンエディタのタブが不正",
         loadingScene: "ストーリーのシーンを読み込んでいる…",

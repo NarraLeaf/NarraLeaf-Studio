@@ -311,6 +311,17 @@ describe("projectGalleryEntries", () => {
         expect(row!.variantCount).toBe(2);
     });
 
+    it("never shows a cover the player has not unlocked, even when the entry is unlocked", () => {
+        // Unlocked through the day differential only: the night cover is still a picture the player
+        // has never seen, so the cell (and a viewer opening on the cell's picture) shows the day.
+        const [row] = projectGalleryEntries(storeOf({ items: [opened] }), new Set(["opened.v.1"]));
+
+        expect(row!.unlocked).toBe(true);
+        expect(row!.assetId).toBe("asset-day");
+        expect(row!.thumbnailAssetId).toBe("asset-day");
+        expect(row!.coverVariantId).toBe("opened.v.1");
+    });
+
     it("falls back to the catalog placeholder when the artwork has none", () => {
         const bare = artwork({ id: "bare", variants: [{ id: "bare.v.1", name: "A", imageAssetId: "real" }] });
         const store = storeOf({

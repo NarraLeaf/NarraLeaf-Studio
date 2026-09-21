@@ -13,7 +13,7 @@ import { buildUIComponentInstanceKey } from "./componentInstanceKey";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIComponentDefinition, type UIDocument, type UIElement } from "./document";
 import { buildUIListItemInstanceKey } from "./list";
 import { buildUIWidgetAddress } from "./widgetAddress";
-import { resolveUIWidgetAddressFromDrawing } from "./widgetDrawing";
+import { resolveUIElementDrawingKey, resolveUIWidgetAddressFromDrawing } from "./widgetDrawing";
 
 type Spec = {
     type: string;
@@ -217,5 +217,48 @@ describe("what the rule cannot read", () => {
     it("keeps a placement whose component the document no longer has", () => {
         const orphan = buildUIComponentInstanceKey(undefined, "gone");
         expect(resolveUIWidgetAddressFromDrawing(gallery, "viewer", orphan)).toBe(buildUIWidgetAddress("viewer", orphan));
+    });
+});
+
+describe("the drawing an element is in, as seen from a row", () => {
+    // What keys a widget blueprint's variables: a list answering Item Click runs in the row, but the
+    // list itself is in the drawing it was placed in - the page, a placement, an outer row.
+    it("is the page for a list on the page, whichever of its rows is asking", () => {
+        expect(resolveUIElementDrawingKey(gallery, "grid", row)).toBeUndefined();
+    });
+
+    it("is the row for a widget of the row's template", () => {
+        expect(resolveUIElementDrawingKey(gallery, "tile", row)).toBe(row);
+    });
+
+    it("is the placement for a list inside a component, and the outer row for a list inside a row", () => {
+        const saveScreen = documentOf(
+            {
+                root: { type: "nl.root", parent: null },
+                panel: { type: "nl.container", parent: "root", placesComponent: "slotsDef" },
+            },
+            {
+                slotsDef: {
+                    root: "slotsRoot",
+                    elements: {
+                        slotsRoot: { type: "nl.container", parent: null },
+                        slots: { type: "nl.list", parent: "slotsRoot" },
+                        slot: { type: "nl.container", parent: "slots", slot: "itemTemplate" },
+                    },
+                },
+            },
+        );
+        const placement = buildUIComponentInstanceKey(undefined, "panel");
+        expect(resolveUIElementDrawingKey(saveScreen, "slots", buildUIListItemInstanceKey(placement, "slots", "3"))).toBe(placement);
+
+        const chapters = documentOf({
+            root: { type: "nl.root", parent: null },
+            chapterList: { type: "nl.list", parent: "root" },
+            chapterRow: { type: "nl.container", parent: "chapterList", slot: "itemTemplate" },
+            sceneList: { type: "nl.list", parent: "chapterRow" },
+            sceneRow: { type: "nl.container", parent: "sceneList", slot: "itemTemplate" },
+        });
+        const chapterRow = buildUIListItemInstanceKey(undefined, "chapterList", "ch-1");
+        expect(resolveUIElementDrawingKey(chapters, "sceneList", buildUIListItemInstanceKey(chapterRow, "sceneList", "s-3"))).toBe(chapterRow);
     });
 });

@@ -505,7 +505,6 @@ export const storyInspector = {
         change: "更换",
         select: "选择",
         clearImage: "清除图片",
-        assetError: "无法解析图片资产：{error}",
         selectImageTitle: "选择背景图片",
     },
     control: {

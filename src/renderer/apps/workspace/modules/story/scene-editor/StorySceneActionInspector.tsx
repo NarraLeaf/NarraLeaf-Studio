@@ -84,6 +84,7 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { ConditionEditor, EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useAssetFieldNotice } from "@/lib/workspace/hooks/useAssetFieldNotice";
 import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
@@ -2890,6 +2891,7 @@ function BackgroundActionEditor(props: {
         ? selectedSet.contents.cells.find(cell => cell.value === selectedSet.set.axis.fallback)?.assetId ?? null
         : props.payload.assetId ?? null;
     const { url, loading, error } = useAssetObjectUrl(imageAssetId);
+    const assetNotice = useAssetFieldNotice(imageAssetId, Boolean(props.payload.assetId && error));
     const [mode, setMode] = useState<"image" | "color">(() => props.payload.assetId ? "image" : "color");
     const [selectorOpen, setSelectorOpen] = useState(false);
     const imageButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -3039,9 +3041,9 @@ function BackgroundActionEditor(props: {
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
                         </div>
-                        {props.payload.assetId && error ? (
+                        {assetNotice ? (
                             <div className="text-2xs leading-snug text-warning/90">
-                                {t("storyInspector.background.assetError", { error })}
+                                {assetNotice}
                             </div>
                         ) : null}
                     </div>

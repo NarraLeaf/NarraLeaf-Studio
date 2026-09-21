@@ -100,8 +100,10 @@ export type ScriptListRow = Pick<UIListItemScope, "item" | "index" | "count" | "
  *    `Get Component Param` reads.
  *
  * `elementId` is the element's own id, never the drawing address the runtime keys widget writes by.
- * A script addresses widgets by element id and the runtime binds the drawing, exactly as the
- * widget nodes do through `buildUIWidgetAddress`.
+ * A script addresses widgets by element id and the runtime binds the drawing: `ctx.host` reads every
+ * id it is handed from the drawing the handler runs in, through the same `addressWidgetFromExecution`
+ * the widget nodes use (`bindHostApiToDrawing` in `scriptRuntime.ts`). So from a row's Item Click the
+ * row's own label is that row's, a panel beside the list is the panel, and the list is the list.
  */
 export type ScriptSelf =
     | { kind: "project" }
@@ -170,14 +172,21 @@ type SurfaceBound<Self extends ScriptSelf, T> = Self extends { kind: "surface" |
  * frame nodes out of a definition's graph, but that is a palette decision with no runtime guard
  * behind it, and a type that hid what the runtime will serve would be lying in the other direction.
  *
- * `vars` is this drawing's own store, with the lifetime a graph `Var` has: one per drawing, dropped
- * when the widget unmounts. A module-level `let` is one per *module*, shared by every row of a list
+ * `vars` is this drawing's own store, with the lifetime a graph `Var` has: one per drawing of the
+ * widget the script sits on, dropped when the widget unmounts. For a list that is the list's drawing
+ * even while it answers Item Click in one of its rows - the list is not inside its rows. A module-level `let` is one per *module*, shared by every row of a list
  * and every placement of a component, which is the wrong answer for almost everything a widget
  * script wants to remember. `stopPropagation` is the graph's `eventControl`: on a pointer event it
  * keeps the parent from hearing it, on `windowCloseRequested` it is `Keep Window Open`.
  */
 export type GameScriptContext<Self extends ScriptSelf = ScriptSelf> = {
     self: Self;
+    /**
+     * The blueprint host API. Name a widget by its element id - `ctx.self.elementId`, or any id on
+     * the page - and it is read from the drawing this handler runs in, as a widget node reads it:
+     * inside a list row or a component placement, an element of that row or placement means this
+     * one's copy of it, and anything outside means the one on the page.
+     */
     host: BlueprintHostApiRuntime;
     broadcast: SurfaceBound<Self, ScriptBroadcast>;
     surface: SurfaceBound<Self, ScriptSurfaceTransition>;

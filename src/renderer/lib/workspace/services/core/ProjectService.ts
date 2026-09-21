@@ -53,9 +53,14 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
+import { SaveStatusService } from "../autosave/SaveStatusService";
 import { FileSystemService } from "./FileSystem";
+import { describeWriteFailureReason } from "./writeFailureReason";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
+import { translate } from "@/lib/i18n";
+import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import type { FsRejectError } from "@shared/types/os";
 
 /**
  * What the author may hand Studio as an icon. One list for every slot, not one
@@ -96,6 +101,30 @@ export class BaseProjectService {
     }
 }
 
+/**
+ * The project file could not be written.
+ *
+ * Its message is the sentence the author reads: every surface that changes a project setting shows a
+ * failure as `error.message`, and before this it read `Failed to write file to app://fs/<grant>:
+ * Internal Server Error` - a one-use grant URL and an HTTP status, where the author needed to hear
+ * that the project file is read-only. The filesystem's own error is kept as `cause`, for the log.
+ */
+export class ProjectFileWriteError extends RendererError {
+    public constructor(public readonly fsError: FsRejectError) {
+        super(describeProjectFileWriteFailure(fsError, translate), { cause: fsError });
+        this.name = "ProjectFileWriteError";
+    }
+}
+
+/** The sentence a {@link ProjectFileWriteError} carries, in the language `t` speaks. */
+export function describeProjectFileWriteFailure(
+    fsError: Pick<FsRejectError, "code">,
+    t: (key: TranslationKey, params?: InterpolationParams) => string,
+): string {
+    const reason = describeWriteFailureReason(fsError, t);
+    return reason ? t("project.writeFailed.withReason", { reason }) : t("project.writeFailed.plain");
+}
+
 type ProjectServiceEvents = {
     configChanged: ProjectConfig;
 };
@@ -124,7 +153,8 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
-        await depend([filesystemService]);
+        const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
+        await depend([filesystemService, saveStatus]);
 
         const projectPath = this.getContext().project.getConfig().projectPath;
         const fileStats = throwException(await filesystemService.list(projectPath));
@@ -140,6 +170,13 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         this.projectConfigPath = configPath;
         this.projectConfigFormat = isNlproj ? "nlproj" : "json";
         this.projectConfig = await this.readProjectConfigFile();
+
+        // A failed manifest write is reported by whoever asked for the change, with a
+        // `ProjectFileWriteError`, and nothing tries it again: the cached manifest stays at what was
+        // last written, and every surface showing a setting goes back to it. The save-failure notice
+        // would say the opposite - that the write is still being retried - so it is told to leave
+        // this file to its writer. See `SaveStatusService.registerCallerReportedFile`.
+        saveStatus.registerCallerReportedFile(configPath);
     }
 
     public getProjectConfig(): ProjectConfig {
@@ -1097,13 +1134,12 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        if (this.projectConfigFormat === "nlproj") {
-            const encoded = encodeProjectConfig(config as any);
-            throwException(await filesystemService.writeRaw(this.projectConfigPath, encoded));
-            return;
+        const result = this.projectConfigFormat === "nlproj"
+            ? await filesystemService.writeRaw(this.projectConfigPath, encodeProjectConfig(config as any))
+            : await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8");
+        if (!result.ok) {
+            throw new ProjectFileWriteError(result.error);
         }
-
-        throwException(await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8"));
     }
 
     private cloneProjectConfig(config: ProjectConfig): ProjectConfig {

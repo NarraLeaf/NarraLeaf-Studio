@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator, SUPPORTED_LOCALES } from "@shared/i18n";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { freezeProjectWrites, refuseFrozenWrite, thawProjectWrites } from "@/lib/app/writeFreeze";
 import type { FsWriteOutcome } from "../core/FileSystem";
 import { Services, type WorkspaceContext } from "../services";
 import { DebouncedSaver } from "./DebouncedSaver";
-import { SaveStatusService } from "./SaveStatusService";
+import { describeSaveFailureDetail, SaveStatusService } from "./SaveStatusService";
 
 type Harness = {
     service: SaveStatusService;
@@ -284,5 +285,84 @@ describe("SaveStatusService while the workspace is frozen", () => {
             expect(working).toHaveBeenCalledTimes(1);
             expect(log).toHaveBeenCalled();
         });
+    });
+});
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+describe("what the save-failure notice says", () => {
+    const PROJECT_FILE = "D:/projects/my-game/My Game.nlproj";
+
+    it("leaves a file whose writer reports it to that writer: no notice, nothing owed, one console line", async () => {
+        const { service, emitWrite, showSticky, log } = await makeHarness();
+        service.registerCallerReportedFile(PROJECT_FILE);
+
+        emitWrite(failure(PROJECT_FILE, FsRejectErrorCode.PERMISSION_DENIED));
+
+        // Nothing retries this file, so a notice saying it is being retried - or a status bar
+        // saying a save is owed - would be false. Its writer tells the author instead.
+        expect(showSticky).not.toHaveBeenCalled();
+        expect(service.getStatus()).toBe("clean");
+        expect(service.getFailures()).toHaveLength(0);
+        expect(log).toHaveBeenCalledWith("storage", "error", expect.stringContaining("not retried"), expect.anything());
+    });
+
+    it("reports that file like any other once its writer lets go of it", async () => {
+        const { service, emitWrite, showSticky } = await makeHarness();
+        const release = service.registerCallerReportedFile(PROJECT_FILE);
+        release();
+
+        emitWrite(failure(PROJECT_FILE, FsRejectErrorCode.PERMISSION_DENIED));
+
+        expect(showSticky).toHaveBeenCalledTimes(1);
+        expect(service.getStatus()).toBe("failed");
+    });
+
+    it("forgets every registration on a project switch", async () => {
+        const { service, emitWrite, showSticky } = await makeHarness();
+        service.registerCallerReportedFile(PROJECT_FILE);
+        // A new context is what a project switch hands the same singleton.
+        await service.initialize({ ...service.getContext() } as WorkspaceContext, async () => undefined);
+
+        emitWrite(failure(PROJECT_FILE));
+
+        expect(showSticky).toHaveBeenCalledTimes(1);
+    });
+
+    it("names what the disk said and never prints the system's message", async () => {
+        const { emitWrite, showSticky } = await makeHarness();
+
+        emitWrite({
+            path: "D:/projects/my-game/editor/uidoc.json",
+            ok: false,
+            error: {
+                code: FsRejectErrorCode.PERMISSION_DENIED,
+                message: "EPERM: operation not permitted, rename 'D:/projects/my-game/assets/content/51/43/dcd8e1f24b6c4a2f9e0d7b3a1c5e8f90.nltmp'",
+            },
+        });
+        emitWrite({
+            path: "D:/projects/my-game/editor/story.json",
+            ok: false,
+            error: { code: FsRejectErrorCode.IPC_ERROR, message: "Failed to write file to app://fs/3f2a9c: Internal Server Error" },
+        });
+
+        const [readOnly, transport] = showSticky.mock.calls.map(call => (call[0] as { detail: string }).detail);
+        expect(readOnly).toBe("The file is read-only, or Studio is not allowed to write to it. Retrying fails until this is fixed.");
+        expect(transport).toBe("Still retrying in the background.");
+    });
+
+    it.each(SUPPORTED_LOCALES)("carries no URL, no id and no unfilled placeholder in any wording (%s)", locale => {
+        const t = createTranslator(locale).t;
+        const details = Object.values(FsRejectErrorCode).flatMap(code => [
+            describeSaveFailureDetail({ code, transient: true }, t),
+            describeSaveFailureDetail({ code, transient: false }, t),
+        ]);
+        expect(describeSaveFailureDetail({ code: FsRejectErrorCode.NO_SPACE, transient: true }, t))
+            .toContain(t("workspace.shell.save.reason.diskFull"));
+        for (const detail of details) {
+            expect(detail).not.toMatch(/app:\/\//);
+            expect(detail).not.toMatch(UUID);
+            expect(detail).not.toMatch(/\{\w+\}/);
+        }
     });
 });
