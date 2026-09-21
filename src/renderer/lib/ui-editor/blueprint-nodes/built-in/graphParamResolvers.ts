@@ -5,7 +5,8 @@
 
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
@@ -502,10 +503,12 @@ export type DataPinResolveRuntime = {
  * the running graph has changed it, which reads on screen as a write that never happened.
  *
  * One helper rather than the same expression at seven call sites, because these were seven separate
- * omissions of the same thing and would be again.
+ * omissions of the same thing and would be again. It asks the same question the setters ask
+ * (`widgetTarget.ts`), so a getter reads back exactly the drawing its setter wrote: a row's own
+ * label in that row, a panel outside the list as the panel.
  */
 function widgetReadAddress(elementId: string | undefined, runtime?: DataPinResolveRuntime): string | undefined {
-    return elementId === undefined ? undefined : buildUIWidgetAddress(elementId, runtime?.instanceKey);
+    return elementId === undefined ? undefined : addressWidgetFromExecution(runtime ?? {}, elementId);
 }
 
 function isElementBindingOutput(type: string, portId: string): boolean {
@@ -1977,15 +1980,19 @@ function trackElementDependency(
     });
 }
 
+/**
+ * The reference, when this execution may read the element it names.
+ *
+ * The same predicate the setters throw on (`isUIElementRefInScope`). This used to compare surfaces
+ * itself, which refused every reference a component definition's graph makes to its own tree - those
+ * name the definition's virtual surface, not the page the placement is on - so inside a component
+ * the Element getters answered nothing while the setters beside them worked.
+ */
 function sameSurfaceElementRef(ref: BlueprintElementRef | undefined, runtime?: DataPinResolveRuntime): BlueprintElementRef | undefined {
     if (!ref) {
         return undefined;
     }
-    const ownerSurfaceId = runtime?.executionOwner?.surfaceId;
-    if (ownerSurfaceId && ref.surfaceId !== ownerSurfaceId) {
-        return undefined;
-    }
-    return ref;
+    return isUIElementRefInScope(ref.surfaceId, runtime?.executionOwner) ? ref : undefined;
 }
 
 function resolveElementInputRef(
@@ -2036,9 +2043,12 @@ function resolveElementTextNodeOutput(
     if (!ref || !api || ref.elementType !== "nl.text") {
         return undefined;
     }
+    // The drawing, as the Element setters address it - reading the template here answered with what
+    // the author typed however often a graph in a row had since written that row's copy.
+    const address = addressWidgetFromExecution(runtime ?? {}, ref.elementId);
     let props: ReturnType<typeof api.widget.getTextProperties>;
     try {
-        props = api.widget.getTextProperties(ref.elementId);
+        props = api.widget.getTextProperties(address);
     } catch {
         return undefined;
     }
@@ -2108,9 +2118,10 @@ function resolveElementDisplayableNodeOutput(
     if (!ref || !api) {
         return undefined;
     }
+    const address = addressWidgetFromExecution(runtime ?? {}, ref.elementId);
     let props: ReturnType<typeof api.widget.getDisplayableProperties>;
     try {
-        props = api.widget.getDisplayableProperties(ref.elementId);
+        props = api.widget.getDisplayableProperties(address);
     } catch {
         return undefined;
     }
@@ -2142,10 +2153,10 @@ function resolveElementDisplayableNodeOutput(
     // browser lays out, which no document write announces. Registering a field here would claim a
     // relationship that is not there and would still not make the value refresh on its own.
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT && portId === "rect") {
-        return api.widget.getMeasuredRect(ref.elementId);
+        return api.widget.getMeasuredRect(address);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER && portId === "center") {
-        const measured = api.widget.getMeasuredRect(ref.elementId);
+        const measured = api.widget.getMeasuredRect(address);
         return measured ? blueprintRectCenter(measured) : null;
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION && portId === "rotation") {
@@ -2161,7 +2172,7 @@ function resolveElementDisplayableNodeOutput(
         return read("runtime.display", props.display);
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
-        return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(ref.elementId).variantId ?? "");
+        return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(address).variantId ?? "");
     }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY && portId === "value") {
         const property = toBlueprintString(params.property || "position");
