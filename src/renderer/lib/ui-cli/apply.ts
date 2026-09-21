@@ -9,10 +9,18 @@
  * Structs and actions are document-wide tables and are merged by id rather than replaced, because a
  * file that declares one list's item shape has said nothing about the other eleven.
  *
+ * **A shape the apply stops naming goes with the last list that named it.** That is the editor's
+ * rule (`pruneUIStructs`, run whenever a list's fields change): a struct no element names has no
+ * existence an author can see, and left in the table it is found again by the reuse rule the next
+ * time somebody declares the same fields, under a name that belonged to a list that is gone. Only
+ * what this apply stopped naming is dropped - a table that already held an unnamed shape keeps it,
+ * and a shape the file itself declares is kept whether or not anything names it yet.
+ *
  * Comments in English per project convention.
  */
 
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { collectReachableUIStructIds } from "@shared/types/ui-editor/structLibrary";
 import { normalizeFlowChildLayouts } from "@services/ui-editor/uiDocumentTreeMove";
 import type { UiCompileResult } from "./dsl/compile";
 import { collectTree } from "./project";
@@ -25,6 +33,8 @@ export type ApplyResult = {
     elementsWritten: number;
     elementsRemoved: number;
     structsWritten: string[];
+    /** Shapes a list named before this apply and nothing names after it. */
+    structsRemoved: string[];
     actionsWritten: string[];
 };
 
@@ -65,8 +75,10 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
         elementsWritten: 0,
         elementsRemoved: 0,
         structsWritten: [],
+        structsRemoved: [],
         actionsWritten: [],
     };
+    const namedBefore = collectReachableUIStructIds(document);
 
     if (compiled.documentName) {
         document.name = compiled.documentName;
@@ -154,6 +166,17 @@ export function applyCompiled(document: UIDocument, compiled: UiCompileResult): 
         result.actionsWritten = Object.keys(compiled.actions);
     }
 
+    if (document.structs) {
+        const namedAfter = collectReachableUIStructIds(document);
+        for (const id of Object.keys(document.structs)) {
+            const declaredHere = Object.prototype.hasOwnProperty.call(compiled.structs, id);
+            if (namedBefore.has(id) && !namedAfter.has(id) && !declaredHere) {
+                delete document.structs[id];
+                result.structsRemoved.push(id);
+            }
+        }
+    }
+
     // The same pass the editor runs after every tree change: a child of a stack or a list holds no
     // absolute position, and leaving stale coordinates on one is how a document written by hand and
     // one written by Studio come apart.
@@ -173,6 +196,7 @@ export function formatApplyResult(result: ApplyResult, written: boolean): string
     say("Components added", result.componentsAdded);
     say("Components replaced", result.componentsReplaced);
     say("Structs written", result.structsWritten);
+    say("Structs removed, as nothing names them any more", result.structsRemoved);
     say("Actions written", result.actionsWritten);
     lines.push(`${result.elementsWritten} element(s) written, ${result.elementsRemoved} removed.`);
     lines.push(written ? "Written." : "Dry run - pass --write to save.");
