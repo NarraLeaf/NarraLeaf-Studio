@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createTranslator, SUPPORTED_LOCALES } from "@shared/i18n";
 import { FsRejectErrorCode, type FsRejectError } from "@shared/types/os";
 import { decodeProjectConfig, encodeProjectConfig } from "@shared/utils/nlproj";
 import { describeProjectFileWriteFailure, ProjectFileWriteError, ProjectService } from "./ProjectService";
 import { Services, type WorkspaceContext } from "../services";
 import type { ProjectConfig } from "../../project/project";
+import type { FsWriteReport } from "../autosave/writeReport";
 
 const PROJECT_PATH = "D:/projects/demo";
 
@@ -31,16 +32,12 @@ function mount(initial: ProjectConfig) {
         list: async () => ({ ok: true, data: [{ name: "Demo", ext: ".nlproj", type: "file" }] }),
         readRaw: async () => ({ ok: true, data: disk.bytes }),
     };
-    const saveStatus = { registerCallerReportedFile: vi.fn(() => () => undefined) };
     const ctx = {
         project: { getConfig: () => ({ projectPath: PROJECT_PATH }) } as unknown as WorkspaceContext["project"],
         services: {
             get: (serviceId: Services) => {
                 if (serviceId === Services.FileSystem) {
                     return filesystem;
-                }
-                if (serviceId === Services.SaveStatus) {
-                    return saveStatus;
                 }
                 throw new Error(`Unexpected service lookup: ${serviceId}`);
             },
@@ -91,7 +88,8 @@ describe("ProjectService security configuration", () => {
  */
 function mountHeldDisk(initial: ProjectConfig) {
     const disk = { bytes: encodeProjectConfig(initial as never) };
-    const saveStatus = { registerCallerReportedFile: vi.fn(() => () => undefined) };
+    /** What each manifest write told the save-status surface about itself. */
+    const reports: (FsWriteReport | undefined)[] = [];
     const held: { bytes: Uint8Array; settle: (ok: boolean, error?: Partial<FsRejectError>) => void }[] = [];
     let inFlight = 0;
     let mostInFlight = 0;
@@ -102,7 +100,8 @@ function mountHeldDisk(initial: ProjectConfig) {
             reads += 1;
             return { ok: true, data: disk.bytes };
         },
-        writeRaw: (_path: string, bytes: Uint8Array) => new Promise(resolve => {
+        writeRaw: (_path: string, bytes: Uint8Array, report?: FsWriteReport) => new Promise(resolve => {
+            reports.push(report);
             inFlight += 1;
             mostInFlight = Math.max(mostInFlight, inFlight);
             held.push({
@@ -126,9 +125,6 @@ function mountHeldDisk(initial: ProjectConfig) {
                 if (serviceId === Services.FileSystem) {
                     return filesystem;
                 }
-                if (serviceId === Services.SaveStatus) {
-                    return saveStatus;
-                }
                 throw new Error(`Unexpected service lookup: ${serviceId}`);
             },
         },
@@ -147,7 +143,7 @@ function mountHeldDisk(initial: ProjectConfig) {
 
     return {
         ctx,
-        saveStatus,
+        reports,
         release,
         pending: () => held.length,
         mostInFlight: () => mostInFlight,
@@ -285,12 +281,20 @@ describe("ProjectService when the project file cannot be written", () => {
         expect(await refused).toBe("Could not save the project file.");
     });
 
-    it("tells the save-failure notice that failures of this file are its own to report", async () => {
+    it("tells the save-status surface that a failed write of this file is its own to report", async () => {
         const service = new ProjectService();
         const disk = mountHeldDisk(config(false));
         await service.initialize(disk.ctx, async () => undefined);
 
-        expect(disk.saveStatus.registerCallerReportedFile).toHaveBeenCalledWith(expect.stringMatching(/Demo\.nlproj$/));
+        const refused = service.updateWindowConfiguration({ resizable: false }).catch(() => undefined);
+        await disk.release(false, { code: FsRejectErrorCode.PERMISSION_DENIED, message: "EPERM" });
+        await refused;
+
+        // Nothing retries the manifest, so the notice's "still retrying" would be false: the
+        // surface that changed the setting says it was not saved, and the notice only logs it.
+        expect(disk.reports).toEqual([
+            { name: { store: "workspace.shell.save.stores.project" }, afterFailure: "handledByWriter" },
+        ]);
     });
 
     it.each(SUPPORTED_LOCALES)("says it without a URL or an id, and names the reason where there is one (%s)", locale => {

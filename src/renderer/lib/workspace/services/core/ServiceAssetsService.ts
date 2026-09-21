@@ -6,6 +6,7 @@ import { Service } from "../Service";
 import { FileSystemService } from "./FileSystem";
 import { IServiceAssetsService, Services, WorkspaceContext } from "../services";
 import { UuidService } from "./UuidService";
+import type { FsWriteReport } from "../autosave/writeReport";
 
 export class ServiceAssetsService extends Service<ServiceAssetsService> implements IServiceAssetsService {
     private static readonly AssetFileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,7 +26,15 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         await Promise.all([this.ensureAssetsDir(), this.ensureServicesDir(), this.ensureStudioServicesDir()]);
     }
 
-    public async writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>> {
+    /**
+     * `report` is how a failed write is reported - see `FsWriteReport`. The store's file is named after
+     * its namespace, which is not something an author knows, so the caller says what it is.
+     */
+    public async writeStore<T extends Record<string, any>>(
+        namespace: string,
+        data: T,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<{ path: string }>> {
         this.ensureReady();
         const filesystemService = this.getFileSystem();
         const dirResult = await filesystemService.createDir(this.resolveStoreDir(namespace));
@@ -34,7 +43,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         }
 
         const targetPath = this.resolveStoreFile(namespace);
-        const writeResult = await filesystemService.write(targetPath, JSON.stringify(data), "utf-8");
+        const writeResult = await filesystemService.write(targetPath, JSON.stringify(data), "utf-8", report);
         if (!writeResult.ok) {
             return writeResult;
         }
@@ -47,7 +56,11 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         return this.getFileSystem().readJSON<T>(this.resolveStoreFile(namespace));
     }
 
-    public async writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>> {
+    /**
+     * Store bytes under a fresh id. The file is named after that id, so `report` - what the bytes are
+     * to the author - is the only name a failure can be reported under.
+     */
+    public async writeFile(data: string | Buffer | Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<string>> {
         this.ensureReady();
         const bytes: Uint8Array =
             typeof data === "string"
@@ -66,7 +79,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
             return ensureDir;
         }
 
-        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes);
+        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes, report);
         if (!writeResult.ok) {
             return writeResult;
         }
@@ -84,7 +97,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
      *
      * Overwrites whatever is at that id. Callers hold the id precisely because they just deleted it.
      */
-    public async restoreFile(fileId: string, bytes: Uint8Array): Promise<FsRequestResult<void>> {
+    public async restoreFile(fileId: string, bytes: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>> {
         this.ensureReady();
         const targetPath = this.resolveAssetFile(fileId);
         if (!targetPath.ok) {
@@ -94,7 +107,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         if (!ensureDir.ok) {
             return ensureDir;
         }
-        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes);
+        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes, report);
         return writeResult.ok ? { ok: true, data: undefined } : writeResult;
     }
 

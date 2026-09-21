@@ -13,6 +13,9 @@ import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
+import { describeFileWriteFailure } from "../../core/writeFailureReason";
+import { itemWrite } from "../../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
 import { expandImportPaths, type ExpandImportPathsResult } from "../importPathExpansion";
@@ -330,9 +333,17 @@ export class LocalAssetsManager {
             return prepared as RequestStatus<AssetContentDigest>;
         }
 
-        const written = await fsService.write(destPath, text, encoding);
+        // Reported by the caller - the text editor keeps the buffer unsaved and says why under it - so
+        // the save-status surface only logs it. The sentence names the asset, never `destPath`,
+        // which is its id split into folders.
+        const written = await fsService.write(
+            destPath,
+            text,
+            encoding,
+            itemWrite(asset.name, "workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!written.ok) {
-            return { success: false, error: `Failed to write asset text: ${destPath}. ${written.error?.message}` };
+            return { success: false, error: describeFileWriteFailure(asset.name, written.error, translate) };
         }
 
         // Recomputed from the destination, exactly as the path-based replace does: the hash is the
@@ -401,9 +412,15 @@ export class LocalAssetsManager {
             return prepared as RequestStatus<Asset<T, AssetSource.Local>>;
         }
 
-        const written = await fsService.writeRaw(destPath, bytes);
+        // Reported by the caller, which asked for this asset and shows the answer: the new-file
+        // action, a paste, a template. Named by what the author called it, never by `destPath`.
+        const written = await fsService.writeRaw(
+            destPath,
+            bytes,
+            itemWrite(name, "workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!written.ok) {
-            return { success: false, error: `Failed to write asset contents: ${destPath}. ${written.error?.message}` };
+            return { success: false, error: describeFileWriteFailure(name, written.error, translate) };
         }
 
         const hashResult = await appPrivilegedFacade.fs.hash(destPath);

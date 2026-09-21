@@ -4,6 +4,7 @@ import { FsRejectErrorCode } from "@shared/types/os";
 import { quarantinePathFor } from "@shared/documents/documentIo";
 import { DocumentCorruptError } from "@shared/documents/types";
 import { reportUnreadableDocument } from "../../autosave/SaveStatusService";
+import { storeWrite } from "../../autosave/writeReport";
 import { FileSystemService } from "../../core/FileSystem";
 import { RendererDocumentStorage } from "../../core/DocumentStorage";
 import { Services, WorkspaceContext } from "../../services";
@@ -338,7 +339,14 @@ export class AssetsMetadataManager {
             path: this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)),
         }));
 
-        const tasks = files.map(file => filesystemService.ensureRegularFile(file.path, JSON.stringify({}), "utf-8"));
+        // Reported by the throw below, which becomes the workspace's startup error: the project does
+        // not open, so a notice about the file would sit over a screen that already says so.
+        const tasks = files.map(file => filesystemService.ensureRegularFile(
+            file.path,
+            JSON.stringify({}),
+            "utf-8",
+            storeWrite("workspace.shell.save.stores.assets", "handledByWriter"),
+        ));
         const results = await Promise.all(tasks);
         const failedIndex = results.findIndex(result => !result.ok);
         if (failedIndex >= 0) {

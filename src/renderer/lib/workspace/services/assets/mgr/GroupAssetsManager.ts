@@ -10,6 +10,7 @@ import { AssetsService } from "../../core/AssetsService";
 import type { AssetDeleteOptions } from "../assetDeleteGuard";
 import { reconcileAssetOrder } from "../assetOrder";
 import { normalizeAssetGroupRecords } from "../assetCategoryShards";
+import { ASSET_LIBRARY_WRITE } from "../assetLibraryWrite";
 
 /** An empty group map — one record per category, in sidebar order. */
 function emptyGroupMap(): AssetGroupMap {
@@ -418,7 +419,8 @@ export class GroupAssetsManager {
         return await filesystemService.writeFileNoFollowOrCreate(
             this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category)),
             data,
-            "utf-8"
+            "utf-8",
+            ASSET_LIBRARY_WRITE,
         );
     }
 
@@ -478,14 +480,20 @@ export class GroupAssetsManager {
      *
      * Best-effort by construction: a refused write reports success without touching the disk, so
      * there is nothing here to assert on. A genuine failure still reaches the author - every write
-     * through `FileSystemService` is observed by `SaveStatusService`.
+     * through `FileSystemService` is observed by `SaveStatusService`, which says the asset library
+     * could not be saved.
      */
     private async createMissingGroupShards(categories: readonly AssetCategory[], data: AssetGroupMap): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
         await Promise.all(categories.map(async category => {
             const path = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category));
-            const result = await filesystemService.writeFileNoFollowOrCreate(path, JSON.stringify(data[category]), "utf-8");
+            const result = await filesystemService.writeFileNoFollowOrCreate(
+                path,
+                JSON.stringify(data[category]),
+                "utf-8",
+                ASSET_LIBRARY_WRITE,
+            );
             if (!result.ok) {
                 console.warn(
                     `[assets] could not create the assets groups shard (${category}): ${path}: ${result.error.code} ${result.error.message}`

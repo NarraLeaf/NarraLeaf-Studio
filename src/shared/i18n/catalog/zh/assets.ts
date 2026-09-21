@@ -79,6 +79,14 @@ export const assets = {
         unreadable: "该资产无法读取",
         unreadableNamed: "资产“{asset}”无法读取",
         notAsset: "该值不是资产",
+        // 编辑器打开资产却读不到时，先说上面某一句；项目里仍有该资产时，再说读取的结果（只列作者能处理的）。
+        // 永不显示读取自带的消息，那里面是资产的存储路径。
+        withReason: "{headline}；{reason}",
+        reason: {
+            fileMissing: "其文件已不在项目文件夹中",
+            accessDenied: "Studio 没有读取其文件的权限",
+            undecodable: "其文件已损坏，或不是 Studio 能打开的格式",
+        },
     },
     overview: {
         loading: "正在读取资产库…",

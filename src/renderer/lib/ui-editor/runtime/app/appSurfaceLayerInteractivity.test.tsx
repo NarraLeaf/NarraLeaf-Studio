@@ -1,16 +1,21 @@
 // @vitest-environment jsdom
 /**
- * An entry that loses pointer input and is handed it back must be clickable again.
+ * When an entry takes pointer input: from the moment it is revealed, and again whenever input is
+ * handed back to it.
+ *
+ * Two defects lived in this component, both in what "takes input" was made of. Input used to wait
+ * for the entry's enter animation to report complete, so a press on a page still fading in - the
+ * title screen, as the player presses Start - was dropped without a trace; it now opens with the
+ * reveal, as the keyboard always did. And before that, "has arrived" was kept in the same flag as
+ * "takes input", so a flag only a once-per-entry callback could raise was lowered every time
+ * something above the entry took input away, and nothing ever raised it again.
  *
  * Deliberately a component test rather than one over the input-resolution rules. Those rules were
- * always right about which entry should take input; what went wrong lived in this component, where
- * "has arrived" was kept in the same flag as "takes input" - so a flag that only a once-per-entry
- * arrival callback could raise was being lowered every time something above the entry took input
- * away. Any test that could see it has to render the component and toggle that input across it.
- *
- * The animation layer is stubbed so arrival is driven rather than waited for, and so the assertion
- * can read the interactivity the layer is actually rendered with. The stub fires arrival once, which
- * is what the real one does: it reports enter-complete a single time per key.
+ * always right about which entry should take input; what went wrong lived here. The animation layer
+ * is stubbed so reveal and arrival are driven rather than waited for, and so the assertion can read
+ * the interactivity the layer is actually rendered with. The stub fires arrival once, which is what
+ * the real one does: it reports enter-complete a single time per key. `pressOnArrivingPage.test.tsx`
+ * is the same question asked of the real layers, with a real press.
  */
 import { act, type ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -82,7 +87,7 @@ function readInteractive(): { layer: string | undefined; renderer: string | unde
     };
 }
 
-function mountLayer() {
+function mountLayer(options: { revealed?: boolean } = {}) {
     const readyReports: Array<{ entryKey: string; ready: boolean }> = [];
     const entry = makeEntry(ENTRY_KEY);
     const surface: UISurface = makeTestSurface("surface-a");
@@ -102,7 +107,9 @@ function mountLayer() {
     };
     const noop = () => undefined;
 
-    const element = (active: boolean) => (
+    let revealed = options.revealed ?? true;
+    let active = true;
+    const element = () => (
         <AppSurfaceLayer
             uidoc={uidoc}
             blueprintDocument={blueprintDocument}
@@ -118,7 +125,7 @@ function mountLayer() {
             widgetPatchesByScopeRef={widgetPatchesByScopeRef}
             widgetRuntimeStore={widgetRuntimeStore}
             lifecycleRef={lifecycleRef}
-            blueprintLifecycleReady
+            blueprintLifecycleReady={revealed}
             reducedMotion
             active={active}
             keyboardOwner={active}
@@ -128,12 +135,20 @@ function mountLayer() {
         />
     );
 
-    const { rerender } = render(element(true));
+    const { rerender } = render(element());
     return {
         readyReports,
-        setActive: (active: boolean) => {
+        setActive: (next: boolean) => {
+            active = next;
             act(() => {
-                rerender(element(active));
+                rerender(element());
+            });
+        },
+        /** The host recording the entry's prepaint - the moment it is revealed. */
+        reveal: () => {
+            revealed = true;
+            act(() => {
+                rerender(element());
             });
         },
         /** Arrival, exactly once - the real animation layer reports it once per entry key. */
@@ -157,18 +172,26 @@ afterEach(() => {
     hoisted.enterComplete = null;
 });
 
-describe("AppSurfaceLayer interactivity across an inert round trip", () => {
-    it("is inert until it has arrived", () => {
-        mountLayer();
+describe("AppSurfaceLayer interactivity from the reveal", () => {
+    it("is inert while it is still hidden", () => {
+        mountLayer({ revealed: false });
         expect(readInteractive()).toEqual({ layer: "false", renderer: "false" });
     });
 
-    it("takes input once it has arrived", () => {
+    it("takes input as soon as it is revealed, before its enter animation has finished", () => {
+        const layer = mountLayer({ revealed: false });
+        layer.reveal();
+        expect(readInteractive()).toEqual({ layer: "true", renderer: "true" });
+    });
+
+    it("still takes input once it has arrived", () => {
         const layer = mountLayer();
         layer.finishEnter();
         expect(readInteractive()).toEqual({ layer: "true", renderer: "true" });
     });
+});
 
+describe("AppSurfaceLayer interactivity across an inert round trip", () => {
     it("takes input again after a layer above it hands input back", () => {
         const layer = mountLayer();
         layer.finishEnter();
@@ -183,8 +206,8 @@ describe("AppSurfaceLayer interactivity across an inert round trip", () => {
     });
 
     it("reports readiness to the host in both directions", () => {
-        const layer = mountLayer();
-        layer.finishEnter();
+        const layer = mountLayer({ revealed: false });
+        layer.reveal();
         layer.setActive(false);
         layer.setActive(true);
 

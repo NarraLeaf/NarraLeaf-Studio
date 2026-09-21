@@ -675,10 +675,27 @@ export const workspace = {
         // 保存反馈：文件写不进去时弹出的常驻提示，以及「存储」控制台频道的日志行。
         // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
         save: {
-            failedTitle: "无法保存 {file}",
+            // 按作者认得的名字称呼文件，永不用路径：`{name}` 是下面的存储名；`failedTitleNamed`
+            // 带的是作者起的名字（资产、故事）；写入方没说明是什么的，就不点名任何文件。
+            failedTitle: "无法保存{name}",
+            failedTitleNamed: "无法保存“{name}”",
+            failedTitleUnnamed: "无法保存文件",
+            // 前两句用于自动保存会继续重试的文件；第三句用于不会再次写入的文件，不提供重试。
             failedDetailTransient: "正在后台继续重试",
             failedDetailPermanent: "在此问题修复之前重试无效",
+            failedDetailNotSaved: "本次改动未保存",
             failedDetailWithReason: "{reason}；{retry}",
+            // 作者主动发起的写入，由发起的界面自己报告：导出、文本文件、缩略图。
+            // 项目打开时无法读取的存储：拒绝写入，因为内存里是空的，写下去会把文件清空。
+            refusedUnreadable: "无法读取{name}，改动不会保存",
+            fileFailed: {
+                plain: "无法保存“{name}”",
+                withReason: "无法保存“{name}”；{reason}",
+            },
+            storeFailed: {
+                plain: "无法保存{name}",
+                withReason: "无法保存{name}；{reason}",
+            },
             reason: {
                 permissionDenied: "文件为只读，或 Studio 没有写入权限",
                 folderMissing: "所在的文件夹已不存在",
@@ -690,7 +707,7 @@ export const workspace = {
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
-            unreadableTitle: "无法读取 {file}",
+            unreadableTitle: "无法读取{name}",
             unreadableDetail: "{reason} 文件保持原样，没有内容被覆盖",
             unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}",
             consoleUnreadable: "读取失败（{kind}）：{path} · {reason}",
@@ -726,6 +743,11 @@ export const workspace = {
                 characters: "角色",
                 project: "项目设置",
                 assets: "资产库",
+                // Studio 自身的状态，不属于作者的项目；用于「无法保存」的提示。
+                projectIcon: "项目图标",
+                panelLayout: "面板布局",
+                recentColors: "最近使用的颜色",
+                pluginData: "插件数据",
                 // 不是文档存储：作者正打开编辑的那一行，其内容尚未写入文档。
                 openEditors: "正在编辑的行",
             },

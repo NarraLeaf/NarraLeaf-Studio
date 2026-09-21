@@ -39,6 +39,11 @@ export const story = {
         deleteSceneConfirm: "删除场景“{name}”",
         deleteSceneDetail: "该场景及其全部区块会被移除，跳转到它的行将失去目标",
     },
+    // 请求打开却无法读取的故事：按名称称呼，永不用 id 或文件路径。
+    readFailed: {
+        missing: "该故事已不在本项目中",
+        named: "故事“{name}”无法读取",
+    },
     script: {
         exportScene: "导出为脚本…",
         exportStory: "将故事导出为脚本…",

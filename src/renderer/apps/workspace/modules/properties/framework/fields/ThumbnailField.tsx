@@ -12,6 +12,9 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { describeWriteFailureReason } from "@/lib/workspace/services/core/writeFailureReason";
+import { storeWrite } from "@/lib/workspace/services/autosave/writeReport";
+import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 
 /**
  * The card header's two actions, on the same `sm` height (design-system §3).
@@ -236,7 +239,10 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
 
             const result = await assetsService.fetch<AssetType.Image>(selected as Asset<AssetType.Image>);
             if (!result.success) {
-                setError(result.error || t("properties.thumbnail.error.loadAsset"));
+                // Worded from the read's code: its message is English and names the asset's storage
+                // path, which is its id split into folders.
+                console.warn(`[thumbnail] could not read ${selected.id}: ${result.error ?? ""}`);
+                setError(describeAssetReadFailure(selected.id, selected.name, result.code, t));
                 return;
             }
 
@@ -280,7 +286,8 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
             if (serviceAssets) {
                 const result = await serviceAssets.deleteFile(currentId);
                 if (!result.ok) {
-                    setError(result.error?.message || t("properties.thumbnail.error.deleteFailed"));
+                    console.warn(`[thumbnail] could not delete ${currentId}: ${result.error.message}`);
+                    setError(t("properties.thumbnail.error.deleteFailed"));
                 }
             }
         } finally {
@@ -343,16 +350,25 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                 }
                 const blob = await cropImage(cropperImageUrl, selection);
                 const arrayBuffer = await blob.arrayBuffer();
-                const writeResult = await serviceAssets.writeFile(new Uint8Array(arrayBuffer));
+                // Reported here, under the field, so the save-status surface only logs it. The file is
+                // stored under a fresh id, which is all its path could have named.
+                const writeResult = await serviceAssets.writeFile(
+                    new Uint8Array(arrayBuffer),
+                    storeWrite("workspace.shell.save.stores.characters", "handledByWriter"),
+                );
                 if (!writeResult.ok) {
-                    setError(writeResult.error?.message || t("properties.thumbnail.error.saveFailed"));
+                    const reason = describeWriteFailureReason(writeResult.error, t);
+                    setError(reason
+                        ? t("properties.thumbnail.error.saveFailedWithReason", { reason })
+                        : t("properties.thumbnail.error.saveFailed"));
                     return;
                 }
                 const newId = writeResult.data;
                 await fieldRef.current.setThumbnail(dataRef.current, newId);
                 resetCropper();
             } catch (err) {
-                setError(err instanceof Error ? err.message : t("properties.thumbnail.error.unknown"));
+                console.warn("[thumbnail] could not save the thumbnail", err);
+                setError(t("properties.thumbnail.error.saveFailed"));
             } finally {
                 setIsSaving(false);
                 onSaving(false);

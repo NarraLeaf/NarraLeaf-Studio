@@ -48,6 +48,7 @@ import { CharacterService } from "../../core/CharacterService";
 import { LocalizationService } from "../../localization/LocalizationService";
 import { StoryService } from "../../story/StoryService";
 import { VariableRegistryService } from "../../variables/VariableRegistryService";
+import { storeWrite } from "../../autosave/writeReport";
 
 /** Elements of one surface or component, in document order, each with the type its ctx is built from. */
 function elementsOf(document: UIDocument, ids: readonly UIElementId[]): ScriptSurfaceFacts["elements"] {
@@ -139,10 +140,13 @@ export async function writeScriptDeclarations(context: WorkspaceContext): Promis
 
     let allWritten = true;
     for (const [relative, content] of files) {
+        // Generated, and written again whenever a project with scripts opens: a failure costs the
+        // script editor its completion until then, which the caller already tolerates by design.
         const result = await fs.writeFileNoFollowOrCreate(
             context.project.resolve(relative.split("/")),
             content,
             "utf-8",
+            storeWrite("workspace.shell.save.stores.uiGraph", "handledByWriter"),
         );
         // A refusal is reported as success by the write gate - a frozen workspace turns writes into
         // no-ops - so it counts as not written here, which is what the caller is asking about.

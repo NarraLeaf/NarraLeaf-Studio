@@ -11,6 +11,7 @@ import { refuseFrozenWrite, refuseReloadingWrite } from "@/lib/app/writeFreeze";
 import { readProjectDataFromSource } from "@/lib/app/documentSource";
 import { mergeConflictReadPath } from "@/lib/app/mergeConflictReads";
 import { getInterface } from "@/lib/app/bridge";
+import type { FsWriteReport } from "../autosave/writeReport";
 
 /**
  * The result of one attempt to put bytes on disk, reported for every write that goes through this
@@ -25,6 +26,12 @@ export type FsWriteOutcome = {
     path: string;
     ok: boolean;
     error?: FsRejectError;
+    /**
+     * What the writer said the file is and what becomes of a failure, when it said. The path alone
+     * answers neither: an asset's content path ends in the tail of its id, and whether anything will
+     * try the write again is known only to the code that made it. See {@link FsWriteReport}.
+     */
+    report?: FsWriteReport;
 };
 
 /**
@@ -35,8 +42,8 @@ export type FsWriteOutcome = {
  * either way.
  */
 export type FsWriteBatchEntry =
-    | { path: string; data: string; encoding: FsTextEncoding }
-    | { path: string; data: Uint8Array; encoding?: undefined };
+    | { path: string; data: string; encoding: FsTextEncoding; report?: FsWriteReport }
+    | { path: string; data: Uint8Array; encoding?: undefined; report?: FsWriteReport };
 
 /**
  * What became of one entry, in the order it was handed in.
@@ -74,9 +81,11 @@ const writeObservers = new Set<(outcome: FsWriteOutcome) => void>();
  */
 const FROZEN_NO_OP: FsRequestResult<void> = { ok: true, data: undefined, refused: true };
 
-function reportWriteOutcome(path: string, result: FsRequestResult<void>): FsRequestResult<void> {
+function reportWriteOutcome(path: string, result: FsRequestResult<void>, report?: FsWriteReport): FsRequestResult<void> {
     if (writeObservers.size > 0) {
-        const outcome: FsWriteOutcome = result.ok ? { path, ok: true } : { path, ok: false, error: result.error };
+        const outcome: FsWriteOutcome = result.ok
+            ? { path, ok: true, report }
+            : { path, ok: false, error: result.error, report };
         for (const observer of writeObservers) {
             try {
                 observer(outcome);
@@ -213,18 +222,24 @@ export class BaseFileSystemService {
         return { ok: true, data: answered.text };
     }
 
-    public static async write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>> {
+    /**
+     * `report`, on this verb and the four below, is what the save-status surface needs to word a
+     * failure: what the author calls the file and whether anything will write it again. A write
+     * without one is reported as a file that was not saved and will not be retried - the one thing
+     * that is true of any failed write - under a title that names no file.
+     */
+    public static async write(path: string, data: string, encoding: FsTextEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
-        return reportWriteOutcome(path, await this.put(path, data, encoding));
+        return reportWriteOutcome(path, await this.put(path, data, encoding), report);
     }
 
-    public static async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
+    public static async writeRaw(path: string, data: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
-        return reportWriteOutcome(path, await this.putRaw(path, data));
+        return reportWriteOutcome(path, await this.putRaw(path, data), report);
     }
 
     /**
@@ -267,7 +282,7 @@ export class BaseFileSystemService {
             const chunk = attempted.slice(start, start + WRITE_BATCH_MAX_ENTRIES);
             const results = await this.putBatch(chunk.map(item => item.entry));
             for (const [position, item] of chunk.entries()) {
-                const result = reportWriteOutcome(item.entry.path, results[position]);
+                const result = reportWriteOutcome(item.entry.path, results[position], item.entry.report);
                 outcomes[item.index] = { ...result, path: item.entry.path };
             }
         }
@@ -275,18 +290,18 @@ export class BaseFileSystemService {
         return outcomes;
     }
 
-    public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
-        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding)));
+        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding)), report);
     }
 
-    public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
-        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)));
+        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding)), report);
     }
 
     /**
@@ -311,11 +326,20 @@ export class BaseFileSystemService {
      *  - a real failure is still `ok: false` with an {@link FsRejectError}, reported to
      *    {@link observeWrites} exactly as the grant route's is.
      */
-    public static async writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    public static async writeFileNoFollowOrCreate(
+        path: string,
+        data: string,
+        encoding: BufferEncoding,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<void>> {
         if (refuseFrozenWrite(path) || refuseReloadingWrite(path)) {
             return FROZEN_NO_OP;
         }
-        return reportWriteOutcome(path, this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollowOrCreate(path, data, encoding)));
+        return reportWriteOutcome(
+            path,
+            this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollowOrCreate(path, data, encoding)),
+            report,
+        );
     }
 
     public static async createDir(path: string): Promise<FsRequestResult<void>> {
@@ -595,12 +619,13 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.readRaw(path);
     }
 
-    public async write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>> {
-        return BaseFileSystemService.write(path, data, encoding);
+    /** See {@link BaseFileSystemService.write} for `report`. */
+    public async write(path: string, data: string, encoding: FsTextEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.write(path, data, encoding, report);
     }
 
-    public async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
-        return BaseFileSystemService.writeRaw(path, data);
+    public async writeRaw(path: string, data: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeRaw(path, data, report);
     }
 
     /** See {@link BaseFileSystemService.writeBatch}. */
@@ -608,17 +633,22 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.writeBatch(entries);
     }
 
-    public async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return BaseFileSystemService.ensureRegularFile(path, data, encoding);
+    public async ensureRegularFile(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.ensureRegularFile(path, data, encoding, report);
     }
 
-    public async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return BaseFileSystemService.writeFileNoFollow(path, data, encoding);
+    public async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeFileNoFollow(path, data, encoding, report);
     }
 
     /** See {@link BaseFileSystemService.writeFileNoFollowOrCreate}. */
-    public async writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return BaseFileSystemService.writeFileNoFollowOrCreate(path, data, encoding);
+    public async writeFileNoFollowOrCreate(
+        path: string,
+        data: string,
+        encoding: BufferEncoding,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeFileNoFollowOrCreate(path, data, encoding, report);
     }
 
     public async createDir(path: string): Promise<FsRequestResult<void>> {

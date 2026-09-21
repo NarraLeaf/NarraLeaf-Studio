@@ -186,6 +186,7 @@ export const properties = {
             loadAsset: "アセットを読み込めなかった",
             deleteFailed: "サムネイルを削除できなかった",
             saveFailed: "サムネイルを保存できなかった",
+            saveFailedWithReason: "サムネイルを保存できなかった。{reason}",
             unknown: "原因不明のエラー",
         },
     },

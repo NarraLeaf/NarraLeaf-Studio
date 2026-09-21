@@ -23,7 +23,9 @@ import {
 import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
 import { UuidService } from "./UuidService";
-import { createProjectDocumentStorage } from "./DocumentStorage";
+import { createProjectDocumentStorage, DocumentWriteError } from "./DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
@@ -303,7 +305,11 @@ export class CharacterService extends Service<CharacterService> implements IChar
             },
             undo: async () => {
                 if (thumbnailId && thumbnailBytes) {
-                    await this.getServiceAssetsService().restoreFile(thumbnailId, thumbnailBytes);
+                    await this.getServiceAssetsService().restoreFile(
+                        thumbnailId,
+                        thumbnailBytes,
+                        storeWrite("workspace.shell.save.stores.characters", "notRetried"),
+                    );
                 }
                 const restored = Character.fromJSON(stored);
                 this.registerCharacter(restored, index >= 0 ? index : undefined);
@@ -879,10 +885,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (this.storeFromNewerStudio) return;
         if (this.unreadable) {
             // Same trade, different cause: the file is there and we could not read it, so the cast in
-            // memory is empty and writing it would replace their work with nothing.
+            // memory is empty and writing it would replace their work with nothing. The path and the
+            // parser's reason are for the log; the author is told what is and is not happening.
+            console.warn(`[characters] refusing to write ${this.unreadable.path}: ${this.unreadable.reason}`);
             this.getContext().services.get<UIService>(Services.UI).showError(
-                `Refusing to write ${this.unreadable.path}: it is on disk but could not be read `
-                + `(${this.unreadable.reason}), so anything written now would replace it with an empty cast.`,
+                translate("workspace.shell.save.refusedUnreadable", {
+                    name: translate("workspace.shell.save.stores.characters"),
+                }),
             );
             return;
         }
@@ -897,10 +906,16 @@ export class CharacterService extends Service<CharacterService> implements IChar
         try {
             await saveDocument(charactersSpec, this.storage(), charactersSpec.pathFor(), payload);
         } catch (error) {
-            // Two failures land here and they are not the same. A write failure is an I/O problem;
-            // a `CanonicalJsonError` means something in the cast cannot be written as JSON at all -
-            // an `undefined` property, which `JSON.stringify` used to drop without a word. The
-            // message names the JSON path, which is what makes the second kind fixable.
+            // Two failures land here and they are not the same. A write failure is an I/O problem,
+            // and the save-status surface has already said so - "Could not save the characters",
+            // with what the disk said and that the change was not saved - so saying it again here
+            // would only add the path and the system's English. A `CanonicalJsonError` means
+            // something in the cast cannot be written as JSON at all - an `undefined` property,
+            // which `JSON.stringify` used to drop without a word. The message names the JSON path,
+            // which is what makes that kind fixable.
+            if (error instanceof DocumentWriteError) {
+                return;
+            }
             const uiService = this.getContext().services.get<UIService>(Services.UI);
             uiService.showError("Failed to persist characters: " + (error instanceof Error ? error.message : String(error)));
             return;
@@ -909,7 +924,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.characters", "notRetried"));
     }
 
     private getServiceAssetsService(): ServiceAssetsService {

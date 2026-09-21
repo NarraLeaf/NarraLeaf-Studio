@@ -46,6 +46,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { insertLiveRecordBefore } from "@shared/live/config";
 import type { LiveAppTagDefaults, LiveAppTagOp } from "@shared/live/ops";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -967,7 +968,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.appTags", "retried"));
     }
 }
 

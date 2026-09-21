@@ -18,6 +18,7 @@ import { Service } from "../Service";
 import { Services, IUIGraphService, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { storeWrite } from "../autosave/writeReport";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
 
@@ -52,7 +53,7 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
-        save: () => this.save(this.getDocument()),
+        save: () => this.writeDocument(this.getDocument()),
         onError: err => console.warn("[UIGraphService] auto-save failed", err),
     });
     /**
@@ -107,7 +108,28 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         return migrated;
     }
 
+    /**
+     * Write `document` now instead of waiting for the auto-save.
+     *
+     * A write that fails is handed back to the auto-saver, which retries it on its backoff. This
+     * cancels the saver's pending write because it supersedes it, and without handing it back the
+     * change would wait for the author's next edit - while the save-failure notice, told this file
+     * is one a saver retries, says it is being retried. Not before the document is loaded: a seed
+     * written while the project opens has nothing for the saver to write, and its failure fails the
+     * open.
+     */
     public async save(document: UIGraphDocument): Promise<void> {
+        try {
+            await this.writeDocument(document);
+        } catch (error) {
+            if (this.document) {
+                this.autoSaver.schedule();
+            }
+            throw error;
+        }
+    }
+
+    private async writeDocument(document: UIGraphDocument): Promise<void> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureGraphDir();
         const documentPath = this.getDocumentPath();
@@ -124,7 +146,12 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         // Not `fs.write`: see the note on `UIDocumentService.writeDocumentFile`. `uigraphs.json` has
         // the same shape - created on the first open of a project that predates it, replaced on
         // every auto-save after - and the same stricter rejection contract now applies to it.
-        const result = await fs.writeFileNoFollowOrCreate(documentPath, data, "utf-8");
+        const result = await fs.writeFileNoFollowOrCreate(
+            documentPath,
+            data,
+            "utf-8",
+            storeWrite("workspace.shell.save.stores.uiGraph", "retried"),
+        );
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }

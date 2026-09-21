@@ -39,6 +39,7 @@ import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { storeWrite } from "../autosave/writeReport";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
@@ -673,7 +674,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
-        save: () => this.save(this.getDocument()),
+        save: () => this.writeDocument(this.getDocument()),
         onError: err => console.warn("[UIDocumentService] auto-save failed", err),
     });
     private afterMutateHook: (() => void) | null = null;
@@ -759,7 +760,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return migrated;
     }
 
+    /**
+     * Write `document` now instead of waiting for the auto-save.
+     *
+     * A write that fails is handed back to the auto-saver, which retries it on its backoff. This
+     * cancels the saver's pending write because it supersedes it, and without handing it back the
+     * change would wait for the author's next edit - while the save-failure notice, told this file
+     * is one a saver retries, says it is being retried. Not before the document is loaded: a seed
+     * written while the project opens has nothing for the saver to write, and its failure fails the
+     * open.
+     */
     public async save(document: UIDocument): Promise<void> {
+        try {
+            await this.writeDocument(document);
+        } catch (error) {
+            if (this.document) {
+                this.autoSaver.schedule();
+            }
+            throw error;
+        }
+    }
+
+    private async writeDocument(document: UIDocument): Promise<void> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureDocumentDir();
         const documentPath = this.getDocumentPath();
@@ -810,7 +832,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * on `ok` alone - unchanged by the swap, and announced to the author on the latch's own channel.
      */
     private writeDocumentFile(fs: FileSystemService, path: string, data: string): Promise<FsRequestResult<void>> {
-        return fs.writeFileNoFollowOrCreate(path, data, "utf-8");
+        return fs.writeFileNoFollowOrCreate(
+            path,
+            data,
+            "utf-8",
+            storeWrite("workspace.shell.save.stores.uiDocument", "retried"),
+        );
     }
 
     /**

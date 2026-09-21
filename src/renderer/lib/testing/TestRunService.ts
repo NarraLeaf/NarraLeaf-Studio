@@ -28,6 +28,7 @@ import {
 } from "./parameters";
 import { testRegistry } from "./registry";
 import { formatTestText } from "./testText";
+import { storeWrite } from "@/lib/workspace/services/autosave/writeReport";
 import {
     TEST_PROTOCOL_VERSION,
     type RegisteredTest,
@@ -509,6 +510,7 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
                 this.parameterCachePath(),
                 serializeTestParameterMemory(memory),
                 "utf-8",
+                storeWrite("workspace.shell.save.stores.project", "handledByWriter"),
             );
         } catch {
             // A cache that cannot be written costs one dropdown pick next time and nothing else.

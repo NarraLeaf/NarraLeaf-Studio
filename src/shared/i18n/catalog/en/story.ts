@@ -46,6 +46,12 @@ export const story = {
     // Taking a scene out of Studio as a text file and bringing it back. `parseError` and `diag` are
     // keyed by the codec's own codes (see `storyScriptTypes`), so a new code fails the parity test
     // rather than reaching an author as a raw identifier.
+    // A story that was asked for and could not be opened - said by its name, never by its id or its
+    // file's path. `withReason` puts one of `assets.reference.reason` after it.
+    readFailed: {
+        missing: "This story is no longer in this project.",
+        named: "The story “{name}” could not be read.",
+    },
     script: {
         exportScene: "Export as Script…",
         exportStory: "Export Story as Script…",

@@ -7,6 +7,7 @@ import type { Asset } from "../assets/types";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { getInterface } from "@/lib/app/bridge";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
+import { storeWrite } from "../autosave/writeReport";
 import {
     blocksShipping,
     imageSupportRecord,
@@ -372,6 +373,7 @@ export class MediaSupportService extends Service<MediaSupportService> implements
                 this.cachePath(),
                 JSON.stringify(serializeMediaSupportCache(this.cache)),
                 "utf-8",
+                storeWrite("workspace.shell.save.stores.assets", "handledByWriter"),
             );
         } catch {
             // A cache that cannot be written costs re-probes next time and nothing else. It is not
