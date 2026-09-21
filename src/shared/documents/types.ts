@@ -101,7 +101,7 @@ export interface DocumentParseContext {
      * that has to produce a value. The thrown error carries the original bytes,
      * which is what makes quarantine possible without re-reading the file.
      */
-    corrupt(reason: string, options?: {cause?: unknown}): never;
+    corrupt(reason: string, options?: {cause?: unknown; defect?: DocumentDefect}): never;
 }
 
 /**
@@ -228,6 +228,19 @@ export interface DocumentSpec<T> {
  */
 export type AnyDocumentSpec = DocumentSpec<any>;
 
+/**
+ * What an author can be told about a document that could not be understood, as opposed to the
+ * `reason`, which is the parser's own English for the log.
+ *
+ * Two answers because an author does two different things about them: a file a newer Studio saved
+ * is intact and wants that Studio, and anything else is a file to restore from a copy.
+ */
+export type DocumentDefect =
+    /** A newer version of Studio saved it, in a shape this one does not read. */
+    | "newerVersion"
+    /** It does not parse, or parses into something that is not this kind of document. */
+    | "damaged";
+
 export interface DocumentCorruptErrorInit {
     readonly kind: DocumentKind;
     /** Project-relative, forward slashes. */
@@ -236,6 +249,8 @@ export interface DocumentCorruptErrorInit {
     /** The exact text that failed to parse. */
     readonly text: string;
     readonly cause?: unknown;
+    /** `damaged` unless the reader recognised a newer version's document. */
+    readonly defect?: DocumentDefect;
 }
 
 /**
@@ -252,6 +267,7 @@ export class DocumentCorruptError extends Error {
     public readonly path: string;
     public readonly reason: string;
     public readonly text: string;
+    public readonly defect: DocumentDefect;
 
     constructor(init: DocumentCorruptErrorInit) {
         super(`${init.kind} document at ${init.path} could not be read: ${init.reason}`, {cause: init.cause});
@@ -260,5 +276,6 @@ export class DocumentCorruptError extends Error {
         this.path = init.path;
         this.reason = init.reason;
         this.text = init.text;
+        this.defect = init.defect ?? "damaged";
     }
 }

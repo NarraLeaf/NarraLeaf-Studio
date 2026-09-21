@@ -328,7 +328,7 @@ export class LocalAssetsManager {
 
         const destPath = this.getLocalAssetPath(asset.id);
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const prepared = await this.ensureAssetShardDir(destPath);
+        const prepared = await this.ensureAssetShardDir(destPath, asset.name);
         if (!prepared.success) {
             return prepared as RequestStatus<AssetContentDigest>;
         }
@@ -407,7 +407,7 @@ export class LocalAssetsManager {
         const destPath = this.getLocalAssetPath(id);
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
-        const prepared = await this.ensureAssetShardDir(destPath);
+        const prepared = await this.ensureAssetShardDir(destPath, name);
         if (!prepared.success) {
             return prepared as RequestStatus<Asset<T, AssetSource.Local>>;
         }
@@ -507,17 +507,26 @@ export class LocalAssetsManager {
     }
 
     /** The shard directory for an asset id, created if this is the first asset in that shard. */
-    private async ensureAssetShardDir(destPath: string): Promise<RequestStatus<void>> {
+    /**
+     * Make sure the folder an asset's content goes in exists.
+     *
+     * A failure is answered as the sentence both callers show - the text editor under its buffer, the
+     * new-file action in its alert - naming the asset by `name`, then what the disk said. Never the
+     * folder: it is the asset's id cut into segments.
+     */
+    private async ensureAssetShardDir(destPath: string, name: string): Promise<RequestStatus<void>> {
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const destDir = dirname(destPath);
         const dirExistCheck = await fsService.isDirExists(destDir);
         if (!dirExistCheck.ok) {
-            return { success: false, error: `Failed to check destination directory: ${dirExistCheck.error?.message}` };
+            console.warn(`[assets] could not check the content folder ${destDir}: ${dirExistCheck.error.message}`);
+            return { success: false, error: describeFileWriteFailure(name, dirExistCheck.error, translate) };
         }
         if (!dirExistCheck.data) {
             const mkdirResult = await fsService.createDir(destDir);
             if (!mkdirResult.ok) {
-                return { success: false, error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}` };
+                console.warn(`[assets] could not create the content folder ${destDir}: ${mkdirResult.error.message}`);
+                return { success: false, error: describeFileWriteFailure(name, mkdirResult.error, translate) };
             }
         }
         return { success: true, data: undefined };

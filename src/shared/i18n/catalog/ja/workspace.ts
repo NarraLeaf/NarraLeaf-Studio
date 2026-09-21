@@ -24,6 +24,7 @@ export const workspace = {
             progress: "{total} 件中 {completed} 件が翻訳済み",
             staleCount: "確認が必要なもの {count} 件",
             importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
+            readFailed: "{name} の翻訳を読み込めなかった",
         },
         settings: {
             menu: "言語の設定…",
@@ -143,6 +144,7 @@ export const workspace = {
             importScript: "収録台本を読み込む…",
             importScriptSummary: "{applied} 行を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
             importScriptFailed: "その収録台本を読めなかった",
+            readFailed: "{name} のボイスの割り当てを読み込めなかった",
             namingTitle: "収録ファイル名のパターン",
             namingHint: "使える語：{tokens}。読み込んだ音声はこの名前で行と対応づける",
             namingReset: "既定に戻す",
@@ -743,9 +745,15 @@ export const workspace = {
             flushFailed: "{label} を書き出せなかった：{error}",
             // 読む側。ディスクにはあるが解釈できないドキュメント。「Studio が作業を食べたのか」という
             // 不安に対して、まず起きなかったことを言う。
+            // `{reason}` は下の `unreadableReason` のどれかで、パーサー自身のメッセージは出さない。
+            // 取っておいた複製はあることだけを言い、場所はコンソールの行に書く。
             unreadableTitle: "{name}を読めなかった",
-            unreadableDetail: "{reason} ファイルは変わっていない。上書きもしていない",
-            unreadableDetailQuarantined: "{reason} ファイルは変わっていない。その複製が {path} にある",
+            unreadableDetail: "{reason}。ファイルは変わっていない。上書きもしていない",
+            unreadableDetailQuarantined: "{reason}。ファイルは変わっていない。複製も残してある",
+            unreadableReason: {
+                damaged: "ファイルが壊れているか、Studio で読めない形式",
+                newerVersion: "新しいバージョンの NarraLeaf Studio で保存されている",
+            },
             consoleUnreadable: "読み込み失敗（{kind}）：{path} · {reason}",
             consoleQuarantined: "読めなかったファイルの複製を {path} に残した",
             // ワークスペースが凍結しているため断られた書き込み。失敗ではない。何も壊れておらず、

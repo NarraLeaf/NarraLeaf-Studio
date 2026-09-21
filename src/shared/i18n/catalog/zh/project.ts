@@ -228,6 +228,10 @@ export const project = {
         clearBackground: "保留透明",
         transparent: "无",
         icnsPreview: "ICNS 预览",
+        pickFailed: "无法打开文件选择器",
+        unsupported: "“{name}”不能用作图标",
+        readFailed: "无法读取“{name}”",
+        failed: "无法更新图标",
         target: {
             macos: "macOS",
             windows: "Windows",

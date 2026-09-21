@@ -1,5 +1,6 @@
 import {STORY_DOCUMENT_SCHEMA_VERSION, StoryDocument} from "@shared/types/story/document";
 import {normalizeStoryDocumentContent} from "@shared/story/normalizeStoryDocument";
+import {findStoryDocumentTooNewError} from "@shared/story/migrateStoryDocument";
 import {encodeCanonicalJson} from "../canonicalJson";
 import {compileDocumentPathPattern} from "../documentPath";
 import {defineDocumentSpec} from "../registry";
@@ -107,7 +108,12 @@ export const storyDocumentSpec = defineDocumentSpec<StoryDocument>({
         try {
             document = normalizeStoryDocumentContent({...record, id: storyId} as unknown as StoryDocument);
         } catch (error) {
-            return context.corrupt(messageOf(error), {cause: error});
+            // A document past the schema ladder is intact and wants a newer Studio, which is a
+            // different thing to tell an author from a file that does not parse.
+            return context.corrupt(messageOf(error), {
+                cause: error,
+                defect: findStoryDocumentTooNewError(error) ? "newerVersion" : "damaged",
+            });
         }
 
         // Step 3, restated where a reader of `parse` will see it. `assertSupportedStoryDocument`

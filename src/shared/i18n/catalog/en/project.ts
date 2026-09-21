@@ -261,6 +261,13 @@ export const project = {
         clearBackground: "Keep transparency",
         transparent: "None",
         icnsPreview: "ICNS preview",
+        // An icon operation that failed. The picked file is named by its own file name, never its
+        // path; `readFailed` may be followed by one of `assets.reference.reason`. `failed` is for
+        // anything that is not one of the others.
+        pickFailed: "The file picker could not be opened.",
+        unsupported: "“{name}” cannot be used as an icon.",
+        readFailed: "“{name}” could not be read.",
+        failed: "Could not update the icons.",
         target: {
             macos: "macOS",
             windows: "Windows",

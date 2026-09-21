@@ -1,7 +1,7 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { describeAssetFieldFailure } from "@/lib/ui-editor/runtime/assetResolution";
-import { ASSET_UNDECODABLE } from "../services/assets/assetReadFailure";
+import { ASSET_UNDECODABLE, READ_NEWER_VERSION } from "../services/assets/assetReadFailure";
 
 type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
 
@@ -36,9 +36,9 @@ export function describeAssetReadFailure(
 
 /**
  * `headline` followed by what a read answered, for the answers an author can act on: the file is
- * gone from the project folder, Studio may not read it, or it is there and cannot be opened. The
- * reasons speak of "its file", so they serve anything the project keeps in one - a story or a motion
- * as well as an asset.
+ * gone from the project folder, Studio may not read it, it is there and cannot be opened, or a newer
+ * Studio saved it. The reasons speak of "its file", so they serve anything the project keeps in one -
+ * a story, a motion or a translation table as well as an asset.
  */
 export function withReadFailureReason(headline: string, code: string | undefined, t: Translate): string {
     const reason = readFailureReason(code, t);
@@ -53,6 +53,8 @@ function readFailureReason(code: string | undefined, t: Translate): string | nul
             return t("assets.reference.reason.accessDenied");
         case ASSET_UNDECODABLE:
             return t("assets.reference.reason.undecodable");
+        case READ_NEWER_VERSION:
+            return t("assets.reference.reason.newerVersion");
         default:
             return null;
     }

@@ -145,6 +145,28 @@ export function describeUnreadableDocumentTitle(kind: DocumentKind, t: Translate
 }
 
 /**
+ * The second line of that notice: what is wrong with the file, as something the author can act on,
+ * then that it was left as it was.
+ *
+ * Never the error's `reason`. That is the parser's English (`not valid JSON: Unexpected token } in
+ * JSON at position 41273`), and the console line keeps it. Never the quarantine copy's path either:
+ * it is a folder Studio made, named by a timestamp and - for a story - by the story's id. The copy is
+ * said to exist, and the console line says where.
+ */
+export function describeUnreadableDocumentDetail(
+    error: Pick<DocumentCorruptError, "defect">,
+    quarantined: boolean,
+    t: Translate = translate,
+): string {
+    const reason = t(error.defect === "newerVersion"
+        ? "workspace.shell.save.unreadableReason.newerVersion"
+        : "workspace.shell.save.unreadableReason.damaged");
+    return t(quarantined
+        ? "workspace.shell.save.unreadableDetailQuarantined"
+        : "workspace.shell.save.unreadableDetail", { reason });
+}
+
+/**
  * One sticky notice about files that could not be written, and every path it currently speaks for.
  *
  * Keyed by what the notice says rather than by path, because one change can fail on several files
@@ -393,8 +415,12 @@ export class SaveStatusService extends Service<SaveStatusService> {
      * drives the status bar and {@link retryNow} clears it - none of which is true here. A file we
      * cannot parse will not become parseable because we tried again, and the one thing that must
      * not happen is the service treating it as "clean" and writing a default over it.
+     *
+     * Answers whether a notice went up just now, so that a service throwing the failure on to whoever
+     * asked can mark it as already said (see `markReportedToAuthor`). False when this document's
+     * notice is already up - the asker is then the one to say it - or when there is no interface.
      */
-    public reportUnreadableDocument(error: DocumentCorruptError, quarantinePath: string | null): void {
+    public reportUnreadableDocument(error: DocumentCorruptError, quarantinePath: string | null): boolean {
         this.logStorage("error", translate("workspace.shell.save.consoleUnreadable", {
             kind: error.kind,
             path: error.path,
@@ -407,23 +433,19 @@ export class SaveStatusService extends Service<SaveStatusService> {
         // One toast per document: loading is retried on every project switch and on every panel that
         // opens the same locale, and a toast per attempt would bury the workspace in duplicates.
         if (this.corruptToasts.has(error.path)) {
-            return;
+            return false;
         }
         const notifications = this.getNotifications();
         if (!notifications) {
-            return;
+            return false;
         }
         const id = notifications.showSticky({
             type: NotificationType.Error,
             message: describeUnreadableDocumentTitle(error.kind),
-            detail: quarantinePath
-                ? translate("workspace.shell.save.unreadableDetailQuarantined", {
-                    reason: error.reason,
-                    path: quarantinePath,
-                })
-                : translate("workspace.shell.save.unreadableDetail", { reason: error.reason }),
+            detail: describeUnreadableDocumentDetail(error, quarantinePath !== null),
         });
         this.corruptToasts.set(error.path, id);
+        return true;
     }
 
     /**
@@ -665,7 +687,8 @@ export async function registerAutoSaver(
 }
 
 /**
- * The one line a document service adds to the `corrupt` arm of a load result.
+ * The one line a document service adds to the `corrupt` arm of a load result. Answers whether a
+ * notice went up just now; see {@link SaveStatusService.reportUnreadableDocument}.
  *
  * Swallows its own failures on purpose: this runs on a load path that has already gone wrong, and
  * the news is the unreadable document, not that the console service was torn down while we were
@@ -674,11 +697,12 @@ export async function registerAutoSaver(
 export function reportUnreadableDocument(
     ctx: WorkspaceContext,
     result: { error: DocumentCorruptError; quarantinePath: string | null },
-): void {
+): boolean {
     try {
-        ctx.services.get<SaveStatusService>(Services.SaveStatus)
+        return ctx.services.get<SaveStatusService>(Services.SaveStatus)
             .reportUnreadableDocument(result.error, result.quarantinePath);
     } catch (error) {
         console.warn("[SaveStatus] could not report an unreadable document", error);
+        return false;
     }
 }

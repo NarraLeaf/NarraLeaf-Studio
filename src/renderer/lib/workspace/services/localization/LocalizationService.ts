@@ -6,7 +6,7 @@
  * Comments in English per project convention.
  */
 
-import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
+import { loadDocument, saveDocument, type DocumentLoadResult, type DocumentStorage } from "@shared/documents/documentIo";
 import { localizationDocumentSpec, localizationKeysSpec } from "@shared/documents/specs";
 import { RendererError } from "@shared/utils/error";
 import {
@@ -31,7 +31,14 @@ import type { StoryDocument } from "@shared/types/story";
 import { Service } from "../Service";
 import { ILocalizationService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
-import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
+import {
+    describeUnreadableDocumentTitle,
+    registerAutoSaver,
+    reportUnreadableDocument,
+} from "../autosave/SaveStatusService";
+import { markReportedToAuthor } from "../autosave/reportedFailure";
+import { describeDocumentReadFailure } from "../core/documentReadFailure";
+import { translate } from "@/lib/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
@@ -274,14 +281,32 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (cached) {
             return cached;
         }
-        const result = await loadDocument(localizationDocumentSpec, this.storage(), this.getDocumentPath(locale));
+        // Thrown as the sentence the panel that asked shows - the language by its name, and why - for
+        // both ways a read goes wrong: the disk would not hand the file over, or it could not be
+        // understood. The read's own message names the file by its path and is the `cause`.
+        const unreadable = (error: unknown) => new RendererError(
+            describeDocumentReadFailure(
+                translate("workspace.localization.panel.readFailed", { name: this.localeDisplayName(locale) }),
+                error,
+                translate,
+            ),
+            { cause: error },
+        );
+        let result: DocumentLoadResult<LocalizationDocument>;
+        try {
+            result = await loadDocument(localizationDocumentSpec, this.storage(), this.getDocumentPath(locale));
+        } catch (error) {
+            throw unreadable(error);
+        }
 
         // A present-but-unreadable file throws instead of degrading to empty, and - the part that
         // matters - is not cached: an "empty" document in the cache is one edit away from being
         // auto-saved over a file full of translations nobody could read.
         if (result.status === "corrupt") {
-            reportUnreadableDocument(this.getContext(), result);
-            throw new RendererError(`Failed to read translations for ${locale}: ${result.error.reason}`);
+            const noticed = reportUnreadableDocument(this.getContext(), result);
+            // When the save-status surface has just said so, the panel that asked stays quiet.
+            const error = unreadable(result.error);
+            throw noticed ? markReportedToAuthor(error) : error;
         }
 
         // First time this language is opened - start empty, created on first save.
@@ -503,11 +528,23 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (this.keysDocument) {
             return this.keysDocument;
         }
-        const result = await loadDocument(localizationKeysSpec, this.storage(), localizationKeysSpec.pathFor());
+        // Worded as `loadDocument` words a language's table, for the one surface that shows it: the
+        // key field's "new key" form.
+        const unreadable = (error: unknown) => new RendererError(
+            describeDocumentReadFailure(describeUnreadableDocumentTitle("localization-keys"), error, translate),
+            { cause: error },
+        );
+        let result: DocumentLoadResult<LocalizationKeysDocument>;
+        try {
+            result = await loadDocument(localizationKeysSpec, this.storage(), localizationKeysSpec.pathFor());
+        } catch (error) {
+            throw unreadable(error);
+        }
 
         if (result.status === "corrupt") {
-            reportUnreadableDocument(this.getContext(), result);
-            throw new RendererError(`Failed to read localization keys: ${result.error.reason}`);
+            const noticed = reportUnreadableDocument(this.getContext(), result);
+            const error = unreadable(result.error);
+            throw noticed ? markReportedToAuthor(error) : error;
         }
 
         const document = result.status === "missing" ? createEmptyLocalizationKeysDocument() : result.document;
@@ -807,6 +844,11 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     // --- Internals ---
+
+    /** What the author calls a language: the name it was declared with, or its code when it has none. */
+    private localeDisplayName(locale: string): string {
+        return this.getConfiguration().locales.find(entry => entry.code === locale)?.displayName || locale;
+    }
 
     private assertKnownLocale(locale: string): void {
         if (!isValidLocaleCode(locale)) {

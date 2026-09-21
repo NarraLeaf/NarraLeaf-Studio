@@ -16,7 +16,11 @@ import {
     type ProjectIconSpec,
     type ProjectIconTarget,
 } from "@shared/types/projectIcons";
-import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
+import {
+    ProjectFileAccessError,
+    ProjectFileWriteError,
+    type ProjectService,
+} from "@/lib/workspace/services/core/ProjectService";
 import { bakeProjectIcons } from "../iconBake";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
@@ -148,12 +152,18 @@ export function ProjectIconsSection({ projectService, uiService, onConfigChange 
         const run = queue.current
             .then(operation)
             .catch(error => {
-                uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+                // The two failures that are the author's sentence already - an icon file that could
+                // not be picked, read or written, and the project file refusing the new set - are
+                // shown as they are. Anything else was never written for an author (a canvas that
+                // would not draw, a decoder that threw), so it gets the section's own line.
+                console.warn("[project icons] an icon operation failed", error);
+                const readable = error instanceof ProjectFileAccessError || error instanceof ProjectFileWriteError;
+                uiService?.showNotification(readable ? error.message : t("project.assets.failed"), "error");
             })
             .finally(() => setBusy(count => count - 1));
         queue.current = run;
         return run;
-    }, [uiService]);
+    }, [t, uiService]);
 
     const refresh = useCallback(
         (edit?: (set: ProjectIconSet) => ProjectIconSet) => enqueue(() => bakeAndLoad(edit)),

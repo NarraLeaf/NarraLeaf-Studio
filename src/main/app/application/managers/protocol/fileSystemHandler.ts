@@ -323,10 +323,12 @@ export class FileSystemHashHandler implements ProtocolHandler {
         }
 
         if (!result.ok) {
+            // As a failed write answers: the filesystem's own error, code and all, so the renderer
+            // can tell the author the file may not be read rather than print this line.
             return {
                 statusCode: 500,
-                headers: { "Content-Type": "text/plain" },
-                data: `Failed to read file: ${result.error.message}`
+                headers: { "Content-Type": "application/json" },
+                data: JSON.stringify({ error: result.error })
             };
         }
 

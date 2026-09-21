@@ -51,6 +51,7 @@ import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/med
 import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
 import { describeAssetExportFailure } from './assetExportFailure';
+import { describeFolderEditFailure, isReportedLibraryWrite } from './assetActionFailure';
 
 export type { ContextMenuTargetState };
 
@@ -441,7 +442,9 @@ export function useAssetActions({
                         for (const asset of importedAssets) {
                             const moveResult = await svc.moveAssetToGroup(asset, groupId);
                             if (!moveResult.success) {
-                                moveErrors.push(`${asset.name}: ${moveResult.error || t("assets.unknownError")}`);
+                                // By name: the service's reason names the folder by its id.
+                                console.warn(`[assets] could not file ${asset.name}: ${moveResult.error}`);
+                                moveErrors.push(`- ${asset.name}`);
                             }
                         }
                         if (moveErrors.length > 0) {
@@ -762,25 +765,25 @@ export function useAssetActions({
             if (!groupName) return;
 
             await withAssetsService(async (assetsService) => {
-                const result = await assetsService.createGroup(category, groupName, parentGroupId);
+                // The one notice for a folder that could not be written is this one: it can say which
+                // change was lost and why, where the save-status surface could only say the asset
+                // library was not saved. So the write is declared as this caller's to report, and that
+                // surface only logs it. The folder is not in the list - it is held only once written.
+                const result = await assetsService.createGroup(category, groupName, parentGroupId, { callerReports: true });
                 if (result.success) {
                     return;
                 }
-                // Names the action and nothing else. The write that failed here raises the workspace's
-                // own save failure too, which is already on screen with the file and a retry, so the
-                // reason is covered; what it cannot say is which action was lost. The row is drawn from
-                // memory whether or not the write landed, so without this the author is looking at a
-                // group that is not on disk.
+                const notice = describeFolderEditFailure(t("assets.createGroup.failed"), result, t);
                 contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                    t("assets.createGroup.failed"),
+                    notice.message,
                     "error",
+                    { detail: notice.detail },
                 );
             });
             onActionComplete();
         } catch (error) {
             console.error("Failed to create asset group", error);
-            // Same sentence as the refusal above, for the same reason: whichever way it ended, the
-            // group the author is looking at is not there.
+            // The same title as the refusal above; there is no reason an author could act on.
             contextRef.current?.services.get<UIService>(Services.UI).showNotification(
                 t("assets.createGroup.failed"),
                 "error",
@@ -859,10 +862,9 @@ export function useAssetActions({
             onActionComplete();
         } catch (error) {
             console.error("Failed to create the text file", error);
-            ctx.services.get<UIService>(Services.UI).showAlert(
-                t("assets.newTextFile.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
-            );
+            // The title alone: what fell over here is not the write, whose refusal is answered above
+            // in the author's words, and the error's own message is the log's.
+            ctx.services.get<UIService>(Services.UI).showNotification(t("assets.newTextFile.failedTitle"), "error");
         } finally {
             notifyLoading(false);
         }
@@ -922,10 +924,20 @@ export function useAssetActions({
 
         // Named per row rather than counted: a paste of a dozen rows where three did not arrive is
         // read by looking for the three, and the list re-renders looking almost right either way.
+        //
+        // By name alone. The service's reasons are written for the log - English, naming records by
+        // id - and a row that failed only because the library's file could not be written is left
+        // out: a paste writes several of those files, and the save-status surface has already said
+        // so under one title for all of them.
         const pasteFailures: string[] = [];
         let pastedCount = 0;
-        const noteFailure = (name: string, error?: string) => {
-            pasteFailures.push(`${name}: ${error || t("assets.unknownError")}`);
+        const noteFailure = (name: string, result: { code?: string; error?: string }) => {
+            if (result.error) {
+                console.warn(`[assets] paste refused ${name}: ${result.error}`);
+            }
+            if (!isReportedLibraryWrite(result)) {
+                pasteFailures.push(`- ${name}`);
+            }
         };
 
         try {
@@ -938,7 +950,7 @@ export function useAssetActions({
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(a.name, moveResult.error);
+                                noteFailure(a.name, moveResult);
                             }
                         }
                         // Move groups
@@ -947,7 +959,7 @@ export function useAssetActions({
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(g.name, moveResult.error);
+                                noteFailure(g.name, moveResult);
                             }
                         }
                         setClipboard(null);
@@ -956,7 +968,7 @@ export function useAssetActions({
                         for (const a of clipboard.assets) {
                             const dupResult = await svc.duplicateAsset(a);
                             if (!dupResult.success || !dupResult.data) {
-                                noteFailure(a.name, dupResult.error);
+                                noteFailure(a.name, dupResult);
                                 continue;
                             }
                             // A copy that was made but not moved is still a row the author cannot find
@@ -965,7 +977,7 @@ export function useAssetActions({
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(a.name, moveResult.error);
+                                noteFailure(a.name, moveResult);
                             }
                         }
                         // Duplicate groups (recursively copies all assets and child groups)
@@ -974,7 +986,7 @@ export function useAssetActions({
                             if (dupResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(g.name, dupResult.error);
+                                noteFailure(g.name, dupResult);
                             }
                         }
                     }
@@ -997,10 +1009,12 @@ export function useAssetActions({
         } catch (error) {
             console.error("Failed to paste assets", error);
             // The run stopped where it stopped, so the count still says whether anything arrived;
-            // the rows it stopped before are the ones the author will not find.
-            context.services.get<UIService>(Services.UI).showAlert(
+            // the rows it stopped before are the ones the author will not find. The rows already
+            // refused are named, and the error itself - the log's - is not.
+            context.services.get<UIService>(Services.UI).showNotification(
                 pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
+                "error",
+                pasteFailures.length > 0 ? { detail: pasteFailures.join("\n") } : undefined,
             );
         } finally {
             notifyLoading(false);
@@ -1024,21 +1038,28 @@ export function useAssetActions({
         if (!newName) return;
 
         await withAssetsService(async (assetsService) => {
+            // A folder's rename reports its own write, as a new folder does (see `handleCreateGroup`):
+            // this notice names the row and says why, and the save-status surface only logs it. An
+            // asset's rename is a record edit that goes out with the next shard write, which that
+            // surface reports; it is only refused here when the asset is gone.
             const result = target.isGroup
-                ? await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName)
+                ? await assetsService.renameGroup(
+                    target.category,
+                    (target.item as AssetGroup).id,
+                    newName,
+                    { callerReports: true },
+                )
                 : await assetsService.renameAsset(target.item as Asset, newName);
             if (result.success) {
                 return;
             }
-            // Names the row and nothing else. A rename is only refused when the write fails, and
-            // that already puts the workspace's own save failure on screen with the file and a
-            // retry, so carrying the reason here would print the same sentence twice.
-            //
             // The name is the one the author started from: `renameGroup` puts the record back when
             // the write fails, so that is what the row still says.
+            const notice = describeFolderEditFailure(t("assets.rename.failed", { name: initialName }), result, t);
             context.services.get<UIService>(Services.UI).showNotification(
-                t("assets.rename.failed", { name: initialName }),
+                notice.message,
                 "error",
+                { detail: notice.detail },
             );
         });
 
@@ -1229,6 +1250,11 @@ export function useAssetActions({
             // Named by the row the author picked, not by the service's reason: that reason is written
             // for the log and names the record by id ("Asset not found: <id>"), which on screen is a
             // UUID standing where the file's name should be. The reasons go to the console.
+            //
+            // A folder whose only failure was writing the folder list is not named. Its files are
+            // gone either way, and the records of those files go out in the same gesture: the
+            // save-status surface reports the library's writes under one title, and naming the row
+            // here as well would say one failure twice.
             const deleteFailures: string[] = [];
             await withAssetsService(async (assetsService) => {
                 await assetsService.transaction(async (svc) => {
@@ -1238,7 +1264,9 @@ export function useAssetActions({
                             : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
                         if (!result.success) {
                             console.warn("[assets] delete refused", t.item.id, result.error);
-                            deleteFailures.push(t.item.name);
+                            if (!isReportedLibraryWrite(result)) {
+                                deleteFailures.push(t.item.name);
+                            }
                         }
                     }));
                 });
@@ -1250,10 +1278,11 @@ export function useAssetActions({
             return deleteFailures.length === 0;
         } catch (error) {
             console.error("Failed to delete asset", error);
-            // The whole run fell over, so there is no per-row list to read and one line is the
-            // answer. Resolved again here because the service handle above is inside the `try`.
+            // The whole run fell over, so there is no per-row list to read and the title is the
+            // answer - the same one the per-row refusals go under. Not the error's message, which is
+            // the log's. Resolved again here because the service handle above is inside the `try`.
             contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                t("assets.delete.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
+                t("assets.delete.failedTitle"),
                 "error",
             );
             return false;

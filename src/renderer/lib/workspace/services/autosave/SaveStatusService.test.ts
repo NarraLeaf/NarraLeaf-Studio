@@ -8,6 +8,7 @@ import { DebouncedSaver } from "./DebouncedSaver";
 import {
     describeSaveFailureDetail,
     describeSaveFailureTitle,
+    describeUnreadableDocumentDetail,
     describeUnreadableDocumentTitle,
     SaveStatusService,
 } from "./SaveStatusService";
@@ -442,6 +443,47 @@ describe("what the save-failure notice says", () => {
 
         expect(shown(showSticky).message).toBe("Could not read the brand palette");
         expect(shown(showSticky).message).not.toContain("brand.json");
+    });
+
+    it("says what is wrong with an unreadable document in the author's terms, not the parser's", async () => {
+        const { service, showSticky } = await makeHarness();
+
+        const raised = service.reportUnreadableDocument(new DocumentCorruptError({
+            kind: "story",
+            path: "editor/story/stories/5322b0e3-f48d-4b77-bfcd-7406613191ce/storydoc.json",
+            reason: "not valid JSON: Unexpected token } in JSON at position 41273",
+            text: "{",
+        }), ".nlstudio/quarantine/2026-09-21T11-30-00-000Z/editor/story/stories/5322b0e3-f48d-4b77-bfcd-7406613191ce/storydoc.json");
+
+        expect(raised).toBe(true);
+        expect(shown(showSticky).detail).toBe(
+            "The file is damaged or is not in a format Studio can read. The file is unchanged, and a copy of it has been kept.",
+        );
+        // The same document again: the notice is already up, so the caller is told it said nothing.
+        expect(service.reportUnreadableDocument(new DocumentCorruptError({
+            kind: "story",
+            path: "editor/story/stories/5322b0e3-f48d-4b77-bfcd-7406613191ce/storydoc.json",
+            reason: "not valid JSON",
+            text: "{",
+        }), null)).toBe(false);
+        expect(showSticky).toHaveBeenCalledTimes(1);
+    });
+
+    it("tells a document a newer Studio saved from a damaged one", () => {
+        const t = createTranslator("en").t;
+        expect(describeUnreadableDocumentDetail({ defect: "newerVersion" }, false, t))
+            .toBe("It was saved by a newer version of NarraLeaf Studio. The file is unchanged. Nothing was written over it.");
+    });
+
+    it.each(SUPPORTED_LOCALES.filter(locale => locale !== "en"))("says why a document could not be read in %s, with no English", locale => {
+        const t = createTranslator(locale).t;
+        for (const defect of ["damaged", "newerVersion"] as const) {
+            for (const quarantined of [true, false]) {
+                const line = describeUnreadableDocumentDetail({ defect }, quarantined, t);
+                expect(line.replace(/NarraLeaf|Studio/g, "")).not.toMatch(/[A-Za-z]{2,}/);
+                expect(line).not.toMatch(/\{\w+\}|\.nlstudio|quarantine/);
+            }
+        }
     });
 
     it.each(SUPPORTED_LOCALES)("carries no URL, no id and no unfilled placeholder in any wording (%s)", locale => {

@@ -9,7 +9,7 @@
  * Comments in English per project convention.
  */
 
-import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
+import { loadDocument, saveDocument, type DocumentLoadResult, type DocumentStorage } from "@shared/documents/documentIo";
 import { voiceDocumentSpec } from "@shared/documents/specs";
 import { RendererError } from "@shared/utils/error";
 import {
@@ -30,6 +30,9 @@ import { Service } from "../Service";
 import { IVoiceService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
+import { markReportedToAuthor } from "../autosave/reportedFailure";
+import { describeDocumentReadFailure } from "../core/documentReadFailure";
+import { translate } from "@/lib/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
@@ -213,15 +216,33 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         if (cached) {
             return cached;
         }
-        const result = await loadDocument(voiceDocumentSpec, this.storage(), this.getDocumentPath(locale));
+        // Thrown as the sentence the panel that asked shows - the language by its name, and why - for
+        // both ways a read goes wrong: the disk would not hand the file over, or it could not be
+        // understood. The read's own message names the file by its path and is the `cause`.
+        const unreadable = (error: unknown) => new RendererError(
+            describeDocumentReadFailure(
+                translate("workspace.voice.panel.readFailed", { name: this.localeDisplayName(locale) }),
+                error,
+                translate,
+            ),
+            { cause: error },
+        );
+        let result: DocumentLoadResult<VoiceDocument>;
+        try {
+            result = await loadDocument(voiceDocumentSpec, this.storage(), this.getDocumentPath(locale));
+        } catch (error) {
+            throw unreadable(error);
+        }
 
         // A present-but-unreadable file throws instead of degrading to empty, and - the part that
         // matters - is not cached: an "empty" document in the cache is one edit away from being
         // auto-saved over the file nobody could read. The caller sees the failure; the file is
         // untouched and a copy of it has been quarantined.
         if (result.status === "corrupt") {
-            reportUnreadableDocument(this.getContext(), result);
-            throw new RendererError(`Failed to read voice library ${locale}: ${result.error.reason}`);
+            const noticed = reportUnreadableDocument(this.getContext(), result);
+            // When the save-status surface has just said so, the panel that asked stays quiet.
+            const error = unreadable(result.error);
+            throw noticed ? markReportedToAuthor(error) : error;
         }
 
         // First time this language is opened - start empty, created on first save.
@@ -554,6 +575,11 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
             this.documents.get(locale),
             (unitId, sourceText) => this.getLineText(locale, unitId, sourceText),
         );
+    }
+
+    /** What the author calls a voice language: the name it was declared with, or its code. */
+    private localeDisplayName(locale: string): string {
+        return this.getConfiguration().voicedLocales.find(entry => entry.code === locale)?.displayName || locale;
     }
 
     private assertKnownLocale(locale: string): void {

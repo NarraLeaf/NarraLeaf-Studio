@@ -33,19 +33,16 @@ export const assets = {
         confirmMessage: "Everything inside a selected group is deleted too.",
         /** The delete button in the reference warning — danger-coloured, never the keyboard default. */
         action: "Delete",
-        /** A delete the service refused after the author had already confirmed it. */
-        failedTitle: "Failed to delete",
         /**
-         * The delete that fell over as a whole rather than per row, so there is no list to read and
-         * one line is the entire answer. The per-row refusals go to `failedTitle` above.
+         * A delete the service refused after the author had already confirmed it, over the rows it
+         * refused - and alone when the whole run fell over. A folder whose only failure was writing
+         * the folder list is not among the rows: the save-status surface has said so.
          */
-        failed: "Could not delete: {error}",
+        failedTitle: "Failed to delete",
     },
     /**
-     * Renaming one row. Names the row and stops, for the reason `createGroup.failed` below carries
-     * no reason either: a rename is only refused when the write fails, which already puts the
-     * workspace's own save failure on screen - "Could not save the asset library", with what the
-     * disk said and that the change was not saved.
+     * Renaming one row. A folder's rename reports its own write, as a new folder does (see
+     * `createGroup.failed`): this is the one notice, with what the disk said under it.
      *
      * The old name is the right one to say. The record is put back when the write fails, so that is
      * the name still on the row, and the one the author can look for.
@@ -55,13 +52,11 @@ export const assets = {
     },
     /**
      * A new group that was not kept. Names are not checked against each other, so the only way here
-     * is the group list failing to reach the disk.
+     * is the group list failing to reach the disk - and the group is then not in the list.
      *
-     * Carries no reason on purpose. That write also raises the workspace's own save failure, which
-     * is already on screen saying the asset library was not saved and why, and repeating its
-     * sentence in a second toast says the same thing twice. What that one cannot say is which
-     * action was lost, and the row is drawn either way, so this is the only place the author is told
-     * the group in front of them is not real.
+     * The one notice for that failure. The write is declared as this action's to report, so the
+     * save-status surface only logs it: this can say which change was lost, and the disk's reason
+     * goes under it (`workspace.shell.save.reason`).
      */
     createGroup: {
         failed: "Could not create the group",
@@ -120,7 +115,8 @@ export const assets = {
     unreadable: {
         category: "This category could not be read. Its file is unchanged.",
         notSaved: "Changes are not being saved",
-        notSavedDetail: "{file} could not be read. Nothing is written over it.",
+        // `{category}` is the section's label (`categories`), never the file behind it.
+        notSavedDetail: "The {category} category could not be read. Nothing is written over it.",
     },
     /**
      * The line under a field that names an asset (an image fill, a background, a font) when that
@@ -141,6 +137,7 @@ export const assets = {
             fileMissing: "Its file is missing from the project folder.",
             accessDenied: "Studio is not allowed to read its file.",
             undecodable: "Its file is damaged or is not in a format Studio can open.",
+            newerVersion: "Its file was saved by a newer version of NarraLeaf Studio.",
         },
     },
     /**

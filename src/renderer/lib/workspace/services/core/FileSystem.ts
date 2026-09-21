@@ -115,15 +115,15 @@ function transportFailure(verb: "read" | "write", path: string, response: Respon
 }
 
 /**
- * What a `PUT` that did not answer 200 says went wrong.
+ * What a `GET` or a `PUT` that did not answer 200 says went wrong.
  *
- * The protocol handler answers a failed write with the filesystem's own error as JSON, so the code
- * that says a file is read-only or its folder is gone reaches the caller as that code - and from
- * there the save-failure notice, which words it for the author and decides whether trying again can
- * help. Anything else (a grant the handler no longer holds, a fault inside it) is a transport
- * failure.
+ * The protocol handler answers a failed read or write with the filesystem's own error as JSON, so
+ * the code that says a file is read-only, unreadable or gone reaches the caller as that code - and
+ * from there whichever surface words it for the author: the save-failure notice for a write, the
+ * line an editor or a panel shows for a read. Anything else (a grant the handler no longer holds, a
+ * fault inside it) is a transport failure.
  */
-async function writeFailure(path: string, response: Response): Promise<FsRejectError> {
+async function handlerFailure(verb: "read" | "write", path: string, response: Response): Promise<FsRejectError> {
     try {
         const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } } | null;
         const code = body?.error?.code;
@@ -134,7 +134,7 @@ async function writeFailure(path: string, response: Response): Promise<FsRejectE
     } catch {
         // Not the handler's JSON: one of its plain-text answers, or no body at all.
     }
-    return transportFailure("write", path, response);
+    return transportFailure(verb, path, response);
 }
 
 export class BaseFileSystemService {
@@ -434,7 +434,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: transportFailure("read", path, response),
+                error: await handlerFailure("read", path, response),
             };
         }
         return {
@@ -455,7 +455,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: transportFailure("read", path, response),
+                error: await handlerFailure("read", path, response),
             };
         }
         return {
@@ -478,7 +478,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: await writeFailure(path, response),
+                error: await handlerFailure("write", path, response),
             };
         }
 
@@ -559,7 +559,7 @@ export class BaseFileSystemService {
         if (!response.ok) {
             return {
                 ok: false,
-                error: await writeFailure(path, response),
+                error: await handlerFailure("write", path, response),
             };
         }
 

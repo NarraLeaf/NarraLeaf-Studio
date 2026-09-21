@@ -30,7 +30,6 @@ export const assets = {
         confirmMessage: "所选分组内的全部内容也会一并删除",
         action: "删除",
         failedTitle: "删除失败",
-        failed: "无法删除：{error}",
     },
     rename: {
         failed: "无法重命名 {name}",
@@ -72,7 +71,7 @@ export const assets = {
     unreadable: {
         category: "该类别无法读取，文件保持原样",
         notSaved: "当前不保存该类别的改动",
-        notSavedDetail: "无法读取 {file}，没有内容被覆盖",
+        notSavedDetail: "“{category}”类别无法读取，没有内容被覆盖",
     },
     reference: {
         missing: "该资产已不在本项目中",
@@ -86,6 +85,7 @@ export const assets = {
             fileMissing: "其文件已不在项目文件夹中",
             accessDenied: "Studio 没有读取其文件的权限",
             undecodable: "其文件已损坏，或不是 Studio 能打开的格式",
+            newerVersion: "其文件由更新版本的 NarraLeaf Studio 保存",
         },
     },
     overview: {

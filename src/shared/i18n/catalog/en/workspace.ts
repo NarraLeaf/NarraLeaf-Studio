@@ -23,6 +23,9 @@ export const workspace = {
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
             importSummary: "Imported {applied} translations ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
+            // A language's table that could not be read, by the language's name; one of
+            // `assets.reference.reason` follows it. Never the file's path.
+            readFailed: "The translations for {name} could not be read.",
         },
         settings: {
             menu: "Language settings…",
@@ -146,6 +149,8 @@ export const workspace = {
             importScript: "Import recording script…",
             importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
             importScriptFailed: "Could not read that recording script",
+            // As `localization.panel.readFailed`, for a voice language's assignments.
+            readFailed: "The voice assignments for {name} could not be read.",
             namingTitle: "Recording filename pattern",
             namingHint: "Tokens: {tokens}. Imported audio is matched to lines by this name.",
             namingReset: "Reset to default",
@@ -805,9 +810,15 @@ export const workspace = {
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
+            // `{reason}` is one of `unreadableReason`, never the parser's own message; the copy set
+            // aside is said to exist, and where it is goes to the console line, not here.
             unreadableTitle: "Could not read the {name}",
             unreadableDetail: "{reason} The file is unchanged. Nothing was written over it.",
-            unreadableDetailQuarantined: "{reason} The file is unchanged. A copy of it is at {path}.",
+            unreadableDetailQuarantined: "{reason} The file is unchanged, and a copy of it has been kept.",
+            unreadableReason: {
+                damaged: "The file is damaged or is not in a format Studio can read.",
+                newerVersion: "It was saved by a newer version of NarraLeaf Studio.",
+            },
             consoleUnreadable: "read failed ({kind}): {path} · {reason}",
             consoleQuarantined: "kept a copy of the unreadable file at {path}",
             // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and

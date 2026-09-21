@@ -105,7 +105,7 @@ export function AssetSelector({
     // a portal on `document.body`, so every `fieldset disabled` clamp an inspector puts around its
     // trigger stops at the panel's edge and never reaches the controls inside.
     const freeze = useFreezeGuard();
-    const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
+    const { assets, groups, loading, hasLoaded, loadFailed, loadAssets } = useAssetData({ context, isInitialized });
     // The selector keeps its own search (it matches against virtual groups the library does not
     // know about) and asks nothing about bytes or usage, so the measured half of the pass stays off.
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
@@ -729,13 +729,10 @@ export function AssetSelector({
                         <RefreshCw className="w-4 h-4 animate-spin" />
                         <span>{t("assets.loading")}</span>
                     </div>
-                ) : error ? (
+                ) : loadFailed ? (
                     <div className="flex items-start gap-2 px-4 py-6 text-danger">
                         <AlertCircle className="w-4 h-4 mt-0.5" />
-                        <div className="text-sm">
-                            <div>{t("assets.loadError")}</div>
-                            <div className="text-xs text-danger/80">{error}</div>
-                        </div>
+                        <div className="text-sm">{t("assets.loadError")}</div>
                     </div>
                 ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
                     <div className="px-4 py-8 text-center text-sm text-fg-subtle">

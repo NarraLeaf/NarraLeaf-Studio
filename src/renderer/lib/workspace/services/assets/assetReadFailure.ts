@@ -9,3 +9,10 @@
  * path, which is its id split into folders - so no surface shows it. See `describeAssetReadFailure`.
  */
 export const ASSET_UNDECODABLE = "ASSET_UNDECODABLE";
+
+/**
+ * The `code` a project document's read answers with when the file is intact and a newer version of
+ * Studio saved it in a shape this one does not read. Not {@link ASSET_UNDECODABLE}: the author's
+ * remedy is the newer Studio, not a backup copy.
+ */
+export const READ_NEWER_VERSION = "READ_NEWER_VERSION";

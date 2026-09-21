@@ -72,7 +72,7 @@ vi.mock("../state/useAssetData", () => ({
         groups: stable.library.groups,
         loading: false,
         hasLoaded: true,
-        error: null,
+        loadFailed: false,
         loadAssets: async () => undefined,
     }),
 }));

@@ -60,7 +60,8 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
-import type { FsRejectError, FsRequestResult } from "@shared/types/os";
+import { FsRejectErrorCode, type FsRejectError, type FsRequestResult } from "@shared/types/os";
+import { withReadFailureReason } from "@/lib/workspace/assets/assetReadFailure";
 
 /**
  * What the author may hand Studio as an icon. One list for every slot, not one
@@ -128,13 +129,28 @@ const PROJECT_FILE_WRITE = storeWrite("workspace.shell.save.stores.project", "ha
 const PROJECT_ICON = { store: "workspace.shell.save.stores.projectIcon" } as const satisfies SavedFileName;
 
 /**
+ * A failure on one of the project's own files - an icon picked in, an icon or avatar baked from it -
+ * whose message is the sentence the author reads.
+ *
+ * Its own class so a surface that runs several steps (the icon section: pick, copy, bake, record) can
+ * show these as they are and word anything else itself: the filesystem's message names the path, and
+ * an error that is not one of these was never written for an author.
+ */
+export class ProjectFileAccessError extends RendererError {
+    public constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
+        this.name = "ProjectFileAccessError";
+    }
+}
+
+/**
  * Throw a write failure as the sentence the surface that asked will show, naming the thing written
  * by what the author knows it as. The filesystem's own message names the path, and for a derived
  * file that is a directory the author never chose.
  */
 function throwWriteFailure(name: SavedFileName, result: FsRequestResult<void>): void {
     if (!result.ok) {
-        throw new RendererError(describeFileWriteFailure(name, result.error, translate), { cause: result.error });
+        throw new ProjectFileAccessError(describeFileWriteFailure(name, result.error, translate), { cause: result.error });
     }
 }
 
@@ -973,25 +989,43 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * null when the picker was dismissed.
      */
     public async importProjectIconSource(slot: string): Promise<{ source: ProjectIconSource; bytes: Uint8Array } | null> {
+        // Every failure below is thrown as the sentence the icon section shows: the file by the name
+        // it has on the author's disk, never the path, and the filesystem's reason only where the
+        // author can act on it.
         const selection = await appPrivilegedFacade.fs.selectFile(PROJECT_ICON_PICKER_EXTENSIONS, false);
-        if (!selection.success) {
-            throw new RendererError(selection.error ?? "Failed to open icon file picker");
+        if (!selection.success || !selection.data.ok) {
+            throw new ProjectFileAccessError(translate("project.assets.pickFailed"), {
+                cause: selection.success ? selection.data : selection.error,
+            });
         }
-        const sourcePath = throwException(selection.data)[0];
+        const sourcePath = selection.data.data[0];
         if (!sourcePath) {
             return null;
         }
+        const sourceName = basename(sourcePath);
 
         const extension = normalizeIconExtension(sourcePath);
         if (!PROJECT_ICON_PICKER_EXTENSIONS.includes(extension)) {
-            throw new RendererError(`Unsupported icon file: .${extension || "unknown"}`);
+            throw new ProjectFileAccessError(translate("project.assets.unsupported", { name: sourceName }));
         }
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const bytes = throwException(await filesystemService.readRaw(sourcePath));
-        throwException(await filesystemService.createDir(
+        const read = await filesystemService.readRaw(sourcePath);
+        if (!read.ok) {
+            // "Missing from the project folder" is not offered: the file was picked from anywhere.
+            throw new ProjectFileAccessError(withReadFailureReason(
+                translate("project.assets.readFailed", { name: sourceName }),
+                read.error.code === FsRejectErrorCode.PERMISSION_DENIED ? read.error.code : undefined,
+                translate,
+            ), { cause: read.error });
+        }
+        const bytes = read.data;
+        const sourcesDir = await filesystemService.createDir(
             this.getContext().project.resolve(ProjectNameConvention.ProjectIconSources),
-        ));
+        );
+        if (!sourcesDir.ok) {
+            throwWriteFailure(PROJECT_ICON, sourcesDir);
+        }
 
         // A slot holds one file. Importing a .svg over a .png would otherwise
         // leave the old one behind, tracked and dead.
@@ -1008,7 +1042,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             bytes,
             source: {
                 path: relativeSegments.join("/"),
-                sourceName: basename(sourcePath),
+                sourceName,
                 mediaType: ICON_MEDIA_TYPES[extension] ?? "application/octet-stream",
                 updatedAt: new Date().toISOString(),
             },
@@ -1059,7 +1093,10 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
         const parent = relativePath.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
         if (parent) {
-            throwException(await filesystemService.createDir(this.getContext().project.resolve(parent)));
+            const created = await filesystemService.createDir(this.getContext().project.resolve(parent));
+            if (!created.ok) {
+                throwWriteFailure(name, created);
+            }
         }
         // Derived, so baked again the next time it is asked for: the caller that asked is the one to
         // say it did not happen, and the error it throws already says it in the author's words.

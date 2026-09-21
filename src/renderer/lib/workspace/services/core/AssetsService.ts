@@ -33,7 +33,7 @@ import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
-import { ASSET_LIBRARY_WRITE } from "../assets/assetLibraryWrite";
+import { ASSET_LIBRARY_WRITE, type AssetFolderWriteOptions } from "../assets/assetLibraryWrite";
 import { storeWrite } from "../autosave/writeReport";
 import { UIService } from "./UIService";
 import { NotificationType } from "../ui/types";
@@ -1913,21 +1913,29 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
         this.refusedUnreadableShardWrites.add(shard.type);
         try {
-            const file = shard.path.split(/[\\/]/).pop() ?? shard.path;
+            // The section, by the label the sidebar gives it - which is also where the section says
+            // it could not be read. Never the shard's file name (`assets.metadata.image.json`), a name
+            // Studio chose and the author meets nowhere else.
+            const category = translate(`assets.categories.${categoryOfAssetType(shard.type)}` as `assets.categories.${AssetCategory}`);
             this.getContext().services.get<UIService>(Services.UI).notifications.showSticky({
                 type: NotificationType.Error,
                 message: translate("assets.unreadable.notSaved"),
-                detail: translate("assets.unreadable.notSavedDetail", { file }),
+                detail: translate("assets.unreadable.notSavedDetail", { category }),
             });
         } catch {
             // No UI service in this window. The console line above is the record.
         }
     }
 
+    /**
+     * Make a folder. `options.callerReports` is for a caller that says itself that the folder could
+     * not be written - see `AssetFolderWriteOptions` for which callers those are.
+     */
     public async createGroup(
         category: AssetCategory,
         name: string,
-        parentGroupId?: string
+        parentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         if (this.opSink) {
             // Minted here rather than by the applier, for `create-assets`' reason: the id and the
@@ -1949,7 +1957,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             });
             return { success: true, data: folder };
         }
-        return this.getGroupAssetsManager().createGroup(category, name, parentGroupId);
+        return this.getGroupAssetsManager().createGroup(category, name, parentGroupId, options);
     }
 
     /**
@@ -2015,25 +2023,27 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async renameGroup(
         category: AssetCategory,
         groupId: string,
-        newName: string
+        newName: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         return this.stateFolderChange(category, groupId, folder => ({
             ...folder,
             name: newName,
             updatedAt: Date.now(),
-        })) ?? this.getGroupAssetsManager().renameGroup(category, groupId, newName);
+        })) ?? this.getGroupAssetsManager().renameGroup(category, groupId, newName, options);
     }
 
     public async moveGroupToParent(
         category: AssetCategory,
         groupId: string,
-        newParentGroupId?: string
+        newParentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         return this.stateFolderChange(category, groupId, folder => ({
             ...folder,
             parentGroupId: newParentGroupId,
             updatedAt: Date.now(),
-        })) ?? this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId);
+        })) ?? this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId, options);
     }
 
     public async moveAssetToGroup<T extends AssetType>(

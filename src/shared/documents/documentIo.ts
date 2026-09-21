@@ -1,6 +1,6 @@
 import {findCanonicalJsonDefect} from "./canonicalJson";
 import {normalizeDocumentPath} from "./documentPath";
-import {DocumentCorruptError, DocumentParseContext, DocumentSpec} from "./types";
+import {DocumentCorruptError, DocumentDefect, DocumentParseContext, DocumentSpec} from "./types";
 
 /**
  * Reading and writing documents, without knowing what a filesystem is.
@@ -219,8 +219,15 @@ async function quarantine<T>(
 function createParseContext<T>(spec: DocumentSpec<T>, path: string, text: string): DocumentParseContext {
     return {
         path,
-        corrupt(reason: string, options?: {cause?: unknown}): never {
-            throw new DocumentCorruptError({kind: spec.kind, path, reason, text, cause: options?.cause});
+        corrupt(reason: string, options?: {cause?: unknown; defect?: DocumentDefect}): never {
+            throw new DocumentCorruptError({
+                kind: spec.kind,
+                path,
+                reason,
+                text,
+                cause: options?.cause,
+                defect: options?.defect,
+            });
         },
     };
 }

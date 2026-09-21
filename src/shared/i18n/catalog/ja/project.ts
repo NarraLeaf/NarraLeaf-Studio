@@ -234,6 +234,10 @@ export const project = {
         clearBackground: "透過のままにする",
         transparent: "なし",
         icnsPreview: "ICNS のプレビュー",
+        pickFailed: "ファイルの選択画面を開けなかった",
+        unsupported: "「{name}」はアイコンに使えない",
+        readFailed: "「{name}」を読み込めなかった",
+        failed: "アイコンを更新できなかった",
         target: {
             macos: "macOS",
             windows: "Windows",

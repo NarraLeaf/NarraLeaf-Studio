@@ -41,7 +41,11 @@ function runPsdWorker<T extends PsdWorkerOutboundMessage["type"]>(
             }
             if (reply.type === "error") {
                 worker.kill();
-                settle(() => reject(new Error(reply.message)));
+                // The code rides on the error, which is where the IPC handler's `failed` reads one.
+                const error = reply.code
+                    ? Object.assign(new Error(reply.message), { code: reply.code })
+                    : new Error(reply.message);
+                settle(() => reject(error));
             }
         });
         worker.on("exit", () => settle(() => reject(new Error("PSD worker exited before answering"))));

@@ -420,4 +420,20 @@ describe("FileSystemHashHandler refused writes", () => {
         expect(error.message).not.toContain("app://");
         expect(error.message).not.toContain(hash);
     });
+
+    it("answers a read it could not make the same way", async () => {
+        // A folder where a file was granted: nothing can read it as one.
+        const folder = path.join(tempDir, "a-folder");
+        await fs.mkdir(folder);
+        const hash = storageManager.allocateHash(folder, true, "read", 1);
+        storageManager.updateStatus(hash, "ready");
+
+        const response = await handler.handle({ url: `app://fs/${hash}`, method: "GET" } as unknown as Request);
+
+        expect(response.statusCode).toBe(500);
+        expect(response.headers?.["Content-Type"]).toBe("application/json");
+        const error = JSON.parse(String(response.data)).error as { code: string; message: string };
+        expect(Object.values(FsRejectErrorCode)).toContain(error.code);
+        expect(error.message).not.toContain(hash);
+    });
 });

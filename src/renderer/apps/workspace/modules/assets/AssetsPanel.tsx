@@ -334,7 +334,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => cancelAnimationFrame(frame);
     }, [stateReady, panelId]);
 
-    const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
+    const { assets, groups, loading, hasLoaded, loadFailed, loadAssets } = useAssetData({ context, isInitialized });
 
     const { focusedItemId, setFocusedItemId, handleAssetClick, handleAssetOpen, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
@@ -1124,8 +1124,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return <div className="p-4 flex items-center gap-2 text-fg-muted"><RefreshCw className="w-4 h-4 animate-spin" /> <span>{t("assets.loading")}</span></div>;
     }
 
-    if (error) {
-        return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <div><p>{t("assets.loadError")}</p><p className="text-xs">{error}</p></div></div>;
+    if (loadFailed) {
+        return <div className="p-4 text-danger flex items-start gap-2"><AlertCircle className="w-4 h-4" /> <p>{t("assets.loadError")}</p></div>;
     }
 
     // While narrowing, every category holding a survivor opens: a hit inside a category the reader

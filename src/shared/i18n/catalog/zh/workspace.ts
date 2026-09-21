@@ -20,6 +20,7 @@ export const workspace = {
             progress: "已翻译 {completed}/{total}",
             staleCount: "{count} 条待校对",
             importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
+            readFailed: "{name} 的译文无法读取",
         },
         settings: {
             menu: "语言设置…",
@@ -139,6 +140,7 @@ export const workspace = {
             importScript: "导入录音本…",
             importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
             importScriptFailed: "无法读取该录音本",
+            readFailed: "{name} 的配音指派无法读取",
             namingTitle: "录音文件名规则",
             namingHint: "可用占位符：{tokens}；导入的音频按此名称与对白匹配",
             namingReset: "恢复默认",
@@ -707,9 +709,15 @@ export const workspace = {
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
+            // `{reason}` 是下面 `unreadableReason` 之一，永远不是解析器自己的消息；另存的副本只说存在，
+            // 位置写在控制台那一行里，不写在这里。
             unreadableTitle: "无法读取{name}",
-            unreadableDetail: "{reason} 文件保持原样，没有内容被覆盖",
-            unreadableDetailQuarantined: "{reason} 文件保持原样，其副本已保存在 {path}",
+            unreadableDetail: "{reason}；文件保持原样，没有内容被覆盖",
+            unreadableDetailQuarantined: "{reason}；文件保持原样，并已另存一份副本",
+            unreadableReason: {
+                damaged: "文件已损坏，或不是 Studio 能读取的格式",
+                newerVersion: "该文件由更新版本的 NarraLeaf Studio 保存",
+            },
             consoleUnreadable: "读取失败（{kind}）：{path} · {reason}",
             consoleQuarantined: "已保留无法读取的文件副本：{path}",
             // 因工作区冻结而被拒绝的写入。这不是失败：没有出错，也不会重试。文案必须说清原因，

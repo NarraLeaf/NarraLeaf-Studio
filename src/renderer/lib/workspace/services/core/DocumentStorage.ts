@@ -7,6 +7,7 @@ import { RendererError } from "@shared/utils/error";
 import { join } from "@shared/utils/path";
 import { Services, type WorkspaceContext } from "../services";
 import type { FsWriteReport } from "../autosave/writeReport";
+import { markReportedToAuthor } from "../autosave/reportedFailure";
 import type { FileSystemService } from "./FileSystem";
 
 /**
@@ -21,6 +22,22 @@ export class DocumentWriteError extends RendererError {
     public constructor(path: string, public readonly fsError: FsRejectError) {
         super(`Failed to write ${path}: ${fsError.message}`, { cause: fsError });
         this.name = "DocumentWriteError";
+    }
+}
+
+/**
+ * A document the disk would not hand over - a permission, a lock, a path that is a folder. Not a
+ * missing one, which `read` answers as `null`, and not one that could not be understood, which is a
+ * `DocumentCorruptError` from the loader.
+ *
+ * Its own class for the reason {@link DocumentWriteError} has one: the message is the log's (English,
+ * the project-relative path), and a service that knows what the author calls the document words the
+ * failure from `fsError.code` instead of showing it.
+ */
+export class DocumentReadError extends RendererError {
+    public constructor(path: string, public readonly fsError: FsRejectError) {
+        super(`Failed to read ${path}: ${fsError.message}`, { cause: fsError });
+        this.name = "DocumentReadError";
     }
 }
 
@@ -70,7 +87,7 @@ export class RendererDocumentStorage implements DocumentStorage {
         if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
             return null;
         }
-        throw new RendererError(`Failed to read ${path}: ${result.error.message}`);
+        throw new DocumentReadError(path, result.error);
     }
 
     /**
@@ -86,7 +103,10 @@ export class RendererDocumentStorage implements DocumentStorage {
         await this.ensureParentDirectory(path);
         const result = await this.fs.writeFileNoFollowOrCreate(this.absolute(path), text, "utf-8", this.report);
         if (!result.ok) {
-            throw new DocumentWriteError(path, result.error);
+            const error = new DocumentWriteError(path, result.error);
+            // The save-status surface put this failure on screen when the write was observed, unless
+            // the storage said its writer would - so a panel that catches it says nothing more.
+            throw this.report?.afterFailure === "handledByWriter" ? error : markReportedToAuthor(error);
         }
     }
 
