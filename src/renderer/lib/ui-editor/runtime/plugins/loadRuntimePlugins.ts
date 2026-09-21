@@ -36,6 +36,12 @@ import {
 import type { RuntimePluginHost } from "./runtimePluginHost";
 import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
 import { narrowWidgetEventDispatchForPlugin } from "../widgetEventDispatch";
+import {
+    notifyContributedWidgetsChanged,
+    registerContributedWidgetSource,
+    type ContributedWidgetDeclaration,
+} from "@shared/types/ui-editor/contributedWidgets";
+import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -91,7 +97,33 @@ const runtimeNodeOwners = new Map<string, string>();
  * the host-facing binding built by {@link bindWidgetRenderer}, never the plugin's own
  * function: the narrowing has to be in place before anything can reach the registry.
  */
-const runtimeWidgetRenderers = new Map<string, { ownerPluginId: string; renderer: ElementRendererDefinition }>();
+const runtimeWidgetRenderers = new Map<string, {
+    ownerPluginId: string;
+    renderer: ElementRendererDefinition;
+    /** What the def declared, already held to the plugin's own heads. */
+    logicApi: WidgetLogicApi | undefined;
+}>();
+
+function declarationOf(type: string, entry: { ownerPluginId: string; logicApi: WidgetLogicApi | undefined }): ContributedWidgetDeclaration {
+    return { type, ownerPluginId: entry.ownerPluginId, logicApi: entry.logicApi };
+}
+
+/**
+ * The widgets runtime entries registered, behind the shared capability lookups.
+ *
+ * The game's half of what the workspace does from its widget module registry: the dispatcher, the
+ * element wrapper and the Init lifecycle read a widget's events through `getWidgetLogicApi`, and a
+ * game has no widget module to read a plugin's from - only the def its runtime entry registered.
+ * Children are not answered here: the game draws whatever children an element has, and the
+ * question of where an author may put one is the editor's.
+ */
+registerContributedWidgetSource({
+    get: type => {
+        const entry = runtimeWidgetRenderers.get(type);
+        return entry ? declarationOf(type, entry) : undefined;
+    },
+    list: () => Array.from(runtimeWidgetRenderers, ([type, entry]) => declarationOf(type, entry)),
+});
 
 /**
  * Load-once cache keyed by plugin id + version + entry URL. Game environments
@@ -307,10 +339,21 @@ function createRuntimePluginApp(
         if (existing && existing.ownerPluginId !== pluginId) {
             throw new Error(`Widget type already registered by another owner: ${type}`);
         }
+        const sanitized = sanitizeContributedWidgetLogicApi(pluginId, def.logicApi);
+        for (const problem of sanitized.problems) {
+            log(
+                "warning",
+                `widget ${type}, event "${problem.eventId}": ${problem.message}. A widget event names the head `
+                    + "nodes that start on it in `headNodeTypes`: a built-in widget event head, or a node type "
+                    + "this plugin registers.",
+            );
+        }
         runtimeWidgetRenderers.set(type, {
             ownerPluginId: pluginId,
             renderer: bindWidgetRenderer(type, def.render, game),
+            logicApi: sanitized.logicApi,
         });
+        notifyContributedWidgetsChanged();
     };
 
     const readData = <T,>(namespace: string): T | null => {

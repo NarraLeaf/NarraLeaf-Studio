@@ -9,7 +9,7 @@ import {
     widgetMainOwnerKey,
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
-import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { getWidgetLogicApi, isBuiltinWidgetLogicType } from "@shared/types/ui-editor/widgetLogic";
 import { uiOwningSurfaceIds } from "@shared/live/uiParts";
 import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 
@@ -83,6 +83,13 @@ export class UIBlueprintLifecycleCoordinator
             }
             const logicApi = getWidgetLogicApi(el.type);
             if (!logicApi?.supportsPrivateBlueprint) {
+                if (!logicApi && !isBuiltinWidgetLogicType(el.type)) {
+                    // A plugin's widget whose plugin is not loaded right now. Whether it takes a
+                    // blueprint is the plugin's to say and it cannot be asked, so a blueprint the
+                    // author already wrote on it is kept rather than collected below - switching a
+                    // plugin off must not delete the graphs its widgets carried.
+                    validWidgetKeys.add(widgetMainOwnerKey(surfaceId, elementId));
+                }
                 continue;
             }
             localBp.ensureWidgetMain(surfaceId, elementId, el.name, el.type);
@@ -92,6 +99,9 @@ export class UIBlueprintLifecycleCoordinator
             for (const [elementId, el] of Object.entries(component.elements)) {
                 const logicApi = getWidgetLogicApi(el.type);
                 if (!logicApi?.supportsPrivateBlueprint) {
+                    if (!logicApi && !isBuiltinWidgetLogicType(el.type)) {
+                        validComponentWidgetKeys.add(componentWidgetMainOwnerKey(component.id, elementId));
+                    }
                     continue;
                 }
                 localBp.ensureComponentWidgetMain(component.id, elementId, el.name, el.type);

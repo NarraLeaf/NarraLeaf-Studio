@@ -18,6 +18,7 @@ import type {
 } from "@shared/types/blueprint/externalLink";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { StoryCompilePass } from "../game/storyCompilePass";
 
@@ -143,10 +144,11 @@ export type RuntimeWidgetRendererProps = {
     /**
      * Raise one of this element's own event slots, running whatever the author wired to it.
      *
-     * The only route a plugin widget has to the author's graph, and the reason the host's
-     * blueprint runtime cannot simply be withheld: the dispatcher that turns a click into
-     * `mouseClick` reads a static table of built-in widget types, so a plugin type is not in
-     * it and nothing else will ever fire the slot.
+     * The route a plugin widget's own events take to the author's graph - a rating picked, a
+     * page turned - and the reason the host's blueprint runtime cannot simply be withheld. The
+     * host raises the pointer, key and lifecycle events it raises for every widget itself, for
+     * the ones the widget's `logicApi` declares; everything else only the widget knows happened.
+     * An event its `logicApi` does not declare starts nothing.
      *
      * Bound to the element being drawn - a widget cannot raise an event on another one - and
      * to the drawing it is in: the row, so a dispatch from inside a repeated row addresses that
@@ -174,6 +176,14 @@ export type RuntimeWidgetRendererProps = {
 export type RuntimeWidgetRendererDef = {
     type: string;
     render: (props: RuntimeWidgetRendererProps) => ReactElement | null;
+    /**
+     * The events this widget raises - the same object the studio entry's widget module declares.
+     *
+     * The game has no widget module to read it from, so without it here a `dispatchEvent` from
+     * `render` reaches no graph in a game or in Dev Mode, whatever the editor showed. Put the
+     * declaration in the module both entries import, as with the render function.
+     */
+    logicApi?: WidgetLogicApi;
 };
 
 /** Removes a subscription. Also tracked by the host, so a failed plugin cannot leak listeners. */

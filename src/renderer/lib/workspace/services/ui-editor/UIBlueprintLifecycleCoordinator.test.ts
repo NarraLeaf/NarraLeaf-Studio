@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import { Services } from "../services";
 import { UIBlueprintLifecycleCoordinator } from "./UIBlueprintLifecycleCoordinator";
+import { widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
 function element(input: {
     id: string;
@@ -42,13 +44,14 @@ function documentWithElements(rootElementId: string, elements: Record<string, UI
     };
 }
 
-function createHarness(document: UIDocument) {
+function createHarness(document: UIDocument, ownerRecords: BlueprintDocument["ownerRecords"] = {}) {
     const blueprintDocument: BlueprintDocument = {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {},
-        ownerRecords: {},
+        ownerRecords,
         meta: {},
     };
+    const removedWidgets: string[] = [];
     const ensuredWidgets: Array<{
         surfaceId: string;
         elementId: string;
@@ -80,7 +83,9 @@ function createHarness(document: UIDocument) {
                             ensuredWidgets.push({ surfaceId, elementId, displayName, widgetType });
                             return `bp-${surfaceId}-${elementId}`;
                         },
-                        removeWidgetMain: () => undefined,
+                        removeWidgetMain: (_surfaceId: string, elementId: string) => {
+                            removedWidgets.push(elementId);
+                        },
                         ensureComponentWidgetMain: () => "component-widget-bp",
                         removeComponentWidgetMain: () => undefined,
                         removeWidgetValueBlueprint: () => undefined,
@@ -91,7 +96,7 @@ function createHarness(document: UIDocument) {
         } as any,
     });
 
-    return { coordinator, ensuredWidgets };
+    return { coordinator, ensuredWidgets, removedWidgets };
 }
 
 describe("UIBlueprintLifecycleCoordinator", () => {
@@ -146,5 +151,59 @@ describe("UIBlueprintLifecycleCoordinator", () => {
                 widgetType: "nl.container",
             },
         ]);
+    });
+});
+
+describe("UIBlueprintLifecycleCoordinator with plugin widgets", () => {
+    const PLUGIN_ID = "probe.coordinator";
+    const RATING = `${PLUGIN_ID}.rating`;
+
+    afterEach(() => {
+        widgetModuleRegistry.unregister(RATING);
+    });
+
+    function pageWithRating(): UIDocument {
+        return documentWithElements("root-a", {
+            "root-a": element({ id: "root-a", type: "nl.root", parentId: null, childrenIds: ["rating-a"] }),
+            "rating-a": element({ id: "rating-a", type: RATING, parentId: "root-a", name: "Rating" }),
+        });
+    }
+
+    it("gives a plugin widget that declares a blueprint one of its own, as a built-in gets", () => {
+        widgetModuleRegistry.register({
+            type: RATING,
+            displayName: "Rating",
+            icon: (() => null) as never,
+            logicApi: { supportsPrivateBlueprint: true, events: [], commands: [], readableState: [], writableProps: [] },
+            createDefaultElement: () => ({}),
+            render: () => null,
+        }, { ownerPluginId: PLUGIN_ID });
+        const { coordinator, ensuredWidgets } = createHarness(pageWithRating());
+
+        coordinator.syncFromUidoc();
+
+        expect(ensuredWidgets.map(entry => entry.elementId)).toEqual(["rating-a"]);
+    });
+
+    it("keeps the blueprint of a plugin widget whose plugin is not loaded", () => {
+        // The author wrote this graph while the plugin was on. With it off nothing can say whether
+        // the widget takes a blueprint, and collecting it would delete their work on a guess.
+        const { coordinator, removedWidgets } = createHarness(pageWithRating(), {
+            [widgetMainOwnerKey("surface-a", "rating-a")]: { blueprintId: "bp-rating" },
+        });
+
+        coordinator.syncFromUidoc();
+
+        expect(removedWidgets).toEqual([]);
+    });
+
+    it("still collects the blueprint of a built-in widget that takes none", () => {
+        const { coordinator, removedWidgets } = createHarness(pageWithRating(), {
+            [widgetMainOwnerKey("surface-a", "root-a")]: { blueprintId: "bp-root" },
+        });
+
+        coordinator.syncFromUidoc();
+
+        expect(removedWidgets).toEqual(["root-a"]);
     });
 });
