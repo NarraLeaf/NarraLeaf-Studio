@@ -94,3 +94,50 @@ export function requireWindowProject(window: AppWindow, named: string): string {
     }
     return own;
 }
+
+/**
+ * The directory a request may make a project's repository in - {@link requireWindowProject} for a
+ * window that has a project, and "somewhere this window was granted to write" for one that has none.
+ *
+ * # Why the one assertion does not fit here
+ *
+ * `vcs.initRepository` is asked by two windows. The workspace asks it about its own project, from
+ * the version rail's Enable button. The project wizard asks it about the directory it has just
+ * written a new project into, and the wizard has no project of its own - so asserting the window's
+ * project would refuse the one call that makes "create with version control" work, and nothing tsc
+ * or the workspace can see would say so.
+ *
+ * # So the question splits on whether the window has a project
+ *
+ * A window that has one is asked the ordinary question. Its only reason to name a directory is its
+ * own project, and the looser rule would let it plant a repository in any folder of its tree, or in
+ * one the author once picked to export to.
+ *
+ * A window that has none must name a directory it holds a WRITE grant over. The wizard writes the
+ * whole project through that grant before it asks, so the directory it names is one it has just
+ * filled; a directory it was never granted is one it did not create, and is somebody else's. The
+ * same rule already stands in front of `projectWizard.created`, the wizard's other report about the
+ * project it made.
+ *
+ * Refused with the mismatch error, and so with its code, because from the author's side it is the
+ * same event - a request naming a place this window has no business with - and the IPC registry
+ * reports it through the one throttled line that never repeats the path.
+ *
+ * The payload's spelling is what comes back for a window with no project: there is no other one to
+ * prefer, and the manager folds spellings into one repository root itself.
+ *
+ * @throws WindowProjectMismatchError when the window has a different project, or has none and was
+ *   not granted to write the named directory.
+ */
+export async function requireWindowProjectOrWriteGrant(window: AppWindow, named: string): Promise<string> {
+    if (windowProjectPath(window)) {
+        return requireWindowProject(window, named);
+    }
+    if (typeof named !== "string" || named.length === 0) {
+        throw new WindowProjectMismatchError(String(named));
+    }
+    if (!await window.app.storageManager.isPathAllowed(window, path.resolve(named), "write")) {
+        throw new WindowProjectMismatchError(named);
+    }
+    return named;
+}
