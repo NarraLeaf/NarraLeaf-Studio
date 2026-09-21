@@ -22,6 +22,9 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
  * Only `true` counts. Every other value - absent, a stale shape, a different project's key - is off,
  * because off is the default and the two are one state.
  *
+ * Runs an author starts read this; a headless `--test` run does not. It answers from its own line
+ * (`--test-as-shipped`) and nothing else, for the reasons `runSealing.ts` gives.
+ *
  * Comments in English per project convention.
  */
 export const PREVIEW_AS_SHIPPED_SETTINGS_KEY = "ui.previewAsShippedByProject";
