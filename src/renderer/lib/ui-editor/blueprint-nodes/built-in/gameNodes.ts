@@ -105,7 +105,7 @@ import { resolveLocalizedStoredText } from "@shared/types/localization";
 import { buildSaveMetadataFromFields, readSaveMetadataFields } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaField } from "@shared/types/saveSchema";
 import { saveSchemaPinId } from "../effectivePins";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
@@ -529,13 +529,7 @@ function resolveStartStoryTarget(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     key: "storyId" | "sceneId" | "startBlockId" | "surfaceId",
 ): string {
-    const wired = resolveDataPinValue(ctx.graph, ctx.node.id, key, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const wired = resolveNodeInput(ctx, key);
     const fromPin = typeof wired === "string" ? wired.trim() : "";
     // `startBlockId` has no picker, so params never supplies it.
     return fromPin || (key === "startBlockId" ? "" : String(ctx.params[key] ?? "").trim());
@@ -543,21 +537,7 @@ function resolveStartStoryTarget(
 
 /** Wired pin wins over the Track picker; see trackVolumePin. */
 function readTrackVolumeTarget(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
-    const wired = resolveDataPinValue(
-        ctx.graph,
-        ctx.node.id,
-        BLUEPRINT_SOUND_PARAM_TRACK,
-        ctx.params,
-        ctx.blueprintLocals,
-        0,
-        {
-            hostAdapter: ctx.hostAdapter,
-            eventPayload: ctx.eventPayload,
-            listItemScope: ctx.listItemScope,
-            instanceKey: ctx.instanceKey,
-            executionOwner: ctx.executionOwner,
-        },
-    );
+    const wired = resolveNodeInput(ctx, BLUEPRINT_SOUND_PARAM_TRACK);
     const fromPin = typeof wired === "string" ? wired.trim() : "";
     return fromPin || readBlueprintAudioTrackParam(ctx.params);
 }
@@ -565,13 +545,7 @@ function readTrackVolumeTarget(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
 type GameNodeContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function readGamePin(ctx: GameNodeContext, pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 /**
@@ -669,13 +643,7 @@ function cloneJsonValue(value: unknown): unknown {
 }
 
 function resolveSaveMetadata(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): unknown {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "metadata", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, "metadata");
     return cloneJsonValue(value);
 }
 
@@ -684,21 +652,7 @@ function resolveSaveSchemaPin(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     field: SaveSchemaField,
 ): unknown {
-    return resolveDataPinValue(
-        ctx.graph,
-        ctx.node.id,
-        saveSchemaPinId(field.id),
-        ctx.params,
-        ctx.blueprintLocals,
-        undefined,
-        {
-            hostAdapter: ctx.hostAdapter,
-            eventPayload: ctx.eventPayload,
-            listItemScope: ctx.listItemScope,
-            instanceKey: ctx.instanceKey,
-            executionOwner: ctx.executionOwner,
-        },
-    );
+    return resolveNodeInput(ctx, saveSchemaPinId(field.id));
 }
 
 /**
@@ -730,13 +684,7 @@ function resolveSaveMetadataToWrite(ctx: Parameters<NonNullable<BlueprintNodeDef
 }
 
 function resolveSaveScreenshot(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): boolean {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "screenshot", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, "screenshot");
     return value === true;
 }
 
@@ -749,13 +697,7 @@ function hasDataInputValue(ctx: Parameters<NonNullable<BlueprintNodeDef["execute
 
 function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number {
     const portId = hasDataInputValue(ctx, "cps") || !hasDataInputValue(ctx, "speed") ? "cps" : "speed";
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, portId, ctx.params, ctx.blueprintLocals, 10, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, portId);
     const cps = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(cps) || cps <= 0) {
         throw new BlueprintGraphExecutionError("CPS must be a positive number", ctx.node.id);
@@ -767,13 +709,7 @@ function resolvePreferenceValue(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     meta: GamePreferenceNodeMeta,
 ): BlueprintGamePreferenceValue {
-    const resolvedValue = resolveDataPinValue(ctx.graph, ctx.node.id, meta.pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const resolvedValue = resolveNodeInput(ctx, meta.pinId);
     const value = resolvedValue === undefined ? meta.defaultValue : resolvedValue;
     if (meta.valueType === "boolean") {
         if (typeof value !== "boolean") {
@@ -951,13 +887,7 @@ const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
             if (!trackId) {
                 throw new BlueprintGraphExecutionError("Set Track Volume: pick a track", ctx.node.id);
             }
-            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "volume", ctx.params, ctx.blueprintLocals, 1, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const raw = resolveNodeInput(ctx, "volume");
             const volume = typeof raw === "number" ? raw : Number(raw);
             if (!Number.isFinite(volume)) {
                 throw new BlueprintGraphExecutionError("Volume must be a finite number", ctx.node.id);
@@ -1586,13 +1516,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         execute(ctx) {
-            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "textId", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const wired = resolveNodeInput(ctx, "textId");
             const textId = String(wired ?? "").trim();
             return {
                 outputValues: {
@@ -1641,13 +1565,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             // With the runtime, because the index that picks a choice almost always comes from the
             // `Item Click` head that heard the click, and an event head's outputs live in the event
             // payload. Without it the pin resolved to null and every wired Select Choice threw.
-            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "index", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const wired = resolveNodeInput(ctx, "index");
             const index = Number(wired ?? ctx.params.index);
             if (!Number.isInteger(index) || index < 0) {
                 throw new BlueprintGraphExecutionError(

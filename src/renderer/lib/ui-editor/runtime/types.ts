@@ -86,6 +86,8 @@ export type UIHostAdapterBlueprintRuntime = {
         callerComponentParams?: Record<string, string>;
         /** Which drawing the call came from, so the body's widget writes land on it. */
         callerInstanceKey?: string;
+        /** The list row the call came from, so the body reads the row the caller was answering for. */
+        callerListItemScope?: UIListItemScope | null;
         signal?: AbortSignal;
         callerExecutionId?: string;
     }) => Promise<{ returns: Record<string, unknown> }>;

@@ -24,6 +24,7 @@
  */
 
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { addressWidgetFromExecution } from "@/lib/ui-editor/blueprint-nodes/built-in/widgetTarget";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { listScriptLayers, scriptLayerKey } from "@shared/blueprint/blueprintLayers";
@@ -196,11 +197,68 @@ export type BuildGameScriptContextInput = {
     self: ScriptSelf;
     hostAdapter: UIHostAdapter;
     hostApi: BlueprintHostApiRuntime;
+    /**
+     * The drawing the handler is running in - a list row, a component placement - or undefined on
+     * the page. Every element id the script hands `ctx.host` is read from here.
+     */
+    instanceKey?: string;
     /** This drawing's own store, with the lifetime a graph `Var` has. */
     vars: Record<string, unknown>;
     signal?: AbortSignal;
     stopPropagation: () => void;
 };
+
+/**
+ * The widget methods whose first argument is not an element id. Everything else in `host.widget`
+ * names a widget first, so everything else is bound to the drawing.
+ */
+const WIDGET_METHODS_NOT_NAMING_AN_ELEMENT: ReadonlySet<string> = new Set<keyof BlueprintHostApiRuntime["widget"]>([
+    "stopDisplayableAnimation",
+]);
+
+/**
+ * The host API a script is handed: the adapter's own, with every element id the script names read
+ * from the drawing its handler is running in.
+ *
+ * A script writes `ctx.host.widget.setVisible("viewer", true)` with the element's own id, as
+ * `ctx.self.elementId` is - it has no other id to write, and an address is not something an author
+ * should have to know exists. The raw host API takes an *address*, so handed the bare id it wrote
+ * the element's template, which is the drawing no list row and no placement is: from Item Click the
+ * pressed row's label never changed, and from inside a card the card never did. This is the
+ * translation the widget nodes make through `addressWidgetFromExecution`, and it is the same call,
+ * so a node and a script on one slot mean the same widget by the same id - the row's own label in
+ * the row, a panel beside the list as the panel, the list itself as the list.
+ *
+ * Only the methods that name a widget change. Everything else is the host API as it is - including
+ * a family a host does not carry at all, which stays absent rather than becoming a wrapper around
+ * nothing.
+ */
+export function bindHostApiToDrawing(
+    hostApi: BlueprintHostApiRuntime,
+    hostAdapter: UIHostAdapter,
+    instanceKey: string | undefined,
+): BlueprintHostApiRuntime {
+    const addressOf = (elementId: string) => addressWidgetFromExecution({ hostAdapter, instanceKey }, elementId);
+    const bound: BlueprintHostApiRuntime = { ...hostApi };
+    if (hostApi.widget) {
+        bound.widget = Object.fromEntries(
+            Object.entries(hostApi.widget).map(([name, method]) => [
+                name,
+                WIDGET_METHODS_NOT_NAMING_AN_ELEMENT.has(name) || typeof method !== "function"
+                    ? method
+                    : (elementId: string, ...rest: unknown[]) =>
+                          (method as (elementId: string, ...rest: unknown[]) => unknown)(addressOf(elementId), ...rest),
+            ]),
+        ) as BlueprintHostApiRuntime["widget"];
+    }
+    if (hostApi.pointer) {
+        bound.pointer = {
+            ...hostApi.pointer,
+            moveToElementCenter: (elementId, options) => hostApi.pointer.moveToElementCenter(addressOf(elementId), options),
+        };
+    }
+    return bound;
+}
 
 /**
  * Assemble the context a UI event handler is given.
@@ -239,7 +297,7 @@ export function buildGameScriptContext(input: BuildGameScriptContextInput): Game
 
     return {
         self: input.self,
-        host: input.hostApi,
+        host: bindHostApiToDrawing(input.hostApi, input.hostAdapter, input.instanceKey),
         broadcast,
         surface,
         vars: input.vars,
@@ -253,11 +311,16 @@ export function buildGameScriptContext(input: BuildGameScriptContextInput): Game
  *
  * `elementId` is the element's own id and never the widget address - the address is how the runtime
  * finds this drawing's widget, and an author who was handed one would have to know to pass it back.
- * The instance key travels separately, on the host API the ctx carries.
+ * The drawing travels separately, bound into the host API the ctx carries ({@link bindHostApiToDrawing}).
+ *
+ * `componentParams` are the placement's resolved params, which a component element's `self.params`
+ * is. They used to be left behind here, so a script on a card read `{}` for every param the
+ * placement set - what `Get Component Param` reads in a graph on the same element.
  */
 export function scriptSelfOf(input: {
     surfaceId?: string;
     componentId?: string;
+    componentParams?: Readonly<Record<string, string>>;
     elementId?: string;
     widgetType?: string;
     row?: ScriptListRow | null;
@@ -268,7 +331,7 @@ export function scriptSelfOf(input: {
             componentId: input.componentId,
             elementId: input.elementId,
             widgetType: (input.widgetType ?? "nl.container") as ScriptWidgetType,
-            params: {},
+            params: input.componentParams ?? {},
             row: input.row ?? null,
         };
     }

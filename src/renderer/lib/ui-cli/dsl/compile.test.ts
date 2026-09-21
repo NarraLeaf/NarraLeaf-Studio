@@ -97,6 +97,15 @@ describe("compiling a .ui file", () => {
         expect(codes(text)).toContain("ui.list_field_outside_item");
     });
 
+    it("says nothing about a list item field read inside a component definition, which reads the row it is placed in", () => {
+        const text = `component "Card" id=card size=100x20
+    Card: nl.container id=card-root @0,0 100x20
+        Label: nl.text @0,0 100x20
+            bind text = field caption
+`;
+        expect(codes(text)).not.toContain("ui.list_field_outside_item");
+    });
+
     it("says nothing about a list item field read from inside the item template", () => {
         const text = `${MINIMAL}        Rows: nl.list id=rows @0,0 100x100\n`
             + "            Row: nl.container @0,0 100x20\n"

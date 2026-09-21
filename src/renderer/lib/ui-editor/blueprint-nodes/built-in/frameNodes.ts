@@ -34,7 +34,7 @@ import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -44,14 +44,7 @@ const FULLSCREEN_MODES = ["enter", "exit", "toggle"] as const;
 type FullscreenMode = (typeof FULLSCREEN_MODES)[number];
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 /** An unset dropdown reads as "toggle", the useful default for a fullscreen button. */

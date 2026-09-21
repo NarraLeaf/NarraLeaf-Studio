@@ -35,7 +35,7 @@ import {
 } from "./audioTrackParams";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
@@ -175,13 +175,7 @@ const isPlayingOut: BlueprintNodePinDef = {
 type SoundExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function readPin(ctx: SoundExecuteCtx, pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 /** A seconds pin as the milliseconds the host capability takes. Negative and unset both read as 0. */

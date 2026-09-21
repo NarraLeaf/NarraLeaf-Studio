@@ -18,19 +18,13 @@ import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/l
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 type NodeExecuteContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function resolvePinString(ctx: NodeExecuteContext, pinId: string): string {
-    const raw = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const raw = resolveNodeInput(ctx, pinId);
     return raw === null || raw === undefined ? "" : String(raw);
 }
 
@@ -105,13 +99,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
             if (!config) {
                 throw new BlueprintGraphExecutionError("This project has no languages configured", ctx.node.id);
             }
-            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "language", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const raw = resolveNodeInput(ctx, "language");
             const code = String(raw ?? "").trim();
             if (!code || !config.locales.some(locale => locale.code === code)) {
                 throw new BlueprintGraphExecutionError(`Unknown language: ${code || "(empty)"}`, ctx.node.id);
@@ -239,13 +227,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         ],
         async execute(ctx) {
             const template = resolvePinString(ctx, "text");
-            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "values", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const raw = resolveNodeInput(ctx, "values");
             const values = Array.isArray(raw) ? raw : raw === null || raw === undefined ? [] : [raw];
             const result = parseTranslatedText(template)
                 .map(part => {

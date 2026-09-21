@@ -18,7 +18,7 @@ import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutio
 import type { BlueprintTextInputPropertiesPatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
@@ -113,14 +113,7 @@ function writeNode(input: {
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {

@@ -65,18 +65,30 @@ function listItemProps(item: unknown): Record<string, unknown> {
         : { value: item };
 }
 
+/**
+ * Item Render: the list's own event, raised once for each row as it is drawn.
+ *
+ * It carries the row the way Item Click does - its scope and its drawing's key - because a handler
+ * answering "this row is being drawn" is asking about that row. Without them `Get Item Field` read
+ * nothing, and a write to the row's own label went to the label's template, which no row draws: the
+ * one event built for per-row decoration could not decorate a row.
+ */
 function ListItemRenderEvent(props: {
     runtime: BlueprintRuntime | undefined;
     elementId: string;
     scope: UIListItemScope;
+    instanceKey: string;
 }) {
-    const { runtime, elementId, scope } = props;
+    const { runtime, elementId, scope, instanceKey } = props;
     useEffect(() => {
         if (!runtime) {
             return;
         }
-        void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope));
-    }, [elementId, runtime, scope.count, scope.index, scope.item, scope.key]);
+        void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope), {
+            listItemScope: scope,
+            instanceKey,
+        });
+    }, [elementId, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
@@ -556,7 +568,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         };
         const rowChildren = (
             <>
-                <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} />
+                <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} instanceKey={instanceKey} />
                 <ListItemRefreshEvent
                     runtime={blueprintRuntime}
                     elementIds={itemTemplateDescendantIds}

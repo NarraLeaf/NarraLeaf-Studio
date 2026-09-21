@@ -51,32 +51,51 @@ export function resolveUIWidgetAddressFromDrawing(
     elementId: string,
     instanceKey: string | undefined | null,
 ): string {
+    return buildUIWidgetAddress(elementId, resolveUIElementDrawingKey(document, elementId, instanceKey));
+}
+
+/**
+ * The instance key of the drawing `elementId` is in, as seen from the drawing `instanceKey` names -
+ * or undefined when the element is drawn once, for the page.
+ *
+ * The same walk as {@link resolveUIWidgetAddressFromDrawing}, stopped one step earlier: that one
+ * answers "which widget does this graph mean", this one "which drawing is that widget in". The
+ * second question has a use of its own. A widget's blueprint keeps its variables per drawing, and a
+ * list's Item Click runs in the pressed row while the list that owns the blueprint is not inside any
+ * of its rows - so the list's variables belong to the drawing the list is in, which is this answer
+ * for the list's own id, and not to the row the event happened to come from.
+ */
+export function resolveUIElementDrawingKey(
+    document: UIDocument,
+    elementId: string,
+    instanceKey: string | undefined | null,
+): string | undefined {
     const segments = splitUIInstanceKey(instanceKey);
     let rowListIds: readonly string[] | null = null;
     for (let i = segments.length - 1; i >= 0; i--) {
         const segment = segments[i]!;
-        const addressInThisDrawing = () => buildUIWidgetAddress(elementId, joinUIInstanceKeySegments(segments.slice(0, i + 1)));
+        const thisDrawing = () => joinUIInstanceKeySegments(segments.slice(0, i + 1));
         const placementId = readUIComponentInstanceSegment(segment);
         if (placementId !== null) {
             const drawn = placementDrawsElement(document, placementId, elementId);
             if (drawn === false) {
                 continue;
             }
-            return addressInThisDrawing();
+            return thisDrawing();
         }
         if (isUIListItemInstanceSegment(segment)) {
             rowListIds ??= collectRowListIds(document, elementId);
             if (rowListIds.some(listId => isUIListItemInstanceSegmentOf(segment, listId))) {
-                return addressInThisDrawing();
+                return thisDrawing();
             }
             continue;
         }
         // A segment this rule cannot read - a widget that draws its children more than once in a way
         // the document does not describe. The element may well be one of those drawings, so it keeps
         // the drawing, which is what every address did before this rule existed.
-        return addressInThisDrawing();
+        return thisDrawing();
     }
-    return elementId;
+    return undefined;
 }
 
 /**
