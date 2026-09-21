@@ -20,10 +20,9 @@ import {
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
-import type { BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { BlueprintNodeDef } from "../types";
 import { readDynamicInputPinIds } from "../effectivePins";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 /** Value types offered by the per-pin type picker on Fn head params and Fn Return results. */
 export const BLUEPRINT_FN_PIN_VALUE_TYPE_OPTIONS = [
@@ -34,17 +33,6 @@ export const BLUEPRINT_FN_PIN_VALUE_TYPE_OPTIONS = [
     "json",
     "any",
 ] as const;
-
-function dataPinResolveRuntime(ctx: BehaviorNodeExecutionContext) {
-    return {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    };
-}
 
 export const fnBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -112,15 +100,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
             const pinIds = readDynamicInputPinIds(ctx.params, BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS);
             const returns: Record<string, unknown> = {};
             for (const pinId of pinIds) {
-                returns[pinId] = resolveDataPinValue(
-                    ctx.graph,
-                    ctx.node.id,
-                    pinId,
-                    ctx.params,
-                    ctx.blueprintLocals,
-                    0,
-                    dataPinResolveRuntime(ctx),
-                );
+                returns[pinId] = resolveNodeInput(ctx, pinId);
             }
             ctx.valueExecution?.returnValue(returns);
             // Terminal: fn body execution ends here.
@@ -161,15 +141,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
             const snapshot = readBlueprintFnSignatureSnapshot(ctx.params);
             const args: Record<string, unknown> = {};
             for (const param of snapshot?.params ?? []) {
-                args[param.pinId] = resolveDataPinValue(
-                    ctx.graph,
-                    ctx.node.id,
-                    param.pinId,
-                    ctx.params,
-                    ctx.blueprintLocals,
-                    0,
-                    dataPinResolveRuntime(ctx),
-                );
+                args[param.pinId] = resolveNodeInput(ctx, param.pinId);
             }
             const result = await runtime.invokeBlueprintFn({
                 fnRef,

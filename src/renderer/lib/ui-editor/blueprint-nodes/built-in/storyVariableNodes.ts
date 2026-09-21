@@ -22,7 +22,7 @@ import {
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { StoryVariableRuntimeAccess } from "../../runtime/types";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 type ExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
@@ -47,13 +47,7 @@ function requireVariableId(ctx: ExecuteCtx, paramKey: string, label: string): st
 }
 
 function readValuePin(ctx: ExecuteCtx): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    return resolveNodeInput(ctx, "value");
 }
 
 function getNode(

@@ -48,7 +48,7 @@ import { UI_DISPLAYABLE_WIDGET_TYPES } from "@shared/types/ui-editor/displayable
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
@@ -101,14 +101,7 @@ const travelInspectorParams: BlueprintNodeDef["inspectorParams"] = [
 ];
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function readTravel(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): {
