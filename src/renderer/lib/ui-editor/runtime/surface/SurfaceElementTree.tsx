@@ -856,6 +856,16 @@ function renderLinkedComponentInstanceContent(input: {
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     instanceKey: string;
+    /**
+     * The list row the placement is drawn in, or null outside one.
+     *
+     * Handed to the definition's insides rather than stopped at the placement: a card placed in a
+     * gallery row is part of that row, and its graph and its field bindings are asking about the
+     * row the same way a plain text in the row is. It used to be dropped here, so a component could
+     * be placed in a list and never read the row it was in - and an event bubbling back out of it
+     * reached the row's own widgets without the row either.
+     */
+    listItemScope: UIListItemScope | null;
     componentPath: string[];
     valueRuntime: BlueprintValueRuntimeStore | null;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
@@ -974,7 +984,7 @@ function renderLinkedComponentInstanceContent(input: {
                     input.useAppearanceInspectorPreview,
                     null,
                     input.widgetRuntimePatches,
-                    null,
+                    input.listItemScope,
                     componentInstanceKey,
                     input.nestedSurfaceRuntime,
                     [virtualSurface.id],
@@ -1123,6 +1133,7 @@ function renderElementTree(
         widgetRuntimePatches,
         nestedSurfaceRuntime,
         instanceKey,
+        listItemScope: listItemScope ?? null,
         componentPath,
         valueRuntime,
         surfaceLifecycleSignals,
