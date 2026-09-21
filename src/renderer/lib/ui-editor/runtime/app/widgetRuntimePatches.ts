@@ -1,25 +1,23 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
-import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-
-export type WidgetPatchesByScope = Record<string, Record<string, DevModeWidgetRuntimePatch>>;
+import {
+    mergeWidgetPatch,
+    type DevModeWidgetRuntimePatch,
+} from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 
 /**
- * Two patches for one drawing, later winning.
+ * The runtime patches of every scope a game is drawing, by scope and then by widget address.
  *
- * `props` is merged rather than replaced: each write states only the properties it changed, and a
- * shallow spread would drop everything an earlier write had put there. Every other field is one
- * fact, so last-writer-wins is what they mean.
+ * Held twice by its owner, and the two are not equals. The ref is the table: every write lands in
+ * it synchronously (see {@link applyWidgetRuntimePatch}), the drawings read it first, and every
+ * host API on a scope reads its widgets back out of it at the moment a graph asks. The state is
+ * only what makes a write re-render, and it is always set to the object the ref already holds.
+ *
+ * So nothing may assign the ref *from* the state. An effect doing that runs after the commit of
+ * the render that state came from - and a graph resumed in between (a `Delay` ending, a key press)
+ * has already written a newer table into the ref, which the effect then quietly puts back. The
+ * next write merges over the older table, and the one in between is gone from the screen for good.
  */
-function mergeOnePatch(
-    previous: DevModeWidgetRuntimePatch | undefined,
-    patch: DevModeWidgetRuntimePatch,
-): DevModeWidgetRuntimePatch {
-    const merged: DevModeWidgetRuntimePatch = { ...(previous ?? {}), ...patch };
-    if (previous?.props || patch.props) {
-        merged.props = { ...(previous?.props ?? {}), ...(patch.props ?? {}) };
-    }
-    return merged;
-}
+export type WidgetPatchesByScope = Record<string, Record<string, DevModeWidgetRuntimePatch>>;
 
 export function mergeWidgetRuntimePatch(
     current: WidgetPatchesByScope,
@@ -31,7 +29,7 @@ export function mergeWidgetRuntimePatch(
         ...current,
         [runtimeScopeId]: {
             ...(current[runtimeScopeId] ?? {}),
-            [elementId]: mergeOnePatch(current[runtimeScopeId]?.[elementId], patch),
+            [elementId]: mergeWidgetPatch(current[runtimeScopeId]?.[elementId], patch),
         },
     };
 }

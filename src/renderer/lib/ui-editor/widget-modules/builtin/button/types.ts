@@ -3,11 +3,21 @@ import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { UITextRun } from "@shared/types/ui-editor/textRuns";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "../text/types";
 
 export type ButtonWidgetProps = {
     /** Button label; empty string keeps legacy buttons without visible text until set. */
     label: string;
+    /**
+     * The label as marked runs, when it carries any - the same model a text label's `rich` is.
+     *
+     * `label` stays the plain string and stays what everything else reads - a value binding writes
+     * it, a translation replaces it, a plain field edits it - and these runs are only drawn while
+     * they still spell it (`resolveUITextRuns`). Absent on every button that has never been marked,
+     * which is what keeps the drawing of a plain button exactly what it was.
+     */
+    rich?: UITextRun[];
     /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.label`. */
     localizable?: boolean;
     /** Named localization key reference; takes precedence over the implicit unit. */

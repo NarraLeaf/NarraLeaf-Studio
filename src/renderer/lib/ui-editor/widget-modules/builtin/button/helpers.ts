@@ -1,6 +1,11 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+import { normalizeUITextRuns } from "@shared/types/ui-editor/textRuns";
+import {
+    plainTextEditPatch,
+    type MarkedLabelProps,
+} from "@/lib/ui-editor/widget-modules/shared/text/markedLabel";
 import { defaultButtonWidgetProps, type ButtonWidgetProps } from "./types";
 
 export function getButtonProps(element: UIElement): ButtonWidgetProps {
@@ -8,8 +13,25 @@ export function getButtonProps(element: UIElement): ButtonWidgetProps {
     return {
         ...defaultButtonWidgetProps,
         ...p,
+        // Normalised on the way out rather than trusted, as a text label's are: a stored button may
+        // carry runs written by a tool or by hand, including arms and marks only a typed line can mean.
+        rich: normalizeUITextRuns(p?.rich),
         effects: normalizeElementEffectValues(p?.effects ?? defaultButtonWidgetProps.effects),
     };
+}
+
+/** A button keeps its string in `label` and its runs beside it in `rich`. */
+export const BUTTON_MARKED_LABEL: MarkedLabelProps = {
+    read: element => {
+        const props = getButtonProps(element);
+        return { text: props.label, rich: props.rich, color: props.color };
+    },
+    write: (label, rich) => ({ label, rich }),
+};
+
+/** The props patch that writes a button's label from a box that holds plain text; see `textValuePatch`. */
+export function buttonLabelPatch(element: UIElement, nextLabel: string): Record<string, unknown> {
+    return plainTextEditPatch(BUTTON_MARKED_LABEL, element, nextLabel);
 }
 
 /** Synthesize rectangle-like props for image-fill normalization in the appearance inspector. */

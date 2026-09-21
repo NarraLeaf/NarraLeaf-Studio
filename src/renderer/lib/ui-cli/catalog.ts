@@ -79,6 +79,19 @@ export type WidgetDetail = WidgetSummary & {
 };
 
 /**
+ * How a label's marks are written, which is one model on every widget that draws a label: the same
+ * runs, the same marks and the same fallback, whatever the widget calls its string.
+ */
+function markedLabelNote(stringProp: string): string {
+    return `\`${stringProp}\` is the label's plain string and stays the one every other thing reads. A label `
+        + "whose words are marked also carries `rich`, an array of `{text, marks}` runs spelling the same "
+        + "string: `marks` may hold `bold`, `italic`, `color`, `ruby`, `emphasis` "
+        + "(`dot`/`circle`/`sesame`/`under-dot`) and `fontSizeStep` (steps away from the label's own size). "
+        + `The runs are drawn only while they still spell \`${stringProp}\`, so a translated label, a list `
+        + `row's field or a \`${stringProp}\` driven by a value blueprint falls back to the plain string.`;
+}
+
+/**
  * Facts about a widget that no declaration in the repository states.
  *
  * Each one has cost somebody a wrong-looking interface at least once, and each is about *authoring*
@@ -100,18 +113,14 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     "nl.button": [
         "A new button carries an `appearance` model seeded from its flat props. Writing a colour on the "
             + "flat prop alone leaves the variant row holding the old one; see the container note.",
+        markedLabelNote("label"),
     ],
     "nl.image": [
         "The picture is `imageFill.assetId`, not a bare `assetId`. `imageFill.assetId` is also the only "
             + "image prop a value blueprint can drive, which is what makes per-row thumbnails possible.",
     ],
     "nl.text": [
-        "`text` is the label's plain string and stays the one every other thing reads. A label whose "
-            + "words are marked also carries `rich`, an array of `{text, marks}` runs spelling the same "
-            + "string: `marks` may hold `bold`, `italic`, `color`, `ruby`, `emphasis` "
-            + "(`dot`/`circle`/`sesame`/`under-dot`) and `fontSizeStep` (steps away from the label's own "
-            + "size). The runs are drawn only while they still spell `text`, so a translated line or a "
-            + "`text` driven by a value blueprint falls back to the plain string.",
+        markedLabelNote("text"),
     ],
     "nl.list": [
         "A list repeats one authored child - its item template - once per item. The elements inside the "

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { AnimatePresence, useIsPresent, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
@@ -654,7 +654,6 @@ function NestedSurfaceInstance(props: {
     } = props;
     const [, setBindingTick] = useState(0);
     const [prepaintReady, setPrepaintReady] = useState(false);
-    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState<SurfaceLifecycleSignals>({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
@@ -663,7 +662,12 @@ function NestedSurfaceInstance(props: {
     const { document, targetSurface } = runtimeInput;
     const [, setRuntimePatchRenderTick] = useState(0);
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
-    const effectiveInteractive = parentInteractive && active && surfaceInteractive;
+    // Pointer input opens when the page is revealed, as its keys do - not when its enter animation
+    // finishes, which dropped every press made on a page still fading in - and closes the moment the
+    // presence group starts playing it out, whose last props would otherwise still say `active`.
+    // See `AppSurfaceLayer`, which follows the same rule for the pages and layers of the app itself.
+    const isPresent = useIsPresent();
+    const effectiveInteractive = parentInteractive && active && prepaintReady && isPresent;
     const effectiveKeyboardInteractive = parentKeyboardInteractive && active && prepaintReady;
     const hostAdapter = useMemo(() => {
         const getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
@@ -706,7 +710,6 @@ function NestedSurfaceInstance(props: {
         if (runtimeScopeId !== runtimeInput.runtimeScopeId) {
             return;
         }
-        setSurfaceInteractive(false);
         widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
         dispatchSurfaceTransitionEvent("beforeSurfaceExit");
     };
@@ -714,7 +717,6 @@ function NestedSurfaceInstance(props: {
     const handleEnterComplete = (runtimeScopeId: string) => {
         if (runtimeScopeId === runtimeInput.runtimeScopeId) {
             dispatchSurfaceTransitionEvent("afterSurfaceEnter");
-            setSurfaceInteractive(active);
         }
         onEnterComplete(runtimeScopeId);
     };
@@ -730,7 +732,6 @@ function NestedSurfaceInstance(props: {
         if (active) {
             return;
         }
-        setSurfaceInteractive(false);
         widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
     }, [active, runtimeInput.runtimeScopeId, widgetRuntimeStore]);
 
