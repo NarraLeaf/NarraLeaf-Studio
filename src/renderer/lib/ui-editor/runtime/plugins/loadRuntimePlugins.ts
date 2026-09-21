@@ -35,6 +35,7 @@ import {
 } from "./runtimePluginApi";
 import type { RuntimePluginHost } from "./runtimePluginHost";
 import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
+import { narrowWidgetEventDispatchForPlugin } from "../widgetEventDispatch";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -208,30 +209,19 @@ function narrowWidgetRendererProps(
     props: ElementRendererProps,
     game: RuntimePluginGame,
 ): RuntimeWidgetRendererProps {
-    const blueprintRuntime = props.hostAdapter.blueprintRuntime;
-    const listItemScope = props.listItemScope ?? null;
-    const instanceKey = props.instanceKey;
     return {
         element: props.element,
         surface: props.surface,
         document: props.document,
         children: props.children,
-        instanceKey,
-        listItemScope,
+        instanceKey: props.instanceKey,
+        listItemScope: props.listItemScope ?? null,
         renderChildren: props.renderChildren,
         runtimeData: props.runtimeData,
-        dispatchEvent: (eventName, payload, options) => {
-            if (!blueprintRuntime) {
-                return Promise.resolve();
-            }
-            // The row is carried, not merely described: a handler answering a click on a
-            // repeated row is asking about that row, and an unscoped dispatch would run
-            // the author's graph against whichever one drew last.
-            return blueprintRuntime.dispatchElementBlueprintEvent(props.element.id, eventName, payload, {
-                listItemScope: options && "listItemScope" in options ? options.listItemScope : listItemScope,
-                instanceKey: options?.instanceKey ?? instanceKey,
-            });
-        },
+        // The element tree's binding, narrowed: this element in the row and the placement it is
+        // drawn in. Rebuilt here from the host's runtime it carried the row but not the placement,
+        // and an event from a plugin widget inside a card never found the card's graph.
+        dispatchEvent: narrowWidgetEventDispatchForPlugin(props.dispatchEvent),
         game,
     };
 }

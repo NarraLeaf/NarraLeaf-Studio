@@ -45,11 +45,13 @@ import {
     normalizeBlueprintVector2D,
 } from "@shared/types/blueprint/valueTypes";
 import { UI_DISPLAYABLE_WIDGET_TYPES } from "@shared/types/ui-editor/displayableWidgets";
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { addressWidgetFromExecution } from "./widgetTarget";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -162,10 +164,18 @@ export const pointerBlueprintNodes: BlueprintNodeDef[] = [
             if (!ref) {
                 throw new BlueprintGraphExecutionError("Move Mouse To Element requires an Element input", ctx.node.id);
             }
+            // The rule every other element node keeps: a graph reaches its own surface, and a
+            // component's graph its own definition.
+            if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
+                throw new BlueprintGraphExecutionError("Move Mouse To Element can only target the current Surface", ctx.node.id);
+            }
             // Measured rather than computed: the centre of where the widget is drawn is the point a
             // click would land on, and a widget mid-animation or in a list row is not where the
-            // document says it is.
-            return branchOn(await requireHostApi(ctx).pointer.moveToElementCenter(ref.elementId, travel));
+            // document says it is. By address, because in a list row or a component placement the
+            // element is drawn many times, and the one meant is the one in this graph's drawing.
+            return branchOn(
+                await requireHostApi(ctx).pointer.moveToElementCenter(addressWidgetFromExecution(ctx, ref.elementId), travel),
+            );
         },
     },
 ];

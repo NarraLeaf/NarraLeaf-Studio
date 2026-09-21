@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { UIInspectorData, UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
+import type { UIHostAdapterBlueprintRuntime } from "@/lib/ui-editor/runtime/types";
+import { bindWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { PluginWidgetModule } from "./pluginWidgetApi";
@@ -124,8 +127,9 @@ describe("guardPluginWidgetModule", () => {
         expect(seen!.game).toBeTruthy();
     });
 
-    it("binds dispatchEvent to the element and row being drawn", async () => {
+    it("binds dispatchEvent to the element and the drawing it is in, component included", async () => {
         const dispatchElementBlueprintEvent = vi.fn(() => Promise.resolve());
+        const blueprintRuntime = { dispatchElementBlueprintEvent } as unknown as UIHostAdapterBlueprintRuntime;
         let dispatch: ((name: string) => Promise<void>) | undefined;
         const guarded = guard({
             render: props => {
@@ -133,20 +137,28 @@ describe("guardPluginWidgetModule", () => {
                 return null;
             },
         });
+        const drawing = {
+            instanceKey: "component:card-1\0list-grid-3",
+            listItemScope: { index: 3 } as unknown as UIListItemScope,
+            componentId: "card",
+        };
 
         guarded.render({
             element: { id: "el-1", type: `${PLUGIN_ID}.badge` },
             surface: { id: "surface-1" },
             document: { elements: {} },
-            instanceKey: "row-3",
-            listItemScope: { index: 3 },
-            hostAdapter: { host: "player", blueprintRuntime: { dispatchElementBlueprintEvent } },
+            instanceKey: drawing.instanceKey,
+            listItemScope: drawing.listItemScope,
+            hostAdapter: { host: "player", blueprintRuntime },
+            // What the element tree hands every renderer; the plugin gets it narrowed, not rebuilt.
+            dispatchEvent: bindWidgetEventDispatch(blueprintRuntime, "el-1", drawing),
         } as unknown as WidgetRendererProps);
 
         await dispatch!("mouseClick");
         expect(dispatchElementBlueprintEvent).toHaveBeenCalledWith("el-1", "mouseClick", undefined, {
             listItemScope: { index: 3 },
-            instanceKey: "row-3",
+            instanceKey: "component:card-1\0list-grid-3",
+            componentId: "card",
         });
     });
 

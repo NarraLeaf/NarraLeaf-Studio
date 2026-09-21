@@ -21,7 +21,7 @@ import {
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
-import { collectSurfaceFlushElementIds } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
+import { collectSurfaceFlushElementIds, hasWidgetFlushBlueprint } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import {
@@ -220,24 +220,31 @@ export function useStageSlotSurfaceRuntime(input: {
         [bundle.ui.localBlueprints, document, surface],
     );
     const flushSlotElements = useCallback(() => {
+        const runtime = hostAdapterRef.current?.blueprintRuntime;
         for (const elementId of flushElementIds) {
             const element = document.elements[elementId];
-            if (!element) {
+            if (!element || !runtime) {
                 continue;
             }
-            void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                elementId,
-                "flush",
-                {
-                    element: {
-                        surfaceId: surface.id,
-                        elementId,
-                        elementType: element.type,
-                    },
+            const payload = {
+                element: {
+                    surfaceId: surface.id,
+                    elementId,
+                    elementType: element.type,
                 },
-            );
+            };
+            // A widget whose own graph answers the flush runs it once per drawing on screen: in a row
+            // of the slot's list (a choice, an NVL line) it reads that row, rather than running once
+            // as a row nobody draws. One kept only for its value bindings has no graph to run in a
+            // row, so it stays a single flush rather than one per row for nothing.
+            const drawings = hasWidgetFlushBlueprint(bundle.ui.localBlueprints, surface.id, element)
+                ? runtime.drawings?.everyDrawingOf(elementId) ?? [{}]
+                : [{}];
+            for (const drawing of drawings) {
+                void runtime.dispatchElementBlueprintEvent(elementId, "flush", payload, drawing);
+            }
         }
-    }, [document, flushElementIds, surface.id]);
+    }, [bundle.ui.localBlueprints, document, flushElementIds, surface.id]);
 
     return { runtimeScopeId, hostAdapter, hostAdapterRef, flushSlotElements };
 }

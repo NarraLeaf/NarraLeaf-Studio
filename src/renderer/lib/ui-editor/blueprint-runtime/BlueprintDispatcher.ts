@@ -34,7 +34,7 @@ import {
     isBlueprintGraphExecutionCancelledError,
     throwIfBlueprintExecutionCancelled,
 } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
-import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { UIHostAdapter, UIHostAdapterElementEventOptions } from "@/lib/ui-editor/runtime/types";
 import type {
     BlueprintGamePreferenceKey,
     BlueprintGamePreferenceValue,
@@ -149,6 +149,29 @@ function emitExecutionError(input: {
  */
 function ownerDrawingKey(document: UIDocument, elementId: string, instanceKey: string | undefined): string | undefined {
     return instanceKey ? resolveUIElementDrawingKey(document, elementId, instanceKey) : undefined;
+}
+
+/**
+ * Every drawing of an element that an event no drawing raised runs in.
+ *
+ * A broadcast, a window event, a head listening for some other element's click or flush - these
+ * reach an element's blueprint without coming from any one drawing of it, so the question "which
+ * row" has no answer in the event. It used to get none: the graph ran once, as nobody. For an
+ * element drawn once, for the page, that is the right answer and it still is. For an element a list
+ * repeats it meant `Get Item Field` read nothing and `Set Property (self)` wrote to the template,
+ * which no row draws - the graph ran, the log was clean, and no row changed.
+ *
+ * Such an element now answers once per row on screen, each run in its row, the way a key press
+ * already reached every row (each drawing listens for keys itself). Every row is the answer because
+ * every row is a widget the player can see; a single page-level run would be a run of a widget that
+ * is not on screen anywhere. A list showing no rows runs nothing. The host knows which rows are on
+ * screen (`UIHostAdapterDrawings`); one that does not keeps the single run.
+ */
+function drawingsReachedBy(hostAdapter: UIHostAdapter, elementId: string | undefined): UIHostAdapterElementEventOptions[] {
+    if (!elementId) {
+        return [{}];
+    }
+    return hostAdapter.blueprintRuntime?.drawings?.everyDrawingOf(elementId) ?? [{}];
 }
 
 /**
@@ -356,7 +379,10 @@ function collectSurfaceScriptListeners(input: {
     return listeners;
 }
 
-/** Run a fanned-out event against every script that listens for it, in document order. */
+/**
+ * Run a fanned-out event against every script that listens for it, in document order - an element's
+ * script once in each of its drawings on screen (see {@link drawingsReachedBy}).
+ */
 async function runScriptListeners(input: {
     listeners: readonly ScriptListener[];
     document: UIDocument;
@@ -371,27 +397,34 @@ async function runScriptListeners(input: {
     allowClosedScopeExecution?: boolean;
 }): Promise<void> {
     for (const listener of input.listeners) {
-        await runScriptBlueprintHandler({
-            handler: listener.handler,
-            blueprint: listener.blueprint,
-            blueprintDocument: input.blueprintDocument,
-            hostAdapter: input.hostAdapter,
-            debug: input.debug,
-            eventId: input.eventId,
-            eventPayload: input.eventPayload,
-            runtimeScopeId: input.runtimeScopeId,
-            surfaceId: input.surfaceId,
-            elementId: listener.elementId,
-            executionManager: input.executionManager,
-            allowClosedScopeExecution: input.allowClosedScopeExecution,
-            self: scriptSelfOf({
+        for (const drawing of drawingsReachedBy(input.hostAdapter, listener.elementId)) {
+            await runScriptBlueprintHandler({
+                handler: listener.handler,
+                blueprint: listener.blueprint,
+                blueprintDocument: input.blueprintDocument,
+                hostAdapter: input.hostAdapter,
+                debug: input.debug,
+                eventId: input.eventId,
+                eventPayload: input.eventPayload,
+                runtimeScopeId: input.runtimeScopeId,
                 surfaceId: input.surfaceId,
                 elementId: listener.elementId,
-                widgetType: listener.elementId
-                    ? input.document.elements[listener.elementId]?.type
+                ownerDrawingKey: listener.elementId
+                    ? ownerDrawingKey(input.document, listener.elementId, drawing.instanceKey)
                     : undefined,
-            }),
-        });
+                instanceKey: drawing.instanceKey,
+                executionManager: input.executionManager,
+                allowClosedScopeExecution: input.allowClosedScopeExecution,
+                self: scriptSelfOf({
+                    surfaceId: input.surfaceId,
+                    elementId: listener.elementId,
+                    widgetType: listener.elementId
+                        ? input.document.elements[listener.elementId]?.type
+                        : undefined,
+                    row: scriptRowOf(drawing.listItemScope),
+                }),
+            });
+        }
     }
 }
 
@@ -1075,28 +1108,84 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
     });
 
     for (const listener of targets) {
-        const executionId = newExecutionId();
-        const execution = beginTrackedExecution({
-            executionManager: options.executionManager,
-            executionId,
-            runtimeScopeId,
-            blueprintId: listener.blueprintId,
-            eventId,
-            allowClosedScopeExecution: options.allowClosedScopeExecution,
-        });
-        debug.emit({ type: "execution.started", executionId, blueprintId: listener.blueprintId });
-        const blueprintLocals = acquireBlueprintExecutionLocals({
+        await runFannedOutListener({
+            document,
             blueprintDocument,
-            currentBlueprintId: listener.blueprintId,
+            persistentVariables: options.persistentVariables,
+            hostAdapter,
+            debug,
             surfaceId,
             runtimeScopeId,
             elementId: listener.elementId,
+            blueprintId: listener.blueprintId,
+            eventGraphId: listener.eventGraph.id,
+            ir: listener.ir,
+            headIds: listener.headIds,
+            graphIdPrefix,
+            eventId,
+            eventPayload: payload,
+            maxSteps: options.maxSteps,
+            executionManager: options.executionManager,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
+    }
+    return handled;
+}
+
+/**
+ * Run one listener's heads for a fanned-out event - once for a page's own blueprint, once in each
+ * drawing on screen for an element's (see {@link drawingsReachedBy}).
+ *
+ * The one runner behind every fan-out that is not raised by a drawing - element click and flush
+ * listeners, broadcasts, window events - so a drawing is threaded through all of them the same way:
+ * its row and key into the graph, its key into the variable record, its placement into the owner.
+ * They were three copies of this loop, and each ran as nobody.
+ */
+async function runFannedOutListener(input: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    persistentVariables: PersistentVariableRuntimeTable;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    surfaceId: string;
+    runtimeScopeId?: string;
+    /** The element whose blueprint listens; absent for the page's own blueprint. */
+    elementId?: string;
+    blueprintId: string;
+    eventGraphId: string;
+    ir: BlueprintGraphIr;
+    headIds: readonly string[];
+    graphIdPrefix: BlueprintRunGraphKind;
+    /** What the run is traced under and the graph is told the event is. */
+    eventId: string;
+    eventPayload?: Record<string, unknown>;
+    maxSteps?: number;
+} & CancellableDispatchOptions): Promise<void> {
+    const { document, blueprintDocument, hostAdapter, debug, surfaceId, runtimeScopeId, elementId, blueprintId, eventId } = input;
+    for (const drawing of drawingsReachedBy(hostAdapter, elementId)) {
+        const executionId = newExecutionId();
+        const execution = beginTrackedExecution({
+            executionManager: input.executionManager,
+            executionId,
+            runtimeScopeId,
+            blueprintId,
+            eventId,
+            allowClosedScopeExecution: input.allowClosedScopeExecution,
+        });
+        debug.emit({ type: "execution.started", executionId, blueprintId });
+        const blueprintLocals = acquireBlueprintExecutionLocals({
+            blueprintDocument,
+            currentBlueprintId: blueprintId,
+            surfaceId,
+            runtimeScopeId,
+            elementId,
+            elementInstanceKey: elementId ? ownerDrawingKey(document, elementId, drawing.instanceKey) : undefined,
         });
         try {
-            for (const headId of listener.headIds) {
+            for (const headId of input.headIds) {
                 const graph = adaptBlueprintGraphIr(
-                    listener.ir,
-                    buildBlueprintRunGraphId(graphIdPrefix, listener.blueprintId, listener.eventGraph.id),
+                    input.ir,
+                    buildBlueprintRunGraphId(input.graphIdPrefix, blueprintId, input.eventGraphId),
                 );
                 const startNode = graph.nodes[headId];
                 if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
@@ -1108,28 +1197,36 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                     hostAdapter,
                     blueprintLocals,
                     eventName: eventId,
-                    eventPayload: payload,
-                    executionOwner: { surfaceId, elementId: listener.elementId, blueprintId: listener.blueprintId },
-                    persistentVariables: options.persistentVariables,
-                    maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    eventPayload: input.eventPayload,
+                    listItemScope: drawing.listItemScope,
+                    instanceKey: drawing.instanceKey,
+                    executionOwner: {
+                        surfaceId,
+                        elementId,
+                        blueprintId,
+                        componentId: drawing.componentId,
+                        componentParams: drawing.componentParams,
+                    },
+                    persistentVariables: input.persistentVariables,
+                    maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
                     trace: {
                         executionId,
                         graphId: graph.id,
-                        blueprintId: listener.blueprintId,
+                        blueprintId,
                         eventId,
                         surfaceId,
                         emit: e => debug.emit(e),
                     },
                 });
             }
-            debug.emit({ type: "execution.finished", executionId, blueprintId: listener.blueprintId });
+            debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
             if (isBlueprintGraphExecutionCancelledError(err)) {
                 emitExecutionCancelled({
                     debug,
                     executionId,
-                    blueprintId: listener.blueprintId,
+                    blueprintId,
                     eventId,
                     nodeId: err.nodeId,
                     reason: err.message,
@@ -1141,7 +1238,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                     debug,
                     executionId,
                     message: err.message,
-                    blueprintId: listener.blueprintId,
+                    blueprintId,
                     eventId,
                     nodeId: err.nodeId,
                     surfaceId,
@@ -1149,12 +1246,11 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                 continue;
             }
             const message = err instanceof Error ? err.message : String(err);
-            emitExecutionError({ debug, executionId, message, blueprintId: listener.blueprintId, eventId, surfaceId });
+            emitExecutionError({ debug, executionId, message, blueprintId, eventId, surfaceId });
         } finally {
             execution?.finish();
         }
     }
-    return handled;
 }
 
 export async function dispatchBlueprintElementFlushEvent(options: {
@@ -1314,8 +1410,9 @@ export function countBlueprintBroadcastListeners(options: {
  * this path - they reach a single widget through DOM targeting instead.
  *
  * Targets come from the document, not the mounted React tree (same as broadcast), and
- * only cover the active surface. A failing widget graph is reported and skipped so one
- * broken blueprint cannot stop the fan-out.
+ * only cover the active surface - a hidden widget still hears it. A widget a list repeats
+ * hears it once in each row on screen (`drawingsReachedBy`). A failing widget graph is
+ * reported and skipped so one broken blueprint cannot stop the fan-out.
  */
 export async function dispatchWidgetsBlueprintEvent(options: {
     document: UIDocument;
@@ -1356,23 +1453,23 @@ export async function dispatchWidgetsBlueprintEvent(options: {
         // The slot table decides here too - it is what says this widget type raises this event at
         // all - and only the name it resolves to differs between the two kinds of layer.
         const scriptEventId = scriptEventIdForWidgetSlot(element?.type, eventName);
-        for (const { handler } of scriptEventId ? resolveScriptLayerHandlers(bp, scriptEventId) : []) {
-            await runScriptBlueprintHandler({
-                handler,
+        await runScriptListeners({
+            listeners: (scriptEventId ? resolveScriptLayerHandlers(bp, scriptEventId) : []).map(({ handler }) => ({
                 blueprint: bp,
-                blueprintDocument,
-                hostAdapter,
-                debug,
-                eventId: eventName,
-                eventPayload,
-                runtimeScopeId,
-                surfaceId,
+                handler,
                 elementId,
-                executionManager: options.executionManager,
-                allowClosedScopeExecution: options.allowClosedScopeExecution,
-                self: scriptSelfOf({ surfaceId, elementId, widgetType: element?.type }),
-            });
-        }
+            })),
+            document,
+            blueprintDocument,
+            hostAdapter,
+            debug,
+            surfaceId,
+            runtimeScopeId,
+            eventId: eventName,
+            eventPayload,
+            executionManager: options.executionManager,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
         for (const eventGraph of Object.values(bp.graphs.events ?? {})) {
             const ir = eventGraph.graph;
             const headIds = collectBlueprintEventHeadNodeIdsForDispatch(
@@ -1384,81 +1481,26 @@ export async function dispatchWidgetsBlueprintEvent(options: {
             if (!ir || headIds.length === 0) {
                 continue;
             }
-            const executionId = newExecutionId();
-            const execution = beginTrackedExecution({
-                executionManager: options.executionManager,
-                executionId,
-                runtimeScopeId,
-                blueprintId,
-                eventId: eventName,
-                allowClosedScopeExecution: options.allowClosedScopeExecution,
-            });
-            debug.emit({ type: "execution.started", executionId, blueprintId });
-            const blueprintLocals = acquireBlueprintExecutionLocals({
+            await runFannedOutListener({
+                document,
                 blueprintDocument,
-                currentBlueprintId: blueprintId,
+                persistentVariables: options.persistentVariables,
+                hostAdapter,
+                debug,
                 surfaceId,
                 runtimeScopeId,
                 elementId,
+                blueprintId,
+                eventGraphId: eventGraph.id,
+                ir,
+                headIds,
+                graphIdPrefix: "widgetEvent",
+                eventId: eventName,
+                eventPayload,
+                maxSteps: options.maxSteps,
+                executionManager: options.executionManager,
+                allowClosedScopeExecution: options.allowClosedScopeExecution,
             });
-            try {
-                for (const headId of headIds) {
-                    const graph = adaptBlueprintGraphIr(ir, buildBlueprintRunGraphId("widgetEvent", blueprintId, eventGraph.id));
-                    const startNode = graph.nodes[headId];
-                    if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
-                        continue;
-                    }
-                    await executeGraph({
-                        graph,
-                        entry: { start: { nodeId: headId, port: "then" as const } },
-                        hostAdapter,
-                        blueprintLocals,
-                        eventName,
-                        eventPayload,
-                        executionOwner: { surfaceId, elementId, blueprintId },
-                        persistentVariables: options.persistentVariables,
-                        maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
-                        signal: execution?.signal,
-                        trace: {
-                            executionId,
-                            graphId: graph.id,
-                            blueprintId,
-                            eventId: eventName,
-                            surfaceId,
-                            emit: e => debug.emit(e),
-                        },
-                    });
-                }
-                debug.emit({ type: "execution.finished", executionId, blueprintId });
-            } catch (err) {
-                if (isBlueprintGraphExecutionCancelledError(err)) {
-                    emitExecutionCancelled({
-                        debug,
-                        executionId,
-                        blueprintId,
-                        eventId: eventName,
-                        nodeId: err.nodeId,
-                        reason: err.message,
-                    });
-                    continue;
-                }
-                if (err instanceof BlueprintGraphExecutionError) {
-                    emitExecutionError({
-                        debug,
-                        executionId,
-                        message: err.message,
-                        blueprintId,
-                        eventId: eventName,
-                        nodeId: err.nodeId,
-                        surfaceId,
-                    });
-                    continue;
-                }
-                const message = err instanceof Error ? err.message : String(err);
-                emitExecutionError({ debug, executionId, message, blueprintId, eventId: eventName, surfaceId });
-            } finally {
-                execution?.finish();
-            }
         }
     }
 }
@@ -1515,92 +1557,29 @@ export async function dispatchBlueprintBroadcastEvent(options: {
         allowClosedScopeExecution: options.allowClosedScopeExecution,
     });
 
+    // Each listening element once in every drawing of it on screen - a widget a list repeats hears
+    // the broadcast in every row, each run reading and writing its own row. See `drawingsReachedBy`.
     for (const target of targets) {
-        const executionId = newExecutionId();
-        const execution = beginTrackedExecution({
-            executionManager: options.executionManager,
-            executionId,
-            runtimeScopeId,
-            blueprintId: target.blueprintId,
-            eventId: eventName,
-            allowClosedScopeExecution: options.allowClosedScopeExecution,
-        });
-        debug.emit({ type: "execution.started", executionId, blueprintId: target.blueprintId });
-        const blueprintLocals = acquireBlueprintExecutionLocals({
+        await runFannedOutListener({
+            document,
             blueprintDocument,
-            currentBlueprintId: target.blueprintId,
+            persistentVariables: options.persistentVariables,
+            hostAdapter,
+            debug,
             surfaceId,
             runtimeScopeId,
             elementId: target.elementId,
+            blueprintId: target.blueprintId,
+            eventGraphId: target.eventGraph.id,
+            ir: target.ir,
+            headIds: target.headIds,
+            graphIdPrefix: "broadcastEvent",
+            eventId: eventName,
+            eventPayload,
+            maxSteps: options.maxSteps,
+            executionManager: options.executionManager,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
         });
-        try {
-            for (const headId of target.headIds) {
-                const graph = adaptBlueprintGraphIr(
-                    target.ir,
-                    buildBlueprintRunGraphId("broadcastEvent", target.blueprintId, target.eventGraph.id),
-                );
-                const startNode = graph.nodes[headId];
-                if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
-                    continue;
-                }
-                await executeGraph({
-                    graph,
-                    entry: { start: { nodeId: headId, port: "then" as const } },
-                    hostAdapter,
-                    blueprintLocals,
-                    eventName,
-                    eventPayload,
-                    executionOwner: { surfaceId, elementId: target.elementId, blueprintId: target.blueprintId },
-                    persistentVariables: options.persistentVariables,
-                    maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
-                    signal: execution?.signal,
-                    trace: {
-                        executionId,
-                        graphId: graph.id,
-                        blueprintId: target.blueprintId,
-                        eventId: eventName,
-                        surfaceId,
-                        emit: e => debug.emit(e),
-                    },
-                });
-            }
-            debug.emit({ type: "execution.finished", executionId, blueprintId: target.blueprintId });
-        } catch (err) {
-            if (isBlueprintGraphExecutionCancelledError(err)) {
-                emitExecutionCancelled({
-                    debug,
-                    executionId,
-                    blueprintId: target.blueprintId,
-                    eventId: eventName,
-                    nodeId: err.nodeId,
-                    reason: err.message,
-                });
-                continue;
-            }
-            if (err instanceof BlueprintGraphExecutionError) {
-                emitExecutionError({
-                    debug,
-                    executionId,
-                    message: err.message,
-                    blueprintId: target.blueprintId,
-                    eventId: eventName,
-                    nodeId: err.nodeId,
-                    surfaceId,
-                });
-                continue;
-            }
-            const message = err instanceof Error ? err.message : String(err);
-            emitExecutionError({
-                debug,
-                executionId,
-                message,
-                blueprintId: target.blueprintId,
-                eventId: eventName,
-                surfaceId,
-            });
-        } finally {
-            execution?.finish();
-        }
     }
 }
 

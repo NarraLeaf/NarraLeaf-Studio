@@ -1092,7 +1092,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * authored with.
      */
     initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
-    onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
+    /**
+     * A write changed a widget, so it flushes. `elementId` is the element the listening heads name;
+     * `address` is the drawing the write landed on, which the widget's own graph runs in.
+     */
+    onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload, address: string) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
     componentDefinitionMode?: boolean;
@@ -2680,13 +2684,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 // `On Element Flush` heads pick themselves by element id, and a head cannot be
                 // written against one row of a list or one placement of a component.
                 const flushedElementId = readUIWidgetAddressElementId(id);
-                void onElementFlush(flushedElementId, {
-                    element: {
-                        surfaceId: activeSurfaceId,
-                        elementId: flushedElementId,
-                        elementType: target.type,
+                void onElementFlush(
+                    flushedElementId,
+                    {
+                        element: {
+                            surfaceId: activeSurfaceId,
+                            elementId: flushedElementId,
+                            elementType: target.type,
+                        },
                     },
-                });
+                    id,
+                );
             }
         });
     };
@@ -3584,8 +3592,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // surface holds would be a silent null indistinguishable from "not painted yet",
                     // and the two want different things from the author.
                     requireDocumentElement(document, elementId, "measuredRect");
+                    // The address, not the element: the drawing it names is the copy to measure.
                     return measureElementSurfaceRect(
-                        readUIWidgetAddressElementId(elementId),
+                        elementId,
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     )?.rect ?? null;
                 } finally {
@@ -4913,8 +4922,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     requireDocumentElement(document, elementId, "movePointerToElement");
+                    // Measured by address: the button in the row the graph is running in, not the
+                    // first copy of it the page happens to hold.
                     const measured = measureElementSurfaceRect(
-                        readUIWidgetAddressElementId(elementId),
+                        elementId,
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     );
                     if (!measured) {

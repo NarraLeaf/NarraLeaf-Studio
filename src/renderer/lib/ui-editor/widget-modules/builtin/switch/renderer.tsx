@@ -26,6 +26,7 @@ import {
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import { getSwitchProps } from "./helpers";
 
 /**
@@ -123,6 +124,7 @@ function withSwitchState(
  */
 export function SwitchRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren, useAppearanceInspectorPreview } = props;
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
     // In the editor the author's entered state is what the switch shows, so flipping the state bar
     // previews the toggle - including its motion - without touching the authored `checked`.
     const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
@@ -185,7 +187,7 @@ export function SwitchRenderer(props: WidgetRendererProps) {
         }
         flushFrameRef.current = window.requestAnimationFrame(() => {
             flushFrameRef.current = null;
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "flush", {
+            void dispatchEvent("flush", {
                 element: {
                     surfaceId: blueprintRuntime.surfaceId,
                     elementId: element.id,
@@ -193,7 +195,7 @@ export function SwitchRenderer(props: WidgetRendererProps) {
                 },
             });
         });
-    }, [blueprintRuntime, element.id, element.type]);
+    }, [blueprintRuntime, dispatchEvent, element.id, element.type]);
 
     const applyChecked = useCallback(
         (nextChecked: boolean) => {
@@ -217,15 +219,11 @@ export function SwitchRenderer(props: WidgetRendererProps) {
             toggleInFlightRef.current = true;
             void (async () => {
                 try {
-                    await blueprintRuntime.dispatchElementBlueprintEvent(element.id, "changed", {
+                    await dispatchEvent("changed", {
                         checked: next,
                         previousChecked,
                     });
-                    await blueprintRuntime.dispatchElementBlueprintEvent(
-                        element.id,
-                        next ? "turnedOn" : "turnedOff",
-                        { checked: next },
-                    );
+                    await dispatchEvent(next ? "turnedOn" : "turnedOff", { checked: next });
                 } finally {
                     toggleInFlightRef.current = false;
                     scheduleSwitchFlush();
@@ -236,7 +234,7 @@ export function SwitchRenderer(props: WidgetRendererProps) {
             authoredProps,
             blueprintRuntime,
             canRunSwitchInteraction,
-            element.id,
+            dispatchEvent,
             runtimeElementKey,
             runtimeStore,
             scheduleSwitchFlush,

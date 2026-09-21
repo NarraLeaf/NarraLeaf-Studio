@@ -99,6 +99,17 @@ export function resolveUIElementDrawingKey(
 }
 
 /**
+ * The innermost list whose rows draw this element, or null when no list repeats it.
+ *
+ * For whoever has to enumerate an element's drawings rather than name one: an element a list repeats
+ * is drawn once per row of that list, and the rows of the innermost list already carry every
+ * enclosing row in their keys.
+ */
+export function resolveUIElementRowListId(document: UIDocument, elementId: string): string | null {
+    return collectRowListIds(document, elementId)[0] ?? null;
+}
+
+/**
  * Whether a placement's drawing holds this element, or null when the placement cannot be read.
  *
  * Null is treated as "it may": a placement the document no longer has is not evidence that the

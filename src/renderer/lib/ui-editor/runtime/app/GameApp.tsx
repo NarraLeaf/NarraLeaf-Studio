@@ -4813,11 +4813,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                     resolveHostAdapter: () => nestedHostAdapter,
                     frame: {
                         params: input.params,
+                        // Through the frame's own dispatch, so it lands in the drawing the frame is in
+                        // - a frame inside a component placement or a list row is not on the page.
                         emit: async (eventName, data) => {
+                            const payload = { event: eventName, data };
+                            if (input.dispatchFrameEvent) {
+                                await input.dispatchFrameEvent("pageEvent", payload);
+                                return;
+                            }
                             await input.parentHostAdapter.blueprintRuntime?.dispatchElementBlueprintEvent(
                                 input.frameElement.id,
                                 "pageEvent",
-                                { event: eventName, data },
+                                payload,
                             );
                         },
                     },

@@ -3,6 +3,7 @@ import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/d
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIHostAdapter } from "../runtime/types";
+import type { UIWidgetEventDispatch } from "../runtime/widgetEventDispatch";
 import type { FieldDefinition, PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
 import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -56,6 +57,17 @@ export type WidgetRendererProps = {
      * Dev Mode and other hosts omit this so runtime/blueprint variant overrides stay authoritative.
      */
     useAppearanceInspectorPreview?: boolean;
+    /**
+     * Raise one of this element's own events - a slider's Value Changed, a list's Scroll, a button
+     * pressed from the keyboard - in the drawing it is being rendered in.
+     *
+     * The only way a renderer dispatches. Bound by the element tree to the row and the component
+     * placement this element is drawn in, the same drawing its pointer events carry; a renderer that
+     * reached past it to the host's `dispatchElementBlueprintEvent` with a bare id sent an event from
+     * inside a card to a page that has no such element, and it was dropped without a word
+     * (`widgetEventsCarryTheDrawing.test.ts` forbids it). A no-op on a host with no blueprint runtime.
+     */
+    dispatchEvent?: UIWidgetEventDispatch;
 };
 
 // ─── Property Inspector ─────────────────────────────────────────────────────

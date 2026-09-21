@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
@@ -15,7 +15,8 @@ import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import { isTrustedElementRenderer, type ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
-import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { UIHostAdapter, UIHostAdapterDrawings } from "@/lib/ui-editor/runtime/types";
+import { bindWidgetEventDispatch, type UIWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-runtime/BindingEvaluator";
 import {
@@ -87,6 +88,15 @@ export type NestedSurfaceRuntimeInput = {
     parentHostAdapter: UIHostAdapter;
     runtimeScopeId: string;
     surfacePath: string[];
+    /**
+     * Raise one of the frame's own events - its Page Event - in the drawing the frame is in.
+     *
+     * The page inside a frame talks back to it through this. A frame is drawn in a row or a
+     * placement like any other widget, and the nested page's runtime cannot know which, so it is
+     * handed the frame's own dispatch rather than the frame's id: sent as the bare id, a page event
+     * from a frame inside a component looked for the frame on the page and was dropped.
+     */
+    dispatchFrameEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
 };
 
 type VisibleNestedSurfaceRuntimeInput = NestedSurfaceRuntimeInput & {
@@ -398,6 +408,8 @@ function NestedSurfaceRenderer(props: {
     surfacePath: string[];
     parentInteractive: boolean;
     parentKeyboardInteractive: boolean;
+    /** The frame's own event dispatch, in the drawing the frame is in; see `NestedSurfaceRuntimeInput`. */
+    dispatchFrameEvent: UIWidgetEventDispatch;
 }) {
     const {
         document,
@@ -414,6 +426,14 @@ function NestedSurfaceRenderer(props: {
         parentInteractive,
         parentKeyboardInteractive,
     } = props;
+    // Rebound on every render of the tree above, so it is read through a ref: the runtime input
+    // below keys the nested page's whole runtime, and a new identity there would rebuild it.
+    const dispatchFrameEventRef = useRef(props.dispatchFrameEvent);
+    dispatchFrameEventRef.current = props.dispatchFrameEvent;
+    const dispatchFrameEvent = useCallback(
+        (eventName: string, payload?: Record<string, unknown>) => dispatchFrameEventRef.current(eventName, payload),
+        [],
+    );
     const prefersReducedMotion = useReducedMotion();
     const surfacePathKey = surfacePath.join("\0");
     const targetSurface = targetSurfaceId ? document.surfaces.find(surface => surface.id === targetSurfaceId) : undefined;
@@ -438,8 +458,10 @@ function NestedSurfaceRenderer(props: {
             instanceKey,
             parentHostAdapter,
             surfacePath,
+            dispatchFrameEvent,
         };
     }, [
+        dispatchFrameEvent,
         document,
         frameElement,
         instanceKey,
@@ -882,6 +904,39 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
     };
 }
 
+/**
+ * One row a widget is drawing, announced to the runtime for as long as it is on screen.
+ *
+ * A layout effect rather than a plain one: a row's widgets run their Init in a microtask queued from
+ * their own layout effects, and an Init that broadcasts straight away has to find the rows already
+ * announced - a plain effect would land after paint, after the broadcast went out to no rows.
+ */
+function ListRowDrawing(props: {
+    drawings: UIHostAdapterDrawings;
+    listElementId: string;
+    instanceKey: string;
+    listItemScope: UIListItemScope;
+}) {
+    const { drawings, listElementId, instanceKey, listItemScope } = props;
+    useLayoutEffect(
+        () => drawings.registerListRow(listElementId, { instanceKey, listItemScope }),
+        // A scope object is rebuilt on every render of the list; its fields are what say it moved.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [
+            drawings,
+            listElementId,
+            instanceKey,
+            listItemScope.index,
+            listItemScope.count,
+            listItemScope.key,
+            listItemScope.item,
+            listItemScope.selected,
+            listItemScope.struct,
+        ],
+    );
+    return null;
+}
+
 function ComponentInstancePlaceholder({ message }: { message: string }) {
     return (
         <div className="flex h-full w-full items-center justify-center border border-dashed border-edge-strong bg-fill-subtle px-3 text-center text-xs text-fg-muted">
@@ -1153,7 +1208,25 @@ function renderElementTree(
         const childIds = options?.childrenIds ?? resolved.childrenIds;
         const childScope = options?.listItemScope === undefined ? listItemScope : options.listItemScope;
         const childInstanceKey = options?.instanceKey ?? instanceKey;
-        return childIds.map(childId => {
+        // A widget drawing its children as a row of its own - a new scope under a new key - is making
+        // a drawing the document cannot see, so it is announced to the runtime for as long as it is
+        // drawn: an event that is not raised in any one drawing (a broadcast, a window event) reaches
+        // the row's widgets through that announcement, row by row. Here rather than in the list so
+        // every widget that repeats a template announces its rows the same way.
+        const drawings = hostAdapter.blueprintRuntime?.drawings;
+        const announcesRow =
+            drawings && options?.listItemScope && options.instanceKey && options.instanceKey !== instanceKey
+                ? (
+                      <ListRowDrawing
+                          key={`row-drawing:${options.instanceKey}`}
+                          drawings={drawings}
+                          listElementId={resolved.id}
+                          instanceKey={options.instanceKey}
+                          listItemScope={options.listItemScope}
+                      />
+                  )
+                : null;
+        const rendered = childIds.map(childId => {
             const childElement = options?.elementOverrides?.[childId] ?? document.elements[childId];
             if (!childElement) {
                 return null;
@@ -1186,7 +1259,17 @@ function renderElementTree(
             );
         })
         .filter((node): node is ReactNode => node !== null);
+        return announcesRow ? [announcesRow, ...rendered] : rendered;
     };
+
+    // The element's own events, bound to the drawing it is in - the same one `EditorNodeWrapper`
+    // below dispatches its pointer events with.
+    const dispatchEvent = bindWidgetEventDispatch(hostAdapter.blueprintRuntime, resolved.id, {
+        listItemScope: listItemScope ?? null,
+        instanceKey,
+        componentId,
+        componentParams,
+    });
 
     const children = rendersOwnChildren ? [] : renderChildren();
 
@@ -1271,10 +1354,12 @@ function renderElementTree(
                       surfacePath={surfacePath}
                       parentInteractive={interactive}
                       parentKeyboardInteractive={keyboardInteractive}
+                      dispatchFrameEvent={dispatchEvent}
                   />
               ),
               instanceKey,
               listItemScope: listItemScope ?? null,
+              dispatchEvent,
               runtimeData: blueprintBindingContext
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,

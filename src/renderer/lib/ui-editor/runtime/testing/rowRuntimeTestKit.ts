@@ -29,6 +29,9 @@ import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBr
 import { releaseBlueprintWidgetLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
+import { dispatchWidgetFlushInDrawing } from "@/lib/ui-editor/runtime/widgetEventDispatch";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 
 export const PAGE = "page";
 
@@ -222,9 +225,19 @@ let runtimeCount = 0;
  * game, so each runtime runs under a scope of its own and `release()` drops what it kept: a test
  * that read a variable another test had set would pass or fail on the order they ran in.
  */
-export function createRowRuntime(blueprints: readonly Blueprint[]) {
+export function createRowRuntime(
+    blueprints: readonly Blueprint[],
+    options: {
+        /** Another page than {@link rowDocument}; its first surface is the one that runs. */
+        document?: UIDocument;
+        /** The desktop half of `Move Mouse To`, where a test wants to see where the cursor was sent. */
+        onMovePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
+    } = {},
+) {
     runtimeCount += 1;
-    const runtimeScopeId = `${PAGE}#${runtimeCount}`;
+    const document = options.document ?? rowDocument;
+    const surface = document.surfaces[0] as UISurface;
+    const runtimeScopeId = `${surface.id}#${runtimeCount}`;
     const blueprintDocument = blueprintDocumentOf(blueprints);
     const patches: [string, DevModeWidgetRuntimePatch][] = [];
     const bundle: DevModeBundle = {
@@ -232,7 +245,7 @@ export function createRowRuntime(blueprints: readonly Blueprint[]) {
         revision: 1,
         timestamp: "2026-09-20T00:00:00.000Z",
         ui: {
-            uidoc: rowDocument,
+            uidoc: document,
             uigraphs: { schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION, blueprintDocument },
             localBlueprints: blueprintDocument,
             persistentVariables: {},
@@ -252,21 +265,28 @@ export function createRowRuntime(blueprints: readonly Blueprint[]) {
         }
     });
     const scope = new ScopeStoreBridge();
+    const widgetRuntimeStore = new WidgetRuntimeStateStore();
+    let adapter: UIHostAdapter | null = null;
     const hostApi = createDevModeBlueprintHostApi({
-        document: rowDocument,
+        document,
         scope,
-        activeSurfaceId: PAGE,
+        activeSurfaceId: surface.id,
         emit: event => debug.emit(event),
         onOpenSurface: () => undefined,
         onPageBack: () => undefined,
         onWidgetPatch: (address, patch) => {
             patches.push([address, patch]);
         },
-        widgetRuntimeStore: new WidgetRuntimeStateStore(),
+        // Routed as a running game routes it, in the drawing the write landed on.
+        onElementFlush: (elementId, payload, address) => {
+            dispatchWidgetFlushInDrawing(adapter?.blueprintRuntime, elementId, payload, address);
+        },
+        onMovePointer: options.onMovePointer,
+        widgetRuntimeStore,
     });
-    const adapter = createDevModeBlueprintHostAdapter({
+    adapter = createDevModeBlueprintHostAdapter({
         bundle,
-        surface: rowDocument.surfaces[0] as UISurface,
+        surface,
         runtimeScopeId,
         scopeBridge: scope,
         debug,
@@ -277,6 +297,10 @@ export function createRowRuntime(blueprints: readonly Blueprint[]) {
         runtime: adapter.blueprintRuntime!,
         hostApi,
         blueprintDocument,
+        document,
+        surface,
+        /** The store the host API writes widget state into, for a test that renders the page with it. */
+        widgetRuntimeStore,
         errors,
         /** Every line a `Log` node (or `ctx.host.devtools.log`) wrote, in order. */
         logs,
@@ -288,7 +312,7 @@ export function createRowRuntime(blueprints: readonly Blueprint[]) {
             for (const blueprint of blueprints) {
                 const owner = blueprint.owner;
                 if (owner.kind === "widgetMain" || owner.kind === "componentWidgetMain") {
-                    releaseBlueprintWidgetLocals(PAGE, owner.elementId, blueprint.id, runtimeScopeId, {
+                    releaseBlueprintWidgetLocals(surface.id, owner.elementId, blueprint.id, runtimeScopeId, {
                         componentId: owner.kind === "componentWidgetMain" ? owner.componentId : undefined,
                     });
                 }

@@ -31,7 +31,8 @@ function blueprintHasFlushHead(blueprint: Blueprint | undefined, elementType: st
     );
 }
 
-function hasWidgetFlushBlueprint(
+/** Whether the element's own blueprint answers a flush - the part of a flush that runs in a drawing. */
+export function hasWidgetFlushBlueprint(
     blueprintDocument: BlueprintDocument,
     surfaceId: string,
     element: UIElement,

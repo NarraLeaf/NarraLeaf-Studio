@@ -149,8 +149,10 @@ export type RuntimeWidgetRendererProps = {
      * it and nothing else will ever fire the slot.
      *
      * Bound to the element being drawn - a widget cannot raise an event on another one - and
-     * to the scope it is being drawn in, so a dispatch from inside a repeated row addresses
-     * that row. Pass `options` only to address a different row than the one being drawn.
+     * to the drawing it is in: the row, so a dispatch from inside a repeated row addresses that
+     * row, and the component placement, so a widget placed inside a component reaches the
+     * graph authored on the component. Pass `options` only to address a different row than the
+     * one being drawn.
      *
      * A new function on every render, like anything bound to the current drawing: call it
      * from a handler, and keep it in a ref rather than in an effect's dependency list.

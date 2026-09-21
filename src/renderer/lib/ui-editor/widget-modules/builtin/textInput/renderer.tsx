@@ -35,6 +35,7 @@ import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import { getTextInputProps } from "./helpers";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
@@ -58,6 +59,7 @@ function coerceInputModeText(mode: UITextInputMode, raw: string): string {
 
 export function TextInputRenderer(props: WidgetRendererProps) {
     const { element, hostAdapter, useAppearanceInspectorPreview } = props;
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
     const flushFrameRef = useRef<number | null>(null);
     const valueChangedFrameRef = useRef<number | null>(null);
     const valueChangedInFlightRef = useRef(false);
@@ -116,7 +118,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
         }
         flushFrameRef.current = window.requestAnimationFrame(() => {
             flushFrameRef.current = null;
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "flush", {
+            void dispatchEvent("flush", {
                 element: {
                     surfaceId: blueprintRuntime.surfaceId,
                     elementId: element.id,
@@ -124,7 +126,7 @@ export function TextInputRenderer(props: WidgetRendererProps) {
                 },
             });
         });
-    }, [blueprintRuntime, element.id, element.type]);
+    }, [blueprintRuntime, dispatchEvent, element.id, element.type]);
 
     const dispatchCoalescedValueChanged = useCallback(() => {
         if (!blueprintRuntime) {
@@ -140,13 +142,13 @@ export function TextInputRenderer(props: WidgetRendererProps) {
         }
         valueChangedPendingRef.current = null;
         valueChangedInFlightRef.current = true;
-        void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "valueChanged", payload).finally(() => {
+        void dispatchEvent("valueChanged", payload).finally(() => {
             valueChangedInFlightRef.current = false;
             if (valueChangedPendingRef.current) {
                 scheduleValueChanged();
             }
         });
-    }, [blueprintRuntime, element.id]);
+    }, [blueprintRuntime, dispatchEvent]);
 
     const scheduleValueChanged = useCallback(() => {
         if (!blueprintRuntime) {
@@ -221,11 +223,11 @@ export function TextInputRenderer(props: WidgetRendererProps) {
             // No stopPropagation: the widget's own `keyDown` event is dispatched from a window
             // listener and must keep firing for authors who wired it alongside Submit.
             event.preventDefault();
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "submit", {
+            void dispatchEvent("submit", {
                 value: valueRef.current,
             });
         },
-        [blueprintRuntime, canRunInteraction, element.id],
+        [blueprintRuntime, canRunInteraction, dispatchEvent],
     );
 
     const displayPlaceholder = useLocalizedWidgetText({

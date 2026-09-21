@@ -45,6 +45,7 @@ import type {
     DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { dispatchWidgetFlushInDrawing } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { applyWidgetRuntimePatch, type WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { PageProps } from "./types";
 
@@ -227,12 +228,8 @@ export function buildGameHostApiOptions(
                 patch,
             });
         },
-        onElementFlush: (elementId, payload) => {
-            void binding.resolveHostAdapter()?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                elementId,
-                "flush",
-                payload,
-            );
+        onElementFlush: (elementId, payload, address) => {
+            dispatchWidgetFlushInDrawing(binding.resolveHostAdapter()?.blueprintRuntime, elementId, payload, address);
         },
         // What this scope is already showing. A host API rebuilt for a scope that is already drawn
         // has to start from what is on screen: every widget setter writes nothing when the value it

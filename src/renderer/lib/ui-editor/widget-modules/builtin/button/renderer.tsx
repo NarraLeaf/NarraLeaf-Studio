@@ -198,7 +198,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const dispatchClick =
         canDispatchClick && !isEditing
             ? () => {
-                  void rt!.dispatchElementBlueprintEvent(element.id, "mouseClick", {
+                  // A key press standing in for a click, so it is the click of this drawing - the
+                  // row it is in and the placement it belongs to - exactly as a pointer's would be.
+                  void props.dispatchEvent?.("mouseClick", {
                       x: Math.abs(element.layout.width) / 2,
                       y: Math.abs(element.layout.height) / 2,
                   });

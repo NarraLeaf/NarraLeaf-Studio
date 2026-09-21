@@ -1,5 +1,6 @@
 import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimeWidgetRendererProps } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
+import { narrowWidgetEventDispatchForPlugin } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type {
     UIInspectorData,
@@ -168,30 +169,20 @@ export function narrowPluginWidgetRendererProps(
     props: WidgetRendererProps,
     game: RuntimePluginGame,
 ): RuntimeWidgetRendererProps {
-    const blueprintRuntime = props.hostAdapter?.blueprintRuntime;
-    const listItemScope = props.listItemScope ?? null;
-    const instanceKey = props.instanceKey;
     return {
         element: props.element,
         surface: props.surface,
         document: props.document,
         children: props.children,
-        instanceKey,
-        listItemScope,
+        instanceKey: props.instanceKey,
+        listItemScope: props.listItemScope ?? null,
         renderChildren: props.renderChildren,
         runtimeData: props.runtimeData,
-        dispatchEvent: (eventName, payload, options) => {
-            if (!blueprintRuntime) {
-                return Promise.resolve();
-            }
-            // The row is carried, not merely described: a handler answering a click on a repeated
-            // row is asking about that row, and an unscoped dispatch would run the author's graph
-            // against whichever one drew last.
-            return blueprintRuntime.dispatchElementBlueprintEvent(props.element.id, eventName, payload, {
-                listItemScope: options && "listItemScope" in options ? options.listItemScope : listItemScope,
-                instanceKey: options?.instanceKey ?? instanceKey,
-            });
-        },
+        // The element tree's own binding - the row and the component placement this element is in -
+        // rather than one rebuilt here from the host's runtime: rebuilt, it knew the row and not the
+        // placement, so a plugin widget inside a card raised its events on a page with no such
+        // element, and they were dropped.
+        dispatchEvent: narrowWidgetEventDispatchForPlugin(props.dispatchEvent),
         game,
     };
 }

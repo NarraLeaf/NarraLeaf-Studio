@@ -33,6 +33,32 @@ export type UIHostAdapterElementEventOptions = {
 };
 
 /**
+ * The drawings a running surface is showing, for the events that are not raised by any one of them.
+ *
+ * A click knows its drawing - it landed on one. A broadcast, a window focus change or a flush that a
+ * graph's write set off does not: it names an element, and an element in a list row is drawn once
+ * per row. The document says which list repeats it but not what rows that list is showing - rows
+ * come from bindings and from graphs at run time - so the list announces each row it draws here,
+ * and whoever fans such an event out asks here which drawings to run it in.
+ */
+export type UIHostAdapterDrawings = {
+    /** Announce one row a list is drawing. Returns the retraction, for when the row goes away. */
+    registerListRow: (listElementId: string, row: { instanceKey: string; listItemScope: UIListItemScope }) => () => void;
+    /**
+     * Every drawing of `elementId` on screen, each as the options an event run in it carries.
+     *
+     * An element drawn once, for the page, has one drawing with nothing to name: `[{}]`. An element
+     * in a list row has one per row the list is drawing - none while the list is empty.
+     */
+    everyDrawingOf: (elementId: string) => UIHostAdapterElementEventOptions[];
+    /**
+     * The options naming the drawing a widget address is in: its key, the component that holds the
+     * element and the params of the placement, and the row, when the row is on screen to read.
+     */
+    optionsForAddress: (address: string) => UIHostAdapterElementEventOptions | undefined;
+};
+
+/**
  * Dev Mode / runtime hooks for Blueprint M3-min (surface state + event dispatch).
  * Editor preview typically omits this field (no-op behavior in widgets).
  */
@@ -107,6 +133,8 @@ export type UIHostAdapterBlueprintRuntime = {
      * running drawing, which is what addressing did before the rule.
      */
     resolveWidgetAddress?: (elementId: string, instanceKey: string | undefined) => string;
+    /** The drawings on screen, for fanning out an event no drawing raised. See {@link UIHostAdapterDrawings}. */
+    drawings?: UIHostAdapterDrawings;
 };
 
 /**

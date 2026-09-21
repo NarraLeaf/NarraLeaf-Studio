@@ -12,6 +12,7 @@ import {
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import { getSliderProps } from "./helpers";
 
 function axisSize(layout: UILayout, orientation: UISliderOrientation): number {
@@ -98,6 +99,7 @@ function findSliderPart(element: UIElement, document: WidgetRendererProps["docum
 
 export function SliderRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren } = props;
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const flushFrameRef = useRef<number | null>(null);
     const valueChangedFrameRef = useRef<number | null>(null);
@@ -151,7 +153,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
         }
         flushFrameRef.current = window.requestAnimationFrame(() => {
             flushFrameRef.current = null;
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "flush", {
+            void dispatchEvent("flush", {
                 element: {
                     surfaceId: blueprintRuntime.surfaceId,
                     elementId: element.id,
@@ -159,7 +161,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
                 },
             });
         });
-    }, [blueprintRuntime, element.id, element.type]);
+    }, [blueprintRuntime, dispatchEvent, element.id, element.type]);
 
     const dispatchCoalescedValueChanged = useCallback(() => {
         if (!blueprintRuntime) {
@@ -175,13 +177,13 @@ export function SliderRenderer(props: WidgetRendererProps) {
         }
         valueChangedPendingRef.current = null;
         valueChangedInFlightRef.current = true;
-        void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "valueChanged", payload).finally(() => {
+        void dispatchEvent("valueChanged", payload).finally(() => {
             valueChangedInFlightRef.current = false;
             if (valueChangedPendingRef.current) {
                 scheduleValueChanged();
             }
         });
-    }, [blueprintRuntime, element.id]);
+    }, [blueprintRuntime, dispatchEvent]);
 
     const scheduleValueChanged = useCallback(() => {
         if (!blueprintRuntime) {
@@ -287,7 +289,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
                     valueFromPointer(event.clientX, event.clientY, dragPointerOffset),
                     false,
                 );
-                await blueprintRuntime.dispatchElementBlueprintEvent(element.id, "dragStart", { value: firstValue });
+                await dispatchEvent("dragStart", { value: firstValue });
                 if (firstValue !== previousValue) {
                     queueValueChanged(firstValue, previousValue);
                 }
@@ -311,7 +313,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
                 window.removeEventListener("pointermove", onMove);
                 window.removeEventListener("pointerup", onUp);
                 window.removeEventListener("pointercancel", onUp);
-                void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "dragEnd", {
+                void dispatchEvent("dragEnd", {
                     value: valueRef.current,
                 });
                 scheduleSliderFlush();
@@ -323,7 +325,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
         [
             blueprintRuntime,
             canRunSliderInteraction,
-            element.id,
+            dispatchEvent,
             handleElement?.id,
             partIds,
             pointerOffsetFromHandleCenter,

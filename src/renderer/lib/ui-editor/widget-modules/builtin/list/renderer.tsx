@@ -19,6 +19,8 @@ import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import type { UIWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
@@ -75,31 +77,35 @@ function listItemProps(item: unknown): Record<string, unknown> {
  */
 function ListItemRenderEvent(props: {
     runtime: BlueprintRuntime | undefined;
-    elementId: string;
+    dispatchEvent: UIWidgetEventDispatch;
     scope: UIListItemScope;
     instanceKey: string;
 }) {
-    const { runtime, elementId, scope, instanceKey } = props;
+    const { runtime, dispatchEvent, scope, instanceKey } = props;
     useEffect(() => {
         if (!runtime) {
             return;
         }
-        void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope), {
-            listItemScope: scope,
-            instanceKey,
-        });
-    }, [elementId, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
+        void dispatchEvent("itemRender", listItemEventPayload(scope), { listItemScope: scope, instanceKey });
+    }, [dispatchEvent, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
 
+/**
+ * List Item Refresh: raised on each widget of the row template, in that row.
+ *
+ * On the row's widgets rather than on the list, so it goes through the list's dispatch pointed at
+ * each of them: that keeps the component the list is authored in, which a row of it is still inside.
+ */
 function ListItemRefreshEvent(props: {
     runtime: BlueprintRuntime | undefined;
+    dispatchEvent: UIWidgetEventDispatch;
     elementIds: readonly string[];
     scope: UIListItemScope;
     instanceKey: string;
 }) {
-    const { runtime, elementIds, scope, instanceKey } = props;
+    const { runtime, dispatchEvent, elementIds, scope, instanceKey } = props;
     const elementKey = elementIds.join("\0");
     useEffect(() => {
         if (!runtime) {
@@ -110,12 +116,9 @@ function ListItemRefreshEvent(props: {
             props: listItemProps(scope.item),
         };
         for (const elementId of elementIds) {
-            void runtime.dispatchElementBlueprintEvent(elementId, "listItemRefresh", payload, {
-                listItemScope: scope,
-                instanceKey,
-            });
+            void dispatchEvent("listItemRefresh", payload, { elementId, listItemScope: scope, instanceKey });
         }
-    }, [elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
+    }, [dispatchEvent, elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
@@ -319,6 +322,7 @@ export function ListRenderer(props: WidgetRendererProps) {
     // The drawing this list is itself part of - a row of an enclosing list, a component placement.
     // Every row key extends it, so a row of this list names which of those it is in.
     const outerInstanceKey = props.instanceKey;
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
     const p = getListProps(element);
     const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -365,18 +369,18 @@ export function ListRenderer(props: WidgetRendererProps) {
             const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
             const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
             const payload = resolveUIListScrollMetrics(viewportSize, contentSize, offset);
-            void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
+            void dispatchEvent("scroll", {
                 ...payload,
             });
             const isAtEnd = isUIListScrolledToEnd(payload);
             if (isAtEnd && !reachedScrollEndRef.current) {
-                void runtime.dispatchElementBlueprintEvent(element.id, "scrollEnd", payload);
+                void dispatchEvent("scrollEnd", payload);
             }
             reachedScrollEndRef.current = isAtEnd;
         };
         viewport.addEventListener("scroll", dispatchScroll, { passive: true });
         return () => viewport.removeEventListener("scroll", dispatchScroll);
-    }, [element.id, horizontalScrollbar, hostAdapter.blueprintRuntime]);
+    }, [dispatchEvent, horizontalScrollbar, hostAdapter.blueprintRuntime]);
     const boundItems = resolveBoundItems(p, runtimeData);
     const itemStruct = resolveUIStruct(document, p.itemStructId);
     // Placeholder rows carry the declared shape at its empty values rather than `{index: n}`: a
@@ -502,8 +506,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!blueprintRuntime) {
                 return;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
+            void dispatchEvent(
                 eventName,
                 {
                     ...listItemEventPayload(scope),
@@ -516,7 +519,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                 { listItemScope: scope, instanceKey: buildUIListItemInstanceKey(outerInstanceKey, element.id, scope.key) },
             );
         },
-        [blueprintRuntime, element.id, outerInstanceKey],
+        [blueprintRuntime, dispatchEvent, element.id, outerInstanceKey],
     );
     const handleListItemClick = useCallback(
         (scope: UIListItemScope) => {
@@ -568,9 +571,10 @@ export function ListRenderer(props: WidgetRendererProps) {
         };
         const rowChildren = (
             <>
-                <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} instanceKey={instanceKey} />
+                <ListItemRenderEvent runtime={blueprintRuntime} dispatchEvent={dispatchEvent} scope={scope} instanceKey={instanceKey} />
                 <ListItemRefreshEvent
                     runtime={blueprintRuntime}
+                    dispatchEvent={dispatchEvent}
                     elementIds={itemTemplateDescendantIds}
                     scope={scope}
                     instanceKey={instanceKey}

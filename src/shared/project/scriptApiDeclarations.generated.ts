@@ -1408,6 +1408,25 @@ declare module "@narraleaf/script" {
     	eventControl?: BehaviorGraphEventControl;
     	allowClosedScopeExecution?: boolean;
     };
+    type UIHostAdapterDrawings = {
+    	/** Announce one row a list is drawing. Returns the retraction, for when the row goes away. */
+    	registerListRow: (listElementId: string, row: {
+    		instanceKey: string;
+    		listItemScope: UIListItemScope;
+    	}) => () => void;
+    	/**
+    	 * Every drawing of \`elementId\` on screen, each as the options an event run in it carries.
+    	 *
+    	 * An element drawn once, for the page, has one drawing with nothing to name: \`[{}]\`. An element
+    	 * in a list row has one per row the list is drawing - none while the list is empty.
+    	 */
+    	everyDrawingOf: (elementId: string) => UIHostAdapterElementEventOptions[];
+    	/**
+    	 * The options naming the drawing a widget address is in: its key, the component that holds the
+    	 * element and the params of the placement, and the row, when the row is on screen to read.
+    	 */
+    	optionsForAddress: (address: string) => UIHostAdapterElementEventOptions | undefined;
+    };
     type UIHostAdapterBlueprintRuntime = {
     	surfaceId: string;
     	/** Instance-specific scope id. Defaults to \`surfaceId\` for top-level surfaces. */
@@ -1474,6 +1493,8 @@ declare module "@narraleaf/script" {
     	 * running drawing, which is what addressing did before the rule.
     	 */
     	resolveWidgetAddress?: (elementId: string, instanceKey: string | undefined) => string;
+    	/** The drawings on screen, for fanning out an event no drawing raised. See {@link UIHostAdapterDrawings}. */
+    	drawings?: UIHostAdapterDrawings;
     };
     type StoryVariableRuntimeAccess = {
     	/** Resolve \`variableId\` to its stored value, or the declared default when unset. */

@@ -21,6 +21,8 @@ import { readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/in
 import { isTouchStrokeInFlight } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
+import { bindWidgetEventDispatch } from "./widgetEventDispatch";
+import { uiDrawingAttributeValue } from "./surfaceMeasurement";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
@@ -298,22 +300,17 @@ export function EditorNodeWrapper({
         }
     }, [displayableMotion, resetMotionId]);
     // The element tree resolves component params afresh on every render, so its object identity
-    // moves even when the values did not. Keying the memo on the signature keeps the dispatch
-    // options - and therefore the handlers built from them - stable across those renders; when two
-    // signatures match, the captured object holds the same values by construction.
+    // moves even when the values did not. Keying the memo on the signature keeps the dispatch - and
+    // therefore the handlers built from it - stable across those renders; when two signatures match,
+    // the captured object holds the same values by construction.
+    //
+    // The same binding the renderer inside this node is handed as `dispatchEvent`, so a pointer
+    // event and an event the widget raises itself name the drawing the same way.
     const componentParamsSig = componentParams ? JSON.stringify(componentParams) : "";
-    const eventOptions = useMemo(
-        () =>
-            listItemScope || instanceKey || componentId || componentParamsSig
-                ? {
-                      listItemScope: listItemScope ?? null,
-                      instanceKey,
-                      componentId,
-                      componentParams: componentParams ?? undefined,
-                  }
-                : undefined,
+    const dispatchInDrawing = useMemo(
+        () => bindWidgetEventDispatch(blueprintRuntime, element.id, { listItemScope, instanceKey, componentId, componentParams }),
         // eslint-disable-next-line react-hooks/exhaustive-deps -- componentParamsSig stands in for componentParams
-        [componentId, componentParamsSig, instanceKey, listItemScope],
+        [blueprintRuntime, componentId, componentParamsSig, element.id, instanceKey, listItemScope],
     );
 
     const isDirectElementEvent = useCallback(
@@ -364,15 +361,10 @@ export function EditorNodeWrapper({
             if (!getWidgetLogicEvent(element.type, eventName) && !isPointerPositionElementEvent(eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
-                eventName,
-                payload,
-                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
-            );
+            void dispatchInDrawing(eventName, payload, eventControl ? { eventControl } : undefined);
             return true;
         },
-        [blueprintRuntime, element.id, element.type, eventOptions, interactive, isDirectElementEvent],
+        [blueprintRuntime, dispatchInDrawing, element.type, interactive, isDirectElementEvent],
     );
 
     const dispatchMountedWidgetEvent = useCallback(
@@ -383,15 +375,10 @@ export function EditorNodeWrapper({
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
-                eventName,
-                payload,
-                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
-            );
+            void dispatchInDrawing(eventName, payload, eventControl ? { eventControl } : undefined);
             return true;
         },
-        [blueprintRuntime, element.id, element.type, eventOptions, keyboardInteractive],
+        [blueprintRuntime, dispatchInDrawing, element.type, keyboardInteractive],
     );
 
     useEffect(() => {
@@ -850,6 +837,9 @@ export function EditorNodeWrapper({
         <motion.div
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
+            // Which drawing this is, for measuring one row or one placement rather than whichever
+            // copy of the element the page happens to hold first. See `surfaceMeasurement`.
+            data-ui-drawing={interactive && instanceKey ? uiDrawingAttributeValue(instanceKey) : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""} ${isEnteredHere ? "ui-editor-node-entered" : ""}`}
             style={motionStyle}
             initial={false}

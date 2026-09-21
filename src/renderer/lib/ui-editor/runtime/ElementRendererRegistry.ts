@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { UIDocument, UISurface, UIElement } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "./types";
+import type { UIWidgetEventDispatch } from "./widgetEventDispatch";
 
 export type ElementRendererProps = {
     element: UIElement;
@@ -32,6 +33,11 @@ export type ElementRendererProps = {
     };
     /** Passed by the workspace editor bridge; omitted in Dev Mode and other hosts. */
     useAppearanceInspectorPreview?: boolean;
+    /**
+     * Raise one of this element's own events, in the drawing it is being rendered in. The only way a
+     * renderer dispatches; see `widgetEventDispatch.ts`.
+     */
+    dispatchEvent?: UIWidgetEventDispatch;
 };
 
 export type ElementRendererDefinition = {
