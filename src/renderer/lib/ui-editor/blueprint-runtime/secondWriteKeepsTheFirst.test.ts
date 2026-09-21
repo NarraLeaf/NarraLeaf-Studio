@@ -37,14 +37,17 @@ import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appe
 import {
     resolveButtonVisualProps,
     resolveImageRectangleLike,
+    resolveTextVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { blueprintOf, createRowRuntime, graphOf } from "@/lib/ui-editor/runtime/testing/rowRuntimeTestKit";
 import {
     createInitialButtonAppearance,
     createInitialImageAppearanceFromProps,
+    createInitialTextAppearance,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { defaultButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import { defaultTextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import {
     createDevModeBlueprintHostApi,
@@ -74,6 +77,12 @@ function buttonProps(): Record<string, unknown> {
         label: "Go",
         appearance: createInitialButtonAppearance(defaultButtonWidgetProps),
     };
+}
+
+/** A text as Studio makes one: its look held twice, as flat props and as the appearance's rows. */
+function textProps(): Record<string, unknown> {
+    const flat = { ...defaultTextWidgetProps, text: "Hello" };
+    return { ...flat, appearance: createInitialTextAppearance(flat) };
 }
 
 type Spec = { type: string; parent: string | null; props?: Record<string, unknown>; template?: true };
@@ -113,7 +122,7 @@ function createDocument(): UIDocument {
             "root-b": { type: "nl.root", parent: null },
             picture: { type: "nl.image", parent: "root", props: imageProps() },
             go: { type: "nl.button", parent: "root", props: buttonProps() },
-            caption: { type: "nl.text", parent: "root", props: { text: "Hello", color: "#ffffff", fontSize: 16 } },
+            caption: { type: "nl.text", parent: "root", props: textProps() },
             box: { type: "nl.container", parent: "root", props: { clipContent: false } },
             frame: {
                 type: UI_FRAME_ELEMENT_TYPE,
@@ -192,6 +201,15 @@ function paintedButton(page: ReturnType<typeof createPage>, address: string) {
             signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
         }).cursor,
     };
+}
+
+/** The words, colour and size a text's renderer would paint. */
+function paintedText(page: ReturnType<typeof createPage>, address: string) {
+    const element = painted(page, address);
+    const resolved = resolveTextVisualProps(element, appearanceOf(element), {
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    });
+    return { text: resolved.text, color: resolved.color, fontSize: resolved.fontSize };
 }
 
 const CROP = { leftPct: 10, topPct: 20, widthPct: 50, heightPct: 60 };
@@ -293,13 +311,55 @@ describe("a second write to a button keeps the first", () => {
 });
 
 describe("the other setter families keep a first write through a second", () => {
-    it("text: Set Text then Set Text Color", async () => {
+    it("text: Set Text, then Set Text Color, then Set Font Size", async () => {
         const page = createPage();
         await page.hostApi.widget.setTextProperties("caption", { text: "Changed" });
         await page.hostApi.widget.setTextProperties("caption", { color: "#ff0000" });
+        await page.hostApi.widget.setTextProperties("caption", { fontSize: 40 });
 
-        expect(page.hostApi.widget.getTextProperties("caption")).toMatchObject({ text: "Changed", color: "#ff0000" });
-        expect(painted(page, "caption").props).toMatchObject({ text: "Changed", color: "#ff0000" });
+        expect(page.hostApi.widget.getTextProperties("caption")).toMatchObject({
+            text: "Changed",
+            color: "#ff0000",
+            fontSize: 40,
+        });
+        // On screen, not only in what a graph reads back: a text is painted from its appearance's
+        // rows, and a colour that reached only the flat props was a colour nobody saw.
+        expect(paintedText(page, "caption")).toEqual({ text: "Changed", color: "#ff0000", fontSize: 40 });
+    });
+
+    it("text: Set Font Size, then Set Text Color, keeps the size", async () => {
+        const page = createPage();
+        await page.hostApi.widget.setTextProperties("caption", { fontSize: 40 });
+        await page.hostApi.widget.setTextProperties("caption", { color: "#ff0000" });
+
+        expect(paintedText(page, "caption")).toEqual({ text: "Hello", color: "#ff0000", fontSize: 40 });
+    });
+
+    it("text: a changed colour leaves a hovered row the author wrote alone", async () => {
+        const document = createDocument();
+        const caption = document.elements.caption!;
+        const appearance = (caption.props as { appearance: AppearanceModel }).appearance;
+        const hovered = {
+            ...appearance,
+            variants: appearance.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.map(group =>
+                    group.key === "color"
+                        ? { ...group, rows: [...group.rows, { conditions: { hovered: true }, value: "#00ff00" }] }
+                        : group,
+                ),
+            })),
+        } as AppearanceModel;
+        document.elements.caption = { ...caption, props: { ...caption.props, appearance: hovered } };
+        const page = createPage(document);
+
+        await page.hostApi.widget.setTextProperties("caption", { color: "#ff0000" });
+
+        const element = painted(page, "caption");
+        expect(resolveTextVisualProps(element, appearanceOf(element), {
+            signals: { ...DEFAULT_SYSTEM_INTERACTION_SIGNALS, hovered: true },
+        }).color).toBe("#00ff00");
+        expect(paintedText(page, "caption").color).toBe("#ff0000");
     });
 
     it("container: Set Clip Content, then a move and a hide of the same drawing", async () => {

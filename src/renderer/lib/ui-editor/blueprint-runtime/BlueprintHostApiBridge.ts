@@ -133,12 +133,14 @@ import type {
 } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
+    isAppearanceModel,
     isButtonCursorValue,
     type AppearanceFieldTransition,
     type AppearanceModel,
     type AppearancePropertyGroup,
     type AppearanceVariant,
     type ButtonCursorValue,
+    type TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import {
     DEFAULT_SYSTEM_INTERACTION_SIGNALS,
@@ -152,6 +154,7 @@ import {
     createInitialButtonAppearance,
     ensureButtonAppearanceHasAllKeys,
     isUsableAppearanceModel,
+    syncTextAppearanceDefaultRowsFromProps,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export type DevModeWidgetRuntimePatch = {
@@ -2295,6 +2298,40 @@ function normalizeTextPatch(
     return next;
 }
 
+/** The appearance rows each text property a graph can set is painted from. */
+const TEXT_APPEARANCE_KEYS_BY_PROPERTY: Partial<Record<keyof BlueprintTextProperties, readonly TextAppearancePropertyKey[]>> = {
+    fontAssetId: ["fontAssetId"],
+    fontSize: ["fontSize"],
+    fontWeight: ["fontWeight"],
+    color: ["color"],
+    lineHeight: ["lineHeight"],
+    effects: ["effectBlur", "effectTextShadow", "effectBlend", "effectFilter"],
+};
+
+/**
+ * The appearance a text change has to carry beside its flat props, or nothing.
+ *
+ * A text with an appearance model - every text made in Studio has one - is painted from its default
+ * variant's rows, with the flat props only the baseline under them. So a write of the colour alone
+ * changed what a graph read back and nothing on screen. The rows are brought into step the way the
+ * inspector brings them into step when an author edits the same property, starting from the
+ * appearance `drawn` - the drawing being written - already shows.
+ */
+function textAppearanceChange(drawn: UIElement, changes: BlueprintTextPropertiesPatch): Record<string, unknown> {
+    const appearance = (drawn.props as { appearance?: unknown } | undefined)?.appearance;
+    if (!isAppearanceModel(appearance) || !isUsableAppearanceModel(appearance)) {
+        return {};
+    }
+    const keys = (Object.keys(changes) as Array<keyof BlueprintTextProperties>)
+        .flatMap(property => TEXT_APPEARANCE_KEYS_BY_PROPERTY[property] ?? []);
+    if (keys.length === 0) {
+        return {};
+    }
+    const flat = getTextProps({ ...drawn, props: { ...(drawn.props ?? {}), ...changes } });
+    const next = syncTextAppearanceDefaultRowsFromProps(appearance, flat, keys);
+    return next === appearance ? {} : { appearance: next };
+}
+
 function textPatchChanges(current: BlueprintTextProperties, patch: BlueprintTextPropertiesPatch): boolean {
     for (const [key, value] of Object.entries(patch) as Array<[keyof BlueprintTextProperties, unknown]>) {
         if (!jsonEquals(current[key], value)) {
@@ -3242,7 +3279,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!textPatchChanges(current, normalized)) {
                         return;
                     }
-                    changeWidgetProps(elementId, el, () => ({ ...normalized }));
+                    changeWidgetProps(elementId, el, drawn => ({ ...normalized, ...textAppearanceChange(drawn, normalized) }));
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
