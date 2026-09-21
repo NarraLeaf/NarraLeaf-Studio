@@ -205,6 +205,16 @@ function DetailField({
         }
     }, [draft, initialValue, multiline, onCommit, onError]);
 
+    // Back to what the field last stood for: the text still being written, if there is one, rather
+    // than the stored value it is about to replace. The blur is what ends the edit; `abandoning` is
+    // what stops that blur from sending the draft this render still holds.
+    const abandon = useCallback((field: HTMLInputElement | HTMLTextAreaElement) => {
+        abandoning.current = true;
+        edited.current = false;
+        setDraft(sending.current ?? initialValue);
+        field.blur();
+    }, [initialValue]);
+
     return (
         <label className="grid gap-1.5" data-tip={frozen["data-tip"]}>
             <div className="flex items-center gap-1.5">
@@ -216,7 +226,16 @@ function DetailField({
                 <TextArea
                     value={draft}
                     onChange={event => edit(event.target.value)}
+                    onFocus={() => {
+                        abandoning.current = false;
+                    }}
                     onBlur={() => void commit()}
+                    onKeyDown={event => {
+                        // Enter is a line break here, so only Escape ends the edit early.
+                        if (event.key === "Escape") {
+                            abandon(event.currentTarget);
+                        }
+                    }}
                     placeholder={placeholder}
                     rows={rows}
                     fullWidth
@@ -236,12 +255,7 @@ function DetailField({
                             event.currentTarget.blur();
                         }
                         if (event.key === "Escape") {
-                            // Back to what the field last stood for: the text still being written, if
-                            // there is one, rather than the stored value it is about to replace.
-                            abandoning.current = true;
-                            edited.current = false;
-                            setDraft(sending.current ?? initialValue);
-                            event.currentTarget.blur();
+                            abandon(event.currentTarget);
                         }
                     }}
                     placeholder={placeholder}
