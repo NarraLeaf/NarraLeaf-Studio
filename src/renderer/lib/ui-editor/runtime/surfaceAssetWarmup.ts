@@ -4,6 +4,9 @@ import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import type { GameRuntimeAssetManifestEntry } from "@shared/types/gameRuntime";
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { UI_ASSET_ID_PROPERTY_NAMES } from "@shared/build/uiAssetSlots";
+import { blueprintDocumentGraphs } from "@shared/build/blueprintAssetSets";
+import { forEachBlueprintAssetSlot, type BlueprintAssetSlotKind } from "@shared/build/blueprintAssetSlots";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 
 /**
  * What an interface needs before it can be shown, and warming it.
@@ -31,6 +34,11 @@ export type SurfaceWarmupSource = {
     /** The project's default font stack, which no widget names and every text widget inherits. */
     fontAssetIds: readonly string[];
     manifestIds: Set<string> | null;
+    /**
+     * The blueprints the interface runs, whose graphs name assets the UI document never mentions.
+     * Absent where a caller only warms what a screen draws, which is all a single surface needs.
+     */
+    blueprintDocument?: BlueprintDocument;
 };
 
 /**
@@ -256,6 +264,48 @@ export function collectWarmupAssetIds(source: SurfaceWarmupSource, firstSurfaceI
 /** How an asset has to be warmed. The four are warmed by four different browser primitives. */
 type PreloadKind = "font" | "audio" | "video" | "image";
 
+const PRELOAD_KIND_FOR_SLOT: Record<BlueprintAssetSlotKind, PreloadKind> = {
+    image: "image",
+    audio: "audio",
+    font: "font",
+};
+
+/**
+ * Every asset a blueprint names, with the kind its pin says it carries.
+ *
+ * The walk above reads the UI document, and a graph is not in it: a button's click sound
+ * (`Play Sound`), a picture a graph swaps in (`Set Image Asset`, an Image Asset literal), a typeface
+ * set from a graph. Those used to be fetched - and in a protected build, decrypted whole - at the
+ * moment they were first needed, which for a click sound is the player's first click.
+ *
+ * The walk is the build's own (`forEachBlueprintAssetSlot` over `blueprintDocumentGraphs`), macros
+ * included, so there is no second list of which pins hold assets to fall behind the first. A slot
+ * naming an asset set warms every member, for the reason `fetchableAssetIds` gives. Filtered against
+ * the manifest the same way, which drops nothing in a protected build: that one ships none.
+ */
+export function collectBlueprintWarmupAssets(source: SurfaceWarmupSource): { assetId: string; kind: PreloadKind }[] {
+    const found = new Map<string, PreloadKind>();
+    for (const graph of blueprintDocumentGraphs(source.blueprintDocument)) {
+        forEachBlueprintAssetSlot(graph, slot => {
+            const stored = slot.read();
+            if (!stored) {
+                return;
+            }
+            const members = slot.node.assetVariants?.[stored];
+            for (const assetId of members ? new Set(Object.values(members)) : [stored]) {
+                if (source.manifestIds && !source.manifestIds.has(assetId)) {
+                    continue;
+                }
+                if (!found.has(assetId)) {
+                    found.set(assetId, PRELOAD_KIND_FOR_SLOT[slot.kind]);
+                }
+            }
+        });
+    }
+    return [...found].map(([assetId, kind]) => ({ assetId, kind }));
+}
+
+
 function kindFromMediaType(mediaType: string | null | undefined): PreloadKind | null {
     const mime = mediaType?.toLowerCase().split(";")[0].trim() ?? "";
     if (mime.startsWith("font/") || mime === "application/font-woff" || mime === "application/x-font-ttf") {
@@ -380,9 +430,11 @@ async function preloadAsset(input: {
     entry: SurfaceWarmupKindHint | undefined;
     assetUrl: (assetId: string) => string;
     loadFont: SurfaceWarmupFontLoader;
+    /** Known from where the id was found - a blueprint pin says what it carries. */
+    kind?: PreloadKind;
 }): Promise<void> {
     const url = input.assetUrl(input.assetId);
-    const kind = kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
+    const kind = input.kind ?? kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
     if (kind === "font") {
         await input.loadFont(input.assetId, url);
         return;
@@ -458,29 +510,80 @@ export async function warmSurfaceAssets(input: SurfaceWarmupAccess & {
     };
 }
 
-/** Warm the first surface, then every other one, reporting both as one pass. */
+/**
+ * How many assets the warm-up behind the first frame fetches at once.
+ *
+ * The first screen's assets are all requested together, because the player is waiting on exactly
+ * those. The rest are not waited on by anyone, and a pack with a gallery's worth of pictures
+ * requested in one go would put hundreds of reads and decodes in front of the story compile and the
+ * opening scene - the work that decides when the player first sees the game move.
+ */
+const BACKGROUND_WARMUP_CONCURRENCY = 4;
+
+/**
+ * Warm the whole interface, and say as soon as the first screen can show.
+ *
+ * # The wait is the first screen, not the interface
+ *
+ * This used to be one wait over every asset of every page: a packaged game held its first frame -
+ * and the story compile behind it - until a settings page's backdrop and a gallery's thumbnails had
+ * all decoded. `onFirstSurfaceSettled` is the moment the first screen's own assets (and the project's
+ * fonts, which every page is set in) have settled, and it is the only thing a caller should gate on.
+ * Everything else keeps warming afterwards, a few at a time, ahead of the player getting there. A page
+ * opened before its assets arrive still draws correctly - a picture decodes on first use and the
+ * page's own prepaint waits for its fonts - it is only later than it would have been.
+ *
+ * Progress counts the first screen's assets alone, because they are now the whole of the wait.
+ *
+ * # What is warmed besides the interface document
+ *
+ * Every asset the source's blueprints name ({@link collectBlueprintWarmupAssets}), a blueprint's
+ * sounds first of all: the first thing a player does on a title screen is press something, and a
+ * click sound is small. Measured on the shipped skeleton with a heavy Load page, they arrived 2.4 s in
+ * when they queued behind that page's pictures.
+ *
+ * The returned promise settles when everything has, or when `timeoutMs` has passed; the same budget
+ * caps how long `onFirstSurfaceSettled` can be held back by an asset that never answers.
+ */
 export async function warmInterfaceAssets(input: SurfaceWarmupAccess & {
     source: SurfaceWarmupSource;
     firstSurfaceId: string;
+    /** Told once: the first screen may show. `complete` is false when the budget ran out first. */
+    onFirstSurfaceSettled?: (outcome: { complete: boolean }) => void;
 }): Promise<RuntimeSurfacePreloadResult> {
-    const { firstSurfaceAssetIds, assetIds } = collectWarmupAssetIds(input.source, input.firstSurfaceId);
+    const { firstSurfaceAssetIds, assetIds: interfaceAssetIds } = collectWarmupAssetIds(input.source, input.firstSurfaceId);
     const firstSurfaceAssetSet = new Set(firstSurfaceAssetIds);
-    const remainingAssetIds = assetIds.filter(assetId => !firstSurfaceAssetSet.has(assetId));
+    const blueprintAssets = collectBlueprintWarmupAssets(input.source)
+        .filter(named => !firstSurfaceAssetSet.has(named.assetId));
+    const background: { assetId: string; kind?: PreloadKind }[] = [];
+    const queued = new Set(firstSurfaceAssetIds);
+    const enqueue = (item: { assetId: string; kind?: PreloadKind }) => {
+        if (!queued.has(item.assetId)) {
+            queued.add(item.assetId);
+            background.push(item);
+        }
+    };
+    blueprintAssets.filter(named => named.kind === "audio").forEach(enqueue);
+    interfaceAssetIds.forEach(assetId => enqueue({ assetId }));
+    blueprintAssets.forEach(enqueue);
+    const assetIds = [...firstSurfaceAssetIds, ...background.map(item => item.assetId)];
+    const timeoutMs = input.timeoutMs ?? SURFACE_WARMUP_TIMEOUT_MS;
     const failed: string[] = [];
     const firstSurfaceFailed: string[] = [];
     let loaded = 0;
-    let settled = 0;
+    let firstSurfaceSettled = 0;
     let firstSurfaceLoaded = 0;
     let firstSurfaceComplete = false;
     let completed = false;
 
-    const preloadOne = async (assetId: string, isFirstSurface: boolean) => {
+    const preloadOne = async (assetId: string, isFirstSurface: boolean, kind?: PreloadKind) => {
         try {
             await preloadAsset({
                 assetId,
                 entry: input.entryFor(assetId),
                 assetUrl: input.assetUrl,
                 loadFont: input.loadFont,
+                kind,
             });
             loaded += 1;
             if (isFirstSurface) {
@@ -492,24 +595,40 @@ export async function warmInterfaceAssets(input: SurfaceWarmupAccess & {
                 firstSurfaceFailed.push(assetId);
             }
         }
-        // Against the whole list, both passes counted together: what the caller is drawing is one
-        // wait, and a bar that filled during the first screen's assets and then started again for
-        // the rest would be two answers to "how much longer".
-        settled += 1;
-        input.onProgress?.(settled, assetIds.length);
+        // Only the first screen's assets move the bar: they are the whole of what anyone is waiting
+        // for, and a bar that went on counting a gallery's thumbnails would be answering "how much
+        // longer" for a wait that is already over.
+        if (isFirstSurface) {
+            firstSurfaceSettled += 1;
+            input.onProgress?.(firstSurfaceSettled, firstSurfaceAssetIds.length);
+        }
     };
 
-    const preloadAll = (async () => {
-        await Promise.all(firstSurfaceAssetIds.map(assetId => preloadOne(assetId, true)));
+    const budget = new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), timeoutMs));
+    const firstPass = Promise.all(firstSurfaceAssetIds.map(assetId => preloadOne(assetId, true))).then(() => {
         firstSurfaceComplete = true;
-        await Promise.all(remainingAssetIds.map(assetId => preloadOne(assetId, false)));
+    });
+
+    const preloadAll = (async () => {
+        const first = await Promise.race([firstPass.then(() => "done" as const), budget]);
+        input.onFirstSurfaceSettled?.({ complete: first === "done" });
+        let next = 0;
+        const worker = async () => {
+            while (next < background.length) {
+                const item = background[next];
+                next += 1;
+                await preloadOne(item.assetId, false, item.kind);
+            }
+        };
+        await Promise.all(Array.from(
+            { length: Math.min(BACKGROUND_WARMUP_CONCURRENCY, background.length) },
+            () => worker(),
+        ));
+        await firstPass;
         completed = true;
     })();
 
-    await Promise.race([
-        preloadAll,
-        new Promise(resolve => setTimeout(resolve, input.timeoutMs ?? SURFACE_WARMUP_TIMEOUT_MS)),
-    ]);
+    await Promise.race([preloadAll, budget]);
 
     return {
         assetIds,

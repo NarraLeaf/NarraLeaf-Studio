@@ -3,6 +3,7 @@ import { GAME_RUNTIME_PACK_SCHEMA_VERSION, type GameRuntimePackV1 } from "@share
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import {
+    collectRuntimeBlueprintAssets,
     collectRuntimePackAssetIds,
     collectRuntimeSurfaceAssetIds,
     preloadRuntimePackAssets,
@@ -432,11 +433,10 @@ describe("runtime surface asset preload", () => {
         });
 
         expect(result.failed).toEqual(["nested-img"]);
-        expect(ticks).toHaveLength(3);
-        // Against the whole list from the first tick, and rising to it: two passes counted as one
-        // wait, because one wait is what the player is looking at.
-        expect(ticks.map(([settled]) => settled)).toEqual([1, 2, 3]);
-        expect(ticks.every(([, total]) => total === 3)).toBe(true);
+        // The first screen's two assets and nothing else: they are the whole of the wait a loading
+        // state is drawing, and the credits page's backdrop warms after that wait is over.
+        expect(ticks.map(([settled]) => settled)).toEqual([1, 2]);
+        expect(ticks.every(([, total]) => total === 2)).toBe(true);
     });
 });
 
@@ -563,5 +563,243 @@ describe("deciding what an asset is", () => {
         // The seam the whole warm-up hangs on: a face nobody can find is a face that gets loaded
         // again by the first widget that needs it.
         expect(registeredRuntimeFontCssFamily("component-font")).toBe(runtimeFontCssFamily("component-font"));
+    });
+});
+
+/**
+ * The first frame waits for the first screen; the rest of the pack warms behind it.
+ *
+ * Images are the stand-in because the fake is easy to hold open: an `Image` whose load is released
+ * by the test is an asset still on its way.
+ */
+describe("what the first frame waits for", () => {
+    function holdableImages() {
+        const pending: Array<{ src: string; release: () => void }> = [];
+        class HeldImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            set src(value: string) {
+                pending.push({ src: value, release: () => this.onload?.() });
+            }
+        }
+        vi.stubGlobal("Image", HeldImage);
+        return pending;
+    }
+
+    it("is told the first screen is ready while the rest is still loading", async () => {
+        const pack = makePack();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        const pending = holdableImages();
+        const outcomes: Array<{ complete: boolean }> = [];
+
+        const done = preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 5_000,
+            onFirstSurfaceSettled: outcome => outcomes.push(outcome),
+        });
+        await vi.waitFor(() => expect(pending.map(item => item.src)).toEqual([
+            "nlgame://asset/first-bg",
+            "nlgame://asset/nested-img",
+        ]));
+        expect(outcomes).toEqual([]);
+
+        pending[0].release();
+        pending[1].release();
+        await vi.waitFor(() => expect(outcomes).toEqual([{ complete: true }]));
+        // Only now does the credits page's backdrop start - and nothing is waiting on it.
+        await vi.waitFor(() => expect(pending.map(item => item.src)).toContain("nlgame://asset/credits-bg"));
+
+        pending[2].release();
+        const result = await done;
+        expect(result.timedOut).toBe(false);
+        expect(result.firstSurfaceComplete).toBe(true);
+    });
+
+    it("lets the first frame go when the first screen outlives the budget", async () => {
+        const pack = makePack();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        holdableImages();
+        const outcomes: Array<{ complete: boolean }> = [];
+
+        const result = await preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 50,
+            onFirstSurfaceSettled: outcome => outcomes.push(outcome),
+        });
+
+        expect(outcomes).toEqual([{ complete: false }]);
+        expect(result.timedOut).toBe(true);
+    });
+
+    it("warms the rest a few at a time rather than all at once", async () => {
+        const pack = makePack();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        // Ten more pages' worth of pictures, all behind the first screen.
+        const credits = pack.bundle.ui.uidoc.elements["credits-root"]!;
+        const extraIds: string[] = [];
+        for (let index = 0; index < 10; index += 1) {
+            const id = `gallery-${index}`;
+            extraIds.push(id);
+            pack.assets.items[id] = {
+                id,
+                type: "image",
+                name: id,
+                source: "local",
+                relativePath: `assets/${id}.png`,
+                ext: "png",
+            };
+            pack.bundle.ui.uidoc.elements[id] = {
+                id,
+                type: "nl.image",
+                parentId: "credits-root",
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 10, height: 10 },
+                props: { imageFill: { assetId: id } },
+            };
+            credits.childrenIds = [...credits.childrenIds, id];
+        }
+        const pending = holdableImages();
+        let settledFirst = false;
+
+        void preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 5_000,
+            onFirstSurfaceSettled: () => {
+                settledFirst = true;
+            },
+        });
+        await vi.waitFor(() => expect(pending).toHaveLength(2));
+        pending.splice(0, 2).forEach(item => item.release());
+        await vi.waitFor(() => expect(settledFirst).toBe(true));
+
+        await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0));
+        // Held open, so whatever is in flight now is everything the warm-up started at once.
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(pending.length).toBe(4);
+        while (pending.length > 0) {
+            pending.splice(0).forEach(item => item.release());
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+    });
+});
+
+/**
+ * Assets a blueprint names, which the interface document never mentions.
+ *
+ * Node types are immaterial here: the walk is the build's own, and it finds a clip or a picture by
+ * the parameter it is stored under, whatever node stores it.
+ */
+describe("assets a blueprint names", () => {
+    function packWithBlueprintAssets() {
+        const pack = makePack();
+        for (const [id, type] of [["click-sfx", "audio"], ["swap-pic", "image"], ["swap-pic-ja", "image"]] as const) {
+            pack.assets.items[id] = { id, type, name: id, source: "local", relativePath: `assets/${id}.bin`, ext: "bin" };
+        }
+        (pack.bundle.ui as { localBlueprints: unknown }).localBlueprints = {
+            schemaVersion: 14,
+            ownerRecords: {},
+            blueprints: {
+                title: {
+                    id: "title",
+                    name: "Title",
+                    owner: { kind: "globalMain" },
+                    graphs: {
+                        events: {
+                            click: {
+                                graph: {
+                                    nodes: {
+                                        sound: { id: "sound", type: "blueprint.sound.play", params: { soundAssetId: "click-sfx" } },
+                                        swap: {
+                                            id: "swap",
+                                            type: "blueprint.widget.setImage",
+                                            params: { asset: { kind: "imageAsset", assetId: "swap-set" } },
+                                            // What the build writes beside a slot naming an asset set.
+                                            assetVariants: { "swap-set": { en: "swap-pic", ja: "swap-pic-ja" } },
+                                        },
+                                        stale: { id: "stale", type: "blueprint.sound.play", params: { soundAssetId: "deleted-sfx" } },
+                                    },
+                                    edges: [],
+                                },
+                            },
+                        },
+                        functions: {},
+                    },
+                },
+            },
+        };
+        return pack;
+    }
+
+    it("finds every one with the kind its pin carries, and every member of a set", () => {
+        const found = collectRuntimeBlueprintAssets(packWithBlueprintAssets());
+
+        expect(found).toEqual(expect.arrayContaining([
+            { assetId: "click-sfx", kind: "audio" },
+            { assetId: "swap-pic", kind: "image" },
+            { assetId: "swap-pic-ja", kind: "image" },
+        ]));
+        // Named by a graph, gone from the pack: the manifest check drops it like the interface walk does.
+        expect(found.map(item => item.assetId)).not.toContain("deleted-sfx");
+        expect(found.map(item => item.assetId)).not.toContain("swap-set");
+    });
+
+    it("warms them behind the first screen, by the kind the pin said rather than by asking", async () => {
+        const pack = packWithBlueprintAssets();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+        const fetched: string[] = [];
+        const media: string[] = [];
+        class FakeImage {
+            onload: (() => void) | null = null;
+            onerror: (() => void) | null = null;
+            set src(_value: string) {
+                queueMicrotask(() => this.onload?.());
+            }
+        }
+        vi.stubGlobal("Image", FakeImage);
+        vi.stubGlobal("fetch", (url: string) => {
+            fetched.push(url);
+            return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) });
+        });
+        vi.stubGlobal("document", {
+            fonts: { add: () => undefined },
+            createElement: (tag: string) => {
+                const listeners = new Map<string, () => void>();
+                return {
+                    tag,
+                    preload: "",
+                    addEventListener: (type: string, fn: () => void) => listeners.set(type, fn),
+                    load: () => queueMicrotask(() => listeners.get("loadeddata")?.()),
+                    set src(value: string) {
+                        media.push(`${tag}:${value}`);
+                    },
+                };
+            },
+        });
+        vi.stubGlobal("FontFace", class {
+            load(): Promise<unknown> {
+                return Promise.resolve(this);
+            }
+        });
+
+        const result = await preloadRuntimePackAssets({
+            pack,
+            firstSurface: home,
+            assetUrl: assetId => `nlgame://asset/${assetId}`,
+            timeoutMs: 1_000,
+        });
+
+        expect(result.failed).toEqual([]);
+        expect(result.assetIds).toEqual(expect.arrayContaining(["click-sfx", "swap-pic", "swap-pic-ja"]));
+        expect(result.firstSurfaceAssetIds).not.toContain("click-sfx");
+        // Ahead of the other pages' pictures: a click is the first thing a title screen gets.
+        expect(result.assetIds.indexOf("click-sfx")).toBeLessThan(result.assetIds.indexOf("credits-bg"));
+        expect(media).toEqual(["audio:nlgame://asset/click-sfx"]);
+        expect(fetched.filter(url => url.includes("click-sfx") || url.includes("swap-pic"))).toEqual([]);
     });
 });

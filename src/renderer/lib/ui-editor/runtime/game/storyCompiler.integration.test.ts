@@ -5492,3 +5492,76 @@ describe("quit", () => {
         expect(boundBlocks).toContain("after");
     });
 });
+
+/**
+ * What the warm order says the stage mounts when a scene starts.
+ *
+ * The engine initialises every image a scene uses at the top of the scene, hidden, with the source it
+ * was built with. Planning a character's look only by the row that first shows it left it to idle
+ * time while the page was already fetching it, and a scene entry reported its own characters as
+ * shown before they were warmed.
+ */
+describe("the images a scene mounts on entry", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    const ANNA: DevModeCharacterSummary = {
+        id: "char-anna",
+        name: "Anna",
+        appearance: {
+            kind: "layered",
+            canvas: { width: 100, height: 200 },
+            axes: [{
+                id: "mood",
+                name: "Mood",
+                tags: [{ id: "calm", name: "Calm" }, { id: "cross", name: "Cross" }],
+                defaultTagId: "calm",
+            }],
+            layers: [
+                { id: "body", name: "Body", axisId: null, assetId: "asset-body" },
+                { id: "face", name: "Face", axisId: "mood", options: { calm: "asset-calm", cross: "asset-cross" } },
+            ],
+        },
+    };
+
+    /** Thirteen lines of narration, then Anna walks on - far past any look-ahead window. */
+    function lateEntrance(): StoryDocument {
+        const blocks: Record<string, StoryBlock> = {};
+        for (let index = 0; index < 13; index++) {
+            blocks[`line-${index}`] = narrationBlock(`line-${index}`, `text-${index}`, `Line ${index}`);
+        }
+        blocks.enter = {
+            id: "enter", kind: "action", parentId: null, childrenIds: [],
+            payload: { action: "character", operation: "enter", characterId: "char-anna", tags: { mood: "calm" } },
+        };
+        return baseDocument(blocks);
+    }
+
+    async function compileLateEntrance() {
+        return compileStudioStoryToNlr({
+            document: lateEntrance(),
+            sceneId: "scene-1",
+            characters: [ANNA],
+            resolveAssetUrl,
+            collectWarmOrder: true,
+        });
+    }
+
+    it("lists the look a late character is built with, and only that look", async () => {
+        const order = (await compileLateEntrance()).sceneWarmOrder?.["scene-1"];
+
+        expect(order?.onEntry).toEqual(["nlr://asset-body", "nlr://asset-calm"]);
+        // The other expression is what a later row switches to, and it stays with that row.
+        expect(order?.onEntry).not.toContain("nlr://asset-cross");
+        expect(order?.byBlock.enter?.map(resource => resource.url)).toContain("nlr://asset-cross");
+    });
+
+    it("says where the entrance is the way the story editor counts rows", async () => {
+        const order = (await compileLateEntrance()).sceneWarmOrder?.["scene-1"];
+
+        // The fixture's scene opens with its declaration rows, which the editor counts like any other.
+        const scene = lateEntrance().scenes["scene-1"];
+        expect(order?.rows.enter).toBe(scene.rootBlockIds.indexOf("enter") + 1);
+        expect(order?.rows.enter).toBeGreaterThan(13);
+        expect(order?.sceneName).toBe(scene.name);
+    });
+});

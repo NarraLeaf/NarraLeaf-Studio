@@ -76,8 +76,14 @@ export function createStudioPreloadScheduler(options?: {
     let sceneIdByScene = new Map<Scene, string>();
     /** The row each action belongs to, so an advancing play head can be placed in the warm order. */
     let blockIdByActionId = new Map<string, string>();
-    /** The row that asked for a url, so an unwarmed image can be reported against something. */
-    let blockIdByUrl = new Map<string, string>();
+    /**
+     * Per scene, the first row that asked for a url, so an unwarmed image can be reported against
+     * something. Per scene because an image two scenes share is first asked for in each of them, and
+     * the one the reader is in is the one worth naming.
+     */
+    let blockIdByUrlByScene = new Map<string, Map<string, string>>();
+    /** The scene the latest plan was for, which is the one a missing image belongs to. */
+    let currentSceneId: string | null = null;
     /** One image per scene: what a scene opens on, which is all that is worth warming for a scene nobody is in. */
     let openingFrames: string[] = [];
     let report: ((message: string) => void) | null = null;
@@ -88,7 +94,8 @@ export function createStudioPreloadScheduler(options?: {
             compiled = next;
             sceneIdByScene = new Map();
             blockIdByActionId = new Map();
-            blockIdByUrl = new Map();
+            blockIdByUrlByScene = new Map();
+            currentSceneId = null;
             openingFrames = [];
             if (!next) {
                 return;
@@ -99,17 +106,20 @@ export function createStudioPreloadScheduler(options?: {
             for (const binding of next.actionIdBindings) {
                 blockIdByActionId.set(binding.staticId, binding.blockId);
             }
-            for (const [, order] of Object.entries(next.sceneWarmOrder ?? {})) {
+            for (const [sceneId, order] of Object.entries(next.sceneWarmOrder ?? {})) {
                 if (order.firstFrame) {
                     openingFrames.push(order.firstFrame);
                 }
-                for (const [blockId, resources] of Object.entries(order.byBlock)) {
-                    for (const resource of resources) {
+                const blockIdByUrl = new Map<string, string>();
+                // `blockOrder` rather than the keys of `byBlock`, so "first" means first in the scene.
+                for (const blockId of order.blockOrder) {
+                    for (const resource of order.byBlock[blockId] ?? []) {
                         if (!blockIdByUrl.has(resource.url)) {
                             blockIdByUrl.set(resource.url, blockId);
                         }
                     }
                 }
+                blockIdByUrlByScene.set(sceneId, blockIdByUrl);
             }
         },
 
@@ -126,6 +136,7 @@ export function createStudioPreloadScheduler(options?: {
             if (!scene) {
                 return null;
             }
+            currentSceneId = sceneIdByScene.get(scene) ?? null;
             const order = warmOrderFor(scene);
             if (!order) {
                 // A scene with no warm order: the synthetic scene a row-precise launch enters
@@ -136,7 +147,7 @@ export function createStudioPreloadScheduler(options?: {
                 return fallback ? fallback.plan(moment) : null;
             }
             const from = moment.kind === "advance" ? rowIndexOf(order, moment.actionId) : 0;
-            return buildPlan(sceneIdByScene.get(scene) ?? "", order, from, moment.kind === "scene");
+            return buildPlan(currentSceneId ?? "", order, from, moment.kind === "scene");
         },
 
         /**
@@ -174,16 +185,38 @@ export function createStudioPreloadScheduler(options?: {
             if (!report) {
                 return;
             }
-            const blockId = blockIdByUrl.get(resource.src);
             // A clip is played rather than shown, and what it lacked was buffering rather than a
             // warm cache. Same report, and the difference is worth saying: an author reading
             // "shown without being warmed" about a movie would go looking for the wrong thing.
-            const what = resource.type === "video" ? "Played without being buffered" : "Shown without being warmed";
-            report(blockId
-                ? `${what}: ${resource.src} (first asked for by row ${blockId}).`
-                : `${what}, and no row asked for it: ${resource.src}.`);
+            const what = resource.type === "video" ? "played without being buffered" : "shown without being warmed";
+            const thing = resource.type === "video" ? "A clip" : "An image";
+            const where = rowAsking(resource.src);
+            // Named by scene and row, the way the story editor names a row, and never by the row's
+            // id: this lands in Output, where an id is a string nobody can look up. The url stays
+            // only when no row asked for it, since then it is the one thing that says which image.
+            report(where
+                ? `${thing} row ${where.row} of "${where.sceneName}" asks for was ${what}.`
+                : `${thing} no row asked for was ${what}: ${resource.src}.`);
         },
     };
+
+    /**
+     * The row to name for a url: the first to ask for it in the scene being played, or else the
+     * first in any scene - an image the reader meets in a scene that never asked for it was still
+     * asked for somewhere, and that row is where the author will recognise it.
+     */
+    function rowAsking(url: string): { sceneName: string; row: number } | null {
+        const candidates = currentSceneId ? [currentSceneId, ...blockIdByUrlByScene.keys()] : [...blockIdByUrlByScene.keys()];
+        for (const sceneId of candidates) {
+            const blockId = blockIdByUrlByScene.get(sceneId)?.get(url);
+            const order = compiled?.sceneWarmOrder?.[sceneId];
+            const row = blockId ? order?.rows[blockId] : undefined;
+            if (order && row !== undefined) {
+                return { sceneName: order.sceneName, row };
+            }
+        }
+        return null;
+    }
 
     function warmOrderFor(scene: Scene): SceneWarmOrder | null {
         const sceneId = sceneIdByScene.get(scene);
@@ -240,6 +273,13 @@ export function createStudioPreloadScheduler(options?: {
         // that wanted it, so it pulls the whole scene onto the gate and leaves the rest alone.
         const nearBand: PreloadEntry["band"] = gates && options?.gateOnWholeScene ? "gate" : "soon";
         const farBand: PreloadEntry["band"] = gates && options?.gateOnWholeScene ? "gate" : "idle";
+        // Next to the opening background, because the stage mounts these with it: the page is
+        // fetching them from the moment the scene starts whether or not they are planned, and
+        // Studio's own reveal waits for every image on the stage, hidden or not. Not the gate - the
+        // frame does not show them - but not left to whichever row happens to show them first.
+        for (const url of order.onEntry) {
+            add({ type: "image", url }, nearBand);
+        }
         order.blockOrder.forEach((blockId, index) => {
             const band = index >= from && index < from + LOOK_AHEAD_ROWS ? nearBand : farBand;
             for (const resource of order.byBlock[blockId] ?? []) {
