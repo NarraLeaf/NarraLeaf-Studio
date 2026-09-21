@@ -358,7 +358,7 @@ describe("the version-control writers take their project from the window", () =>
  * project a sign-in is recorded for.
  */
 describe("the handlers that reach a server", () => {
-    function makeServerWindow(projectPath?: string) {
+    function makeServerWindow(projectPath?: string, writable: string[] = []) {
         const call = () => vi.fn(async (_projectPath: string, ..._rest: unknown[]) => ({}));
         const manager = {
             push: call(),
@@ -369,7 +369,11 @@ describe("the handlers that reach a server", () => {
             getServerSession: call(),
             useServerSession: call(),
         };
-        const app = { getVcsManager: () => manager };
+        // The folders this window holds a write grant over - for the launcher, the one the wizard it
+        // opened handed back. Compared resolved, the way the storage manager compares them.
+        const isPathAllowed = vi.fn(async (_window: unknown, fsPath: string, mode: string) =>
+            mode === "write" && writable.some(entry => path.resolve(entry) === path.resolve(fsPath)));
+        const app = { getVcsManager: () => manager, storageManager: { isPathAllowed } };
         const window = {
             app,
             getApp: () => app,
@@ -435,14 +439,19 @@ describe("the handlers that reach a server", () => {
     });
 
     /**
-     * The one that must NOT be guarded. Written as a test rather than as a comment because the
-     * shape of the file invites the opposite: three neighbours assert, and adding the fourth is a
-     * one-line change that breaks nothing tsc or the workspace can see - the flow it breaks lives
-     * in the launcher, where no project is open to compare against.
+     * The one that must NOT be held to the window's own project. Written as a test rather than as a
+     * comment because the shape of the file invites the opposite: three neighbours assert, and adding
+     * the fourth is a one-line change that breaks nothing tsc or the workspace can see - the flow it
+     * breaks lives in the launcher, where no project is open to compare against.
+     *
+     * But it is bounded, the way `vcs.initRepository` is: a window with no project names only a
+     * folder it holds a write grant over, which for the launcher is the folder the wizard it opened
+     * made and handed back. Before that, any window with no project could name any repository on the
+     * disk that was not on a server yet, and have it registered, pointed at and sent.
      */
     describe("vcs.publishProject", () => {
         it("publishes a project a window with none of its own has just made", async () => {
-            const { window, manager } = makeServerWindow();
+            const { window, manager } = makeServerWindow(undefined, [theirs]);
 
             const result = await new VcsPublishProjectHandler().handle(window, {
                 projectPath: theirs,
@@ -455,6 +464,20 @@ describe("the handlers that reach a server", () => {
             // Said to the manager as the launcher's act, which it holds to a project with no
             // server yet and records the sign-in for.
             expect(manager.publishProject.mock.calls[0][3]).toEqual({ newProject: true });
+        });
+
+        it("will not publish a folder a window with none of its own was never handed", async () => {
+            const { window, manager } = makeServerWindow(undefined, [mine]);
+
+            const result = await new VcsPublishProjectHandler().handle(window, {
+                projectPath: theirs,
+                remoteOrigin: "lore://server.example:7000",
+                name: "a-game",
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(manager.publishProject).not.toHaveBeenCalled();
         });
 
         it("publishes only its own project from a window that has one", async () => {
