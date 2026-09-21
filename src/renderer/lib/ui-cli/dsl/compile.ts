@@ -463,6 +463,12 @@ class CompileContext {
         if (node.children.length === 0) {
             return;
         }
+        if (!this.knownTypes.has(node.type)) {
+            // Already reported as unknown, and nothing here can say what it holds: a plugin's widget
+            // declares that for itself, and this tool does not load plugins. "Takes no children" on
+            // a plugin container would be a second error, and a false one.
+            return;
+        }
         if (!uiElementTypeAcceptsChildren(node.type)) {
             this.report(
                 "error",

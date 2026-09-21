@@ -64,6 +64,13 @@ describe("compiling a .ui file", () => {
             .toContain("ui.no_children");
     });
 
+    it("says only that a widget type is unknown, not that it takes no children", () => {
+        // A plugin's container is unknown here - this tool loads no plugins - and whether it holds
+        // children is the plugin's to declare, so "takes no children" would be a guess, and wrong.
+        const text = `${MINIMAL}        Box: acme.widgets.box @0,0 10x10\n            Inner: nl.text @0,0 1x1\n`;
+        expect(codes(text)).toEqual(["ui.unknown_widget_type"]);
+    });
+
     it("refuses a child that is not one of a part-owning widget's own parts", () => {
         const text = `${MINIMAL}        Toggle: nl.switch id=sw @0,0 60x32\n`
             + "            Stray: nl.container @0,0 10x10\n";

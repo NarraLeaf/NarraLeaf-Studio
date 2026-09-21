@@ -286,6 +286,69 @@ app.services.widgets.registerMany([{
 是缺失还是被禁用。**不要在这上面自己造一套兜底**——`render` 返回 `null` 或画一个占位反而会让作者
 以为控件是好的。
 
+### 能装子元素的控件（`acceptsChildren`）
+
+模块上写 `acceptsChildren: true`，这个控件就像 Container 一样能装别的元素：画布上选中它再用插入工具拖出的
+控件落进它里面，图层大纲里能把元素拖进它，选中它时粘贴也粘进它里面。子元素由 `render` 的 `children`
+收到，**已经画好、各自按坐标定好位**（和 Container 的自由布局一样）——把 `children` 放进控件自己画的
+那个框里即可；不渲染 `children`，子元素就不会出现。
+
+不写或写 `false` 就是叶子控件，和以前一样。插件停用时文档里它的子元素原样保留，只是在插件回来之前
+不能再往里放东西。
+
+插件没有办法声明「只收自己造的部件」那种结构槽位（内建 Slider / Switch 的做法）；`acceptsChildren`
+就是「作者放什么都收」。
+
+### 控件自己的事件（`logicApi`）
+
+`logicApi` 说这个控件发哪些事件。写了 `supportsPrivateBlueprint: true`，元素就像内建控件一样有自己的
+蓝图：属性面板多一个「交互」页（宿主加的，和内建控件那一页相同，插件自己的字段仍在「属性」页），
+从那里打开蓝图；每个事件从它 `headNodeTypes` 里的头节点开始：
+
+```ts
+// shared.ts —— 两个入口都 import 这一份
+import type { WidgetLogicApi } from "narraleaf-studio/runtime";
+
+export const RATING_LOGIC: WidgetLogicApi = {
+  supportsPrivateBlueprint: true,
+  events: [
+    { id: "mouseClick", displayName: "Mouse click", dispatchKind: "interaction",
+      headNodeTypes: ["blueprint.event.head.mouseClick"] },            // 内建控件用的头
+    { id: "rated", displayName: "Rated", dispatchKind: "interaction",
+      headNodeTypes: ["acme.rating.onRated"] },                        // 插件自己注册的头
+  ],
+  commands: [], readableState: [], writableProps: [],
+};
+
+export const ON_RATED = {
+  type: "acme.rating.onRated", displayName: "On Rated", category: "Events",
+  graphKinds: ["event"], isPure: false, role: "eventHead",
+  pins: [
+    { id: "then", kind: "output", semantic: "exec", label: "Then" },
+    { id: "stars", kind: "output", semantic: "data", valueType: "integer", label: "Stars" },
+  ],
+  execute: () => ({ nextPort: "then" }),
+};
+
+// render 里：props.dispatchEvent?.("rated", { stars: 4 });
+```
+
+- **头节点只能是两种**：内建控件为同一件事用的头（`blueprint.event.head.mouseClick`、`.init`、
+  `.onBroadcast` ……），或者本插件注册、`role: "eventHead"` 的节点（type 以插件 ID 为前缀）。别的名字会被
+  丢掉；一个头都不剩的事件整条丢掉——没有头就没有图能从它开始。两种情况都会在控制台说明是哪个事件。
+- **插件自己的头只出现在点名它的控件的蓝图里**，页面蓝图和全局蓝图的节点面板里没有它：只有控件发事件时
+  才会启动它，别处放了也永远不会跑。
+- **头节点的输出针脚就是事件 payload 里同名的字段**（上例 `stars` 读 `payload.stars`）。头节点不会被执行，
+  它的 `execute` 只是占位。
+- 指针、按键、Init / Flush、广播这些**内建控件都有的事件，宿主会替它发**，只要 `logicApi` 声明了；
+  只有控件自己知道发生了的事要 `render` 里用 `dispatchEvent` 发。
+- **runtime 入口要把同一份 `logicApi` 写进 `app.game.widgets.register({ type, render, logicApi })`**，
+  头节点也要在 runtime 入口 `app.game.blueprintNodes.register` 一次——游戏里读不到 studio 入口的东西。
+  漏了这一步，编辑器里一切正常，Dev Mode 和出货游戏里事件接不到任何图。
+- 和内建控件一样，**别的元素的蓝图不能直接听这个控件的事件**：内建控件里只有点击（Element Click）和
+  重绘（Element Flush）能从别处点名监听。要让别处知道，就在控件自己的蓝图里写别的元素、或者发广播。
+- 脚本图层（`.ts` 蓝图）目前只认内建头对应的事件，插件自己的头在脚本里没有对应的导出名。
+
 ### `render` 抛错只毁掉这一个控件
 
 编辑器画布与游戏都把插件的 `render` 放在错误边界后面：抛错的那个元素变成「控件绘制失败」并写出

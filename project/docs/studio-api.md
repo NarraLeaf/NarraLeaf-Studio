@@ -247,7 +247,7 @@ app.services.widgets.list();
 app.services.widgets.has(type);
 ```
 
-`PluginWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu/floating toolbar 工厂。
+`PluginWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu/floating toolbar 工厂，以及两条声明：`acceptsChildren`（作者能不能往里放别的元素，像 Container 那样）和 `logicApi`（它发哪些事件、每个事件从哪些头节点开始）。两条的写法与限制见 [create-plugin.md](./create-plugin.md)。
 
 `render` 收的就是 runtime entry 那份 `RuntimeWidgetRendererProps`，两侧完全一样，**都没有 `hostAdapter`**——所以"一个 render 两个 entry 复用"是字面成立的，直接把渲染函数放进共享模块即可。游戏渲染面仍由 runtime entry 注册：`app.game.widgets.register({ type, render })`（见 [runtime-api.md](./runtime-api.md)）。
 
