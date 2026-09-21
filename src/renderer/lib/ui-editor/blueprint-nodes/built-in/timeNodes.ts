@@ -64,7 +64,7 @@ import {
     type BlueprintTimeRelativeStyle,
     type BlueprintTimeUnit,
 } from "@shared/types/blueprint/graph";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 
@@ -140,9 +140,12 @@ function timeNode(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Time",
         keywords: input.keywords,
@@ -238,6 +241,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
     }),
     timeNode({
         type: BLUEPRINT_NODE_TYPE_TIME_FORMAT,
+        assetNames: "assembled",
         displayName: "Format Time",
         keywords: ["time", "date", "format", "pattern", "text", "string", "display", "YYYY"],
         pins: [
@@ -248,6 +252,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
     }),
     timeNode({
         type: BLUEPRINT_NODE_TYPE_TIME_FORMAT_LOCALIZED,
+        assetNames: "assembled",
         displayName: "Format Time Localized",
         keywords: ["time", "date", "format", "locale", "language", "localized", "intl", "display"],
         pins: [
@@ -272,6 +277,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
     }),
     timeNode({
         type: BLUEPRINT_NODE_TYPE_TIME_FORMAT_RELATIVE,
+        assetNames: "assembled",
         displayName: "Format Relative Time",
         keywords: ["time", "date", "relative", "ago", "since", "format", "locale", "display"],
         pins: [
@@ -294,6 +300,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
     }),
     timeNode({
         type: BLUEPRINT_NODE_TYPE_TIME_FORMAT_DURATION,
+        assetNames: "assembled",
         displayName: "Format Duration",
         keywords: ["time", "duration", "elapsed", "length", "format", "clock", "playtime", "timer"],
         pins: [
@@ -364,6 +371,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
     }),
     timeNode({
         type: BLUEPRINT_NODE_TYPE_TIME_TO_ISO_STRING,
+        assetNames: "assembled",
         displayName: "To ISO String",
         keywords: ["time", "date", "iso", "8601", "string", "utc", "serialize", "store"],
         pins: [
@@ -392,6 +400,7 @@ export const timeBlueprintNodes: BlueprintNodeDef[] = [
     }),
     timeNode({
         type: BLUEPRINT_NODE_TYPE_TIME_ZONE_OFFSET,
+        assetNames: "assembled",
         displayName: "Get Time Zone",
         keywords: ["time", "zone", "timezone", "offset", "utc", "gmt", "region"],
         pins: [

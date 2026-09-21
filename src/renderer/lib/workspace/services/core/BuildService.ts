@@ -954,18 +954,19 @@ export class BuildService extends Service<BuildService> {
      * ## The one gap that matters wherever it is
      *
      * A trimming build also leaves out assets, and it decides which by reading the ids written in the
-     * bytes it ships. An asset the running game *computes* the id of is invisible to that reading -
-     * and `computedAssetPin` is the index reporting exactly that shape, in any document. It is
-     * refused rather than worked around, because the alternative is a shipped game whose art is
-     * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
-     * instead of wiring a value into it.
+     * bytes it ships. An asset whose name the running game *assembles* is invisible to that reading -
+     * and `computedAssetPin` is the index reporting exactly that shape (`findAssetNameGaps`), in any
+     * document. It is refused rather than worked around, because the alternative is a shipped game
+     * whose art is missing with nothing anywhere having said so. A name read out of something the
+     * project writes down - a list row filled from the Gallery, a variable set from a picker - is
+     * not that shape and is not refused: the package carries it.
      *
      * ## The two scopes, which are two different questions
      *
      * `assets` is asked of every package. What it refuses is the one construct the id sweep cannot
-     * see - an asset arriving on a pin from a computed value - and nothing else, because that
-     * question has nothing to do with which scenes a build keeps. The remedy is to select the asset
-     * on the pin.
+     * see - an asset picked by a name assembled at run time - and nothing else, because that
+     * question has nothing to do with which scenes a build keeps. Each refusal is printed in the
+     * project check's own sentence, which says what to do instead.
      *
      * `content` is asked only where the build also drops scenes. It adds the gaps that make the
      * scene answer itself incomplete: a story document that would not load, and an index that never

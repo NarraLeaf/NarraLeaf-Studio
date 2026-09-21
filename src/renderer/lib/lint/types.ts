@@ -139,7 +139,7 @@ export type LintRuleId =
     | "blueprint/empty-event"
     | "blueprint/dlc-entrance-unguarded"
     | "blueprint/unknown-node"
-    | "blueprint/computed-asset-name"
+    | "blueprint/assembled-asset-name"
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"

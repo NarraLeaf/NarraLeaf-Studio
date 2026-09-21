@@ -298,7 +298,15 @@ app.services.blueprintNodes.register({
 } satisfies PluginBlueprintNodeDef);
 ```
 
-`PluginBlueprintNodeDef` 是宿主 `BlueprintNodeDef` 中「节点自述」的那一半（`BlueprintNodeDeclaration`：type / 分类 / 引脚 / inspector / role），加上窄签名的 `execute`。`scope` 与 `requiresHostApi` 不在其中：这两个字段回答的是「这个节点可以出现在哪些 owner 里」，属于宿主的判断，内置目录靠评审给出；而且 `scope` 直接列举 `BlueprintOwnerRef` 的 owner kind，公开它等于让插件钉死一个内部联合类型。插件编译后的代码若仍带着这两个字段，注册时会被丢弃。`BlueprintNodePinDef` / inspector 参数的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`；从 `narraleaf-studio/plugin` 导出的是 `BlueprintNodePinDef` 与 `BlueprintInspectorParamSelectOption`，inspector 参数本身用 `PluginBlueprintNodeDef["inspectorParams"]` 取。
+`PluginBlueprintNodeDef` 是宿主 `BlueprintNodeDef` 中「节点自述」的那一半（`BlueprintNodeDeclaration`：type / 分类 / 引脚 / inspector / role），加上窄签名的 `execute`。`scope` 与 `requiresHostApi` 不在其中：这两个字段回答的是「这个节点可以出现在哪些 owner 里」，属于宿主的判断，内置目录靠评审给出；而且 `scope` 直接列举 `BlueprintOwnerRef` 的 owner kind，公开它等于让插件钉死一个内部联合类型。插件编译后的代码若仍带着这两个字段，注册时会被丢弃。`BlueprintNodePinDef` / inspector 参数的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`；从 `narraleaf-studio/plugin` 导出的是 `BlueprintNodePinDef`、`BlueprintAssetNameFlow` 与 `BlueprintInspectorParamSelectOption`，inspector 参数本身用 `PluginBlueprintNodeDef["inspectorParams"]` 取。
+
+输出引脚能带字符串（`string` / `json` / `any` / `array` 等）的节点，应当用 `assetNames` 声明这些输出从哪里来。游戏包只带项目中写明名称的资产，Studio 据此判断一个资产名称会不会在运行时才拼出来：
+
+- `"forward"`：输出只是某个输入、输入的一部分或输入的集合（取数组元素、取 JSON 字段一类）。
+- `"written"`：输出读自项目中写明的内容，例如插件自己通过 `contributes.runtimeData` 发布的数据。Gallery 的读取节点就是这样声明的。
+- `"assembled"`：输出可能是运行时新拼出的字符串（拼接、格式化、玩家输入、网络返回）。
+
+不声明等同于 `"assembled"`。这样的节点输出流到资产引脚或资产属性的绑定上时，画布、项目检查和构建都会报错。某个输出与节点整体不同时，可以在该输出引脚上用 `assetName` 单独声明。
 
 ## app.services.story
 

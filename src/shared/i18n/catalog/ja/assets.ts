@@ -27,7 +27,7 @@ export const assets = {
         moreReferences: "…ほか {count} 件",
         unverifiedTitle: "これらのアセットの使用状況を調べられない",
         unverifiedMessage: "どこで使われているか分からない。それでも削除するか",
-        unverifiedComputed: "次の場所のアセットは計算結果から来る：",
+        unverifiedComputed: "次の場所のアセット名は実行時に組み立てられる：",
         unverifiedUnreadable: "次の場所を読めなかった：",
         confirmTitle: {
             other: "{count} 件を削除するか",

@@ -161,7 +161,7 @@ export const properties = {
         // project. The two look identical from here, and only one of them is safe to act on.
         unknown: "Usage could not be determined",
         unknownDetail: "{location} could not be read",
-        unknownComputed: "{location} takes its asset from a computed value",
+        unknownComputed: "{location} picks its asset by a name assembled at run time",
         count: {
             one: "{count} reference",
             other: "{count} references",

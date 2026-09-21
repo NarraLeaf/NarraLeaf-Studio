@@ -5,18 +5,18 @@ import {
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
 } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
-import type { AssetNameGap } from "./assetNameGaps";
+import type { AssetNameGap, AssetNameOrigin } from "./assetNameGaps";
 import type { ReferenceIndexGap } from "./referenceModel";
 
 /**
  * The one sentence an asset-name gap is reported in, wherever it is reported.
  *
  * The canvas, `blueprint check`, the project check, the build and the delete dialog all render a
- * gap through here, so an author reads the same words about the same node on every surface - and
- * in each of them the node is named the way its card on the canvas names it, not by the English
- * the catalogue declares it in.
+ * gap through here, so an author reads the same words about the same place on every surface - and
+ * in each of them a node is named the way its card on the canvas names it, not by the English the
+ * catalogue declares it in.
  *
- * The sentence lives in the project check's catalogue (`lint.rule.blueprintComputedAssetName`),
+ * The sentence lives in the project check's catalogue (`lint.rule.blueprintAssembledAssetName`),
  * because that is the one reader that cannot render it where it runs: a rule may not build prose,
  * so it hands on the key and the params, and every other surface renders the same key.
  */
@@ -32,30 +32,51 @@ export interface AssetNameGapMessage {
     paramKeys: Record<string, TranslationKey>;
 }
 
-/** The label the image inspector gives the field a list row's picture is bound to. */
-const IMAGE_FILL_LABEL_KEY: TranslationKey = "widgets.rectangleInspector.imageFill";
+/**
+ * The inspector's own label for each bindable property that draws an asset, so the sentence names
+ * the field the author will look for.
+ */
+const BINDING_PROP_LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
+    "imageFill.assetId": "widgets.rectangleInspector.imageFill",
+};
+
+/** Where a name was put together, as the author knows the place: a node's title, or a name they gave. */
+function originText(origin: AssetNameOrigin): string {
+    switch (origin.kind) {
+        case "node":
+            return origin.nodeTitle;
+        case "storyRow":
+            return `${origin.storyName} › ${origin.sceneName}`;
+        case "listSource":
+            return origin.elementName;
+        case "script":
+            return origin.blueprintName;
+    }
+}
 
 export function assetNameGapMessage(gap: AssetNameGap): AssetNameGapMessage {
-    const params: Record<string, string> = {
-        node: gap.sink.nodeTitle,
-        pin: gap.sink.pinLabel,
-        origin: gap.origin.nodeTitle,
-        imageFill: "Image Fill",
+    const params: Record<string, string> = { origin: originText(gap.origin) };
+    const paramKeys: Record<string, TranslationKey> = {};
+    const setKey = (name: string, key: TranslationKey | undefined) => {
+        if (key) {
+            paramKeys[name] = key;
+        }
     };
-    const paramKeys: Record<string, TranslationKey> = { imageFill: IMAGE_FILL_LABEL_KEY };
-    const nodeKey = blueprintNodeTitleKey(gap.sink.nodeTitle);
-    const pinKey = blueprintLabelKey(gap.sink.pinLabel);
-    const originKey = blueprintNodeTitleKey(gap.origin.nodeTitle);
-    if (nodeKey) {
-        paramKeys.node = nodeKey;
+    if (gap.origin.kind === "node") {
+        setKey("origin", blueprintNodeTitleKey(gap.origin.nodeTitle));
     }
-    if (pinKey) {
-        paramKeys.pin = pinKey;
+    const sink = gap.sink;
+    if (sink.kind === "pin") {
+        params.node = sink.nodeTitle;
+        params.pin = sink.pinLabel;
+        setKey("node", blueprintNodeTitleKey(sink.nodeTitle));
+        setKey("pin", blueprintLabelKey(sink.pinLabel));
+        return { key: "lint.rule.blueprintAssembledAssetName.message", params, paramKeys };
     }
-    if (originKey) {
-        paramKeys.origin = originKey;
-    }
-    return { key: "lint.rule.blueprintComputedAssetName.message", params, paramKeys };
+    params.element = sink.elementName;
+    params.prop = sink.propPath;
+    setKey("prop", BINDING_PROP_LABEL_KEYS[sink.propPath]);
+    return { key: "lint.rule.blueprintAssembledAssetName.messageBinding", params, paramKeys };
 }
 
 /** The whole sentence, in the language `t` speaks. */
@@ -69,32 +90,41 @@ export function describeAssetNameGap(gap: AssetNameGap, t: Translate): string {
 }
 
 /**
- * Just the place, for a list of places: `Blueprint › Node › Pin`, with the node and the pin named
- * the way the canvas names them. What the delete dialog and the references panel print, where the
- * sentence around it already says what is wrong there.
+ * Just the place, for a list of places: `Blueprint › Node › Pin` or `Page › Widget › Property`, named
+ * the way the canvas and the inspector name them. What the delete dialog and the references panel
+ * print, where the sentence around it already says what is wrong there.
  */
 export function describeAssetNameGapSite(gap: AssetNameGap, t: Translate): string {
     const sink = gap.sink;
+    if (sink.kind === "pin") {
+        return [
+            sink.blueprintName,
+            resolveBlueprintNodeTitle(sink.nodeTitle, t),
+            resolveBlueprintLabel(sink.pinLabel, t),
+        ].join(" › ");
+    }
+    const propKey = BINDING_PROP_LABEL_KEYS[sink.propPath];
     return [
-        sink.blueprintName,
-        resolveBlueprintNodeTitle(sink.nodeTitle, t),
-        resolveBlueprintLabel(sink.pinLabel, t),
-    ].join(" › ");
+        sink.surfaceName ?? sink.componentName,
+        sink.elementName,
+        propKey ? t(propKey) : sink.propPath,
+    ].filter((part): part is string => Boolean(part)).join(" › ");
 }
 
 /**
  * The places a reference check stopped at, as the delete dialog lists them.
  *
- * Grouped by what went wrong there, because the two call for different things: a node that picks
- * its asset by a computed value is something the author wrote and can change, and a document that
- * would not read is something to retry. At most `limit` places per group, then a count of the rest.
+ * Grouped by what went wrong there, because the two call for different things: a place that picks
+ * its asset by a name assembled at run time is something the author wrote and can change, and a
+ * document that would not read is something to retry. At most `limit` places per group, then a count
+ * of the rest.
  */
 export function describeReferenceGapSites(
     gaps: readonly ReferenceIndexGap[],
     t: Translate,
     limit: number,
 ): string {
-    const computed = gaps.filter(gap => gap.assetName);
+    const assembled = gaps.filter(gap => gap.assetName);
     const unreadable = gaps.filter(gap => !gap.assetName && gap.location);
     const blocks: string[] = [];
     const block = (headingKey: TranslationKey, places: string[]) => {
@@ -108,7 +138,7 @@ export function describeReferenceGapSites(
         }
         blocks.push([t(headingKey), ...shown].join("\n"));
     };
-    block("assets.delete.unverifiedComputed", computed.map(gap => describeAssetNameGapSite(gap.assetName!, t)));
+    block("assets.delete.unverifiedComputed", assembled.map(gap => describeAssetNameGapSite(gap.assetName!, t)));
     block("assets.delete.unverifiedUnreadable", unreadable.map(gap => gap.location!));
     return blocks.join("\n\n");
 }

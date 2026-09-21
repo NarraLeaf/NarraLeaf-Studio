@@ -680,10 +680,12 @@ describe("coverage of an asset reachable only through a legacy literal node", ()
         expect(extraction.references).toEqual([]);
         // Reported once, by the judgement every surface reads - not a second time from here.
         expect(extraction.gaps).toEqual([]);
-        const gaps = findAssetNameGaps(document, {
+        const gaps = findAssetNameGaps({ blueprintDocument: document }, {
             assetPins: () => [],
             title: type => (type === "widget.image.setAsset" ? "Set Image Asset" : type),
             pinLabel: (_type, pinId) => pinId,
+            // Nothing is known about either node, so the value arriving is one nobody can vouch for.
+            node: () => null,
         });
         expect(gaps.map(assetNameGapToIndexGap)).toEqual([
             expect.objectContaining({

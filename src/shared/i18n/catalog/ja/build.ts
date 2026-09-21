@@ -466,7 +466,7 @@ export const build = {
      */
     contentCoverageGap: "{location} を読めなかったので、{variant} のビルドが何を除外するかを決められない",
     contentComputedPinSummary: {
-        other: "ビルドを中止した：計算結果から来るアセットが {count} 件ある。詳細はコンソール。",
+        other: "ビルドを中止した：実行時に組み立てられるアセット名が {count} 件ある。詳細はコンソール。",
     },
     /** ドキュメント 1 件ではなく索引全体が欠けているときに `{location}` に入る言葉。 */
     contentCoverageWholeProject: "プロジェクト",

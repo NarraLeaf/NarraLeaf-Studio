@@ -115,6 +115,7 @@ export const inputActionBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
+        assetNames: "assembled",
         displayName: "Get Input Device",
         category: "Input",
         // English only, as everywhere in the catalogue: the palette searches the localized title

@@ -165,7 +165,7 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
          * project, and it passed an index that failed on one story out of thirty.
          */
         run(ctx) {
-            // An asset picked by a computed value is `blueprint/computed-asset-name`'s to report, in
+            // An asset picked by a name assembled at run time is `blueprint/assembled-asset-name`'s to report, in
             // its own words and at the node: filed here it read as a failure to list unused assets,
             // under the project's name, and took the place of a row rather than adding one. The
             // doubt it casts still holds back the unused rows of its kind below.

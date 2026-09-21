@@ -155,7 +155,7 @@ export const properties = {
         // ここからは両者が同じに見えるが、手を打ってよいのは片方だけ。
         unknown: "使われているかどうか分からない",
         unknownDetail: "{location} を読めなかった",
-        unknownComputed: "{location} のアセットは計算結果から来る",
+        unknownComputed: "{location} のアセット名は実行時に組み立てられる",
         count: {
             other: "参照 {count} 件",
         },

@@ -22,6 +22,9 @@ import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/s
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import { extractStoryVariableWrites, type StoryVariableWrite } from "@services/references/assetNameGaps";
+import { listStories, readStoryDocument, readUiDocument } from "@/lib/story-cli/project";
 
 export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json");
 export const UI_DOCUMENT_RELATIVE_PATH = path.join("editor", "ui", "uidoc.json");
@@ -480,4 +483,27 @@ export function scratchFileNameFor(name: string): string {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
     return `${slug || "blueprint"}.bp`;
+}
+
+/**
+ * What the asset-name judgement needs from the project besides its graphs: the interface, and every
+ * variable a story row writes.
+ *
+ * Read the way the story tool reads them, so the two tools look at one shape of each. A story that
+ * will not read is left out rather than stopping the check - `story check` is the tool that says so,
+ * and a blueprint check that refused to run over it would say nothing about the graphs instead.
+ */
+export function readAssetNameContext(projectDir: string): {
+    uiDocument: UIDocument | null;
+    storyWrites: StoryVariableWrite[];
+} {
+    const storyWrites: StoryVariableWrite[] = [];
+    for (const story of listStories(projectDir)) {
+        try {
+            storyWrites.push(...extractStoryVariableWrites(readStoryDocument(projectDir, story.id).document, story.name));
+        } catch {
+            // See above: reported by the story tool, not here.
+        }
+    }
+    return { uiDocument: readUiDocument(projectDir), storyWrites };
 }

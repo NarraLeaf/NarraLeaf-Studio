@@ -277,13 +277,14 @@ export const lint = {
             // not something the author can act on - the type is what says which plugin is missing.
             message: "{type} is not loaded, so this node will not run in the game",
         },
-        blueprintComputedAssetName: {
-            title: "Asset from a computed value",
-            description: "An asset pin receives its asset from a computed value, which the game package does not carry",
+        blueprintAssembledAssetName: {
+            title: "Asset name assembled at run time",
+            description: "An asset is chosen by a name the game puts together while it runs, and the game package does not carry it",
             // The one sentence every surface prints about this: the canvas, the build and the delete
-            // dialog render this key too. `{node}`, `{pin}` and `{origin}` arrive in the reader's
-            // language, named the way the canvas names them.
-            message: "\"{pin}\" on \"{node}\" receives its asset from a computed value ({origin}), so the package cannot tell which asset to carry. To show a list row's picture, bind the image's {imageFill} to the row field; to use a fixed asset, choose it on the pin",
+            // dialog render these keys too. `{node}`, `{pin}`, `{prop}` and a node `{origin}` arrive in
+            // the reader's language, named the way the canvas and the inspector name them.
+            message: "\"{pin}\" on \"{node}\" receives an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
+            messageBinding: "\"{prop}\" on \"{element}\" is bound to an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
         },
         uiUnlocalizedText: {
             title: "Unlocalized text",

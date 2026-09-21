@@ -952,31 +952,47 @@ export function validateBlueprintDocumentGraphs(
 }
 
 /**
- * An asset picked by a value the package cannot carry, at the node that picks it.
+ * An asset picked by a name assembled at run time, at the node where the author can see it.
  *
- * An error, the standing the build gives it: the build refuses the project, and the canvas saying
- * so at the moment the wire lands is the point - an author who only learns it from the build has
- * already watched it work in Dev Mode, which carries the whole library. The sentence is the one
- * every surface prints (`describeAssetNameGap`).
+ * An error, the standing the build gives it: the build refuses the project, and the canvas saying so
+ * as the wire lands is the point - an author who only learns it from the build has already watched it
+ * work in Dev Mode, which carries the whole library. The sentence is the one every surface prints
+ * (`describeAssetNameGap`).
+ *
+ * Which node carries the mark: the one that takes the name, when it is in this blueprint. When it is
+ * not - a bound property, or a variable read somewhere else - the node that puts the name together
+ * carries it instead, so the graph the author has to change is the one that says so. A value
+ * blueprint whose name is put together elsewhere still says it, with nothing to point at.
  */
 function assetNameGapDiagnostics(
     gaps: readonly AssetNameGap[],
     blueprintId: string,
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
+    const nodeTarget = (site: { graphKind: "event" | "function" | "macro"; graphId: string; nodeId: string }) =>
+        // A macro has no canvas of its own to point into; the message still names the node.
+        site.graphKind === "macro"
+            ? {}
+            : { target: { kind: "node" as const, graphKind: site.graphKind, graphId: site.graphId, nodeId: site.nodeId } };
     for (const gap of gaps) {
         const sink = gap.sink;
-        if (sink.blueprintId !== blueprintId) {
+        const origin = gap.origin;
+        let placement: object | null = null;
+        if (sink.kind === "pin" && sink.blueprintId === blueprintId) {
+            placement = nodeTarget(sink);
+        } else if (origin.kind === "node" && origin.blueprintId === blueprintId) {
+            placement = nodeTarget(origin);
+        } else if (sink.kind === "binding" && sink.blueprintId === blueprintId) {
+            placement = {};
+        }
+        if (!placement) {
             continue;
         }
         out.push({
             severity: "error",
-            code: "node.asset_name_computed",
+            code: "node.asset_name_assembled",
             message: describeAssetNameGap(gap, translate),
-            // A macro has no canvas of its own to point into; the message still names the node.
-            ...(sink.graphKind === "macro"
-                ? {}
-                : { target: { kind: "node" as const, graphKind: sink.graphKind, graphId: sink.graphId, nodeId: sink.nodeId } }),
+            ...placement,
         });
     }
     return out;

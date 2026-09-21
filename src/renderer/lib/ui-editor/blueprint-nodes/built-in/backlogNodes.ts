@@ -75,6 +75,7 @@ function resolveHistoryEntryId(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
 export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+        assetNames: "assembled",
         displayName: "Get History",
         category: "Game",
         keywords: ["history", "backlog", "log", "dialog", "dialogue", "say", "menu", "entries", "game", "nlr"],
@@ -95,6 +96,7 @@ export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
+        assetNames: "assembled",
         displayName: "Get Future History",
         category: "Game",
         keywords: ["history", "backlog", "future", "ahead", "forward", "redo", "entries", "game", "nlr"],

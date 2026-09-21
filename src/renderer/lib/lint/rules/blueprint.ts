@@ -36,9 +36,9 @@ import {
 } from "../../workspace/services/ui-editor/blueprint/graphLiveness";
 import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
 import { createAssetNameDescriber } from "../../workspace/services/references/assetNameCatalog";
-import { findAssetNameGaps } from "../../workspace/services/references/assetNameGaps";
+import { extractStoryVariableWrites, findAssetNameGaps } from "../../workspace/services/references/assetNameGaps";
 import { assetNameGapMessage } from "../../workspace/services/references/assetNameGapText";
-import { assetNameGapToIndexGap } from "../../workspace/services/references/referenceModel";
+import { assetNameGapTarget } from "../../workspace/services/references/referenceModel";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
@@ -730,41 +730,55 @@ function runStartSceneForeign(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
-// blueprint/computed-asset-name
+// blueprint/assembled-asset-name
 // ---------------------------------------------------------------------------
 
 /**
- * An asset picked by a value the project does not write down.
+ * An asset picked by a name the game puts together while it runs.
  *
- * A package carries the library assets whose ids occur in the bytes it ships, so an asset whose id
- * only exists while the game runs is missing from it, and what should show it shows nothing. The
- * build refuses such a project; this is the same judgement, reported where the author can see it
- * without starting a build.
+ * A package carries every library asset whose name is written down somewhere in the project, so an
+ * asset named only by a string assembled at run time - a Concat, a Format, what the player typed -
+ * is missing from it, and what should show it shows nothing. The build refuses such a project; this
+ * is the same judgement, reported where the author can see it without starting a build.
  *
  * The judgement is `findAssetNameGaps`, the one the reference index, the canvas and the build read,
- * and the sentence is the one they print (`assetNameGapMessage`). An error, because what ships is
- * not what the author sees in Dev Mode - which carries the whole library, so there the picture
- * shows.
+ * and the sentence is the one they print (`assetNameGapMessage`). It follows a value through the
+ * whole project - variables a story row writes, list rows another graph sets - so it reads the
+ * interface and the stories as well as the graphs.
+ *
+ * An error, because what ships is not what the author sees in Dev Mode, which carries the whole
+ * library - so there the picture shows.
  */
-function runComputedAssetName(ctx: LintContext): LintFinding[] {
+function runAssembledAssetName(ctx: LintContext): LintFinding[] {
     registerCoreBlueprintNodes();
     const findings: LintFinding[] = [];
-    for (const gap of findAssetNameGaps(ctx.blueprintDocument, createAssetNameDescriber(blueprintNodeRegistry))) {
+    const gaps = findAssetNameGaps({
+        blueprintDocument: ctx.blueprintDocument,
+        uiDocument: ctx.uiDocument,
+        storyWrites: ctx.stories.flatMap(story => extractStoryVariableWrites(story.document, story.name)),
+    }, createAssetNameDescriber(blueprintNodeRegistry));
+    for (const gap of gaps) {
         const message = assetNameGapMessage(gap);
         const sink = gap.sink;
-        findings.push({
-            ruleId: "blueprint/computed-asset-name",
-            messageKey: message.key,
-            messageParams: message.params,
-            messageParamKeys: message.paramKeys,
-            location: {
+        const location: LintLocation = sink.kind === "pin"
+            ? {
                 kind: "blueprint",
                 blueprintId: sink.blueprintId,
                 blueprintName: sink.blueprintName,
                 graphId: sink.graphId,
                 nodeId: sink.nodeId,
-            },
-            target: assetNameGapToIndexGap(gap).target,
+            }
+            : sink.surfaceId && sink.surfaceName
+                ? { kind: "surface", surfaceId: sink.surfaceId, surfaceName: sink.surfaceName, elementId: sink.elementId, elementName: sink.elementName }
+                : { kind: "project" };
+        const target = assetNameGapTarget(gap);
+        findings.push({
+            ruleId: "blueprint/assembled-asset-name",
+            messageKey: message.key,
+            messageParams: message.params,
+            messageParamKeys: message.paramKeys,
+            location,
+            ...(target ? { target } : {}),
         });
     }
     return findings;
@@ -932,13 +946,13 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         run: ctx => runRequiredInputUnwired(ctx),
     },
     {
-        id: "blueprint/computed-asset-name",
+        id: "blueprint/assembled-asset-name",
         category: "blueprint",
         // An error: the package leaves the asset out, so what the author saw in Dev Mode is not what
         // ships. The build refuses it outright whatever this is set to.
         defaultSeverity: "error",
-        slug: "blueprintComputedAssetName",
-        run: ctx => runComputedAssetName(ctx),
+        slug: "blueprintAssembledAssetName",
+        run: ctx => runAssembledAssetName(ctx),
     },
     {
         id: "blueprint/start-scene-foreign",

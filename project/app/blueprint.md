@@ -56,7 +56,7 @@ blueprint.sound.play
 
   inputs
     in       exec  - In
-    assetId  data:string, optional  - Asset Id
+    assetId  data:string, optional, asset id  - Asset Id
     loop     data:boolean, optional, takes a literal  - Loop
     volume   data:float, optional, takes a literal  - Volume
     fadeIn   data:float, optional, takes a literal  - Fade In (s)

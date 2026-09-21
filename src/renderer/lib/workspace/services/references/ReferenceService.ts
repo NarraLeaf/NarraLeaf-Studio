@@ -39,8 +39,14 @@ import { FsRejectErrorCode } from "@shared/types/os";
 import { getInterface } from "@/lib/app/bridge";
 import { workspacePluginSession } from "@/lib/plugins/workspacePluginSession";
 import { ServiceAssetsService } from "../core/ServiceAssetsService";
-import { createAssetNameDescriber } from "./assetNameCatalog";
-import { findAssetNameGaps, type AssetNameGap } from "./assetNameGaps";
+import { catalogAssetPins, createAssetNameDescriber } from "./assetNameCatalog";
+import {
+    extractStoryVariableWrites,
+    findAssetNameGaps,
+    type AssetNameGap,
+    type AssetNameProject,
+    type StoryVariableWrite,
+} from "./assetNameGaps";
 
 /**
  * The property name a UI reference's `field` path ends in.
@@ -90,6 +96,9 @@ const PLUGIN_SLICE_LOCATION = "Plugins";
  *  - plugin: the data enabled plugins publish into the game, re-read when a plugin writes one of
  *    its stores or starts or stops in this window, and re-matched when the library gains or loses
  *    an asset
+ *  - asset names: no references, only gaps - where an asset is picked by a name assembled at run
+ *    time (`findAssetNameGaps`). Re-followed when a graph, the interface or a story changes, since
+ *    a name can travel through all three
  *
  * This is the whole of the answer to "is this referenced", and the only thing `deleteAsset`
  * consults. What came before covered story blocks and character variants alone, so an image used
@@ -132,6 +141,8 @@ export class ReferenceService extends Service<ReferenceService> {
      * second read: which of their ids count is decided against the library at the time of asking.
      */
     private pluginStores: PublishedPluginStore[] = [];
+    /** What each story writes into variables, captured on every scan for the asset-name pass. */
+    private storyVariableWrites = new Map<string, StoryVariableWrite[]>();
     private pluginReferences: AssetReference[] = [];
 
     /**
@@ -336,6 +347,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.designReferences = [];
         this.pluginStores = [];
         this.pluginReferences = [];
+        this.storyVariableWrites.clear();
         this.sliceGaps.clear();
         this.indexCache = null;
         this.readyPromise = null;
@@ -416,6 +428,7 @@ export class ReferenceService extends Service<ReferenceService> {
                     const document = await storyService.loadStory(entry.id);
                     const scan = scanStoryAssetReferences(document, entry.name, this.assetSetExpander());
                     this.storyReferences.set(entry.id, scan.references);
+                    this.storyVariableWrites.set(entry.id, extractStoryVariableWrites(document, entry.name));
                     this.storySetReferences.set(entry.id, scan.setReferences);
                     this.setSliceGaps(`story:${entry.id}`, []);
                 } catch (error) {
@@ -447,6 +460,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.rebuildCharacterSlice();
         this.rebuildDesignSlice();
         await this.rebuildPluginSlice();
+        this.rebuildAssetNameSlice();
         this.subscribe();
         this.emitChanged();
     }
@@ -466,11 +480,13 @@ export class ReferenceService extends Service<ReferenceService> {
         this.unsubs.push(
             storyService.onDocumentChanged(({ storyId }) => {
                 this.scheduleRebuild(`story:${storyId}`, () => this.rebuildStorySlice(storyId));
+                this.scheduleAssetNameRebuild();
             }),
             storyService.onLibraryChanged(() => {
                 // Adds, deletes and renames all land here; renames change the story name baked into
                 // every reference's detail line, so resync the whole slice set.
                 this.scheduleRebuild("story-library", () => this.resyncStoryLibrary());
+                this.scheduleAssetNameRebuild();
             }),
             storyService.onAnimationsChanged(() => {
                 this.scheduleRebuild("story-animations", async () => {
@@ -483,12 +499,14 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.rebuildBlueprintSlice();
                     this.emitChanged();
                 });
+                this.scheduleAssetNameRebuild();
             }),
             uiDocumentService.onDocumentChanged(() => {
                 this.scheduleRebuild("ui", () => {
                     this.rebuildUISlice();
                     this.emitChanged();
                 });
+                this.scheduleAssetNameRebuild();
             }),
             voiceService.onDocumentChanged(({ locale, document }) => {
                 this.scheduleRebuild(`voice:${locale}`, () => {
@@ -528,6 +546,13 @@ export class ReferenceService extends Service<ReferenceService> {
                 await this.rebuildPluginSlice();
                 this.emitChanged();
             });
+            // A plugin starting or stopping also adds or takes away the nodes it contributes, and a
+            // node nobody can describe is one the asset-name walk has to assume the worst of.
+            this.scheduleRebuild("blueprint", () => {
+                this.rebuildBlueprintSlice();
+                this.emitChanged();
+            });
+            this.scheduleAssetNameRebuild();
         };
         const unsubs: Array<() => void> = [];
         try {
@@ -621,6 +646,17 @@ export class ReferenceService extends Service<ReferenceService> {
         ];
     }
 
+    /**
+     * Queued behind the story slices it reads from: a scheduled story rescan captures that story's
+     * writes, so the asset-name pass runs once it has - the timers fire in the order they were set.
+     */
+    private scheduleAssetNameRebuild(): void {
+        this.scheduleRebuild("assetNames", () => {
+            this.rebuildAssetNameSlice();
+            this.emitChanged();
+        });
+    }
+
     private scheduleRebuild(key: string, action: () => void | Promise<void>): void {
         const existing = this.rebuildTimers.get(key);
         if (existing) {
@@ -664,11 +700,13 @@ export class ReferenceService extends Service<ReferenceService> {
             const name = storyService.listStories().find(entry => entry.id === storyId)?.name ?? storyId;
             const scan = scanStoryAssetReferences(document, name, this.assetSetExpander());
             this.storyReferences.set(storyId, scan.references);
+            this.storyVariableWrites.set(storyId, extractStoryVariableWrites(document, name));
             this.storySetReferences.set(storyId, scan.setReferences);
             this.setSliceGaps(`story:${storyId}`, []);
         } catch (error) {
             this.storyReferences.delete(storyId);
             this.storySetReferences.delete(storyId);
+            this.storyVariableWrites.delete(storyId);
             /**
              * Two different failures arrive here and they must not be treated alike.
              *
@@ -699,6 +737,7 @@ export class ReferenceService extends Service<ReferenceService> {
             if (!liveIds.has(storyId)) {
                 this.storyReferences.delete(storyId);
                 this.storySetReferences.delete(storyId);
+                this.storyVariableWrites.delete(storyId);
                 // A story that is gone contributes no references and no gap; leaving its gap behind
                 // would keep the index incomplete over a document nobody can open any more.
                 this.setSliceGaps(`story:${storyId}`, []);
@@ -709,6 +748,7 @@ export class ReferenceService extends Service<ReferenceService> {
                 const document = await storyService.loadStory(entry.id);
                 const scan = scanStoryAssetReferences(document, entry.name, this.assetSetExpander());
                 this.storyReferences.set(entry.id, scan.references);
+                this.storyVariableWrites.set(entry.id, extractStoryVariableWrites(document, entry.name));
                 this.storySetReferences.set(entry.id, scan.setReferences);
                 this.setSliceGaps(`story:${entry.id}`, []);
             } catch (error) {
@@ -756,7 +796,6 @@ export class ReferenceService extends Service<ReferenceService> {
 
         try {
             const document = blueprintService.getBlueprintDocument();
-            const describer = createAssetNameDescriber(catalog);
             const extraction = extractBlueprintAssetReferences(document, {
                 resolveNodeLabel: type => {
                     try {
@@ -765,11 +804,8 @@ export class ReferenceService extends Service<ReferenceService> {
                         return undefined;
                     }
                 },
-                resolveAssetPins: describer.assetPins,
+                resolveAssetPins: type => catalogAssetPins(catalog, type),
             });
-            // Read by the canvas, the build and the delete guard through this index, so all three
-            // are looking at the same pass.
-            const assetNameGaps = findAssetNameGaps(document, describer);
             // An asset pin may name a set, and a set id is not an asset: left unexpanded it reaches
             // `assets/missing` as a reference to a file the project does not have, which refuses the
             // build. Only the pins a build can resolve are expanded - see
@@ -782,12 +818,49 @@ export class ReferenceService extends Service<ReferenceService> {
             );
             this.blueprintReferences = split.references;
             this.sliceSetReferences.set("blueprint", split.setReferences);
-            this.setSliceGaps("blueprint", [...extraction.gaps, ...assetNameGaps.map(assetNameGapToIndexGap)]);
+            this.setSliceGaps("blueprint", extraction.gaps);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan blueprints:", error);
             this.blueprintReferences = [];
             this.sliceSetReferences.set("blueprint", []);
             this.setSliceGaps("blueprint", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
+        }
+    }
+
+    /**
+     * Where the project picks an asset by a name assembled at run time.
+     *
+     * A slice of its own because the answer is about the whole project rather than one document: a
+     * story row can write the variable a graph reads, and a graph can fill the list whose rows a
+     * widget draws. So it re-reads on any of those changing, and it reads them as the other slices
+     * last left them - the story writes are captured on every story scan for exactly this.
+     *
+     * The canvas, the build and the delete guard all read this pass, so a node the canvas marks is a
+     * node the build refuses.
+     */
+    private rebuildAssetNameSlice(): void {
+        const ctx = this.getContext();
+        let project: AssetNameProject;
+        try {
+            project = {
+                blueprintDocument: ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument(),
+                uiDocument: ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument(),
+                storyWrites: [...this.storyVariableWrites.values()].flat(),
+            };
+        } catch {
+            // A document that will not read is the gap its own slice reports; saying it a second time
+            // from here would name one failure twice.
+            this.setSliceGaps("assetNames", []);
+            return;
+        }
+        try {
+            const catalog = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+            const gaps = findAssetNameGaps(project, createAssetNameDescriber(catalog));
+            this.setSliceGaps("assetNames", gaps.map(assetNameGapToIndexGap));
+        } catch (error) {
+            console.warn("[ReferenceService] Failed to follow asset names:", error);
+            // Which kinds are in doubt is unknown when nothing was followed, so every kind is.
+            this.setSliceGaps("assetNames", [{ reason: "sliceFailed", slice: "blueprint", location: BLUEPRINT_SLICE_LOCATION }]);
         }
     }
 

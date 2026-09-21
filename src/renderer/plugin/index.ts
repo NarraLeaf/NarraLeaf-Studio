@@ -68,6 +68,7 @@ export type {
     AssetSelectorVirtualGroup,
 } from "@/apps/workspace/modules/assets/components/AssetSelector";
 export type {
+    BlueprintAssetNameFlow,
     BlueprintInspectorParamSelectOption,
     BlueprintNodePinDef,
 } from "@/lib/ui-editor/blueprint-nodes/types";

@@ -25,6 +25,7 @@ export const BLUEPRINT_APP_TAG_OUTPUT_PIN_ID = "appTag";
 export const appTagBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
+        assetNames: "written",
         displayName: "Get Build Variant",
         category: "Game",
         keywords: ["app", "tag", "variant", "edition", "build", "demo", "release", "main"],

@@ -330,6 +330,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
          * are ratios and not widths.
          */
         type: BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
+        assetNames: "assembled",
         displayName: "Get Window Scale Options",
         category: "App",
         keywords: ["window", "size", "scale", "options", "resolution", "app", "display", "config"],
@@ -469,6 +470,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
          * that has to branch on a refusal it cannot fix is a branch that never runs in a build.
          */
         type: BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+        assetNames: "assembled",
         displayName: "Open Link",
         category: "App",
         keywords: ["link", "url", "browser", "external", "open", "web", "store", "page", "site"],
@@ -522,6 +524,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
          * and a branch nobody can act on differently is a branch that never runs.
          */
         type: BLUEPRINT_NODE_TYPE_APP_SAVE_SCREENSHOT,
+        assetNames: "assembled",
         displayName: "Save Screenshot",
         category: "App",
         keywords: ["screenshot", "capture", "picture", "photo", "png", "save", "image", "snap", "window"],
@@ -553,6 +556,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
          * can offer the row before the player has taken one.
          */
         type: BLUEPRINT_NODE_TYPE_APP_OPEN_SCREENSHOTS_FOLDER,
+        assetNames: "assembled",
         displayName: "Open Screenshots Folder",
         category: "App",
         keywords: ["screenshot", "folder", "directory", "open", "reveal", "explorer", "finder", "files"],

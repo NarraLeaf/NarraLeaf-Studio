@@ -424,8 +424,8 @@ export const build = {
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
     // 中文只用 `other`，所以两条写成同一句，不带「每个」这类随数量变的词。
     contentComputedPinSummary: {
-        one: "构建已中止：{count} 处资产来自计算结果，详见控制台",
-        other: "构建已中止：{count} 处资产来自计算结果，详见控制台",
+        one: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
+        other: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
     },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本项目",

@@ -223,6 +223,7 @@ function requireBody(ctx: NetworkExecuteCtx, nodeLabel: string): string {
 export const networkBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
+        assetNames: "assembled",
         displayName: "Fetch",
         category: "Network",
         keywords: ["network", "http", "https", "fetch", "request", "api", "get", "post", "web", "url", "download"],
@@ -293,6 +294,7 @@ export const networkBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
+        assetNames: "assembled",
         displayName: "Read Response Text",
         category: "Network",
         keywords: ["network", "http", "response", "read", "text", "body", "string", "content"],
@@ -316,6 +318,7 @@ export const networkBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
+        assetNames: "assembled",
         displayName: "Read Response JSON",
         category: "Network",
         keywords: ["network", "http", "response", "read", "json", "parse", "body", "object", "api"],

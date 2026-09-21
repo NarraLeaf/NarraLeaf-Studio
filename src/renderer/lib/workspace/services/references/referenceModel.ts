@@ -125,7 +125,7 @@ export type ReferenceGapReason =
     | "unknownNodeType"
     /** An `app://fs/{token}` URL whose token this session did not mint, so it names no asset. */
     | "hashUrlUnresolved"
-    /** An asset pin fed by a node that computes its value, so the asset is only known at run time. */
+    /** An asset picked by a name assembled at run time, which no package can carry (`findAssetNameGaps`). */
     | "computedAssetPin";
 
 /**
@@ -806,23 +806,49 @@ export function extractBlueprintAssetReferences(
  */
 export function assetNameGapToIndexGap(gap: AssetNameGap): ReferenceIndexGap {
     const sink = gap.sink;
+    const target = assetNameGapTarget(gap);
     return {
         reason: "computedAssetPin",
-        slice: "blueprint",
-        location: `${sink.blueprintName} › ${sink.nodeTitle}.${sink.pinId}`,
+        slice: sink.kind === "pin" ? "blueprint" : "ui",
+        location: sink.kind === "pin"
+            ? `${sink.blueprintName} › ${sink.nodeTitle}.${sink.pinId}`
+            : `${sink.surfaceName ?? sink.componentName ?? ""} › ${sink.elementName}.${sink.propPath}`,
         // The sink says which kind of asset can arrive on it, so this casts no doubt on the rest of
         // the library.
         affects: [gap.assetKind],
-        target: {
+        ...(target ? { target } : {}),
+        assetName: gap,
+    };
+}
+
+/**
+ * Where a gap sends the author: the node that takes the name, or for a bound property the value
+ * blueprint it reads - and failing that, the page the widget is on.
+ */
+export function assetNameGapTarget(gap: AssetNameGap): SearchJumpTarget | undefined {
+    const sink = gap.sink;
+    if (sink.kind === "pin") {
+        return {
             kind: "blueprint",
             blueprintId: sink.blueprintId,
             ownerKey: sink.ownerKey,
             focusNodeId: sink.nodeId,
             ...(sink.graphKind === "event" ? { focusEventId: sink.graphId } : {}),
             ...(sink.graphKind === "function" ? { focusFunctionId: sink.graphId } : {}),
-        },
-        assetName: gap,
-    };
+        };
+    }
+    if (sink.blueprintId && sink.ownerKey) {
+        const origin = gap.origin;
+        return {
+            kind: "blueprint",
+            blueprintId: sink.blueprintId,
+            ownerKey: sink.ownerKey,
+            ...(origin.kind === "node" && origin.blueprintId === sink.blueprintId
+                ? { focusNodeId: origin.nodeId, ...(origin.graphKind === "event" ? { focusEventId: origin.graphId } : {}) }
+                : {}),
+        };
+    }
+    return sink.surfaceId ? { kind: "uiSurface", surfaceId: sink.surfaceId } : undefined;
 }
 
 // ---------------------------------------------------------------------------

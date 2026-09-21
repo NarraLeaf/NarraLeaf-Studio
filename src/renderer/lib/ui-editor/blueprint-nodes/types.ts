@@ -136,7 +136,36 @@ export type BlueprintNodePinDef = {
      * covered by declaring it here and nowhere else.
      */
     assetRef?: BlueprintAssetPinRef;
+    /**
+     * This output's own answer to {@link BlueprintNodeDeclaration.assetNames}, for the one node in
+     * which outputs differ: `Get All Properties` reads a font the project picked beside a text the
+     * game may have written.
+     */
+    assetName?: BlueprintAssetNameFlow;
 };
+
+/**
+ * Where the strings a node outputs come from, as far as an asset name is concerned.
+ *
+ * A game package carries every library asset whose name is written down somewhere in the project,
+ * so an asset name that reaches a picture, a sound or a typeface is only a problem when it is put
+ * together while the game runs. Every node whose outputs can carry a string says which of three
+ * things it does, and the asset-name judgement (`assetNameFlow`) follows values through it by that:
+ *
+ * - `"forward"`: every output is one of the node's inputs, part of one, or a collection of them -
+ *   Memo, Array Get, Get JSON Field, Make Object. An asset name comes out only if one went in.
+ * - `"written"`: every output is written down in the project - a literal, the Gallery catalogue, a
+ *   localized string, the picture an element holds (every write to which is itself checked).
+ * - `"assembled"`: an output may be a string that exists only while the game runs - Concat, Format,
+ *   what the player typed, what a server sent. A name out of one of these is refused where it is
+ *   used as an asset.
+ *
+ * **Undeclared means `"assembled"`.** The bar only moves the safe way: a node that says nothing is
+ * assumed to make its strings up, and a registry test fails for any built-in node with a
+ * string-carrying output that has not said which. Plugins declare it the same way; a plugin node
+ * that says nothing is treated as assembling.
+ */
+export type BlueprintAssetNameFlow = "forward" | "written" | "assembled";
 
 /**
  * Optional variadic pins: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
@@ -345,6 +374,11 @@ export type BlueprintNodeDeclaration = {
      * validator answer it the same way.
      */
     requiresListItemContext?: boolean;
+    /**
+     * Where this node's string-carrying outputs come from - see {@link BlueprintAssetNameFlow}.
+     * Absent reads as `"assembled"`.
+     */
+    assetNames?: BlueprintAssetNameFlow;
     /** Latent/async execution (delay, host awaits) - disallowed in function graphs */
     isLatent?: boolean;
     pins: BlueprintNodePinDef[];

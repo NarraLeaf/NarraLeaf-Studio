@@ -514,6 +514,7 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+        assetNames: "forward",
         displayName: "For Each",
         category: "Flow",
         keywords: ["for", "each", "loop", "array", "json"],

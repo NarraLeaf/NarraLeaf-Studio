@@ -13,7 +13,7 @@
 import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { anchorComponentId } from "@shared/blueprint/ownerShape";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
     validateBlueprintDocumentGraphs,
@@ -23,7 +23,7 @@ import type { BpDiagnostic } from "./dsl/ast";
 import { compileBlueprintDocument } from "./dsl/compile";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { createAssetNameDescriber } from "@services/references/assetNameCatalog";
-import { findAssetNameGaps, type AssetNameGap } from "@services/references/assetNameGaps";
+import { findAssetNameGaps, type AssetNameGap, type StoryVariableWrite } from "@services/references/assetNameGaps";
 import { parseBlueprintText } from "./dsl/parse";
 
 export type CheckOptions = {
@@ -52,6 +52,17 @@ export type CheckOptions = {
      * that the scope is out of reach.
      */
     uiElements?: Readonly<Record<string, UIElement>>;
+    /**
+     * The rest of the project an asset name can travel through: the interface (its lists and the
+     * properties bound to a value) and what every story row writes into a variable.
+     *
+     * Without it the check still follows every graph, and answers as if the project had no interface
+     * and no stories - which is exactly right for a file checked on its own.
+     */
+    assetNameContext?: {
+        uiDocument?: UIDocument | null;
+        storyWrites?: readonly StoryVariableWrite[];
+    };
 };
 
 export type CheckResult = {
@@ -103,7 +114,7 @@ export function checkProjectDocument(
     options: Omit<CheckOptions, "existing"> = {},
 ): BpDiagnostic[] {
     const out: BpDiagnostic[] = [];
-    const assetNameGaps = projectAssetNameGaps(document);
+    const assetNameGaps = projectAssetNameGaps(document, options);
     // Some findings are about the blueprint rather than about one graph in it - a duplicate Fn name
     // is the same fact however many layers were walked to notice it - and the validator reports them
     // once per graph. Deduplicated here so a project report counts problems, not passes over them.
@@ -152,7 +163,7 @@ function runGraphValidation(
     const out: BpDiagnostic[] = [];
     // Over the document as `apply` would leave it, so a gap the file introduces and a gap it closes
     // are both answered about the project rather than about the file on its own.
-    const assetNameGaps = projectAssetNameGaps(document);
+    const assetNameGaps = projectAssetNameGaps(document, options);
     for (const blueprint of blueprints) {
         for (const finding of validateBlueprintDocumentGraphs(
             document,
@@ -195,8 +206,12 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
  * Where the project picks an asset by a value its package cannot carry - the judgement the canvas
  * reads from the reference index and the build refuses on, made here from the document in hand.
  */
-function projectAssetNameGaps(document: BlueprintDocument): AssetNameGap[] {
-    return findAssetNameGaps(document, createAssetNameDescriber(blueprintNodeRegistry));
+function projectAssetNameGaps(document: BlueprintDocument, options: Pick<CheckOptions, "assetNameContext">): AssetNameGap[] {
+    return findAssetNameGaps({
+        blueprintDocument: document,
+        uiDocument: options.assetNameContext?.uiDocument ?? null,
+        storyWrites: options.assetNameContext?.storyWrites ?? [],
+    }, createAssetNameDescriber(blueprintNodeRegistry));
 }
 
 /** Blueprint name plus node id, as one lookup key that cannot be spelled two ways. */

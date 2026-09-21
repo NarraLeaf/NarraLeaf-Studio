@@ -597,7 +597,7 @@ describe("BuildService asset-name gate", () => {
         expect(lines.some(line =>
             line.channel === BUILD_CONSOLE_CHANNEL
             && line.level === "error"
-            && line.message.includes("lint.rule.blueprintComputedAssetName.message")
+            && line.message.includes("lint.rule.blueprintAssembledAssetName.message")
             // The node and the pin arrive as catalogue entries, so the reader sees them in the
             // language the canvas draws them in.
             && line.message.includes("blueprint.node.setImageAsset")

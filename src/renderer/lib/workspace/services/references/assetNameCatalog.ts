@@ -54,8 +54,9 @@ export type BlueprintAssetPinResolver = (nodeType: string) => readonly Blueprint
 export const DEFAULT_BLUEPRINT_ASSET_PINS: readonly BlueprintAssetPin[] = [
     { pinId: "asset", kind: "image", paramKey: "asset", input: true },
     { pinId: "fontAssetId", kind: "font", paramKey: "fontAssetId", input: true },
-    // Play Sound's clip. `input: false` because it is an inspector param and no pin carries the
-    // name, so there is no edge to follow to a source.
+    // Play Sound's picked clip. `input: false` because it is an inspector param and no pin carries
+    // the name, so there is no edge to follow to a source. The clip wired into the node arrives on
+    // its `assetId` pin, which the catalogue declares for itself.
     { pinId: BLUEPRINT_SOUND_ASSET_PARAM_KEY, kind: "audio", paramKey: BLUEPRINT_SOUND_ASSET_PARAM_KEY, input: false },
 ];
 
@@ -97,6 +98,7 @@ export function mergeBlueprintAssetPins(
 export interface BlueprintNodeCatalogLike {
     get(type: string): BlueprintNodeDef | undefined;
     resolveCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry;
+    resolveCatalogEntryForNode(type: string, params?: Record<string, unknown>): BlueprintNodeEditorCatalogEntry;
 }
 
 /**
@@ -146,5 +148,24 @@ export function createAssetNameDescriber(catalog: BlueprintNodeCatalogLike): Ass
         assetPins: nodeType => catalogAssetPins(catalog, nodeType),
         title: nodeType => entryFor(nodeType)?.displayName ?? nodeType,
         pinLabel: (nodeType, pinId) => entryFor(nodeType)?.pins.find(pin => pin.id === pinId)?.label ?? pinId,
+        node: (nodeType, params) => {
+            const def = catalog.get(nodeType);
+            if (!def) {
+                return null;
+            }
+            let pins: BlueprintNodeEditorCatalogEntry["pins"];
+            try {
+                pins = catalog.resolveCatalogEntryForNode(nodeType, params).pins;
+            } catch {
+                pins = def.pins;
+            }
+            // A pin's own answer lives on the definition; the effective entry only carries what the
+            // card draws. Generated pins have no declaration of their own and take the node's.
+            const declared = new Map(def.pins.flatMap(pin => (pin.assetName ? [[pin.id, pin.assetName] as const] : [])));
+            return {
+                ...(def.assetNames ? { flow: def.assetNames } : {}),
+                pins: pins.map(pin => ({ ...pin, ...(declared.has(pin.id) ? { assetName: declared.get(pin.id) } : {}) })),
+            };
+        },
     };
 }

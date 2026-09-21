@@ -16,7 +16,7 @@ import {
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintTextInputPropertiesPatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
@@ -72,10 +72,13 @@ function readNode(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     target: "self" | "element";
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     const elementTarget = input.target === "element";
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: elementTarget ? "Element" : "Text Input",
         keywords: input.keywords,
@@ -167,6 +170,7 @@ async function patchCurrentTextInput(
 export const textInputBlueprintNodes: BlueprintNodeDef[] = [
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_INPUT_GET_VALUE,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "input", "get", "value", "content"],
         pins: [stringOut("value", "Value"), intOut("length", "Length")],
@@ -190,6 +194,7 @@ export const textInputBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "input", "get", "value", "element"],
         pins: [stringOut("value", "Value"), intOut("length", "Length")],

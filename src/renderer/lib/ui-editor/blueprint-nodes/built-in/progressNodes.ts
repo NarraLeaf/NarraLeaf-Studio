@@ -51,6 +51,7 @@ export const progressBlueprintNodes: BlueprintNodeDef[] = [
          * answer to all three is the same: tell the player it did not happen.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
+        assetNames: "assembled",
         displayName: "Export Progress",
         category: "Game",
         keywords: [
@@ -88,6 +89,7 @@ export const progressBlueprintNodes: BlueprintNodeDef[] = [
          * goes anywhere with it.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
+        assetNames: "assembled",
         displayName: "Import Progress",
         category: "Game",
         keywords: [
