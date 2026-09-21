@@ -34,6 +34,16 @@ export const devMode = {
         pluginEntryFailed: "{plugin} failed to load: {error}. Its blueprint nodes and widgets are not registered in this session.",
         // The list of runtime plugins could not be read at all, so this names no plugin.
         pluginListFailed: "The runtime plugin list could not be read: {error}. No plugin runs in this session.",
+        // A widget on a surface asked for an asset and drew nothing. `{property}` is the inspector's
+        // own label for the field and `{element}` the name the author gave the element (a surface's
+        // name, for its background). Three kinds of failure because the author does three different
+        // things about them: re-point the field, replace the file, or fix the binding feeding it; the
+        // unreadable one names the asset when the project has a name for it. None of them prints the
+        // value asked for - for a missing asset that is an id, which names nothing.
+        assetMissing: "“{property}” on “{element}” refers to an asset that is no longer in this project.",
+        assetUnreadable: "“{property}” on “{element}” refers to an asset that could not be read.",
+        assetUnreadableNamed: "“{property}” on “{element}” refers to “{asset}”, which could not be read.",
+        assetNotAsset: "“{property}” on “{element}” is set to a value that is not an asset.",
         noLocation: "Could not be traced to a line",
         viaPlayHead: "where playback was",
         stack: "Stack",

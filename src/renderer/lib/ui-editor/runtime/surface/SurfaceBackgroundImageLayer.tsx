@@ -3,6 +3,7 @@ import type { UISurface } from "@shared/types/ui-editor/document";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { getSurfaceBackgroundImage, surfaceBackgroundImageStyle } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { useAssetResolutionReport } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 
 /**
  * The Surface's background picture, as its own layer under the element tree.
@@ -30,7 +31,20 @@ export function SurfaceBackgroundImageLayer({
     // The Surface's own settings are the reference point: a background that names an asset set is
     // answered by the map the build wrote beside it, and by nothing else on the page.
     const backgroundAssetId = useLocalizedAssetId(surface.settings, background?.assetId ?? null);
-    const { url } = useAssetObjectUrl(backgroundAssetId ?? null);
+    const answer = useAssetObjectUrl(backgroundAssetId ?? null);
+    const url = answer.url;
+    // In a running game only (see `useAssetResolutionReport`). The surface is its own owner here: a
+    // background belongs to no element, so the report names the surface twice - as the place, and
+    // as what the field is on. Painted as a CSS background, which has no load event to watch.
+    useAssetResolutionReport(
+        {
+            surfaceId: surface.id,
+            ownerName: surface.name,
+            slot: "surfaceBackground",
+            instanceKey: "",
+        },
+        { requested: backgroundAssetId ?? null, wanted: Boolean(background), answer },
+    );
     if (!background || !url) {
         return null;
     }
