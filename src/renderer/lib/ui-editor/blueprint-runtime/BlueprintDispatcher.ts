@@ -57,7 +57,17 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 
-const DEFAULT_MAX_STEPS = 512;
+/**
+ * How many nodes one event may run between two real waits before it is taken for a runaway loop.
+ *
+ * The count restarts whenever a node actually waits (the event loop turned while it ran), so a
+ * polling loop with a Delay in it is never stopped. What it catches is an exec wire that loops back
+ * with nothing on it that waits, which would otherwise hold the window forever. A count rather than
+ * a time limit, so the same graph stops at the same place on every machine. Ten thousand leaves room
+ * for the ordinary synchronous loop - walking every save slot or every CG in a gallery - while a
+ * genuine runaway is still stopped, and reported by name, well inside a second.
+ */
+const DEFAULT_MAX_STEPS = 10_000;
 
 type CancellableDispatchOptions = {
     executionManager?: BlueprintExecutionManager;
