@@ -191,7 +191,7 @@ Game 节点组默认具有：
 - `blueprint.game.save.delete` - 删除指定项目本地普通存档；存档不存在时也继续执行
 - `blueprint.game.save.listIds` - 列出当前项目本地普通存档 id，输出契约为 `Array<String>` / `string[]`，顺序不保证稳定
 - `blueprint.game.save.getMetadata` - 读取存档用户 metadata，输出蓝图通用 `json`
-- `blueprint.game.save.getPreview` - 读取存档预览图，输出 `ImageAsset|null`；预览图为当前 Dev Mode 会话内临时图片，不导入项目资源
+- `blueprint.game.save.getPreview` - 读取存档预览图，输出 `ImageAsset|null`；预览图为当前 Dev Mode 会话内临时图片，不导入项目资产
 
 Dialog 推进、Dialog 显示切换、Preference Getter/Setter、速度设置、退出游戏、写入存档和载入存档依赖当前 Dev Mode 中存在活动 NarraLeaf live game 或游戏状态；缺失 runtime、缺失存档或损坏存档会作为蓝图执行错误抛出。初始化新游戏偏好时使用全局 `On Game Ready`，不要在可能早于 `LiveGame` 创建的 `App Boot` 中写 Preference。`List Saves`、`Get Save Metadata`、`Get Save Preview` 和 `Delete Save` 只依赖项目存档命名空间；`Delete Save` 对缺失目标保持幂等完成。
 
@@ -287,15 +287,15 @@ Element 版对应稳定 ID 使用 `blueprint.element.slider.*`，方法目录与
 
 ## Image
 
-Image 节点组用于读取和改写 `nl.image` 的界面图片资源、填充模式、裁剪区域和翻转状态。它面向应用界面控件，不处理舞台表演图片、角色立绘或剧情演出资源。
+Image 节点组用于读取和改写 `nl.image` 的界面图片资产、填充模式、裁剪区域和翻转状态。它面向应用界面控件，不处理舞台表演图片、角色立绘或剧情演出资产。
 
 Image Self 节点只在 `nl.image` 自己的私有蓝图中出现，创建浮窗中归入 `Image` 分类，且没有 `image` 输入。Image Element 节点使用 `blueprint.element.image.*`，带 `element:nl.image` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.image` 的 Element、Element Flush 或 Element Click 时不会显示。
 
 Image 节点组默认具有：
 - `blueprint.image.assetLiteral` - 图片资产字面量卡片，输出 `ImageAsset`
-- `blueprint.image.getImageAsset` - 获取当前图片资源，输出 `ImageAsset|null`
-- `blueprint.image.setImageAsset` - 设置图片资源，输入 `ImageAsset|null`；未接线时可在节点卡片上展开图片选择器
-- `blueprint.image.clearImageAsset` - 清除图片资源
+- `blueprint.image.getImageAsset` - 获取当前图片资产，输出 `ImageAsset|null`
+- `blueprint.image.setImageAsset` - 设置图片资产，输入 `ImageAsset|null`；未接线时可在节点卡片上展开图片选择器
+- `blueprint.image.clearImageAsset` - 清除图片资产
 - `blueprint.image.getFitMode` / `blueprint.image.setFitMode` - 读取或设置 `imageFill.mode`
 - `blueprint.image.getCropRect` / `blueprint.image.setCropRect` - 读取或设置裁剪百分比区域；设置时切换为 `crop`
 - `blueprint.image.getFlipX` / `blueprint.image.setFlipX` - 读取或设置水平翻转

@@ -1,6 +1,6 @@
 # Image 节点
 
-Image 节点用于读取和改写界面图片控件 `nl.image` 的图片资源、填充模式、裁剪区域和翻转状态。它只处理应用界面的图片控件，不表示舞台表演图片、角色立绘或剧情演出资源。
+Image 节点用于读取和改写界面图片控件 `nl.image` 的图片资产、填充模式、裁剪区域和翻转状态。它只处理应用界面的图片控件，不表示舞台表演图片、角色立绘或剧情演出资产。
 
 Self 版节点只在 `nl.image` 自己的私有蓝图中出现，没有 Element 输入。由绑定的 `nl.image` Element Literal / Element Flush / Element Click 派生时，节点类型使用 `blueprint.element.image.*`，创建浮窗中归入 `Element` 分类，并带有 `element:nl.image` 输入，可通过 Element Ref 操控同一 Surface 上的其他 Image 控件。
 
@@ -18,7 +18,7 @@ Self 版节点只在 `nl.image` 自己的私有蓝图中出现，没有 Element 
 
 `blueprint.image.getImageAsset` - Get Image Asset
 
-读取当前 `nl.image` 控件正在使用的图片资源。
+读取当前 `nl.image` 控件正在使用的图片资产。
 
 - `asset` - 输出 `ImageAsset|null`。控件没有图片时为 `null`。
 
@@ -28,7 +28,7 @@ Element 版为 `blueprint.element.image.getImageAsset`。
 
 `blueprint.image.setImageAsset` - Set Image Asset
 
-设置当前 `nl.image` 控件的图片资源并触发 Element Flush。
+设置当前 `nl.image` 控件的图片资产并触发 Element Flush。
 
 - `in` - 执行输入
 - `next` - 执行输出
@@ -44,7 +44,7 @@ Element 版为 `blueprint.element.image.setImageAsset`。
 
 `blueprint.image.clearImageAsset` - Clear Image Asset
 
-清除当前 `nl.image` 控件的图片资源，等价于把 `Set Image Asset` 的 `asset` 输入设为 `null`，并触发 Element Flush。
+清除当前 `nl.image` 控件的图片资产，等价于把 `Set Image Asset` 的 `asset` 输入设为 `null`，并触发 Element Flush。
 
 - `in` - 执行输入
 - `next` - 执行输出
@@ -65,7 +65,7 @@ Element 版为 `blueprint.element.image.getFitMode`。
 
 `blueprint.image.setFitMode` - Set Image Fit Mode
 
-设置 `imageFill.mode` 并保留当前图片资源和裁剪区域。非法或空字符串会回退到当前模式。
+设置 `imageFill.mode` 并保留当前图片资产和裁剪区域。非法或空字符串会回退到当前模式。
 
 - `in` - 执行输入
 - `next` - 执行输出
