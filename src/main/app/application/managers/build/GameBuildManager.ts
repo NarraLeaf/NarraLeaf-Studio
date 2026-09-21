@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { projectHeldElsewhereRefusal } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import { existsSync } from "fs";
 import fs from "fs/promises";
@@ -977,8 +978,12 @@ export class GameBuildManager {
             assetCompression: null,
         };
         this.sessions.set(key, session);
-        const distrustedBuild = refuseDistrustedOperation(this.app, normalizedProjectPath, "production build");
-        if (distrustedBuild) {
+        // Another Studio having the project is refused the same way and for a kindred reason: the
+        // build writes into the project folder, which is that Studio's to write. See
+        // `projectSessionGate`. The pure form, so the line below is the only one the console gets.
+        const refusedBuild = refuseDistrustedOperation(this.app, normalizedProjectPath, "production build")
+            ?? projectHeldElsewhereRefusal(this.app, normalizedProjectPath, "production build");
+        if (refusedBuild) {
             // Same shape as the frozen refusal below, and for the same reason: recorded on the
             // session so the dialog shows it, emitted verbatim rather than through failSession,
             // whose "build failed:" prefix would send the author looking for a broken toolchain.
@@ -988,9 +993,9 @@ export class GameBuildManager {
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
                 platforms: session.snapshot.platforms,
-                error: distrustedBuild,
+                error: refusedBuild,
             };
-            this.emit(session, { level: "error", source: "Build", message: distrustedBuild });
+            this.emit(session, { level: "error", source: "Build", message: refusedBuild });
             return session.snapshot;
         }
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -1072,8 +1077,9 @@ export class GameBuildManager {
             assetCompression: null,
         };
         this.sessions.set(key, session);
-        const distrustedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export");
-        if (distrustedPatch) {
+        const refusedPatch = refuseDistrustedOperation(this.app, normalizedProjectPath, "patch export")
+            ?? projectHeldElsewhereRefusal(this.app, normalizedProjectPath, "patch export");
+        if (refusedPatch) {
             // Same shape as the frozen refusal below, and for the same reason: recorded on the
             // session so the dialog shows it, emitted verbatim rather than through failSession,
             // whose "build failed:" prefix would send the author looking for a broken toolchain.
@@ -1083,9 +1089,9 @@ export class GameBuildManager {
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
                 platforms: session.snapshot.platforms,
-                error: distrustedPatch,
+                error: refusedPatch,
             };
-            this.emit(session, { level: "error", source: "Build", message: distrustedPatch });
+            this.emit(session, { level: "error", source: "Build", message: refusedPatch });
             return session.snapshot;
         }
         const frozen = getWorkspaceFreeze(normalizedProjectPath);

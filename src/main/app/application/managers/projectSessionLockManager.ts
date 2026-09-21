@@ -66,6 +66,19 @@ interface HeldLock {
  */
 export class ProjectSessionLockManager {
     private readonly held = new Map<string, HeldLock>();
+    /**
+     * Projects this Studio asked for and was told another one has, with who that is.
+     *
+     * Kept because a refused window does not go away. It stays up on its error screen, still named
+     * after the project, and the main process answers requests from it like any other window of
+     * that project - which is how a Dev Mode came to be started on a project whose workspace never
+     * did, and every asset in it failed to resolve through a workspace that was not there. See
+     * {@link heldElsewhere}, which is what the runtimes ask before they start.
+     *
+     * Only a refusal is remembered. A claim that could not be made at all - a folder that cannot
+     * hold a lock file - opens the project unlocked, and is not something to refuse later either.
+     */
+    private readonly refused = new Map<string, ProjectSessionHolder>();
     private readonly identity: ProjectSessionIdentity;
     private readonly logger: Pick<Console, "info" | "warn">;
     private readonly now: () => number;
@@ -95,6 +108,23 @@ export class ProjectSessionLockManager {
     }
 
     /**
+     * The other Studio that has this project, when this one was last told it may not.
+     *
+     * `null` both for a project this process holds and for one it has never been refused - which
+     * includes a project opened unlocked because its folder would not take a lock file. The
+     * question it answers is "was this Studio turned away from the project", not "does it hold it":
+     * the second would refuse to run a project from a read-only volume, which opens by design.
+     *
+     * The answer is the last claim's, and changes only with the next one. A window on the error
+     * screen keeps being refused after the other Studio closes, until Retry claims again - which is
+     * right, because that window's workspace has still not started, and nothing that needs one
+     * can run beside it.
+     */
+    public heldElsewhere(projectPath: string): ProjectSessionHolder | null {
+        return this.refused.get(keyFor(projectPath)) ?? null;
+    }
+
+    /**
      * Take the project for this session, or report who has it.
      *
      * Returning `{ok: true}` means every later write to this project in this process is the only
@@ -113,7 +143,16 @@ export class ProjectSessionLockManager {
             return inFlight;
         }
 
-        const claim = this.claimLock(projectPath, key).finally(() => {
+        const claim = this.claimLock(projectPath, key).then(outcome => {
+            // Every answer replaces the last one, so Retry that gets in clears what the first
+            // refusal recorded, and a refusal after an unlocked open records the new holder.
+            if (outcome.ok) {
+                this.refused.delete(key);
+            } else {
+                this.refused.set(key, outcome.holder);
+            }
+            return outcome;
+        }).finally(() => {
             if (this.claims.get(key) === claim) {
                 this.claims.delete(key);
             }
@@ -131,6 +170,9 @@ export class ProjectSessionLockManager {
      */
     public async release(projectPath: string): Promise<void> {
         const key = keyFor(projectPath);
+        // The project has no window left in this Studio, refused or not. The next window to ask
+        // claims afresh, and until then there is nothing here for a refusal to protect.
+        this.refused.delete(key);
         const held = this.held.get(key);
         if (!held) {
             return;

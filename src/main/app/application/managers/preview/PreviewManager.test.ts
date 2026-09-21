@@ -96,6 +96,7 @@ describe("PreviewManager.launch while the workspace is frozen", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
     const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-preview-project");
@@ -173,6 +174,7 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         pluginManager: {
             listPlugins: async () => [],
             listRuntimePluginPackSources: async () => [],
@@ -320,6 +322,7 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         isPackaged: () => false,
         pluginManager: {
             listPlugins: async () => [],
@@ -390,6 +393,7 @@ describe("PreviewManager.resetPlayerData", () => {
         // find out - absence of a ledger is not permission. These cases reach `launch` only to put
         // a session into the state they are really about, so the answer here is simply yes.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
 
     /** A compile that never resolves on its own, so its session stays in "compiling" until stopped. */
@@ -486,6 +490,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         isPackaged: () => false,
         pluginManager: {
             listPlugins: async () => [],
