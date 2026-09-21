@@ -39,6 +39,30 @@ export type ElementRendererDefinition = {
     render: (props: ElementRendererProps) => ReactElement | null;
 };
 
+/**
+ * Renderer definitions Studio itself ships, as opposed to ones a plugin registered.
+ *
+ * The distinction exists for one reader: the element tree may hand React the node it built last
+ * time when nothing about an element changed (see `surface/elementReuse`), and that is only sound
+ * for a renderer whose `render` does nothing but describe a component from its props. Every built-in
+ * does exactly that; a plugin's `render` is code this host has never read, so its elements are
+ * rebuilt on every pass as they always were.
+ *
+ * Kept by object identity rather than by type name, because a plugin may register over a built-in
+ * type - and then the type is no longer drawn by the code that was vouched for.
+ */
+const trustedDefinitions = new WeakSet<ElementRendererDefinition>();
+
+export function markTrustedElementRenderers(definitions: readonly ElementRendererDefinition[]): void {
+    for (const definition of definitions) {
+        trustedDefinitions.add(definition);
+    }
+}
+
+export function isTrustedElementRenderer(definition: ElementRendererDefinition | undefined): boolean {
+    return definition !== undefined && trustedDefinitions.has(definition);
+}
+
 export class ElementRendererRegistry {
     private readonly renderers = new Map<string, ElementRendererDefinition>();
 
