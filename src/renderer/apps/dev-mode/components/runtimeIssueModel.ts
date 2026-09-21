@@ -32,7 +32,7 @@ import {
     describeAssetResolutionFailure,
     type AssetResolutionFailure,
 } from "@/lib/ui-editor/runtime/assetResolution";
-import type { Translator } from "@shared/i18n";
+import type { TranslationKey, Translator } from "@shared/i18n";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
@@ -225,6 +225,11 @@ export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefi
 export function blueprintDebugEventIssue(
     event: BlueprintDebugEvent,
     t: Translator["t"],
+    /**
+     * The project's global blueprint, so a stop in it can say so: it belongs to no surface, and an
+     * issue with neither a surface nor a blueprint to its name leaves the author nowhere to look.
+     */
+    context?: { globalBlueprintId?: string },
 ): GameAppRuntimeIssue | null {
     if (event.type === "node.input_missing") {
         // A warning: the graph carried on and only this node's effect was lost. Named through the
@@ -242,13 +247,28 @@ export function blueprintDebugEventIssue(
     if (event.type !== "execution.error") {
         return null;
     }
+    // A loop stopped for never waiting names the event it ran from and the node it was stopped at,
+    // in the author's language - the English sentence the executor wrote is for the game's log.
+    const stepLimit = event.stepLimit;
+    const inGlobalBlueprint = !event.surfaceId &&
+        context?.globalBlueprintId !== undefined &&
+        event.blueprintId === context.globalBlueprintId;
     return {
         level: "error",
-        message: event.message,
+        message: stepLimit
+            ? t(inGlobalBlueprint ? BLUEPRINT_STEP_LIMIT_GLOBAL_MESSAGE_KEY : BLUEPRINT_STEP_LIMIT_MESSAGE_KEY, {
+                head: resolveBlueprintNodeTitle(stepLimit.headName, t),
+                node: resolveBlueprintNodeTitle(stepLimit.nodeName, t),
+                steps: String(stepLimit.steps),
+            })
+            : event.message,
         origin: "interface",
         ...(event.surfaceId ? { surfaceId: event.surfaceId } : {}),
     };
 }
+
+const BLUEPRINT_STEP_LIMIT_MESSAGE_KEY = "blueprint.diagnostics.node.stepLimit" as TranslationKey;
+const BLUEPRINT_STEP_LIMIT_GLOBAL_MESSAGE_KEY = "blueprint.diagnostics.node.stepLimitGlobal" as TranslationKey;
 
 /**
  * A runtime plugin entry that would not load, as an issue.

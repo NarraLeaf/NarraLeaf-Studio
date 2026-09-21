@@ -32,6 +32,7 @@ import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/B
 import {
     BlueprintGraphExecutionError,
     isBlueprintGraphExecutionCancelledError,
+    stepLimitOfExecutionError,
     throwIfBlueprintExecutionCancelled,
 } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter, UIHostAdapterElementEventOptions } from "@/lib/ui-editor/runtime/types";
@@ -123,6 +124,8 @@ function emitExecutionError(input: {
     eventId?: string;
     nodeId?: string;
     surfaceId?: string;
+    /** Carried over from the executor's own report, so both reports of one stop are the same. */
+    stepLimit?: ReturnType<typeof stepLimitOfExecutionError>;
 }): void {
     input.debug.emit({
         type: "execution.error",
@@ -132,6 +135,7 @@ function emitExecutionError(input: {
         eventId: input.eventId,
         nodeId: input.nodeId,
         surfaceId: input.surfaceId,
+        ...(input.stepLimit ? { stepLimit: input.stepLimit } : {}),
     });
 }
 
@@ -928,6 +932,7 @@ export async function dispatchBlueprintUiEvent(options: {
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                stepLimit: stepLimitOfExecutionError(err),
                 surfaceId,
             });
             return true;
@@ -1242,6 +1247,7 @@ async function runFannedOutListener(input: {
                     eventId,
                     nodeId: err.nodeId,
                     surfaceId,
+                    stepLimit: stepLimitOfExecutionError(err),
                 });
                 continue;
             }
@@ -1908,6 +1914,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                stepLimit: stepLimitOfExecutionError(err),
                 surfaceId,
             });
             return;
@@ -2079,6 +2086,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                stepLimit: stepLimitOfExecutionError(err),
             });
             return;
         }

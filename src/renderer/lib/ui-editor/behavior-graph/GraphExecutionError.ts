@@ -11,6 +11,35 @@ export class BlueprintGraphExecutionError extends Error {
     }
 }
 
+/**
+ * A graph stopped because it ran its whole step budget without once waiting.
+ *
+ * Its own class so every place that reports a failure can say which loop it was, and a host that
+ * words its own issues can say it in the author's language: the node it was stopped at and the event
+ * head the run started from, by the names their definitions declare - the English a shipped game's
+ * log can still print, and what the Dev Mode issue list translates.
+ */
+export class BlueprintStepLimitError extends BlueprintGraphExecutionError {
+    public constructor(
+        public readonly steps: number,
+        nodeId: string,
+        public readonly nodeName: string,
+        public readonly headName: string,
+    ) {
+        super(`"${nodeName}" in "${headName}" was stopped after ${steps} steps without a wait`, nodeId);
+        this.name = "BlueprintStepLimitError";
+    }
+}
+
+/** What an `execution.error` event carries about a step-limit stop, when `err` is one. */
+export function stepLimitOfExecutionError(
+    err: unknown,
+): { steps: number; nodeName: string; headName: string } | undefined {
+    return err instanceof BlueprintStepLimitError
+        ? { steps: err.steps, nodeName: err.nodeName, headName: err.headName }
+        : undefined;
+}
+
 export class BlueprintGraphExecutionCancelledError extends Error {
     public constructor(
         message = "Blueprint execution cancelled",

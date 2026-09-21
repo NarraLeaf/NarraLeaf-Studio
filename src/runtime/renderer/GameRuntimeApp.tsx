@@ -10,6 +10,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { GameRuntimePackV1, GameRuntimePreloadBridge, GameSessionClaim } from "@shared/types/gameRuntime";
@@ -589,7 +590,16 @@ function GameRuntimeSession() {
             return;
         }
         if (event.type === "execution.error") {
-            bridge.log("error", event.message);
+            // Prefixed with where it happened, as a missing input is below: a page by the name the
+            // author gave it, or the global blueprint, which belongs to no page. Without it a stopped
+            // loop reads the same in the log whichever of a dozen screens it was on.
+            const surface = event.surfaceId
+                ? pack?.bundle.ui.uidoc.surfaces.find(item => item.id === event.surfaceId)
+                : undefined;
+            const inGlobalBlueprint = !event.surfaceId && event.blueprintId !== undefined &&
+                pack?.bundle.ui.localBlueprints.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId === event.blueprintId;
+            const place = surface ? surface.name : inGlobalBlueprint ? "Global blueprint" : null;
+            bridge.log("error", place ? `${place}: ${event.message}` : event.message);
         } else if (event.type === "node.input_missing") {
             // The one thing a player's log can say about "the button did nothing": which page, which
             // node, which pin. Named in the English the catalogue declares - the map that localizes a

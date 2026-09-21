@@ -155,6 +155,8 @@ export const blueprint = {
             contextListItemHint: " It reads the list row it runs for, and nothing here draws one.",
             noRuntime: "Node \"{node}\": no runtime for type \"{type}\".",
             inputMissing: "\"{node}\" has nothing connected to \"{pin}\".",
+            stepLimit: "\"{head}\" stopped at \"{node}\" after {steps} steps without a wait.",
+            stepLimitGlobal: "\"{head}\" in the global blueprint stopped at \"{node}\" after {steps} steps without a wait.",
             unknownType: "Node \"{node}\": unknown type \"{type}\". Its plugin may be uninstalled or disabled.",
             variableIdInvalid: "Node \"{node}\": pick a variable.",
             persistentVariableIdInvalid: "Node \"{node}\": pick a persistent variable.",

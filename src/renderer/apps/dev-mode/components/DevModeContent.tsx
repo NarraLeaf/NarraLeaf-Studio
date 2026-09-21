@@ -15,6 +15,7 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import type {
@@ -1006,7 +1007,9 @@ export function DevModeContent(props: DevModeContentProps) {
      * the Issues panel is where they are told something is wrong right now.
      */
     const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
-        const issue = blueprintDebugEventIssue(event, t);
+        const issue = blueprintDebugEventIssue(event, t, {
+            globalBlueprintId: bundleRef.current?.ui.localBlueprints.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId,
+        });
         if (issue) {
             reportIssue(issue);
         }
