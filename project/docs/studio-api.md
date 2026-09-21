@@ -38,8 +38,8 @@ import {
 | --- | --- |
 | `definePlugin` | 声明插件入口。 |
 | `ui` | Studio 公共 UI kit。 |
-| `AssetType` | 项目资源类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
-| `AssetSource` | 项目资源来源枚举：`Local`、`Remote`。 |
+| `AssetType` | 项目资产类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
+| `AssetSource` | 项目资产来源枚举：`Local`、`Remote`。 |
 | `PanelPosition` | Panel 位置枚举：`Left`、`Right`、`Bottom`。 |
 
 ## PluginApp
@@ -89,14 +89,14 @@ await app.services.storage.writeJson(`${app.plugin.id}.items`, { version: 1, ite
 
 ## app.services.assets
 
-项目资源的插件 facade。
+项目资产的插件 facade。
 
 ```ts
 app.services.assets.getMap();
 app.services.assets.list(AssetType.Image);
 app.services.assets.get(AssetType.Image, assetId);
-app.services.assets.fetch(asset);          // 解码后的资源数据；失败 throw
-app.services.assets.createObjectUrl(asset); // 远程资源返回远程 URL；本地资源创建 blob URL
+app.services.assets.fetch(asset);          // 解码后的资产数据；失败 throw
+app.services.assets.createObjectUrl(asset); // 远程资产返回远程 URL；本地资产创建 blob URL
 app.services.assets.revokeObjectUrl(url);   // 不再展示时释放 blob URL
 ```
 
@@ -253,7 +253,7 @@ app.services.widgets.has(type);
 
 其余几个工厂拿到的 `documentService` / `stateService` 是 `PluginWidgetDocumentApi` / `PluginWidgetEditorStateApi`——**不是 Studio 的服务实例**。它们能做的是控件本分的事：读整份界面文档，写元素的 props / layout / animation / extra / 列表条目接线，以及把一串写入并成一次撤销（`runSurfaceHistoryTransaction`）。表以外的成员会**抛错**而不是返回 undefined，错误里写着该走哪个 API。
 
-原因是 Studio 自己的 `UIWidgetModule` 交出来的是活的 `UIDocumentService`：`Service.getContext()` 是 public，`getContext().services.get(...)` 就是工作区服务注册表，往下是按窗口默认授权、对整个工程递归读写的文件系统——插件权限提示里说过插件拿不到的那一套。插件要文件系统走 `app.privileged.fs.*`，那里按插件自己的授权检查。
+原因是 Studio 自己的 `UIWidgetModule` 交出来的是活的 `UIDocumentService`：`Service.getContext()` 是 public，`getContext().services.get(...)` 就是工作区服务注册表，往下是按窗口默认授权、对整个项目递归读写的文件系统——插件权限提示里说过插件拿不到的那一套。插件要文件系统走 `app.privileged.fs.*`，那里按插件自己的授权检查。
 
 `get` / `list` 回答的是 `PluginWidgetTypeInfo`（`type` / `displayName` / `extends` / `ownerPluginId`），不是模块对象本身。
 
@@ -436,7 +436,7 @@ ui.Panel.EmptyState(props: { icon?: React.ReactNode; title: React.ReactNode; des
 
 ### AssetSelector
 
-`ui.AssetSelector` 复用 Studio 的项目资源树、搜索、筛选、导入和图片悬停预览。懒加载组件：第一次渲染可能短暂返回 `null`，保持 `visible` 为 `true` 即可。
+`ui.AssetSelector` 复用 Studio 的项目资产树、搜索、筛选、导入和图片悬停预览。懒加载组件：第一次渲染可能短暂返回 `null`，保持 `visible` 为 `true` 即可。
 
 ```ts
 type AssetSelectorProps = {

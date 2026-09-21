@@ -41,6 +41,7 @@ const NO_CHECK = {
     testId: null,
     list: false,
     parameters: [],
+    asShipped: false,
     reportPath: null,
     userDataDir: null,
     error: null,
@@ -465,6 +466,7 @@ describe("parseMainCommandLine", () => {
             testId: "narraleaf-studio:reachable-endings",
             list: false,
             parameters: ["ending=good", "verbose=true"],
+            asShipped: false,
             reportPath: "out/test.json",
             userDataDir: null,
             error: null,
@@ -531,5 +533,87 @@ describe("parseMainCommandLine", () => {
         ]);
 
         expect(options.check.selector).toBe("second");
+    });
+
+    /**
+     * `--test-as-shipped` decides whether the game a test launches seals its content as the release
+     * build does. It is the only source of that answer for a headless run, so a misread line is a
+     * job exercising the other path than the one it named - silently, since both paths pass.
+     */
+    describe("--test-as-shipped", () => {
+        const test = (...extra: string[]) => parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--test", "C:/games/demo", "--test-id=walkthrough", ...extra,
+        ]).check;
+
+        it("is off unless the line says so", () => {
+            expect(test().asShipped).toBe(false);
+            expect(test().error).toBeNull();
+        });
+
+        it("is on when given bare", () => {
+            const check = test("--test-as-shipped");
+
+            expect(check.asShipped).toBe(true);
+            expect(check.kind).toBe("test");
+            expect(check.error).toBeNull();
+        });
+
+        it("reads an explicit value, for a job that states it from a variable", () => {
+            expect(test("--test-as-shipped=true").asShipped).toBe(true);
+            expect(test("--test-as-shipped=false").asShipped).toBe(false);
+            expect(test("--test-as-shipped=1").asShipped).toBe(true);
+            expect(test("--test-as-shipped=OFF").asShipped).toBe(false);
+            expect(test("--test-as-shipped=no").error).toBeNull();
+        });
+
+        it("refuses a value that is not a boolean rather than guessing", () => {
+            const check = test("--test-as-shipped=sealed");
+
+            expect(check.asShipped).toBe(false);
+            expect(check.error).toBe('Invalid --test-as-shipped value: expected true or false, got "sealed"');
+        });
+
+        it("refuses a separate boolean, which would otherwise seal a run the line said not to", () => {
+            // Read as bare, `--test-as-shipped false` is the flag - on - and a stray word. Refused so
+            // the job hears about it instead of running the path it tried to turn off.
+            const check = test("--test-as-shipped", "false");
+
+            expect(check.error).toBe("--test-as-shipped takes no separate value: write --test-as-shipped=false");
+        });
+
+        it("does not take the argument after it as its value when that is not a boolean", () => {
+            const options = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--test-as-shipped", "--test", "demo", "--test-id=walkthrough",
+            ]);
+
+            expect(options.check.asShipped).toBe(true);
+            expect(options.check.selector).toBe("demo");
+            expect(options.check.error).toBeNull();
+        });
+
+        it("is refused without --test, like every companion flag", () => {
+            for (const flag of ["--test-as-shipped", "--test-as-shipped=false"]) {
+                const options = parseMainCommandLine(["NarraLeaf-Studio.exe", flag]);
+
+                expect(options.check.requested).toBe(true);
+                expect(options.check.error)
+                    .toBe("Missing --test or --lint: the check flags name a check nothing asked for");
+            }
+        });
+
+        it("is refused beside --lint, which runs no game", () => {
+            const options = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--lint", "demo", "--test-as-shipped",
+            ]);
+
+            expect(options.check.error).toBe("Both --test and --lint were given: one launch answers one question");
+        });
+
+        it("is forgiven by a later occurrence that is well-formed, as a value flag given twice is", () => {
+            const check = test("--test-as-shipped=maybe", "--test-as-shipped=true");
+
+            expect(check.asShipped).toBe(true);
+            expect(check.error).toBeNull();
+        });
     });
 });

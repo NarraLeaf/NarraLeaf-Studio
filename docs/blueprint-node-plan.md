@@ -307,8 +307,8 @@
 | Set Text | `blueprint.text.setText` | **已实现**。设置文本内容。 |
 | Append Text | `blueprint.text.appendText` | **已实现**。在文本末尾追加内容。 |
 | Clear Text | `blueprint.text.clearText` | **已实现**。清空文本内容。 |
-| Get Font | `blueprint.text.getFont` | **已实现**。获取字体资源 ID。 |
-| Set Font | `blueprint.text.setFont` | **已实现**。设置字体资源 ID。 |
+| Get Font | `blueprint.text.getFont` | **已实现**。获取字体资产 ID。 |
+| Set Font | `blueprint.text.setFont` | **已实现**。设置字体资产 ID。 |
 | Get Font Size | `blueprint.text.getFontSize` | **已实现**。获取字号。 |
 | Set Font Size | `blueprint.text.setFontSize` | **已实现**。设置字号。 |
 | Get Font Weight | `blueprint.text.getFontWeight` | **已实现**。获取字重。 |
@@ -395,8 +395,8 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Set Crop Rect | `blueprint.image.setCropRect` | 设置图片裁切矩形。 |
 | Set Nine Slice | `blueprint.image.setNineSlice` | 设置九宫格切片参数。 |
 | Get Natural Size | `blueprint.image.getNaturalSize` | 获取图片原始尺寸。 |
-| Set Image By Key | `blueprint.image.setByKey` | 按业务 key 设置图片资源。 |
-| Preload Image | `blueprint.image.preload` | 预加载图片资源。 |
+| Set Image By Key | `blueprint.image.setByKey` | 按业务 key 设置图片资产。 |
+| Preload Image | `blueprint.image.preload` | 预加载图片资产。 |
 
 ## Button
 
@@ -573,11 +573,11 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
-| Preload Asset | `blueprint.asset.preload` | 预加载指定资源。 |
-| Release Asset | `blueprint.asset.release` | 释放指定资源引用。 |
-| Is Asset Loaded | `blueprint.asset.isLoaded` | 判断指定资源是否已加载。 |
-| Get Asset Url | `blueprint.asset.getUrl` | 获取资源运行时 URL。 |
-| Cache Asset | `blueprint.asset.cache` | 将资源加入运行时缓存。 |
+| Preload Asset | `blueprint.asset.preload` | 预加载指定资产。 |
+| Release Asset | `blueprint.asset.release` | 释放指定资产引用。 |
+| Is Asset Loaded | `blueprint.asset.isLoaded` | 判断指定资产是否已加载。 |
+| Get Asset Url | `blueprint.asset.getUrl` | 获取资产运行时 URL。 |
+| Cache Asset | `blueprint.asset.cache` | 将资产加入运行时缓存。 |
 
 ## Localization
 

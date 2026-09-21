@@ -18,6 +18,7 @@ import type {
     GameTestLogLevel,
 } from "@shared/types/gameTest";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
+import type { CommandLineRunJob } from "@shared/types/commandLineRun";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
@@ -33,7 +34,7 @@ import {
 } from "../preview/PreviewManager";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
-import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
+import { resolveRunSealing, runSealingLogLine, type RunSealingChoice } from "../../utils/runSealing";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
@@ -135,6 +136,15 @@ type GameTestSession = {
     sawMainRuntimeError: boolean;
     /** Guards the "exactly one exit event per session" invariant. */
     exitEmitted: boolean;
+    /**
+     * The headless job the project's window was opened for, or null for a window an author is at.
+     *
+     * Captured when the launch arrives, off the window's props - which main set when it opened the
+     * window and the renderer has no way to change. It decides two things: where this run's "as
+     * shipped" answer comes from (see {@link sealingChoiceFor}), and that the host's own lines about
+     * the game also go on the command-line log, which is the only thing a job reads.
+     */
+    commandLineRun: CommandLineRunJob | null;
     /**
      * Why the launch could not produce a game, in the author's words.
      *
@@ -358,6 +368,7 @@ export class GameTestManager {
             startFailed: false,
             sawMainRuntimeError: false,
             exitEmitted: false,
+            commandLineRun: findWorkspaceWindow(this.app, projectPath)?.getProps().commandLineRun ?? null,
             failureReason: null,
         };
         this.sessions.set(key, session);
@@ -476,18 +487,21 @@ export class GameTestManager {
             }
             const sealing = await resolveRunSealing({
                 projectPath: session.projectPath,
-                settings: this.app.getGlobalState(),
+                choice: this.sealingChoiceFor(session),
                 resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), session.projectPath),
             });
             const sealingLine = runSealingLogLine(sealing);
             if (sealingLine) {
-                this.emitConsole(session, "verbose", sealingLine);
+                // Not verbose on a headless run: which path the content took is the one fact about
+                // the game a job asked for by name, and it should not read as noise beside the rest.
+                this.emitConsole(session, sealing.by === "command-line" ? "info" : "verbose", sealingLine);
             }
             const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(session);
 
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
+            const compileStartedAt = Date.now();
             const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath: session.projectPath,
                 entry: TEST_LAUNCH_ENTRY,
@@ -525,7 +539,13 @@ export class GameTestManager {
             });
             session.compileWorker = null;
             this.ensureNotCancelled(session);
-            this.emitConsole(session, "verbose", `game compiled: ${artifact.copiedAssetCount} asset(s)`);
+            // With its time: a sealed compile re-writes the whole store and is the one step whose
+            // cost depends on the path taken, so this is where the two paths are told apart by cost.
+            this.emitConsole(
+                session,
+                "verbose",
+                `game compiled: ${artifact.copiedAssetCount} asset(s) in ${formatSeconds(Date.now() - compileStartedAt)}`,
+            );
 
             const binary = resolvePreviewRunnerBinaryForApp(this.app);
             // The last point at which a cancel is free: everything from here to the end of this
@@ -822,8 +842,41 @@ export class GameTestManager {
         }
     }
 
+    /**
+     * Where this session's "as shipped" answer comes from.
+     *
+     * A headless `--test` run takes it from its own line and from nothing else - see `runSealing.ts`
+     * for why the machine's setting is not a fallback. Any other headless job (a build, a lint, a
+     * listing) never launches a test's game; were one to, it would not have asked for the shipped
+     * form, and that is what it gets.
+     */
+    private sealingChoiceFor(session: GameTestSession): RunSealingChoice {
+        const job = session.commandLineRun;
+        if (!job) {
+            return { by: "preview-setting", settings: this.app.getGlobalState() };
+        }
+        return { by: "command-line", asShipped: job.kind === "test" && job.asShipped };
+    }
+
+    /**
+     * A line of the host's own about this session's game.
+     *
+     * On a headless run it goes on the command-line log as well. The test decides what of its game
+     * it reports, and the built-in ones report the playthrough rather than the launch - so without
+     * this, what a job most needs to know about the game it launched (how its content was held, how
+     * long the compile took, why the launch failed) would reach a console nobody can see.
+     */
     private emitConsole(session: GameTestSession, level: GameTestLogLevel, message: string): void {
         this.emitEvent(session, { kind: "console", level, source: "Test", message });
+        if (session.commandLineRun) {
+            findWorkspaceWindow(this.app, session.projectPath)?.reportCommandLineRunEvent({
+                kind: "log",
+                timestamp: Date.now(),
+                level,
+                source: "Test",
+                message,
+            });
+        }
     }
 
     /**
@@ -960,6 +1013,11 @@ function allocateLocalPort(): Promise<number> {
             server.close(error => (error ? reject(error) : resolve(port)));
         });
     });
+}
+
+/** `6.4 s`: one decimal, which is as fine as a compile is worth reading at. */
+function formatSeconds(ms: number): string {
+    return `${(ms / 1000).toFixed(1)} s`;
 }
 
 function delay(ms: number): Promise<void> {
