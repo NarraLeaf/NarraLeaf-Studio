@@ -391,6 +391,8 @@ export const settings = {
         checking: "正在检查…",
         done: "完成",
         signOut: "退出登录",
+        usedBy: "使用此登录的项目：{projects}",
+        unused: "尚无项目使用此登录",
         signIn: "登录",
         signingIn: "正在登录…",
         addressLabel: "服务器地址",

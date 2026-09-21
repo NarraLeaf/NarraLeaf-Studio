@@ -227,6 +227,13 @@ export const VcsErrorCode = {
      * named here and said in the reader's language like the four above it.
      */
     BranchDiverged: "vcs/branch-diverged",
+    /**
+     * The project is not trusted, so nothing reaches the server it names.
+     *
+     * Its own code rather than a sentence, so the rail can say it the way every other control that
+     * stops for an untrusted project does - in the reader's language, pointing at the status bar.
+     */
+    ProjectDistrusted: "vcs/project-distrusted",
 } as const;
 
 export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
@@ -684,6 +691,13 @@ export interface VcsSignInToken {
     account: VcsServerAccount;
     /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
     authUrl: string;
+    /**
+     * Every sign-in address `aud` names, {@link authUrl} first.
+     *
+     * The whole list and not only the first, because it is what a sign-in address typed or
+     * discovered elsewhere is checked against: a token is presented only where it says it may be.
+     */
+    authUrls: readonly string[];
     /** The servers it is good for, from `aud`: `lore://team.example.lan:41337`. */
     remotes: readonly string[];
     /** SHA-256 of the authority signing that endpoint, from `authority_sha256`. */
@@ -859,9 +873,10 @@ export type VcsServerProbe =
 /**
  * A signed-in session, as Studio holds it.
  *
- * One per server, not one per project: the backend keeps the session in a per-user
- * store outside any repository, so signing in once serves every project pointed at
- * that server.
+ * One per server: the backend keeps the session in a per-user store outside any repository,
+ * so the account behind it is the machine's. **Which projects may use it is a separate
+ * record** ({@link VcsSessionUse}): a project uses a sign-in only once the author has said it
+ * does, so a project that merely names the same server does not act as this account.
  */
 export interface VcsServerSession {
     /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
@@ -892,6 +907,69 @@ export interface VcsServerSession {
      * a network call in front of a decision the last one already answered.
      */
     policy?: VcsServerPolicy;
+    /**
+     * The projects on this machine that use this sign-in.
+     *
+     * Filled in by `vcs.listServers` from {@link VcsSessionUse} and never stored with the
+     * session: which projects use a sign-in is the author's answer per project, not a property
+     * of the account, and a copy kept here would be a second record that could disagree.
+     * Absent everywhere else.
+     */
+    usedBy?: VcsSessionUser[];
+}
+
+/** A project that uses a sign-in, as a list of them names it. */
+export interface VcsSessionUser {
+    /** The project's directory, as this installation last opened it. */
+    path: string;
+    /** What the project is called in the recent-projects list, or its folder name. */
+    name: string;
+}
+
+/**
+ * One project's answer about one server's sign-in: whether it uses it.
+ *
+ * **The pair is (server origin, project directory), and the project half is the directory.**
+ * Never the project's own identifier: that is data the project carries, so a copy of somebody
+ * else's project would carry their answer with it. The directory is keyed through
+ * `normalizeProjectPath`, the identity rule every other "is this the same project" question
+ * goes through.
+ *
+ * **Bound to the account the answer was given for.** `userId` is the account that was on offer
+ * when the author said yes; if the sign-in held for that server is later a different account,
+ * the answer does not carry over and the author is asked again. `null` is a no: the project
+ * does not use that server's sign-in, and it is not asked again on its own.
+ *
+ * Written by the main process only. The record is what decides whose credential a project's
+ * requests carry, so no renderer may write it (`MAIN_OWNED_STATE_KEYS`).
+ */
+export interface VcsSessionUse {
+    /** The server, as an origin - the key the sign-in itself is stored under. */
+    remoteOrigin: string;
+    /** `normalizeProjectPath` of the project directory. Compared, never shown. */
+    project: string;
+    /** The project directory as it was spelled when the answer was given. Shown, never compared. */
+    projectPath: string;
+    /** The account this project uses at that server, or null where the author said no. */
+    userId: string | null;
+    /** When the answer was given. Epoch ms. */
+    decidedAt: number;
+}
+
+/**
+ * What one project knows about signing in to its server.
+ *
+ * `session` is the sign-in the project uses, and it is what decides whose name a version
+ * records and whose credential a send or a get carries. `available` is the sign-in this
+ * installation holds for that server where the project does not use it - never yet asked
+ * about, or {@link declined} - so an interface can offer it rather than say nobody is signed in.
+ * At most one of the two is non-null.
+ */
+export interface VcsProjectServerSession {
+    session: VcsServerSession | null;
+    available: VcsServerSession | null;
+    /** The author said this project does not use {@link available}. */
+    declined: boolean;
 }
 
 /**
@@ -1099,6 +1177,14 @@ export type VcsServerProjectsProblem =
      * which one it is.
      */
     | { kind: "already-published"; name: string }
+    /**
+     * The author said this project does not use the sign-in held for that server.
+     *
+     * Publishing records the project over that sign-in, so without it there is nothing to ask
+     * the server with. Told apart from {@link no-token}, whose remedy is adding the server again:
+     * here the server is there and signed in to, and the remedy is the author's answer.
+     */
+    | { kind: "declined" }
     | { kind: "unknown" };
 
 /**

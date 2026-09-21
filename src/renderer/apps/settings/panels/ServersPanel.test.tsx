@@ -21,6 +21,7 @@ vi.mock("@/lib/i18n", async importOriginal => ({
             params ? `${key}(${Object.values(params).join("|")})` : key,
         has: () => false,
         tn: (key: string, count: number) => `${key}(${count})`,
+        formatList: (items: string[]) => items.join(" + "),
         locale: "en",
     }),
 }));
@@ -110,5 +111,42 @@ describe("the servers panel", () => {
         expect(document.querySelector("[data-servers-seam='wizard-step-1']")).not.toBeNull();
         // Reaching an address is the author's next act, not this one's.
         expect(bridge.probeServer).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A sign-in is the machine's, and a project uses it only once the author has said so - so the
+     * row says which projects did. Those are the projects "Sign out" here signs out, and the
+     * author reads that before pressing it rather than after.
+     */
+    it("names the projects that use each sign-in", async () => {
+        bridge.servers = [{
+            ...session(),
+            usedBy: [
+                { path: "D:/games/harbour", name: "Harbour Lights" },
+                { path: "D:/games/lantern", name: "Lantern" },
+            ],
+        }];
+        render(<ServersPanel />);
+
+        const line = await waitFor(() => {
+            const node = document.querySelector<HTMLElement>(`[data-servers-used-by='${ORIGIN}']`);
+            if (node === null) throw new Error("no line");
+            return node;
+        });
+        expect(line.textContent).toBe("settings.servers.usedBy(Harbour Lights + Lantern)");
+        // The folders, where the names are not enough to tell two projects apart.
+        expect(line.getAttribute("data-tip")).toBe("D:/games/harbour\nD:/games/lantern");
+    });
+
+    it("says where a sign-in serves no project yet", async () => {
+        bridge.servers = [session()];
+        render(<ServersPanel />);
+
+        const line = await waitFor(() => {
+            const node = document.querySelector<HTMLElement>(`[data-servers-used-by='${ORIGIN}']`);
+            if (node === null) throw new Error("no line");
+            return node;
+        });
+        expect(line.textContent).toBe("settings.servers.unused");
     });
 });

@@ -17,6 +17,7 @@ import type {
     VcsLocalRepository,
     VcsServerProbe,
     VcsPasswordSignInOutcome,
+    VcsProjectServerSession,
     VcsPublishOutcome,
     VcsServerSession,
     VcsSignInOutcome,
@@ -30,7 +31,7 @@ import type {
 } from "@shared/types/vcs";
 import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
-import { requireWindowProject } from "../../../utils/windowProject";
+import { requireWindowProject, windowProjectPath } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -72,37 +73,40 @@ import { IPCHandler } from "./IPCHandler";
  * weaker ground that their only caller is the workspace's own version rail and it has never had
  * another project to name.
  *
- * # The assertion does NOT close the handlers that talk to a server
+ * # Whose credential a request to a server spends
  *
- * `sync`, `push`, `signIn` and {@link VcsPublishProjectHandler} send a project, or an account's
- * credentials, somewhere else. Which project is one of two things a caller picks there, and the
- * other one - where it goes - is bounded nowhere:
+ * `sync`, `push`, `signIn`, `getSyncState`, connecting with `setRemote` and
+ * {@link VcsPublishProjectHandler} send a project, or an account's credentials, somewhere else.
+ * Which project is one of the things a caller picks there; the others are bounded in the manager,
+ * not here:
  *
- *  - `remoteOrigin` is a payload field of {@link VcsPublishProjectHandler}, never compared with the
- *    remote the project's own `.lore/config.toml` names. Publishing then REWRITES that file, and
- *    every later push and sync reads the address out of it, so one call moves where a project
- *    reports to from then on.
- *  - A session and its token are held per server origin and belong to the account, not to a
- *    project. Any project pointed at the same origin borrows them, and `withServerSession` replays
- *    the stored token, so a push succeeds against a server nobody signed in to from this window.
- *  - {@link VcsSignInHandler}'s `authUrl` is a payload field that OVERRIDES the address the token
- *    itself carries, and the token is presented to whatever host it names. Which project the path
- *    resolves to has no bearing on that.
- *  - None of the four is in `DISTRUSTED_OPERATIONS`, and none consults the window's file-system
- *    grant.
- *
- * So this family is not closed and nothing here should be read as saying it is. Closing it needs a
- * decision about what a server session is scoped to, which is a larger question than any handler.
+ *  - **A sign-in serves a project only once the author has said it does**, per (server origin,
+ *    project directory) pair. The first request that needs it puts the question in a window of
+ *    Studio's own and the manager records the answer - see `serverSessionScope.ts`. A project the
+ *    author has not answered for goes out anonymously, and the stored token is not replayed for it.
+ *  - **Where a project is recorded as the one a sign-in serves, the project is the window's.** The
+ *    handlers that do that - {@link VcsAddServerHandler}, {@link VcsCloneHandler},
+ *    {@link VcsPublishProjectHandler} - take it from `windowProjectPath`, never from the payload.
+ *  - `remoteOrigin` on {@link VcsPublishProjectHandler} still names where the project goes, and
+ *    publishing still rewrites the project's `.lore/config.toml` - but it has to be a server this
+ *    installation holds a sign-in for, and the project has to use that sign-in: from a project's
+ *    window that is the sign-in question, asked again even after a no; from a window with none, it
+ *    is the launcher's act and only good for a project with no server yet.
+ *  - A token is presented only at the address it names for itself (`signInAddressFor`); `authUrl`
+ *    is honoured only for a token that names none.
+ *  - The whole family is refused for a project that is not trusted (`server connection` in
+ *    `DISTRUSTED_OPERATIONS`). The manager asks the ledger about the path it is handed, which is
+ *    one more reason each of these handlers has to take its project from the window.
  *
  * Two groups are deliberately still open, and they are different problems rather than one backlog:
  *
  *  - The reads, and the handlers that only add a revision. Naming another project there is still
  *    wrong, but it discloses or adds rather than destroys.
- *  - {@link VcsInitRepositoryHandler} and {@link VcsPublishProjectHandler}, which must never be
- *    guarded this way at all: the project wizard legitimately names a directory that is no window's
- *    project, and the launcher's server tab publishes a project the wizard has just made for it,
- *    from a window with no project of its own. Both want a gate on where the request may reach,
- *    which is not the question this one answers.
+ *  - {@link VcsInitRepositoryHandler}, and {@link VcsPublishProjectHandler} from a window with no
+ *    project, which must never be guarded this way at all: the project wizard legitimately names a
+ *    directory that is no window's project, and the launcher's server tab publishes a project the
+ *    wizard has just made for it, from a window with no project of its own. A window that has a
+ *    project publishes only that one.
  */
 
 /**
@@ -506,10 +510,8 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
     public async handle(
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"],
-    ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
-        return this.tryUse(async () => ({
-            session: await window.app.getVcsManager().getServerSession(projectPath),
-        }));
+    ): Promise<RequestStatus<VcsProjectServerSession>> {
+        return this.tryUse(() => window.app.getVcsManager().getServerSession(projectPath));
     }
 }
 
@@ -525,11 +527,10 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
  * with one identical sentence, and the interface has to tell an author which of those
  * four they are looking at.
  *
- * The project is the window's rather than the payload's, and that bounds one small thing: whose
- * `.lore/config.toml` is read for the server to sign in to. It does not bound where the token is
- * sent - `authUrl` overrides the address the token itself names - nor whose session is written,
- * because a session belongs to the account and to a server origin rather than to a project. See
- * the note at the top of this file before reading the assertion as a closed door.
+ * The project is the window's rather than the payload's: it is whose `.lore/config.toml` names the
+ * server to sign in to, and it is the project the new sign-in is recorded as serving. Where the
+ * token is sent is the token's own business - an `authUrl` it does not name is refused - and see
+ * the note at the top of this file for the rest.
  */
 export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
     readonly name = IPCEventType.vcsSignIn;
@@ -581,7 +582,12 @@ export class VcsTrustAuthorityHandler extends IPCHandler<IPCEventType.vcsTrustAu
     }
 }
 
-/** Clear the stored token and Studio's record of whose it was. Local; contacts nothing. */
+/**
+ * Stop this project using the sign-in held for its server. Local; contacts nothing.
+ *
+ * Per project: the sign-in stays on the machine for the projects that use it, and
+ * {@link VcsForgetServerHandler} is what takes it off.
+ */
 export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
     readonly name = IPCEventType.vcsSignOut;
     readonly type = IPCMessageType.request;
@@ -691,10 +697,11 @@ export class VcsListLocalRepositoriesHandler extends IPCHandler<IPCEventType.vcs
  * assertion here would refuse that, which is the whole of one of the two ways a project reaches a
  * server.
  *
- * So this is left open knowingly, and it is the widest of the four: as well as naming the project,
- * a caller names `remoteOrigin` freely, and step three rewrites that project's own
- * `.lore/config.toml` to point at it. What it wants is a gate on the destination and on which
- * account credential may be spent, not on which project - see the note at the top of this file.
+ * So a window with no project may name one, and a window with a project may name only its own. The
+ * two are told apart to the manager as well: the launcher's publish is its own act - the author
+ * picked that server and asked for a project on it - and is held to a project with no server yet,
+ * while a project's window has the sign-in question put, even after a no. See the note at the top
+ * of this file.
  */
 export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublishProject> {
     readonly name = IPCEventType.vcsPublishProject;
@@ -704,12 +711,27 @@ export class VcsPublishProjectHandler extends IPCHandler<IPCEventType.vcsPublish
         window: AppWindow,
         { projectPath, remoteOrigin, name }: IPCEvents[IPCEventType.vcsPublishProject]["data"],
     ): Promise<RequestStatus<VcsPublishOutcome>> {
-        return this.tryUse(() =>
-            window.app.getVcsManager().publishProject(projectPath, remoteOrigin, name));
+        return this.tryUse(() => {
+            // A project's own window publishes that project and nothing else. A window with none -
+            // the launcher's server tab - publishes the project the wizard has just made for the
+            // server the author picked there, which the manager holds to having no server yet.
+            const own = windowProjectPath(window);
+            return window.app.getVcsManager().publishProject(
+                own === null ? projectPath : requireWindowProject(window, projectPath),
+                remoteOrigin,
+                name,
+                { newProject: own === null },
+            );
+        });
     }
 }
 
-/** Sign in to the server a token names. */
+/**
+ * Sign in to the server a token names.
+ *
+ * From a project's window, the sign-in is also that project's answer to the sign-in question, so
+ * the window's own project - never a payload field - is recorded as using it.
+ */
 export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
     readonly name = IPCEventType.vcsAddServer;
     readonly type = IPCMessageType.request;
@@ -720,8 +742,16 @@ export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
     ): Promise<RequestStatus<VcsAddServerOutcome>> {
         return this.tryUse(async () => {
             try {
-                const result = await window.app.getVcsManager()
-                    .addServer({ authUrl, remoteUrl, token, ...(description ? { description } : {}) });
+                // Signing in from inside a project is that project's answer to the sign-in question,
+                // so the window's own project - never one the payload names - uses it from now on.
+                const forProject = windowProjectPath(window) ?? undefined;
+                const result = await window.app.getVcsManager().addServer({
+                    authUrl,
+                    remoteUrl,
+                    token,
+                    ...(description ? { description } : {}),
+                    ...(forProject ? { forProject } : {}),
+                });
                 return { ok: true as const, ...result };
             } catch (error) {
                 // Same bargain as signing in from a project: a refusal is an answer the
@@ -785,8 +815,9 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
  * (sync first) and is more useful than anything this layer could substitute.
  *
  * The project is the window's rather than the payload's, which bounds whose revisions are
- * uploaded and nothing else. Where they go is read off that project's own `.lore/config.toml`,
- * and the credential used is the account's for that origin - see the note at the top of this file.
+ * uploaded. Where they go is read off that project's own `.lore/config.toml`, and they go as the
+ * account only where the author said this project uses its sign-in - see the note at the top of
+ * this file.
  */
 export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
     readonly name = IPCEventType.vcsPush;
@@ -818,9 +849,9 @@ export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
  * nothing holds what was there. It reaches further than they do first, because the flush of
  * pending saves that opens it settles the auto-save debt of whatever window has that project open.
  *
- * That bounds which project is written. It does not bound which server the revisions come FROM -
- * that address is read off the project's `.lore/config.toml`, which publishing rewrites. See the
- * note at the top of this file.
+ * That bounds which project is written. The server the revisions come from is the one the
+ * project's `.lore/config.toml` names, reached as the account only where the author said this
+ * project uses its sign-in. See the note at the top of this file.
  */
 export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
     readonly name = IPCEventType.vcsSync;
@@ -850,7 +881,11 @@ export class VcsCloneHandler extends IPCHandler<IPCEventType.vcsClone> {
         window: AppWindow,
         { url, destination }: IPCEvents[IPCEventType.vcsClone]["data"],
     ): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>> {
-        return this.tryUse(() => window.app.getVcsManager().cloneRepository(url, destination));
+        // Made with the sign-in held for that server only where fetching a project is the whole of
+        // the author's choice - the wizard, which has no project of its own. A request from a
+        // project's window makes an anonymous copy.
+        return this.tryUse(() => window.app.getVcsManager()
+            .cloneRepository(url, destination, { useSignIn: windowProjectPath(window) === null }));
     }
 }
 

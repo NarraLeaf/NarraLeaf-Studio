@@ -138,6 +138,7 @@ const PUBLISH_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Translation
     "wrong-repository": "workspace.shell.versionControl.server.publish.wrongRepository",
     "name-taken": "workspace.shell.versionControl.server.publish.nameTaken",
     "already-published": "workspace.shell.versionControl.server.publish.alreadyPublished",
+    declined: "workspace.shell.versionControl.server.publish.declined",
     rejected: "workspace.shell.versionControl.server.publish.unknown",
     unknown: "workspace.shell.versionControl.server.publish.unknown",
 };
@@ -397,6 +398,20 @@ export interface VersionSurface {
      */
     serverSession: VcsServerSession | null;
     /**
+     * The sign-in this installation holds for that server where this project does not use it, or
+     * null.
+     *
+     * Never asked about, or answered no. Non-null only while {@link serverSession} is null, and it
+     * is what lets the Team panel say "does not use" and offer it by name, rather than say this
+     * machine has no account on a server it is signed in to.
+     */
+    availableSession: VcsServerSession | null;
+    /**
+     * Ask whether this project uses {@link availableSession}, in Studio's own window, and read
+     * where that leaves it. Resolves once the author has answered or closed the question.
+     */
+    useServerSession: () => Promise<void>;
+    /**
      * This project's repository id, or null before the identity read lands.
      *
      * **The only identity that survives a rename**, and therefore the only honest way to
@@ -405,7 +420,7 @@ export interface VersionSurface {
      */
     repositoryId: string | null;
     /**
-     * Take the account back off this machine, stored token and all.
+     * Stop this project using the sign-in held for its server. Other projects that use it keep it.
      *
      * Signing IN is not on this surface, and that is the point: a server is reached at its
      * `nlteam://` endpoint, which is what tells Studio the server's name, what it can do and
@@ -452,6 +467,7 @@ export function useVersionSurface(): VersionSurface {
     const [remoteNeedsSignIn, setRemoteNeedsSignIn] = useState(false);
     const [syncState, setSyncState] = useState<VcsSyncState | null>(null);
     const [serverSession, setServerSession] = useState<VcsServerSession | null>(null);
+    const [availableSession, setAvailableSession] = useState<VcsServerSession | null>(null);
     /** This project's repository id, as the server lists it. Null until the identity read lands. */
     const [repositoryId, setRepositoryId] = useState<string | null>(null);
     const [merge, setMerge] = useState<VcsMergeState | null>(null);
@@ -540,6 +556,7 @@ export function useVersionSurface(): VersionSurface {
             setBranch(null);
             setRemoteUrl(null);
             setServerSession(null);
+            setAvailableSession(null);
             setRepositoryId(null);
             setMerge(null);
             return;
@@ -559,9 +576,10 @@ export function useVersionSurface(): VersionSurface {
         setRemoteUrl(configured);
         // Local for the same reason and asked in the same breath: it is what decides whose
         // name goes on the next revision, and the settings panel says so.
-        const signedIn = await services.versionControl.getServerSession();
+        const signedIn = await services.versionControl.getServerSessionState();
         if (!alive.current) return;
-        setServerSession(signedIn);
+        setServerSession(signedIn.session);
+        setAvailableSession(signedIn.available);
         // The whole identity in one pure read: the revision, the number `#4` is made of, and the
         // branch. A one-entry history read answered the first two just as cheaply and cannot answer
         // the third at all - the revision graph does not carry a branch name.
@@ -956,6 +974,22 @@ export function useVersionSurface(): VersionSurface {
     }, [services, readIdentity]);
 
     /**
+     * Read which sign-in this project uses at its server, and which one it could.
+     *
+     * Local. Asked after anything that may have changed the answer: the address moving, and every
+     * request that may have put the sign-in question - which the author answers in a window of its
+     * own, so this surface only learns the outcome by reading it back.
+     */
+    const readSession = useCallback(async (): Promise<void> => {
+        if (!services) return;
+        const next = await services.versionControl.getServerSessionState()
+            .catch(() => ({ session: null, available: null, declined: false }));
+        if (!alive.current) return;
+        setServerSession(next.session);
+        setAvailableSession(next.available);
+    }, [services]);
+
+    /**
      * Ask the server where things stand.
      *
      * The one call on this surface that waits on a network of its own accord, which is
@@ -981,9 +1015,12 @@ export function useVersionSurface(): VersionSurface {
                 setFailure(describeFailure(thrown));
             })
             .finally(() => {
-                if (alive.current) setBusy(null);
+                // A first check is where the sign-in question is put, as for a send.
+                void readSession().finally(() => {
+                    if (alive.current) setBusy(null);
+                });
             });
-    }, [services, busy]);
+    }, [services, busy, readSession]);
 
     const setRemote = useCallback(async (url: string | null): Promise<boolean> => {
         if (!services) {
@@ -1005,7 +1042,7 @@ export function useVersionSurface(): VersionSurface {
             // in to nothing: the row drew the address instead of the server's name and
             // offered to sign in, under two buttons that were already working. Re-read
             // here rather than in the rail, because this is where the address moved.
-            setServerSession(await services.versionControl.getServerSession().catch(() => null));
+            await readSession();
             return true;
         } catch (thrown) {
             if (alive.current) {
@@ -1029,7 +1066,7 @@ export function useVersionSurface(): VersionSurface {
         } finally {
             if (alive.current) setBusy(null);
         }
-    }, [services]);
+    }, [services, readSession]);
 
     /**
      * Put this project on a server.
@@ -1076,7 +1113,7 @@ export function useVersionSurface(): VersionSurface {
             setSyncState(await services.versionControl.getSyncState());
             // For the reason {@link setRemote} re-reads it: the address this project answers
             // to has just changed, and the session is looked up by that address.
-            setServerSession(await services.versionControl.getServerSession().catch(() => null));
+            await readSession();
             return true;
         } catch (thrown) {
             if (alive.current) {
@@ -1092,7 +1129,7 @@ export function useVersionSurface(): VersionSurface {
         } finally {
             if (alive.current) setBusy(null);
         }
-    }, [services, busy]);
+    }, [services, busy, readSession]);
 
     const signOutOfServer = useCallback(async (): Promise<void> => {
         if (!services) {
@@ -1103,7 +1140,9 @@ export function useVersionSurface(): VersionSurface {
         try {
             await services.versionControl.signOut();
             if (!alive.current) return;
-            setServerSession(null);
+            // Read back rather than cleared: the sign-in is still on this machine, now as one this
+            // project could use again, and the panel offers it.
+            await readSession();
             // Everything known about the server was learned as somebody who is no longer
             // signed in, so it describes a connection that no longer exists.
             setSyncState(null);
@@ -1112,7 +1151,26 @@ export function useVersionSurface(): VersionSurface {
         } finally {
             if (alive.current) setBusy(null);
         }
-    }, [services]);
+    }, [services, readSession]);
+
+    const useServerSession = useCallback(async (): Promise<void> => {
+        if (!services || busy !== null) {
+            return;
+        }
+        setBusy("remote");
+        setFailure(null);
+        try {
+            const next = await services.versionControl.useServerSession();
+            if (!alive.current) return;
+            setServerSession(next.session);
+            setAvailableSession(next.available);
+            if (next.session !== null) setRemoteNeedsSignIn(false);
+        } catch (thrown) {
+            if (alive.current) setFailure(describeFailure(thrown));
+        } finally {
+            if (alive.current) setBusy(null);
+        }
+    }, [services, busy]);
 
     const pushToRemote = useCallback(async (): Promise<boolean> => {
         if (!services || busy !== null) {
@@ -1131,9 +1189,12 @@ export function useVersionSurface(): VersionSurface {
             if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
+            // A first send is where the sign-in question is put, so who this project is on the
+            // server may have changed whichever way the send went.
+            if (alive.current) await readSession();
             if (alive.current) setBusy(null);
         }
-    }, [services, busy]);
+    }, [services, busy, readSession]);
 
     /**
      * Bring the server's revisions down.
@@ -1203,9 +1264,11 @@ export function useVersionSurface(): VersionSurface {
             if (alive.current) setFailure(describeFailure(thrown));
             return false;
         } finally {
+            // For the reason the send gives: a first get puts the sign-in question too.
+            if (alive.current) await readSession();
             if (alive.current) setBusy(null);
         }
-    }, [services, busy]);
+    }, [services, busy, readSession]);
 
     const state = useMemo(
         () => resolveVersionSurfaceState({
@@ -1276,6 +1339,8 @@ export function useVersionSurface(): VersionSurface {
         publish,
         remoteNeedsSignIn,
         serverSession,
+        availableSession,
+        useServerSession,
         repositoryId,
         signOutOfServer,
         pushToRemote,
@@ -1341,6 +1406,10 @@ function describeFailure(thrown: unknown): VersionFailure {
             // internal verb that failed in front of it (`branchPush: Branch has diverged, …`). What
             // is translated here is the situation, not a paraphrase of a message.
             return { text: translate("workspace.shell.versionControl.branchDiverged"), tone: "failure" };
+        case VcsErrorCode.ProjectDistrusted:
+            // The sentence every control that stops for an untrusted project uses, so this reads
+            // like the rest of them and names the same way out.
+            return { text: translate("workspace.shell.distrust.unavailable"), tone: "failure" };
         // `ProjectPath` deliberately falls through to the raw sentence: it can only be reached
         // through a defect, and that sentence is three lines of diagnosis aimed at whoever has to
         // fix it. Paraphrasing it would throw away the only copy.

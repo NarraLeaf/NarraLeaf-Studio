@@ -24,6 +24,7 @@ import { VcsManager } from "./application/managers/vcs/VcsManager";
 import { TeamManager } from "./application/managers/team/TeamManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import type { VcsServerSession } from "@shared/types/vcs";
 import { readProjectConfigFromDir } from "./application/utils/projectConfigFile";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import {
@@ -229,6 +230,9 @@ export class App extends BaseApp {
             // TeamManager holds, rather than a second request that presents the token afresh.
             // That manager is constructed just below, so this reads it when a publish runs.
             (remoteOrigin, method, params) => this.teamManager.call(remoteOrigin, method, params),
+            // Whether a project uses the sign-in held for its server is asked in a window of its
+            // own, over the project's workspace, and the manager records the answer.
+            (request) => this.askServerSessionUse(request.projectPath, request.session),
         );
 
         // A server is now a place Studio holds a session with, and that is a thing of
@@ -1688,6 +1692,42 @@ export class App extends BaseApp {
     }
 
     /**
+     * Ask whether a project uses the sign-in this installation holds for its server.
+     *
+     * A Studio window rather than a sheet in the workspace, for the reason the trust question is
+     * one: the workspace renders the project's content, and the answer to "may this project act as
+     * your account" must come from a surface that content cannot reach. Modal over the project's
+     * workspace where it is on screen - the question arrives because something was pressed there -
+     * and standing on its own otherwise.
+     *
+     * Only asks and reports. `VcsManager` records the answer, against the pair and the account it
+     * showed; a window closed without answering is `null`, and nothing is recorded for it.
+     */
+    public async askServerSessionUse(projectPath: string, session: VcsServerSession): Promise<boolean | null> {
+        const config = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const configuredName = typeof config?.name === "string" ? config.name.trim() : "";
+        // The address without its scheme: `team.example.lan:41337`, the way every server row reads.
+        const host = session.remoteOrigin.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "");
+        const props: WindowProps[WindowAppType.ServerSessionPrompt] = {
+            projectName: configuredName || path.basename(projectPath),
+            projectPath,
+            serverName: session.name?.trim() || host,
+            serverHost: host,
+            accountName: session.account.displayName || session.account.username || session.account.userId,
+            accountDetail: session.account.identity || session.account.username,
+        };
+        const workspace = this.findWorkspaceForProject(projectPath);
+        const parent = workspace && !workspace.isClosed() && workspace.win.isVisible() ? workspace : null;
+        const promptWindow = await this.launchServerSessionPrompt(parent, props);
+        parent?.addChild(promptWindow);
+        return new Promise<boolean | null>(resolve => {
+            promptWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ServerSessionPrompt]) => {
+                resolve(result === null || result === undefined ? null : result.use === true);
+            });
+        });
+    }
+
+    /**
      * Carry a change of trust to the windows already open on the project.
      *
      * Trust is read once when a workspace boots - the run controls, the status bar, the loader that
@@ -2378,6 +2418,47 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ProjectTrustPrompt));
+
+        return window;
+    }
+
+    /**
+     * Raise the window that asks whether a project uses a server sign-in.
+     *
+     * The project-trust prompt's shape and size: a small modal child of the workspace that asked,
+     * one question, two answers.
+     */
+    async launchServerSessionPrompt(
+        parent: AppWindow | null,
+        props: WindowProps[WindowAppType.ServerSessionPrompt],
+    ): Promise<AppWindow<WindowAppType.ServerSessionPrompt>> {
+        const config: WindowConfig<WindowAppType.ServerSessionPrompt> = {
+            windowType: WindowAppType.ServerSessionPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
+            options: {
+                ...(parent ? { modal: true, parent: parent.win } : {}),
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                closable: true,
+                fullscreenable: false,
+                width: 480,
+                height: 360,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                show: false,
+            },
+        };
+        const window = new AppWindow<WindowAppType.ServerSessionPrompt>(this, config, props);
+        window.setTitle("Server Sign-in - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ServerSessionPrompt));
 
         return window;
     }

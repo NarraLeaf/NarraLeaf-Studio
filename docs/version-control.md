@@ -1114,7 +1114,7 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | [diff/](../src/main/app/application/managers/vcs/diff) | 比较的呈现层：内容 / 文档 / 文档集 / 修订 / 工作树 / 工程配置各一份 presenter，见 §9.1 |
 | [remote.ts](../src/main/app/application/managers/vcs/remote.ts) | 唯一需要 `offline: false` 的模块：推送、同步、克隆 |
 | [serverApi.ts](../src/main/app/application/managers/vcs/serverApi.ts) · [serverDiscovery.ts](../src/main/app/application/managers/vcs/serverDiscovery.ts) | 一次 HTTPS 请求，与「问一个地址背后是什么」 |
-| [serverSession.ts](../src/main/app/application/managers/vcs/serverSession.ts) · [serverTokens.ts](../src/main/app/application/managers/vcs/serverTokens.ts) · [serverPassword.ts](../src/main/app/application/managers/vcs/serverPassword.ts) | 登录与令牌保管。**会话按服务器 origin 存在账户级**，不属于任何一个工程 |
+| [serverSession.ts](../src/main/app/application/managers/vcs/serverSession.ts) · [serverTokens.ts](../src/main/app/application/managers/vcs/serverTokens.ts) · [serverPassword.ts](../src/main/app/application/managers/vcs/serverPassword.ts) | 登录与令牌保管。**登录按服务器 origin 存在账户级**；哪个项目用它另记一张表，见 [serverSessionScope.ts](../src/main/app/application/managers/vcs/serverSessionScope.ts) 与下文「登录按 (服务器, 项目) 作用」 |
 | [serverProjects.ts](../src/main/app/application/managers/vcs/serverProjects.ts) · [serverProjectsSession.ts](../src/main/app/application/managers/vcs/serverProjectsSession.ts) | 服务器上的工程清单，REST 与长连接两条同形的读法 |
 | [localRepositories.ts](../src/main/app/application/managers/vcs/localRepositories.ts) | 不开库就判断本机已经有哪些仓库（Lore 的库锁是独占且阻塞的，所以这条不能开库） |
 | [authorityTrust.ts](../src/main/app/application/managers/vcs/authorityTrust.ts) | 把签名端的 CA 装进本机信任库——全 Studio 唯一改操作系统设置的地方 |
@@ -1124,7 +1124,7 @@ getInfo         : {"success":false,"error":"Version control backend failed to lo
 | 文件 | 职责 |
 |---|---|
 | [VcsManager.ts](../src/main/app/application/managers/vcs/VcsManager.ts) | **按项目路径 keying** 的 session（store handle 复用 + 每项目串行化），flush → close → release |
-| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) | 42 个 IPC handler：**21 读**（什么都不改，含只走网络不记录的 `probeServer` / `getSyncState`）· **12 个动工程目录的**（建库 / 提交 / 检查点 / 恢复 / 设置远端 / 五个合并动作 / 同步 / 克隆）· **9 个服务器与账户动作**（登录三种 / 登出 / 加服务器 / 刷新 / 忘记 / 推送 / 发布）。谁可以指名哪个工程见下 |
+| [vcsAction.ts](../src/main/app/application/managers/window/handlers/vcsAction.ts) · [vcsServerSessionAction.ts](../src/main/app/application/managers/window/handlers/vcsServerSessionAction.ts) | 43 个 IPC handler：**21 读**（什么都不改，含只走网络不记录的 `probeServer` / `getSyncState`）· **12 个动工程目录的**（建库 / 提交 / 检查点 / 恢复 / 设置远端 / 五个合并动作 / 同步 / 克隆）· **10 个服务器与账户动作**（登录三种 / 登出 / 加服务器 / 刷新 / 忘记 / 推送 / 发布 / 使用登录）。`useServerSession` 单独一个文件，其余 42 个在 `vcsAction.ts`。谁可以指名哪个工程见下 |
 | [shared/vcs/workingSet.ts](../src/shared/vcs/workingSet.ts) | 工作集**策略**（谓词 + 忽略文件），两进程共用一份；走磁盘的遍历留在 main |
 | [VersionControlService.ts](../src/renderer/lib/workspace/services/core/VersionControlService.ts) | 渲染进程服务：可用性缓存、状态快照与订阅、历史缓存 |
 | [vcs.ts](../src/shared/types/vcs.ts) | 渲染进程类型 + 平台表 + `isVcsPlatformSupported()`，**不含任何 `Lore` 前缀** |
@@ -1157,7 +1157,7 @@ external；`asarUnpack` 已有，没改。session 释放接在 [index.ts](../src
 window[RendererInterfaceKey].vcs
 ```
 
-42 个方法，与 `vcsAction.ts` 的 handler 一一对应。逐条的语义写在
+43 个方法，与两个 handler 文件一一对应。逐条的语义写在
 [renderer.ts](../src/shared/types/renderer.ts) 的声明上，这里只列需要先知道的那几条与全部分组：
 
 | 方法 | 返回 |
@@ -1174,7 +1174,7 @@ window[RendererInterfaceKey].vcs
 `getChangedPaths`）· 比较（`diffRevisions` / `diffWorkingTree` / `getThreeWay` / `getMergeBase`）·
 合并（`getMergeState` / `getMergeDocument` / `resolveConflicts` / `completeMerge` / `unresolveConflicts` /
 `restartConflicts` / `abortMerge`）· 记录（`initRepository` / `commit` / `checkpoint`）·
-服务器绑定（`getRemote` / `setRemote`）· 账户与服务器（`getServerSession` / `signIn` / `signInWithPassword` /
+服务器绑定（`getRemote` / `setRemote`）· 账户与服务器（`getServerSession` / `useServerSession` / `signIn` / `signInWithPassword` /
 `signOut` / `trustAuthority` / `probeServer` / `listServers` / `addServer` / `refreshServer` / `forgetServer`）·
 传输（`push` / `sync` / `clone` / `publishProject` / `listLocalRepositories`）。
 
@@ -1195,19 +1195,60 @@ window[RendererInterfaceKey].vcs
 工程两个 session key），拒绝时把窗口自己的拼法交给下游，并且**不在日志里写出被指名的那个路径**——它不是这个作者的
 工程。拒绝会经 `ipcRegistry` 落到该窗口工程的日志面板上（`windowProjectRefusal.ts`）。
 
-⚠ **断言路径没有关上「把工程送上服务器」这一族**，别把它读成关上了：
+断言路径只管「哪个项目」。「花谁的凭据、送到哪里」由下一节管。
 
-- `publishProject` 的 `remoteOrigin` 是 payload 字段，从不与该工程 `.lore/config.toml` 里的 remote 比对，而发布的
-  第三步**会改写那个文件**——之后 push / sync 从文件读地址，于是静默跟着换了目标；
-- **会话与令牌按服务器 origin 存在账户级**，不属于工程，任何指向同一个 origin 的工程都借得到，
-  `withServerSession` 还会自己重放令牌；
-- `signIn` 的 `authUrl` 是 payload 字段，且**优先于令牌自带的地址**，令牌就送到它指的主机；
-- 这一族没有信任闸（`DISTRUSTED_OPERATIONS` 里没有 VCS 条目），也不查窗口的文件系统授权。
+`publishProject` 从**没有项目的窗口**来时不断言路径：启动器的服务器页会让向导先把项目写到本机再送上去，而那个窗口
+自己没有项目，断言会把「在服务器上新建一个项目」这条路整条堵死。从有项目的窗口来时只能发布那个窗口自己的项目。
+`initRepository` 同理不能断言：向导合法地指一个还不是任何窗口项目的新目录。
 
-`publishProject` 还**故意没有**路径断言：启动器的服务器页会让向导先把工程写到本机再送上去，而那个窗口自己没有工程，
-断言会把「在服务器上新建一个工程」这条路整条堵死。要关的是「可以送到哪里、可以花账户的哪份凭据」，
-不是「哪个工程」——这需要先决定服务器会话到底以什么为作用域，比任何单个 handler 都大。
-`initRepository` 同理不能断言：向导合法地指一个还不是任何窗口工程的新目录。
+### 登录按 (服务器, 项目) 作用
+
+**登录属于本机账户，一台服务器一份**（`versionControl.serverSessions`，令牌密封在 `versionControl.serverTokens`）。
+后端把它存在按系统用户的 auth store 里，**只要一次调用带着该账号 id，后端就替它出示会话**，不管是哪个仓库的调用。
+所以「这个项目以该账号身份访问服务器」完全取决于 Studio 在调用里放不放账号 id——
+这就是作用域落地的地方（`VcsManager.onlineIdentity` / `withServerSession`）。
+
+规则（[serverSessionScope.ts](../src/main/app/application/managers/vcs/serverSessionScope.ts)）：
+
+- **一个项目用某台服务器的登录，必须是作者说过「用」**。答案按 (服务器 origin, 项目目录) 记在
+  `versionControl.serverSessionProjects`。项目那一半是 `normalizeProjectPath` 过的**目录**，**绝不是**
+  `projectIdentifier`——那是项目自带的数据，复制别人的项目就会连带继承别人的答案。
+- 答案**绑定给出时的账号**（`userId`）。同一台服务器的登录后来换成了另一个账号，旧的「用」不转移，重新问。
+- **问的时机**：该项目第一次发出需要登录的请求时——上传 / 获取 / 检查 / 连接（`setRemote`）/ 实时会话的
+  版本读取。问题在 Studio 自己的窗口里（`WindowAppType.ServerSessionPrompt`，照项目信任弹窗的样子），
+  **不是工作区里的对话框**：工作区渲染项目内容，能被项目内容回答的问题不算问题。答案由主进程记录，
+  渲染层没有任何通道能替作者回答。
+- 「用」→ 记下，之后不再问；「不使用」→ 记为 `null`，日常请求不再问，按作者身份匿名访问（带令牌的服务器会拒，
+  面板照旧给出登录入口）；**关掉窗口不回答 → 什么都不记**，这次匿名，下次再问。
+- 从 Team 面板点「使用 … 的登录…」或在项目窗口里**选服务器发布**，会**再问一次**（即使之前答过「不使用」）：
+  那是作者在重新提这个问题。
+- **在项目里登录**（Team 面板的添加服务器、`signIn`）就是该项目的回答，该项目直接用新登录。
+  从设置或启动器登录不替任何项目回答。
+- 启动器服务器页「在服务器上新建项目」和向导「从服务器获取项目」是作者选定了服务器与账号的动作，
+  新项目直接用该登录。前者只对**还没有服务器的项目**成立，不能用它把一个已连接的项目改指别处。
+- 没有记录的项目等于「没问过」，所以**升级前已有的登录不会消失**：每个借用过它的项目在升级后的第一次请求时问一次。
+
+登出：**项目里的「退出登录」只让该项目不再用**（记为「不使用」），登录本身和其他项目不受影响；
+**设置里的「退出登录」把登录从本机拿掉**，所有项目一起停用，各项目的答案一并清除。设置页每台服务器下面列出
+正在使用它的项目。
+
+同一轮收口的三件：
+
+- **令牌只送到它自己声明的地址**：`authUrl` 不再能盖掉令牌 `aud` 里的登录地址，不一致按「不是这台服务器的令牌」
+  拒绝，一个字节都不发（`signInAddressFor`）。只有 `aud` 不含登录地址的令牌（裸 loreserver 签的）才用填写的地址。
+- **这一族有信任闸**：`server connection` 进了 `DISTRUSTED_OPERATIONS`。地址来自项目自己的 `.lore/config.toml`，
+  是「项目选的地址」。未受信任的项目不能上传、获取、检查、连接、登录或发布。
+- **渲染层不能写登录相关的全局状态**：`versionControl.serverSessions` / `serverTokens` / `serverSessionProjects`
+  是主进程独占的键（`MAIN_OWNED_STATE_KEYS`），`app.globalState.set` / `delete` 按名拒绝；
+  密封令牌根本不会经 `get` / `getAll` 到渲染层。此前任何窗口都能改写某条登录的 `authUrl`，
+  下一次重放令牌就会送到那里。
+
+Team 协作（在线成员、房间、附件）在工作区里**只对「用」了登录的项目打开**（`TeamProjectProvider` 按
+`serverSession` 判断）：没回答过或答了「不使用」的项目不会向服务器报到、不订阅、不进房间，答「用」之后自动跟上。
+
+⚠ **没有覆盖的：Team 协议的 IPC 本身**（`team.open` / `call` / `subscribe` / `transfer`）。主进程按服务器 origin
+为每台服务器开一个客户端、用同一份密封令牌，按窗口而不按项目，也不问项目。上面那条是渲染层的默认行为，
+不是主进程的闸：任何窗口的代码仍能以账户身份调用任意 Team 方法。
 
 `restoreRevision` 的三条硬约束（细节见 [revisionRestore.ts](../src/main/app/application/managers/vcs/revisionRestore.ts)）：
 

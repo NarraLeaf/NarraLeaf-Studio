@@ -861,8 +861,8 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
                 one press away from recording.
 
                 Not asked at all while a session stands. `serverSession` is what
-                `VcsManager.getServerSession` answered for THIS project's remote, and that is the
-                same `storedServerSession(remoteOrigin)` lookup `resolveIdentity` makes before
+                `VcsManager.getServerSession` answered for THIS project's remote - the sign-in this
+                project uses, which is the same lookup `resolveIdentity` makes before
                 preferring the account over anything in settings - so a name typed here while it is
                 non-null is a name nothing will ever record. Worse, the section above is at that
                 moment saying "Signed in as Ada Lovelace" three lines up, so the panel was asking

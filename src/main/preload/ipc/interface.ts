@@ -62,7 +62,7 @@ import type {
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -669,9 +669,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
         getSyncState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
-        /** Local read - no socket. Null means nobody has signed in to this project's server. */
+        /** Local read - no socket. `session` null means this project uses no sign-in there. */
         getServerSession: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<{ session: VcsServerSession | null }>>,
+            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<VcsProjectServerSession>>,
+        /** Raises Studio's own sign-in question for this project; the answer is recorded by the host. */
+        useServerSession: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.vcsUseServerSession, { projectPath }) as Promise<RequestStatus<VcsProjectServerSession>>,
         /** Goes to the network. The token is not stored here and does not come back. */
         signIn: (projectPath: string, authUrl: string, token: string) =>
             ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,

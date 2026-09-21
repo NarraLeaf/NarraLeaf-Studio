@@ -429,6 +429,10 @@ export const settings = {
         checking: "Checking…",
         done: "Done",
         signOut: "Sign out",
+        // Under each server: the projects that use its sign-in, which are the ones signing out
+        // here signs out of that server.
+        usedBy: "Used by {projects}",
+        unused: "No project uses this sign-in.",
         signIn: "Sign in",
         signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including
