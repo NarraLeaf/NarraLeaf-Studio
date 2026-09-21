@@ -63,7 +63,8 @@ const BUILDER_CALL = "buildGameHostApiOptions(";
  * read why the list exists - and so the count below can be non-vacuous.
  */
 const GAME_HOST_FILES: Readonly<Record<string, string>> = {
-    "the page and nested-frame hosts": path.join(HERE, "GameApp.tsx"),
+    "the page and layer host": path.join(HERE, "hostAdapterBundles.ts"),
+    "the nested-frame host": path.join(HERE, "GameApp.tsx"),
     "the Game UI slot host": path.join(HERE, "StageSlotSurfaceShell.tsx"),
 };
 
