@@ -303,6 +303,11 @@ export const lint = {
             description: "プロジェクトにないページを埋め込んでいるページウィジェット",
             message: "このページウィジェットはプロジェクトにないページを埋め込んでいる",
         },
+        uiFrameLoop: {
+            title: "循環する埋め込みページ",
+            description: "埋め込んだページがそのページウィジェットに戻ってくる",
+            message: "このページウィジェットが埋め込むページは、このウィジェットに戻ってくる",
+        },
         uiListItemFieldMissing: {
             title: "項目が見つかりません",
             description: "描画元のリストが宣言していない項目に紐づいたウィジェット",

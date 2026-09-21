@@ -299,6 +299,11 @@ export const lint = {
             description: "页面控件嵌入了项目中不存在的页面",
             message: "该页面控件嵌入的页面在此项目中不存在",
         },
+        uiFrameLoop: {
+            title: "循环的嵌入页面",
+            description: "页面控件嵌入的页面会绕回该控件",
+            message: "该页面控件嵌入的页面会绕回该控件",
+        },
         uiListItemFieldMissing: {
             title: "条目字段不存在",
             description: "控件绑定的条目字段，在画它的列表里没有声明",

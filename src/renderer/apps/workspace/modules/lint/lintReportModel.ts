@@ -114,6 +114,12 @@ export function lintLocationLabel(location: LintLocation, projectName: string): 
             return location.elementName
                 ? `${location.surfaceName} / ${location.elementName}`
                 : location.surfaceName;
+        // The definition's name and nothing in its place when it has none: its id is a UUID, and a
+        // component with no name is still told apart by the widget named after it.
+        case "component":
+            return location.elementName
+                ? `${location.componentName} / ${location.elementName}`
+                : location.componentName;
         case "character":
             return location.characterName || location.characterId;
     }
@@ -139,6 +145,9 @@ export function lintLocationKey(location: LintLocation): string {
         // button a heading of its own, which is the one-item-groups failure the story case avoids.
         case "surface":
             return `surface:${location.surfaceId}`;
+        // The definition, never the widget in it, for the reason the page is keyed above.
+        case "component":
+            return `component:${location.componentId}`;
         case "character":
             return `character:${location.characterId}`;
     }

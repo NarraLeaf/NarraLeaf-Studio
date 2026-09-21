@@ -120,6 +120,19 @@ export function createSurfaceEditorTab(surface: UISurface) {
     };
 }
 
+/** The editor tab for a component definition - the one the component library opens. */
+export function createComponentEditorTab(component: UIComponentDefinition) {
+    return {
+        id: getComponentTabId(component.id),
+        title: component.name,
+        icon: <PanelsTopLeft className="w-4 h-4" />,
+        component: UISurfaceEditorTab,
+        payload: { componentId: component.id },
+        closable: true,
+        modified: false,
+    };
+}
+
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
@@ -256,15 +269,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [context, panelId]);
 
     const handleOpenComponent = useCallback((component: UIComponentDefinition) => {
-        openEditorTab({
-            id: getComponentTabId(component.id),
-            title: component.name,
-            icon: <PanelsTopLeft className="w-4 h-4" />,
-            component: UISurfaceEditorTab,
-            payload: { componentId: component.id },
-            closable: true,
-            modified: false,
-        });
+        openEditorTab(createComponentEditorTab(component));
         // The same bargain a page card makes: opening it also makes it the panel's subject. For a
         // component that subject is where its params are declared - its root is the outline's root
         // and so not selectable, leaving nothing inside it to hang them on.
