@@ -45,6 +45,9 @@ import { blueprintHistoryScope, HistoryScopeKind, historyScopeParts, isHistorySc
 import { Service } from "../Service";
 import { Services, ILocalBlueprintService, WorkspaceContext } from "../services";
 import { FileSystemService } from "../core/FileSystem";
+import { describeFileWriteFailure } from "../core/writeFailureReason";
+import { itemWrite } from "../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
@@ -845,13 +848,16 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const scriptRef = this.unusedScriptRef(name, this.widgetTypeOfOwner(owner));
         const absolute = this.getContext().project.resolve(scriptRef.split("/"));
+        // Thrown to the caller that asked for the script layer, which says it was not added. The file
+        // is the author's from here on, so it is named by the path they will find it at.
         const written = await fs.writeFileNoFollowOrCreate(
             absolute,
             renderStarterScript({ owner, widgetType: this.widgetTypeOfOwner(owner) }),
             "utf-8",
+            itemWrite(scriptRef, "workspace.shell.save.stores.uiGraph", "handledByWriter"),
         );
         if (!written.ok) {
-            throw new RendererError(`Could not create ${scriptRef}: ${written.error.message}`);
+            throw new RendererError(describeFileWriteFailure(scriptRef, written.error, translate), { cause: written.error });
         }
         // A refusal is reported as success - the write gate turns a frozen workspace into a no-op -
         // so the flag is the only thing that separates "written" from "silently dropped". Creating

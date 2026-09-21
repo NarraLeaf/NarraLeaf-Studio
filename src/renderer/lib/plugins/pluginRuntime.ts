@@ -45,6 +45,7 @@ import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { storeWrite } from "@/lib/workspace/services/autosave/writeReport";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
@@ -624,7 +625,13 @@ export function createPluginApp(
                     throw new Error(result.error.message);
                 },
                 writeJson: async (namespace, data) => {
-                    const result = await storage.writeStore(pluginStoreNamespace(descriptor.plugin.id, namespace), data);
+                    // Thrown to the plugin, which may or may not say anything; the save-status
+                    // surface tells the author either way, without naming the store's file.
+                    const result = await storage.writeStore(
+                        pluginStoreNamespace(descriptor.plugin.id, namespace),
+                        data,
+                        storeWrite("workspace.shell.save.stores.pluginData", "notRetried"),
+                    );
                     if (!result.ok) {
                         throw new Error(result.error.message);
                     }

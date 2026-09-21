@@ -18,6 +18,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { insertLiveRecordBefore } from "@shared/live/config";
 import type { LiveDlcOp } from "@shared/live/ops";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -116,7 +117,7 @@ export class DlcService extends Service<DlcService> implements IDlcService {
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.dlc", "retried"));
     }
 
     public async load(): Promise<ProjectDlc[]> {

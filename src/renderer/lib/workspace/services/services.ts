@@ -1,5 +1,6 @@
 import { FsRequestResult } from "@shared/types/os";
 import type { FsWriteBatchEntry, FsWriteBatchOutcome } from "./core/FileSystem";
+import type { FsWriteReport } from "./autosave/writeReport";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
@@ -316,14 +317,20 @@ interface IFileSystemService extends IService {
     directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
     read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
-    writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
+    /** `report` says what the file is and what a failure leads to. See `BaseFileSystemService.write`. */
+    write(path: string, data: string, encoding: FsTextEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
+    writeRaw(path: string, data: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>>;
     /** N files, one grant, one result each. See `BaseFileSystemService.writeBatch`. */
     writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]>;
-    ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
-    writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    ensureRegularFile(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
+    writeFileNoFollow(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
     /** Write or create, without the write grant. See `BaseFileSystemService.writeFileNoFollowOrCreate`. */
-    writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    writeFileNoFollowOrCreate(
+        path: string,
+        data: string,
+        encoding: BufferEncoding,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
     deleteDir(path: string): Promise<FsRequestResult<void>>;
@@ -1326,9 +1333,9 @@ interface IAssetService extends IService {
 }
 
 interface IServiceAssetsService extends IService {
-    writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>>;
+    writeStore<T extends Record<string, any>>(namespace: string, data: T, report?: FsWriteReport): Promise<FsRequestResult<{ path: string }>>;
     readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>>;
-    writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>>;
+    writeFile(data: string | Buffer | Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<string>>;
     readFile(fileId: string, encoding?: BufferEncoding): Promise<FsRequestResult<string>>;
     readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>>;
     deleteFile(fileId: string): Promise<FsRequestResult<void>>;

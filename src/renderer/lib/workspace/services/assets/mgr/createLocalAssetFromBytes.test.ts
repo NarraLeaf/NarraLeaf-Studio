@@ -5,6 +5,8 @@ import { LocalAssetsManager } from "./LocalAssetsManager";
 import { AssetType } from "../assetTypes";
 import { AssetCreateErrorCode, AssetSource, type Asset, type AssetsMap } from "../types";
 import { Services } from "../../services";
+import { FsRejectErrorCode, type FsRejectError } from "@shared/types/os";
+import type { FsWriteReport } from "../../autosave/writeReport";
 
 /**
  * Creating an asset under an id the caller chose.
@@ -20,6 +22,10 @@ import { Services } from "../../services";
 
 const fakeDisk = new Map<string, Uint8Array>();
 const fakeDirs = new Set<string>();
+/** When set, every content write is refused with this error, the way a read-only disk refuses it. */
+let refuseWrites: FsRejectError | null = null;
+/** What each content write told the save-status surface about itself. */
+const writeReports: (FsWriteReport | undefined)[] = [];
 
 vi.mock("@/lib/app/privilegedFacade", () => ({
     appPrivilegedFacade: {
@@ -88,8 +94,12 @@ function createHarness(seed: Asset<AssetType, AssetSource.Local>[] = []) {
             fakeDirs.add(path);
             return { ok: true as const, data: undefined };
         },
-        writeRaw: async (path: string, data: Uint8Array) => {
+        writeRaw: async (path: string, data: Uint8Array, report?: FsWriteReport) => {
             rawWrites.push(path);
+            writeReports.push(report);
+            if (refuseWrites) {
+                return { ok: false as const, error: refuseWrites };
+            }
             fakeDisk.set(path, data);
             return { ok: true as const, data: undefined };
         },
@@ -132,6 +142,39 @@ function createHarness(seed: Asset<AssetType, AssetSource.Local>[] = []) {
 beforeEach(() => {
     fakeDisk.clear();
     fakeDirs.clear();
+    refuseWrites = null;
+    writeReports.length = 0;
+});
+
+/**
+ * A content write the disk refused. The path it was aimed at is the asset's id split into folders,
+ * and its last segment is the tail of that id - so the sentence the caller shows names the asset, and
+ * the save-status surface is told the caller reports it.
+ */
+describe("createLocalAssetFromBytes when the disk refuses the bytes", () => {
+    it("says so by the asset's name, never by its storage path", async () => {
+        const harness = createHarness();
+        refuseWrites = {
+            code: FsRejectErrorCode.PERMISSION_DENIED,
+            message: `EPERM: operation not permitted, open '${contentPath(IMPORTED_ID)}'`,
+        };
+
+        const result = await harness.service.createLocalAssetFromBytes(
+            AssetType.Other,
+            "notes.txt",
+            new Uint8Array(0),
+            undefined,
+            { id: IMPORTED_ID },
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe("Could not save “notes.txt”. The file is read-only, or Studio is not allowed to write to it.");
+        expect(result.error).not.toContain(IMPORTED_ID.replace(/-/g, "").slice(4));
+        expect(result.error).not.toContain("EPERM");
+        expect(writeReports).toEqual([
+            { name: { item: "notes.txt" }, afterFailure: "handledByWriter" },
+        ]);
+    });
 });
 
 describe("createLocalAssetFromBytes with a caller-chosen id", () => {

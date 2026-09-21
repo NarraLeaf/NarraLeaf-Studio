@@ -44,6 +44,8 @@ import {
     type LoopPoints,
 } from "./audio/loopHistory";
 import { TooltipGroup } from "@/lib/tooltip";
+import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
+import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
 
 interface AudioPreviewPayload {
     asset: Asset<AssetType.Audio>;
@@ -97,7 +99,8 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
     const [metadata, setMetadata] = useState<AssetData<AssetType.Audio>["metadata"] | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [failure, setFailure] = useState<AssetReadFailure | null>(null);
+    const notice = useAssetReadNotice(asset?.id, failure);
 
     // One decoded copy of the samples, replaced only when the asset itself changes.
     const [clip, setClip] = useState<AudioClip | null>(null);
@@ -139,7 +142,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         }
         let mounted = true;
         setLoading(true);
-        setError(null);
+        setFailure(null);
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         void assetsService
             .fetch(asset)
@@ -148,7 +151,8 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     return;
                 }
                 if (!result.success) {
-                    setError(result.error || t("assets.audio.loadError"));
+                    console.warn(`[assets] could not read ${asset.id}: ${result.error ?? ""}`);
+                    setFailure({ code: result.code });
                     setLoading(false);
                     return;
                 }
@@ -165,7 +169,8 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                     setView(fitAll(clipLength(loaded)));
                 } catch (decodeError) {
                     if (mounted) {
-                        setError(String(decodeError));
+                        console.warn(`[assets] could not decode ${asset.id}`, decodeError);
+                        setFailure({ code: ASSET_UNDECODABLE });
                     }
                 } finally {
                     void audioContext.close();
@@ -176,7 +181,8 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             })
             .catch(fetchError => {
                 if (mounted) {
-                    setError(String(fetchError));
+                    console.warn(`[assets] could not read ${asset.id}`, fetchError);
+                    setFailure({});
                     setLoading(false);
                 }
             });
@@ -542,14 +548,14 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         );
     }
 
-    if (error || !clip) {
+    if (notice || !clip) {
         return (
             <div className="flex h-full items-center justify-center bg-surface p-4">
                 <div className="flex max-w-md items-start gap-2 rounded-md bg-danger/10 p-4 text-danger">
                     <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
                     <div>
                         <p className="font-medium">{t("assets.audio.loadError")}</p>
-                        {error && <p className="mt-1 text-sm text-danger/80">{error}</p>}
+                        {notice && <p className="mt-1 text-sm text-danger/80">{notice}</p>}
                     </div>
                 </div>
             </div>

@@ -53,14 +53,14 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
-import { SaveStatusService } from "../autosave/SaveStatusService";
+import { storeWrite, type SavedFileName } from "../autosave/writeReport";
 import { FileSystemService } from "./FileSystem";
-import { describeWriteFailureReason } from "./writeFailureReason";
+import { describeFileWriteFailure, describeWriteFailureReason } from "./writeFailureReason";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
-import type { FsRejectError } from "@shared/types/os";
+import type { FsRejectError, FsRequestResult } from "@shared/types/os";
 
 /**
  * What the author may hand Studio as an icon. One list for every slot, not one
@@ -116,6 +116,28 @@ export class ProjectFileWriteError extends RendererError {
     }
 }
 
+/**
+ * How a manifest write is reported when it fails: by whoever asked for the change, with a
+ * {@link ProjectFileWriteError}, and never tried again - the cached manifest stays at what was last
+ * written, and every surface showing a setting goes back to it. The save-status surface would say
+ * the opposite of that, so it only logs it.
+ */
+const PROJECT_FILE_WRITE = storeWrite("workspace.shell.save.stores.project", "handledByWriter");
+
+/** What the icon files are to the author, for the sentence a failed write of one throws. */
+const PROJECT_ICON = { store: "workspace.shell.save.stores.projectIcon" } as const satisfies SavedFileName;
+
+/**
+ * Throw a write failure as the sentence the surface that asked will show, naming the thing written
+ * by what the author knows it as. The filesystem's own message names the path, and for a derived
+ * file that is a directory the author never chose.
+ */
+function throwWriteFailure(name: SavedFileName, result: FsRequestResult<void>): void {
+    if (!result.ok) {
+        throw new RendererError(describeFileWriteFailure(name, result.error, translate), { cause: result.error });
+    }
+}
+
 /** The sentence a {@link ProjectFileWriteError} carries, in the language `t` speaks. */
 export function describeProjectFileWriteFailure(
     fsError: Pick<FsRejectError, "code">,
@@ -153,8 +175,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
-        const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
-        await depend([filesystemService, saveStatus]);
+        await depend([filesystemService]);
 
         const projectPath = this.getContext().project.getConfig().projectPath;
         const fileStats = throwException(await filesystemService.list(projectPath));
@@ -170,13 +191,6 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         this.projectConfigPath = configPath;
         this.projectConfigFormat = isNlproj ? "nlproj" : "json";
         this.projectConfig = await this.readProjectConfigFile();
-
-        // A failed manifest write is reported by whoever asked for the change, with a
-        // `ProjectFileWriteError`, and nothing tries it again: the cached manifest stays at what was
-        // last written, and every surface showing a setting goes back to it. The save-failure notice
-        // would say the opposite - that the write is still being retried - so it is told to leave
-        // this file to its writer. See `SaveStatusService.registerCallerReportedFile`.
-        saveStatus.registerCallerReportedFile(configPath);
     }
 
     public getProjectConfig(): ProjectConfig {
@@ -984,9 +998,10 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         await this.removeIconSourceSiblings(slot, extension);
 
         const relativeSegments = ProjectNameConvention.ProjectIconSource(slot, extension);
-        throwException(await filesystemService.writeRaw(
+        throwWriteFailure(PROJECT_ICON, await filesystemService.writeRaw(
             this.getContext().project.resolve(relativeSegments),
             bytes,
+            storeWrite(PROJECT_ICON.store, "handledByWriter"),
         ));
 
         return {
@@ -1018,7 +1033,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * Returns whether anything was written.
      */
     public async writeProjectIconBake(relativePath: string, bytes: Uint8Array): Promise<boolean> {
-        return this.writeProjectDerivedFile(relativePath, bytes);
+        return this.writeProjectDerivedFile(relativePath, bytes, PROJECT_ICON);
     }
 
     /**
@@ -1031,7 +1046,11 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * one derived tree does not have to know about another's layout. Returns whether anything was
      * written.
      */
-    public async writeProjectDerivedFile(relativePath: string, bytes: Uint8Array): Promise<boolean> {
+    public async writeProjectDerivedFile(
+        relativePath: string,
+        bytes: Uint8Array,
+        name: SavedFileName & { store: TranslationKey },
+    ): Promise<boolean> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const absolutePath = this.getContext().project.resolve(relativePath);
         const existing = await filesystemService.readRaw(absolutePath);
@@ -1042,7 +1061,9 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         if (parent) {
             throwException(await filesystemService.createDir(this.getContext().project.resolve(parent)));
         }
-        throwException(await filesystemService.writeRaw(absolutePath, bytes));
+        // Derived, so baked again the next time it is asked for: the caller that asked is the one to
+        // say it did not happen, and the error it throws already says it in the author's words.
+        throwWriteFailure(name, await filesystemService.writeRaw(absolutePath, bytes, storeWrite(name.store, "handledByWriter")));
         return true;
     }
 
@@ -1135,8 +1156,8 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const result = this.projectConfigFormat === "nlproj"
-            ? await filesystemService.writeRaw(this.projectConfigPath, encodeProjectConfig(config as any))
-            : await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8");
+            ? await filesystemService.writeRaw(this.projectConfigPath, encodeProjectConfig(config as any), PROJECT_FILE_WRITE)
+            : await filesystemService.write(this.projectConfigPath, JSON.stringify(config, null, 2), "utf-8", PROJECT_FILE_WRITE);
         if (!result.ok) {
             throw new ProjectFileWriteError(result.error);
         }

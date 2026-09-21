@@ -53,6 +53,9 @@ import { matchKeyForFilename, VOICE_NAME_TOKENS } from "@shared/utils/voiceNamin
 import { readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import { createVoiceEditorTab } from "./openVoiceEditorTab";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { basename } from "@shared/utils/path";
+import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
+import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
 
 /** Audio containers offered in the batch-import file picker. */
 const AUDIO_IMPORT_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba"];
@@ -373,9 +376,17 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             return false;
         }
         const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-        const result = await filesystem.write(targetPath, "﻿" + csv, "utf-8");
+        // Reported here, where the author asked for it, by the name they gave the file - the
+        // save-status surface only logs it. Never the system's message, which is English and
+        // quotes the whole path.
+        const result = await filesystem.write(
+            targetPath,
+            "﻿" + csv,
+            "utf-8",
+            itemWrite(basename(targetPath), "workspace.shell.save.stores.voice", "handledByWriter"),
+        );
         if (!result.ok) {
-            throw new Error(result.error.message);
+            throw new Error(describeFileWriteFailure(basename(targetPath), result.error, t));
         }
         uiService?.showNotification(t("workspace.voice.panel.exportDone", { path: targetPath }), "success");
         return true;

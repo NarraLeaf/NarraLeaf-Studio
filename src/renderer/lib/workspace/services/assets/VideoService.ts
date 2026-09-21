@@ -2,6 +2,7 @@ import { AssetData, AssetType, VideoAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
 import { AssetServiceBase } from "./AssetServiceBase";
+import { ASSET_UNDECODABLE } from "./assetReadFailure";
 
 export class VideoService extends AssetServiceBase {
 
@@ -12,6 +13,7 @@ export class VideoService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read video file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
 
@@ -38,6 +40,7 @@ export class VideoService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to parse video metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                code: ASSET_UNDECODABLE,
             };
         }
     }
