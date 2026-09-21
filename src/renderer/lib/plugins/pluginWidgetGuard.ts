@@ -1,7 +1,9 @@
+import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimeWidgetRendererProps } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import { narrowWidgetEventDispatchForPlugin } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { appendWidgetLogicTab } from "@/lib/ui-editor/widget-modules/shared/blueprint/widgetLogicTab";
 import type {
     UIInspectorData,
     UIWidgetModule,
@@ -210,6 +212,29 @@ export function guardInspectorDataForPluginWidget(data: UIInspectorData): UIInsp
 }
 
 /**
+ * A plugin widget's declared events, held to the heads a graph can start on for it.
+ *
+ * What is dropped is said on the console with the plugin and the event named, because the author of
+ * the plugin is the only one who can fix it and a dropped event is otherwise just a row that is not
+ * in the properties panel. See `sanitizeContributedWidgetLogicApi` for what is dropped and why.
+ */
+export function sanitizePluginWidgetLogicApi(
+    pluginId: string,
+    widgetType: string,
+    logicApi: WidgetLogicApi | undefined,
+): WidgetLogicApi | undefined {
+    const result = sanitizeContributedWidgetLogicApi(pluginId, logicApi);
+    for (const problem of result.problems) {
+        console.warn(
+            `[plugin:${pluginId}] widget ${widgetType}, event "${problem.eventId}": ${problem.message}. `
+                + "A widget event names the head nodes that start on it in `headNodeTypes`: a built-in "
+                + "widget event head, or a node type this plugin registers.",
+        );
+    }
+    return result.logicApi;
+}
+
+/**
  * Wrap a plugin's widget module so every callback the host makes into it is handed the narrowed
  * surface.
  *
@@ -227,10 +252,14 @@ export function guardPluginWidgetModule(
     const state = (): PluginWidgetEditorStateApi =>
         createPluginWidgetEditorStateApi(pluginId, services.stateService);
 
+    // What the registry holds is what the shared lookups answer with (`contributedWidgets.ts`), so
+    // the declaration is held to the plugin's own heads here, once, before anything reads it.
+    const logicApi = sanitizePluginWidgetLogicApi(pluginId, module.type, module.logicApi);
     const guarded: UIWidgetModule = {
         type: module.type,
         extends: module.extends,
-        logicApi: module.logicApi,
+        logicApi,
+        acceptsChildren: module.acceptsChildren === true,
         displayName: module.displayName,
         icon: module.icon,
         createDefaultElement: () => module.createDefaultElement(),
@@ -246,10 +275,14 @@ export function guardPluginWidgetModule(
     if (module.listEditorStates) {
         guarded.listEditorStates = element => module.listEditorStates!(element);
     }
-    if (module.createInspector) {
-        guarded.createInspector = context =>
-            module.createInspector!({ element: context.element, documentService: doc() }) as unknown as
-            ReturnType<NonNullable<UIWidgetModule["createInspector"]>>;
+    if (module.createInspector || logicApi?.supportsPrivateBlueprint) {
+        guarded.createInspector = context => {
+            const own = module.createInspector?.({ element: context.element, documentService: doc() }) as unknown as
+                ReturnType<NonNullable<UIWidgetModule["createInspector"]>>;
+            // The way into the widget's blueprint is a host section no plugin can build; see
+            // `appendWidgetLogicTab`. It reads the workspace, never the plugin's facade.
+            return logicApi?.supportsPrivateBlueprint ? appendWidgetLogicTab(own, context.element) : own;
+        };
     }
     if (module.createDockerBarItems) {
         guarded.createDockerBarItems = context =>

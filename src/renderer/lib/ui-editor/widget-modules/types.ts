@@ -227,6 +227,16 @@ export interface UIWidgetModule {
     /** Shared logic capability schema for editor, runtime, and blueprint tooling. */
     readonly logicApi?: WidgetLogicApi;
 
+    /**
+     * Whether an author may put other elements inside this widget.
+     *
+     * Read for a plugin's widget only. The built-in answers live in `document.ts`
+     * (`uiElementTypeAcceptsChildren`), because the game runtime and the shared document rules ask
+     * them where no module registry exists; a plugin's answer is read from its registration through
+     * `contributedWidgets.ts`, which is where those same functions look for a type they do not know.
+     */
+    readonly acceptsChildren?: boolean;
+
     /** Human-readable display name */
     readonly displayName: string;
 

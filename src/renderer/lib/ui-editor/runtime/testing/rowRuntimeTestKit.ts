@@ -228,15 +228,24 @@ let runtimeCount = 0;
 export function createRowRuntime(
     blueprints: readonly Blueprint[],
     options: {
-        /** Another page than {@link rowDocument}; its first surface is the one that runs. */
+        /** Another page than {@link rowDocument}; its first surface is the one that runs, unless `surfaceId` names another. */
         document?: UIDocument;
+        /** Which of the document's surfaces runs - a page drawn inside a frame, say. */
+        surfaceId?: string;
         /** The desktop half of `Move Mouse To`, where a test wants to see where the cursor was sent. */
         onMovePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
+        /**
+         * Where `Emit Page Event` goes, for a page that runs inside a frame - the half of a frame's
+         * page runtime the game builds from the frame's own dispatch.
+         */
+        onFrameEmit?: (eventName: string, data: unknown) => Promise<void>;
     } = {},
 ) {
     runtimeCount += 1;
     const document = options.document ?? rowDocument;
-    const surface = document.surfaces[0] as UISurface;
+    const surface = (options.surfaceId
+        ? document.surfaces.find(candidate => candidate.id === options.surfaceId)
+        : document.surfaces[0]) as UISurface;
     const runtimeScopeId = `${surface.id}#${runtimeCount}`;
     const blueprintDocument = blueprintDocumentOf(blueprints);
     const patches: [string, DevModeWidgetRuntimePatch][] = [];
@@ -282,6 +291,7 @@ export function createRowRuntime(
             dispatchWidgetFlushInDrawing(adapter?.blueprintRuntime, elementId, payload, address);
         },
         onMovePointer: options.onMovePointer,
+        onFrameEmit: options.onFrameEmit,
         widgetRuntimeStore,
     });
     adapter = createDevModeBlueprintHostAdapter({

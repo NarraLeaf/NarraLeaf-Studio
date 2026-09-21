@@ -1,3 +1,4 @@
+import { getContributedWidget } from "./contributedWidgets";
 import { resolveByWidgetType } from "./widgetInheritance";
 
 export type WidgetLogicEventDispatchKind = "lifecycle" | "interaction";
@@ -860,9 +861,107 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
  * author reads on the graph header and "Text logic" over a Dialog Sentence would be wrong. The
  * fallback is for the next one: a specialisation that adds no capability of its own is now
  * scriptable the day it is registered rather than the day someone remembers this table.
+ *
+ * A type the table does not know is looked up among the widgets loaded plugins contribute (see
+ * `contributedWidgets.ts`), which is what lets a plugin widget's declared events reach its blueprint:
+ * the dispatcher, the element wrapper that turns a click into `mouseClick`, the Init lifecycle and
+ * the blueprint reconciliation all ask here, and all of them answered "raises nothing" for a plugin
+ * widget before.
  */
 export function getWidgetLogicApi(elementType: string | undefined | null): WidgetLogicApi | undefined {
-    return resolveByWidgetType(BUILTIN_WIDGET_LOGIC_APIS, elementType);
+    return resolveByWidgetType(BUILTIN_WIDGET_LOGIC_APIS, elementType)
+        ?? getContributedWidget(elementType)?.logicApi;
+}
+
+/**
+ * Whether a widget type's answers come from the built-in table rather than from a plugin.
+ *
+ * Asked by the code that deletes things on a "no": a type the host does not know may simply belong
+ * to a plugin that is not loaded right now, and "this type raises nothing" is not something it can
+ * be told about that type.
+ */
+export function isBuiltinWidgetLogicType(elementType: string | undefined | null): boolean {
+    return resolveByWidgetType(BUILTIN_WIDGET_LOGIC_APIS, elementType) !== undefined;
+}
+
+/** Every head type a built-in widget names for one of its events: the heads a widget event may use. */
+let builtinWidgetHeadTypes: ReadonlySet<string> | null = null;
+
+function isBuiltinWidgetEventHeadType(headType: string): boolean {
+    if (!builtinWidgetHeadTypes) {
+        builtinWidgetHeadTypes = new Set(
+            Object.values(BUILTIN_WIDGET_LOGIC_APIS).flatMap(api => api.events.flatMap(eventDef => eventDef.headNodeTypes ?? [])),
+        );
+    }
+    return builtinWidgetHeadTypes.has(headType);
+}
+
+export type ContributedLogicApiProblem = { eventId: string; message: string };
+
+/**
+ * The logic API a plugin widget is held to, from the one it declared.
+ *
+ * Two things are taken out, each for a reason a plugin cannot be trusted to have thought about:
+ *
+ * - **A head the plugin does not own and no widget uses.** A declared head becomes a node type the
+ *   host starts graphs on and reads event payloads through (`isBlueprintEventDispatchHeadType`), so
+ *   naming `blueprint.sound.play` would have Play Sound's own outputs read out of whatever event
+ *   happens to be running. A widget event may name a head a built-in widget names - Mouse Click, Init,
+ *   On Broadcast - or a node its own plugin registered, which is prefixed with the plugin id.
+ * - **An event with no head left.** The host falls back to "every head" for a built-in event that
+ *   names none, which is a leftover of an older catalogue; for a plugin's event it would mean every
+ *   graph in the widget's blueprint runs whenever the plugin raises it. An event nothing can start
+ *   on cannot be listened to, so it is not offered as though it could.
+ *
+ * What was taken out is returned beside the result so the registration site can say so to the
+ * plugin's author; Studio's interface never shows it.
+ */
+export function sanitizeContributedWidgetLogicApi(
+    ownerPluginId: string,
+    logicApi: WidgetLogicApi | undefined,
+): { logicApi: WidgetLogicApi | undefined; problems: ContributedLogicApiProblem[] } {
+    if (!logicApi || typeof logicApi !== "object") {
+        return { logicApi: undefined, problems: [] };
+    }
+    const problems: ContributedLogicApiProblem[] = [];
+    const ownPrefix = `${ownerPluginId}.`;
+    const events: WidgetLogicEventDef[] = [];
+    for (const eventDef of Array.isArray(logicApi.events) ? logicApi.events : []) {
+        if (!eventDef || typeof eventDef.id !== "string" || eventDef.id.trim().length === 0) {
+            continue;
+        }
+        const heads: string[] = [];
+        for (const head of eventDef.headNodeTypes ?? []) {
+            if (typeof head !== "string") {
+                continue;
+            }
+            if (head.startsWith(ownPrefix) || isBuiltinWidgetEventHeadType(head)) {
+                heads.push(head);
+            } else {
+                problems.push({
+                    eventId: eventDef.id,
+                    message: `head "${head}" is neither a built-in widget event head nor a node type prefixed with "${ownPrefix}"`,
+                });
+            }
+        }
+        if (heads.length === 0) {
+            problems.push({ eventId: eventDef.id, message: "names no head node type a graph could start on" });
+            continue;
+        }
+        events.push({ ...eventDef, headNodeTypes: heads });
+    }
+    return {
+        logicApi: {
+            supportsPrivateBlueprint: logicApi.supportsPrivateBlueprint === true,
+            ...(typeof logicApi.blueprintLabel === "string" ? { blueprintLabel: logicApi.blueprintLabel } : {}),
+            events,
+            commands: Array.isArray(logicApi.commands) ? logicApi.commands : [],
+            readableState: Array.isArray(logicApi.readableState) ? logicApi.readableState : [],
+            writableProps: Array.isArray(logicApi.writableProps) ? logicApi.writableProps : [],
+            ...(logicApi.operable === true ? { operable: true } : {}),
+        },
+        problems,
+    };
 }
 
 export function getWidgetLogicEvent(

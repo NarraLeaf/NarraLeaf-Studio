@@ -354,6 +354,7 @@ import {
     BLUEPRINT_TIME_PARAM_DATE_STYLE,
     BLUEPRINT_TIME_PARAM_TIME_STYLE,
     isBlueprintEventDispatchHeadType,
+    isBuiltinBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
 import {
     addBlueprintTime,
@@ -3387,7 +3388,7 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_DATA_MEMO && portId === "result") {
         return readBlueprintMemoValue(blueprintLocals, nodeId);
     }
-    if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
+    if (isBuiltinBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId] ?? null;
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY && portId === BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID) {
@@ -3910,10 +3911,18 @@ function resolveNonBuiltInNodeOutput(
     nodeId: string,
     portId: string,
     blueprintLocals: Record<string, unknown> | undefined,
+    runtime: DataPinResolveRuntime | undefined,
 ): unknown {
     const type = graph.nodes?.[nodeId]?.type;
     if (!type || blueprintNodeRegistry.isBuiltIn(type)) {
         return undefined;
+    }
+    // A plugin's event head is never executed - the dispatcher starts on its `then` - so it publishes
+    // nothing, and a game does not even know its pins. Its outputs are the event's payload, read by
+    // pin id: the rule the built-in heads follow in `resolveSelfOutput`, which a plugin head can only
+    // reach in the editor, where its pins are catalogued.
+    if (isBlueprintEventDispatchHeadType(type)) {
+        return portId === "then" ? undefined : (runtime?.eventPayload?.[portId] ?? null);
     }
     return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
 }
@@ -3955,7 +3964,7 @@ export function resolveDataPinValue(
 
     const edge = graph.edges?.find(e => e.to.nodeId === consumerNodeId && e.to.port === consumerPortId);
     if (!edge) {
-        const nonBuiltInOutput = resolveNonBuiltInNodeOutput(graph, consumerNodeId, consumerPortId, blueprintLocals);
+        const nonBuiltInOutput = resolveNonBuiltInNodeOutput(graph, consumerNodeId, consumerPortId, blueprintLocals, runtime);
         if (nonBuiltInOutput !== undefined) {
             return nonBuiltInOutput;
         }

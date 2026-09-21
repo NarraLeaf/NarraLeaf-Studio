@@ -1,5 +1,6 @@
 import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
+import { getContributedWidget } from "./contributedWidgets";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
@@ -191,12 +192,25 @@ const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.containe
 /** Types that accept ordinary user-inserted children. Structural part parents can be narrower. */
 const UI_USER_CHILD_PARENT_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", ...UI_LIST_LIKE_WIDGET_TYPES]);
 
+/**
+ * Whether a plugin's widget said it holds children.
+ *
+ * Its own declaration (`acceptsChildren` on the widget module), read through the realm's plugin
+ * registrations rather than copied into the sets above, so a plugin switched off stops accepting
+ * children the moment it stops being drawn. Such a widget takes whatever an author puts in it -
+ * the Container answer, not the Slider one: a plugin has no way to declare structural part slots,
+ * so there is nothing for a "parts only" answer to check a child against.
+ */
+function contributedWidgetAcceptsChildren(elementType: string): boolean {
+    return getContributedWidget(elementType)?.acceptsChildren === true;
+}
+
 export function uiElementTypeAcceptsChildren(elementType: string): boolean {
-    return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType);
+    return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType) || contributedWidgetAcceptsChildren(elementType);
 }
 
 export function uiElementTypeAcceptsUserChildren(elementType: string): boolean {
-    return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType);
+    return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType) || contributedWidgetAcceptsChildren(elementType);
 }
 
 export type UIElement = {

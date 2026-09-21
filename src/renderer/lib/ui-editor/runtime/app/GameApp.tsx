@@ -101,10 +101,7 @@ import {
     dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
-import {
-    createEventPropagationControl,
-    getOrCreateDomEventPropagationControl,
-} from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
     compiledStoryCacheKey,
     reuseCompiledStory,
@@ -206,11 +203,8 @@ import {
 import { openStoryPersistence } from "./storyPersistence";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
-import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
-import type { BlueprintKeyboardEventLike } from "@shared/types/blueprint/graph";
-import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
-import { resolveSurfaceInputActionHits } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
 import {
@@ -4730,33 +4724,49 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [layerStack, unrenderedLayerKeysToken]);
 
     /**
-     * Whether the active page may hear a key.
+     * The entry that hears a key, page or layer, if it can hear one now.
      *
-     * The *page* half of the keyboard dispatch only - the global blueprint's heads are not gated on
-     * this, see `resolveKeyboardDispatchScope`. A page that is not drawn is not a page anyone is
-     * pressing a key at, and while a layer owns the keyboard an Escape belongs to that layer rather
-     * than to the page under it.
+     * The *owner* half of the keyboard dispatch only - the global blueprint's heads are not gated on
+     * this, see `resolveKeyboardDispatchScope`. Whose keys they are is the composite's answer above;
+     * this only asks whether that entry is drawn and far enough in. A page that is not drawn is not a
+     * page anyone is pressing a key at, and a layer is ready on the same terms its element tree takes
+     * keys on (see `AppSurfaceLayer`'s `keyboardInteractive`), so its surface heads and its elements'
+     * heads start and stop hearing together.
      */
-    const activeSurfaceKeyboardReady = Boolean(
-        activeEntry &&
-        prepaintReadyKeys.has(activeEntry.key) &&
-        isPageEntryDrawn({
-            entryKey: activeEntry.key,
-            pagesHiddenForGame: studioPageHiddenForGame,
-            gameHiddenKeys: gameHiddenNavKeys,
-        }) &&
-        compositeInput.keyboardOwnerKey === activeEntry.key,
-    );
+    const keyboardOwnerEntry = resolveKeyboardOwnerEntry<AppSurfaceLayerNavEntry>({
+        keyboardOwnerKey: compositeInput.keyboardOwnerKey,
+        page: activeEntry && activeSurface
+            ? {
+                entry: activeEntry,
+                surface: activeSurface,
+                ready: prepaintReadyKeys.has(activeEntry.key) && isPageEntryDrawn({
+                    entryKey: activeEntry.key,
+                    pagesHiddenForGame: studioPageHiddenForGame,
+                    gameHiddenKeys: gameHiddenNavKeys,
+                }),
+            }
+            : null,
+        layers: visibleLayers.map(({ layer, surface: layerSurface }) => ({
+            entry: layer,
+            surface: layerSurface,
+            ready: renderedLayerKeys.has(layer.key) && prepaintReadyKeys.has(layer.key),
+        })),
+    });
+    const keyboardOwnerHost = keyboardOwnerEntry
+        ? hostAdapterBundleFor(keyboardOwnerEntry.entry, keyboardOwnerEntry.surface)
+        : null;
 
     /**
-     * The page half's target, read at dispatch time rather than closed over.
+     * The owner half's target, read when a key arrives rather than closed over.
      *
-     * One listener serves both halves so their order is fixed - global first, then the page - and a
-     * listener re-registered whenever the active page changed would keep swapping that order. So the
-     * effect below depends only on the host, and the page it may reach comes from here.
+     * One listener serves both halves so their order is fixed - global first, then the owner - and a
+     * listener re-registered whenever the owner changed would keep swapping that order. So the effect
+     * below depends only on the host, and the entry a key may reach comes from here.
      */
-    const keyboardSurfaceRef = useRef<UISurface | null>(null);
-    keyboardSurfaceRef.current = activeSurfaceKeyboardReady ? activeSurface : null;
+    const keyboardOwnerRef = useRef<KeyboardOwner | null>(null);
+    keyboardOwnerRef.current = keyboardOwnerEntry && keyboardOwnerHost
+        ? { surface: keyboardOwnerEntry.surface, host: keyboardOwnerHost }
+        : null;
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!core || !gameHostCapabilities) {
@@ -5149,94 +5159,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!scope.global || !core || !hostAdapterBundle) {
             return;
         }
-        const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
-            // Typing into a text field must not also drive the game's global keys — otherwise
-            // entering a name would advance dialogue on space and open the menu on Escape. The
-            // widget's own keyboard event still fires: it arrives through DOM bubbling, not here.
-            if (isTextEntryTarget(event.target)) {
-                return;
-            }
-            const payload = keyboardBlueprintPayload(event);
-            const eventControl = getOrCreateDomEventPropagationControl(event);
-            // Inert for a key today, and kept anyway. An element head is a subscription rather than
-            // a claim, so nothing a widget runs can silence the surface any more - the one case that
-            // ever mattered, typing into a text field, is answered unconditionally above. What still
-            // reaches here is `Keep Window Open`, which stops propagation while a close request is
-            // being answered; a key arriving inside that window has no business starting anything.
-            if (eventControl.isPropagationStopped()) {
-                return;
-            }
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName,
-                eventPayload: payload,
-                eventControl,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: key => surfaceStore.get(key),
-                setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                executionManager: core.executionManager,
-            }).then(() => {
-                const surface = keyboardSurfaceRef.current;
-                if (!surface || eventControl.isPropagationStopped()) {
-                    return;
-                }
-                return dispatchSurfaceBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
-                    persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: surface.id,
-                    runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                    eventName,
-                    eventPayload: payload,
-                    eventControl,
-                    hostAdapter: hostAdapterBundle.hostAdapter,
-                    debug: core.debug,
-                    getSurfaceState: key => surfaceStore.get(key),
-                    setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                    executionManager: core.executionManager,
-                });
-            }).then(() => {
-                // The keyboard half of the surface's declared actions.
-                //
-                // Here rather than beside the pointer half in `GameSurfaceRenderer`, because a key
-                // press is not aimed at anything: it belongs to whichever surface currently owns the
-                // keys, and that is a fact about the whole composite that only this level knows. For
-                // the same reason nothing consumes here - `consume` decides how far down the lanes
-                // under a pointer an input travels, and a key has no lanes under it.
-                const surface = keyboardSurfaceRef.current;
-                if (!surface || eventName !== "keyDown" || eventControl.isPropagationStopped()) {
-                    return undefined;
-                }
-                const actionHits = resolveSurfaceInputActionHits({
-                    vocabulary: bundle.ui.uidoc.actions,
-                    enablements: surface.actions,
-                    signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
-                });
-                return Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
-                    persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: surface.id,
-                    runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                    eventName: UI_SURFACE_INPUT_ACTION_EVENT,
-                    eventPayload: { ...hit.payload },
-                    hostAdapter: hostAdapterBundle.hostAdapter,
-                    debug: core.debug,
-                    getSurfaceState: key => surfaceStore.get(key),
-                    setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                    executionManager: core.executionManager,
-                }))).then(() => undefined);
-            }).catch(err => host.log("error", normalizeError(err)));
-        };
-        const onKeyDown = (event: KeyboardEvent) => dispatchKeyboardEvent("keyDown", event);
-        const onKeyUp = (event: KeyboardEvent) => dispatchKeyboardEvent("keyUp", event);
-        window.addEventListener("keydown", onKeyDown);
-        window.addEventListener("keyup", onKeyUp);
-        return () => {
-            window.removeEventListener("keydown", onKeyDown);
-            window.removeEventListener("keyup", onKeyUp);
-        };
+        // The keyboard half of the surfaces' declared actions lives in there too. Here rather than
+        // beside the pointer half in `GameSurfaceRenderer`, because a key press is not aimed at
+        // anything: it belongs to whichever entry currently owns the keys, and that is a fact about
+        // the whole composite that only this level knows.
+        return listenForGameKeys(window, {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            vocabulary: bundle.ui.uidoc.actions,
+            core,
+            globalHost: hostAdapterBundle,
+            readKeyboardOwner: () => keyboardOwnerRef.current,
+            onError: err => host.log("error", normalizeError(err)),
+        });
     }, [bundle, core, host, hostAdapterBundle]);
 
     /**

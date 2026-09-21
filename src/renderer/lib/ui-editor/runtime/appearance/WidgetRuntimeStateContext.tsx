@@ -56,13 +56,23 @@ export function WidgetRuntimeStateProvider(props: WidgetRuntimeStateProviderProp
     return <WidgetRuntimeStateContext.Provider value={store}>{children}</WidgetRuntimeStateContext.Provider>;
 }
 
+/**
+ * Marks its subtree as one surface's drawing, under that surface's runtime scope.
+ *
+ * It also starts the instance over. A surface is drawn from its root with no row and no placement of
+ * its own, and the runtime writes its widgets' state that way - so a page drawn by a frame that sits
+ * in a list row or a component placement must not read its state under the row's or the
+ * placement's key. It used to inherit that key from the frame around it, and read every value its
+ * own graphs wrote through the template fallback, which nothing subscribes to: a page's Set Variant
+ * on its own button changed nothing on screen until something else redrew the button.
+ */
 export function WidgetRuntimeScopeProvider(props: {
     runtimeScopeId?: string | null;
     children: React.ReactNode;
 }): React.ReactElement {
     return (
         <WidgetRuntimeScopeContext.Provider value={props.runtimeScopeId ?? null}>
-            {props.children}
+            <WidgetRuntimeInstanceContext.Provider value={null}>{props.children}</WidgetRuntimeInstanceContext.Provider>
         </WidgetRuntimeScopeContext.Provider>
     );
 }
