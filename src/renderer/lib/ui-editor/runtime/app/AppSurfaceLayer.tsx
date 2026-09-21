@@ -389,17 +389,22 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
 
 export function AppSurfaceLayerWithAdapter(props: AppSurfaceLayerCommonProps & {
     core: BlueprintRuntimeCore | null;
-    createHostAdapterBundle: (entry: AppSurfaceLayerNavEntry, surface: UISurface) => HostAdapterBundle | null;
+    /**
+     * The host this entry is drawn with. Looked up rather than built here, because the app reaches
+     * the same entry from outside the layer - a key press, the menu bar, a window event - and has
+     * to reach the host the page's own graphs run on, not a second one beside it.
+     */
+    hostAdapterBundleFor: (entry: AppSurfaceLayerNavEntry, surface: UISurface) => HostAdapterBundle | null;
 }) {
     const {
         core,
         entry,
         surface,
-        createHostAdapterBundle,
+        hostAdapterBundleFor,
     } = props;
     const hostAdapterBundle = useMemo(
-        () => createHostAdapterBundle(entry, surface),
-        [createHostAdapterBundle, entry, surface],
+        () => hostAdapterBundleFor(entry, surface),
+        [hostAdapterBundleFor, entry, surface],
     );
     if (!hostAdapterBundle || !core) {
         return null;

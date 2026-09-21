@@ -33,7 +33,7 @@
  *     Anyone adding a fourth surface can hand-write an options literal for it instead, and be
  *     exactly where the slot shell was. So: every game host is built through the builder.
  *  2. **The builder quietly stopping.** Nearly every option it binds is optional on the bridge, so
- *     `buildGameHostApiOptions` could stop setting `onIsGameOverlay`, `initialWidgetPatches` or
+ *     `buildGameHostApiOptions` could stop setting `onIsGameOverlay`, `readWidgetPatches` or
  *     `onStartStory` and still compile - and each of those is a capability going quiet on every
  *     surface at once. So: it binds every key it declares as its own.
  *  3. **A narrowing applied to the wrong layer.** One surface does legitimately answer a
