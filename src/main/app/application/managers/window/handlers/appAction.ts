@@ -23,7 +23,7 @@ import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectLogo } from "../../projectLogo";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
-import { isProtectedStateKey } from "@shared/constants/settingsScopes";
+import { isMainOnlyStateKey, isMainOwnedStateKey, isProtectedStateKey } from "@shared/constants/settingsScopes";
 import { getMainLocale } from "../../../i18n";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
@@ -274,6 +274,12 @@ export class AppGlobalStateGetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateGet]["data"]) {
+        // A key whose value stays in this process reads as unset rather than as a refusal: the
+        // renderer has no use for it either way, and "unset" is the answer every reader already
+        // handles.
+        if (isMainOnlyStateKey(data.key)) {
+            return this.success({ value: undefined as never });
+        }
         return this.success({ value: window.app.globalState.get(data.key) });
     }
 }
@@ -283,6 +289,13 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
+        // Refused by name, before anything is written: these decide whose credential a request
+        // carries and where it goes, and the only writer that may decide that is this process.
+        // See `MAIN_OWNED_STATE_KEYS`.
+        if (isMainOwnedStateKey(data.key)) {
+            window.app.logger.warn(`[State] Refused a renderer write to ${data.key}, which only the main process writes`);
+            return this.failed(new Error(`${data.key} is written by Studio itself and cannot be set from a window`));
+        }
         // Persists, fans the change out to every open window so live views (e.g. the
         // i18n locale) stay in sync without a reload, and runs the per-key
         // main-process side effects.
@@ -297,7 +310,11 @@ export class AppGlobalStateGetAllHandler extends IPCHandler<IPCEventType.appGlob
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow) {
-        return this.success({ settings: window.app.globalState.raw() });
+        const settings = { ...window.app.globalState.raw() };
+        for (const key of Object.keys(settings)) {
+            if (isMainOnlyStateKey(key)) delete settings[key];
+        }
+        return this.success({ settings });
     }
 }
 
@@ -732,7 +749,7 @@ export class AppGlobalStateDeleteHandler extends IPCHandler<IPCEventType.appGlob
         const deleted: string[] = [];
         const refused: string[] = [];
         for (const key of keys) {
-            if (isProtectedStateKey(key)) {
+            if (isProtectedStateKey(key) || isMainOwnedStateKey(key)) {
                 refused.push(key);
                 continue;
             }
