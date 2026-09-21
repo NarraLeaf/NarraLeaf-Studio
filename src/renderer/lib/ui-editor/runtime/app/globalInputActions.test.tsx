@@ -21,6 +21,7 @@
  * Comments in English per project convention.
  */
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import type { SyntheticEvent } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Blueprint, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import {
@@ -38,7 +39,10 @@ import { mountCompiledScripts, unmountCompiledScripts } from "@/lib/ui-editor/bl
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { WidgetRuntimeScopeProvider, WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
-import { GlobalInputActionContext } from "@/lib/ui-editor/runtime/input/globalInputActionContext";
+import {
+    GlobalInputActionContext,
+    type GlobalInputActionAnswerer,
+} from "@/lib/ui-editor/runtime/input/globalInputActionContext";
 import { resetSharedInputHoldTracker } from "@/lib/ui-editor/runtime/input/inputHoldState";
 import { resetSharedTouchGestureTracker } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { wheelGestureGate } from "@/lib/ui-editor/runtime/input/wheelGesture";
@@ -48,6 +52,7 @@ import { blueprintDocumentOf, graphOf, type GraphNode } from "@/lib/ui-editor/ru
 import type { AppSurfaceLayerNavEntry } from "./AppSurfaceLayer";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
+import { offerUnclaimedPointerInput, RUNTIME_PLUGIN_OVERLAY_ATTR } from "./globalPointerInput";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles, type PageHostInputs } from "./hostAdapterBundles";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
 import { resolveCompositeInput } from "./layers/compositeInput";
@@ -298,8 +303,10 @@ function runningGame(options: {
     };
 
     /**
-     * The page drawn by the real surface renderer on its own host, with the function `GameApp`
-     * hands every lane it draws. Returns a right click on a spot of it and what answered, in order.
+     * The page drawn by the real surface renderer on its own host, inside a game root wired as
+     * `GameApp` wires its own: the function it hands every lane it draws, and the same function
+     * offered whatever bubbles up to the root - beside the page, an empty spot of the stage, and a
+     * plugin's overlay. Returns a right click on one of them and what answered, in order.
      */
     const drawPage = () => {
         const registry = new ElementRendererRegistry(
@@ -308,26 +315,38 @@ function runningGame(options: {
                 render: ({ element, renderChildren }) => <>{renderChildren?.({ childrenIds: element.childrenIds })}</>,
             })),
         );
+        const answer: GlobalInputActionAnswerer = (payloads, eventControl) =>
+            answerGlobalInputActions(globalDispatch, payloads, eventControl);
+        const offer = (event: SyntheticEvent<HTMLDivElement>) => {
+            offerUnclaimedPointerInput({ event: event.nativeEvent, root: event.currentTarget, document, scale: 1, answer });
+        };
         const view = render(
-            <GlobalInputActionContext.Provider value={(payloads, eventControl) => answerGlobalInputActions(globalDispatch, payloads, eventControl)}>
+            <GlobalInputActionContext.Provider value={answer}>
                 <WidgetRuntimeStateProvider externalStore={new WidgetRuntimeStateStore()}>
                     <WidgetRuntimeScopeProvider runtimeScopeId={page.runtimeScopeId}>
-                        <GameSurfaceRenderer
-                            document={document}
-                            surface={pageSurface}
-                            rendererRegistry={registry}
-                            scale={1}
-                            hostAdapter={pageHost.hostAdapter}
-                            staticDocument
-                        />
+                        <div data-testid="game-root" onContextMenu={offer}>
+                            <div data-testid="stage" />
+                            <div {...{ [RUNTIME_PLUGIN_OVERLAY_ATTR]: "" }}>
+                                <button type="button" data-testid="plugin-button">plugin</button>
+                            </div>
+                            <GameSurfaceRenderer
+                                document={document}
+                                surface={pageSurface}
+                                rendererRegistry={registry}
+                                scale={1}
+                                hostAdapter={pageHost.hostAdapter}
+                                staticDocument
+                            />
+                        </div>
                     </WidgetRuntimeScopeProvider>
                 </WidgetRuntimeStateProvider>
             </GlobalInputActionContext.Provider>,
         );
-        const node = (elementId: string) => view.container.querySelector(`[data-ui-element-id="${elementId}"]`)!;
-        const rightClick = async (elementId: string) => {
+        const node = (id: string) =>
+            view.container.querySelector(`[data-ui-element-id="${id}"]`) ?? view.getByTestId(id);
+        const rightClick = async (id: string) => {
             lines.length = 0;
-            fireEvent.contextMenu(node(elementId));
+            fireEvent.contextMenu(node(id));
             await settle();
             return [...lines];
         };
@@ -443,5 +462,28 @@ describe("the global blueprint hears an action's pointer gesture on the lane it 
         const page = game.drawPage();
 
         expect(await page.rightClick("page-button")).toEqual([]);
+    });
+
+    it("fires for a right click that landed on no lane at all", async () => {
+        // An empty spot of a page lets the click through to the stage, and before a story starts
+        // there is nothing on the stage to take it. The game received it, and the global is the game's.
+        const game = runningGame({ pageAnswers: true });
+        const page = game.drawPage();
+
+        expect(await page.rightClick("stage")).toEqual(["global: quickSave"]);
+    });
+
+    it("hears a right click the page took once, not again at the game's root", async () => {
+        const game = runningGame({});
+        const page = game.drawPage();
+
+        expect(await page.rightClick(`${PAGE}-root`)).toEqual(["global: quickSave"]);
+    });
+
+    it("leaves a plugin's overlay alone, as it leaves a page's control", async () => {
+        const game = runningGame({});
+        const page = game.drawPage();
+
+        expect(await page.rightClick("plugin-button")).toEqual([]);
     });
 });

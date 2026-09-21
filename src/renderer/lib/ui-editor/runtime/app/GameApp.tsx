@@ -5,6 +5,7 @@ import {
     useRef,
     useState,
     type ReactNode,
+    type SyntheticEvent,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { DevTools, Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
@@ -206,6 +207,8 @@ import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
+import { offerUnclaimedPointerInput, RUNTIME_PLUGIN_OVERLAY_ATTR } from "./globalPointerInput";
+import { UI_TOUCH_GESTURE_EVENT } from "@/lib/ui-editor/runtime/input/touchGesture";
 import {
     GlobalInputActionContext,
     type GlobalInputActionAnswerer,
@@ -5214,6 +5217,40 @@ export function GameApp(props: GameAppProps): ReactNode {
     const globalInputActionAnswerer = globalBlueprintDispatchRef.current ? answerGlobalPointerActions : null;
 
     /**
+     * The same, for a pointer input that reached no lane: one that landed where no surface has
+     * content, which a page lets through to the stage and the stage may have nothing to take. The
+     * game's drawing root hears what bubbles up to it, which is exactly that - see
+     * `globalPointerInput`. State rather than a ref so the touch listener below is attached once the
+     * root exists, which is not on the first render.
+     */
+    const [gameRoot, setGameRoot] = useState<HTMLDivElement | null>(null);
+    const offerPointerInputToGlobal = useCallback((event: Event) => {
+        if (!gameRoot || !globalBlueprintDispatchRef.current) {
+            return;
+        }
+        offerUnclaimedPointerInput({
+            event,
+            root: gameRoot,
+            document: bundle.ui.uidoc,
+            scale,
+            answer: answerGlobalPointerActions,
+        });
+    }, [answerGlobalPointerActions, bundle.ui.uidoc, gameRoot, scale]);
+    const offerSyntheticPointerInputToGlobal = useCallback(
+        (event: SyntheticEvent) => offerPointerInputToGlobal(event.nativeEvent),
+        [offerPointerInputToGlobal],
+    );
+    useEffect(() => {
+        if (!gameRoot) {
+            return undefined;
+        }
+        // Native, because the touch recogniser's event has a private name React has no prop for;
+        // lanes listen for it the same way, on their own shells, and stop it when they take it.
+        gameRoot.addEventListener(UI_TOUCH_GESTURE_EVENT, offerPointerInputToGlobal);
+        return () => gameRoot.removeEventListener(UI_TOUCH_GESTURE_EVENT, offerPointerInputToGlobal);
+    }, [gameRoot, offerPointerInputToGlobal]);
+
+    /**
      * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
      * move, and `createNlrGameWithGameUi` for where it moved to.
      *
@@ -5935,7 +5972,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     const content = (
         <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
-            <div className="nl-motion-keep relative h-full w-full overflow-hidden">
+            <div
+                ref={setGameRoot}
+                className="nl-motion-keep relative h-full w-full overflow-hidden"
+                onClick={offerSyntheticPointerInputToGlobal}
+                onDoubleClick={offerSyntheticPointerInputToGlobal}
+                onAuxClick={offerSyntheticPointerInputToGlobal}
+                onContextMenu={offerSyntheticPointerInputToGlobal}
+                onWheel={offerSyntheticPointerInputToGlobal}
+            >
                 {nlrStageLayer}
                 {/* Runtime plugin overlays: above the game stage, below the app surface
                     system (menus, save screens, every authored page). This is as low as a
@@ -5943,7 +5988,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                     Player and its only injection point (Player children) is itself stacked
                     above that dialogue, so there is no DOM position under it to occupy. */}
                 {pluginHost ? (
-                    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
+                    <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{ zIndex: 5 }}
+                        {...{ [RUNTIME_PLUGIN_OVERLAY_ATTR]: "" }}
+                    >
                         <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
                     </div>
                 ) : null}

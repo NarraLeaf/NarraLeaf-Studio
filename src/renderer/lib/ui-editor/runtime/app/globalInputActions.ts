@@ -9,9 +9,9 @@
  *  - **a key**, from the one listener the running game installs (`keyboardOwner`), under the gates
  *    the game's key heads already have - not while a text field has focus, not once something
  *    stopped the event - and whoever owns the keyboard, a page or a modal layer over it;
- *  - **a pointer input**, from the first lane it lands on (`GameSurfaceRenderer`), under that
- *    lane's gates - it takes input, the gesture is not the tail of one already answered, and no
- *    control under the pointer has spoken for it.
+ *  - **a pointer input**, from the first lane it lands on (`GameSurfaceRenderer`) - or, when it
+ *    lands on none, from the game's drawing root (`globalPointerInput`) - as long as the gesture is
+ *    not the tail of one already answered and no control under the pointer has spoken for it.
  *
  * Either way the global answers **first**, and whatever is on screen answers after it: the keyboard
  * owner's heads and actions, or the actions of the lanes the pointer landed on. That is the order the
