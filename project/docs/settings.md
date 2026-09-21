@@ -156,7 +156,7 @@ Studio 自己的下载分两类，不要混：
 **具名镜像只给 `plugins.registryUrl`。** 另外三个只提供「官方源／不使用镜像」加自填，各有各的理由：
 
 - 两个构建镜像没有 Studio 能担保的对应物，而**按名字列出来就等于背书**。
-- `uiTemplates.registryUrl` 更进一步：模板的文档、图形和它声明的每个资源都按索引所在目录
+- `uiTemplates.registryUrl` 更进一步：模板的文档、图形和它声明的每个资产都按索引所在目录
   （`uiTemplateRegistryClient` 的 `registryBaseDir`）解析，也就是说它们会**跟着这个键走**。
   社区镜像 gh-mirror.mewbaka.cn **只放行 `index.json`，其余一律 403**（实测，它自己的报错里就这么写），
   指过去会得到「列得出模板、没有预览、装一个炸一个」——正是重写表当初要消灭的那个状态。

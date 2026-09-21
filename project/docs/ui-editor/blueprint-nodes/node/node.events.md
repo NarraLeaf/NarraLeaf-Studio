@@ -25,7 +25,7 @@
 
 当 NarraLeaf React `LiveGame` 对象已经创建并存入 Studio runtime、但 `liveGame.newGame()` 尚未启动第一段剧情前触发。该节点仅出现在全局蓝图中，每个被接受的 NarraLeaf session id 触发一次。
 
-自 NarraLeaf React 环境预初始化改动后，游戏启动时会在 **Surface 系统启动之前** 作为加载项初始化 NarraLeaf React 环境：以「Story 库默认 Story（`storyLibrary.index.defaultStoryId`）的入口场景」的 compiled story 挂载 `Player`（Player `onReady`），此时 `LiveGame` 已创建、默认场景资源开始预热（Player `onPreloadComplete`），但**尚未调用 `liveGame.newGame()`，也不会进入游戏**。因此 `gameReady` 现在会在启动阶段、进入首个 Surface（例如主菜单）之前触发一次，用于初始化环境并允许全局蓝图加载游戏设置——玩家仍停留在主菜单，游戏并未开始。若项目未配置默认 Story，则改为挂载一个空 NarraLeaf React 环境（不含任何场景），`gameReady` 仍会在启动时触发。
+自 NarraLeaf React 环境预初始化改动后，游戏启动时会在 **Surface 系统启动之前** 作为加载项初始化 NarraLeaf React 环境：以「Story 库默认 Story（`storyLibrary.index.defaultStoryId`）的入口场景」的 compiled story 挂载 `Player`（Player `onReady`），此时 `LiveGame` 已创建、默认场景资产开始预热（Player `onPreloadComplete`），但**尚未调用 `liveGame.newGame()`，也不会进入游戏**。因此 `gameReady` 现在会在启动阶段、进入首个 Surface（例如主菜单）之前触发一次，用于初始化环境并允许全局蓝图加载游戏设置——玩家仍停留在主菜单，游戏并未开始。若项目未配置默认 Story，则改为挂载一个空 NarraLeaf React 环境（不含任何场景），`gameReady` 仍会在启动时触发。
 
 真正「进入游戏」只发生在玩家触发 `Start Game`（`Start Game` 蓝图节点）或读取存档时：此时才对**同一个已初始化的 `LiveGame`** 调用 `newGame()` / `deserialize()`。当 `Start Game` 的目标就是已预热的默认场景时为「秒开」，直接在同一环境上进入，**不会重复触发 `gameReady`**；仅当 `Start Game` 指定了不同的场景时才会重新挂载环境并再次触发 `gameReady`。
 

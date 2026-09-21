@@ -144,6 +144,18 @@ export interface CheckCommandLineOptions {
     list: boolean;
     /** `--test-parameter key=value`, repeatable, as typed. */
     parameters: string[];
+    /**
+     * `--test-as-shipped`: a game the test launches holds its content as the release build does -
+     * sealed in a protected store, for a project with asset protection on - instead of as loose
+     * files.
+     *
+     * Off unless the line says so, and the line is the only thing asked: the machine's "Preview as
+     * shipped" setting is a habit of the author at that machine, and a run with nobody at the screen
+     * has none to inherit. A job gets the same path from the same line on every machine it runs on.
+     * Loose is the default because it is several times faster on a real-size project (the store is
+     * written whole on every run) and the sealed path is a question a job asks on purpose.
+     */
+    asShipped: boolean;
     /** `--test-report` / `--lint-report`: where to write the JSON report. */
     reportPath: string | null;
     /** `--test-user-data-dir` / `--lint-user-data-dir`: the profile this launch runs against. */
@@ -407,6 +419,60 @@ const CHECK_PARAMETER_FLAG = "--test-parameter";
 /** `--test-list`, which carries no value. */
 const CHECK_LIST_FLAG = "--test-list";
 
+/** `--test-as-shipped`, on when given bare. See {@link readAsShippedFlag} for the `=value` form. */
+const CHECK_AS_SHIPPED_FLAG = "--test-as-shipped";
+
+/** The spellings a boolean is written in on a command line - the ones `--test-parameter` accepts. */
+const BOOLEAN_SPELLINGS: Readonly<Record<string, boolean>> = {
+    true: true,
+    yes: true,
+    on: true,
+    1: true,
+    false: false,
+    no: false,
+    off: false,
+    0: false,
+};
+
+function readBooleanSpelling(value: string): boolean | null {
+    const spelled = BOOLEAN_SPELLINGS[value.trim().toLowerCase()];
+    return spelled === undefined ? null : spelled;
+}
+
+/**
+ * Read one argument as `--test-as-shipped`, or answer null when it is not that flag.
+ *
+ * Bare, it means on. `--test-as-shipped=false` is accepted too, for a job that states the choice
+ * from a variable rather than adding and removing the flag.
+ *
+ * Never a separate value, and a boolean word right after the bare flag is refused rather than left
+ * alone: `--test-as-shipped false` would otherwise read as the flag - on - followed by a stray
+ * word, and the run would seal exactly when the line said not to, with nothing on the log to say
+ * the line had been misread.
+ */
+function readAsShippedFlag(
+    arg: string,
+    next: string | undefined,
+): { value: boolean; error: null } | { value: null; error: string } | null {
+    if (arg === CHECK_AS_SHIPPED_FLAG) {
+        if (next !== undefined && readBooleanSpelling(next) !== null) {
+            return {
+                value: null,
+                error: `${CHECK_AS_SHIPPED_FLAG} takes no separate value: write ${CHECK_AS_SHIPPED_FLAG}=${next.trim()}`,
+            };
+        }
+        return { value: true, error: null };
+    }
+    if (!arg.startsWith(`${CHECK_AS_SHIPPED_FLAG}=`)) {
+        return null;
+    }
+    const raw = arg.slice(CHECK_AS_SHIPPED_FLAG.length + 1);
+    const value = readBooleanSpelling(raw);
+    return value === null
+        ? { value: null, error: `Invalid ${CHECK_AS_SHIPPED_FLAG} value: expected true or false, got "${raw}"` }
+        : { value, error: null };
+}
+
 /** What each check flag says it wants, for the "missing value" message. */
 const CHECK_VALUE_DESCRIPTIONS: Record<CheckValueFlag | typeof CHECK_PARAMETER_FLAG, string> = {
     "--test": "a project path or a recent project's name",
@@ -452,13 +518,19 @@ function readCheckFlag(
     return { flag, value: value === "" ? null : value, consumedNext: false };
 }
 
-/** Whether anything but `--test`/`--lint` themselves asked for something about a check. */
-function hasCheckCompanionFlag(check: CheckCommandLineOptions): boolean {
+/**
+ * Whether anything but `--test`/`--lint` themselves asked for something about a check.
+ *
+ * `asShippedNamed` rather than `check.asShipped`: `--test-as-shipped=false` names the flag as much
+ * as the bare form does, and leaves the field exactly as it would be had the flag never appeared.
+ */
+function hasCheckCompanionFlag(check: CheckCommandLineOptions, asShippedNamed: boolean): boolean {
     return check.testId !== null
         || check.list
         || check.parameters.length > 0
         || check.reportPath !== null
-        || check.userDataDir !== null;
+        || check.userDataDir !== null
+        || asShippedNamed;
 }
 
 /**
@@ -539,6 +611,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         testId: null,
         list: false,
         parameters: [],
+        asShipped: false,
         reportPath: null,
         userDataDir: null,
         error: null,
@@ -546,6 +619,8 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const checkFlagErrors = new Map<string, string>();
     /** Both checks named on one line: kept so the refusal survives whichever was read last. */
     let bothChecksNamed = false;
+    /** `--test-as-shipped` appeared in either form. See {@link hasCheckCompanionFlag}. */
+    let asShippedNamed = false;
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -606,6 +681,25 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             }
             check.kind ??= "test";
             check.list = true;
+            continue;
+        }
+
+        // A test flag, so beside `--lint` it is the same refusal `--test-id` there gets. It does
+        // not make a check requested on its own: without `--test` it is a companion flag naming a
+        // check nothing asked for, refused below with the others.
+        const asShippedFlag = readAsShippedFlag(arg, argv[i + 1]);
+        if (asShippedFlag) {
+            asShippedNamed = true;
+            if (check.kind === "lint") {
+                bothChecksNamed = true;
+            }
+            check.kind ??= "test";
+            if (asShippedFlag.error !== null) {
+                checkFlagErrors.set(CHECK_AS_SHIPPED_FLAG, asShippedFlag.error);
+            } else {
+                check.asShipped = asShippedFlag.value;
+                checkFlagErrors.delete(CHECK_AS_SHIPPED_FLAG);
+            }
             continue;
         }
 
@@ -766,14 +860,15 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     }
 
     // The same three refusals for the checks, in the same order and for the same reasons.
-    const orderedCheckFlags: Array<CheckValueFlag | typeof CHECK_PARAMETER_FLAG> = [
+    const orderedCheckFlags: Array<CheckValueFlag | typeof CHECK_PARAMETER_FLAG | typeof CHECK_AS_SHIPPED_FLAG> = [
         ...(Object.keys(CHECK_VALUE_FLAGS) as CheckValueFlag[]),
         CHECK_PARAMETER_FLAG,
+        CHECK_AS_SHIPPED_FLAG,
     ];
     check.error = orderedCheckFlags
         .map(flag => checkFlagErrors.get(flag))
         .find((message): message is string => message !== undefined) ?? null;
-    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check))) {
+    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check, asShippedNamed))) {
         check.requested = true;
         check.error ??= "Missing --test or --lint: the check flags name a check nothing asked for";
     }
