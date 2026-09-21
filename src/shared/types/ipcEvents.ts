@@ -132,6 +132,21 @@ import type {
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
+/**
+ * The project's asset library as one Dev Mode window sees it: a URL per asset id, and what kind of
+ * asset each one is.
+ *
+ * `types` is what lets a window warm an asset before anything draws it. A picture is warmed by
+ * decoding it and a typeface by registering it, and a URL alone does not say which - the packaged
+ * game reads the answer off its pack's manifest, and a Dev Mode window has no manifest. Values are
+ * the library's own `AssetType` strings. Optional because an id the workspace resolved without
+ * knowing its type is still worth a URL.
+ */
+export type AssetUrlDirectory = {
+    urls: Record<string, string>;
+    types?: Record<string, string>;
+};
+
 export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
@@ -2529,7 +2544,7 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
         data: {};
-        response: RequestStatus<{ urls: Record<string, string> }>;
+        response: RequestStatus<AssetUrlDirectory>;
     };
     [IPCEventType.workspaceResolveImageAssetUrl]: {
         type: IPCMessageType.request,
@@ -2829,9 +2844,7 @@ export type IPCDevModeEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {};
-        response: {
-            urls: Record<string, string>;
-        };
+        response: AssetUrlDirectory;
     };
     [IPCEventType.devModeResolveImageAssetUrl]: {
         type: IPCMessageType.request,

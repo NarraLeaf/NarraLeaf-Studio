@@ -354,7 +354,7 @@ describe("extractUIDocumentAssetReferences", () => {
     it("reads a widget's bare assetId and posterAssetId", () => {
         // Before `nl.video` this walk knew `imageFill` and `fontAssetId` and nothing else. A widget
         // naming its prop `assetId` was preloaded by the shipped game
-        // (`surfaceResourcePreload.ts` matches that literal name) and simultaneously absent from
+        // (`surfaceAssetWarmup.ts` matches that literal name) and simultaneously absent from
         // "what uses this asset", which is the one place an author looks before deleting it.
         const references = uiReferences(
             doc([uiElement("e1", "nl.video", { assetId: "clip-1", posterAssetId: "poster-1" })]),
