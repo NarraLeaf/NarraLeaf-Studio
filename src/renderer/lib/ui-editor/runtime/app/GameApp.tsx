@@ -5,6 +5,7 @@ import {
     useRef,
     useState,
     type ReactNode,
+    type SyntheticEvent,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { DevTools, Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
@@ -205,6 +206,13 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
+import { offerUnclaimedPointerInput, RUNTIME_PLUGIN_OVERLAY_ATTR } from "./globalPointerInput";
+import { UI_TOUCH_GESTURE_EVENT } from "@/lib/ui-editor/runtime/input/touchGesture";
+import {
+    GlobalInputActionContext,
+    type GlobalInputActionAnswerer,
+} from "@/lib/ui-editor/runtime/input/globalInputActionContext";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
 import {
@@ -230,6 +238,7 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
+import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -627,7 +636,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const layerState = useLayerStack(layerStack);
     const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
-    const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
     /**
@@ -1143,7 +1151,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         const surface = findSurface(bundle, host.entrySurfaceId);
         setPrepaintReadyKeys(new Set());
-        setInteractionReadyKeys(new Set());
         navigation.reset(surface ? createNavEntry(surface.id, "forward", false) : null);
         layerStack.clear();
         widgetPatchesByScopeRef.current = {};
@@ -1242,26 +1249,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack.notifyExitComplete();
     }, [layerStack]);
 
-    const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
-        setInteractionReadyKeys(prev => {
-            const alreadyReady = prev.has(entryKey);
-            if (alreadyReady === ready) {
-                return prev;
-            }
-            const next = new Set(prev);
-            if (ready) {
-                next.add(entryKey);
-            } else {
-                next.delete(entryKey);
-            }
-            return next;
-        });
-    }, []);
-
-    const resetSurfaceInteractionReadiness = useCallback(() => {
-        setInteractionReadyKeys(prev => (prev.size === 0 ? prev : new Set()));
-    }, []);
-
     const isGameHiddenEntry = useCallback((entry: GameAppNavEntry | null | undefined): boolean => {
         return Boolean(entry && studioPageHiddenForGameRef.current && gameHiddenNavKeysRef.current.has(entry.key));
     }, []);
@@ -1272,13 +1259,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = true;
         setGameHiddenNavKeys(hiddenKeys);
         setStudioPageHiddenForGame(true);
-        resetSurfaceInteractionReadiness();
         navigation.hideAllForGame();
         // Layers are not serialised, so nothing about them survives a load, and the two callers of
         // this are exactly the moments the game takes the screen: starting a story and applying a
         // save. A layer left standing across either would belong to a run that no longer exists.
         layerStack.clear();
-    }, [layerStack, navigation, resetSurfaceInteractionReadiness]);
+    }, [layerStack, navigation]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -1302,7 +1288,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const currentHiddenForGame = isGameHiddenEntry(currentEntry);
         const presentation = options?.presentation ?? (studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage");
-        resetSurfaceInteractionReadiness();
         return navigation.open({
             fromSurface: from,
             targetSurface: target,
@@ -1317,7 +1302,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1334,7 +1318,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         const from = findSurface(bundle, currentEntry.surfaceId);
         const target = findSurface(bundle, nextEntryBase.surfaceId);
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        resetSurfaceInteractionReadiness();
         return navigation.close({
             fromSurface: from,
             targetSurface: target,
@@ -1348,7 +1331,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1391,7 +1373,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         const from = findSurface(bundle, currentEntry.surfaceId);
         const target = findSurface(bundle, nextEntryBase.surfaceId);
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        resetSurfaceInteractionReadiness();
         return navigation.close({
             fromSurface: from,
             targetSurface: target,
@@ -1404,7 +1385,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -5175,6 +5155,74 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [bundle, core, host, hostAdapterBundle]);
 
     /**
+     * The pointer half of the global blueprint's input actions: what a lane calls to hand the global
+     * an action before answering it itself (see `GlobalInputActionContext`).
+     *
+     * The same function the key listener above calls, with the same blueprint, core and host, so an
+     * `On Action` on the global blueprint runs identically whether a key or a click raised it. Kept
+     * stable and reading through a ref, because every surface on screen reads it through context and
+     * a page opening must not re-render all of them; null only while there is no game to dispatch
+     * into, which is also when the key listener is not installed.
+     */
+    const globalBlueprintDispatchRef = useRef<GlobalBlueprintDispatch | null>(null);
+    globalBlueprintDispatchRef.current = host.ready && core && hostAdapterBundle
+        ? {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            core,
+            globalHost: hostAdapterBundle,
+        }
+        : null;
+    const hostLogRef = useRef(host.log);
+    hostLogRef.current = host.log;
+    const answerGlobalPointerActions = useCallback<GlobalInputActionAnswerer>(async (payloads, eventControl) => {
+        const dispatch = globalBlueprintDispatchRef.current;
+        if (!dispatch) {
+            return;
+        }
+        try {
+            await answerGlobalInputActions(dispatch, payloads, eventControl);
+        } catch (err) {
+            hostLogRef.current("error", normalizeError(err));
+        }
+    }, []);
+    const globalInputActionAnswerer = globalBlueprintDispatchRef.current ? answerGlobalPointerActions : null;
+
+    /**
+     * The same, for a pointer input that reached no lane: one that landed where no surface has
+     * content, which a page lets through to the stage and the stage may have nothing to take. The
+     * game's drawing root hears what bubbles up to it, which is exactly that - see
+     * `globalPointerInput`. State rather than a ref so the touch listener below is attached once the
+     * root exists, which is not on the first render.
+     */
+    const [gameRoot, setGameRoot] = useState<HTMLDivElement | null>(null);
+    const offerPointerInputToGlobal = useCallback((event: Event) => {
+        if (!gameRoot || !globalBlueprintDispatchRef.current) {
+            return;
+        }
+        offerUnclaimedPointerInput({
+            event,
+            root: gameRoot,
+            document: bundle.ui.uidoc,
+            scale,
+            answer: answerGlobalPointerActions,
+        });
+    }, [answerGlobalPointerActions, bundle.ui.uidoc, gameRoot, scale]);
+    const offerSyntheticPointerInputToGlobal = useCallback(
+        (event: SyntheticEvent) => offerPointerInputToGlobal(event.nativeEvent),
+        [offerPointerInputToGlobal],
+    );
+    useEffect(() => {
+        if (!gameRoot) {
+            return undefined;
+        }
+        // Native, because the touch recogniser's event has a private name React has no prop for;
+        // lanes listen for it the same way, on their own shells, and stop it when they take it.
+        gameRoot.addEventListener(UI_TOUCH_GESTURE_EVENT, offerPointerInputToGlobal);
+        return () => gameRoot.removeEventListener(UI_TOUCH_GESTURE_EVENT, offerPointerInputToGlobal);
+    }, [gameRoot, offerPointerInputToGlobal]);
+
+    /**
      * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
      * move, and `createNlrGameWithGameUi` for where it moved to.
      *
@@ -5894,8 +5942,17 @@ export function GameApp(props: GameAppProps): ReactNode {
     // PLAYER's own OS preference still lands — `useReducedMotion` above reads the media query
     // directly and is unaffected by this config. The host frame around it stays Studio chrome.
     const content = (
+        <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
-            <div className="nl-motion-keep relative h-full w-full overflow-hidden">
+            <div
+                ref={setGameRoot}
+                className="nl-motion-keep relative h-full w-full overflow-hidden"
+                onClick={offerSyntheticPointerInputToGlobal}
+                onDoubleClick={offerSyntheticPointerInputToGlobal}
+                onAuxClick={offerSyntheticPointerInputToGlobal}
+                onContextMenu={offerSyntheticPointerInputToGlobal}
+                onWheel={offerSyntheticPointerInputToGlobal}
+            >
                 {nlrStageLayer}
                 {/* Runtime plugin overlays: above the game stage, below the app surface
                     system (menus, save screens, every authored page). This is as low as a
@@ -5903,12 +5960,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                     Player and its only injection point (Player children) is itself stacked
                     above that dialogue, so there is no DOM position under it to occupy. */}
                 {pluginHost ? (
-                    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
+                    <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{ zIndex: 5 }}
+                        {...{ [RUNTIME_PLUGIN_OVERLAY_ATTR]: "" }}
+                    >
                         <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
                     </div>
                 ) : null}
-                {/* Surface system starts only after the NLR environment boot preload finishes. */}
-                <div className="pointer-events-none absolute inset-0 z-10">
+                {/* Surface system starts only after the NLR environment boot preload finishes. The box
+                    also guards the stage while a page or layer plays its exit - see `SurfaceStackBox`. */}
+                <SurfaceStackBox className="absolute inset-0 z-10">
                     <AnimatePresence
                         custom={navState.direction}
                         initial={false}
@@ -5938,7 +6000,6 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     reducedMotion={prefersReducedMotion === true}
                                     active={compositeInput.interactiveKeys.has(entry.key)}
                                     keyboardOwner={compositeInput.keyboardOwnerKey === entry.key}
-                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
                                 />
@@ -5985,16 +6046,16 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     active={compositeInput.interactiveKeys.has(layer.key)}
                                     keyboardOwner={compositeInput.keyboardOwnerKey === layer.key}
                                     scrim={layer.scrim}
-                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
                                 />
                             ))
                             : null}
                     </AnimatePresence>
-                </div>
+                </SurfaceStackBox>
             </div>
         </MotionConfig>
+        </GlobalInputActionContext.Provider>
     );
 
     return (

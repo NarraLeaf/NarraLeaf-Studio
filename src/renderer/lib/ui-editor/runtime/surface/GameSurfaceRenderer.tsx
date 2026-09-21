@@ -1,5 +1,6 @@
 import {
     useCallback,
+    useContext,
     useEffect,
     useLayoutEffect,
     useRef,
@@ -10,26 +11,26 @@ import {
 } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import {
-    type UIInputPointerGesture,
-} from "@shared/types/ui-editor/inputAction";
-import {
     hitsConsumeInput,
+    resolveGlobalInputActionPayloads,
     resolveSurfaceInputActionHits,
     stopsAtLane,
     type UIInputSignal,
-    type UIPointerInputDevice,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import {
     claimInputLaneVisit,
     handOffInputToLaneBehind,
-    readPointerEventDevice,
+    readGlobalInputAnswer,
     readSurfaceHitNodes,
-    readWheelGesture,
+    recordGlobalInputAnswer,
+    takeGlobalInputTurn,
 } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
+import { GlobalInputActionContext } from "@/lib/ui-editor/runtime/input/globalInputActionContext";
+import { readPointerInputGesture, type UIPointerInputGesture } from "@/lib/ui-editor/runtime/input/pointerInputGesture";
+import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
     claimTouchStroke,
     getSharedTouchGestureTracker,
-    isTouchStrokeInFlight,
     readTouchGestureDetail,
     UI_TOUCH_GESTURE_EVENT,
 } from "@/lib/ui-editor/runtime/input/touchGesture";
@@ -68,23 +69,6 @@ type UIInputLaneEvent = {
     clientX: number;
     clientY: number;
     stopPropagation: () => void;
-};
-
-/** What the input is, in the terms a binding is written in. */
-type UIInputLaneGesture = {
-    gesture: UIInputPointerGesture;
-    device: UIPointerInputDevice;
-    /**
-     * The input is one the touch recogniser produced rather than one the browser raised.
-     *
-     * Two rules turn on it. A touch stroke has an explicit end, so it is not subject to the wheel
-     * gate's silence window - running it through would let one stroke's claim swallow the next
-     * stroke that happened to follow within a fifth of a second. And a stroke something answered has
-     * to have its trailing synthetic click suppressed, which is only meaningful while the stroke is
-     * the thing in hand: the tap-synthesised `click` that arrives afterwards is a touch input too,
-     * and claiming on that one would eat the *following* tap.
-     */
-    fromTouchStroke?: boolean;
 };
 
 export type GameSurfaceRendererProps = {
@@ -229,6 +213,9 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     const scaledHeight = surface.designSize.height * safeScale;
     const dispatchSurfaceBlueprintEvent = hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent;
     const dispatchSurfaceInputAction = hostAdapter.blueprintRuntime?.dispatchSurfaceInputAction;
+    // The game's global blueprint, which hears a pointer action before the lane it lands on does.
+    // Null outside a running game: see `GlobalInputActionContext`.
+    const answerGlobalInputActions = useContext(GlobalInputActionContext);
     const effectiveWidgetRuntimePatches = getWidgetRuntimePatches?.() ?? widgetRuntimePatches;
     const shellRef = useRef<HTMLDivElement | null>(null);
 
@@ -284,11 +271,22 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      * whatever the browser paints behind this surface. An action with `consume` (the default) ends
      * the walk wherever the mode would have carried it.
      *
-     * Returns whether an action here consumed the input, which is what a touch stroke's caller needs
-     * to know: only a stroke that actually fired something claims its trailing click.
+     * **The game's global blueprint answers first.** The first lane an input lands on offers it to
+     * the global blueprint before firing anything of its own - once per physical input, so neither
+     * the rest of the walk nor a lane behind that is handed a copy offers it again. It is the key
+     * rule applied to a pointer: the global blueprint belongs to the game rather than to anything on
+     * screen, so it hears the input wherever it landed, and the actions of the lanes it landed on
+     * start once it has answered - and not at all when a global handler stopped it. The global has
+     * no say over where the input goes next (`consume` is a lane's answer to what is behind it), but
+     * a gesture it answered is spent: the tail of the scroll and the click a finger leaves behind
+     * fire nothing, as they would after a lane that consumed it.
+     *
+     * Returns whether this step spent the input - an action here consumed it, or the global answered
+     * it - which is what a touch stroke's caller needs to know: only a stroke that actually fired
+     * something claims its trailing click.
      */
     const runLaneStep = useCallback(
-        (event: UIInputLaneEvent, input: UIInputLaneGesture): boolean => {
+        (event: UIInputLaneEvent, input: UIPointerInputGesture): boolean => {
             const shell = shellRef.current;
             if (!laneInteractive || !shell || !laneKey) {
                 return false;
@@ -306,35 +304,59 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             }
             const point = toDesignPoint(event, shell);
             const signal: UIInputSignal = { kind: "pointer", gesture: input.gesture, device: input.device, ...point };
+            const answersGlobally = Boolean(answerGlobalInputActions) && takeGlobalInputTurn(event.nativeEvent);
+            const hitChain = dispatchSurfaceInputAction || answersGlobally
+                ? readSurfaceHitNodes({
+                      document,
+                      target: event.target,
+                      surfaceRoot: shell,
+                      gesture: input.gesture,
+                  })
+                : [];
+            const globalPayloads = answersGlobally
+                ? resolveGlobalInputActionPayloads({ vocabulary: actionVocabulary, signal, hitChain })
+                : [];
+            const answeredGlobally = globalPayloads.length > 0;
+            if (answeredGlobally && answerGlobalInputActions) {
+                const eventControl = getOrCreateDomEventPropagationControl(event.nativeEvent);
+                recordGlobalInputAnswer(
+                    event.nativeEvent,
+                    answerGlobalInputActions(globalPayloads, eventControl).then(() => !eventControl.isPropagationStopped()),
+                );
+            }
             const hits = dispatchSurfaceInputAction
                 ? resolveSurfaceInputActionHits({
                       vocabulary: actionVocabulary,
                       enablements: surfaceActions,
                       signal,
-                      hitChain: readSurfaceHitNodes({
-                          document,
-                          target: event.target,
-                          surfaceRoot: shell,
-                          gesture: input.gesture,
-                      }),
+                      hitChain,
                   })
                 : [];
+            const globalAnswer = readGlobalInputAnswer(event.nativeEvent);
             for (const hit of hits) {
-                void dispatchSurfaceInputAction?.(hit.payload);
+                if (globalAnswer) {
+                    void globalAnswer.then(mayHear => (mayHear ? dispatchSurfaceInputAction?.(hit.payload) : undefined));
+                } else {
+                    void dispatchSurfaceInputAction?.(hit.payload);
+                }
             }
-            const consumed = hitsConsumeInput(hits);
-            if (wheel && consumed) {
-                wheelGestureGate.claim(eventTime);
-            }
+            const spent = hitsConsumeInput(hits) || answeredGlobally;
             if (stopsAtLane(hits)) {
                 event.stopPropagation();
-                return consumed;
+            } else {
+                handOffInputToLaneBehind({ event: event.nativeEvent, surfaceRoot: shell });
             }
-            handOffInputToLaneBehind({ event: event.nativeEvent, surfaceRoot: shell });
-            return consumed;
+            // After the hand-off, not before it: the lane behind is owed the event in hand, and a
+            // claim made first would refuse it the copy. What the claim takes is the rest of the
+            // gesture.
+            if (wheel && spent) {
+                wheelGestureGate.claim(eventTime);
+            }
+            return spent;
         },
         [
             actionVocabulary,
+            answerGlobalInputActions,
             dispatchSurfaceInputAction,
             document,
             laneInteractive,
@@ -352,25 +374,31 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // A tap synthesises a click, and it reports itself as one: the event is a `PointerEvent`
         // whose `pointerType` says which hand raised it, so an action fired from a tap says `touch`
         // without anything having to infer it from the shape of the gesture.
-        runLaneStep(event, { gesture: "click", device: readPointerEventDevice(event.nativeEvent) });
+        const gesture = readPointerInputGesture(event.nativeEvent);
+        if (gesture) {
+            runLaneStep(event, gesture);
+        }
     }, [dispatchSurfaceBlueprintEvent, laneInteractive, runLaneStep, toDesignPoint]);
 
     const handleSurfaceDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-        runLaneStep(event, { gesture: "doubleClick", device: readPointerEventDevice(event.nativeEvent) });
+        const gesture = readPointerInputGesture(event.nativeEvent);
+        if (gesture) {
+            runLaneStep(event, gesture);
+        }
     }, [runLaneStep]);
 
     /**
      * The middle button, which arrives as `auxclick` rather than as a click.
      *
      * `click` is the primary button only, so a wheel press reaches nothing without this. The event
-     * fires for every non-primary button, so the number is checked: the secondary one already has a
-     * gesture of its own and would otherwise raise two.
+     * fires for every non-primary button, and `readPointerInputGesture` answers only the middle one:
+     * the secondary one already has a gesture of its own and would otherwise raise two.
      */
     const handleSurfaceAuxClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-        if (event.button !== 1) {
-            return;
+        const gesture = readPointerInputGesture(event.nativeEvent);
+        if (gesture) {
+            runLaneStep(event, gesture);
         }
-        runLaneStep(event, { gesture: "middleClick", device: readPointerEventDevice(event.nativeEvent) });
     }, [runLaneStep]);
 
     const handleSurfaceRightClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
@@ -379,7 +407,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // press this runtime recognises for itself, and it is swallowed rather than answered - iOS
         // raises nothing of the kind, and an author must not be able to feel which phone a player is
         // holding. A right button raised it when no stroke is in flight, and that is `rightClick`.
-        if (isTouchStrokeInFlight()) {
+        const gesture = readPointerInputGesture(event.nativeEvent);
+        if (!gesture) {
             event.preventDefault();
             return;
         }
@@ -388,15 +417,13 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             event.preventDefault();
             void dispatchSurfaceBlueprintEvent("rightClick", toDesignPoint(event, shell));
         }
-        runLaneStep(event, { gesture: "rightClick", device: readPointerEventDevice(event.nativeEvent) });
+        runLaneStep(event, gesture);
     }, [dispatchSurfaceBlueprintEvent, laneInteractive, runLaneStep, toDesignPoint]);
 
     const handleSurfaceWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
-        const gesture = readWheelGesture(event);
+        const gesture = readPointerInputGesture(event.nativeEvent);
         if (gesture) {
-            // A `WheelEvent` is not a pointer event and names no device. A trackpad's two fingers
-            // are the trackpad's, not the player's: what reaches here is always the mouse family.
-            runLaneStep(event, { gesture, device: "pointer" });
+            runLaneStep(event, gesture);
             return;
         }
         // A wheel event whose deltas name no direction still belongs to the gesture in flight.

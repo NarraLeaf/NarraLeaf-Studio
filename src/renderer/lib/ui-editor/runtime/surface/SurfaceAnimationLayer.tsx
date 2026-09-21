@@ -64,6 +64,22 @@ type SurfaceAnimationLayerProps = {
     surfaceId?: string;
     surfaceKind?: string;
     interactive?: boolean;
+    /**
+     * Take the whole layer out of hit testing while it plays its exit, so a press made during the
+     * fade lands on whatever is drawn beneath it instead of on a page that has already gone.
+     *
+     * `pointer-events: none` on the layer does not do that. The elements inside it turn pointer
+     * events back on for themselves - every widget wrapper does, so that a click stops where its
+     * picture is, and so does the box a free-layout container lays its children out in - and a
+     * leaving layer is drawn above the one arriving under it. So its invisible elements went on
+     * taking every press over their area with no handler left to answer it. `inert` is the one
+     * switch nothing inside the layer can turn back on.
+     *
+     * Opt-in, because whether a press may fall through depends on what the host draws underneath:
+     * the app's page stack guards the game stage for the length of an exit (see `SurfaceStackBox`),
+     * and a frame inside a page has no such guard.
+     */
+    inertWhileLeaving?: boolean;
     presentZIndex?: number;
     exitZIndex?: number;
     /**
@@ -159,11 +175,22 @@ function waitForImages(root: HTMLElement | null): Promise<unknown> {
 const PREPAINT_ASSET_WAIT_SIGNIFICANT_MS = 16;
 
 function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivElement | null>) {
-    const [ready, setReady] = useState(false);
+    /**
+     * The key the prepaint has finished for, rather than a flag: a new key starts hidden with no
+     * reset step, and running the effect again for a key that has already painted finds nothing to
+     * do. React does run it again - a development build replays every effect of a subtree it moves,
+     * and the page stack moves the page it is leaving when Back returns to one still fading out. A
+     * flag reset there hid a page that was on screen and replayed its enter animation over its exit,
+     * which cut the exit short without ever finishing it: the page stayed on screen, leaving, for good.
+     */
+    const [readyKey, setReadyKey] = useState<string | null>(null);
+    const readyKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
+        if (readyKeyRef.current === prepaintKey) {
+            return undefined;
+        }
         let cancelled = false;
-        setReady(false);
         void (async () => {
             // One frame to let the freshly mounted (still hidden) surface lay out and paint. This is
             // the expensive one: on a busy page the browser needs 100ms+ to produce it, and that -
@@ -182,7 +209,8 @@ function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivEleme
                 await waitForAnimationFrame();
             }
             if (!cancelled) {
-                setReady(true);
+                readyKeyRef.current = prepaintKey;
+                setReadyKey(prepaintKey);
             }
         })();
         return () => {
@@ -190,7 +218,7 @@ function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivEleme
         };
     }, [prepaintKey, rootRef]);
 
-    return ready;
+    return readyKey === prepaintKey;
 }
 
 type PresenceValue = NonNullable<ContextType<typeof PresenceContext>>;
@@ -317,6 +345,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         surfaceId,
         surfaceKind,
         interactive = true,
+        inertWhileLeaving = false,
         presentZIndex = 10,
         exitZIndex = 20,
         exitHoldMs,
@@ -361,18 +390,38 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
     }, [prepaintKey]);
 
     useLayoutEffect(() => {
-        if (isPresent || beforeExitReportedRef.current === prepaintKey) {
+        if (isPresent) {
+            // Back before its exit finished. A presence group whose child's key comes back while the
+            // child is still leaving brings that same child back rather than mounting a new one -
+            // which is what going Back to a page that is still fading out does. The page has arrived
+            // again, so its next departure is announced and its arrival counted as if it were new.
+            if (beforeExitReportedRef.current === prepaintKey) {
+                beforeExitReportedRef.current = null;
+                enterCompleteReportedRef.current = null;
+            }
+            return;
+        }
+        if (beforeExitReportedRef.current === prepaintKey) {
             return;
         }
         beforeExitReportedRef.current = prepaintKey;
         onBeforeExit?.(prepaintKey);
     }, [isPresent, onBeforeExit, prepaintKey]);
 
+    /**
+     * Report the layer painted - and again when it comes back from an exit it did not finish.
+     *
+     * The second report is what lets the host finish the navigation that brought it back. A page
+     * lane keeps the page it is leaving drawn over the one it is going to until that one reports its
+     * prepaint, and a layer brought back is already painted, so it had nothing new to report: the
+     * page it was returning to stayed drawn on top of it for good, and since input belongs to the
+     * page being returned to, nothing on screen answered a press or a key again.
+     */
     useEffect(() => {
-        if (prepaintReady) {
+        if (prepaintReady && isPresent) {
             onPrepaintReady?.(prepaintKey);
         }
-    }, [onPrepaintReady, prepaintKey, prepaintReady]);
+    }, [isPresent, onPrepaintReady, prepaintKey, prepaintReady]);
 
     useEffect(() => {
         if (prepaintReady && isPresent && pageMotion.enterDurationMs <= 0) {
@@ -436,7 +485,14 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
                 }
             }}
         >
-            <div ref={contentRef} className={contentClassName} style={mergedContentStyle}>
+            <div
+                ref={contentRef}
+                className={contentClassName}
+                style={mergedContentStyle}
+                // On the content rather than the animated node: everything that can take a press is
+                // in here, and this is a plain element, so the attribute is written as React writes it.
+                inert={inertWhileLeaving && !isPresent}
+            >
                 {/* Elements on this Surface start their own enter animations from the same instant
                     this layer becomes visible, not from when they mounted behind the curtain. */}
                 <SurfaceEnterReadyContext.Provider value={prepaintReady}>
