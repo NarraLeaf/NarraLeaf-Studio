@@ -306,7 +306,9 @@ app.services.widgets.registerMany([{
 
 ```ts
 // shared.ts —— 两个入口都 import 这一份
-export const RATING_LOGIC = {
+import type { WidgetLogicApi } from "narraleaf-studio/runtime";
+
+export const RATING_LOGIC: WidgetLogicApi = {
   supportsPrivateBlueprint: true,
   events: [
     { id: "mouseClick", displayName: "Mouse click", dispatchKind: "interaction",

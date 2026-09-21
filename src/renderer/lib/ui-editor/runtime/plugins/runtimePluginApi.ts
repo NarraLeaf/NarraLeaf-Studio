@@ -38,6 +38,14 @@ export type {
     StoryCompilePass,
 } from "../game/storyCompilePass";
 
+/**
+ * A widget's event declaration, by name: the object a plugin shares between its studio entry's
+ * widget module and its runtime entry's {@link RuntimeWidgetRendererDef}, typed once. Exported from
+ * this entry only - the types build refuses a name both entries export - and importable from it by
+ * the module the two entries share.
+ */
+export type { WidgetLogicApi, WidgetLogicEventDef } from "@shared/types/ui-editor/widgetLogic";
+
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
 /**
