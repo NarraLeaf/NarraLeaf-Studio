@@ -17,7 +17,7 @@ import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
 import { devModeScreenEffectQuality, screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import { IPCMessageType } from "@shared/types/ipc";
-import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { AssetUrlDirectory, IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { WindowAppType } from "@shared/types/window";
@@ -362,7 +362,7 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
 
     public async handle(
         window: AppWindow<WindowAppType.DevMode>,
-    ): Promise<RequestStatus<{ urls: Record<string, string> }>> {
+    ): Promise<RequestStatus<AssetUrlDirectory>> {
         const workspaceWindow = findWorkspaceWindowFor(window);
         if (!workspaceWindow) {
             return { success: false, error: "Workspace window not available" };
@@ -387,7 +387,11 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
                     urls[assetId] = await promoteDevModeAssetGrant(window, url);
                 }
             }));
-            return { success: true, data: { urls } };
+            // The types travel untouched: promotion changes what a URL grants, not what the asset is.
+            return {
+                success: true,
+                data: resolved.data.types ? { urls, types: resolved.data.types } : { urls },
+            };
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
