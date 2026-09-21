@@ -1,5 +1,6 @@
 import {
     useCallback,
+    useEffect,
     useMemo,
     useRef,
     useState,
@@ -30,6 +31,7 @@ import {
     type GameHostSurfaceBinding,
 } from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
+import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
 import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
 
 /**
@@ -80,6 +82,12 @@ export type GameUiSlotHostOptions = {
     startStory: GameHostSurfaceBinding["startStory"];
     setWidgetPatchesByScope: Dispatch<SetStateAction<WidgetPatchesByScope>>;
     widgetPatchesByScopeRef: MutableRefObject<WidgetPatchesByScope>;
+    /**
+     * Where a slot surface says it is live, so the game's window and preference events reach its
+     * heads as they reach a page's (see `ambientSurfaceEvents`). Absent on a host that raises none of
+     * those events, such as the story editor's preview.
+     */
+    ambientSurfaces?: AmbientSurfaceTargets;
 };
 
 export type StageSlotSurfaceRuntime = {
@@ -282,6 +290,16 @@ export function StageSlotSurfaceBody(props: {
     const { runtimeScopeId, hostAdapter } = runtime;
     const [subscriptionsReady, setSubscriptionsReady] = useState(false);
     const handleRuntimeSubscriptionsReady = useCallback(() => setSubscriptionsReady(true), []);
+
+    // Live from the moment its graphs run - the same moment its lifecycle boundary is handed the
+    // core - until it leaves the stage.
+    const { ambientSurfaces } = options;
+    useEffect(() => {
+        if (!ambientSurfaces || !core || !subscriptionsReady) {
+            return undefined;
+        }
+        return ambientSurfaces.add({ surface, hostAdapter, runtimeScopeId });
+    }, [ambientSurfaces, core, hostAdapter, runtimeScopeId, subscriptionsReady, surface]);
     const getWidgetRuntimePatches = useCallback(
         () => widgetPatchesByScopeRef.current[runtimeScopeId] ?? NO_WIDGET_RUNTIME_PATCHES,
         [runtimeScopeId, widgetPatchesByScopeRef],

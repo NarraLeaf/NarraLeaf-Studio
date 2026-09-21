@@ -6,15 +6,19 @@ import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type {
     BehaviorGraphEventControl,
     BehaviorGraphExecutionTrace,
+    BehaviorGraphValueTracking,
     BehaviorNodeExecuteResult,
     BehaviorNodeExecutionContext,
 } from "./BehaviorNodeRegistry";
 import {
     abortablePromise,
     BlueprintGraphExecutionError,
+    BlueprintStepLimitError,
     isBlueprintGraphExecutionCancelledError,
+    stepLimitOfExecutionError,
     throwIfBlueprintExecutionCancelled,
 } from "./GraphExecutionError";
+import { eventLoopTurnedSince, readEventLoopTurn } from "./eventLoopTurns";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 import { resolveBehaviorNodeInput } from "./dataPinResolver";
 import {
@@ -27,6 +31,11 @@ export type ExecuteGraphOptions = {
     graph: UIGraph;
     entry: UIGraphEntry;
     hostAdapter: UIHostAdapter;
+    /**
+     * How many nodes may run in a row without the graph once waiting, before it is stopped.
+     *
+     * A budget between waits, not for the whole run - see {@link executeGraph}.
+     */
     maxSteps?: number;
     trace?: BehaviorGraphExecutionTrace;
     blueprintLocals?: Record<string, unknown>;
@@ -37,7 +46,7 @@ export type ExecuteGraphOptions = {
     instanceKey?: string;
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
     persistentVariables?: PersistentVariableRuntimeTable;
-    valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
+    valueExecution?: BehaviorGraphValueTracking;
     signal?: AbortSignal;
     fnCallDepth?: number;
 };
@@ -58,6 +67,23 @@ function resolveNextPorts(result: BehaviorNodeExecuteResult | void): string[] | 
     return nextPort == null ? null : [nextPort];
 }
 
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+    return Boolean(value) && typeof (value as { then?: unknown }).then === "function";
+}
+
+/**
+ * Run a graph from one entry until it ends, returns, fails or is cancelled.
+ *
+ * **The step budget counts nodes between waits, not nodes per run.** It exists to stop one failure:
+ * exec wires that go round in a circle through nodes that never wait. Every node is awaited, but an
+ * await on something already settled only lets other microtasks run, so such a circle holds the
+ * window forever - no input, no paint, no way to close Dev Mode. A circle through a node that does
+ * wait (a `Delay` of any real length, an animation, a file read) gives the window back on every pass;
+ * it is a timer or a poll the author wrote, and counting its passes against a per-run total stopped
+ * it after a few hundred of them with nothing on screen to say why. So the count starts again
+ * whenever a node actually waited - measured, not declared, because a `Delay` of zero is latent on
+ * paper and returns at once (see `eventLoopTurns`).
+ */
 export async function executeGraph(options: ExecuteGraphOptions): Promise<ExecuteGraphResult> {
     registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
@@ -69,10 +95,14 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             valueResult.returnValue = value;
         },
         trackDependency: options.valueExecution?.trackDependency,
+        trackState: options.valueExecution?.trackState,
+        stateOrigin: options.valueExecution?.stateOrigin,
     };
     let cursor: string | undefined = entry.start.nodeId;
     const pendingCursors: string[] = [];
-    let steps = 0;
+    const stepBudget = options.maxSteps ?? DEFAULT_MAX_STEPS;
+    /** Nodes run since the graph last waited; see the note on the budget above. */
+    let stepsWithoutWaiting = 0;
     /**
      * Nodes already reported for an unconnected required input, so a node inside a loop says it
      * once per run rather than once per pass.
@@ -97,28 +127,36 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
         while (cursor) {
             const currentCursor: string = cursor;
             throwIfBlueprintExecutionCancelled(options.signal, currentCursor);
-            steps += 1;
-            if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
-                const message = `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`;
+            stepsWithoutWaiting += 1;
+
+            const node = graph.nodes[currentCursor];
+            if (!node) {
+                throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${currentCursor}`, currentCursor);
+            }
+
+            if (stepsWithoutWaiting > stepBudget) {
+                const headNode = graph.nodes[entry.start.nodeId];
+                const error = new BlueprintStepLimitError(
+                    stepBudget,
+                    currentCursor,
+                    blueprintNodeDisplayName(node.type),
+                    headNode ? blueprintNodeDisplayName(headNode.type) : entry.start.nodeId,
+                );
                 const trace = options.trace;
                 if (trace) {
                     trace.emit({
                         type: "execution.error",
                         executionId: trace.executionId,
-                        message,
+                        message: error.message,
                         blueprintId: trace.blueprintId,
                         eventId: trace.eventId,
                         graphId: trace.graphId,
                         nodeId: currentCursor,
                         surfaceId: trace.surfaceId,
+                        stepLimit: stepLimitOfExecutionError(error),
                     });
                 }
-                throw new BlueprintGraphExecutionError(message, currentCursor);
-            }
-
-            const node = graph.nodes[currentCursor];
-            if (!node) {
-                throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${currentCursor}`, currentCursor);
+                throw error;
             }
 
             const definition = behaviorNodeRegistry.get(node.type);
@@ -157,8 +195,14 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             if (debugController && debugFrame) {
                 const gate = debugController.beforeNode(debugFrame, node, context);
                 if (gate) {
+                    // Paused at a breakpoint is waiting as much as a Delay is: stepping through a
+                    // loop one node at a time must not use up its budget.
+                    const mark = readEventLoopTurn();
                     await abortablePromise(gate, options.signal, node.id);
                     throwIfBlueprintExecutionCancelled(options.signal, node.id);
+                    if (eventLoopTurnedSince(mark)) {
+                        stepsWithoutWaiting = 0;
+                    }
                 }
             }
 
@@ -169,8 +213,15 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
 
             let result: BehaviorNodeExecuteResult | void;
             try {
-                result = await abortablePromise(Promise.resolve(definition.execute(context)), options.signal, node.id);
+                const outcome = definition.execute(context);
+                // Only a node that handed back a promise can have waited; a mark is taken for those
+                // alone, so a run of synchronous nodes posts nothing.
+                const mark = isThenable(outcome) ? readEventLoopTurn() : null;
+                result = await abortablePromise(Promise.resolve(outcome), options.signal, node.id);
                 throwIfBlueprintExecutionCancelled(options.signal, node.id);
+                if (mark !== null && eventLoopTurnedSince(mark)) {
+                    stepsWithoutWaiting = 0;
+                }
             } catch (err) {
                 if (isBlueprintGraphExecutionCancelledError(err)) {
                     throw err;
@@ -187,6 +238,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
                         graphId: trace.graphId,
                         nodeId,
                         surfaceId: trace.surfaceId,
+                        stepLimit: stepLimitOfExecutionError(err),
                     });
                 }
                 throw err instanceof BlueprintGraphExecutionError ? err : new BlueprintGraphExecutionError(message, nodeId);

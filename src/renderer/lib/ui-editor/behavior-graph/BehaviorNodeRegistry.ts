@@ -35,7 +35,19 @@ export type BlueprintValueDependency = {
 export type BehaviorGraphValueExecution = {
     returnValue(value: unknown): void;
     trackDependency?(dependency: BlueprintValueDependency): void;
+    /**
+     * Record that this evaluation read game state other than a widget prop - a variable of any
+     * kind - under the key its writers announce (`blueprintStateWrites`), so the binding is re-run
+     * when that key is written. Present only while a value binding is being evaluated, and carried
+     * into the body of any Fn it calls.
+     */
+    trackState?(stateKey: string): void;
+    /** Who is evaluating, so writes this evaluation makes do not re-run it; see `blueprintStateWrites`. */
+    stateOrigin?: unknown;
 };
+
+/** The part of {@link BehaviorGraphValueExecution} that is handed on from a caller to a callee. */
+export type BehaviorGraphValueTracking = Pick<BehaviorGraphValueExecution, "trackDependency" | "trackState" | "stateOrigin">;
 
 export type BehaviorGraphEventControl = {
     stopPropagation(): void;

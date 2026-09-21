@@ -20,6 +20,7 @@ import {
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import type { BehaviorGraphValueTracking } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { BlueprintNodeDef } from "../types";
 import { readDynamicInputPinIds } from "../effectivePins";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -33,6 +34,23 @@ export const BLUEPRINT_FN_PIN_VALUE_TYPE_OPTIONS = [
     "json",
     "any",
 ] as const;
+
+/**
+ * What a Fn body takes over from a caller that is a value binding being evaluated: where to record
+ * what it reads, and who it is reading for. Never `returnValue` - the body answers its caller through
+ * Fn Return, not through the binding the caller may be evaluating.
+ */
+function valueTrackingOf(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): BehaviorGraphValueTracking | undefined {
+    const execution = ctx.valueExecution;
+    if (!execution) {
+        return undefined;
+    }
+    return {
+        trackDependency: execution.trackDependency,
+        trackState: execution.trackState,
+        stateOrigin: execution.stateOrigin,
+    };
+}
 
 export const fnBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -154,6 +172,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
                 callerListItemScope: ctx.listItemScope,
                 signal: ctx.signal,
                 callerExecutionId: ctx.trace?.executionId,
+                valueExecution: valueTrackingOf(ctx),
             });
             return { outputValues: result.returns, nextPort: "next" };
         },

@@ -28,10 +28,14 @@ import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { resolveUIElementDrawingKey } from "@shared/types/ui-editor/widgetDrawing";
 import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
-import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
+import type {
+    BehaviorGraphEventControl,
+    BehaviorGraphValueTracking,
+} from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import {
     BlueprintGraphExecutionError,
     isBlueprintGraphExecutionCancelledError,
+    stepLimitOfExecutionError,
     throwIfBlueprintExecutionCancelled,
 } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter, UIHostAdapterElementEventOptions } from "@/lib/ui-editor/runtime/types";
@@ -123,6 +127,8 @@ function emitExecutionError(input: {
     eventId?: string;
     nodeId?: string;
     surfaceId?: string;
+    /** Carried over from the executor's own report, so both reports of one stop are the same. */
+    stepLimit?: ReturnType<typeof stepLimitOfExecutionError>;
 }): void {
     input.debug.emit({
         type: "execution.error",
@@ -132,6 +138,7 @@ function emitExecutionError(input: {
         eventId: input.eventId,
         nodeId: input.nodeId,
         surfaceId: input.surfaceId,
+        ...(input.stepLimit ? { stepLimit: input.stepLimit } : {}),
     });
 }
 
@@ -928,6 +935,7 @@ export async function dispatchBlueprintUiEvent(options: {
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                stepLimit: stepLimitOfExecutionError(err),
                 surfaceId,
             });
             return true;
@@ -1242,6 +1250,7 @@ async function runFannedOutListener(input: {
                     eventId,
                     nodeId: err.nodeId,
                     surfaceId,
+                    stepLimit: stepLimitOfExecutionError(err),
                 });
                 continue;
             }
@@ -1643,6 +1652,11 @@ export async function invokeBlueprintFnCall(options: {
     hostAdapter: UIHostAdapter;
     debug: DebugBridge;
     maxSteps?: number;
+    /**
+     * The calling value binding's bookkeeping, when a binding is what called: the body's reads -
+     * variables of its own blueprint, a persistent value, a saved one - are reads of the binding.
+     */
+    valueExecution?: BehaviorGraphValueTracking;
 }): Promise<{ returns: Record<string, unknown> }> {
     const { blueprintDocument, surfaceId, runtimeScopeId, fnRef, args, depth, hostAdapter, debug } = options;
 
@@ -1673,10 +1687,14 @@ export async function invokeBlueprintFnCall(options: {
         decl.owner.kind === "widgetMain" || decl.owner.kind === "componentWidgetMain"
             ? decl.owner.elementId
             : undefined;
+    const variableObserver = options.valueExecution
+        ? { onRead: options.valueExecution.trackState, origin: options.valueExecution.stateOrigin }
+        : undefined;
     const blueprintLocals = acquireBlueprintExecutionLocals(
         decl.owner.kind === "globalMain"
-            ? { blueprintDocument, currentBlueprintId: decl.blueprintId }
+            ? { blueprintDocument, currentBlueprintId: decl.blueprintId, observer: variableObserver }
             : {
+                  observer: variableObserver,
                   blueprintDocument,
                   currentBlueprintId: decl.blueprintId,
                   surfaceId,
@@ -1721,6 +1739,7 @@ export async function invokeBlueprintFnCall(options: {
         maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
         signal: options.signal,
         fnCallDepth: depth + 1,
+        valueExecution: options.valueExecution,
         trace: options.callerExecutionId
             ? {
                   executionId: options.callerExecutionId,
@@ -1908,6 +1927,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                stepLimit: stepLimitOfExecutionError(err),
                 surfaceId,
             });
             return;
@@ -2079,6 +2099,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                 blueprintId,
                 eventId: eventName,
                 nodeId: err.nodeId,
+                stepLimit: stepLimitOfExecutionError(err),
             });
             return;
         }

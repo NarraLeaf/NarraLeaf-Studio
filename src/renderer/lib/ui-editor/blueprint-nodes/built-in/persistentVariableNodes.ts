@@ -13,6 +13,7 @@ import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutio
 import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { persistentStateKey } from "../../blueprint-runtime/blueprintStateWrites";
 
 function cloneLiteralValue(value: LiteralValue | undefined): unknown {
     if (value === undefined) {
@@ -65,6 +66,9 @@ export const persistentVariableBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const variable = resolvePersistentVariable(ctx);
+            // A value binding that reaches this through a Fn shows the value; it has to hear the
+            // next write to it.
+            ctx.valueExecution?.trackState?.(persistentStateKey(variable.storageKey));
             const stored = await api.persistence.get(variable.storageKey);
             return {
                 nextPort: "next",

@@ -24,6 +24,7 @@ import {
     BlueprintValueRuntimeStore,
     mergeElementWithBlueprintValues,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { subscribeBlueprintStateWrites } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
 import type { BlueprintStateReader } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
@@ -247,6 +248,13 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         const disposers = [
             blueprintBindingContext.surfaceState.subscribe(onStateChanged),
             blueprintBindingContext.globalState?.subscribe?.(onStateChanged),
+            // Variables - of any blueprint, persistent, saved - are read by the graph rather than
+            // handed to it, so they have no store to subscribe to here. Their writers announce the
+            // key instead, from whatever graph and host wrote, and only the bindings whose last run
+            // read that key run again.
+            subscribeBlueprintStateWrites((stateKey, origin) => {
+                valueRuntime.refreshStateReaders(stateKey, origin);
+            }),
         ].filter((dispose): dispose is () => void => Boolean(dispose));
         return () => {
             disposers.forEach(dispose => dispose());
