@@ -53236,7 +53236,8 @@
         "5107c0a1-0000-4000-8000-000000000320",
         "5107c0a1-0000-4000-8000-000000000330",
         "5107c0a1-0000-4000-8000-000000000340",
-        "5107c0a1-0000-4000-8000-000000000351"
+        "5107c0a1-0000-4000-8000-000000000351",
+        "5107c0a1-0000-4000-8000-000000000400"
       ],
       "layout": {
         "x": 0,
@@ -57407,7 +57408,8 @@
         "5107c0a1-0000-4000-8000-000000000360",
         "5107c0a1-0000-4000-8000-000000000312",
         "5107c0a1-0000-4000-8000-000000000314",
-        "5107c0a1-0000-4000-8000-000000000315"
+        "5107c0a1-0000-4000-8000-000000000315",
+        "5107c0a1-0000-4000-8000-000000000316"
       ],
       "layout": {
         "x": 0,
@@ -57580,7 +57582,8 @@
         "5107c0a1-0000-4000-8000-000000000370",
         "5107c0a1-0000-4000-8000-000000000322",
         "5107c0a1-0000-4000-8000-000000000324",
-        "5107c0a1-0000-4000-8000-000000000325"
+        "5107c0a1-0000-4000-8000-000000000325",
+        "5107c0a1-0000-4000-8000-000000000326"
       ],
       "layout": {
         "x": 0,
@@ -58485,6 +58488,409 @@
         "borderWidth": 0,
         "borderStyle": "none"
       }
+    },
+    "5107c0a1-0000-4000-8000-000000000316": {
+      "id": "5107c0a1-0000-4000-8000-000000000316",
+      "type": "nl.button",
+      "name": "クリック領域",
+      "parentId": "5107c0a1-0000-4000-8000-000000000311",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 366,
+        "height": 206
+      },
+      "props": {
+        "label": "",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "fillOpacity": 0,
+        "borderRadius": 4,
+        "borderWidth": 3,
+        "borderColor": "transparent",
+        "borderStyle": "solid",
+        "paddingX": 0,
+        "paddingY": 0,
+        "clipContent": true,
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 3
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "unlocked"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000326": {
+      "id": "5107c0a1-0000-4000-8000-000000000326",
+      "type": "nl.button",
+      "name": "クリック領域",
+      "parentId": "5107c0a1-0000-4000-8000-000000000321",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 366,
+        "height": 206
+      },
+      "props": {
+        "label": "",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "fillOpacity": 0,
+        "borderRadius": 4,
+        "borderWidth": 3,
+        "borderColor": "transparent",
+        "borderStyle": "solid",
+        "paddingX": 0,
+        "paddingY": 0,
+        "clipContent": true,
+        "cursor": "pointer",
+        "appearance": {
+          "defaultVariantId": "default",
+          "variants": [
+            {
+              "id": "default",
+              "name": "デフォルト",
+              "propertyGroups": [
+                {
+                  "key": "fillVisible",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": false
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": true
+                    }
+                  ]
+                },
+                {
+                  "key": "backgroundColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:primary"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "fillOpacity",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 0
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": 0.08
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                },
+                {
+                  "key": "borderStyle",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "solid"
+                    }
+                  ]
+                },
+                {
+                  "key": "borderWidth",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": 3
+                    }
+                  ]
+                },
+                {
+                  "key": "borderColor",
+                  "rows": [
+                    {
+                      "conditions": null,
+                      "value": "transparent"
+                    },
+                    {
+                      "conditions": {
+                        "hovered": true
+                      },
+                      "value": "nlbrand:border.strong"
+                    }
+                  ],
+                  "transition": {
+                    "type": "tween",
+                    "durationMs": 140,
+                    "easing": "easeOut"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "unlocked"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000400": {
+      "id": "5107c0a1-0000-4000-8000-000000000400",
+      "type": "nl.container",
+      "name": "ビューアー",
+      "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000401"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "visible": false
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.sunken",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true
+      },
+      "animation": {
+        "enter": "fade",
+        "exit": "fade",
+        "enterDirection": "auto",
+        "exitDirection": "auto",
+        "enterAngleDegrees": 0,
+        "exitAngleDegrees": 180,
+        "enterDurationSeconds": 0.22,
+        "exitDurationSeconds": 0.22,
+        "enterDelaySeconds": 0,
+        "exitDelaySeconds": 0,
+        "childStaggerSeconds": 0,
+        "exitWaitsForChildren": true,
+        "exitBlocking": true
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000401": {
+      "id": "5107c0a1-0000-4000-8000-000000000401",
+      "type": "nl.list",
+      "name": "画像",
+      "parentId": "5107c0a1-0000-4000-8000-000000000400",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000402"
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "props": {
+        "itemStructId": "extra.galleryPicture",
+        "itemKeyFieldId": "id",
+        "repeatDirection": "vertical",
+        "repeatWrap": false,
+        "itemGap": 0,
+        "placeholderCount": 1,
+        "dragContentScroll": false,
+        "scrollbar": {
+          "enabled": false,
+          "side": "right",
+          "visibility": "auto",
+          "thickness": 8,
+          "contentInset": 4,
+          "minThumbLength": 24,
+          "trackStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.08,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "thumbStyle": {
+            "backgroundColor": "#ffffff",
+            "fillType": "color",
+            "imageFill": null,
+            "backgroundImage": "",
+            "backgroundFit": "cover",
+            "fillOpacity": 0.34,
+            "borderRadius": 999,
+            "borderColor": "transparent",
+            "borderWidth": 0,
+            "borderStyle": "solid"
+          },
+          "trackElementId": null,
+          "thumbElementId": null
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000402": {
+      "id": "5107c0a1-0000-4000-8000-000000000402",
+      "type": "nl.image",
+      "name": "イラスト",
+      "parentId": "5107c0a1-0000-4000-8000-000000000401",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080
+      },
+      "props": {
+        "backgroundColor": "transparent",
+        "fillType": "image",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "imageFill": {
+          "mode": "contain"
+        }
+      },
+      "valueBindings": {
+        "imageFill.assetId": {
+          "kind": "listItemField",
+          "fieldId": "image"
+        }
+      },
+      "extra": {
+        "listSlot": "itemTemplate"
+      }
     }
   },
   "actions": {
@@ -58545,7 +58951,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-21T04:00:22.251Z"
+    "updatedAt": "2026-09-21T05:28:58.511Z"
   },
   "structs": {
     "extra.galleryEntry": {
@@ -58595,6 +59001,26 @@
           "id": "startBlockId",
           "key": "startBlockId",
           "type": "string"
+        },
+        {
+          "id": "coverVariantId",
+          "key": "coverVariantId",
+          "type": "string"
+        }
+      ]
+    },
+    "extra.galleryPicture": {
+      "id": "extra.galleryPicture",
+      "fields": [
+        {
+          "id": "id",
+          "key": "id",
+          "type": "string"
+        },
+        {
+          "id": "image",
+          "key": "image",
+          "type": "image"
         }
       ]
     }
