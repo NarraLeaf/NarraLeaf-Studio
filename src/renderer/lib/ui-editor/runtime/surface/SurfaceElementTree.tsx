@@ -10,7 +10,8 @@ import {
     isUIElementFlowLayoutChild,
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
-import { buildUIComponentInstanceKey, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentDocumentView } from "@shared/types/ui-editor/componentDocumentView";
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
@@ -118,6 +119,15 @@ export type SurfaceLifecycleSignals = {
 
 export type SurfaceElementTreeProps = {
     document: UIDocument;
+    /**
+     * The project's document, where a Page widget finds the page it draws - when `document` is a
+     * view of it that holds something else, as the component editor's is. Defaults to `document`.
+     *
+     * A page drawn in a frame is drawn from this rather than from whatever the frame was drawn
+     * from: a page is the same page wherever a frame shows it, and a view rebuilt for one drawing
+     * would hand the page's whole runtime a new document on every pass.
+     */
+    pageDocument?: UIDocument;
     surface: UISurface;
     rootElement: UIElement;
     rendererRegistry: ElementRendererRegistry;
@@ -368,6 +378,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         null,
         props.animationPlan ?? null,
         reuse,
+        props.pageDocument ?? document,
     );
 
     return (
@@ -394,6 +405,29 @@ function defaultFrameRuntimeScopeId(input: Omit<NestedSurfaceRuntimeInput, "runt
     return `${parentScope}/frame:${input.frameElement.id}${instancePart}->${input.targetSurface.id}`;
 }
 
+/**
+ * `value`, or the value last returned when `same` says the two are alike.
+ *
+ * For inputs rebuilt on every render that something downstream keys on by identity. Deterministic
+ * for given inputs, so recording it during render is safe to repeat.
+ */
+function useUnchangedIdentity<T>(value: T, same: (previous: T, next: T) => boolean): T {
+    const ref = useRef(value);
+    if (ref.current !== value && !same(ref.current, value)) {
+        ref.current = value;
+    }
+    return ref.current;
+}
+
+/** Equal as JSON: for the small plain records a frame's page is keyed on. */
+function sameJson(previous: unknown, next: unknown): boolean {
+    try {
+        return JSON.stringify(previous) === JSON.stringify(next);
+    } catch {
+        return false;
+    }
+}
+
 function NestedSurfaceRenderer(props: {
     document: UIDocument;
     parentSurface: UISurface;
@@ -413,10 +447,7 @@ function NestedSurfaceRenderer(props: {
 }) {
     const {
         document,
-        parentSurface,
         targetSurfaceId,
-        frameElement,
-        params,
         instanceKey,
         rendererRegistry,
         parentHostAdapter,
@@ -426,6 +457,15 @@ function NestedSurfaceRenderer(props: {
         parentInteractive,
         parentKeyboardInteractive,
     } = props;
+    // Every pass of the tree above hands these over as new objects - the frame is cloned for each
+    // pass, a component's surface is rebuilt for each drawing, a bound params object is merged anew
+    // - and the runtime input below is keyed on them. A new identity there tore the page's whole
+    // runtime down and put it back: its scope closed (cancelling whatever its graphs were running)
+    // and its Surface Init ran again, on every redraw of the page around the frame. So each keeps its
+    // last identity for as long as nothing in it changed.
+    const frameElement = useUnchangedIdentity(props.frameElement, sameResolvedElement);
+    const parentSurface = useUnchangedIdentity(props.parentSurface, sameJson);
+    const params = useUnchangedIdentity(props.params, sameJson);
     // Rebound on every render of the tree above, so it is read through a ref: the runtime input
     // below keys the nested page's whole runtime, and a new identity there would rebuild it.
     const dispatchFrameEventRef = useRef(props.dispatchFrameEvent);
@@ -487,7 +527,10 @@ function NestedSurfaceRenderer(props: {
         return { ...runtimeBaseInput, runtimeScopeId };
     }, [runtimeBaseInput, runtimeScopeId]);
 
-    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
+    // Read once per frame record: normalising builds a new object, and the effect below runs on
+    // this one's identity. Read on every render, a frame with an animation of its own set state from
+    // that effect on every render, and drew its page again and again for as long as it was shown.
+    const frameAnimation = useMemo(() => getUIFrameWidgetProps(frameElement).animation, [frameElement]);
     const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
     const [visibleInputs, setVisibleInputs] = useState<VisibleNestedSurfaceRuntimeInput[]>(() =>
         runtimeInput ? [runtimeInput] : []
@@ -521,9 +564,13 @@ function NestedSurfaceRenderer(props: {
             return;
         }
         if (currentInput.runtimeScopeId === runtimeInput.runtimeScopeId) {
-            setVisibleInputs(prev => prev.map(input =>
-                input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input
-            ));
+            // Unchanged state when the input already is this one, so an effect that runs again for
+            // no reason does not draw the page again.
+            setVisibleInputs(prev =>
+                prev.some(input => input.runtimeScopeId === runtimeInput.runtimeScopeId && input !== runtimeInput)
+                    ? prev.map(input => (input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input))
+                    : prev,
+            );
             return;
         }
 
@@ -949,6 +996,10 @@ function ComponentInstancePlaceholder({ message }: { message: string }) {
 function renderLinkedComponentInstanceContent(input: {
     instanceElement: UIElement;
     document: UIDocument;
+    /** Where a page drawn by a frame inside the definition comes from; see `renderElementTree`. */
+    pageDocument: UIDocument;
+    /** The surfaces the placement is drawn inside, outermost first. */
+    surfacePath: string[];
     hostAdapter: UIHostAdapter;
     rendererRegistry: ElementRendererRegistry;
     useAppearanceInspectorPreview: boolean;
@@ -984,41 +1035,19 @@ function renderLinkedComponentInstanceContent(input: {
     if (input.componentPath.includes(component.id)) {
         return <ComponentInstancePlaceholder message="Component loop blocked" />;
     }
-    const root = component.elements[component.rootElementId];
-    if (!root) {
+    // The definition is drawn against the project's document with its own surface added - see
+    // `buildUIComponentDocumentView` for why added rather than swapped in.
+    const view = buildUIComponentDocumentView(input.document, component);
+    if (!view) {
         return <ComponentInstancePlaceholder message="Component root missing" />;
     }
+    const { surface: virtualSurface, root: rootSnapshot, document: virtualDocument } = view;
+    const root = component.elements[component.rootElementId]!;
 
-    const rootWidth = Math.max(1, Math.abs(root.layout.width));
-    const rootHeight = Math.max(1, Math.abs(root.layout.height));
+    const rootWidth = virtualSurface.designSize.width;
+    const rootHeight = virtualSurface.designSize.height;
     const instanceWidth = Math.max(1, Math.abs(input.instanceElement.layout.width));
     const instanceHeight = Math.max(1, Math.abs(input.instanceElement.layout.height));
-    const virtualSurface: UISurface = {
-        id: buildUIComponentSurfaceId(component.id),
-        name: component.name,
-        host: "app",
-        kind: "appSurface",
-        designSize: { width: rootWidth, height: rootHeight },
-        rootElementId: root.id,
-    };
-    const rootSnapshot: UIElement = {
-        ...cloneElementRenderSnapshot(root),
-        parentId: null,
-        layout: {
-            ...root.layout,
-            x: 0,
-            y: 0,
-        },
-    };
-    const virtualDocument: UIDocument = {
-        ...input.document,
-        surfaces: [virtualSurface],
-        elements: {
-            ...input.document.elements,
-            ...component.elements,
-            [root.id]: rootSnapshot,
-        },
-    };
     const componentInstanceKey = buildUIComponentInstanceKey(input.instanceKey, input.instanceElement.id);
     // The one point that holds both the instance element and the document, so the one point that can
     // answer "what does THIS placement supply". Everything below runs the shared definition and can
@@ -1086,7 +1115,11 @@ function renderLinkedComponentInstanceContent(input: {
                     input.listItemScope,
                     componentInstanceKey,
                     input.nestedSurfaceRuntime,
-                    [virtualSurface.id],
+                    // The way down, extended rather than started over. A Page widget refuses a page
+                    // already on this path, and a definition that restarted the path forgot the page
+                    // it is placed on: a card holding a frame onto the page the card sits on drew
+                    // that page, which placed the card, which drew the page, without end.
+                    [...input.surfacePath, virtualSurface.id],
                     // A definition's insides answer the player, but never the author's pointer.
                     //
                     // This was a flat `false` from when a component was a picture: nothing inside
@@ -1111,6 +1144,8 @@ function renderLinkedComponentInstanceContent(input: {
                     input.blueprintLifecycleReady ?? true,
                     componentParams,
                     componentAnimationPlan,
+                    null,
+                    input.pageDocument,
                 )}
             </div>
         </div>
@@ -1144,6 +1179,11 @@ function renderElementTree(
     animationPlan: SurfaceAnimationPlan | null = null,
     /** Last pass's nodes, when this tree may reuse them - see `elementReuse`. */
     reuse: ElementReuseCache | null = null,
+    /**
+     * The project's document, which a page drawn in a frame is drawn from. The same as `document`
+     * except where `document` is a view - a component definition's, or the component editor's.
+     */
+    pageDocument: UIDocument = document,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[buildUIWidgetAddress(element.id, instanceKey)];
@@ -1257,6 +1297,7 @@ function renderElementTree(
                 // A widget placing its own children does it from inside its own render, later than
                 // this walk and from data this walk cannot see - so what it places is never reused.
                 rendersOwnChildren ? null : reuse,
+                pageDocument,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -1303,6 +1344,7 @@ function renderElementTree(
               blueprintLifecycleReady,
               componentParamsKey(componentParams),
               animationPlan,
+              pageDocument,
           ]
         : null;
     if (
@@ -1317,6 +1359,8 @@ function renderElementTree(
     const linkedComponentContent = renderLinkedComponentInstanceContent({
         instanceElement: resolved,
         document,
+        pageDocument,
+        surfacePath,
         hostAdapter,
         rendererRegistry,
         useAppearanceInspectorPreview,
@@ -1342,7 +1386,7 @@ function renderElementTree(
               renderChildren,
               renderSurface: options => (
                   <NestedSurfaceRenderer
-                      document={document}
+                      document={pageDocument}
                       parentSurface={surface}
                       targetSurfaceId={options.targetSurfaceId}
                       frameElement={options.frameElement}

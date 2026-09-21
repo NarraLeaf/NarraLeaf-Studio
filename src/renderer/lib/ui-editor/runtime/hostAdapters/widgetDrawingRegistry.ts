@@ -94,7 +94,9 @@ export function createWidgetDrawingRegistry(document: UIDocument): UIHostAdapter
             const listId = resolveUIElementRowListId(document, elementId);
             // Drawn once, for the page. An element inside a component definition lands here too when
             // no list repeats it; nothing that fans out can be written on one (the ambient heads are
-            // not offered in a component), so its placements are not enumerated.
+            // not offered in a component), so its placements are not enumerated. Offering one there
+            // means enumerating them here first - `ambientHeadsReachEveryPlacement.test.tsx` fails
+            // until an event reaches every placement.
             if (!listId) {
                 return [{}];
             }

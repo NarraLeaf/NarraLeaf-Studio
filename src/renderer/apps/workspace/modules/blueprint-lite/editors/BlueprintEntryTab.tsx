@@ -148,6 +148,7 @@ import {
 import {
     createComponentDocumentServiceAdapter,
     getComponentTabId,
+    parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import {
     buildAccessibleBlueprintVariableOptions,
@@ -1730,7 +1731,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     ir: activeIr,
                     nodeId: node.id,
                     nodeType: node.type,
-                }),
+                }).filter(option => !parseComponentEditorSurfaceId(String(option.value))),
             };
         }
         return out;
@@ -1826,8 +1827,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
         const uiDocument = blueprintDocumentService.getDocument();
+        // The project's pages. A component definition's graph is edited against a view that also
+        // lists the definition itself as a surface, which is not a page anything can open.
         const surfaceOptions: BlueprintInspectorParamSelectOption[] = uiDocument.surfaces
-            .filter(s => s.kind === "appSurface")
+            .filter(s => s.kind === "appSurface" && !parseComponentEditorSurfaceId(s.id))
             .map(s => ({ value: s.id, label: s.name || t("blueprint.options.untitledSurface") }));
         const storyEntries = storyService.listStories();
         const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
