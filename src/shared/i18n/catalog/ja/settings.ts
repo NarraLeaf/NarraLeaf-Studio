@@ -410,6 +410,8 @@ export const settings = {
         checking: "確認しています…",
         done: "完了",
         signOut: "サインアウト",
+        usedBy: "使用中のプロジェクト：{projects}",
+        unused: "このサインインを使うプロジェクトはない",
         signIn: "サインイン",
         signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",

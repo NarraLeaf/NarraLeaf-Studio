@@ -3,6 +3,7 @@ import type { CommandLineRunJob } from "./commandLineRun";
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 import type { ProjectTrustPromptProps, ProjectTrustPromptResult } from "./projectTrust";
+import type { ServerSessionPromptProps, ServerSessionPromptResult } from "./serverSession";
 
 export enum WindowAppType {
     Launcher = "launcher",
@@ -13,6 +14,7 @@ export enum WindowAppType {
     PluginPermissionPrompt = "plugin-permission",
     ServerTrustPrompt = "server-trust",
     ProjectTrustPrompt = "project-trust",
+    ServerSessionPrompt = "server-session",
     Raw = "raw",
 }
 
@@ -139,6 +141,7 @@ export type WindowProps = {
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
     [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptProps,
+    [WindowAppType.ServerSessionPrompt]: ServerSessionPromptProps,
     [WindowAppType.Raw]: {
     },
 }
@@ -231,5 +234,6 @@ export type WindowCloseResults = {
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
     [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptResult;
+    [WindowAppType.ServerSessionPrompt]: ServerSessionPromptResult;
     [WindowAppType.Raw]: null;
 };

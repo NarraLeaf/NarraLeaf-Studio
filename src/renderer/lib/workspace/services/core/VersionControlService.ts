@@ -18,6 +18,7 @@ import type {
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRevisionDiffResult,
+    VcsProjectServerSession,
     VcsServerSession,
     VcsSignInOutcome,
     VcsWorkingTreeDiffResult,
@@ -27,6 +28,7 @@ import type {
     VcsRestoreResult,
     VcsStatus,
 } from "@shared/types/vcs";
+import { VcsErrorCode } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type IVersionControlService, type WorkspaceContext } from "../services";
 import type { GlobalSettingsService } from "../GlobalSettingsService";
@@ -147,6 +149,16 @@ type VersionControlServiceEvents = {
      * up holding different vintages of the same answer.
      */
     serverChanged: void;
+    /**
+     * Which sign-in this project uses changed, without anything here having asked for that.
+     *
+     * The sign-in question is put by the main process in a window of its own, in the middle of a
+     * send, a get or a check - so the surface that pressed the button learns the answer by reading
+     * it back, and every other surface on the window would go on showing the project as not using
+     * it. Fired when a read of the state comes back different from the one before it; carries
+     * nothing, for the reason {@link serverChanged} carries nothing.
+     */
+    sessionChanged: void;
 };
 
 /** The settings key holding the checkpoint interval in minutes. 0 disables. */
@@ -731,6 +743,9 @@ export class VersionControlService extends Service<VersionControlService> implem
     public async getSyncState(): Promise<VcsSyncState | null> {
         if (!(await this.isAvailable())) return null;
         const result = await getInterface().vcs.getSyncState(this.projectPath());
+        // An untrusted project is refused before anything is asked, and that is a reason to show
+        // rather than an absence of news: answering null would leave "Check" doing nothing visible.
+        if (!result.success && result.code === VcsErrorCode.ProjectDistrusted) throw vcsCallFailed(result);
         return result.success ? result.data : null;
     }
 
@@ -745,9 +760,67 @@ export class VersionControlService extends Service<VersionControlService> implem
      * Team panel names and offers the way out of.
      */
     public async getServerSession(): Promise<VcsServerSession | null> {
-        if (!(await this.isAvailable())) return null;
+        return (await this.getServerSessionState()).session;
+    }
+
+    /**
+     * The sign-in this project uses at its server, and the one it could use.
+     *
+     * {@link getServerSession} is the first half. The second is a sign-in this installation holds
+     * for the same server that this project does not use - never asked about, or answered no - so a
+     * panel can offer it by name rather than say the machine has no account there. A local read.
+     */
+    public async getServerSessionState(): Promise<VcsProjectServerSession> {
+        const none: VcsProjectServerSession = { session: null, available: null, declined: false };
+        if (!(await this.isAvailable())) return none;
         const result = await getInterface().vcs.getServerSession(this.projectPath());
-        return result.success ? result.data.session : null;
+        const state = result.success ? result.data : none;
+        this.noticeSessionState(state);
+        return state;
+    }
+
+    /** The last answer {@link getServerSessionState} read, as a comparable string. */
+    private lastSessionState: string | null = null;
+
+    /**
+     * Announce a change in which sign-in this project uses, the first time any read sees it.
+     *
+     * The first read of a window only records; later reads that differ announce, once - the
+     * surfaces that hear it read again, find the same answer, and stop.
+     */
+    private noticeSessionState(state: VcsProjectServerSession): void {
+        const key = [
+            state.session?.remoteOrigin ?? "",
+            state.session?.account.userId ?? "",
+            state.available?.account.userId ?? "",
+            state.declined ? "declined" : "",
+        ].join("\n");
+        const previous = this.lastSessionState;
+        this.lastSessionState = key;
+        if (previous !== null && previous !== key) this.events.emit("sessionChanged", undefined);
+    }
+
+    /** The sign-in this project uses changed; re-read {@link getServerSessionState}. */
+    public onSessionChanged(handler: () => void): () => void {
+        return this.events.on("sessionChanged", handler);
+    }
+
+    /**
+     * Ask whether this project uses the sign-in held for its server.
+     *
+     * The question opens in a window of Studio's own and the main process records the answer;
+     * this resolves once the author has given it, with where the project stands. Only the change
+     * is announced - a question closed without an answer changes nothing.
+     */
+    public async useServerSession(): Promise<VcsProjectServerSession> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.useServerSession(this.projectPath());
+        if (!result.success) throw vcsCallFailed(result);
+        if (result.data.session !== null) this.events.emit("serverChanged", undefined);
+        return result.data;
     }
 
     /**
@@ -781,7 +854,12 @@ export class VersionControlService extends Service<VersionControlService> implem
     // machine rather than anything about a project. Reaching it through a per-project service was
     // what made the channel look like it needed a project path.
 
-    /** Take this account back off the machine: the stored token goes with it. */
+    /**
+     * Stop this project using the sign-in held for its server.
+     *
+     * This project only: the sign-in stays on the machine for every other project that uses it.
+     * Taking it off the machine altogether is Settings' "Sign out".
+     */
     public async signOut(): Promise<void> {
         if (!(await this.isAvailable())) return;
         const result = await getInterface().vcs.signOut(this.projectPath());
