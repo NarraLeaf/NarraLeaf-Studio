@@ -205,6 +205,11 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
+import {
+    GlobalInputActionContext,
+    type GlobalInputActionAnswerer,
+} from "@/lib/ui-editor/runtime/input/globalInputActionContext";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
 import {
@@ -5175,6 +5180,40 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [bundle, core, host, hostAdapterBundle]);
 
     /**
+     * The pointer half of the global blueprint's input actions: what a lane calls to hand the global
+     * an action before answering it itself (see `GlobalInputActionContext`).
+     *
+     * The same function the key listener above calls, with the same blueprint, core and host, so an
+     * `On Action` on the global blueprint runs identically whether a key or a click raised it. Kept
+     * stable and reading through a ref, because every surface on screen reads it through context and
+     * a page opening must not re-render all of them; null only while there is no game to dispatch
+     * into, which is also when the key listener is not installed.
+     */
+    const globalBlueprintDispatchRef = useRef<GlobalBlueprintDispatch | null>(null);
+    globalBlueprintDispatchRef.current = host.ready && core && hostAdapterBundle
+        ? {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            core,
+            globalHost: hostAdapterBundle,
+        }
+        : null;
+    const hostLogRef = useRef(host.log);
+    hostLogRef.current = host.log;
+    const answerGlobalPointerActions = useCallback<GlobalInputActionAnswerer>(async (payloads, eventControl) => {
+        const dispatch = globalBlueprintDispatchRef.current;
+        if (!dispatch) {
+            return;
+        }
+        try {
+            await answerGlobalInputActions(dispatch, payloads, eventControl);
+        } catch (err) {
+            hostLogRef.current("error", normalizeError(err));
+        }
+    }, []);
+    const globalInputActionAnswerer = globalBlueprintDispatchRef.current ? answerGlobalPointerActions : null;
+
+    /**
      * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
      * move, and `createNlrGameWithGameUi` for where it moved to.
      *
@@ -5894,6 +5933,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     // PLAYER's own OS preference still lands — `useReducedMotion` above reads the media query
     // directly and is unaffected by this config. The host frame around it stays Studio chrome.
     const content = (
+        <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
             <div className="nl-motion-keep relative h-full w-full overflow-hidden">
                 {nlrStageLayer}
@@ -5995,6 +6035,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 </div>
             </div>
         </MotionConfig>
+        </GlobalInputActionContext.Provider>
     );
 
     return (

@@ -1,10 +1,11 @@
 /**
  * Which halves of a keyboard dispatch may run for one key press.
  *
- * A key reaches up to two places. The **global** blueprint's key heads, which belong to the game and
- * not to anything on screen, and the **keyboard owner's** own heads plus the input intents it answers
- * to - the active page, or the modal layer over it (see `app/keyboardOwner`). They are gated
- * differently, and getting that wrong is what this module exists to stop happening again.
+ * A key reaches up to two places. The **global** blueprint's key heads and every input intent the key
+ * is bound to, which belong to the game and not to anything on screen, and the **keyboard owner's**
+ * own heads plus the input intents it answers to - the active page, or the modal layer over it (see
+ * `app/keyboardOwner`). They are gated differently, and getting that wrong is what this module exists
+ * to stop happening again.
  *
  * The owner half is conditional, and has to be: an entry that is not drawn is not one anyone is
  * pressing a key at, and while a layer owns the keyboard an Escape belongs to that layer rather than
@@ -22,7 +23,7 @@
  */
 
 export type KeyboardDispatchScope = {
-    /** The game-wide blueprint's key heads. */
+    /** The game-wide blueprint's key heads, and the input intents it hears the key as. */
     global: boolean;
     /** The keyboard owner's own key heads, and the input intents it declares. */
     surface: boolean;

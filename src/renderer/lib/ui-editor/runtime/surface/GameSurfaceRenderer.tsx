@@ -1,5 +1,6 @@
 import {
     useCallback,
+    useContext,
     useEffect,
     useLayoutEffect,
     useRef,
@@ -14,6 +15,7 @@ import {
 } from "@shared/types/ui-editor/inputAction";
 import {
     hitsConsumeInput,
+    resolveGlobalInputActionPayloads,
     resolveSurfaceInputActionHits,
     stopsAtLane,
     type UIInputSignal,
@@ -22,10 +24,15 @@ import {
 import {
     claimInputLaneVisit,
     handOffInputToLaneBehind,
+    readGlobalInputAnswer,
     readPointerEventDevice,
     readSurfaceHitNodes,
     readWheelGesture,
+    recordGlobalInputAnswer,
+    takeGlobalInputTurn,
 } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
+import { GlobalInputActionContext } from "@/lib/ui-editor/runtime/input/globalInputActionContext";
+import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
     claimTouchStroke,
     getSharedTouchGestureTracker,
@@ -229,6 +236,9 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     const scaledHeight = surface.designSize.height * safeScale;
     const dispatchSurfaceBlueprintEvent = hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent;
     const dispatchSurfaceInputAction = hostAdapter.blueprintRuntime?.dispatchSurfaceInputAction;
+    // The game's global blueprint, which hears a pointer action before the lane it lands on does.
+    // Null outside a running game: see `GlobalInputActionContext`.
+    const answerGlobalInputActions = useContext(GlobalInputActionContext);
     const effectiveWidgetRuntimePatches = getWidgetRuntimePatches?.() ?? widgetRuntimePatches;
     const shellRef = useRef<HTMLDivElement | null>(null);
 
@@ -284,8 +294,19 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      * whatever the browser paints behind this surface. An action with `consume` (the default) ends
      * the walk wherever the mode would have carried it.
      *
-     * Returns whether an action here consumed the input, which is what a touch stroke's caller needs
-     * to know: only a stroke that actually fired something claims its trailing click.
+     * **The game's global blueprint answers first.** The first lane an input lands on offers it to
+     * the global blueprint before firing anything of its own - once per physical input, so neither
+     * the rest of the walk nor a lane behind that is handed a copy offers it again. It is the key
+     * rule applied to a pointer: the global blueprint belongs to the game rather than to anything on
+     * screen, so it hears the input wherever it landed, and the actions of the lanes it landed on
+     * start once it has answered - and not at all when a global handler stopped it. The global has
+     * no say over where the input goes next (`consume` is a lane's answer to what is behind it), but
+     * a gesture it answered is spent: the tail of the scroll and the click a finger leaves behind
+     * fire nothing, as they would after a lane that consumed it.
+     *
+     * Returns whether this step spent the input - an action here consumed it, or the global answered
+     * it - which is what a touch stroke's caller needs to know: only a stroke that actually fired
+     * something claims its trailing click.
      */
     const runLaneStep = useCallback(
         (event: UIInputLaneEvent, input: UIInputLaneGesture): boolean => {
@@ -306,35 +327,59 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             }
             const point = toDesignPoint(event, shell);
             const signal: UIInputSignal = { kind: "pointer", gesture: input.gesture, device: input.device, ...point };
+            const answersGlobally = Boolean(answerGlobalInputActions) && takeGlobalInputTurn(event.nativeEvent);
+            const hitChain = dispatchSurfaceInputAction || answersGlobally
+                ? readSurfaceHitNodes({
+                      document,
+                      target: event.target,
+                      surfaceRoot: shell,
+                      gesture: input.gesture,
+                  })
+                : [];
+            const globalPayloads = answersGlobally
+                ? resolveGlobalInputActionPayloads({ vocabulary: actionVocabulary, signal, hitChain })
+                : [];
+            const answeredGlobally = globalPayloads.length > 0;
+            if (answeredGlobally && answerGlobalInputActions) {
+                const eventControl = getOrCreateDomEventPropagationControl(event.nativeEvent);
+                recordGlobalInputAnswer(
+                    event.nativeEvent,
+                    answerGlobalInputActions(globalPayloads, eventControl).then(() => !eventControl.isPropagationStopped()),
+                );
+            }
             const hits = dispatchSurfaceInputAction
                 ? resolveSurfaceInputActionHits({
                       vocabulary: actionVocabulary,
                       enablements: surfaceActions,
                       signal,
-                      hitChain: readSurfaceHitNodes({
-                          document,
-                          target: event.target,
-                          surfaceRoot: shell,
-                          gesture: input.gesture,
-                      }),
+                      hitChain,
                   })
                 : [];
+            const globalAnswer = readGlobalInputAnswer(event.nativeEvent);
             for (const hit of hits) {
-                void dispatchSurfaceInputAction?.(hit.payload);
+                if (globalAnswer) {
+                    void globalAnswer.then(mayHear => (mayHear ? dispatchSurfaceInputAction?.(hit.payload) : undefined));
+                } else {
+                    void dispatchSurfaceInputAction?.(hit.payload);
+                }
             }
-            const consumed = hitsConsumeInput(hits);
-            if (wheel && consumed) {
-                wheelGestureGate.claim(eventTime);
-            }
+            const spent = hitsConsumeInput(hits) || answeredGlobally;
             if (stopsAtLane(hits)) {
                 event.stopPropagation();
-                return consumed;
+            } else {
+                handOffInputToLaneBehind({ event: event.nativeEvent, surfaceRoot: shell });
             }
-            handOffInputToLaneBehind({ event: event.nativeEvent, surfaceRoot: shell });
-            return consumed;
+            // After the hand-off, not before it: the lane behind is owed the event in hand, and a
+            // claim made first would refuse it the copy. What the claim takes is the rest of the
+            // gesture.
+            if (wheel && spent) {
+                wheelGestureGate.claim(eventTime);
+            }
+            return spent;
         },
         [
             actionVocabulary,
+            answerGlobalInputActions,
             dispatchSurfaceInputAction,
             document,
             laneInteractive,

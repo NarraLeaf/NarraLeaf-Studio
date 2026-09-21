@@ -101,8 +101,9 @@ const WINDOW_CLOSE_EVENTS: readonly LifecycleEventDef[] = [
  * `On Action` head filters on the one it names.
  *
  * Shared by the global and surface owners: a surface answers the actions it enables, and a global
- * blueprint answers whatever reached it, so a gesture that means the same thing everywhere is
- * written once.
+ * blueprint answers every action in the vocabulary wherever the player is - before the surface on
+ * screen does - so a gesture that means the same thing everywhere is written once. The runtime's
+ * half of that is `runtime/app/globalInputActions` in the renderer.
  */
 const INPUT_ACTION_EVENTS: readonly LifecycleEventDef[] = [
     {

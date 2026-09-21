@@ -1,6 +1,7 @@
 /**
- * Where a key press goes: the game's global blueprint, then the one entry on screen that owns the
- * keyboard - a page, or a layer stacked over it.
+ * Where a key press goes: the game's global blueprint - its key heads, then the input actions the key
+ * is bound to (`globalInputActions`) - then the one entry on screen that owns the keyboard, a page or
+ * a layer stacked over it.
  *
  * Which entry that is gets decided once, by `resolveCompositeInput`: the topmost modal layer, or,
  * with no modal layer up, the entry the page lane is settling on. The element-level key heads have
@@ -25,19 +26,20 @@
  * Comments in English per project convention.
  */
 
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintKeyboardEventLike } from "@shared/types/blueprint/graph";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
-import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
-import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
-import { resolveSurfaceInputActionHits } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import {
+    resolveGlobalInputActionPayloads,
+    resolveSurfaceInputActionHits,
+} from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
 import type { HostAdapterBundle } from "./types";
@@ -84,18 +86,9 @@ export function resolveKeyboardOwnerEntry<TEntry extends { key: string }>(input:
     return owner?.ready ? { entry: owner.entry, surface: owner.surface } : null;
 }
 
-export type GameKeyboardDispatch = {
-    blueprintDocument: BlueprintDocument;
-    persistentVariables: PersistentVariableRuntimeTable;
+export type GameKeyboardDispatch = GlobalBlueprintDispatch & {
     /** The project's action vocabulary, as `UIDocument.actions` holds it. */
     vocabulary: UIDocument["actions"];
-    core: Pick<BlueprintRuntimeCore, "scopeBridge" | "debug" | "executionManager">;
-    /**
-     * The host the global blueprint's key heads run on: the active page's, which is the host every
-     * other global dispatch from the app uses. Whoever owns the keyboard, the global heads are the
-     * game's rather than anything's on screen.
-     */
-    globalHost: HostAdapterBundle;
     /** The keyboard owner at this instant. Read once per press, when the key arrives. */
     readKeyboardOwner: () => KeyboardOwner | null;
     onError: (error: unknown) => void;
@@ -162,7 +155,13 @@ async function dispatchKeyToOwner(
 }
 
 /**
- * One key event, all the way through: the global blueprint's heads, then the keyboard owner's.
+ * One key event, all the way through: the global blueprint's key heads and - for a press - the input
+ * actions the key is bound to, then the keyboard owner's heads and actions.
+ *
+ * Each half is finished before the next starts, and a handler that stops propagation on the event
+ * control ends the press there: a global one keeps it from the owner. Nothing on the graph side
+ * stops it by itself - the global answering an action the owner answers too runs both, as a global
+ * key head and an owner's key head for the same key always have.
  *
  * The owner is read as the key arrives and kept for the whole press. A graph the key starts can
  * change who owns the keyboard - the global Escape head opening a menu layer, the layer's own
@@ -204,6 +203,14 @@ export async function dispatchGameKey(
         ...surfaceStateOf(core, globalHost),
         executionManager: core.executionManager,
     });
+    if (eventName === "keyDown" && !eventControl.isPropagationStopped()) {
+        // The whole vocabulary, not the owner's list: see `globalInputActions`. Resolved by the same
+        // rule the owner's are, so a binding the owner answers the global answers too.
+        await answerGlobalInputActions(input, resolveGlobalInputActionPayloads({
+            vocabulary: input.vocabulary,
+            signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
+        }), eventControl);
+    }
     if (!owner || eventControl.isPropagationStopped()) {
         return;
     }

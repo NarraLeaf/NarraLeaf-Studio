@@ -228,6 +228,36 @@ export function resolveSurfaceInputActionHits(input: {
     return hits;
 }
 
+/**
+ * The actions the game's global blueprint fires for this input, in the order the project declares
+ * them.
+ *
+ * A surface answers the actions it switches on; the global blueprint answers the whole vocabulary.
+ * It belongs to the game rather than to anything on screen, and an `On Action` placed on it says
+ * "this gesture means this wherever the player is" - there is no list to switch it on in, and an
+ * action it did not answer would be a head that never fires. Everything else is the surface rule
+ * unchanged: a binding matches or it does not, and a control under the pointer has already spoken
+ * for a pointer input, here as on any panel. `consume` has no counterpart: the global is not a lane
+ * with anything behind it, so it never decides where the input goes next.
+ */
+export function resolveGlobalInputActionPayloads(input: {
+    vocabulary: Readonly<Record<string, UIInputActionDef>> | undefined;
+    signal: UIInputSignal;
+    /** The elements under the pointer, innermost first. Empty for a key. */
+    hitChain?: readonly UIInputHitNode[];
+}): UIInputActionEventPayload[] {
+    const { vocabulary } = input;
+    if (!vocabulary) {
+        return [];
+    }
+    return resolveSurfaceInputActionHits({
+        vocabulary,
+        enablements: Object.keys(vocabulary).map(actionId => ({ actionId })),
+        signal: input.signal,
+        hitChain: input.hitChain,
+    }).map(hit => hit.payload);
+}
+
 /** Whether any of these hits takes the input off the lane walk. */
 export function hitsConsumeInput(hits: readonly UISurfaceInputActionHit[]): boolean {
     return hits.some(hit => hit.consume);
