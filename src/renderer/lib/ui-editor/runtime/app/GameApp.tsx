@@ -51,6 +51,7 @@ import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import { AssetResolutionReporterContext } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UISurface } from "@shared/types/ui-editor/document";
@@ -505,6 +506,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             subscribe: listener => core.scopeBridge.subscribePersistence(listener),
         };
     }, [bundle.localization, core]);
+    /**
+     * Where a widget says what became of an asset it asked for (see `GameAppHost.reportAssetResolution`).
+     *
+     * Handed to widgets through context rather than on the host adapter: every surface this app
+     * draws - pages, layers, stage slots, a frame's nested surface - builds an adapter of its own,
+     * and a capability threaded through each of them is one that a new kind of surface forgets. The
+     * context reaches all of them because all of them render beneath this component.
+     */
+    const assetResolutionReporter = host.reportAssetResolution ?? null;
     /**
      * The same answer, for readers that are not components.
      *
@@ -5744,8 +5754,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         // remount the whole frame subtree (StageViewportFrame and everything inside it).
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
-                {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.(overlayContext())}
+                <AssetResolutionReporterContext.Provider value={assetResolutionReporter}>
+                    {renderFrame({ activeSurface, gameViewport, children: null })}
+                    {renderOverlays?.(overlayContext())}
+                </AssetResolutionReporterContext.Provider>
             </GameLocalizationContext.Provider>
         );
     }
@@ -6068,8 +6080,10 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
-            {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.(overlayContext())}
+            <AssetResolutionReporterContext.Provider value={assetResolutionReporter}>
+                {renderFrame({ activeSurface, gameViewport, children: content })}
+                {renderOverlays?.(overlayContext())}
+            </AssetResolutionReporterContext.Provider>
         </GameLocalizationContext.Provider>
     );
 }

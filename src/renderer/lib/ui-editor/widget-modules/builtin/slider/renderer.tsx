@@ -412,18 +412,19 @@ export function SliderRenderer(props: WidgetRendererProps) {
                   boxShadow: "0 4px 12px rgba(15, 23, 42, 0.28)",
               };
 
+    // The parts are drawn in whatever drawing the slider is - no instance key of their own. They are
+    // drawn once per slider, and a key minted here named a drawing that no graph addressing the part
+    // could name back, so a write to the handle landed nowhere.
     return (
         <div ref={rootRef} style={hostStyle} onPointerDown={handlePointerDown}>
             {trackElement && renderChildren
                 ? renderChildren({
                       childrenIds: [trackElement.id],
-                      instanceKey: `slider-${element.id}`,
                   })
                 : <div data-ui-slider-part="track" style={fallbackTrackStyle} />}
             {handleElement && renderChildren
                 ? renderChildren({
                       childrenIds: [handleElement.id],
-                      instanceKey: `slider-${element.id}`,
                       elementOverrides: handleOverride,
                   })
                 : <div data-ui-slider-part="handle" style={fallbackHandleStyle} />}

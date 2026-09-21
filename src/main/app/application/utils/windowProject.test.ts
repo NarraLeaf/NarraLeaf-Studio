@@ -1,7 +1,7 @@
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { WINDOW_PROJECT_MISMATCH_CODE } from "@shared/types/window";
-import { requireWindowProject, windowProjectPath } from "./windowProject";
+import { requireWindowProject, requireWindowProjectOrWriteGrant, windowProjectPath } from "./windowProject";
 
 type Window = Parameters<typeof requireWindowProject>[0];
 
@@ -117,5 +117,53 @@ describe("requireWindowProject", () => {
             }
             expect(code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
         }
+    });
+});
+
+describe("requireWindowProjectOrWriteGrant", () => {
+    /** A window with the given props, holding a write grant over exactly `writable`. */
+    function grantedWindow(props: unknown, writable: string[]): Window {
+        return {
+            getProps: () => props,
+            app: {
+                storageManager: {
+                    isPathAllowed: async (_window: unknown, fsPath: string, mode: string) =>
+                        mode === "write" && writable.includes(fsPath),
+                },
+            },
+        } as unknown as Window;
+    }
+
+    async function refusalCode(pending: Promise<unknown>): Promise<string | undefined> {
+        try {
+            await pending;
+        } catch (error) {
+            return (error as { code?: string }).code;
+        }
+        return undefined;
+    }
+
+    /** The wizard: no project of its own, and a grant over the folder it has just written. */
+    it("passes a window with no project the folder it was granted to write", async () => {
+        await expect(requireWindowProjectOrWriteGrant(grantedWindow({}, [other]), other)).resolves.toBe(other);
+    });
+
+    it("refuses a window with no project any folder it was not granted to write", async () => {
+        expect(await refusalCode(requireWindowProjectOrWriteGrant(grantedWindow({}, [own]), other)))
+            .toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(await refusalCode(requireWindowProjectOrWriteGrant(grantedWindow({}, [own]), "")))
+            .toBe(WINDOW_PROJECT_MISMATCH_CODE);
+    });
+
+    /**
+     * A window with a project is asked about that project alone, however much else it may write:
+     * the looser rule would let a workspace plant a repository in a folder it once exported to.
+     */
+    it("holds a window with a project to that project, whatever else it may write", async () => {
+        const window = grantedWindow({ projectPath: own }, [own, other]);
+
+        await expect(requireWindowProjectOrWriteGrant(window, own)).resolves.toBe(own);
+        expect(await refusalCode(requireWindowProjectOrWriteGrant(window, other)))
+            .toBe(WINDOW_PROJECT_MISMATCH_CODE);
     });
 });

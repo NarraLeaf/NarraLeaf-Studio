@@ -105,6 +105,22 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     private projectConfigPath: string | null = null;
     private projectConfigFormat: "nlproj" | "json" | null = null;
     private readonly events = new EventEmitter<ProjectServiceEvents>();
+    /**
+     * The manifest operation the next one waits for.
+     *
+     * Every setter here is a read-modify-write of the whole file, and the write is a grant and a `PUT`
+     * that take a few milliseconds each. Two of them started together would both read the manifest
+     * before either had written, so the one that landed second put back everything the first had
+     * changed - and the two `PUT`s are not even ordered, so which one that was varied from run to run.
+     * Two switches clicked back to back on the project panel lost one of them that way, and so did
+     * any other pair of surfaces writing the manifest at once.
+     *
+     * So they run one at a time, each against the manifest the one before it left: that is what
+     * makes every change land, and land in the order it was asked for, without a caller having to
+     * refuse or grey out the second one while the first is on its way. A failed operation does not
+     * stop the ones queued behind it; they build on the last manifest that was actually written.
+     */
+    private manifestQueue: Promise<unknown> = Promise.resolve();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -143,13 +159,17 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
      * reports what the next build will do has to read what the build reads (see
      * the build dialog, which re-reads before describing the package).
      */
-    public async reloadProjectConfig(): Promise<ProjectConfig> {
-        const config = await this.readProjectConfigFile();
-        this.projectConfig = config;
-        // A re-read is a change as far as anything watching is concerned: the values it was showing
-        // came from the copy this just replaced.
-        this.events.emit("configChanged", config);
-        return config;
+    public reloadProjectConfig(): Promise<ProjectConfig> {
+        // Queued with the writes: a read that overtook one in flight would put back the manifest from
+        // before it, and the next write would then build on that.
+        return this.enqueueManifestOperation(async () => {
+            const config = await this.readProjectConfigFile();
+            this.projectConfig = config;
+            // A re-read is a change as far as anything watching is concerned: the values it was
+            // showing came from the copy this just replaced.
+            this.events.emit("configChanged", config);
+            return config;
+        });
     }
 
     /**
@@ -169,16 +189,33 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         return this.events.on("configChanged", handler);
     }
 
-    public async updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
-        const current = this.cloneProjectConfig(this.getProjectConfig());
-        const next = updater(current);
-        this.assertValidProjectConfig(next);
-        await this.writeProjectConfig(next);
-        this.projectConfig = next;
-        // After the write, so a subscriber that reads back through this service sees what is on disk
-        // rather than a value a failed write would have rolled back.
-        this.events.emit("configChanged", next);
-        return next;
+    /**
+     * Change the manifest and write it.
+     *
+     * The updater runs when this change's turn comes rather than when it is asked for, so it sees
+     * every change queued before it (see {@link manifestQueue}). It has to be synchronous and must not
+     * call back into this method - a nested call would wait on the queue it is holding.
+     */
+    public updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
+        return this.enqueueManifestOperation(async () => {
+            const current = this.cloneProjectConfig(this.getProjectConfig());
+            const next = updater(current);
+            this.assertValidProjectConfig(next);
+            await this.writeProjectConfig(next);
+            this.projectConfig = next;
+            // After the write, so a subscriber that reads back through this service sees what is on
+            // disk rather than a value a failed write would have rolled back.
+            this.events.emit("configChanged", next);
+            return next;
+        });
+    }
+
+    private enqueueManifestOperation<T>(operation: () => Promise<T>): Promise<T> {
+        // Run whether the previous one resolved or threw: a refused write is the caller's to report,
+        // and it must not strand every change queued behind it.
+        const run = this.manifestQueue.then(operation, operation);
+        this.manifestQueue = run.catch(() => undefined);
+        return run;
     }
 
     public async updateProjectName(name: string): Promise<ProjectConfig> {

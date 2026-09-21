@@ -29,6 +29,11 @@ export const devMode = {
         // 英語カタログを参照。このセッションで動くはずのプラグインで、ランタイムの入口が例外を投げたもの。
         pluginEntryFailed: "{plugin} の読み込みに失敗した：{error}。このセッションではブループリントノードとウィジェットが登録されない",
         pluginListFailed: "ランタイムプラグインの一覧を読み取れなかった：{error}。このセッションではプラグインが一つも読み込まれない",
+        // 英語カタログを参照。ウィジェットがアセットを求めて、何も描かなかったもの。
+        assetMissing: "「{element}」の「{property}」が、このプロジェクトに存在しないアセットを参照している",
+        assetUnreadable: "「{element}」の「{property}」が参照するアセットを読み込めない",
+        assetUnreadableNamed: "「{element}」の「{property}」が参照するアセット「{asset}」を読み込めない",
+        assetNotAsset: "「{element}」の「{property}」の値がアセットではない",
         noLocation: "どの行かをたどれなかった",
         viaPlayHead: "再生位置",
         stack: "スタック",

@@ -17,7 +17,12 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
+import {
+    ElementRendererRegistry,
+    markTrustedElementRenderers,
+    type ElementRendererDefinition,
+} from "@/lib/ui-editor/runtime/ElementRendererRegistry";
+import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
@@ -235,5 +240,164 @@ describe("a memoised surface tree and the store it reads", () => {
 
         expect(renders).toBe(afterMount);
         expect(caption(view.container)).toBe("[FIRST]");
+    });
+});
+
+/**
+ * Reusing an unchanged element's node, which is what lets a re-render that concerns one widget
+ * leave the others alone.
+ *
+ * The renderer's `render` is called while the tree is walked, so how often it runs is how often the
+ * element was rebuilt - which makes it the thing to count.
+ */
+describe("reusing the nodes of elements that did not change", () => {
+    const REUSE_TYPE = "nl.test.reuse";
+
+    function twoProbeDocument(): UIDocument {
+        return {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [surface],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["a", "b"],
+                    layout: { x: 0, y: 0, width: 320, height: 240 },
+                },
+                a: {
+                    id: "a",
+                    type: REUSE_TYPE,
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 100, height: 20 },
+                    props: { caption: "A" },
+                },
+                b: {
+                    id: "b",
+                    type: REUSE_TYPE,
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 30, width: 100, height: 20 },
+                    props: { caption: "B" },
+                },
+            },
+        };
+    }
+
+    function setup(input: { trusted: boolean }) {
+        const renders: Record<string, number> = {};
+        const definitions: ElementRendererDefinition[] = [
+            { type: "nl.root", render: props => <>{props.children}</> },
+            {
+                type: REUSE_TYPE,
+                render: props => {
+                    renders[props.element.id] = (renders[props.element.id] ?? 0) + 1;
+                    return <span data-probe={props.element.id}>[{String(props.element.props?.caption ?? "")}]</span>;
+                },
+            },
+        ];
+        if (input.trusted) {
+            markTrustedElementRenderers(definitions);
+        }
+        const registry = new ElementRendererRegistry(definitions);
+        const document = twoProbeDocument();
+        const adapter = hostAdapter();
+        const context = bindingContext(new SurfaceStateStore("scope-1"));
+        const tree = (patches: Record<string, DevModeWidgetRuntimePatch>) => (
+            <SurfaceElementTree
+                document={document}
+                surface={surface}
+                rootElement={document.elements.root!}
+                rendererRegistry={registry}
+                hostAdapter={adapter}
+                blueprintBindingContext={context}
+                editorChrome={false}
+                widgetRuntimePatches={patches}
+                staticDocument
+                hostRenderTick={0}
+            />
+        );
+        const text = (container: HTMLElement, id: string) =>
+            container.querySelector(`[data-probe="${id}"]`)?.textContent ?? "";
+        return { renders, tree, text };
+    }
+
+    it("rebuilds the element a patch reached and nothing beside it", () => {
+        const { renders, tree, text } = setup({ trusted: true });
+        const view = render(tree({}));
+        const mounted = { ...renders };
+
+        view.rerender(tree({ a: { props: { caption: "A2" } } }));
+
+        expect(text(view.container, "a")).toBe("[A2]");
+        expect(text(view.container, "b")).toBe("[B]");
+        expect(renders.a).toBe(mounted.a + 1);
+        expect(renders.b).toBe(mounted.b);
+    });
+
+    it("still rebuilds the one it reused once it changes after all", () => {
+        const { tree, text } = setup({ trusted: true });
+        const view = render(tree({}));
+        view.rerender(tree({ a: { props: { caption: "A2" } } }));
+
+        view.rerender(tree({ a: { props: { caption: "A2" } }, b: { props: { caption: "B2" } } }));
+
+        expect(text(view.container, "a")).toBe("[A2]");
+        expect(text(view.container, "b")).toBe("[B2]");
+    });
+
+    it("never reuses a renderer Studio did not ship", () => {
+        // A plugin's `render` is code this host has not read: it may draw from something other than
+        // its props, and last pass's node would then be last pass's drawing.
+        const { renders, tree } = setup({ trusted: false });
+        const view = render(tree({}));
+        const mounted = { ...renders };
+
+        view.rerender(tree({ a: { props: { caption: "A2" } } }));
+
+        expect(renders.b).toBe(mounted.b + 1);
+    });
+
+    it("never reuses anything on a canvas that edits its document in place", () => {
+        // The editor mutates the document it hands the tree and re-sends the same reference, so the
+        // tree may not remember anything there - `staticDocument` is what says it may.
+        const renders: Record<string, number> = {};
+        const definitions: ElementRendererDefinition[] = [
+            { type: "nl.root", render: props => <>{props.children}</> },
+            {
+                type: REUSE_TYPE,
+                render: props => {
+                    renders[props.element.id] = (renders[props.element.id] ?? 0) + 1;
+                    return <span>[{String(props.element.props?.caption ?? "")}]</span>;
+                },
+            },
+        ];
+        markTrustedElementRenderers(definitions);
+        const registry = new ElementRendererRegistry(definitions);
+        const document = twoProbeDocument();
+        const adapter = hostAdapter();
+        const context = bindingContext(new SurfaceStateStore("scope-1"));
+        const tree = (patches: Record<string, DevModeWidgetRuntimePatch>) => (
+            <SurfaceElementTree
+                document={document}
+                surface={surface}
+                rootElement={document.elements.root!}
+                rendererRegistry={registry}
+                hostAdapter={adapter}
+                blueprintBindingContext={context}
+                editorChrome={false}
+                widgetRuntimePatches={patches}
+                hostRenderTick={0}
+            />
+        );
+        const view = render(tree({}));
+        const mounted = { ...renders };
+
+        view.rerender(tree({ a: { props: { caption: "A2" } } }));
+
+        expect(renders.b).toBe(mounted.b + 1);
     });
 });

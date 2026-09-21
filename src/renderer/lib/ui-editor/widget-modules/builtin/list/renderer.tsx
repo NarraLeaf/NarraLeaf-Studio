@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
     buildUIListItemInstanceKey,
     getUIListChildSlot,
+    isUIListItemTemplateChild,
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
@@ -303,6 +304,9 @@ function resolveAuthoredThumbLayout(
 
 export function ListRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren, runtimeData } = props;
+    // The drawing this list is itself part of - a row of an enclosing list, a component placement.
+    // Every row key extends it, so a row of this list names which of those it is in.
+    const outerInstanceKey = props.instanceKey;
     const p = getListProps(element);
     const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -375,11 +379,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? [...runtimeListItems]
         : boundItems ?? (p.items.length > 0 ? p.items : placeholderItems);
     const count = Math.min(128, items.length);
-    const itemTemplateIds = element.childrenIds.filter(childId => {
-        const child = document.elements[childId];
-        const slot = getUIListChildSlot(child?.extra);
-        return slot == null || slot === "itemTemplate";
-    });
+    const itemTemplateIds = element.childrenIds.filter(childId => isUIListItemTemplateChild(document.elements[childId]));
     const itemTemplateDescendantIds = useMemo(
         () => collectElementDescendants(document, itemTemplateIds),
         [document, itemTemplateIds.join("\0")],
@@ -501,10 +501,10 @@ export function ListRenderer(props: WidgetRendererProps) {
                 // asking about that row, so Get Item Field resolves there exactly as it does while
                 // the row is being drawn. Without it the only way to read the row that was clicked
                 // was to pull the item off the payload and index into it by hand.
-                { listItemScope: scope, instanceKey: `list-${element.id}-${scope.key}` },
+                { listItemScope: scope, instanceKey: buildUIListItemInstanceKey(outerInstanceKey, element.id, scope.key) },
             );
         },
-        [blueprintRuntime, element.id],
+        [blueprintRuntime, element.id, outerInstanceKey],
     );
     const handleListItemClick = useCallback(
         (scope: UIListItemScope) => {
@@ -534,7 +534,7 @@ export function ListRenderer(props: WidgetRendererProps) {
     const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
-        const instanceKey = buildUIListItemInstanceKey(element.id, key);
+        const instanceKey = buildUIListItemInstanceKey(outerInstanceKey, element.id, key);
         // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
         // template in its selected state would show the author a row most rows will never look like.
         const selected = isRuntime && i === selectedIndex;
@@ -873,17 +873,17 @@ export function ListRenderer(props: WidgetRendererProps) {
         );
     };
 
+    // Drawn once per list, in the list's own drawing - not per row, and not under a key of their own,
+    // which would name a drawing no graph addressing the scrollbar could name back.
     const hasAuthoredScrollbar = Boolean(scrollbarTrackElement && scrollbarThumbElement && renderChildren);
     const authoredScrollbar =
         showScrollbar && hasAuthoredScrollbar && scrollbarTrackElement && scrollbarThumbElement && renderChildren ? (
             <>
                 {renderChildren({
                     childrenIds: [scrollbarTrackElement.id],
-                    instanceKey: `scrollbar-${element.id}`,
                 })}
                 {renderChildren({
                     childrenIds: [scrollbarThumbElement.id],
-                    instanceKey: `scrollbar-${element.id}`,
                     elementOverrides: {
                         [scrollbarThumbElement.id]: {
                             ...scrollbarThumbElement,

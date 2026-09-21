@@ -1,5 +1,6 @@
 import type { GradientFill } from "./gradientFill";
 import type { ImageFill } from "./imageFill";
+import { appendUIInstanceKeySegment, joinUIInstanceKeySegments, splitUIInstanceKey } from "./instanceKey";
 import type { UIStructDef } from "./struct";
 import { isWidgetTypeOf, listWidgetTypesOf } from "./widgetInheritance";
 
@@ -102,6 +103,19 @@ export function getUIListChildSlot(extra: Record<string, unknown> | undefined): 
     return slot === "itemTemplate" || slot === "scrollbarTrack" || slot === "scrollbarThumb" ? slot : null;
 }
 
+/**
+ * Whether a child of a list is drawn once per row, rather than once for the list.
+ *
+ * Everything under a list is its row template except the parts of an authored scrollbar. A child
+ * with no slot at all counts as template: that is what a list made before slots existed holds, and
+ * what the renderer has always drawn per row. The renderer decides what to repeat by this and the
+ * runtime decides which drawing a graph's write belongs to by it, so it is written once.
+ */
+export function isUIListItemTemplateChild(child: { extra?: Record<string, unknown> } | null | undefined): boolean {
+    const slot = getUIListChildSlot(child?.extra);
+    return slot === null || slot === "itemTemplate";
+}
+
 export function isUIListScrollbarSlot(slot: UIListChildSlot | null): boolean {
     return slot === "scrollbarTrack" || slot === "scrollbarThumb";
 }
@@ -113,14 +127,46 @@ export function isUIListScrollbarSlot(slot: UIListChildSlot | null): boolean {
  * the format is not private to the renderer: whoever carries a row event onwards has to be able to
  * tell whose row it names, and a key that only the list could parse would silently hand one row's
  * state to whatever the event reached next.
+ *
+ * `outerInstanceKey` is the drawing the list itself is in - a row of an enclosing list, a component
+ * placement - and the row's key extends it (`instanceKey.ts`). A row key made of the row alone
+ * named the same drawing in every row of an enclosing list, so the inner rows of two outer rows
+ * shared their state, and a graph running in an inner row could not say which outer row it was in.
  */
-export function buildUIListItemInstanceKey(listElementId: string, itemKey: string): string {
-    return `${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-${itemKey}`;
+export function buildUIListItemInstanceKey(
+    outerInstanceKey: string | undefined | null,
+    listElementId: string,
+    itemKey: string,
+): string {
+    return appendUIInstanceKeySegment(outerInstanceKey, `${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-${itemKey}`);
+}
+
+/** Whether a single key segment is a list row's, of whichever list. */
+export function isUIListItemInstanceSegment(segment: string): boolean {
+    return segment.startsWith(UI_LIST_ITEM_INSTANCE_PREFIX);
+}
+
+/** Whether a single key segment is a row of this list. */
+export function isUIListItemInstanceSegmentOf(segment: string, listElementId: string): boolean {
+    return segment.startsWith(`${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-`);
 }
 
 /** Whether an instance key names a row of this list, so an event leaving the list can shed it. */
 export function isUIListItemInstanceKeyOf(instanceKey: string | undefined | null, listElementId: string): boolean {
-    return Boolean(instanceKey) && String(instanceKey).startsWith(`${UI_LIST_ITEM_INSTANCE_PREFIX}${listElementId}-`);
+    const segments = splitUIInstanceKey(instanceKey);
+    const innermost = segments[segments.length - 1];
+    return innermost !== undefined && isUIListItemInstanceSegmentOf(innermost, listElementId);
+}
+
+/**
+ * The key an event carries once it has left a row of this list: the drawing the list itself is in.
+ *
+ * Only the row's own segment goes. The list may itself be inside a row or a placement, and that
+ * drawing is still the one the event is in - dropping the whole key would hand the elements around
+ * the list the template's state instead of their own.
+ */
+export function leaveUIListItemInstanceKey(instanceKey: string | undefined | null): string | undefined {
+    return joinUIInstanceKeySegments(splitUIInstanceKey(instanceKey).slice(0, -1));
 }
 
 const UI_LIST_ITEM_INSTANCE_PREFIX = "list-";

@@ -4,7 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER,
@@ -430,7 +430,7 @@ function resolveElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], expec
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
         throw new BlueprintGraphExecutionError("Element node can only target the current Surface", ctx.node.id);
     }
-    return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
+    return addressWidgetFromExecution(ctx, ref.elementId);
 }
 
 function resolveDisplayableTargetElementId(
@@ -443,7 +443,7 @@ function resolveDisplayableTargetElementId(
         if (!elementId) {
             throw new BlueprintGraphExecutionError("Displayable node requires a widget execution owner", ctx.node.id);
         }
-        return buildUIWidgetAddress(elementId, ctx.instanceKey);
+        return addressWidgetFromExecution(ctx, elementId);
     }
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
@@ -455,7 +455,7 @@ function resolveDisplayableTargetElementId(
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
         throw new BlueprintGraphExecutionError("Displayable Element node can only target the current Surface", ctx.node.id);
     }
-    return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
+    return addressWidgetFromExecution(ctx, ref.elementId);
 }
 
 function toStringValue(raw: unknown, fallback: string): string {

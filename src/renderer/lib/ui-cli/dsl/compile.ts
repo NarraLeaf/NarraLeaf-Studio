@@ -517,8 +517,23 @@ class CompileContext {
     ): Record<string, UIElementValueBinding> {
         const out: Record<string, UIElementValueBinding> = {};
         for (const binding of node.bindings) {
+            // Whether a row shows a piece of itself is bindable on every type, so it is not in the
+            // per-type table `bindableProps` comes from: the runtime resolves it ahead of that table
+            // (`mergeElementWithBlueprintValues`), and only from a list row's field - nothing
+            // evaluates a value blueprint for it. The inspector offers the same thing as the
+            // visibility field picker in the layout section, and `print` writes it back out.
+            if (binding.propPath === ROW_VISIBILITY_PROP_PATH && binding.source.kind !== "listItemField") {
+                this.report(
+                    "error",
+                    "ui.prop_not_bindable",
+                    `"${ROW_VISIBILITY_PROP_PATH}" can only read a field of the list row the element is drawn for.`,
+                    binding.line,
+                    `Write \`bind ${ROW_VISIBILITY_PROP_PATH} = field <fieldId>\` inside an item template.`,
+                );
+                continue;
+            }
             const target = detail?.bindableProps.find(prop => prop.propPath === binding.propPath);
-            if (detail && !target) {
+            if (detail && !target && binding.propPath !== ROW_VISIBILITY_PROP_PATH) {
                 this.report(
                     "error",
                     "ui.prop_not_bindable",
@@ -556,6 +571,9 @@ class CompileContext {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** The one bindable path that belongs to every widget type rather than to a row of the target table. */
+const ROW_VISIBILITY_PROP_PATH = "layout.visible";
 
 /**
  * Matches an element the file did not give an id for to the one that was at the same place before.
