@@ -405,6 +405,29 @@ function defaultFrameRuntimeScopeId(input: Omit<NestedSurfaceRuntimeInput, "runt
     return `${parentScope}/frame:${input.frameElement.id}${instancePart}->${input.targetSurface.id}`;
 }
 
+/**
+ * `value`, or the value last returned when `same` says the two are alike.
+ *
+ * For inputs rebuilt on every render that something downstream keys on by identity. Deterministic
+ * for given inputs, so recording it during render is safe to repeat.
+ */
+function useUnchangedIdentity<T>(value: T, same: (previous: T, next: T) => boolean): T {
+    const ref = useRef(value);
+    if (ref.current !== value && !same(ref.current, value)) {
+        ref.current = value;
+    }
+    return ref.current;
+}
+
+/** Equal as JSON: for the small plain records a frame's page is keyed on. */
+function sameJson(previous: unknown, next: unknown): boolean {
+    try {
+        return JSON.stringify(previous) === JSON.stringify(next);
+    } catch {
+        return false;
+    }
+}
+
 function NestedSurfaceRenderer(props: {
     document: UIDocument;
     parentSurface: UISurface;
@@ -424,10 +447,7 @@ function NestedSurfaceRenderer(props: {
 }) {
     const {
         document,
-        parentSurface,
         targetSurfaceId,
-        frameElement,
-        params,
         instanceKey,
         rendererRegistry,
         parentHostAdapter,
@@ -437,6 +457,15 @@ function NestedSurfaceRenderer(props: {
         parentInteractive,
         parentKeyboardInteractive,
     } = props;
+    // Every pass of the tree above hands these over as new objects - the frame is cloned for each
+    // pass, a component's surface is rebuilt for each drawing, a bound params object is merged anew
+    // - and the runtime input below is keyed on them. A new identity there tore the page's whole
+    // runtime down and put it back: its scope closed (cancelling whatever its graphs were running)
+    // and its Surface Init ran again, on every redraw of the page around the frame. So each keeps its
+    // last identity for as long as nothing in it changed.
+    const frameElement = useUnchangedIdentity(props.frameElement, sameResolvedElement);
+    const parentSurface = useUnchangedIdentity(props.parentSurface, sameJson);
+    const params = useUnchangedIdentity(props.params, sameJson);
     // Rebound on every render of the tree above, so it is read through a ref: the runtime input
     // below keys the nested page's whole runtime, and a new identity there would rebuild it.
     const dispatchFrameEventRef = useRef(props.dispatchFrameEvent);
@@ -498,7 +527,10 @@ function NestedSurfaceRenderer(props: {
         return { ...runtimeBaseInput, runtimeScopeId };
     }, [runtimeBaseInput, runtimeScopeId]);
 
-    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
+    // Read once per frame record: normalising builds a new object, and the effect below runs on
+    // this one's identity. Read on every render, a frame with an animation of its own set state from
+    // that effect on every render, and drew its page again and again for as long as it was shown.
+    const frameAnimation = useMemo(() => getUIFrameWidgetProps(frameElement).animation, [frameElement]);
     const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
     const [visibleInputs, setVisibleInputs] = useState<VisibleNestedSurfaceRuntimeInput[]>(() =>
         runtimeInput ? [runtimeInput] : []
@@ -532,9 +564,13 @@ function NestedSurfaceRenderer(props: {
             return;
         }
         if (currentInput.runtimeScopeId === runtimeInput.runtimeScopeId) {
-            setVisibleInputs(prev => prev.map(input =>
-                input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input
-            ));
+            // Unchanged state when the input already is this one, so an effect that runs again for
+            // no reason does not draw the page again.
+            setVisibleInputs(prev =>
+                prev.some(input => input.runtimeScopeId === runtimeInput.runtimeScopeId && input !== runtimeInput)
+                    ? prev.map(input => (input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input))
+                    : prev,
+            );
             return;
         }
 
