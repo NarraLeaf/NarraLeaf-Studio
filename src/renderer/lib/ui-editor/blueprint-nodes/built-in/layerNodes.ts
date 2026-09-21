@@ -112,6 +112,7 @@ function readConfirmIndex(result: unknown): number {
 export const layerBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_LAYER_SHOW,
+        assetNames: "assembled",
         displayName: "Show Layer",
         category: "App",
         keywords: ["layer", "show", "page", "over", "overlay", "modal", "dialog", "popup", "stack"],
@@ -279,6 +280,7 @@ export const layerBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+        assetNames: "forward",
         displayName: "Show Confirm",
         category: "App",
         keywords: ["confirm", "ask", "question", "prompt", "dialog", "choice", "yes", "no", "modal", "layer"],

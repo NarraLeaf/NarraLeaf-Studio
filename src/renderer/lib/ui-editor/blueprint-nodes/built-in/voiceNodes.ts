@@ -45,6 +45,7 @@ function resolvePinBoolean(ctx: NodeExecuteContext, pinId: string): boolean {
 export const voiceBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_VOICE_GET_LANGUAGE,
+        assetNames: "assembled",
         displayName: "Get Voice Language",
         category: "Voice",
         keywords: ["voice", "dub", "language", "locale", "audio", "get"],
@@ -90,6 +91,7 @@ export const voiceBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_VOICE_GET_AVAILABLE_LANGUAGES,
+        assetNames: "assembled",
         displayName: "Get Available Voice Languages",
         category: "Voice",
         keywords: ["voice", "dub", "language", "locale", "audio", "list", "selector"],

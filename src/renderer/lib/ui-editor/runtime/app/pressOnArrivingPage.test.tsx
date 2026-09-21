@@ -192,7 +192,6 @@ function TitleHost(props: { hostAdapterBundle: HostAdapterBundle; onRevealed: ()
                     reducedMotion={false}
                     active
                     keyboardOwner
-                    onInteractionReadyChange={() => undefined}
                     onPrepaintReady={() => {
                         setRevealed(true);
                         props.onRevealed();

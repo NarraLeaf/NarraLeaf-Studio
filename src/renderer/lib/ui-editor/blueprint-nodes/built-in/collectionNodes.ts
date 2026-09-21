@@ -33,7 +33,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 
@@ -80,9 +80,12 @@ function collectionNode(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     hideInPalette?: boolean;
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Data",
         keywords: input.keywords,
@@ -103,36 +106,42 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET,
+        assetNames: "forward",
         displayName: "Array Get",
         keywords: ["array", "get", "item", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), jsonOut("item", "Item")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SET,
+        assetNames: "forward",
         displayName: "Array Set",
         keywords: ["array", "set", "item", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH,
+        assetNames: "forward",
         displayName: "Array Push",
         keywords: ["array", "push", "append", "item", "collection"],
         pins: [arrayIn("array", "Array"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT,
+        assetNames: "forward",
         displayName: "Array Insert",
         keywords: ["array", "insert", "item", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE,
+        assetNames: "forward",
         displayName: "Array Remove",
         keywords: ["array", "remove", "delete", "item", "collection"],
         pins: [arrayIn("array", "Array"), anyIn("item", "Item"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT,
+        assetNames: "forward",
         displayName: "Array Remove At",
         keywords: ["array", "remove", "delete", "index", "collection"],
         pins: [arrayIn("array", "Array"), intIn("index", "Index"), arrayOut("result", "Array")],
@@ -145,12 +154,14 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
+        assetNames: "forward",
         displayName: "Array Slice",
         keywords: ["array", "slice", "range", "collection"],
         pins: [arrayIn("array", "Array"), intIn("start", "Start"), intIn("end", "End"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_JOIN,
+        assetNames: "assembled",
         displayName: "Array Join",
         keywords: ["array", "join", "string", "collection"],
         pins: [arrayIn("array", "Array"), stringIn("separator", "Separator"), outPin("result", "Text", "string")],
@@ -163,12 +174,14 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIRST,
+        assetNames: "forward",
         displayName: "Array First",
         keywords: ["array", "first", "head", "front", "collection"],
         pins: [arrayIn("array", "Array"), jsonOut("item", "Item")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LAST,
+        assetNames: "forward",
         displayName: "Array Last",
         keywords: ["array", "last", "tail", "back", "collection"],
         pins: [arrayIn("array", "Array"), jsonOut("item", "Item")],
@@ -181,18 +194,21 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REVERSE,
+        assetNames: "forward",
         displayName: "Array Reverse",
         keywords: ["array", "reverse", "flip", "backwards", "collection"],
         pins: [arrayIn("array", "Array"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONCAT,
+        assetNames: "forward",
         displayName: "Array Concat",
         keywords: ["array", "concat", "join", "append", "combine", "collection"],
         pins: [arrayIn("a", "A"), arrayIn("b", "B"), arrayOut("result", "Array")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_UNIQUE,
+        assetNames: "forward",
         displayName: "Array Unique",
         keywords: ["array", "unique", "distinct", "dedupe", "collection"],
         pins: [arrayIn("array", "Array"), arrayOut("result", "Array")],
@@ -201,6 +217,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         // Counts rather than bounds: "ten rows starting at one" is the question an author is asking,
         // and an end-exclusive bound is the form that produces an off-by-one every time.
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_RANGE,
+        assetNames: "forward",
         displayName: "Array Range",
         keywords: ["array", "range", "sequence", "numbers", "count", "collection"],
         pins: [intIn("start", "Start"), intIn("count", "Count"), intIn("step", "Step"), arrayOut("result", "Array")],
@@ -210,6 +227,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         // value, which is the abstraction this whole round exists to stop asking authors for; sorting
         // records by one of their fields is what a list actually needs, and it needs no callback.
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT,
+        assetNames: "forward",
         displayName: "Array Sort By Key",
         keywords: ["array", "sort", "order", "key", "field", "collection"],
         pins: [
@@ -221,6 +239,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER,
+        assetNames: "forward",
         displayName: "Array Filter By Key",
         keywords: ["array", "filter", "where", "key", "field", "collection"],
         pins: [
@@ -232,6 +251,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
+        assetNames: "forward",
         displayName: "Array Find By Key",
         keywords: ["array", "find", "search", "key", "field", "collection"],
         pins: [
@@ -244,18 +264,21 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_KEYS,
+        assetNames: "forward",
         displayName: "Object Keys",
         keywords: ["object", "keys", "fields", "collection"],
         pins: [jsonIn("object", "Object"), arrayOut("result", "Keys")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES,
+        assetNames: "forward",
         displayName: "Object Values",
         keywords: ["object", "values", "fields", "collection"],
         pins: [jsonIn("object", "Object"), arrayOut("result", "Values")],
     }),
     collectionNode({
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_MERGE,
+        assetNames: "forward",
         displayName: "Object Merge",
         keywords: ["object", "merge", "combine", "collection"],
         pins: [jsonIn("a", "A"), jsonIn("b", "B"), jsonOut("result", "Object")],
@@ -265,6 +288,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
         // one cannot. Kept registered for graphs that hold one, out of the palette so there is one
         // way to write a field rather than two that differ only in reach.
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD,
+        assetNames: "forward",
         displayName: "Object Set Field",
         hideInPalette: true,
         keywords: ["object", "set", "field", "collection"],
@@ -273,6 +297,7 @@ export const collectionBlueprintNodes: BlueprintNodeDef[] = [
     collectionNode({
         // Superseded by Remove JSON Field; see the note on Object Set Field.
         type: BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_REMOVE_FIELD,
+        assetNames: "forward",
         displayName: "Object Remove Field",
         hideInPalette: true,
         keywords: ["object", "remove", "field", "collection"],

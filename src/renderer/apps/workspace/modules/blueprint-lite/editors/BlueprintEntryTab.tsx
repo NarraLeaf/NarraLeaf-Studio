@@ -75,6 +75,7 @@ import {
     type BlueprintMinimapPreference,
 } from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useAssetNameGaps } from "../hooks/useAssetNameGaps";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
@@ -719,7 +720,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         graphId: graphAddress?.graphId ?? null,
         nodeId: editor.selectedNodeIds.length === 1 ? editor.selectedNodeIds[0] : null,
     });
+    const assetNameGaps = useAssetNameGaps(context);
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
+        assetNameGaps,
         widgetElement,
         // The same document the palette walks, so the two agree about which element a list draws.
         uiDocument,

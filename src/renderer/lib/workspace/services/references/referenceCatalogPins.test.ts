@@ -8,6 +8,8 @@ import {
     BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
 } from "@shared/types/blueprint/graph";
 import { extractBlueprintAssetReferences, type BlueprintAssetPin } from "./referenceModel";
+import { catalogAssetPins, createAssetNameDescriber } from "./assetNameCatalog";
+import { extractStoryVariableWrites, findAssetNameGaps, listAssetNameSinks, type AssetNameProject } from "./assetNameGaps";
 import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
@@ -27,26 +29,23 @@ import path from "path";
  * that has shipped a rule which could never fire.
  */
 
-/** The same projection `ReferenceService` makes; kept here so the assertion drives the real path. */
-function assetPinsFromCatalogue(nodeType: string): readonly BlueprintAssetPin[] | null {
+/**
+ * The shipping registry, with the Gallery plugin's nodes in it.
+ *
+ * The starter template's EXTRA screen is built on the Gallery plugin's nodes, and the walk this
+ * drives runs in a Studio where that plugin has registered them. A registry without them would
+ * report every one as a gap - the mechanism answering "I do not know this node", not "this node has
+ * an unresolved asset".
+ */
+function shippingRegistry() {
     registerCoreBlueprintNodes();
-    // The starter template's EXTRA screen is built on the Gallery plugin's nodes, and the walk this
-    // drives runs in a Studio where that plugin has registered them. A registry without them would
-    // report every one as a gap - the mechanism answering "I do not know this node", not "this node
-    // has an unresolved asset".
     registerBuiltInPluginBlueprintNodes();
-    if (!blueprintNodeRegistry.get(nodeType)) {
-        return null;
-    }
-    return blueprintNodeRegistry.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
-        ? [{
-            pinId: pin.id,
-            kind: pin.assetRef.kind,
-            paramKey: pin.assetRef.paramKey ?? pin.id,
-            input: pin.kind === "input",
-            origin: pin.assetRef.origin,
-        }]
-        : []));
+    return blueprintNodeRegistry;
+}
+
+/** The projection `ReferenceService` makes (`catalogAssetPins`), over the real catalogue. */
+function assetPinsFromCatalogue(nodeType: string): readonly BlueprintAssetPin[] | null {
+    return catalogAssetPins(shippingRegistry(), nodeType);
 }
 
 describe("asset pins declared by the shipping node catalogue", () => {
@@ -134,6 +133,43 @@ describe("the blueprints the shipped starter template creates", () => {
 
         expect(extraction.gaps).toEqual([]);
     });
+
+    /**
+     * No asset picked by a name assembled at run time: every such pick is a build the template's
+     * projects could never make.
+     *
+     * Read over the whole template - graphs, interface and story - because that is what the judgement
+     * follows a value through. And not zero by not looking: the music room and the voice page pick
+     * their clips off Gallery rows through Play Sound's wired pin, and the EXTRA grids and the CG
+     * viewer draw a row's picture through a binding. Each of those is asserted to be a place the
+     * judgement looked at, so "no gaps" means they were followed and found to name what the package
+     * carries.
+     */
+    it("pick no asset by a name assembled at run time, having looked at every place they pick one", () => {
+        const content = path.join(process.cwd(), "resources/templates/skeleton/content/editor");
+        const read = (relative: string) => JSON.parse(fs.readFileSync(path.join(content, relative), "utf-8"));
+        const index = read("story/index.json") as { stories: Array<{ id: string; name: string }> };
+        const project: AssetNameProject = {
+            blueprintDocument: read("ui/uigraphs.json").blueprintDocument,
+            uiDocument: read("ui/uidoc.json"),
+            storyWrites: index.stories.flatMap(story => extractStoryVariableWrites(
+                read(`story/stories/${story.id}/storydoc.json`),
+                story.name,
+            )),
+        };
+        const describer = createAssetNameDescriber(shippingRegistry());
+
+        expect(findAssetNameGaps(project, describer)).toEqual([]);
+
+        const sinks = listAssetNameSinks(project, describer);
+        const clipsOn = sinks
+            .filter(entry => entry.assetKind === "audio" && entry.sink.kind === "pin")
+            .map(entry => (entry.sink.kind === "pin" ? entry.sink.blueprintName : ""))
+            .sort();
+        expect(clipsOn).toEqual(expect.arrayContaining(["Music rows", "Voice rows"]));
+        const boundPictures = sinks.filter(entry => entry.sink.kind === "binding" && entry.assetKind === "image");
+        expect(boundPictures.length).toBeGreaterThanOrEqual(3);
+    });
 });
 
 describe("a pin that publishes rather than stores", () => {
@@ -186,13 +222,18 @@ describe("a pin that publishes rather than stores", () => {
 
     it("still reports a source that declares nothing about what it carries", () => {
         // The bar is not lowered: only a pin that has made the claim is exempt from the gap.
-        const extraction = extractBlueprintAssetReferences(
-            hitAreaDoc(BLUEPRINT_NODE_TYPE_SAVED_GET, "value") as never,
-            { resolveAssetPins: assetPinsFromCatalogue },
+        // A saved variable read with no variable named is a carrier nobody can identify.
+        const gaps = findAssetNameGaps(
+            { blueprintDocument: hitAreaDoc(BLUEPRINT_NODE_TYPE_SAVED_GET, "value") as never },
+            createAssetNameDescriber(shippingRegistry()),
         );
 
-        expect(extraction.gaps).toEqual([
-            expect.objectContaining({ reason: "computedAssetPin", affects: ["image"] }),
+        expect(gaps).toEqual([
+            expect.objectContaining({
+                assetKind: "image",
+                sink: expect.objectContaining({ nodeId: "set", pinId: "asset", nodeTitle: "Set Image Asset" }),
+                origin: expect.objectContaining({ nodeId: "get" }),
+            }),
         ]);
     });
 });
@@ -256,9 +297,9 @@ describe("the clip a Play Sound stores", () => {
     });
 
     /**
-     * The wired pin is a string the game computes - a gallery row's clip - and it wins over the
-     * picker. Reading it as a stored id would invent a reference on every music page there is, so
-     * the pin is left undeclared and this walk sees only what an author picked.
+     * The wired pin is declared as carrying a clip, so a value wired into it is held to the
+     * asset-name rule (`findAssetNameGaps`) - but nothing is stored on it, so this walk still reads
+     * only what an author picked. A music page's row clip is followed there, not invented here.
      */
     it("reads nothing from a node that holds no clip", () => {
         const extraction = extractBlueprintAssetReferences(

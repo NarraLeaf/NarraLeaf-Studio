@@ -165,7 +165,11 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
          * project, and it passed an index that failed on one story out of thirty.
          */
         run(ctx) {
-            const findings: LintFinding[] = ctx.assetIndex.gaps.map(gap => ({
+            // An asset picked by a name assembled at run time is `blueprint/assembled-asset-name`'s to report, in
+            // its own words and at the node: filed here it read as a failure to list unused assets,
+            // under the project's name, and took the place of a row rather than adding one. The
+            // doubt it casts still holds back the unused rows of its kind below.
+            const findings: LintFinding[] = ctx.assetIndex.gaps.filter(gap => gap.reason !== "computedAssetPin").map(gap => ({
                 ruleId: "assets/unused" as const,
                 messageKey: incompleteIndexMessageKey(gap.reason),
                 ...(gap.location ? { messageParams: { location: gap.location } } : {}),

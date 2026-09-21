@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, RefreshCw } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { LintLocation, LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint";
+import { resolveLintMessageParams, type LintLocation, type LintReport, type LintReportEntry, type LintRuleId, type LintSeverity } from "@/lib/lint";
 import { LintService } from "@/lib/workspace/services/core/LintService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { Services } from "@/lib/workspace/services/services";
@@ -151,7 +151,7 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
      * mostly that rule.
      */
     const entryHaystack = useCallback((entry: LintReportEntry): string => {
-        const message = t(entry.messageKey, entry.messageParams);
+        const message = t(entry.messageKey, resolveLintMessageParams(entry, t));
         const { label, line } = lintEntryLocator(entry.location, groupMode, locationLabel, message);
         return [
             label,
@@ -459,7 +459,7 @@ function LintEntryRow({
     onJump: (entry: LintReportEntry) => void;
 }) {
     const { t } = useTranslation();
-    const message = t(entry.messageKey, entry.messageParams);
+    const message = t(entry.messageKey, resolveLintMessageParams(entry, t));
     const excerpt = lintEntryExcerpt(entry.location);
     const { label, line } = lintEntryLocator(entry.location, mode, locationLabel, message);
 

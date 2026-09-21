@@ -88,7 +88,6 @@ function readInteractive(): { layer: string | undefined; renderer: string | unde
 }
 
 function mountLayer(options: { revealed?: boolean } = {}) {
-    const readyReports: Array<{ entryKey: string; ready: boolean }> = [];
     const entry = makeEntry(ENTRY_KEY);
     const surface: UISurface = makeTestSurface("surface-a");
     const core = createRecordingCore([]);
@@ -99,11 +98,6 @@ function mountLayer(options: { revealed?: boolean } = {}) {
         hostAdapter: makeBlueprintHostAdapter(),
         bindingContext: {} as HostAdapterBundle["bindingContext"],
         runtimeScopeId: "scope-1",
-    };
-    // Stable identities: the readiness report is an effect keyed on its own callback, and a fresh
-    // arrow per render would fire it again on every render and hide whether a real edge was crossed.
-    const onInteractionReadyChange = (entryKey: string, ready: boolean) => {
-        readyReports.push({ entryKey, ready });
     };
     const noop = () => undefined;
 
@@ -129,7 +123,6 @@ function mountLayer(options: { revealed?: boolean } = {}) {
             reducedMotion
             active={active}
             keyboardOwner={active}
-            onInteractionReadyChange={onInteractionReadyChange}
             onPrepaintReady={noop}
             onEnterComplete={noop}
         />
@@ -137,7 +130,6 @@ function mountLayer(options: { revealed?: boolean } = {}) {
 
     const { rerender } = render(element());
     return {
-        readyReports,
         setActive: (next: boolean) => {
             active = next;
             act(() => {
@@ -203,15 +195,5 @@ describe("AppSurfaceLayer interactivity across an inert round trip", () => {
         // arrival and input were told apart, this is where the entry stayed unclickable for good.
         layer.setActive(true);
         expect(readInteractive()).toEqual({ layer: "true", renderer: "true" });
-    });
-
-    it("reports readiness to the host in both directions", () => {
-        const layer = mountLayer({ revealed: false });
-        layer.reveal();
-        layer.setActive(false);
-        layer.setActive(true);
-
-        expect(layer.readyReports.every(report => report.entryKey === ENTRY_KEY)).toBe(true);
-        expect(layer.readyReports.map(report => report.ready)).toEqual([false, true, false, true]);
     });
 });

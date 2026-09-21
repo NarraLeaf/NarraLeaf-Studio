@@ -39,6 +39,7 @@ import {
     type SurfaceLifecycleOrchestrator,
 } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
+import { useReportLeavingSurface } from "./SurfaceStackBox";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { HostAdapterBundle, PageProps } from "./types";
 
@@ -90,7 +91,6 @@ type AppSurfaceLayerCommonProps = {
     keyboardOwner: boolean;
     /** Paint a dimming sheet behind this entry's own background. */
     scrim?: boolean;
-    onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
 };
@@ -120,7 +120,6 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         active,
         keyboardOwner,
         scrim = false,
-        onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
     } = props;
@@ -156,7 +155,19 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
      * a modal layer opening over it takes input away, and that layer closing hands it back.
      */
     const effectiveInteractive = active && blueprintLifecycleReady && isPresent;
-    const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady;
+    /**
+     * Whether this entry's elements hear keys: the same rule, with keyboard ownership for `active`.
+     *
+     * Ownership is frozen with the other props when the entry leaves, at what it was in the last
+     * render that still had the entry on the stack. An exit that begins after the keys have moved on
+     * leaves it false, but an entry removed in the same render that took the stack from it - Back
+     * to a running game, a layer being hidden - left still owning them, and every key handler on its
+     * elements went on answering for as long as the page faded out.
+     */
+    const effectiveKeyboardInteractive = keyboardOwner && blueprintLifecycleReady && isPresent;
+    // While this entry fades out, nothing on it can be pressed, so a press falls through to whatever
+    // is under it; the box around the stack keeps that from being the game stage.
+    useReportLeavingSurface(entry.key, !isPresent);
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
     const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
     // SurfaceAnimationLayer keeps new layers hidden until prepaint is ready. Widget init must run during that
@@ -276,7 +287,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                 return;
             }
             // Input needs nothing from here: the presence group has already said this entry is
-            // leaving, which takes it out of `effectiveInteractive` and the readiness report below.
+            // leaving, which takes it out of `effectiveInteractive` and out of hit testing.
             runTransitionCommands(lifecycleRef.current.beforeExit(hostAdapterBundle.runtimeScopeId, surface.id));
         },
         [
@@ -306,33 +317,19 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
     );
 
     /**
-     * Tell the host whether this entry takes input, in both directions, from the same expression the
-     * layer is rendered with - so what the host believes cannot drift from what is on screen. Split
-     * across the transition callbacks it used to be, only the losing direction had anywhere to fire
-     * from: going inert had an owner, coming back did not. (Unmount is the exception, below: there
-     * is no render left to derive it from.)
-     *
-     * Pointer state is dropped on the way out only. An entry that is arriving has none to drop, and
-     * one being handed input back has none left from when it lost it.
+     * Drop the entry's pointer state - hover, press - when input is taken away from it, and when it
+     * unmounts. On the way out only: an entry that is arriving has none to drop, and one being handed
+     * input back has none left from when it lost it.
      */
     useEffect(() => {
         if (!active) {
             widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
         }
-        onInteractionReadyChange(entry.key, effectiveInteractive);
-    }, [
-        active,
-        effectiveInteractive,
-        entry.key,
-        hostAdapterBundle.runtimeScopeId,
-        onInteractionReadyChange,
-        widgetRuntimeStore,
-    ]);
+    }, [active, hostAdapterBundle.runtimeScopeId, widgetRuntimeStore]);
 
     useEffect(() => () => {
         widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
-        onInteractionReadyChange(entry.key, false);
-    }, [entry.key, hostAdapterBundle.runtimeScopeId, onInteractionReadyChange, widgetRuntimeStore]);
+    }, [hostAdapterBundle.runtimeScopeId, widgetRuntimeStore]);
 
     return (
         <SurfaceAnimationLayer
@@ -352,6 +349,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             surfaceKind={surface.kind}
             resolveExit={resolveExit}
             interactive={effectiveInteractive}
+            inertWhileLeaving
             onPrepaintReady={onPrepaintReady}
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { findAssetNameGaps } from "./assetNameGaps";
 import {
+    assetNameGapToIndexGap,
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
@@ -665,24 +667,32 @@ describe("coverage of an asset reachable only through a legacy literal node", ()
         expect(extraction.gaps).toEqual([]);
     });
 
-    it("reports an asset pin fed by a computing node as a gap naming the node", () => {
-        const extraction = extractBlueprintAssetReferences(
-            wiredDoc(
-                {
-                    pick: { id: "pick", type: "blueprint.saved.get.value", params: {} },
-                    set: { id: "set", type: "widget.image.setAsset", params: {} },
-                },
-                [{ from: { nodeId: "pick", port: "value" }, to: { nodeId: "set", port: "asset" } }],
-            ),
-            { resolveNodeLabel: type => (type === "widget.image.setAsset" ? "Set Image Asset" : undefined) },
+    it("reads nothing from an asset pin fed by a computing node, and leaves the gap to the shared judgement", () => {
+        const document = wiredDoc(
+            {
+                pick: { id: "pick", type: "blueprint.saved.get.value", params: {} },
+                set: { id: "set", type: "widget.image.setAsset", params: {} },
+            },
+            [{ from: { nodeId: "pick", port: "value" }, to: { nodeId: "set", port: "asset" } }],
         );
+        const extraction = extractBlueprintAssetReferences(document);
 
         expect(extraction.references).toEqual([]);
-        expect(extraction.gaps).toEqual([
+        // Reported once, by the judgement every surface reads - not a second time from here.
+        expect(extraction.gaps).toEqual([]);
+        const gaps = findAssetNameGaps({ blueprintDocument: document }, {
+            assetPins: () => [],
+            title: type => (type === "widget.image.setAsset" ? "Set Image Asset" : type),
+            pinLabel: (_type, pinId) => pinId,
+            // Nothing is known about either node, so the value arriving is one nobody can vouch for.
+            node: () => null,
+        });
+        expect(gaps.map(assetNameGapToIndexGap)).toEqual([
             expect.objectContaining({
                 reason: "computedAssetPin",
                 slice: "blueprint",
                 location: "Main › Set Image Asset.asset",
+                affects: ["image"],
             }),
         ]);
     });

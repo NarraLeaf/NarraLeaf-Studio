@@ -741,6 +741,8 @@ function resolvePreferenceValue(
 function createPreferenceGetterNode(meta: GamePreferenceNodeMeta): BlueprintNodeDef {
     return {
         type: meta.getterType,
+        // A player's setting. Only the one string-valued preference has anything to say here.
+        ...(meta.valueType === "string" ? { assetNames: "assembled" as const } : {}),
         displayName: meta.getterDisplayName,
         category: "Game",
         keywords: meta.keywords,
@@ -927,6 +929,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+        assetNames: "assembled",
         displayName: "List Auto Saves",
         category: "Game",
         keywords: ["game", "auto", "autosave", "save", "list", "entries", "slots", "recent", "continue"],
@@ -964,6 +967,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+        assetNames: "assembled",
         displayName: "Get Latest Auto Save",
         category: "Game",
         keywords: ["game", "auto", "autosave", "save", "latest", "newest", "continue", "resume", "id"],
@@ -1015,6 +1019,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+        assetNames: "assembled",
         displayName: "Get Nametag",
         category: "Game",
         keywords: ["game", "dialog", "nametag", "speaker", "character", "nlr"],
@@ -1040,6 +1045,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+        assetNames: "assembled",
         displayName: "Get Speaker Avatar",
         category: "Game",
         keywords: ["game", "dialog", "avatar", "portrait", "speaker", "character", "face", "expression", "nlr"],
@@ -1127,6 +1133,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+        assetNames: "assembled",
         displayName: "Get Dialog Text",
         category: "Game",
         keywords: [
@@ -1181,6 +1188,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+        assetNames: "written",
         displayName: "Get Character",
         category: "Game",
         keywords: ["game", "character", "cast", "name", "color", "colour", "avatar", "portrait", "profile", "nlr"],
@@ -1390,6 +1398,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+        assetNames: "assembled",
         displayName: "Get Notifications",
         category: "Game",
         keywords: ["game", "notification", "toast", "message", "nlr"],
@@ -1817,6 +1826,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * same slot writes the id once here instead of three times.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
+        assetNames: "assembled",
         displayName: "Save Slot",
         category: "Game",
         keywords: ["game", "save", "slot", "id", "storage", "reference", "handle"],
@@ -1846,6 +1856,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * why it is not a way to remember a checkpoint across events: what does that is a save.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
+        assetNames: "assembled",
         displayName: "Current Game",
         category: "Game",
         keywords: ["game", "save", "current", "run", "capture", "slot", "snapshot", "inherit"],
@@ -1876,6 +1887,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+        assetNames: "assembled",
         displayName: "List Saves",
         category: "Game",
         keywords: ["game", "save", "list", "ids", "slots", "storage"],
@@ -2117,6 +2129,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * would reject a great many saves that load perfectly.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+        assetNames: "assembled",
         displayName: "Get Save Line",
         category: "Game",
         keywords: ["game", "save", "line", "sentence", "text", "speaker", "character", "slot", "summary"],
@@ -2193,6 +2206,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * the author has in front of them and the only one that could be recognised.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+        assetNames: "assembled",
         displayName: "Get Save Story",
         category: "Game",
         keywords: [
@@ -2248,6 +2262,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+        assetNames: "assembled",
         displayName: "Get Save Preview",
         category: "Game",
         keywords: ["game", "save", "preview", "image", "screenshot", "slot"],

@@ -26,6 +26,11 @@ export const assets = {
         // was read but holds a picture Studio could not trace back to an asset. Naming which of
         // the two it was would be wrong half the time.
         unverifiedMessage: "Their usage could not be determined. Delete them anyway?",
+        // The places the answer stops at, under whichever of these two applies. What makes the
+        // question answerable: an author told which node picks its asset by a name assembled at run
+        // time can go and look, where one told only "could not be determined" can do nothing.
+        unverifiedComputed: "These places pick their asset by a name assembled at run time:",
+        unverifiedUnreadable: "These could not be read:",
         confirmTitle: {
             one: "Delete {count} item?",
             other: "Delete {count} items?",

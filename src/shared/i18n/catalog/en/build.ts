@@ -509,12 +509,12 @@ export const build = {
      */
     contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
     // The one construct the asset sweep cannot read, refused for every build rather than only for
-    // the ones that also drop scenes: every package carries the assets its bytes name, and a pin fed
-    // by a computed value names none.
-    contentComputedPinGap: "{location} receives its asset from a computed value, so this build cannot tell which asset it needs.",
+    // the ones that also drop scenes: every package carries the assets whose names its bytes hold,
+    // and a name assembled at run time is in none of them. Each one is printed above this in the
+    // project check's own sentence (`lint.rule.blueprintAssembledAssetName`), which says what to do.
     contentComputedPinSummary: {
-        one: "Build stopped: {count} pin receives its asset from a computed value. Select the asset on the pin. See the console.",
-        other: "Build stopped: {count} pins receive their asset from a computed value. Select the asset on each pin. See the console.",
+        one: "Build stopped: {count} asset name is assembled at run time. See the console.",
+        other: "Build stopped: {count} asset names are assembled at run time. See the console.",
     },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",

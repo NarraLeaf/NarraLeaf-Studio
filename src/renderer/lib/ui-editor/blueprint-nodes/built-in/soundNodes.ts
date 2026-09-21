@@ -91,6 +91,11 @@ const handleOut: BlueprintNodePinDef = {
  * and feeds it here, which is the whole point of the array node signature. The
  * inspector's picker below covers the fixed-clip case (a button click), and the
  * wired pin wins when both are present.
+ *
+ * Declared as carrying a clip, so what arrives here is held to the rule every
+ * asset pin is: the package carries the clips whose names the project writes
+ * down, and a name put together while the game runs is refused where it is
+ * used. A gallery row's clip passes - the catalogue it was read from ships.
  */
 const assetIdIn: BlueprintNodePinDef = {
     id: "assetId",
@@ -99,6 +104,7 @@ const assetIdIn: BlueprintNodePinDef = {
     valueType: "string",
     label: "Asset Id",
     optional: true,
+    assetRef: { kind: "audio" },
 };
 
 const loopIn: BlueprintNodePinDef = {

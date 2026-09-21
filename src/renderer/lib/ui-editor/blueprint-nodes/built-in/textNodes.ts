@@ -40,7 +40,7 @@ import type {
     BlueprintTextProperties,
     BlueprintTextPropertiesPatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
@@ -108,7 +108,9 @@ const textAllPropertyInputs: BlueprintNodePinDef[] = [
 
 const textAllPropertyOutputs: BlueprintNodePinDef[] = [
     out("text", "Text", "string"),
-    out("fontAssetId", "Font", "string"),
+    // The font the element holds, which the project picked or a checked Set Font wrote - unlike the
+    // text beside it, which the game may have put together.
+    { ...out("fontAssetId", "Font", "string"), assetName: "written" },
     out("fontSize", "Font Size", "float"),
     out("fontWeight", "Font Weight", "string"),
     out("color", "Color", BLUEPRINT_VALUE_TYPE_RGBA_COLOR),
@@ -124,9 +126,12 @@ function readNode(input: {
     displayName: string;
     keywords: string[];
     pins: BlueprintNodePinDef[];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Text",
         keywords: input.keywords,
@@ -247,6 +252,7 @@ function buildAllPropertiesPatch(
 export const textBlueprintNodes: BlueprintNodeDef[] = [
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "content", "value"],
         pins: [out("text", "Text", "string")],
@@ -276,6 +282,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_FONT,
+        assetNames: "written",
         displayName: "Get Font",
         keywords: ["text", "font", "asset"],
         pins: [out("fontAssetId", "Font", "string")],
@@ -303,6 +310,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_FONT_WEIGHT,
+        assetNames: "assembled",
         displayName: "Get Font Weight",
         keywords: ["text", "font", "weight", "bold"],
         pins: [out("fontWeight", "Font Weight", "string")],
@@ -336,6 +344,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_ALIGN,
+        assetNames: "assembled",
         displayName: "Get Text Align",
         keywords: ["text", "align", "horizontal"],
         pins: [out("textAlign", "Text Align", "string")],
@@ -352,6 +361,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_VERTICAL_ALIGN,
+        assetNames: "assembled",
         displayName: "Get Text Vertical Align",
         keywords: ["text", "align", "vertical"],
         pins: [out("textVerticalAlign", "Vertical Align", "string")],
@@ -386,6 +396,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_WRAP_MODE,
+        assetNames: "assembled",
         displayName: "Get Wrap Mode",
         keywords: ["text", "wrap", "line"],
         pins: [out("textWrapMode", "Wrap Mode", "string")],
@@ -402,6 +413,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS,
+        assetNames: "assembled",
         displayName: "Get Effects",
         keywords: ["text", "effects", "style"],
         pins: [out("effects", "Effects", "json")],
@@ -420,6 +432,7 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
     }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
+        assetNames: "assembled",
         displayName: "Get All Properties",
         keywords: ["text", "properties", "all"],
         pins: textAllPropertyOutputs,

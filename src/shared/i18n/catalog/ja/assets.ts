@@ -26,8 +26,9 @@ export const assets = {
         inUseMessage: "削除すると、次の場所が参照先を失う：",
         moreReferences: "…ほか {count} 件",
         unverifiedTitle: "これらのアセットの使用状況を調べられない",
-        unverifiedMessage:
-            "参照の索引を読めなかったので、どこで使われているか分からない。それでも削除するか",
+        unverifiedMessage: "どこで使われているか分からない。それでも削除するか",
+        unverifiedComputed: "次の場所のアセット名は実行時に組み立てられる：",
+        unverifiedUnreadable: "次の場所を読めなかった：",
         confirmTitle: {
             other: "{count} 件を削除するか",
         },

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Boxes, LayoutTemplate, Mic, Palette, Users } from "lucide-react";
+import { BookOpen, Boxes, LayoutTemplate, Mic, Palette, Puzzle, Users } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { Services } from "@/lib/workspace/services/services";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import type { AssetReference, ReferenceIndexGap, ReferenceSiteKind } from "@/lib/workspace/services/references/referenceModel";
 import { referenceCoverageGapsFor } from "@/lib/workspace/services/assets/assetDeleteGuard";
+import { describeAssetNameGapSite } from "@/lib/workspace/services/references/assetNameGapText";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
@@ -18,6 +19,7 @@ const KIND_ICON: Record<ReferenceSiteKind, typeof BookOpen> = {
     voice: Mic,
     character: Users,
     design: Palette,
+    plugin: Puzzle,
 };
 
 /** Fixed presentation order — narrative first, then logic, then supporting material. */
@@ -28,6 +30,9 @@ const KIND_ORDER: readonly ReferenceSiteKind[] = [
     "character",
     "voice",
     "design",
+    // Last: a plugin's data is the author's too, but it is edited in the plugin's own panel rather
+    // than anywhere the rows above jump to.
+    "plugin",
 ];
 
 /**
@@ -119,7 +124,13 @@ export function AssetReferencesSection({ assetId, assetType }: { assetId: string
             ) : references.length === 0 && coverageGaps.length > 0 ? (
                 <div className="space-y-0.5">
                     <p className="text-xs text-fg-subtle">{t("properties.references.unknown")}</p>
-                    {coverageGaps[0].location ? (
+                    {coverageGaps[0].assetName ? (
+                        <p className="text-2xs text-fg-subtle">
+                            {t("properties.references.unknownComputed", {
+                                location: describeAssetNameGapSite(coverageGaps[0].assetName, t),
+                            })}
+                        </p>
+                    ) : coverageGaps[0].location ? (
                         <p className="text-2xs text-fg-subtle">
                             {t("properties.references.unknownDetail", { location: coverageGaps[0].location })}
                         </p>

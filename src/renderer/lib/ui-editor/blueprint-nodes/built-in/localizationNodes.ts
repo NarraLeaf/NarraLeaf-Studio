@@ -47,6 +47,7 @@ async function resolveNamedKeyText(ctx: NodeExecuteContext, keyName: string): Pr
 export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_CURRENT_LANGUAGE,
+        assetNames: "assembled",
         displayName: "Get Current Language",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "get"],
@@ -110,6 +111,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
+        assetNames: "written",
         displayName: "Get Text",
         category: "Localization",
         keywords: ["localization", "text", "string", "key", "i18n", "translation", "lookup"],
@@ -194,6 +196,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
+        assetNames: "assembled",
         displayName: "Format Text",
         category: "Localization",
         keywords: ["localization", "format", "placeholder", "interpolate", "template", "text"],
@@ -248,6 +251,7 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_AVAILABLE_LANGUAGES,
+        assetNames: "assembled",
         displayName: "Get Available Languages",
         category: "Localization",
         keywords: ["localization", "language", "locale", "i18n", "translation", "list", "selector"],

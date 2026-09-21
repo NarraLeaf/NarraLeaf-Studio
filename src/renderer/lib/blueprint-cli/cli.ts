@@ -33,6 +33,7 @@ import {
     resolveNodeType,
 } from "./catalog";
 import { checkBlueprintSource, checkProjectDocument, formatDiagnostics } from "./check";
+import { readAssetNameContext } from "./project";
 import { printBlueprint, printBlueprints } from "./dsl/print";
 import {
     applyBlueprints,
@@ -426,6 +427,7 @@ function commandCheck(args: Args, io: CliIo): number {
             savedVariables: variables.saved,
             resolveWidgetElement: widgetElementResolver(targets),
             uiElements: targets.raw as Readonly<Record<string, UIElement>>,
+            assetNameContext: readAssetNameContext(projectDir),
         });
         io.out(
             args.flags.json === true
@@ -451,6 +453,7 @@ function commandCheck(args: Args, io: CliIo): number {
         uiElements: projectDir
             ? readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>
             : undefined,
+        assetNameContext: projectDir ? readAssetNameContext(projectDir) : undefined,
     });
     io.out(
         args.flags.json === true
@@ -479,6 +482,7 @@ function commandApply(args: Args, io: CliIo): number {
         resolveElementType: elementTypeResolver(readUiDocumentTargets(projectDir)),
         resolveWidgetElement: widgetElementResolver(readUiDocumentTargets(projectDir)),
         uiElements: readUiDocumentTargets(projectDir).raw as Readonly<Record<string, UIElement>>,
+        assetNameContext: readAssetNameContext(projectDir),
     });
     const report = formatDiagnostics(result.diagnostics, {
         fileName: reportPath(resolved),

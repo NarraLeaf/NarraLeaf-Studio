@@ -129,6 +129,7 @@ function branchOn(result: BlueprintPointerMoveResult) {
 export const pointerBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
+        assetNames: "assembled",
         displayName: "Move Mouse To",
         category: "App",
         keywords: ["mouse", "cursor", "pointer", "move", "position", "point"],
@@ -149,6 +150,7 @@ export const pointerBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
+        assetNames: "assembled",
         displayName: "Move Mouse To Element",
         category: "App",
         keywords: ["mouse", "cursor", "pointer", "move", "element", "widget", "button", "center", "focus"],

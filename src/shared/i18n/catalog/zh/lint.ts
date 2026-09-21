@@ -263,6 +263,12 @@ export const lint = {
             description: "项目无法加载其类型的节点",
             message: "{type} 未加载，因此该节点不会在游戏中运行",
         },
+        blueprintAssembledAssetName: {
+            title: "运行时拼出的资产名称",
+            description: "资产由游戏运行时拼出的名称选定，游戏包不会带上该资产",
+            message: "“{node}”的“{pin}”收到的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+            messageBinding: "“{element}”的“{prop}”绑定的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+        },
         uiUnlocalizedText: {
             title: "未本地化的文本",
             description: "项目已有第二种语言，文本仍直接写在控件上",

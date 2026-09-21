@@ -1,6 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReferenceService } from "./ReferenceService";
 import { Services, type WorkspaceContext } from "../services";
+
+/**
+ * The installed plugins, as the main process would list them. Empty unless a test says otherwise, so
+ * every test that is not about plugin data reads a project with none.
+ */
+const installedPlugins: { value: unknown[] } = { value: [] };
+vi.mock("@/lib/app/bridge", () => ({
+    getInterface: () => ({
+        plugins: { list: async () => ({ success: true, data: { plugins: installedPlugins.value } }) },
+    }),
+}));
+beforeEach(() => {
+    installedPlugins.value = [];
+});
 
 /**
  * `ReferenceService.getIndexResult()` — the answer everything that deletes on this index's word has
@@ -27,6 +41,14 @@ type MountOptions = {
     /** The project's default font stack, which is a reference site like any other. */
     projectFonts?: ReadonlyArray<{ assetId: string }>;
     designFails?: boolean;
+    /** The library, by asset id. Only these ids count when plugin data is swept. */
+    libraryAssetIds?: readonly string[];
+    /** Plugin stores on disk, by store namespace (`plugin__<id>__<namespace>`). */
+    pluginStores?: Record<string, unknown>;
+    /** Store namespaces that exist on disk and will not parse. */
+    unreadablePluginStores?: readonly string[];
+    /** Records the store-write listener, so a plugin's own save can be fired at the service. */
+    storeWrites?: { listener?: (namespace: string) => void };
 };
 
 const noop = () => () => { };
@@ -109,8 +131,28 @@ function mount(options: MountOptions = {}): ReferenceService {
                         };
                     case Services.Assets:
                         return {
-                            getAssets: () => ({}),
+                            getAssets: () => ({
+                                image: Object.fromEntries((options.libraryAssetIds ?? []).map(id => [id, { id }])),
+                            }),
                             getEvents: () => ({ on: () => () => { } }),
+                        };
+                    case Services.ServiceAssets:
+                        return {
+                            readStore: async (namespace: string) => {
+                                if (options.unreadablePluginStores?.includes(namespace)) {
+                                    return { ok: false, error: { code: "PARSE_ERROR", message: "will not parse" } };
+                                }
+                                const data = options.pluginStores?.[namespace];
+                                return data === undefined
+                                    ? { ok: false, error: { code: "NOT_FOUND", message: "missing" } }
+                                    : { ok: true, data };
+                            },
+                            onStoreWritten: (listener: (namespace: string) => void) => {
+                                if (options.storeWrites) {
+                                    options.storeWrites.listener = listener;
+                                }
+                                return () => { };
+                            },
                         };
                     case Services.Character:
                         return {
@@ -319,5 +361,80 @@ describe("the project design slice", () => {
         expect(service.getIndexResult().gaps).toEqual([
             { reason: "sliceFailed", slice: "design", location: "Default fonts", affects: ["font"] },
         ]);
+    });
+});
+
+/**
+ * A plugin's published data ships inside the game, and the build carries every library asset it
+ * names. The index has to say the same, or a picture only the Gallery shows reads as unused.
+ */
+describe("the plugin data slice", () => {
+    const GALLERY_STORE = "plugin__narraleaf.gallery__narraleaf.gallery.items";
+    const WASHROOM = "b1a0c227-b4db-4156-875d-d2809aaa4c48";
+    const ENTRY_ID = "0f3c2a44-1111-4222-8333-944455556666";
+    const gallery = (enabled = true) => ({
+        pluginId: "narraleaf.gallery",
+        enabled,
+        manifest: {
+            id: "narraleaf.gallery",
+            name: "Gallery",
+            entries: { runtime: "runtime.js" },
+            contributes: { runtimeData: ["narraleaf.gallery.items"] },
+        },
+    });
+    const catalog = { entries: [{ id: ENTRY_ID, variants: [{ imageAssetId: WASHROOM }] }] };
+
+    it("reports an asset the published data names, under the plugin's own name", async () => {
+        installedPlugins.value = [gallery()];
+        const service = mount({ libraryAssetIds: [WASHROOM], pluginStores: { [GALLERY_STORE]: catalog } });
+        await service.ensureReady();
+
+        expect(service.getReferences(WASHROOM)).toEqual([
+            expect.objectContaining({ assetId: WASHROOM, kind: "plugin", label: "Gallery" }),
+        ]);
+        expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
+    });
+
+    it("does not read an entry's own id as an asset", async () => {
+        // The catalogue keys its entries by id-shaped strings. Reading one as an asset would give
+        // `assets/missing` a dangling reference for every entry in the Gallery.
+        installedPlugins.value = [gallery()];
+        const service = mount({ libraryAssetIds: [WASHROOM], pluginStores: { [GALLERY_STORE]: catalog } });
+        await service.ensureReady();
+
+        expect(service.getReferencedAssetIds()).toEqual(new Set([WASHROOM]));
+    });
+
+    it("reads nothing from a plugin that is switched off, which the build does not package", async () => {
+        installedPlugins.value = [gallery(false)];
+        const service = mount({ libraryAssetIds: [WASHROOM], pluginStores: { [GALLERY_STORE]: catalog } });
+        await service.ensureReady();
+
+        expect(service.isReferenced(WASHROOM)).toBe(false);
+    });
+
+    it("reports a store that exists and will not read, by the plugin's name", async () => {
+        installedPlugins.value = [gallery()];
+        const service = mount({ libraryAssetIds: [WASHROOM], unreadablePluginStores: [GALLERY_STORE] });
+        await service.ensureReady();
+
+        expect(service.getIndexResult().gaps).toEqual([
+            { reason: "documentUnreadable", slice: "plugin", location: "Gallery" },
+        ]);
+    });
+
+    it("re-reads when the plugin writes its store", async () => {
+        installedPlugins.value = [gallery()];
+        const stores: Record<string, unknown> = {};
+        const storeWrites: { listener?: (namespace: string) => void } = {};
+        const service = mount({ libraryAssetIds: [WASHROOM], pluginStores: stores, storeWrites });
+        await service.ensureReady();
+        expect(service.isReferenced(WASHROOM)).toBe(false);
+
+        stores[GALLERY_STORE] = catalog;
+        storeWrites.listener?.(GALLERY_STORE);
+        await service.flushPendingRebuilds();
+
+        expect(service.isReferenced(WASHROOM)).toBe(true);
     });
 });
