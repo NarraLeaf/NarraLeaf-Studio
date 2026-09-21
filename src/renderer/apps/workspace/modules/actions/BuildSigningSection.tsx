@@ -64,16 +64,18 @@ function signingRowLabel(platform: SigningPlatform, t: ReturnType<typeof useTran
 export function SigningSection({
     platforms,
     signing,
-    busy = false,
     onChange,
     onRemove,
     children,
 }: {
     /** Signable platforms to offer a row for, in display order. */
     platforms: SigningPlatform[];
+    /**
+     * What each platform is pointed at, including a choice the host is still writing. Nothing here
+     * waits on that write: a second choice made while the first is on its way is the author's, and
+     * the host keeps both (see `useConfigSlice`).
+     */
     signing: SigningConfiguration;
-    /** A write of the host's is in flight; the controls wait rather than queue a second one. */
-    busy?: boolean;
     onChange: (platform: SigningPlatform, credentialId: string | undefined) => void;
     /** Asks the author first, then deletes from the vault. True when it went through. */
     onRemove: (credential: SigningCredential) => Promise<boolean>;
@@ -85,7 +87,7 @@ export function SigningSection({
     // form finishes by pointing the project at what it imported. A frozen workspace refuses that at
     // the boundary, so the whole set greys out rather than offering a choice that cannot land.
     const freeze = useFreezeGuard();
-    const frozen = freeze.writes(busy);
+    const frozen = freeze.writes();
     const selectedIds = useMemo(
         () => platforms.map(platform => signing[platform]).filter((id): id is string => Boolean(id)),
         [platforms, signing],
