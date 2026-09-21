@@ -192,6 +192,25 @@ export async function resolveAllWorkspaceAssetUrls(
 }
 
 /**
+ * What kind of asset each id in the library is, keyed the way {@link resolveAllWorkspaceAssetUrls}
+ * keys its URLs.
+ *
+ * Sent beside the URLs so a Dev Mode window can warm an asset before anything draws it: a picture is
+ * warmed by decoding it and a typeface by registering it, and a URL does not say which. The packaged
+ * game answers the same question from its pack's manifest.
+ */
+export function workspaceAssetTypes(context: WorkspaceContext): Record<string, string> {
+    const assetsService = context.services.get<AssetsService>(Services.Assets);
+    const types: Record<string, string> = {};
+    for (const [type, bucket] of Object.entries(assetsService.getAssets())) {
+        for (const asset of Object.values(bucket ?? {})) {
+            types[asset.id] = type;
+        }
+    }
+    return types;
+}
+
+/**
  * The member an asset set resolves to for the language the editor is previewing in.
  *
  * The project's source language, which is the one an author writes and previews in; a preview of

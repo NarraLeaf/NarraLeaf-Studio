@@ -4,7 +4,7 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
-import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
@@ -299,7 +299,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
-        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>) =>
+        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<AssetUrlDirectory>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAllAssetUrls, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
@@ -494,7 +494,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         resolveAllAssetUrls: () =>
-            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<{ urls: Record<string, string> }>>,
+            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<AssetUrlDirectory>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
         save: {
