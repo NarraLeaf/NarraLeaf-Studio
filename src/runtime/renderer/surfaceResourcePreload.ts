@@ -4,6 +4,8 @@ import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import type { GameRuntimeAssetManifestEntry, GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import type { AssetVariantMap } from "@shared/types/assetSet";
 import { UI_ASSET_ID_PROPERTY_NAMES } from "@shared/build/uiAssetSlots";
+import { blueprintDocumentGraphs } from "@shared/build/blueprintAssetSets";
+import { forEachBlueprintAssetSlot, type BlueprintAssetSlotKind } from "@shared/build/blueprintAssetSlots";
 import { loadRuntimeFontFace } from "./runtimeFontFaces";
 
 export const RUNTIME_SURFACE_PRELOAD_TIMEOUT_MS = 10_000;
@@ -220,6 +222,48 @@ export function collectRuntimePackAssetIds(pack: GameRuntimePackV1, firstSurface
     };
 }
 
+const PRELOAD_KIND_FOR_SLOT: Record<BlueprintAssetSlotKind, PreloadKind> = {
+    image: "image",
+    audio: "audio",
+    font: "font",
+};
+
+/**
+ * Every asset a blueprint names, with the kind its pin says it carries.
+ *
+ * The interface walk above reads the UI document, and a graph is not in it: a button's click sound
+ * (`Play Sound`), a picture a graph swaps in (`Set Image Asset`, an Image Asset literal), a typeface
+ * set from a graph. Those used to be fetched - and in a protected build, decrypted whole - at the
+ * moment they were first needed, which for a click sound is the player's first click.
+ *
+ * The walk is the build's own (`forEachBlueprintAssetSlot` over `blueprintDocumentGraphs`), macros
+ * included, so there is no second list of which pins hold assets to fall behind the first. A slot
+ * naming an asset set warms every member, for the reason the interface walk gives. Filtered against
+ * the manifest the same way, which drops nothing in a protected build: that one ships none.
+ */
+export function collectRuntimeBlueprintAssets(pack: GameRuntimePackV1): { assetId: string; kind: PreloadKind }[] {
+    const manifestIds = packManifestIds(pack);
+    const found = new Map<string, PreloadKind>();
+    for (const graph of blueprintDocumentGraphs(pack.bundle.ui.localBlueprints)) {
+        forEachBlueprintAssetSlot(graph, slot => {
+            const stored = slot.read();
+            if (!stored) {
+                return;
+            }
+            const members = slot.node.assetVariants?.[stored];
+            for (const assetId of members ? new Set(Object.values(members)) : [stored]) {
+                if (manifestIds && !manifestIds.has(assetId)) {
+                    continue;
+                }
+                if (!found.has(assetId)) {
+                    found.set(assetId, PRELOAD_KIND_FOR_SLOT[slot.kind]);
+                }
+            }
+        });
+    }
+    return [...found].map(([assetId, kind]) => ({ assetId, kind }));
+}
+
 /**
  * The manifest ids this pack can be checked against, or null when it ships none.
  *
@@ -361,9 +405,11 @@ async function preloadAsset(input: {
     assetId: string;
     entry: GameRuntimeAssetManifestEntry | undefined;
     assetUrl: (assetId: string) => string;
+    /** Known from where the id was found - a blueprint pin says what it carries. */
+    kind?: PreloadKind;
 }): Promise<void> {
     const url = input.assetUrl(input.assetId);
-    const kind = kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
+    const kind = input.kind ?? kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
     if (kind === "font") {
         await preloadFont(input.assetId, url);
         return;
@@ -384,76 +430,87 @@ async function preloadAsset(input: {
  */
 export type RuntimePreloadProgress = (settled: number, total: number) => void;
 
-export async function preloadRuntimeSurfaceAssets(input: {
-    pack: GameRuntimePackV1;
-    surface: UISurface;
-    assetUrl: (assetId: string) => string;
-    timeoutMs?: number;
-    onProgress?: RuntimePreloadProgress;
-}): Promise<RuntimeSurfacePreloadResult> {
-    const assetIds = collectRuntimeSurfaceAssetIds(input.pack, input.surface);
-    const failed: string[] = [];
-    let loaded = 0;
-    let settled = 0;
-    let completed = false;
-    const preloadAll = Promise.all(assetIds.map(async assetId => {
-        try {
-            await preloadAsset({
-                assetId,
-                entry: input.pack.assets.items[assetId],
-                assetUrl: input.assetUrl,
-            });
-            loaded += 1;
-        } catch {
-            failed.push(assetId);
-        }
-        settled += 1;
-        input.onProgress?.(settled, assetIds.length);
-    })).then(() => {
-        completed = true;
-    });
+/**
+ * How many assets the warm-up behind the first frame fetches at once.
+ *
+ * The first screen's assets are all requested together, because the player is waiting on exactly
+ * those. The rest are not waited on by anyone, and a pack with a gallery's worth of pictures
+ * requested in one go would put hundreds of reads and decodes in front of the story compile and the
+ * opening scene - the work that decides when the player first sees the game move.
+ */
+const BACKGROUND_PRELOAD_CONCURRENCY = 4;
 
-    await Promise.race([
-        preloadAll,
-        new Promise(resolve => setTimeout(resolve, input.timeoutMs ?? RUNTIME_SURFACE_PRELOAD_TIMEOUT_MS)),
-    ]);
-
-    return {
-        assetIds,
-        firstSurfaceAssetIds: assetIds,
-        loaded,
-        firstSurfaceLoaded: loaded,
-        failed,
-        firstSurfaceFailed: failed,
-        firstSurfaceComplete: completed,
-        timedOut: !completed,
-    };
-}
-
+/**
+ * Warm everything the shipped game's interface names, and say as soon as the first screen can show.
+ *
+ * # The wait is the first screen, not the pack
+ *
+ * This used to be one wait over every asset of every page: the boot held its first frame - and the
+ * story compile behind it - until a settings page's backdrop and a gallery's thumbnails had all
+ * decoded. `onFirstSurfaceSettled` is the moment the entry page's own assets (and the project's
+ * fonts, which every page is set in) have settled, and it is the only thing a caller should gate on.
+ * Everything else keeps warming afterwards, a few at a time, ahead of the player getting there.
+ *
+ * A page opened before its assets arrive still draws correctly - a picture decodes on first use and
+ * the page's own prepaint waits for its fonts - it is only later than it would have been.
+ *
+ * # What is warmed
+ *
+ * The interface document (`collectRuntimePackAssetIds`) and every asset a blueprint names
+ * (`collectRuntimeBlueprintAssets`): a button's click sound or a picture a graph swaps in is fetched
+ * - and in a protected build decrypted - on first use otherwise, which is the first click.
+ *
+ * The returned promise settles when everything has, or when `timeoutMs` has passed; the same budget
+ * caps how long `onFirstSurfaceSettled` can be held back by an asset that never answers.
+ */
 export async function preloadRuntimePackAssets(input: {
     pack: GameRuntimePackV1;
     firstSurface: UISurface;
     assetUrl: (assetId: string) => string;
     timeoutMs?: number;
+    /** Progress of the first screen's assets - the wait a loading state is drawing. */
     onProgress?: RuntimePreloadProgress;
+    /** Told once: the first screen may show. `complete` is false when the budget ran out first. */
+    onFirstSurfaceSettled?: (outcome: { complete: boolean }) => void;
 }): Promise<RuntimeSurfacePreloadResult> {
-    const { firstSurfaceAssetIds, assetIds } = collectRuntimePackAssetIds(input.pack, input.firstSurface);
+    const { firstSurfaceAssetIds, assetIds: interfaceAssetIds } = collectRuntimePackAssetIds(input.pack, input.firstSurface);
     const firstSurfaceAssetSet = new Set(firstSurfaceAssetIds);
-    const remainingAssetIds = assetIds.filter(assetId => !firstSurfaceAssetSet.has(assetId));
+    /**
+     * The warm-up's order: what a click can need, then the other pages, then whatever else a graph
+     * names. A blueprint's sounds come first because the first thing a player does on the title
+     * screen is press something, and a click sound is small; measured on the shipped skeleton with a
+     * heavy Load page, they arrived 2.4 s in when they queued behind that page's pictures.
+     */
+    const blueprintAssets = collectRuntimeBlueprintAssets(input.pack)
+        .filter(named => !firstSurfaceAssetSet.has(named.assetId));
+    const background: { assetId: string; kind?: PreloadKind }[] = [];
+    const queued = new Set(firstSurfaceAssetIds);
+    const enqueue = (item: { assetId: string; kind?: PreloadKind }) => {
+        if (!queued.has(item.assetId)) {
+            queued.add(item.assetId);
+            background.push(item);
+        }
+    };
+    blueprintAssets.filter(named => named.kind === "audio").forEach(enqueue);
+    interfaceAssetIds.forEach(assetId => enqueue({ assetId }));
+    blueprintAssets.forEach(enqueue);
+    const assetIds = [...firstSurfaceAssetIds, ...background.map(item => item.assetId)];
+    const timeoutMs = input.timeoutMs ?? RUNTIME_SURFACE_PRELOAD_TIMEOUT_MS;
     const failed: string[] = [];
     const firstSurfaceFailed: string[] = [];
     let loaded = 0;
-    let settled = 0;
+    let firstSurfaceSettled = 0;
     let firstSurfaceLoaded = 0;
     let firstSurfaceComplete = false;
     let completed = false;
 
-    const preloadOne = async (assetId: string, isFirstSurface: boolean) => {
+    const preloadOne = async (assetId: string, isFirstSurface: boolean, kind?: PreloadKind) => {
         try {
             await preloadAsset({
                 assetId,
                 entry: input.pack.assets.items[assetId],
                 assetUrl: input.assetUrl,
+                kind,
             });
             loaded += 1;
             if (isFirstSurface) {
@@ -465,24 +522,40 @@ export async function preloadRuntimePackAssets(input: {
                 firstSurfaceFailed.push(assetId);
             }
         }
-        // Against the whole list, both passes counted together: what the caller is drawing is one
-        // wait, and a bar that filled during the first screen's assets and then started again for
-        // the rest would be two answers to "how much longer".
-        settled += 1;
-        input.onProgress?.(settled, assetIds.length);
+        // Only the first screen's assets move the bar: they are the whole of what anyone is waiting
+        // for, and a bar that went on counting a gallery's thumbnails would be answering "how much
+        // longer" for a wait that is already over.
+        if (isFirstSurface) {
+            firstSurfaceSettled += 1;
+            input.onProgress?.(firstSurfaceSettled, firstSurfaceAssetIds.length);
+        }
     };
 
-    const preloadAll = (async () => {
-        await Promise.all(firstSurfaceAssetIds.map(assetId => preloadOne(assetId, true)));
+    const budget = new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), timeoutMs));
+    const firstPass = Promise.all(firstSurfaceAssetIds.map(assetId => preloadOne(assetId, true))).then(() => {
         firstSurfaceComplete = true;
-        await Promise.all(remainingAssetIds.map(assetId => preloadOne(assetId, false)));
+    });
+
+    const preloadAll = (async () => {
+        const first = await Promise.race([firstPass.then(() => "done" as const), budget]);
+        input.onFirstSurfaceSettled?.({ complete: first === "done" });
+        let next = 0;
+        const worker = async () => {
+            while (next < background.length) {
+                const item = background[next];
+                next += 1;
+                await preloadOne(item.assetId, false, item.kind);
+            }
+        };
+        await Promise.all(Array.from(
+            { length: Math.min(BACKGROUND_PRELOAD_CONCURRENCY, background.length) },
+            () => worker(),
+        ));
+        await firstPass;
         completed = true;
     })();
 
-    await Promise.race([
-        preloadAll,
-        new Promise(resolve => setTimeout(resolve, input.timeoutMs ?? RUNTIME_SURFACE_PRELOAD_TIMEOUT_MS)),
-    ]);
+    await Promise.race([preloadAll, budget]);
 
     return {
         assetIds,
