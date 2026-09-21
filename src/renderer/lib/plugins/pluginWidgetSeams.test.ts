@@ -195,6 +195,25 @@ describe("a plugin widget's declared events", () => {
         expect(own.has("blueprint.event.head.sliderValueChanged")).toBe(false);
     });
 
+    it("are reachable from the properties panel, through the tab a built-in widget's blueprint is in", () => {
+        vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        register({
+            type: RATING,
+            logicApi: RATING_LOGIC,
+            createInspector: () => ({ id: "rating", fields: [{ id: "rating.max", type: "number", label: "Max" }] }) as never,
+        });
+        register({ type: BOX, acceptsChildren: true });
+        const rating = element("rating", RATING, "root");
+
+        const schema = widgetModuleRegistry.get(RATING)!.createInspector!({ element: rating, documentService: {} as never });
+        expect(schema?.tabs?.map(tab => tab.id)).toEqual(["properties", "interaction"]);
+        // The plugin's own fields stay where it put them, on the first tab.
+        expect(schema?.tabs?.[0].fields.map(field => field.id)).toEqual(["rating.max"]);
+        expect(schema?.tabs?.[1].fields.map(field => field.id)).toEqual(["interaction.blueprint.readonly"]);
+        // A widget with no blueprint gets no tab, and no inspector it did not ask for.
+        expect(widgetModuleRegistry.get(BOX)!.createInspector).toBeUndefined();
+    });
+
     it("keep the plugin's own head out of blueprints that could never start it", () => {
         vi.spyOn(console, "warn").mockImplementation(() => undefined);
         register({ type: RATING, logicApi: RATING_LOGIC });

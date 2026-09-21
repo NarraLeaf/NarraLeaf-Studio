@@ -3,6 +3,7 @@ import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimeP
 import type { RuntimeWidgetRendererProps } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import { narrowWidgetEventDispatchForPlugin } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { appendWidgetLogicTab } from "@/lib/ui-editor/widget-modules/shared/blueprint/widgetLogicTab";
 import type {
     UIInspectorData,
     UIWidgetModule,
@@ -251,12 +252,13 @@ export function guardPluginWidgetModule(
     const state = (): PluginWidgetEditorStateApi =>
         createPluginWidgetEditorStateApi(pluginId, services.stateService);
 
+    // What the registry holds is what the shared lookups answer with (`contributedWidgets.ts`), so
+    // the declaration is held to the plugin's own heads here, once, before anything reads it.
+    const logicApi = sanitizePluginWidgetLogicApi(pluginId, module.type, module.logicApi);
     const guarded: UIWidgetModule = {
         type: module.type,
         extends: module.extends,
-        // What the registry holds is what the shared lookups answer with (`contributedWidgets.ts`),
-        // so the declaration is held to the plugin's own heads here, once, before anything reads it.
-        logicApi: sanitizePluginWidgetLogicApi(pluginId, module.type, module.logicApi),
+        logicApi,
         acceptsChildren: module.acceptsChildren === true,
         displayName: module.displayName,
         icon: module.icon,
@@ -273,10 +275,14 @@ export function guardPluginWidgetModule(
     if (module.listEditorStates) {
         guarded.listEditorStates = element => module.listEditorStates!(element);
     }
-    if (module.createInspector) {
-        guarded.createInspector = context =>
-            module.createInspector!({ element: context.element, documentService: doc() }) as unknown as
-            ReturnType<NonNullable<UIWidgetModule["createInspector"]>>;
+    if (module.createInspector || logicApi?.supportsPrivateBlueprint) {
+        guarded.createInspector = context => {
+            const own = module.createInspector?.({ element: context.element, documentService: doc() }) as unknown as
+                ReturnType<NonNullable<UIWidgetModule["createInspector"]>>;
+            // The way into the widget's blueprint is a host section no plugin can build; see
+            // `appendWidgetLogicTab`. It reads the workspace, never the plugin's facade.
+            return logicApi?.supportsPrivateBlueprint ? appendWidgetLogicTab(own, context.element) : own;
+        };
     }
     if (module.createDockerBarItems) {
         guarded.createDockerBarItems = context =>

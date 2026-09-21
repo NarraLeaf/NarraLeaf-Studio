@@ -302,7 +302,8 @@ app.services.widgets.registerMany([{
 ### 控件自己的事件（`logicApi`）
 
 `logicApi` 说这个控件发哪些事件。写了 `supportsPrivateBlueprint: true`，元素就像内建控件一样有自己的
-蓝图，属性面板的事件列表列出 `events`，每个事件从它 `headNodeTypes` 里的头节点开始：
+蓝图：属性面板多一个「交互」页（宿主加的，和内建控件那一页相同，插件自己的字段仍在「属性」页），
+从那里打开蓝图；每个事件从它 `headNodeTypes` 里的头节点开始：
 
 ```ts
 // shared.ts —— 两个入口都 import 这一份
