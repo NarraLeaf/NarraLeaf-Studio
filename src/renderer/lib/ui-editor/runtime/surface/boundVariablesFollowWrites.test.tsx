@@ -4,8 +4,8 @@
  *
  * It did not. A value binding re-ran when a widget prop it read or one of the two state stores
  * changed, and a variable is neither: `Set Var` wrote the record, the next graph to read it saw the
- * new value, and the text bound to it kept the value it had when the page was drawn. The report that
- * found it: a global counter shown on a page and on a modal overlay, raised by a global `On Action`,
+ * new value, and the text bound to it kept the value it had when the page was drawn. What it looked
+ * like: a global counter shown on a page and on a modal overlay, raised by a global `On Action`,
  * read "Global count: 5" on the page behind the overlay while the overlay's own `Set Text` said 7.
  *
  * Pinned here for every kind of variable a binding can reach - a global blueprint's and a page's
