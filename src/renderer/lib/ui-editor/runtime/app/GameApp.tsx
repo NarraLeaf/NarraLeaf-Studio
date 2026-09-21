@@ -230,6 +230,7 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
+import { SurfaceStackBox } from "./SurfaceStackBox";
 import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -627,7 +628,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const layerState = useLayerStack(layerStack);
     const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
-    const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
     /**
@@ -1143,7 +1143,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         const surface = findSurface(bundle, host.entrySurfaceId);
         setPrepaintReadyKeys(new Set());
-        setInteractionReadyKeys(new Set());
         navigation.reset(surface ? createNavEntry(surface.id, "forward", false) : null);
         layerStack.clear();
         widgetPatchesByScopeRef.current = {};
@@ -1242,26 +1241,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack.notifyExitComplete();
     }, [layerStack]);
 
-    const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
-        setInteractionReadyKeys(prev => {
-            const alreadyReady = prev.has(entryKey);
-            if (alreadyReady === ready) {
-                return prev;
-            }
-            const next = new Set(prev);
-            if (ready) {
-                next.add(entryKey);
-            } else {
-                next.delete(entryKey);
-            }
-            return next;
-        });
-    }, []);
-
-    const resetSurfaceInteractionReadiness = useCallback(() => {
-        setInteractionReadyKeys(prev => (prev.size === 0 ? prev : new Set()));
-    }, []);
-
     const isGameHiddenEntry = useCallback((entry: GameAppNavEntry | null | undefined): boolean => {
         return Boolean(entry && studioPageHiddenForGameRef.current && gameHiddenNavKeysRef.current.has(entry.key));
     }, []);
@@ -1272,13 +1251,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = true;
         setGameHiddenNavKeys(hiddenKeys);
         setStudioPageHiddenForGame(true);
-        resetSurfaceInteractionReadiness();
         navigation.hideAllForGame();
         // Layers are not serialised, so nothing about them survives a load, and the two callers of
         // this are exactly the moments the game takes the screen: starting a story and applying a
         // save. A layer left standing across either would belong to a run that no longer exists.
         layerStack.clear();
-    }, [layerStack, navigation, resetSurfaceInteractionReadiness]);
+    }, [layerStack, navigation]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -1302,7 +1280,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const currentHiddenForGame = isGameHiddenEntry(currentEntry);
         const presentation = options?.presentation ?? (studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage");
-        resetSurfaceInteractionReadiness();
         return navigation.open({
             fromSurface: from,
             targetSurface: target,
@@ -1317,7 +1294,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1334,7 +1310,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         const from = findSurface(bundle, currentEntry.surfaceId);
         const target = findSurface(bundle, nextEntryBase.surfaceId);
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        resetSurfaceInteractionReadiness();
         return navigation.close({
             fromSurface: from,
             targetSurface: target,
@@ -1348,7 +1323,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1391,7 +1365,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         const from = findSurface(bundle, currentEntry.surfaceId);
         const target = findSurface(bundle, nextEntryBase.surfaceId);
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        resetSurfaceInteractionReadiness();
         return navigation.close({
             fromSurface: from,
             targetSurface: target,
@@ -1404,7 +1377,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -5907,8 +5879,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                         <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
                     </div>
                 ) : null}
-                {/* Surface system starts only after the NLR environment boot preload finishes. */}
-                <div className="pointer-events-none absolute inset-0 z-10">
+                {/* Surface system starts only after the NLR environment boot preload finishes. The box
+                    also guards the stage while a page or layer plays its exit - see `SurfaceStackBox`. */}
+                <SurfaceStackBox className="absolute inset-0 z-10">
                     <AnimatePresence
                         custom={navState.direction}
                         initial={false}
@@ -5938,7 +5911,6 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     reducedMotion={prefersReducedMotion === true}
                                     active={compositeInput.interactiveKeys.has(entry.key)}
                                     keyboardOwner={compositeInput.keyboardOwnerKey === entry.key}
-                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
                                 />
@@ -5985,14 +5957,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     active={compositeInput.interactiveKeys.has(layer.key)}
                                     keyboardOwner={compositeInput.keyboardOwnerKey === layer.key}
                                     scrim={layer.scrim}
-                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
                                 />
                             ))
                             : null}
                     </AnimatePresence>
-                </div>
+                </SurfaceStackBox>
             </div>
         </MotionConfig>
     );
