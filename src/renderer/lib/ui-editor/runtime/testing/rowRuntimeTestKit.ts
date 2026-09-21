@@ -239,6 +239,8 @@ export function createRowRuntime(
          * page runtime the game builds from the frame's own dispatch.
          */
         onFrameEmit?: (eventName: string, data: unknown) => Promise<void>;
+        /** Where `Go Back` goes, for a test that asks whether a graph left the page. */
+        onPageBack?: () => void;
     } = {},
 ) {
     runtimeCount += 1;
@@ -282,7 +284,7 @@ export function createRowRuntime(
         activeSurfaceId: surface.id,
         emit: event => debug.emit(event),
         onOpenSurface: () => undefined,
-        onPageBack: () => undefined,
+        onPageBack: () => options.onPageBack?.(),
         onWidgetPatch: (address, patch) => {
             patches.push([address, patch]);
         },

@@ -26,16 +26,18 @@
  *    unlocked tile is exactly what it was without it.
  * 3. **An unlocked CG tile opens its picture at full size; a locked one does nothing and promises
  *    nothing.** The press is the grid's Item Click, and it writes straight out of the row: the
- *    pressed artwork's unlocked pictures, read off the row and starting at the one the tile shows,
- *    into a page variable, and then the viewer - an element the row does not contain - shown. No
- *    broadcast, no relay. That is only possible because a row addresses the drawing its target is
- *    really in (`resolveUIWidgetAddressFromDrawing` in `@shared/types/ui-editor/widgetDrawing`); a
- *    row used to be unable to show, fill or hide anything outside itself. The viewer's picture is
- *    drawn the way the tile's art is - a row whose `image` field an image reads - and fills itself
- *    as it appears, the way every pane here does. From there it is the GalGame convention: each
- *    press steps to the artwork's next unlocked variant and the one after the last closes the
- *    viewer, as does a right click or the page's dismiss action, and the board under it is never
- *    touched. The pointer and the hover frame live on a hit area drawn only for an unlocked row, so
+ *    row's picture into the viewer's image with `Set Image Asset`, which artwork it is and where
+ *    that picture sits among the artwork's variants into page variables, and then the viewer - an
+ *    element the row does not contain - shown. No broadcast, no relay, no list standing in for an
+ *    image. That is only possible because a row addresses the drawing its target is really in
+ *    (`resolveUIWidgetAddressFromDrawing` in `@shared/types/ui-editor/widgetDrawing`), and because a
+ *    picture taken off a gallery row counts as a name the author wrote down (`assetNameGaps`), so
+ *    the reference index follows it instead of refusing every build. From there it is the GalGame
+ *    convention: each press steps along the variants from the one on screen, skipping a locked one
+ *    and wrapping at the end, with `Get Gallery Variant At` handing over each picture, and the press
+ *    that comes back to the first picture closes the viewer - as does a right click or the page's
+ *    dismiss action, and the board under it is never touched. `starterCgViewerPlays.test.ts` runs
+ *    that walk. The pointer and the hover frame live on a hit area drawn only for an unlocked row, so
  *    a locked tile advertises nothing - a cue for a press that does nothing is worse than none. The
  *    recollection tile, whose unlocked press starts its scene, carries the same hit area.
  * 4. **The screen is reached from the title menu and from nowhere else.** Playing a recollection
@@ -49,10 +51,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND,
-    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY,
-    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT,
-    BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
+    BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
@@ -60,10 +62,14 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_MATH_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
+    BLUEPRINT_NODE_TYPE_MATH_MODULO,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
@@ -110,6 +116,8 @@ const blueprints = Object.values(
 const GALLERY = "narraleaf.gallery";
 const GET_ENTRIES = `${GALLERY}.getEntries`;
 const GET_STATS = `${GALLERY}.getStats`;
+const GET_VARIANTS = `${GALLERY}.getVariants`;
+const GET_VARIANT_AT = `${GALLERY}.getVariant`;
 
 function surfaceNamed(name: string): Surface {
     const surface = document.surfaces.find(candidate => candidate.name === name);
@@ -490,6 +498,14 @@ describe("the starter template's EXTRA screen", () => {
     );
 
     describe("the CG viewer", () => {
+        /** The page variables the viewer keeps, by the name the member tree shows. */
+        const VARIABLES = {
+            artwork: "Viewer artwork",
+            count: "Viewer variant count",
+            first: "Viewer first variant",
+            shown: "Viewer variant",
+        } as const;
+
         /**
          * The pieces every claim below is about. Looked up per test rather than once for the block,
          * so a screen that lost one of them fails the claims that need it instead of the whole file.
@@ -501,59 +517,77 @@ describe("the starter template's EXTRA screen", () => {
             expect(page, "the Extra page has no blueprint").toBeDefined();
             return {
                 viewer: on("Viewer", "nl.container"),
-                picture: on("Picture", "nl.list"),
                 open: graphWith(grid.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK),
                 page: page!,
-                queue: Object.values(page!.members?.variables ?? {})
-                    .find(variable => variable.name === "Viewer pictures"),
             };
         };
 
-        /** A `Set Var` or `Get Var` naming the page's queue, from whichever blueprint it sits in. */
-        const namesQueue = (node: GraphNode): boolean => {
-            const { page, queue } = parts();
-            const ref = String(node.params?.variableId ?? "");
-            return Boolean(queue) && (ref === queue!.id || ref === `bp:${page.id}:${queue!.id}`);
+        /** A page variable by the name it is declared under. */
+        const variable = (key: keyof typeof VARIABLES) => {
+            const { page } = parts();
+            const found = Object.values(page.members?.variables ?? {}).find(item => item.name === VARIABLES[key]);
+            expect(found, `the Extra page declares no "${VARIABLES[key]}"`).toBeDefined();
+            return found!;
+        };
+
+        /** Whether a `Set Var` or `Get Var` names one of the page's variables, from whichever blueprint it sits in. */
+        const names = (node: GraphNode | undefined, key: keyof typeof VARIABLES): boolean => {
+            const { page } = parts();
+            const id = variable(key).id;
+            const ref = String(node?.params?.variableId ?? "");
+            return ref === id || ref === `bp:${page.id}:${id}`;
         };
 
         /** What an element write does, as `[element, property, value]`. */
         const writes = (graph: Graph, nodes: GraphNode[]): unknown[][] =>
             nodes.map(node => [elementAt(graph, node.id), node.params?.property, node.params?.value]);
 
+        /** The one node an execution output runs next. */
+        const after = (graph: Graph, nodeId: string, port: string): GraphNode => {
+            const out = graph.edges.filter(edge => edge.from.nodeId === nodeId && edge.from.port === port);
+            expect(out, `${nodeId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
+            return graph.nodes[out[0]!.to.nodeId]!;
+        };
+
         it("is one full-screen picture above the whole screen, hidden until a tile is pressed", () => {
-            const { viewer, picture } = parts();
+            const { viewer } = parts();
             // Outside every list and drawn last, so it covers the rail, the board and the title, and
             // a press anywhere lands on it.
             const screen = on("Extra", "nl.container");
             expect(screen.childrenIds?.at(-1)).toBe(viewer.id);
             expect(viewer.layout).toMatchObject({ x: 0, y: 0, width: 1920, height: 1080, visible: false });
-            expect(viewer.childrenIds).toEqual([picture.id]);
             expect(String(viewer.props?.backgroundColor)).toMatch(/^nlbrand:/);
 
-            // The picture is a row, drawn the way a tile draws its art: a list holding the one row
-            // on screen, whose image reads that row's `image` field. Not an image widget the graph
-            // writes an asset into - an asset pin fed a computed value is a hole in the reference
-            // index, so every project made from this template would ask before deleting any image
-            // and have every build refused (`refuseOnTrimCoverageGaps` in `BuildService`; the
-            // template is held to no holes by `referenceCatalogPins.test.ts`).
-            expect(picture.layout).toMatchObject({ x: 0, y: 0, width: 1920, height: 1080 });
-            expect(picture.props?.itemStructId).toBe("extra.galleryPicture");
-            expect((picture.props?.scrollbar as { enabled?: boolean } | undefined)?.enabled).toBe(false);
-            expect(picture.props?.dragContentScroll).toBe(false);
-            const fields = document.structs?.["extra.galleryPicture"]?.fields.map(field => [field.key, field.type]);
-            expect(fields).toEqual([["id", "string"], ["image", "image"]]);
-
-            const art = document.elements[picture.childrenIds?.[0] ?? ""]!;
-            expect(picture.childrenIds).toHaveLength(1);
+            // One image and nothing else: the viewer holds one picture at a time, and the graphs put
+            // each one there with `Set Image Asset`. Nothing is bound - no list stands in for it.
+            expect(viewer.childrenIds).toHaveLength(1);
+            const art = document.elements[viewer.childrenIds![0]!]!;
             expect(art.type).toBe("nl.image");
-            expect(art.valueBindings?.["imageFill.assetId"]).toEqual({ kind: "listItemField", fieldId: "image" });
+            expect(art.valueBindings ?? {}).toEqual({});
             // The whole stage, fitted rather than cropped: a CG that is not 16:9 is letterboxed.
             expect(art.layout).toMatchObject({ x: 0, y: 0, width: 1920, height: 1080 });
             expect((art.props?.imageFill as { mode?: string } | undefined)?.mode).toBe("contain");
         });
 
+        it("leaves no list-item shape behind that nothing uses", () => {
+            // A shape no list names is invisible to an author, and is picked up again under its old
+            // name the next time someone declares the same fields (`findCompatibleUIStructId`).
+            const named = new Set<string>();
+            const components = (document as { components?: { elements: Record<string, Element> }[] }).components ?? [];
+            for (const pool of [document.elements, ...components.map(component => component.elements)]) {
+                for (const element of Object.values(pool)) {
+                    const id = element.props?.itemStructId;
+                    if (typeof id === "string") {
+                        named.add(id);
+                    }
+                }
+            }
+            expect(Object.keys(document.structs ?? {}).filter(id => !named.has(id))).toEqual([]);
+        });
+
         it("opens on the pressed tile's own picture, straight from the Item Click, and not at all when locked", () => {
-            const { viewer, picture, open } = parts();
+            const { viewer, open } = parts();
+            const art = viewer.childrenIds![0]!;
             const head = only(open, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
             const gate = only(open, BLUEPRINT_NODE_TYPE_FLOW_IF);
             expect(wired(open, head.id, "then", gate.id, "in")).toBe(true);
@@ -564,114 +598,138 @@ describe("the starter template's EXTRA screen", () => {
             // A locked tile is inert: nothing at all runs on that side of the gate.
             expect(open.edges.some(edge => edge.from.nodeId === gate.id && edge.from.port === "false")).toBe(false);
 
-            // Unlocked: the press queues the pressed artwork's pictures, read off the row - its `id`,
-            // and the variant it is showing, `coverVariantId`, which the queue starts at - and then
-            // shows the viewer. Both writes leave the row: one to the page, one to an element the
-            // row does not contain, addressed directly. No broadcast and no relay.
-            const fill = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue);
-            expect(fill).toHaveLength(1);
-            expect(feeding(open, only(open, `${GALLERY}.getVariants`).id, "artworkId").params?.field).toBe("id");
-            expect(feeding(open, only(open, BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND).id, "value").params?.field)
-                .toBe("coverVariantId");
-            const reveal = ranAfter(open, fill[0]!.id, "next", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY);
-            expect(writes(open, reveal)).toEqual([[viewer.id, "visible", true]]);
+            // Unlocked: the row's own picture - the variant the tile shows - goes into the viewer's
+            // image, and then the viewer is shown. Both writes leave the row, to elements it does not
+            // contain, addressed directly. No broadcast and no relay.
+            const [show] = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET);
+            expect(show, "the press never puts a picture up").toBeDefined();
+            expect(elementAt(open, show!.id)).toBe(art);
+            const picture = feeding(open, show!.id, "asset");
+            expect(picture.type).toBe(BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD);
+            expect(picture.params?.field).toBe("image");
+            expect(writes(open, ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
+                .toEqual([[viewer.id, "visible", true]]);
+            // The picture is in place before the viewer fades in, so the last one never shows.
+            expect(ranAfter(open, show!.id, "next", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toHaveLength(1);
             expect(Object.values(open.nodes).filter(node => node.type.startsWith("blueprint.broadcast"))).toEqual([]);
-
-            // The picture fills itself as it appears, with the head of the queue - the way every
-            // pane on this screen fills itself on Init. The press cannot hand the hidden viewer its
-            // row instead: a list drops its content when it unmounts, and in Dev Mode React unmounts
-            // it once on the way in, so content given to a list before it is drawn is gone by the
-            // time it is.
-            const own = graphWith(picture.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-            const init = only(own, BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-            const [set] = ranAfter(own, init.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS);
-            expect(set, "the viewer's picture never fills itself").toBeDefined();
-            expect(elementAt(own, set!.id, "list")).toBe(picture.id);
-            const first = feeding(own, set!.id, "items");
-            expect(first.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE);
-            expect([first.params?.start, first.params?.end]).toEqual([0, 1]);
-            expect(namesQueue(feeding(own, first.id, "array"))).toBe(true);
         });
 
-        it("steps through the artwork's unlocked pictures, from the one on the tile, and closes after the last", () => {
-            const { viewer, picture, open, queue } = parts();
-            // The pictures still to show belong to the page, so the grid that opens the viewer and
-            // the viewer that steps through it read and write the same list.
-            expect(queue, "the Extra page declares the viewer's queue").toBeDefined();
-            expect(queue!.valueType).toBe("array");
-
+        it("remembers which artwork is open, how many variants it has and where the pressed picture sits", () => {
+            const { open } = parts();
             const gate = only(open, BLUEPRINT_NODE_TYPE_FLOW_IF);
-            const pictures = only(open, `${GALLERY}.getVariants`);
-            expect(runsAfter(open, gate.id, "true").has(pictures.id)).toBe(true);
-            // Only what the player has unlocked, of the artwork whose tile was pressed.
-            expect(pictures.params?.onlyUnlocked).toBe(true);
-            // Turned to start at the variant the tile shows, so the head of the queue is the picture
-            // that was pressed and every unlocked one comes up once: the pictures from it to the end,
-            // then the ones before it.
-            const start = only(open, BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND);
-            expect(start.params?.key).toBe("id");
-            const [keep] = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue);
-            const order = feeding(open, keep!.id, "value");
-            expect(order.type).toBe("blueprint.collection.arrayConcat");
-            const after = feeding(open, order.id, "a");
-            const before = feeding(open, order.id, "b");
-            expect([after.type, before.type]).toEqual([
-                BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
-                BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE,
-            ]);
-            expect(open.edges.some(edge => edge.to.nodeId === after.id && edge.to.port === "start")).toBe(true);
-            expect(open.edges.some(edge => edge.to.nodeId === before.id && edge.to.port === "end")).toBe(true);
-            expect(before.params?.start).toBe(0);
+            // Positions are counted over every variant, locked ones included, because that is what
+            // `Get Gallery Variant At` indexes - so the list asked for here is the whole artwork.
+            const variants = only(open, GET_VARIANTS);
+            expect(runsAfter(open, gate.id, "true").has(variants.id)).toBe(true);
+            expect(feeding(open, variants.id, "artworkId").params?.field).toBe("id");
+            expect(variants.params?.onlyUnlocked).not.toBe(true);
+            expect(open.edges.some(edge => edge.to.nodeId === variants.id && edge.to.port === "onlyUnlocked")).toBe(false);
 
-            // Each press drops the picture on screen from the queue; an empty queue closes the
-            // viewer, and anything else hands the viewer the new head.
+            const sets = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_LOCAL_SET);
+            const setting = (key: keyof typeof VARIABLES): GraphNode => {
+                const found = sets.filter(node => names(node, key));
+                expect(found, `the press sets "${VARIABLES[key]}" ${found.length} times`).toHaveLength(1);
+                return found[0]!;
+            };
+            const artwork = feeding(open, setting("artwork").id, "value");
+            expect([artwork.type, artwork.params?.field]).toEqual([BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_FIELD, "id"]);
+            expect(wired(open, variants.id, "count", setting("count").id, "value")).toBe(true);
+
+            // The first picture's position: the row's `coverVariantId` - the variant the tile shows -
+            // found among the artwork's variants by id.
+            const found = feeding(open, setting("first").id, "value");
+            expect(found.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND);
+            expect(found.params?.key).toBe("id");
+            expect(wired(open, variants.id, "entries", found.id, "array")).toBe(true);
+            expect(feeding(open, found.id, "value").params?.field).toBe("coverVariantId");
+            // And the picture on screen starts as that one.
+            expect(names(feeding(open, setting("shown").id, "value"), "first")).toBe(true);
+
+            // All of it is in place before the viewer can be pressed.
+            const [reveal] = ranAfter(open, gate.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY);
+            for (const key of Object.keys(VARIABLES) as (keyof typeof VARIABLES)[]) {
+                expect(runsAfter(open, setting(key).id, "next").has(reveal!.id)).toBe(true);
+            }
+            expect(variable("artwork").valueType).toBe("string");
+            for (const key of ["count", "first", "shown"] as const) {
+                expect(variable(key).valueType).toBe("integer");
+            }
+        });
+
+        it("steps past locked variants and round the end, and closes on coming back to the first", () => {
+            const { viewer } = parts();
+            const art = viewer.childrenIds![0]!;
             const step = graphWith(viewer.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
             const click = only(step, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
-            const drop = only(step, BLUEPRINT_NODE_TYPE_LOCAL_SET);
-            expect(namesQueue(drop)).toBe(true);
-            expect(wired(step, click.id, "then", drop.id, "in")).toBe(true);
-            const rest = feeding(step, drop.id, "value");
-            expect(rest.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT);
-            expect(rest.params?.index).toBe(0);
-            expect(namesQueue(feeding(step, rest.id, "array"))).toBe(true);
 
-            const branch = only(step, BLUEPRINT_NODE_TYPE_FLOW_IF);
-            expect(wired(step, drop.id, "next", branch.id, "in")).toBe(true);
-            const empty = feeding(step, branch.id, "condition");
-            expect(empty.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY);
-            expect(namesQueue(feeding(step, empty.id, "array"))).toBe(true);
+            // A walk of at most as many steps as the artwork has variants, so it cannot run away
+            // whatever the catalog says.
+            const walk = only(step, BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP);
+            expect(wired(step, click.id, "then", walk.id, "in")).toBe(true);
+            expect(walk.params?.start).toBe(1);
+            expect(names(feeding(step, walk.id, "end"), "count")).toBe(true);
 
-            const closes = ranAfter(step, branch.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY);
-            expect(writes(step, closes)).toEqual([[viewer.id, "visible", false]]);
-            expect(ranAfter(step, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toEqual([]);
-            const [next] = ranAfter(step, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS);
-            expect(next, "a press with pictures left does not put the next one up").toBeDefined();
-            expect(elementAt(step, next!.id, "list")).toBe(picture.id);
-            // The next picture is the head of what is left, and only the head.
-            const head = feeding(step, next!.id, "items");
-            expect(head.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE);
-            expect([head.params?.start, head.params?.end]).toEqual([0, 1]);
-            expect(namesQueue(feeding(step, head.id, "array"))).toBe(true);
+            // Each pass moves one along and wraps at the end: (shown + 1) mod count, as a whole number.
+            const advance = after(step, walk.id, "loop");
+            expect(advance.type).toBe(BLUEPRINT_NODE_TYPE_LOCAL_SET);
+            expect(names(advance, "shown")).toBe(true);
+            const whole = feeding(step, advance.id, "value");
+            expect(whole.type).toBe(BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER);
+            const wrap = feeding(step, whole.id, "value");
+            expect(wrap.type).toBe(BLUEPRINT_NODE_TYPE_MATH_MODULO);
+            const next = feeding(step, wrap.id, "a");
+            expect(next.type).toBe(BLUEPRINT_NODE_TYPE_MATH_INCREMENT);
+            expect(names(feeding(step, next.id, "value"), "shown")).toBe(true);
+            expect(names(feeding(step, wrap.id, "b"), "count")).toBe(true);
+
+            // Back at the picture it opened on: every unlocked one has been shown once, so it closes.
+            const home = after(step, advance.id, "next");
+            expect(home.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+            const same = feeding(step, home.id, "condition");
+            expect(same.type).toBe(BLUEPRINT_NODE_TYPE_MATH_EQUAL);
+            const compared = [feeding(step, same.id, "a"), feeding(step, same.id, "b")];
+            expect(compared.some(node => names(node, "shown")) && compared.some(node => names(node, "first"))).toBe(true);
+            expect(writes(step, ranAfter(step, home.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
+                .toEqual([[viewer.id, "visible", false]]);
+            expect(ranAfter(step, home.id, "true", GET_VARIANT_AT)).toEqual([]);
+
+            // Anywhere else: the artwork's variant at that position, shown if the player has found it.
+            const look = after(step, home.id, "false");
+            expect(look.type).toBe(GET_VARIANT_AT);
+            expect(names(feeding(step, look.id, "artworkId"), "artwork")).toBe(true);
+            expect(names(feeding(step, look.id, "index"), "shown")).toBe(true);
+            const found = after(step, look.id, "next");
+            expect(found.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+            expect(wired(step, look.id, "unlocked", found.id, "condition")).toBe(true);
+
+            const shown = after(step, found.id, "true");
+            expect(shown.type).toBe(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET);
+            expect(elementAt(step, shown.id)).toBe(art);
+            expect(wired(step, look.id, "image", shown.id, "asset")).toBe(true);
+            // Showing a picture ends the press: the walk does not go on, and nothing closes.
+            expect([...runsAfter(step, found.id, "true")]).toEqual([shown.id]);
+
+            // A locked one is stepped over: back round the walk for the next position.
+            expect(after(step, found.id, "false").id).toBe(walk.id);
+            // A walk that runs out without coming home - a catalog changed under it - closes too.
+            expect(writes(step, [after(step, walk.id, "completed")])).toEqual([[viewer.id, "visible", false]]);
         });
 
         it("closes on a right click and on the page's dismiss action, and only leaves the screen when it is shut", () => {
             const { viewer, page } = parts();
-            // A right click on the picture closes it at once, emptying the queue as it goes so the
-            // page never takes a closed viewer for an open one.
+            // A right click on the picture closes it at once. There is nothing to reset: a press on
+            // a tile sets every page variable the viewer reads before it opens.
             const cancel = graphWith(viewer.id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
             const right = only(cancel, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
-            expect(ranAfter(cancel, right.id, "then", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue)).toHaveLength(1);
             expect(writes(cancel, ranAfter(cancel, right.id, "then", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
                 .toEqual([[viewer.id, "visible", false]]);
 
             // Escape is the page's dismiss action. With the viewer open it closes the viewer and the
             // page stays; with nothing open it leaves the screen, as it always did.
             //
-            // The page asks its queue, not the viewer's visibility, and that is load-bearing: a key
-            // press is dispatched through the host GameApp keeps for the active page, which is not
-            // the host the page's own widget graphs write through, and it does not see their writes.
-            // Asked whether the viewer is visible it answers "no", and Escape leaves the screen from
-            // under an open picture. Page variables live in one store that every host reads.
+            // The page asks the viewer itself whether it is showing. A key press runs on the same
+            // host the page's own graphs write through (`hostAdapterBundleFor` in the game runtime),
+            // so it reads the visibility the tile's press wrote.
             const dismiss = Object.values(page.graphs.events).map(entry => entry.graph).find(graph =>
                 Object.values(graph.nodes).some(node =>
                     node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION && node.params?.actionId === "dismiss"));
@@ -679,15 +737,16 @@ describe("the starter template's EXTRA screen", () => {
             const head = only(dismiss!, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
             const branch = only(dismiss!, BLUEPRINT_NODE_TYPE_FLOW_IF);
             expect(wired(dismiss!, head.id, "then", branch.id, "in")).toBe(true);
-            const shut = feeding(dismiss!, branch.id, "condition");
-            expect(shut.type).toBe(BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_IS_EMPTY);
-            expect(namesQueue(feeding(dismiss!, shut.id, "array"))).toBe(true);
+            const showing = feeding(dismiss!, branch.id, "condition");
+            expect(showing.type).toBe(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY);
+            expect(showing.params?.property).toBe("visible");
+            expect(elementAt(dismiss!, showing.id)).toBe(viewer.id);
 
-            expect(ranAfter(dismiss!, branch.id, "true", BLUEPRINT_NODE_TYPE_PAGE_BACK)).toHaveLength(1);
-            expect(ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_PAGE_BACK)).toEqual([]);
-            expect(ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_LOCAL_SET).filter(namesQueue)).toHaveLength(1);
-            expect(writes(dismiss!, ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
+            expect(writes(dismiss!, ranAfter(dismiss!, branch.id, "true", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)))
                 .toEqual([[viewer.id, "visible", false]]);
+            expect(ranAfter(dismiss!, branch.id, "true", BLUEPRINT_NODE_TYPE_PAGE_BACK)).toEqual([]);
+            expect(ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_PAGE_BACK)).toHaveLength(1);
+            expect(ranAfter(dismiss!, branch.id, "false", BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toEqual([]);
         });
     });
 

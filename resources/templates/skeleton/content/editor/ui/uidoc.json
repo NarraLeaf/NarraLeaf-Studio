@@ -58769,7 +58769,7 @@
       "name": "Viewer",
       "parentId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65",
       "childrenIds": [
-        "5107c0a1-0000-4000-8000-000000000401"
+        "5107c0a1-0000-4000-8000-000000000402"
       ],
       "layout": {
         "x": 0,
@@ -58802,69 +58802,11 @@
         "exitBlocking": true
       }
     },
-    "5107c0a1-0000-4000-8000-000000000401": {
-      "id": "5107c0a1-0000-4000-8000-000000000401",
-      "type": "nl.list",
-      "name": "Picture",
-      "parentId": "5107c0a1-0000-4000-8000-000000000400",
-      "childrenIds": [
-        "5107c0a1-0000-4000-8000-000000000402"
-      ],
-      "layout": {
-        "x": 0,
-        "y": 0,
-        "width": 1920,
-        "height": 1080
-      },
-      "props": {
-        "itemStructId": "extra.galleryPicture",
-        "itemKeyFieldId": "id",
-        "repeatDirection": "vertical",
-        "repeatWrap": false,
-        "itemGap": 0,
-        "placeholderCount": 1,
-        "dragContentScroll": false,
-        "scrollbar": {
-          "enabled": false,
-          "side": "right",
-          "visibility": "auto",
-          "thickness": 8,
-          "contentInset": 4,
-          "minThumbLength": 24,
-          "trackStyle": {
-            "backgroundColor": "#ffffff",
-            "fillType": "color",
-            "imageFill": null,
-            "backgroundImage": "",
-            "backgroundFit": "cover",
-            "fillOpacity": 0.08,
-            "borderRadius": 999,
-            "borderColor": "transparent",
-            "borderWidth": 0,
-            "borderStyle": "solid"
-          },
-          "thumbStyle": {
-            "backgroundColor": "#ffffff",
-            "fillType": "color",
-            "imageFill": null,
-            "backgroundImage": "",
-            "backgroundFit": "cover",
-            "fillOpacity": 0.34,
-            "borderRadius": 999,
-            "borderColor": "transparent",
-            "borderWidth": 0,
-            "borderStyle": "solid"
-          },
-          "trackElementId": null,
-          "thumbElementId": null
-        }
-      }
-    },
     "5107c0a1-0000-4000-8000-000000000402": {
       "id": "5107c0a1-0000-4000-8000-000000000402",
       "type": "nl.image",
       "name": "Art",
-      "parentId": "5107c0a1-0000-4000-8000-000000000401",
+      "parentId": "5107c0a1-0000-4000-8000-000000000400",
       "childrenIds": [],
       "layout": {
         "x": 0,
@@ -58881,15 +58823,6 @@
         "imageFill": {
           "mode": "contain"
         }
-      },
-      "valueBindings": {
-        "imageFill.assetId": {
-          "kind": "listItemField",
-          "fieldId": "image"
-        }
-      },
-      "extra": {
-        "listSlot": "itemTemplate"
       }
     }
   },
@@ -58951,7 +58884,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-21T05:28:58.511Z"
+    "updatedAt": "2026-09-21T23:31:01.594Z"
   },
   "structs": {
     "extra.galleryEntry": {
@@ -59006,21 +58939,6 @@
           "id": "coverVariantId",
           "key": "coverVariantId",
           "type": "string"
-        }
-      ]
-    },
-    "extra.galleryPicture": {
-      "id": "extra.galleryPicture",
-      "fields": [
-        {
-          "id": "id",
-          "key": "id",
-          "type": "string"
-        },
-        {
-          "id": "image",
-          "key": "image",
-          "type": "image"
         }
       ]
     }
