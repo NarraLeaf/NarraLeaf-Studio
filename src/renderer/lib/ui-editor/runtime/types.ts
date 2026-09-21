@@ -5,7 +5,10 @@ import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@sha
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
+import type {
+    BehaviorGraphEventControl,
+    BehaviorGraphValueTracking,
+} from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
@@ -116,6 +119,12 @@ export type UIHostAdapterBlueprintRuntime = {
         callerListItemScope?: UIListItemScope | null;
         signal?: AbortSignal;
         callerExecutionId?: string;
+        /**
+         * The caller's value-binding bookkeeping, when the caller is a binding being evaluated: what
+         * the body reads is what the binding shows, so the body records its reads where the caller's
+         * own go.
+         */
+        valueExecution?: BehaviorGraphValueTracking;
     }) => Promise<{ returns: Record<string, unknown> }>;
     frame?: {
         getParam: (key: string) => unknown;

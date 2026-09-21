@@ -1406,6 +1406,25 @@ declare module "@narraleaf/script" {
     	/** True while the entry is the line currently being shown (not yet committed). */
     	isPending: boolean;
     };
+    type BlueprintValueDependency = {
+    	surfaceId: string;
+    	elementId: string;
+    	propPath: string;
+    };
+    type BehaviorGraphValueExecution = {
+    	returnValue(value: unknown): void;
+    	trackDependency?(dependency: BlueprintValueDependency): void;
+    	/**
+    	 * Record that this evaluation read game state other than a widget prop - a variable of any
+    	 * kind - under the key its writers announce (\`blueprintStateWrites\`), so the binding is re-run
+    	 * when that key is written. Present only while a value binding is being evaluated, and carried
+    	 * into the body of any Fn it calls.
+    	 */
+    	trackState?(stateKey: string): void;
+    	/** Who is evaluating, so writes this evaluation makes do not re-run it; see \`blueprintStateWrites\`. */
+    	stateOrigin?: unknown;
+    };
+    type BehaviorGraphValueTracking = Pick<BehaviorGraphValueExecution, "trackDependency" | "trackState" | "stateOrigin">;
     type BehaviorGraphEventControl = {
     	stopPropagation(): void;
     	isPropagationStopped(): boolean;
@@ -1485,6 +1504,12 @@ declare module "@narraleaf/script" {
     		callerListItemScope?: UIListItemScope | null;
     		signal?: AbortSignal;
     		callerExecutionId?: string;
+    		/**
+    		 * The caller's value-binding bookkeeping, when the caller is a binding being evaluated: what
+    		 * the body reads is what the binding shows, so the body records its reads where the caller's
+    		 * own go.
+    		 */
+    		valueExecution?: BehaviorGraphValueTracking;
     	}) => Promise<{
     		returns: Record<string, unknown>;
     	}>;

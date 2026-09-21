@@ -206,6 +206,7 @@ import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import { announceSavedVariableWrites } from "./savedVariableWrites";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { offerUnclaimedPointerInput, RUNTIME_PLUGIN_OVERLAY_ATTR } from "./globalPointerInput";
 import { UI_TOUCH_GESTURE_EVENT } from "@/lib/ui-editor/runtime/input/touchGesture";
@@ -864,6 +865,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrDialogClickTargets = useMemo(() => createDialogClickTargets(), []);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    /** Saved-variable writes the engine reports, announced to value bindings; see `savedVariableWrites`. */
+    const nlrSavedVariableTokenRef = useRef<{ cancel(): void } | null>(null);
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
     // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
@@ -2412,6 +2415,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrSavedVariableTokenRef.current?.cancel();
+        nlrSavedVariableTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         playHead.reset();
@@ -5068,6 +5073,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrSavedVariableTokenRef.current?.cancel();
+        nlrSavedVariableTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         playHead.reset();
@@ -5104,6 +5111,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrSavedVariableTokenRef.current?.cancel();
+        nlrSavedVariableTokenRef.current = null;
         // Not nlrCompiledRef: mountNlrSession sets it for the new session before this fires.
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
@@ -5820,6 +5829,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                         preferenceListenersRef.current.forEach(listener => listener());
                     },
                 );
+                nlrSavedVariableTokenRef.current?.cancel();
+                nlrSavedVariableTokenRef.current = nlrSession?.compiled
+                    ? announceSavedVariableWrites(liveGame.getStorable(), nlrSession.compiled)
+                    : null;
                 detachTextReadTracker();
                 const dialogGameState = liveGame.getGameState();
                 if (dialogGameState) {

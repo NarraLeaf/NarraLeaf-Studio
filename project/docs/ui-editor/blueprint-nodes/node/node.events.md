@@ -112,7 +112,7 @@
 
 `blueprint.event.head.init` - 元素初始化事件
 
-当支持私有蓝图的元素在 Dev Mode runtime 中完成首次渲染并挂载后触发一次；它不是渲染前 hook。Dev Mode bundle revision 刷新导致对应 Surface / 元素 remount 时会再次触发。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。
+当支持私有蓝图的元素在 Dev Mode runtime 中完成首次渲染并挂载后触发一次；它不是渲染前 hook。Dev Mode bundle revision 刷新导致对应 Surface / 元素 remount 时会再次触发。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。上一次求值读到的变量被写入时也会重新求值——`Get Var` 读到的全局、页面变量，以及经 `Call Fn` 在函数体里读到的元素变量、持久变量（`Get Persistent`）与存档变量（`Get Saved Var`），无论写入来自哪张图、哪个宿主，还是故事本身。
 - `then` - 执行出口
 
 ## Unmount

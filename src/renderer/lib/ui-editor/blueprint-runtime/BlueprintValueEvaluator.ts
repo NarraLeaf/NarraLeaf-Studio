@@ -23,6 +23,12 @@ export type BlueprintValueEvaluationResult = {
     returned: boolean;
     value: unknown;
     dependencies: BlueprintValueDependency[];
+    /**
+     * The game state this run read besides widget props - variables of every kind - by the keys
+     * their writers announce (`blueprintStateWrites`). A write under any of them is what should run
+     * the binding again.
+     */
+    stateReads: string[];
 };
 
 const DEFAULT_VALUE_MAX_STEPS = 512;
@@ -71,12 +77,23 @@ export async function evaluateBlueprintValue(input: {
     instanceKey?: string;
     hostAdapter: UIHostAdapter;
     maxSteps?: number;
+    /**
+     * Who is asking, so that a write this very evaluation makes (a binding may call a Fn that writes)
+     * is not taken as a reason to run it again. See `blueprintStateWrites`.
+     */
+    stateOrigin?: unknown;
+    /**
+     * Told of each state read as it happens, not only in the result: a write can land while this
+     * run is still going, after the read it invalidates, and a caller that only learns the reads at
+     * the end would let that write through unseen.
+     */
+    onStateRead?: (stateKey: string) => void;
 }): Promise<BlueprintValueEvaluationResult> {
     const bp = input.blueprintDocument.blueprints[input.blueprintId];
     // Asked of the contract rather than the owner kind: this path exists for the one invocation
     // that returns a value to a prop, not for a particular slot the value binding happens to sit in.
     if (!bp || blueprintContract(bp.owner).invocation !== "valueBinding") {
-        return { returned: false, value: undefined, dependencies: [] };
+        return { returned: false, value: undefined, dependencies: [], stateReads: [] };
     }
 
     const matching = Object.values(bp.graphs.events ?? {})
@@ -87,9 +104,14 @@ export async function evaluateBlueprintValue(input: {
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
     if (matching.length === 0) {
-        return { returned: false, value: undefined, dependencies: [] };
+        return { returned: false, value: undefined, dependencies: [], stateReads: [] };
     }
 
+    const stateReads = new Set<string>();
+    const trackState = (stateKey: string) => {
+        stateReads.add(stateKey);
+        input.onStateRead?.(stateKey);
+    };
     const blueprintLocals = acquireBlueprintExecutionLocals({
         blueprintDocument: input.blueprintDocument,
         currentBlueprintId: input.blueprintId,
@@ -97,6 +119,7 @@ export async function evaluateBlueprintValue(input: {
         runtimeScopeId: input.runtimeScopeId,
         elementId: input.elementId,
         elementInstanceKey: input.instanceKey,
+        observer: { onRead: trackState, origin: input.stateOrigin },
     });
 
     let returned = false;
@@ -131,6 +154,8 @@ export async function evaluateBlueprintValue(input: {
                             dependency,
                         );
                     },
+                    trackState,
+                    stateOrigin: input.stateOrigin,
                 },
             });
             if (result.returnValueSet) {
@@ -139,5 +164,5 @@ export async function evaluateBlueprintValue(input: {
             }
         }
     }
-    return { returned, value, dependencies: [...dependencies.values()] };
+    return { returned, value, dependencies: [...dependencies.values()], stateReads: [...stateReads] };
 }

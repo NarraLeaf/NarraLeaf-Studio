@@ -5,6 +5,12 @@ import {
     listEffectiveBlueprintVariables,
     parseBlueprintVariableRef,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import {
+    announceBlueprintStateWrite,
+    blueprintVariableRecordStateKey,
+    blueprintVariableStateKey,
+    isStateWriteNoticeable,
+} from "./blueprintStateWrites";
 
 function defaultLocalsFromBlueprint(bp: Blueprint): Record<string, unknown> {
     const out: Record<string, unknown> = {};
@@ -91,13 +97,46 @@ function acquireVariableStore(key: string, bp: Blueprint): Record<string, unknow
     return locals;
 }
 
-function defineVariableAccessor(target: Record<string, unknown>, key: string, storeRef: Record<string, unknown>, variableId: string): void {
+/**
+ * What one execution's view of the variables reports as it is used.
+ *
+ * `onRead` is how a value binding learns which variables its graph read, so it can be re-run when
+ * one of them is written; `origin` is who is doing the writing, so that binding is not re-run by its
+ * own writes. See `blueprintStateWrites`.
+ */
+export type BlueprintVariableObserver = {
+    onRead?: (stateKey: string) => void;
+    origin?: unknown;
+};
+
+/**
+ * One variable on an execution's locals, read and written through to the record it lives in.
+ *
+ * Every write is announced, from whatever graph and whatever host made it: the variable is the same
+ * record for all of them, so a binding anywhere that read it has to hear about it.
+ */
+function defineVariableAccessor(
+    target: Record<string, unknown>,
+    key: string,
+    storeRef: Record<string, unknown>,
+    storeKey: string,
+    variableId: string,
+    observer: BlueprintVariableObserver | undefined,
+): void {
+    const stateKey = blueprintVariableStateKey(storeKey, variableId);
     Object.defineProperty(target, key, {
         enumerable: true,
         configurable: true,
-        get: () => storeRef[variableId],
+        get: () => {
+            observer?.onRead?.(stateKey);
+            return storeRef[variableId];
+        },
         set: value => {
+            const previous = storeRef[variableId];
             storeRef[variableId] = value;
+            if (isStateWriteNoticeable(previous, value)) {
+                announceBlueprintStateWrite(stateKey, observer?.origin);
+            }
         },
     });
 }
@@ -123,6 +162,8 @@ export function acquireBlueprintExecutionLocals(input: {
     runtimeScopeId?: string;
     elementId?: string;
     elementInstanceKey?: string;
+    /** See {@link BlueprintVariableObserver}; only a value binding's evaluation passes one. */
+    observer?: BlueprintVariableObserver;
 }): Record<string, unknown> {
     const current = input.blueprintDocument.blueprints[input.currentBlueprintId];
     if (!current) {
@@ -130,7 +171,7 @@ export function acquireBlueprintExecutionLocals(input: {
     }
 
     const out: Record<string, unknown> = {};
-    const storesByBlueprintId = new Map<string, Record<string, unknown>>();
+    const storesByBlueprintId = new Map<string, { key: string; record: Record<string, unknown> }>();
     const options = buildAccessibleBlueprintVariableOptions({
         doc: input.blueprintDocument,
         currentBlueprintId: input.currentBlueprintId,
@@ -139,11 +180,9 @@ export function acquireBlueprintExecutionLocals(input: {
 
     // Acquired up front rather than as a side effect of the variable loop below: a blueprint that
     // declares no variables contributes no options, and its Memo nodes would have nowhere to live.
-    const currentRecord = acquireVariableStore(
-        blueprintVariableStoreKey(current, input.runtimeScopeId, input.elementInstanceKey),
-        current,
-    );
-    storesByBlueprintId.set(input.currentBlueprintId, currentRecord);
+    const currentKey = blueprintVariableStoreKey(current, input.runtimeScopeId, input.elementInstanceKey);
+    const currentRecord = acquireVariableStore(currentKey, current);
+    storesByBlueprintId.set(input.currentBlueprintId, { key: currentKey, record: currentRecord });
     Object.defineProperty(out, BLUEPRINT_MEMO_RECORD_KEY, {
         enumerable: false,
         configurable: true,
@@ -157,13 +196,14 @@ export function acquireBlueprintExecutionLocals(input: {
         }
         let variableStore = storesByBlueprintId.get(option.blueprintId);
         if (!variableStore) {
-            variableStore = acquireVariableStore(blueprintVariableStoreKey(bp, input.runtimeScopeId, input.elementInstanceKey), bp);
+            const key = blueprintVariableStoreKey(bp, input.runtimeScopeId, input.elementInstanceKey);
+            variableStore = { key, record: acquireVariableStore(key, bp) };
             storesByBlueprintId.set(option.blueprintId, variableStore);
         }
         const explicitKey = createExplicitBlueprintVariableRef(option.blueprintId, option.variableId);
-        defineVariableAccessor(out, explicitKey, variableStore, option.variableId);
+        defineVariableAccessor(out, explicitKey, variableStore.record, variableStore.key, option.variableId, input.observer);
         if (option.blueprintId === input.currentBlueprintId) {
-            defineVariableAccessor(out, option.variableId, variableStore, option.variableId);
+            defineVariableAccessor(out, option.variableId, variableStore.record, variableStore.key, option.variableId, input.observer);
         }
     }
 
@@ -214,6 +254,9 @@ export function releaseBlueprintWidgetLocals(
     for (const key of [...store.keys()]) {
         if (key.endsWith(suffix) && prefixes.some(prefix => key.startsWith(prefix))) {
             store.delete(key);
+            // The next read gets the defaults back, which is a write as far as anyone showing one of
+            // these variables is concerned.
+            announceBlueprintStateWrite(blueprintVariableRecordStateKey(key));
         }
     }
 }

@@ -6,6 +6,7 @@ import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type {
     BehaviorGraphEventControl,
     BehaviorGraphExecutionTrace,
+    BehaviorGraphValueTracking,
     BehaviorNodeExecuteResult,
     BehaviorNodeExecutionContext,
 } from "./BehaviorNodeRegistry";
@@ -45,7 +46,7 @@ export type ExecuteGraphOptions = {
     instanceKey?: string;
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
     persistentVariables?: PersistentVariableRuntimeTable;
-    valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
+    valueExecution?: BehaviorGraphValueTracking;
     signal?: AbortSignal;
     fnCallDepth?: number;
 };
@@ -94,6 +95,8 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             valueResult.returnValue = value;
         },
         trackDependency: options.valueExecution?.trackDependency,
+        trackState: options.valueExecution?.trackState,
+        stateOrigin: options.valueExecution?.stateOrigin,
     };
     let cursor: string | undefined = entry.start.nodeId;
     const pendingCursors: string[] = [];

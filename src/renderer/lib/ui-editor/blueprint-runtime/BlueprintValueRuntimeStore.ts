@@ -16,6 +16,7 @@ import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
+import { stateWriteReaches } from "./blueprintStateWrites";
 
 type ActiveBindingInput = {
     key: string;
@@ -44,6 +45,10 @@ type BindingRuntimeEntry = {
     dependencies: BlueprintValueDependency[];
     dependencySnapshotKey: string;
     listItemSnapshotKey: string;
+    /** What the last run read besides widget props; see {@link BlueprintValueRuntimeStore.refreshStateReaders}. */
+    stateReads: readonly string[];
+    /** What the run in progress has read so far, while one is; a write can arrive before it finishes. */
+    readsInFlight: Set<string> | null;
 };
 
 export type BlueprintValueResolved = {
@@ -363,6 +368,8 @@ export class BlueprintValueRuntimeStore {
                         dependencies: [],
                         dependencySnapshotKey: "",
                         listItemSnapshotKey: "",
+                        stateReads: [],
+                        readsInFlight: null,
                     };
                     this.entries.set(key, entry);
                     this.startInitial(entry);
@@ -428,6 +435,8 @@ export class BlueprintValueRuntimeStore {
                 dependencies: [],
                 dependencySnapshotKey: "",
                 listItemSnapshotKey,
+                stateReads: [],
+                readsInFlight: null,
             };
             this.entries.set(key, entry);
             this.startInitial(entry);
@@ -470,6 +479,33 @@ export class BlueprintValueRuntimeStore {
         }
     }
 
+    /**
+     * Re-run every binding whose last run read the state `stateKey` names, now that it was written.
+     *
+     * The half of a binding's promise the state stores never covered: a variable - a page's, the
+     * global blueprint's, a persistent or a saved one - is read by the graph, not handed to it, so a
+     * binding showing one kept showing the value it first read however often the variable was set.
+     * The graph's own reads are what decide who re-runs, so a write reaches the bindings that show
+     * that variable and no others.
+     *
+     * `origin` is the entry whose own evaluation made the write, when one did; it is left alone, or a
+     * binding that writes what it reads would re-run itself forever.
+     */
+    public refreshStateReaders(stateKey: string, origin?: unknown): void {
+        if (this.disposed) {
+            return;
+        }
+        for (const entry of this.entries.values()) {
+            if (!entry.started || entry === origin) {
+                continue;
+            }
+            const reached = (read: string) => stateWriteReaches(read, stateKey);
+            if (entry.stateReads.some(reached) || (entry.readsInFlight !== null && [...entry.readsInFlight].some(reached))) {
+                this.queueEvaluate(entry);
+            }
+        }
+    }
+
     private startInitial(entry: BindingRuntimeEntry): void {
         if (entry.started || entry.running) {
             return;
@@ -500,6 +536,8 @@ export class BlueprintValueRuntimeStore {
     }
 
     private async evaluate(entry: BindingRuntimeEntry): Promise<void> {
+        const readsInFlight = new Set<string>();
+        entry.readsInFlight = readsInFlight;
         try {
             const result = await evaluateBlueprintValue({
                 blueprintDocument: entry.input.blueprintDocument,
@@ -511,6 +549,10 @@ export class BlueprintValueRuntimeStore {
                 listItemScope: entry.input.listItemScope ?? null,
                 instanceKey: entry.input.instanceKey,
                 hostAdapter: entry.input.hostAdapter,
+                stateOrigin: entry,
+                onStateRead: stateKey => {
+                    readsInFlight.add(stateKey);
+                },
             });
             entry.dependencies = result.dependencies;
             entry.dependencySnapshotKey = buildDependencySnapshotKey(entry.input.document, result.dependencies);
@@ -538,6 +580,13 @@ export class BlueprintValueRuntimeStore {
             }
         } catch (err) {
             console.warn("[BlueprintValueRuntime] evaluation skipped", err);
+        } finally {
+            // Kept even from a run that failed: what it read before failing is what could make the
+            // next run succeed.
+            entry.stateReads = [...readsInFlight];
+            if (entry.readsInFlight === readsInFlight) {
+                entry.readsInFlight = null;
+            }
         }
     }
 }

@@ -509,6 +509,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             depth: input.depth,
             signal: input.signal,
             callerExecutionId: input.callerExecutionId,
+            valueExecution: input.valueExecution,
         });
 
     return adapter;
