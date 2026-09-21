@@ -21,6 +21,9 @@ import {
 import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import type { BpDiagnostic } from "./dsl/ast";
 import { compileBlueprintDocument } from "./dsl/compile";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { createAssetNameDescriber } from "@services/references/assetNameCatalog";
+import { findAssetNameGaps, type AssetNameGap } from "@services/references/assetNameGaps";
 import { parseBlueprintText } from "./dsl/parse";
 
 export type CheckOptions = {
@@ -100,6 +103,7 @@ export function checkProjectDocument(
     options: Omit<CheckOptions, "existing"> = {},
 ): BpDiagnostic[] {
     const out: BpDiagnostic[] = [];
+    const assetNameGaps = projectAssetNameGaps(document);
     // Some findings are about the blueprint rather than about one graph in it - a duplicate Fn name
     // is the same fact however many layers were walked to notice it - and the validator reports them
     // once per graph. Deduplicated here so a project report counts problems, not passes over them.
@@ -108,7 +112,7 @@ export function checkProjectDocument(
         for (const finding of validateBlueprintDocumentGraphs(
             document,
             blueprint.id,
-            validationOptions(blueprint.owner, options),
+            { ...validationOptions(blueprint.owner, options), assetNameGaps },
         )) {
             const message = `${blueprint.name}: ${finding.message}`;
             const key = JSON.stringify([finding.severity, finding.code, message]);
@@ -146,11 +150,14 @@ function runGraphValidation(
     }
 
     const out: BpDiagnostic[] = [];
+    // Over the document as `apply` would leave it, so a gap the file introduces and a gap it closes
+    // are both answered about the project rather than about the file on its own.
+    const assetNameGaps = projectAssetNameGaps(document);
     for (const blueprint of blueprints) {
         for (const finding of validateBlueprintDocumentGraphs(
             document,
             blueprint.id,
-            validationOptions(blueprint.owner, options),
+            { ...validationOptions(blueprint.owner, options), assetNameGaps },
         )) {
             // The compiler already reported this one, with the value types and the line the author
             // wrote it on. Two warnings for one edge would only make the second easier to ignore.
@@ -182,6 +189,14 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
         // own elements and reads its instance's params, and both are refused anywhere else.
         isComponentDefinitionGraph: anchorComponentId(owner) !== null,
     };
+}
+
+/**
+ * Where the project picks an asset by a value its package cannot carry - the judgement the canvas
+ * reads from the reference index and the build refuses on, made here from the document in hand.
+ */
+function projectAssetNameGaps(document: BlueprintDocument): AssetNameGap[] {
+    return findAssetNameGaps(document, createAssetNameDescriber(blueprintNodeRegistry));
 }
 
 /** Blueprint name plus node id, as one lookup key that cannot be spelled two ways. */

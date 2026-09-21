@@ -12,7 +12,7 @@ import {
 import { LintService } from "../workspace/services/core/LintService";
 import { ProjectService } from "../workspace/services/core/ProjectService";
 import { describeLintLocation } from "./locationText";
-import type { LintReport } from "./types";
+import { resolveLintMessageParams, type LintReport } from "./types";
 
 /**
  * The workspace half of `narraleaf-studio --lint`.
@@ -94,7 +94,7 @@ export async function runCommandLineLint(context: WorkspaceContext): Promise<voi
         return {
             severity: entry.severity,
             id: entry.ruleId,
-            message: translate(entry.messageKey, entry.messageParams),
+            message: translate(entry.messageKey, resolveLintMessageParams(entry, translate)),
             ...(location ? { location } : {}),
         };
     });

@@ -8,6 +8,8 @@ import {
     BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
 } from "@shared/types/blueprint/graph";
 import { extractBlueprintAssetReferences, type BlueprintAssetPin } from "./referenceModel";
+import { catalogAssetPins, createAssetNameDescriber } from "./assetNameCatalog";
+import { findAssetNameGaps } from "./assetNameGaps";
 import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_SAVED_GET,
@@ -27,26 +29,23 @@ import path from "path";
  * that has shipped a rule which could never fire.
  */
 
-/** The same projection `ReferenceService` makes; kept here so the assertion drives the real path. */
-function assetPinsFromCatalogue(nodeType: string): readonly BlueprintAssetPin[] | null {
+/**
+ * The shipping registry, with the Gallery plugin's nodes in it.
+ *
+ * The starter template's EXTRA screen is built on the Gallery plugin's nodes, and the walk this
+ * drives runs in a Studio where that plugin has registered them. A registry without them would
+ * report every one as a gap - the mechanism answering "I do not know this node", not "this node has
+ * an unresolved asset".
+ */
+function shippingRegistry() {
     registerCoreBlueprintNodes();
-    // The starter template's EXTRA screen is built on the Gallery plugin's nodes, and the walk this
-    // drives runs in a Studio where that plugin has registered them. A registry without them would
-    // report every one as a gap - the mechanism answering "I do not know this node", not "this node
-    // has an unresolved asset".
     registerBuiltInPluginBlueprintNodes();
-    if (!blueprintNodeRegistry.get(nodeType)) {
-        return null;
-    }
-    return blueprintNodeRegistry.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
-        ? [{
-            pinId: pin.id,
-            kind: pin.assetRef.kind,
-            paramKey: pin.assetRef.paramKey ?? pin.id,
-            input: pin.kind === "input",
-            origin: pin.assetRef.origin,
-        }]
-        : []));
+    return blueprintNodeRegistry;
+}
+
+/** The projection `ReferenceService` makes (`catalogAssetPins`), over the real catalogue. */
+function assetPinsFromCatalogue(nodeType: string): readonly BlueprintAssetPin[] | null {
+    return catalogAssetPins(shippingRegistry(), nodeType);
 }
 
 describe("asset pins declared by the shipping node catalogue", () => {
@@ -133,6 +132,9 @@ describe("the blueprints the shipped starter template creates", () => {
         });
 
         expect(extraction.gaps).toEqual([]);
+        // And no asset picked by a value the package cannot carry: every such pick is a build the
+        // template's projects could never make.
+        expect(findAssetNameGaps(document, createAssetNameDescriber(shippingRegistry()))).toEqual([]);
     });
 });
 
@@ -186,13 +188,17 @@ describe("a pin that publishes rather than stores", () => {
 
     it("still reports a source that declares nothing about what it carries", () => {
         // The bar is not lowered: only a pin that has made the claim is exempt from the gap.
-        const extraction = extractBlueprintAssetReferences(
+        const gaps = findAssetNameGaps(
             hitAreaDoc(BLUEPRINT_NODE_TYPE_SAVED_GET, "value") as never,
-            { resolveAssetPins: assetPinsFromCatalogue },
+            createAssetNameDescriber(shippingRegistry()),
         );
 
-        expect(extraction.gaps).toEqual([
-            expect.objectContaining({ reason: "computedAssetPin", affects: ["image"] }),
+        expect(gaps).toEqual([
+            expect.objectContaining({
+                assetKind: "image",
+                sink: expect.objectContaining({ nodeId: "set", pinId: "asset", nodeTitle: "Set Image Asset" }),
+                origin: expect.objectContaining({ nodeId: "get" }),
+            }),
         ]);
     });
 });

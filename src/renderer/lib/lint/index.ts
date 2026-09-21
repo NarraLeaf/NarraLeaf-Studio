@@ -26,6 +26,7 @@ export {
     LINT_SEVERITY_ORDER,
     deriveLintRuleSlug,
     isLintRulelessId,
+    resolveLintMessageParams,
 } from "./types";
 export { describeStoryLoadFailure, storyUnreadableFinding } from "./storyLoadFailure";
 export type {

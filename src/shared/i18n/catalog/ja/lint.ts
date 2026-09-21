@@ -267,6 +267,11 @@ export const lint = {
             description: "型を読み込めないノード",
             message: "{type} が読み込まれていないため、このノードはゲームで実行されない",
         },
+        blueprintComputedAssetName: {
+            title: "計算結果から来るアセット",
+            description: "アセットピンが計算結果からアセットを受け取り、そのアセットはゲームパッケージに入らない",
+            message: "「{node}」の「{pin}」のアセットは計算結果（{origin}）から来るため、パッケージに含めるアセットを決められない。リスト行の画像を表示するには画像の「{imageFill}」を行のフィールドにバインドし、固定のアセットを使うにはピンで直接選ぶ",
+        },
         uiUnlocalizedText: {
             title: "ローカライズされていないテキスト",
             description: "第二の言語があるプロジェクトで、ウィジェットに直接書かれたテキスト",

@@ -35,6 +35,10 @@ import {
     isBlueprintGraphEntryNode,
 } from "../../workspace/services/ui-editor/blueprint/graphLiveness";
 import { blueprintNodeJumpTarget, listBlueprintGraphSites, type BlueprintGraphSite } from "../blueprintSites";
+import { createAssetNameDescriber } from "../../workspace/services/references/assetNameCatalog";
+import { findAssetNameGaps } from "../../workspace/services/references/assetNameGaps";
+import { assetNameGapMessage } from "../../workspace/services/references/assetNameGapText";
+import { assetNameGapToIndexGap } from "../../workspace/services/references/referenceModel";
 import type { LintContext } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
 
@@ -726,6 +730,47 @@ function runStartSceneForeign(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// blueprint/computed-asset-name
+// ---------------------------------------------------------------------------
+
+/**
+ * An asset picked by a value the project does not write down.
+ *
+ * A package carries the library assets whose ids occur in the bytes it ships, so an asset whose id
+ * only exists while the game runs is missing from it, and what should show it shows nothing. The
+ * build refuses such a project; this is the same judgement, reported where the author can see it
+ * without starting a build.
+ *
+ * The judgement is `findAssetNameGaps`, the one the reference index, the canvas and the build read,
+ * and the sentence is the one they print (`assetNameGapMessage`). An error, because what ships is
+ * not what the author sees in Dev Mode - which carries the whole library, so there the picture
+ * shows.
+ */
+function runComputedAssetName(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const findings: LintFinding[] = [];
+    for (const gap of findAssetNameGaps(ctx.blueprintDocument, createAssetNameDescriber(blueprintNodeRegistry))) {
+        const message = assetNameGapMessage(gap);
+        const sink = gap.sink;
+        findings.push({
+            ruleId: "blueprint/computed-asset-name",
+            messageKey: message.key,
+            messageParams: message.params,
+            messageParamKeys: message.paramKeys,
+            location: {
+                kind: "blueprint",
+                blueprintId: sink.blueprintId,
+                blueprintName: sink.blueprintName,
+                graphId: sink.graphId,
+                nodeId: sink.nodeId,
+            },
+            target: assetNameGapToIndexGap(gap).target,
+        });
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // blueprint/required-input-unwired
 // ---------------------------------------------------------------------------
 
@@ -885,6 +930,15 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "blueprintRequiredInputUnwired",
         run: ctx => runRequiredInputUnwired(ctx),
+    },
+    {
+        id: "blueprint/computed-asset-name",
+        category: "blueprint",
+        // An error: the package leaves the asset out, so what the author saw in Dev Mode is not what
+        // ships. The build refuses it outright whatever this is set to.
+        defaultSeverity: "error",
+        slug: "blueprintComputedAssetName",
+        run: ctx => runComputedAssetName(ctx),
     },
     {
         id: "blueprint/start-scene-foreign",

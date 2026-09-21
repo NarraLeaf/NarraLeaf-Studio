@@ -23,6 +23,8 @@ export const assets = {
         moreReferences: "…另有 {count} 处",
         unverifiedTitle: "无法检查这些资产的使用情况",
         unverifiedMessage: "无法确定这些资产是否仍在使用；删除后，正在使用它们的位置将失去资产来源",
+        unverifiedComputed: "以下位置的资产来自计算结果：",
+        unverifiedUnreadable: "以下位置无法读取：",
         confirmTitle: {
             one: "删除 {count} 项",
             other: "删除 {count} 项",

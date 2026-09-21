@@ -263,6 +263,11 @@ export const lint = {
             description: "项目无法加载其类型的节点",
             message: "{type} 未加载，因此该节点不会在游戏中运行",
         },
+        blueprintComputedAssetName: {
+            title: "来自计算结果的资产",
+            description: "资产引脚从计算结果获得资产，游戏包不会带上该资产",
+            message: "“{node}”的“{pin}”的资产来自计算结果（{origin}），打包时无法确定要带上哪个资产。要显示列表行的图片，请将图片控件的“{imageFill}”绑定到行字段；要使用固定的资产，请直接在引脚上选择",
+        },
         uiUnlocalizedText: {
             title: "未本地化的文本",
             description: "项目已有第二种语言，文本仍直接写在控件上",

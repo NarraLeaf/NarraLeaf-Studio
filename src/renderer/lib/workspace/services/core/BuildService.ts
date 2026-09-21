@@ -22,7 +22,7 @@ import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
-import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
+import { resolveLintMessageParams, type LintReport, type LintReportEntry, type LintSeverity } from "@/lib/lint/types";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import {
     collectBlueprintNetworkNodes,
@@ -57,6 +57,7 @@ import {
 } from "@shared/blueprint/appTagGraphFold";
 import { AppTagService } from "../appTag/AppTagService";
 import type { ReferenceIndexGap } from "../references/referenceModel";
+import { describeAssetNameGap } from "../references/assetNameGapText";
 // Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
 // value import would drag every extractor into the build path and its tests.
 import type { ReferenceService } from "../references/ReferenceService";
@@ -1014,14 +1015,18 @@ export class BuildService extends Service<BuildService> {
         }
 
         const consoleService = this.tryGetConsole();
-        const gapKey = scope === "assets" ? "build.contentComputedPinGap" : "build.contentCoverageGap";
         for (const gap of touching) {
-            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(gapKey, {
-                // A gap with no site is the index itself; it has no location to name, and the
-                // sentence has to read as one either way.
-                location: gap.location ?? translate("build.contentCoverageWholeProject"),
-                variant,
-            }), { source: BUILD_CONSOLE_SOURCE });
+            // An asset picked by a computed value is reported in the sentence the canvas and the
+            // project check print for it, naming the node the way its card does.
+            const line = gap.assetName
+                ? describeAssetNameGap(gap.assetName, translate)
+                : translate("build.contentCoverageGap", {
+                    // A gap with no site is the index itself; it has no location to name, and the
+                    // sentence has to read as one either way.
+                    location: gap.location ?? translate("build.contentCoverageWholeProject"),
+                    variant,
+                });
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", line, { source: BUILD_CONSOLE_SOURCE });
         }
         const refusal = translateN(
             scope === "assets" ? "build.contentComputedPinSummary" : "build.contentCoverageSummary",
@@ -1826,7 +1831,7 @@ function isBlockingLintSeverity(
  * {@link nonRedundantLintLocation}.
  */
 export function formatLintFinding(entry: LintReportEntry): string {
-    const message = translate(entry.messageKey, entry.messageParams);
+    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate));
     return translate("lint.console.finding", {
         rule: entry.ruleId,
         location: nonRedundantLintLocation(describeLintLocation(entry.location), message),

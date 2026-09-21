@@ -161,6 +161,7 @@ export const properties = {
         // project. The two look identical from here, and only one of them is safe to act on.
         unknown: "Usage could not be determined",
         unknownDetail: "{location} could not be read",
+        unknownComputed: "{location} takes its asset from a computed value",
         count: {
             one: "{count} reference",
             other: "{count} references",
@@ -175,6 +176,8 @@ export const properties = {
             voice: "Voice",
             /** Project -> Design: the fonts the whole project defaults to. */
             design: "Design",
+            /** A plugin's own data that ships with the game, such as the Gallery catalogue. */
+            plugin: "Plugin",
         },
     },
     tags: {

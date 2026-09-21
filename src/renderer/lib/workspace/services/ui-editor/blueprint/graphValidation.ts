@@ -70,6 +70,8 @@ import type {
     BlueprintWidgetEventCapabilityRef,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BlueprintNodeCatalogService } from "../BlueprintNodeCatalogService";
+import type { AssetNameGap } from "../../references/assetNameGaps";
+import { describeAssetNameGap } from "../../references/assetNameGapText";
 
 export type BlueprintGraphDiagnosticTarget =
     | { kind: "graph"; graphKind: "event" | "function"; graphId: string }
@@ -106,6 +108,16 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     persistentVariables?: readonly VariableRegistryEntry[];
     /** M-VAR: saved variable definitions - the `saved` scope of the same project-level registry. */
     savedVariables?: readonly VariableRegistryEntry[];
+    /**
+     * The project's asset-name gaps (`findAssetNameGaps`), for the ones in this blueprint to be
+     * reported against their nodes.
+     *
+     * Handed in rather than worked out here, because the question is about the whole project, not
+     * the graph in front of the validator: the canvas passes the reference index's own pass - the
+     * one the build refuses on - and `blueprint check` passes the one it computes from the project
+     * on disk. Absent, nothing is said about asset names at all.
+     */
+    assetNameGaps?: readonly AssetNameGap[];
 };
 
 function reportDuplicatePinConnection(
@@ -935,6 +947,38 @@ export function validateBlueprintDocumentGraphs(
         );
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
+    out.push(...assetNameGapDiagnostics(options?.assetNameGaps ?? [], blueprintId));
+    return out;
+}
+
+/**
+ * An asset picked by a value the package cannot carry, at the node that picks it.
+ *
+ * An error, the standing the build gives it: the build refuses the project, and the canvas saying
+ * so at the moment the wire lands is the point - an author who only learns it from the build has
+ * already watched it work in Dev Mode, which carries the whole library. The sentence is the one
+ * every surface prints (`describeAssetNameGap`).
+ */
+function assetNameGapDiagnostics(
+    gaps: readonly AssetNameGap[],
+    blueprintId: string,
+): BlueprintGraphEditorDiagnostic[] {
+    const out: BlueprintGraphEditorDiagnostic[] = [];
+    for (const gap of gaps) {
+        const sink = gap.sink;
+        if (sink.blueprintId !== blueprintId) {
+            continue;
+        }
+        out.push({
+            severity: "error",
+            code: "node.asset_name_computed",
+            message: describeAssetNameGap(gap, translate),
+            // A macro has no canvas of its own to point into; the message still names the node.
+            ...(sink.graphKind === "macro"
+                ? {}
+                : { target: { kind: "node" as const, graphKind: sink.graphKind, graphId: sink.graphId, nodeId: sink.nodeId } }),
+        });
+    }
     return out;
 }
 

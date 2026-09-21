@@ -2,7 +2,8 @@
 // would pull the whole 26-rule registry - and every rule's dependencies - into the import graph of
 // the registry that the picker touches on open. The instance comes off the service registry.
 import type { LintService } from "@/lib/workspace/services/core/LintService";
-import type { LintReportEntry } from "@/lib/lint/types";
+import { resolveLintMessageParams, type LintReportEntry } from "@/lib/lint/types";
+import { translate } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { TestDefinition, TestFinding } from "../types";
 import type { BuiltInTestHost } from "./index";
@@ -94,7 +95,9 @@ export function createProjectDiagnosticsTest(host: BuiltInTestHost): TestDefinit
 function toFinding(entry: LintReportEntry): TestFinding {
     return {
         severity: entry.severity,
-        message: { key: entry.messageKey, params: entry.messageParams },
+        // Resolved here rather than carried: a test finding's params are words, and a catalogue key
+        // among them would print as the key.
+        message: { key: entry.messageKey, params: resolveLintMessageParams(entry, translate) },
         target: entry.target,
     };
 }

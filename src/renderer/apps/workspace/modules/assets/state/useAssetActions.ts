@@ -18,6 +18,7 @@ import { isProjectTrusted } from '@/lib/workspace/projectTrust';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
 import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
+import { describeReferenceGapSites } from '@/lib/workspace/services/references/assetNameGapText';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
@@ -1184,17 +1185,23 @@ export function useAssetActions({
             // looked up here, so the list the author is shown and the list the delete is checked
             // against cannot drift apart. "No references found" and "could not look for references"
             // stay different answers: an empty index reports every asset as unused.
-            const { checked: referencesChecked, references: referencesByAsset } =
+            const { checked: referencesChecked, references: referencesByAsset, gaps: coverageGaps } =
                 (await withAssetsService(assetsService => assetsService.findAssetReferences(
                     affectedAssets.map(asset => asset.id),
                     affectedAssets.map(asset => asset.type),
                 )))
-                ?? { checked: false, references: new Map<string, AssetReference[]>() };
+                ?? { checked: false, references: new Map<string, AssetReference[]>(), gaps: undefined };
 
             if (!referencesChecked) {
+                // Where the check stopped, when it read the project and stopped somewhere in it:
+                // the node that picks its asset by a computed value is what the author can go and
+                // change. A check that read nothing at all has no places to name.
+                const where = describeReferenceGapSites(coverageGaps ?? [], t, REFERENCE_PREVIEW_LIMIT);
                 const proceedUnverified = await uiService.showDestructiveConfirm(
                     t("assets.delete.unverifiedTitle"),
-                    t("assets.delete.unverifiedMessage"),
+                    where ? `${t("assets.delete.unverifiedMessage")}
+
+${where}` : t("assets.delete.unverifiedMessage"),
                     t("assets.delete.action"),
                 );
                 if (!proceedUnverified) {

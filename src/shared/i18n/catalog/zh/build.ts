@@ -422,10 +422,10 @@ export const build = {
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
     // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
-    contentComputedPinGap: "{location} 的资产来自计算结果，因此本次构建无法判断它需要哪个资产",
+    // 中文只用 `other`，所以两条写成同一句，不带「每个」这类随数量变的词。
     contentComputedPinSummary: {
-        one: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在引脚上选定资产，详见控制台",
-        other: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在每个引脚上选定资产，详见控制台",
+        one: "构建已中止：{count} 处资产来自计算结果，详见控制台",
+        other: "构建已中止：{count} 处资产来自计算结果，详见控制台",
     },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本项目",

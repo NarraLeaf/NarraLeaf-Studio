@@ -14,6 +14,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
     private assetsDir = "";
     private servicesDir = "";
     private studioServicesDir = "";
+    private readonly storeWriteListeners = new Set<(namespace: string) => void>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -48,7 +49,28 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
             return writeResult;
         }
 
+        for (const listener of this.storeWriteListeners) {
+            try {
+                listener(namespace);
+            } catch (error) {
+                console.error(`[ServiceAssets] a listener failed after "${namespace}" was written`, error);
+            }
+        }
         return { ok: true, data: { path: targetPath } };
+    }
+
+    /**
+     * Told the namespace of every store written through {@link writeStore}, once it is on disk.
+     *
+     * A plugin's stores have no service of their own to announce a change - the plugin writes them
+     * straight through here - and some of them ship inside the game, where the assets they name are
+     * as much in use as the ones a scene names. This is how the reference index hears about it.
+     */
+    public onStoreWritten(listener: (namespace: string) => void): () => void {
+        this.storeWriteListeners.add(listener);
+        return () => {
+            this.storeWriteListeners.delete(listener);
+        };
     }
 
     public async readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>> {

@@ -12,9 +12,11 @@ import { AssetsService } from "../core/AssetsService";
 import { AssetSetService } from "../assets/AssetSetService";
 import { resolveAssetSetContents, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import {
+    assetNameGapToIndexGap,
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
+    extractPluginDataAssetReferences,
     extractProjectFontReferences,
     extractStoryAnimationAssetReferences,
     scanStoryAssetReferences,
@@ -23,7 +25,7 @@ import {
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     type AssetReference,
-    type BlueprintAssetPin,
+    type PublishedPluginStore,
     type ReferenceIndexGap,
     type ReferenceIndexResult,
     type ReferenceScannableCharacter,
@@ -32,6 +34,13 @@ import {
 import { lookupAssetIdForToken } from "@/lib/workspace/assets/assetUrlTokens";
 import { uiAssetSlotAcceptsSets } from "@shared/build/uiAssetSlots";
 import { BLUEPRINT_SET_LEGAL_PARAM_KEYS } from "@shared/build/blueprintAssetSlots";
+import { parsePluginStore, pluginStoreNamespace } from "@shared/utils/pluginStorage";
+import { FsRejectErrorCode } from "@shared/types/os";
+import { getInterface } from "@/lib/app/bridge";
+import { workspacePluginSession } from "@/lib/plugins/workspacePluginSession";
+import { ServiceAssetsService } from "../core/ServiceAssetsService";
+import { createAssetNameDescriber } from "./assetNameCatalog";
+import { findAssetNameGaps, type AssetNameGap } from "./assetNameGaps";
 
 /**
  * The property name a UI reference's `field` path ends in.
@@ -59,6 +68,8 @@ const UI_SLICE_LOCATION = "Interface";
 const CHARACTER_SLICE_LOCATION = "Characters";
 /** Project -> Design. One per project, named for the sub-page an author would go to. */
 const DESIGN_SLICE_LOCATION = "Default fonts";
+/** What a failure to list the plugins names as its place: the panel an author would go to. */
+const PLUGIN_SLICE_LOCATION = "Plugins";
 
 /**
  * Reference Service — the asset reverse-lookup index ("what uses this file?").
@@ -76,6 +87,9 @@ const DESIGN_SLICE_LOCATION = "Default fonts";
  *  - voice (per locale): `VoiceService.onDocumentChanged`
  *  - character: `CharacterService.subscribe`
  *  - design: `BrandService.onFontsChanged` (the project's default font stack)
+ *  - plugin: the data enabled plugins publish into the game, re-read when a plugin writes one of
+ *    its stores or starts or stops in this window, and re-matched when the library gains or loses
+ *    an asset
  *
  * This is the whole of the answer to "is this referenced", and the only thing `deleteAsset`
  * consults. What came before covered story blocks and character variants alone, so an image used
@@ -113,6 +127,12 @@ export class ReferenceService extends Service<ReferenceService> {
      */
     private sliceSetReferences = new Map<string, AssetReference[]>();
     private designReferences: AssetReference[] = [];
+    /**
+     * The published plugin stores as last read, held so the library can change under them without a
+     * second read: which of their ids count is decided against the library at the time of asking.
+     */
+    private pluginStores: PublishedPluginStore[] = [];
+    private pluginReferences: AssetReference[] = [];
 
     /**
      * Coverage gaps keyed the same way the reference slices are, so a rebuild replaces the gaps its
@@ -148,6 +168,7 @@ export class ReferenceService extends Service<ReferenceService> {
             ctx.services.get<VoiceService>(Services.Voice),
             ctx.services.get<CharacterService>(Services.Character),
             ctx.services.get<BrandService>(Services.Brand),
+            ctx.services.get<ServiceAssetsService>(Services.ServiceAssets),
         ]);
     }
 
@@ -254,6 +275,16 @@ export class ReferenceService extends Service<ReferenceService> {
         return { complete: gaps.length === 0, gaps };
     }
 
+    /**
+     * Every place an asset is picked by a name the project does not write down, as of the last pass.
+     *
+     * The canvas reads this rather than judging its own graph, so a node it marks is exactly a node
+     * the build refuses - the same pass, not a second opinion formed from the graph in front of it.
+     */
+    public getAssetNameGaps(): AssetNameGap[] {
+        return [...this.sliceGaps.values()].flat().flatMap(gap => (gap.assetName ? [gap.assetName] : []));
+    }
+
     private getIndex(): Map<string, AssetReference[]> {
         if (!this.indexCache) {
             const all: AssetReference[] = [];
@@ -271,6 +302,7 @@ export class ReferenceService extends Service<ReferenceService> {
                 ...this.uiReferences,
                 ...this.characterReferences,
                 ...this.designReferences,
+                ...this.pluginReferences,
             );
             this.indexCache = buildReferenceIndex(all);
         }
@@ -302,6 +334,8 @@ export class ReferenceService extends Service<ReferenceService> {
         this.uiReferences = [];
         this.characterReferences = [];
         this.designReferences = [];
+        this.pluginStores = [];
+        this.pluginReferences = [];
         this.sliceGaps.clear();
         this.indexCache = null;
         this.readyPromise = null;
@@ -365,36 +399,6 @@ export class ReferenceService extends Service<ReferenceService> {
         this.sliceGaps.set(key, [{ reason: "documentUnreadable", slice, location }]);
     }
 
-    /**
-     * Asset-bearing pins for a node type, read off the node catalogue, or null when the catalogue
-     * has never heard of the type.
-     *
-     * The null branch is the point. `resolveCatalogEntry` never throws for an unknown type — it
-     * returns a two-exec-pin stub — so asking it alone cannot tell "this node holds no assets" from
-     * "nobody knows what this node holds". A graph left behind by an uninstalled plugin is the
-     * second, and reading it as the first is how the asset it names goes quiet. `get()` is the only
-     * call that distinguishes them.
-     */
-    private resolveBlueprintAssetPins(nodeType: string): readonly BlueprintAssetPin[] | null {
-        const catalog = this.getContext().services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
-        try {
-            if (!catalog.get(nodeType)) {
-                return null;
-            }
-            return catalog.resolveCatalogEntry(nodeType).pins.flatMap(pin => (pin.assetRef
-                ? [{
-                    pinId: pin.id,
-                    kind: pin.assetRef.kind,
-                    paramKey: pin.assetRef.paramKey ?? pin.id,
-                    input: pin.kind === "input",
-                    origin: pin.assetRef.origin,
-                }]
-                : []));
-        } catch {
-            return null;
-        }
-    }
-
     // ---------------------------------------------------------------------
     // Build + incremental rebuilds
     // ---------------------------------------------------------------------
@@ -442,6 +446,7 @@ export class ReferenceService extends Service<ReferenceService> {
         this.rebuildUISlice();
         this.rebuildCharacterSlice();
         this.rebuildDesignSlice();
+        await this.rebuildPluginSlice();
         this.subscribe();
         this.emitChanged();
     }
@@ -504,7 +509,55 @@ export class ReferenceService extends Service<ReferenceService> {
                     this.emitChanged();
                 });
             }),
+            ...this.subscribeToPluginData(),
         );
+    }
+
+    /**
+     * The three things that change what the plugin slice answers.
+     *
+     * A plugin writing one of its stores and a plugin starting or stopping here both mean a re-read:
+     * the first changes the bytes, the second changes which plugins' bytes ship. The library gaining
+     * or losing an asset needs no read at all - the stores are held, and only which of their ids are
+     * library assets can have changed - so it re-matches and announces only when the answer moved.
+     */
+    private subscribeToPluginData(): Array<() => void> {
+        const ctx = this.getContext();
+        const reread = () => {
+            this.scheduleRebuild("plugin", async () => {
+                await this.rebuildPluginSlice();
+                this.emitChanged();
+            });
+        };
+        const unsubs: Array<() => void> = [];
+        try {
+            const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
+            unsubs.push(storage.onStoreWritten(namespace => {
+                if (parsePluginStore(namespace)) {
+                    reread();
+                }
+            }));
+        } catch {
+            // A workspace with no store service has no plugin data to go stale.
+        }
+        unsubs.push(workspacePluginSession(ctx).subscribe(reread));
+        try {
+            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+            const rematch = () => {
+                this.scheduleRebuild("plugin-library", () => {
+                    if (this.matchPluginReferences()) {
+                        this.emitChanged();
+                    }
+                });
+            };
+            unsubs.push(
+                assetsService.getEvents().on("updated", rematch),
+                assetsService.getEvents().on("deleted", rematch),
+            );
+        } catch {
+            // No library, so nothing a plugin names can be one of its assets.
+        }
+        return unsubs;
     }
 
     /**
@@ -703,6 +756,7 @@ export class ReferenceService extends Service<ReferenceService> {
 
         try {
             const document = blueprintService.getBlueprintDocument();
+            const describer = createAssetNameDescriber(catalog);
             const extraction = extractBlueprintAssetReferences(document, {
                 resolveNodeLabel: type => {
                     try {
@@ -711,8 +765,11 @@ export class ReferenceService extends Service<ReferenceService> {
                         return undefined;
                     }
                 },
-                resolveAssetPins: type => this.resolveBlueprintAssetPins(type),
+                resolveAssetPins: describer.assetPins,
             });
+            // Read by the canvas, the build and the delete guard through this index, so all three
+            // are looking at the same pass.
+            const assetNameGaps = findAssetNameGaps(document, describer);
             // An asset pin may name a set, and a set id is not an asset: left unexpanded it reaches
             // `assets/missing` as a reference to a file the project does not have, which refuses the
             // build. Only the pins a build can resolve are expanded - see
@@ -725,7 +782,7 @@ export class ReferenceService extends Service<ReferenceService> {
             );
             this.blueprintReferences = split.references;
             this.sliceSetReferences.set("blueprint", split.setReferences);
-            this.setSliceGaps("blueprint", extraction.gaps);
+            this.setSliceGaps("blueprint", [...extraction.gaps, ...assetNameGaps.map(assetNameGapToIndexGap)]);
         } catch (error) {
             console.warn("[ReferenceService] Failed to scan blueprints:", error);
             this.blueprintReferences = [];
@@ -827,6 +884,89 @@ export class ReferenceService extends Service<ReferenceService> {
                 affects: ["font"],
             }]);
         }
+    }
+
+    /**
+     * Plugin slice: the library assets named by the data enabled plugins publish into the game.
+     *
+     * The same plugins and the same stores the build sweeps (`planShippedAssets`): an enabled plugin
+     * that ships a runtime entry, and each namespace it lists in `contributes.runtimeData`. Without
+     * this, a picture the Gallery shows and nothing else names read as unused - offered for deletion
+     * by the project check, and deleted without a word - while every build went on carrying it.
+     */
+    private async rebuildPluginSlice(): Promise<void> {
+        const gaps: ReferenceIndexGap[] = [];
+        try {
+            this.pluginStores = await this.readPublishedPluginStores(gaps);
+        } catch (error) {
+            console.warn("[ReferenceService] Failed to read the plugins' published data:", error);
+            this.pluginStores = [];
+            this.pluginReferences = [];
+            this.setSliceGaps("plugin", [{ reason: "sliceFailed", slice: "plugin", location: PLUGIN_SLICE_LOCATION }]);
+            return;
+        }
+        this.matchPluginReferences();
+        this.setSliceGaps("plugin", gaps);
+    }
+
+    /**
+     * Every published store of every plugin whose data ships, as it is on disk now.
+     *
+     * A store that was never written is nothing to report - a plugin must tolerate absent data, and
+     * the build skips it the same way. A store that exists and will not read is a gap: the build
+     * would leave its data out, but the author still has an entry naming a picture this index can no
+     * longer see.
+     */
+    private async readPublishedPluginStores(gaps: ReferenceIndexGap[]): Promise<PublishedPluginStore[]> {
+        let listed: Awaited<ReturnType<ReturnType<typeof getInterface>["plugins"]["list"]>>;
+        let storage: ServiceAssetsService;
+        try {
+            listed = await getInterface().plugins.list();
+            storage = this.getContext().services.get<ServiceAssetsService>(Services.ServiceAssets);
+        } catch {
+            // No bridge or no store service is a harness rather than a project: nothing is installed
+            // there, so nothing can publish.
+            return [];
+        }
+        if (!listed.success || !listed.data) {
+            throw new Error(listed.success ? "The plugin list was empty" : (listed.error ?? "Failed to list plugins"));
+        }
+        const stores: PublishedPluginStore[] = [];
+        for (const plugin of listed.data.plugins) {
+            const namespaces = plugin.manifest.contributes?.runtimeData ?? [];
+            if (!plugin.enabled || !plugin.manifest.entries?.runtime || namespaces.length === 0) {
+                continue;
+            }
+            const pluginName = plugin.manifest.name || plugin.manifest.id;
+            for (const namespace of namespaces) {
+                const result = await storage.readStore(pluginStoreNamespace(plugin.manifest.id, namespace));
+                if (result.ok) {
+                    stores.push({ pluginId: plugin.manifest.id, pluginName, namespace, data: result.data });
+                } else if (result.error.code !== FsRejectErrorCode.NOT_FOUND) {
+                    gaps.push({ reason: "documentUnreadable", slice: "plugin", location: pluginName });
+                }
+            }
+        }
+        return stores;
+    }
+
+    /**
+     * Re-match the held stores against the library as it is now. Answers whether anything changed, so
+     * a burst of library edits that moves nothing announces nothing.
+     */
+    private matchPluginReferences(): boolean {
+        let libraryAssetIds: Set<string>;
+        try {
+            const assets = this.getContext().services.get<AssetsService>(Services.Assets).getAssets();
+            libraryAssetIds = new Set(Object.values(assets).flatMap(bucket => Object.keys(bucket ?? {})));
+        } catch {
+            libraryAssetIds = new Set();
+        }
+        const next = extractPluginDataAssetReferences(this.pluginStores, libraryAssetIds);
+        const changed = next.length !== this.pluginReferences.length
+            || next.some((reference, index) => reference.id !== this.pluginReferences[index]?.id);
+        this.pluginReferences = next;
+        return changed;
     }
 
     /**

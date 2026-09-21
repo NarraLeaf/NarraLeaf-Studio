@@ -277,6 +277,14 @@ export const lint = {
             // not something the author can act on - the type is what says which plugin is missing.
             message: "{type} is not loaded, so this node will not run in the game",
         },
+        blueprintComputedAssetName: {
+            title: "Asset from a computed value",
+            description: "An asset pin receives its asset from a computed value, which the game package does not carry",
+            // The one sentence every surface prints about this: the canvas, the build and the delete
+            // dialog render this key too. `{node}`, `{pin}` and `{origin}` arrive in the reader's
+            // language, named the way the canvas names them.
+            message: "\"{pin}\" on \"{node}\" receives its asset from a computed value ({origin}), so the package cannot tell which asset to carry. To show a list row's picture, bind the image's {imageFill} to the row field; to use a fixed asset, choose it on the pin",
+        },
         uiUnlocalizedText: {
             title: "Unlocalized text",
             description: "Text written straight onto a widget in a project that has a second language",

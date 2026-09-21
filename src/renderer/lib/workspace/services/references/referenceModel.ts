@@ -1,15 +1,8 @@
 import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
-import type { BlueprintDocument, BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/blueprint/document";
-import {
-    BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
-    BLUEPRINT_NODE_TYPE_LITERAL,
-    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
-    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-} from "@shared/types/blueprint/graph";
+import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { BlueprintAssetPinKind } from "@shared/types/blueprint/valueTypes";
 import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
-import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
 import { isAppearanceModel, type AppearanceVariant } from "@shared/types/ui-editor/appearance";
@@ -17,6 +10,15 @@ import { blueprintImageAssetId } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_EDITOR_FONT_ID_PREFIX } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import { DEV_MODE_SAVE_PREVIEW_ASSET_ID_PREFIX } from "@shared/types/devModeSave";
 import { parseAssetUrlToken } from "@/lib/workspace/assets/assetUrlTokens";
+import { collectReferencedIds } from "@shared/build/variantPayload";
+import type { BlueprintAssetPinResolver } from "./assetNameCatalog";
+import {
+    createAssetPinLookup,
+    groupIncomingEdges,
+    incomingEdgeKey,
+    judgeAssetPinSource,
+    type AssetNameGap,
+} from "./assetNameGaps";
 import type { SearchJumpTarget } from "../search/searchIndexModel";
 
 /**
@@ -57,7 +59,8 @@ import type { SearchJumpTarget } from "../search/searchIndexModel";
  *    id-shaped strings, which would report references that do not exist and block legitimate
  *    deletes. A pin declares that it carries an asset (`BlueprintNodePinDef.assetRef`), and an edge
  *    into such a pin is followed to its source: a JSON or String literal there is read as the asset
- *    it feeds. A source that computes its value yields a `computedAssetPin` gap.
+ *    it feeds. Where the value is computed instead, `findAssetNameGaps` (`assetNameGaps.ts`) is the
+ *    one judgement of whether that is a gap; the service reports its answer as `computedAssetPin`.
  *
  * Every reason that clears {@link ReferenceIndexResult.complete} is listed on
  * {@link ReferenceGapReason}, and that union is the whole list: an index that never built, a slice
@@ -77,7 +80,7 @@ import type { SearchJumpTarget } from "../search/searchIndexModel";
  */
 
 /** Which kind of document holds the reference — drives grouping and the icon in the UI. */
-export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character" | "design";
+export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character" | "design" | "plugin";
 
 export interface AssetReference {
     /** Stable unique id (React key, and the dedupe key when slices are merged). */
@@ -101,7 +104,7 @@ export interface AssetReference {
 
 /** The slices the index is assembled from; a gap names the one it came from. */
 export type ReferenceSliceKind = "story" | "storyAnimation" | "blueprint" | "ui" | "voice" | "character"
-    | "design";
+    | "design" | "plugin";
 
 /**
  * Why one site could not be turned into a reference.
@@ -156,6 +159,13 @@ export interface ReferenceIndexGap {
     affects?: readonly ReferenceAssetKind[];
     /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
     target?: SearchJumpTarget;
+    /**
+     * For a `computedAssetPin` gap, the use itself: where the name is used and where it is made.
+     *
+     * What every surface renders the gap from, so the canvas, the build, the project check and the
+     * delete dialog all say the same sentence about it, naming the node in the author's language.
+     */
+    assetName?: AssetNameGap;
 }
 
 /**
@@ -601,89 +611,7 @@ export function extractStoryAnimationAssetReferences(animation: StoryAnimationAs
 // Blueprint
 // ---------------------------------------------------------------------------
 
-/**
- * One asset-bearing pin on one node type, as the node catalogue declares it.
- *
- * `paramKey` is where the id is stored when the pin is not wired; it defaults to the pin id and
- * differs only on the Image Asset literal node, which publishes `value` and stores `asset`.
- */
-export interface BlueprintAssetPin {
-    pinId: string;
-    kind: BlueprintAssetPinKind;
-    paramKey: string;
-    /** Only an input can be fed by an edge, so only an input can be followed to a source. */
-    input: boolean;
-    /**
-     * `"published"` pins hold nothing and hide nothing - see {@link BlueprintAssetPinRef.origin}.
-     * They are declared here anyway, because being declared is what tells the edge walk that a
-     * value arriving from one is accounted for rather than unreadable.
-     */
-    origin?: "stored" | "published";
-}
-
-/**
- * Declared asset pins for a node type.
- *
- * **`null` means the catalogue has never heard of this type** — a node left behind by an uninstalled
- * plugin, or a document from a newer Studio. That is not the same as a node with no asset pins, and
- * conflating them is how an asset held by such a node becomes invisible while the index reports full
- * coverage. An empty array means "known, and holds none".
- */
-export type BlueprintAssetPinResolver = (nodeType: string) => readonly BlueprintAssetPin[] | null;
-
-/**
- * The pins covered without a catalogue.
- *
- * Present so the model stays usable on its own (and so a catalogue lookup that fails cannot shrink
- * coverage): the resolver's answer is merged onto these, never substituted for them. `assetId` is
- * absent because it is the pre-rename spelling of `asset` and is handled with its own precedence
- * rule below.
- */
-const DEFAULT_BLUEPRINT_ASSET_PINS: readonly BlueprintAssetPin[] = [
-    { pinId: "asset", kind: "image", paramKey: "asset", input: true },
-    { pinId: "fontAssetId", kind: "font", paramKey: "fontAssetId", input: true },
-    // Play Sound's clip. `input: false` because it is an inspector param and no pin carries the
-    // name, so there is no edge to follow to a source - the node's wired `assetId` pin is a string
-    // the game computes, and claiming it stored one would invent a reference on every gallery page.
-    { pinId: BLUEPRINT_SOUND_ASSET_PARAM_KEY, kind: "audio", paramKey: BLUEPRINT_SOUND_ASSET_PARAM_KEY, input: false },
-];
-
-/**
- * The Image Asset literal's output, so an edge from one is recognised as already covered rather
- * than read a second time from the node that consumes it.
- *
- * Bound to that node type rather than added to the list above, because `value` is the output pin of
- * every literal node there is. Applied to all of them it would make each one look like a node that
- * stores its own asset, and the whole legacy-literal path below would never run.
- */
-const IMAGE_ASSET_LITERAL_PINS: readonly BlueprintAssetPin[] = [
-    ...DEFAULT_BLUEPRINT_ASSET_PINS,
-    { pinId: "value", kind: "image", paramKey: "asset", input: false },
-];
-
-/**
- * Literal nodes whose stored value is the asset, and which say nothing about that in their type.
- *
- * These are the legacy shape: before an asset pin could be picked on the node itself, an author
- * wired a JSON or String literal into it. The value is read only when the edge lands on a pin that
- * *declares* it carries an asset — never by scanning literals for id-shaped strings, which would
- * invent references and block deletes that are perfectly safe.
- */
-const GENERIC_LITERAL_NODE_TYPES: ReadonlySet<string> = new Set<string>([
-    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
-    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-    BLUEPRINT_NODE_TYPE_LITERAL,
-]);
-
-/**
- * Key for "which edges land on this pin".
- *
- * The separator is a character no id can contain, so two different (node, pin) pairs cannot
- * collide into one bucket and hand a node an edge that belongs to its neighbour.
- */
-function incomingEdgeKey(nodeId: string, pinId: string): string {
-    return `${nodeId}\u0000${pinId}`;
-}
+export type { BlueprintAssetPin, BlueprintAssetPinResolver } from "./assetNameCatalog";
 
 /**
  * The asset id a pin value holds, by the kind of asset the pin declares.
@@ -704,6 +632,12 @@ function readAssetPinValue(kind: BlueprintAssetPinKind, value: unknown): string 
  *
  * Walks events, functions **and macros**. `extractBlueprintEntries` in the search index omits
  * macros; a node buried in a macro is exactly the kind of usage a delete guard must not miss.
+ *
+ * An asset pin fed by an edge is read through the one judgement every surface shares
+ * (`judgeAssetPinSource`): a literal source is the asset it holds, a declared source is already
+ * accounted for, and anything else is not a reference this walk can read. Those last ones are not
+ * reported from here: whether such a value names an asset the package carries is a question about
+ * the whole project rather than about this document, and `findAssetNameGaps` is what answers it.
  */
 export function extractBlueprintAssetReferences(
     document: BlueprintDocument,
@@ -716,29 +650,15 @@ export function extractBlueprintAssetReferences(
     const references: AssetReference[] = [];
     const gaps: ReferenceIndexGap[] = [];
 
-    const assetPinsByType = new Map<string, readonly BlueprintAssetPin[]>();
     const unknownNodeTypes = new Set<string>();
     const reportedUnknownSites = new Set<string>();
-    const assetPinsFor = (nodeType: string): readonly BlueprintAssetPin[] => {
-        const cached = assetPinsByType.get(nodeType);
-        if (cached) {
-            return cached;
-        }
-        const declared = resolveAssetPins?.(nodeType);
+    const assetPinsFor = createAssetPinLookup(nodeType => {
+        const declared = resolveAssetPins ? resolveAssetPins(nodeType) : [];
         if (declared === null) {
             unknownNodeTypes.add(nodeType);
         }
-        const merged: BlueprintAssetPin[] = nodeType === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL
-            ? [...IMAGE_ASSET_LITERAL_PINS]
-            : [...DEFAULT_BLUEPRINT_ASSET_PINS];
-        for (const pin of declared ?? []) {
-            if (!merged.some(existing => existing.pinId === pin.pinId)) {
-                merged.push(pin);
-            }
-        }
-        assetPinsByType.set(nodeType, merged);
-        return merged;
-    };
+        return declared;
+    });
 
     const ownerKeyByBlueprintId = new Map<string, string>();
     for (const [ownerKey, record] of Object.entries(document.ownerRecords)) {
@@ -779,16 +699,7 @@ export function extractBlueprintAssetReferences(
             const nodes = ir?.nodes ?? {};
             // Grouped by the pin they land on, so following one asset pin is a lookup rather than a
             // scan of every edge in the graph per pin.
-            const incomingEdges = new Map<string, BlueprintGraphEdge[]>();
-            for (const edge of ir?.edges ?? []) {
-                const key = incomingEdgeKey(edge.to.nodeId, edge.to.port);
-                const bucket = incomingEdges.get(key);
-                if (bucket) {
-                    bucket.push(edge);
-                } else {
-                    incomingEdges.set(key, [edge]);
-                }
-            }
+            const incomingEdges = groupIncomingEdges(ir);
 
             for (const node of Object.values(nodes)) {
                 const nodeLabel = resolveNodeLabel?.(node.type) ?? node.type;
@@ -853,26 +764,14 @@ export function extractBlueprintAssetReferences(
                         if (!source) {
                             continue;
                         }
-                        // A source pin that declares what it carries is not a hole. Either it
-                        // stores the asset, in which case its own node already reported it and
-                        // reading it again would double the site, or it publishes one the host
-                        // resolves at run time, which is no library reference at all.
-                        if (assetPinsFor(source.type).some(sourcePin => sourcePin.pinId === edge.from.port)) {
+                        // A declared source is not read again: either its own node already named
+                        // the asset it stores, or it publishes one the host resolves at run time,
+                        // which is no library reference at all.
+                        const judgement = judgeAssetPinSource(source, edge.from.port, assetPinsFor);
+                        if (judgement.kind !== "literal") {
                             continue;
                         }
-                        if (!GENERIC_LITERAL_NODE_TYPES.has(source.type)) {
-                            gaps.push({
-                                reason: "computedAssetPin",
-                                slice: "blueprint",
-                                location: `${blueprint.name} › ${nodeLabel}.${pin.pinId}`,
-                                // The pin says which kind of asset can arrive on it, so this casts
-                                // no doubt on the rest of the library.
-                                affects: [pin.kind],
-                                target,
-                            });
-                            continue;
-                        }
-                        const wired = readAssetPinValue(pin.kind, source.params?.value);
+                        const wired = readAssetPinValue(pin.kind, judgement.value);
                         if (wired) {
                             push(`${pin.pinId}:from:${source.id}`, pin.paramKey, wired);
                         }
@@ -883,8 +782,9 @@ export function extractBlueprintAssetReferences(
                 // the old name when `asset` is unset (widgetPropertyNodes.ts). Mirroring that
                 // precedence rather than reading both keeps a graph saved before the rename from
                 // reporting its image as unused, without inventing a second live reference for a
-                // node that has already been migrated.
-                if (params.asset === undefined) {
+                // node that has already been migrated. A node that declares `assetId` as a pin of
+                // its own has just read it above.
+                if (params.asset === undefined && !readParamKeys.has("assetId")) {
                     const legacyAssetId = readAssetPinValue("image", params.assetId);
                     if (legacyAssetId) {
                         push("assetId", "assetId", legacyAssetId);
@@ -895,6 +795,34 @@ export function extractBlueprintAssetReferences(
     }
 
     return { references, gaps };
+}
+
+/**
+ * An asset-name gap as the index reports it.
+ *
+ * `location` is the English fallback for the one reader that prints it unrendered (a log line);
+ * every surface an author reads renders {@link ReferenceIndexGap.assetName} instead, which names the
+ * node the way the canvas does.
+ */
+export function assetNameGapToIndexGap(gap: AssetNameGap): ReferenceIndexGap {
+    const sink = gap.sink;
+    return {
+        reason: "computedAssetPin",
+        slice: "blueprint",
+        location: `${sink.blueprintName} › ${sink.nodeTitle}.${sink.pinId}`,
+        // The sink says which kind of asset can arrive on it, so this casts no doubt on the rest of
+        // the library.
+        affects: [gap.assetKind],
+        target: {
+            kind: "blueprint",
+            blueprintId: sink.blueprintId,
+            ownerKey: sink.ownerKey,
+            focusNodeId: sink.nodeId,
+            ...(sink.graphKind === "event" ? { focusEventId: sink.graphId } : {}),
+            ...(sink.graphKind === "function" ? { focusFunctionId: sink.graphId } : {}),
+        },
+        assetName: gap,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -1227,5 +1155,56 @@ export function extractCharacterAssetReferences(
         }
     }
 
+    return references;
+}
+
+// ---------------------------------------------------------------------------
+// Plugin data
+// ---------------------------------------------------------------------------
+
+/**
+ * One namespace of the data a plugin publishes into the game (`contributes.runtimeData`).
+ *
+ * The Gallery's catalogue is the one that ships today: every picture and track an EXTRA screen
+ * shows is named there and nowhere else.
+ */
+export interface PublishedPluginStore {
+    pluginId: string;
+    /** The plugin's own name, which is what an author knows it by. */
+    pluginName: string;
+    namespace: string;
+    data: unknown;
+}
+
+/**
+ * Plugin slice: the library assets a plugin's published data names.
+ *
+ * Read **the way the build reads it** rather than structurally, because Studio does not know the
+ * shape of a plugin's data and the build does not try to: a package carries every library id that
+ * occurs in the bytes it ships, plugin data included (`collectReferencedAssetIds`). Answering "is
+ * this used" by any other rule would let the two disagree about the same picture - the build
+ * carrying an image the index calls unused, and a delete that drops a Gallery entry's art without a
+ * word.
+ *
+ * Only ids the library actually has count. A catalogue names its own entries by id-shaped keys too,
+ * and those are not assets; reporting them would give `assets/missing` a dangling reference for
+ * every entry in the Gallery.
+ */
+export function extractPluginDataAssetReferences(
+    stores: readonly PublishedPluginStore[],
+    libraryAssetIds: ReadonlySet<string>,
+): AssetReference[] {
+    const references: AssetReference[] = [];
+    for (const store of stores) {
+        for (const assetId of collectReferencedIds(store.data, libraryAssetIds)) {
+            references.push({
+                id: `plugin:${store.pluginId}:${store.namespace}:${assetId}`,
+                assetId,
+                kind: "plugin",
+                label: store.pluginName,
+                field: store.namespace,
+            });
+        }
+    }
     return references;
 }

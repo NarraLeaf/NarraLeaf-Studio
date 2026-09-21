@@ -139,6 +139,7 @@ export type LintRuleId =
     | "blueprint/empty-event"
     | "blueprint/dlc-entrance-unguarded"
     | "blueprint/unknown-node"
+    | "blueprint/computed-asset-name"
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
@@ -242,6 +243,18 @@ export type LintFinding = {
     /** `lint.rule.<slug>.message` (or a declared variant); never a rendered sentence. */
     messageKey: TranslationKey;
     messageParams?: Record<string, string | number>;
+    /**
+     * Params that are themselves catalogue entries, rendered in the reader's locale.
+     *
+     * For the words a rule cannot write down without choosing a language - a blueprint node's
+     * title is the case it exists for: the catalogue declares every node in English and localizes
+     * the title as it is drawn, so a rule that put the English title in {@link messageParams} would
+     * name a node the author's canvas calls something else. A name here wins over the same name in
+     * `messageParams`, which may carry the English as the fallback for a title with no entry.
+     *
+     * Every surface that renders a finding goes through {@link resolveLintMessageParams}.
+     */
+    messageParamKeys?: Record<string, TranslationKey>;
     location: LintLocation;
     /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
     target?: SearchJumpTarget;
@@ -282,6 +295,25 @@ export type LintRuleMeta = {
 export type LintRule = LintRuleMeta & {
     run(ctx: LintContext, options: LintRuleOptions): LintFinding[] | Promise<LintFinding[]>;
 };
+
+/**
+ * The params a finding's message is rendered with, {@link LintFinding.messageParamKeys} resolved in
+ * the caller's locale. The one way every surface renders a finding, so none of them can print a
+ * catalogue key where a word belongs.
+ */
+export function resolveLintMessageParams(
+    finding: Pick<LintFinding, "messageParams" | "messageParamKeys">,
+    translate: (key: TranslationKey) => string,
+): Record<string, string | number> | undefined {
+    if (!finding.messageParamKeys) {
+        return finding.messageParams;
+    }
+    const params: Record<string, string | number> = { ...finding.messageParams };
+    for (const [name, key] of Object.entries(finding.messageParamKeys)) {
+        params[name] = translate(key);
+    }
+    return params;
+}
 
 /**
  * `assets/unused` -> `assetsUnused`, `story/goto-missing` -> `storyGotoMissing`.

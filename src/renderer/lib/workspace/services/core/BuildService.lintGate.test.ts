@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { GameBuildRequest } from "@shared/types/gameBuild";
 import type { StoryDocument } from "@shared/types/story";
-import type { ReferenceIndexGap } from "../references/referenceModel";
+import { assetNameGapToIndexGap, type ReferenceIndexGap } from "../references/referenceModel";
 import type { LintReport, LintReportEntry, LintRuleId, LintSeverity } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
 import type { LintingConfiguration } from "../../project/configuration";
@@ -546,6 +546,71 @@ describe("BuildService invalid-block gate (ruling R4)", () => {
         expect(gameBuild.start).not.toHaveBeenCalled();
         expect(state.status).toBe("error");
         expect(state.error).toContain("build.invalidCommandSummary");
+    });
+});
+
+describe("BuildService asset-name gate", () => {
+    /** The gallery gesture: a row click sets a picture from the row's field. */
+    const ROW_PICTURE = assetNameGapToIndexGap({
+        assetKind: "image",
+        sink: {
+            kind: "pin",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "showTile",
+            nodeType: "blueprint.element.image.setImageAsset",
+            nodeTitle: "Set Image Asset",
+            pinId: "asset",
+            pinLabel: "Asset",
+        },
+        origin: {
+            kind: "node",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "tileImage",
+            nodeType: "blueprint.list.getItemField",
+            nodeTitle: "Get Item Field",
+        },
+    });
+
+    it("refuses every package, release included, ahead of lint", async () => {
+        const { service, run } = mount({ referenceGaps: [ROW_PICTURE] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(state.error).toContain("build.contentComputedPinSummary");
+        expect(run).not.toHaveBeenCalled();
+    });
+
+    it("prints the project check's own sentence for it, naming the node", async () => {
+        const { service, lines } = mount({ referenceGaps: [ROW_PICTURE] });
+
+        await service.start(REQUEST);
+
+        expect(lines.some(line =>
+            line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "error"
+            && line.message.includes("lint.rule.blueprintComputedAssetName.message")
+            // The node and the pin arrive as catalogue entries, so the reader sees them in the
+            // language the canvas draws them in.
+            && line.message.includes("blueprint.node.setImageAsset")
+            && line.message.includes("blueprint.node.getItemField"))).toBe(true);
+    });
+
+    it("builds once nothing picks an asset by a computed value", async () => {
+        const { service } = mount({ referenceGaps: [] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).toHaveBeenCalledTimes(1);
+        expect(state.status).toBe("done");
     });
 });
 
