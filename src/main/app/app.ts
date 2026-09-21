@@ -2425,8 +2425,9 @@ export class App extends BaseApp {
     /**
      * Raise the window that asks whether a project uses a server sign-in.
      *
-     * The project-trust prompt's shape and size: a small modal child of the workspace that asked,
-     * one question, two answers.
+     * The project-trust prompt's shape: a small modal child of the workspace that asked, one
+     * question, two answers. Taller than that one by the second identity box, so the footnote is
+     * on screen rather than below a scroll.
      */
     async launchServerSessionPrompt(
         parent: AppWindow | null,
@@ -2446,7 +2447,7 @@ export class App extends BaseApp {
                 closable: true,
                 fullscreenable: false,
                 width: 480,
-                height: 360,
+                height: 420,
                 center: true,
                 frame: false,
                 titleBarStyle: "hidden",

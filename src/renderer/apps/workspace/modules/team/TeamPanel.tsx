@@ -97,12 +97,13 @@ export function TeamPanel({ surface, team, isOpen, onClose }: {
     const unused = remote !== null && serverSession === null && availableSession !== null;
     const noAccount = !unused && (surface.remoteNeedsSignIn || (!serverSession && remote !== null));
     const verdict = teamServerFace(team.state, syncState);
-    // The name the server answers to. `serverSession` is null for a server this machine has no
-    // account on, and that is the single case with no name to read - its address is then all
-    // there is to call it by.
+    // The name the server answers to, from whichever sign-in this machine holds for it - the one
+    // this project uses, or the one it could. A server this machine has no account on is the
+    // single case with no name to read, and its address is then all there is to call it by.
+    const known = serverSession ?? availableSession;
     const name = remote === null
         ? null
-        : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
+        : known ? serverDisplayName(known) : serverHost(remote);
     // What this project is called on that server, which is what a collaborator clones by and
     // the one part of the address worth reading. Empty for an address that carries no name.
     const projectName = remote === null ? "" : parseVcsRemoteUrl(remote)?.name ?? "";

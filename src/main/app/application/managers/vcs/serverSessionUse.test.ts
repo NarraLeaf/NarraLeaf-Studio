@@ -207,6 +207,12 @@ describe("a project the author said does not use it", () => {
         expect(lore.signIns).toEqual([]);
     });
 
+    it("is refused as not using the sign-in, rather than as a token nobody presented", async () => {
+        lore.missing.count = 1;
+        // The backend's sentence stays the message; the code is what the rail reads.
+        await expect(manager.push(PROJECT_B)).rejects.toMatchObject({ code: "vcs/sign-in-unused" });
+    });
+
     it("reads as not using the sign-in, with the sign-in on offer", async () => {
         await expect(manager.getServerSession(PROJECT_B)).resolves.toEqual({
             session: null,

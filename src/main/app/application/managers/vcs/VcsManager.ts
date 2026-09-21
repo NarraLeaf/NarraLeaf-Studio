@@ -213,6 +213,23 @@ export type ServerSessionAsker = (request: {
 }) => Promise<boolean | null>;
 
 /**
+ * A server asked for a sign-in this project does not use, though this installation holds one.
+ *
+ * Never asked about, or answered no. Coded so the rail can say that - and point at the one row that
+ * changes it - where the backend's own sentence (`No token stored`) reads as though nobody had ever
+ * signed in. The backend's sentence is kept as the message, for the log and for anything that
+ * matches on it.
+ */
+export class VcsSignInUnusedError extends Error {
+    readonly code = VcsErrorCode.SignInUnused;
+
+    constructor(detail: string) {
+        super(detail);
+        this.name = "VcsSignInUnusedError";
+    }
+}
+
+/**
  * A request about a server, from a project that is not trusted.
  *
  * The address such a request reaches is the one the project's own `.lore/config.toml` names, so it
@@ -993,12 +1010,27 @@ export class VcsManager extends Manager {
      *
      * `signedIn` is the sign-in the calling project uses, and null where it uses none: a project
      * the author has not said uses a sign-in does not get the token presented on its behalf.
+     *
+     * `remoteOrigin` is the server the call went to, and it is only for naming the failure: where
+     * that server asked for a sign-in, this installation holds one for it, and the project does not
+     * use it, the refusal is said as exactly that ({@link VcsSignInUnusedError}) rather than as the
+     * backend's sentence about a token, which reads as though nobody had ever signed in.
      */
-    private async withServerSession<T>(signedIn: VcsServerSession | null, run: () => Promise<T>): Promise<T> {
+    private async withServerSession<T>(
+        signedIn: VcsServerSession | null,
+        run: () => Promise<T>,
+        remoteOrigin: string | null = null,
+    ): Promise<T> {
         try {
             return await run();
         } catch (error) {
-            if (signedIn === null || !isMissingBackendSession(error)) throw error;
+            if (!isMissingBackendSession(error)) throw error;
+            if (signedIn === null) {
+                if (remoteOrigin !== null && this.storedServerSession(remoteOrigin) !== null) {
+                    throw new VcsSignInUnusedError(error instanceof Error ? error.message : String(error));
+                }
+                throw error;
+            }
             if (!(await this.presentStoredToken(signedIn))) throw error;
             return run();
         }
@@ -1355,6 +1387,7 @@ export class VcsManager extends Manager {
             const entries = await this.withServerSession(
                 live ? signedIn : null,
                 () => backend.listFilesAt(readGlobals, session.store, session.repositoryId, revision),
+                live ? session.remoteOrigin : null,
             );
             const plan = planRevisionRestore({
                 revision: entries,
@@ -1393,6 +1426,7 @@ export class VcsManager extends Manager {
                         ),
                     },
                 }),
+                live ? session.remoteOrigin : null,
             );
 
             let recordFailure: string | null = null;
@@ -2696,7 +2730,7 @@ export class VcsManager extends Manager {
                 ...session.globals,
                 offline: false,
                 identity: this.onlineIdentity(signedIn),
-            }));
+            }), session.remoteOrigin);
         });
     }
 
@@ -2735,7 +2769,7 @@ export class VcsManager extends Manager {
                 offline: false,
                 // The account id, not the author's name - see `onlineIdentity`.
                 identity: this.onlineIdentity(signedIn),
-            })).catch((error: unknown) => {
+            }), session.remoteOrigin).catch((error: unknown) => {
                 if (isDivergedBranch(error)) {
                     throw new VcsBranchDivergedError(error instanceof Error ? error.message : String(error));
                 }
@@ -2795,6 +2829,7 @@ export class VcsManager extends Manager {
             const result = await this.withServerSession(
                 signedIn,
                 () => backend.syncFromRemote({ ...globals, offline: false }),
+                session.remoteOrigin,
             );
             this.app.logger.info(
                 "[Vcs] Synced", session.root,
@@ -3111,7 +3146,7 @@ export class VcsManager extends Manager {
                         identity: this.onlineIdentity(signedIn),
                     },
                     { repositoryUrl, onProgress: options.onProgress },
-                ));
+                ), remoteOrigin);
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
             } catch (error) {
                 if (recorded && await directoryHoldsNothing(root)) {

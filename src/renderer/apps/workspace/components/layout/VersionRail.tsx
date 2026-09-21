@@ -1385,10 +1385,12 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
     }
 
     const face = serverFace(syncState);
-    // The name the server answers to. `serverSession` is null for a server this machine has no
-    // account on - a copy somebody sent, or one that was signed out of - and that is the single
-    // case with no name to read: its address is then all there is to call it by.
-    const name = surface.serverSession ? serverDisplayName(surface.serverSession) : serverHost(remote);
+    // The name the server answers to, from whichever sign-in this machine holds for it - the one
+    // this project uses, or the one it could. A server this machine has no account on - a copy
+    // somebody sent, or one that was signed out of - is the single case with no name to read: its
+    // address is then all there is to call it by.
+    const known = surface.serverSession ?? surface.availableSession;
+    const name = known ? serverDisplayName(known) : serverHost(remote);
 
     return (
         <div data-vcs-seam="server" data-help-topic="versionServer" className="border-b border-edge px-3 py-2">

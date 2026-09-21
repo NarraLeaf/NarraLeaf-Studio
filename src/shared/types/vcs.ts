@@ -234,6 +234,14 @@ export const VcsErrorCode = {
      * stops for an untrusted project does - in the reader's language, pointing at the status bar.
      */
     ProjectDistrusted: "vcs/project-distrusted",
+    /**
+     * The server asked for a sign-in, this installation holds one for it, and this project does
+     * not use it - never asked, or the author said no.
+     *
+     * Its own code because the backend's sentence for it is about a missing token, which reads as
+     * though nobody had ever signed in; the remedy is the author's answer, in the Team panel.
+     */
+    SignInUnused: "vcs/sign-in-unused",
 } as const;
 
 export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];

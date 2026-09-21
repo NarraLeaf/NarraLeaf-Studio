@@ -149,6 +149,16 @@ type VersionControlServiceEvents = {
      * up holding different vintages of the same answer.
      */
     serverChanged: void;
+    /**
+     * Which sign-in this project uses changed, without anything here having asked for that.
+     *
+     * The sign-in question is put by the main process in a window of its own, in the middle of a
+     * send, a get or a check - so the surface that pressed the button learns the answer by reading
+     * it back, and every other surface on the window would go on showing the project as not using
+     * it. Fired when a read of the state comes back different from the one before it; carries
+     * nothing, for the reason {@link serverChanged} carries nothing.
+     */
+    sessionChanged: void;
 };
 
 /** The settings key holding the checkpoint interval in minutes. 0 disables. */
@@ -764,7 +774,35 @@ export class VersionControlService extends Service<VersionControlService> implem
         const none: VcsProjectServerSession = { session: null, available: null, declined: false };
         if (!(await this.isAvailable())) return none;
         const result = await getInterface().vcs.getServerSession(this.projectPath());
-        return result.success ? result.data : none;
+        const state = result.success ? result.data : none;
+        this.noticeSessionState(state);
+        return state;
+    }
+
+    /** The last answer {@link getServerSessionState} read, as a comparable string. */
+    private lastSessionState: string | null = null;
+
+    /**
+     * Announce a change in which sign-in this project uses, the first time any read sees it.
+     *
+     * The first read of a window only records; later reads that differ announce, once - the
+     * surfaces that hear it read again, find the same answer, and stop.
+     */
+    private noticeSessionState(state: VcsProjectServerSession): void {
+        const key = [
+            state.session?.remoteOrigin ?? "",
+            state.session?.account.userId ?? "",
+            state.available?.account.userId ?? "",
+            state.declined ? "declined" : "",
+        ].join("\n");
+        const previous = this.lastSessionState;
+        this.lastSessionState = key;
+        if (previous !== null && previous !== key) this.events.emit("sessionChanged", undefined);
+    }
+
+    /** The sign-in this project uses changed; re-read {@link getServerSessionState}. */
+    public onSessionChanged(handler: () => void): () => void {
+        return this.events.on("sessionChanged", handler);
     }
 
     /**

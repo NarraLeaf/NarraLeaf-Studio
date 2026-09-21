@@ -989,6 +989,18 @@ export function useVersionSurface(): VersionSurface {
         setAvailableSession(next.available);
     }, [services]);
 
+    // Every surface on the window hears an answer to the sign-in question, not only the one whose
+    // press raised it: the status cell and the rail are two instances of this hook, and the one that
+    // did not press would otherwise go on offering a sign-in the project now uses.
+    useEffect(() => {
+        if (!services) {
+            return;
+        }
+        return services.versionControl.onSessionChanged(() => {
+            void readSession();
+        });
+    }, [services, readSession]);
+
     /**
      * Ask the server where things stand.
      *
@@ -1406,6 +1418,10 @@ function describeFailure(thrown: unknown): VersionFailure {
             // internal verb that failed in front of it (`branchPush: Branch has diverged, …`). What
             // is translated here is the situation, not a paraphrase of a message.
             return { text: translate("workspace.shell.versionControl.branchDiverged"), tone: "failure" };
+        case VcsErrorCode.SignInUnused:
+            // The Team panel's own sentence for the state, so the rail and the panel name it alike;
+            // the panel is where the row that changes it is.
+            return { text: translate("workspace.shell.team.signInUnused"), tone: "failure" };
         case VcsErrorCode.ProjectDistrusted:
             // The sentence every control that stops for an untrusted project uses, so this reads
             // like the rest of them and names the same way out.
