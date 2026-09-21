@@ -46,6 +46,7 @@ import { developer } from "./developer";
 import { pluginPermission } from "./pluginPermission";
 import { serverTrust } from "./serverTrust";
 import { projectTrust } from "./projectTrust";
+import { serverSession } from "./serverSession";
 import { plugins } from "./plugins";
 import { dialogs } from "./dialogs";
 import { defaultDoc } from "./defaultDoc";
@@ -99,6 +100,7 @@ export const ja = {
     pluginPermission,
     serverTrust,
     projectTrust,
+    serverSession,
     plugins,
     dialogs,
     defaultDoc,

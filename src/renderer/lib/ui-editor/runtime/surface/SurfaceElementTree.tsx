@@ -14,7 +14,7 @@ import { buildUIComponentInstanceKey, buildUIComponentSurfaceId } from "@shared/
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
-import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
+import { isTrustedElementRenderer, type ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-runtime/BindingEvaluator";
@@ -51,6 +51,15 @@ import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAn
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
+import {
+    componentParamsKey,
+    isReusableElementType,
+    resolveElementReuseCache,
+    sameChildren,
+    sameDeps,
+    sameResolvedElement,
+    type ElementReuseCache,
+} from "@/lib/ui-editor/runtime/surface/elementReuse";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -233,13 +242,16 @@ type SurfaceElementTreeContentProps = SurfaceElementTreeProps & {
     bindingTick: number;
 };
 
-function areSurfaceElementTreeInputsEqual(
-    previous: SurfaceElementTreeContentProps,
-    next: SurfaceElementTreeContentProps,
-): boolean {
-    // Only a host that promised its document is a snapshot may be told "nothing changed" - see
-    // `staticDocument`. Everyone else falls through to a plain re-render, exactly as before.
-    if (next.staticDocument !== true) {
+/**
+ * Whether this tree's props say everything about what it draws, so work done for them may be reused.
+ *
+ * One answer for both kinds of reuse the tree does - skipping a whole re-render when no prop moved,
+ * and handing back an unchanged element's node when some did - because they rest on the same
+ * promises, and two copies of the condition would be free to drift apart.
+ */
+function treeInputsAreTheWholeTruth(props: SurfaceElementTreeProps): boolean {
+    // Only a host that promised its document is a snapshot - see `staticDocument`.
+    if (props.staticDocument !== true) {
         return false;
     }
     /**
@@ -251,7 +263,15 @@ function areSurfaceElementTreeInputsEqual(
      * memoise without one is what makes that promise safe to depend on - the failure it prevents is
      * a page whose bound widgets quietly stop updating, which nothing else here would catch.
      */
-    if (next.blueprintBindingContext && next.hostRenderTick === undefined) {
+    return !(props.blueprintBindingContext && props.hostRenderTick === undefined);
+}
+
+function areSurfaceElementTreeInputsEqual(
+    previous: SurfaceElementTreeContentProps,
+    next: SurfaceElementTreeContentProps,
+): boolean {
+    // Everyone else falls through to a plain re-render, exactly as before.
+    if (!treeInputsAreTheWholeTruth(next)) {
         return false;
     }
     const previousKeys = Object.keys(previous) as (keyof SurfaceElementTreeContentProps)[];
@@ -279,12 +299,30 @@ function areSurfaceElementTreeInputsEqual(
 const SurfaceElementTreeContent = memo(function SurfaceElementTreeContent(
     props: SurfaceElementTreeContentProps,
 ): ReactNode {
-    return renderSurfaceElementTreeWithValueRuntime(props, props.valueRuntime);
+    /**
+     * The nodes this tree built last time, per element, for the re-renders the memo above cannot
+     * skip - see `elementReuse`. Held for the life of the tree and started over whenever it is
+     * drawing a different document; absent altogether unless the tree's props are the whole truth.
+     */
+    const reuseRef = useRef<ElementReuseCache | null>(null);
+    let reuse: ElementReuseCache | null = null;
+    if (treeInputsAreTheWholeTruth(props)) {
+        reuse = resolveElementReuseCache(reuseRef.current, {
+            document: props.document,
+            surface: props.surface,
+            rendererRegistry: props.rendererRegistry,
+        });
+        reuseRef.current = reuse;
+    } else {
+        reuseRef.current = null;
+    }
+    return renderSurfaceElementTreeWithValueRuntime(props, props.valueRuntime, reuse);
 }, areSurfaceElementTreeInputsEqual);
 
 function renderSurfaceElementTreeWithValueRuntime(
     props: SurfaceElementTreeProps,
     valueRuntime: BlueprintValueRuntimeStore | null,
+    reuse: ElementReuseCache | null = null,
 ): ReactNode {
     const {
         document,
@@ -319,6 +357,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         props.blueprintLifecycleReady ?? true,
         null,
         props.animationPlan ?? null,
+        reuse,
     );
 
     return (
@@ -827,6 +866,10 @@ function applyWidgetRuntimePatches(
     return next;
 }
 
+/** Characters no id or path segment may contain, so two different keys can never read the same. */
+const REUSE_KEY_PATH_SEPARATOR = "\u0000";
+const REUSE_KEY_ADDRESS_SEPARATOR = "\u0001";
+
 function cloneElementRenderSnapshot(element: UIElement): UIElement {
     return {
         ...element,
@@ -856,6 +899,16 @@ function renderLinkedComponentInstanceContent(input: {
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     instanceKey: string;
+    /**
+     * The list row the placement is drawn in, or null outside one.
+     *
+     * Handed to the definition's insides rather than stopped at the placement: a card placed in a
+     * gallery row is part of that row, and its graph and its field bindings are asking about the
+     * row the same way a plain text in the row is. It used to be dropped here, so a component could
+     * be placed in a list and never read the row it was in - and an event bubbling back out of it
+     * reached the row's own widgets without the row either.
+     */
+    listItemScope: UIListItemScope | null;
     componentPath: string[];
     valueRuntime: BlueprintValueRuntimeStore | null;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
@@ -974,7 +1027,7 @@ function renderLinkedComponentInstanceContent(input: {
                     input.useAppearanceInspectorPreview,
                     null,
                     input.widgetRuntimePatches,
-                    null,
+                    input.listItemScope,
                     componentInstanceKey,
                     input.nestedSurfaceRuntime,
                     [virtualSurface.id],
@@ -1033,6 +1086,8 @@ function renderElementTree(
     componentParams: Record<string, string> | null = null,
     /** Enter/exit timings for this Surface, or null when the host wants a static tree. */
     animationPlan: SurfaceAnimationPlan | null = null,
+    /** Last pass's nodes, when this tree may reuse them - see `elementReuse`. */
+    reuse: ElementReuseCache | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[buildUIWidgetAddress(element.id, instanceKey)];
@@ -1050,9 +1105,35 @@ function renderElementTree(
                   listItemScope ?? null,
               )
             : patched;
-    const resolved = cloneElementRenderSnapshot(
-        mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey)
-    );
+    const merged = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey);
+    const renderer = rendererRegistry.get(merged.type);
+    // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
+    // instance key and (for the switch) per-part variant overrides - so the tree must not also
+    // render them here, or every part would be drawn twice.
+    const rendersOwnChildren =
+        isListLikeWidgetType(merged.type)
+        || merged.type === "nl.slider"
+        || merged.type === UI_SWITCH_ELEMENT_TYPE;
+    const nodeKey = `${merged.id}${instanceKey ? `:${instanceKey}` : ""}`;
+    /**
+     * Where last pass's node for this element is kept, or null when it may not be reused.
+     *
+     * Only for a renderer Studio ships, a type that places nothing of its own, and an element that
+     * is not a component placement - see `elementReuse` for why each. Keyed by the component path as
+     * well as the address, because one component's insides are drawn in several places.
+     */
+    const reuseKey =
+        reuse
+        && isTrustedElementRenderer(renderer)
+        && isReusableElementType(merged.type, rendersOwnChildren)
+        && !getUIComponentLink(merged)
+            ? `${componentPath.join(REUSE_KEY_PATH_SEPARATOR)}${REUSE_KEY_ADDRESS_SEPARATOR}${nodeKey}`
+            : null;
+    const previous = reuseKey ? reuse?.entries.get(reuseKey) : undefined;
+    const resolved =
+        previous && sameResolvedElement(previous.resolved, merged)
+            ? previous.resolved
+            : cloneElementRenderSnapshot(merged);
 
     // An animated element is kept mounted through its exit, so "hidden" cannot mean "gone" here: the
     // presence wrapper at the bottom of this function decides when it actually leaves the tree.
@@ -1099,21 +1180,56 @@ function renderElementTree(
                 blueprintLifecycleReady,
                 componentParams,
                 animationPlan,
+                // A widget placing its own children does it from inside its own render, later than
+                // this walk and from data this walk cannot see - so what it places is never reused.
+                rendersOwnChildren ? null : reuse,
             );
         })
         .filter((node): node is ReactNode => node !== null);
     };
 
-    // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
-    // instance key and (for the switch) per-part variant overrides - so the tree must not also
-    // render them here, or every part would be drawn twice.
-    const rendersOwnChildren =
-        isListLikeWidgetType(resolved.type)
-        || resolved.type === "nl.slider"
-        || resolved.type === UI_SWITCH_ELEMENT_TYPE;
     const children = rendersOwnChildren ? [] : renderChildren();
 
-    const renderer = rendererRegistry.get(resolved.type);
+    /**
+     * Everything the node below reads besides the element and its children.
+     *
+     * Paths and params are folded to strings because they are rebuilt on every pass with the same
+     * contents; every other entry is an identity the host keeps stable when nothing changed.
+     */
+    const reuseDeps: readonly unknown[] | null = reuseKey
+        ? [
+              renderer,
+              runtimePatch,
+              animationTiming,
+              document,
+              surface,
+              hostAdapter,
+              rendererRegistry,
+              useAppearanceInspectorPreview,
+              blueprintBindingContext,
+              listItemScope ?? null,
+              instanceKey,
+              nestedSurfaceRuntime,
+              surfacePath.join(REUSE_KEY_PATH_SEPARATOR),
+              editorChrome,
+              interactive,
+              keyboardInteractive,
+              valueRuntime,
+              surfaceLifecycleSignals,
+              blueprintLifecycleReady,
+              componentParamsKey(componentParams),
+              animationPlan,
+          ]
+        : null;
+    if (
+        previous
+        && reuseDeps
+        && resolved === previous.resolved
+        && sameDeps(previous.deps, reuseDeps)
+        && sameChildren(previous.children, children)
+    ) {
+        return previous.node;
+    }
     const linkedComponentContent = renderLinkedComponentInstanceContent({
         instanceElement: resolved,
         document,
@@ -1123,6 +1239,7 @@ function renderElementTree(
         widgetRuntimePatches,
         nestedSurfaceRuntime,
         instanceKey,
+        listItemScope: listItemScope ?? null,
         componentPath,
         valueRuntime,
         surfaceLifecycleSignals,
@@ -1180,7 +1297,6 @@ function renderElementTree(
             : isUIElementFlowLayoutChild(document, resolved)
               ? "flow"
               : "absolute";
-    const nodeKey = `${resolved.id}${instanceKey ? `:${instanceKey}` : ""}`;
     const animatedContent =
         animationTiming && animated && animationTiming.selfAnimated ? (
             <ElementAnimationLayer timing={animationTiming} reducedMotion={animationPlan?.reducedMotion === true}>
@@ -1232,14 +1348,18 @@ function renderElementTree(
         </EditorNodeWrapper>
     );
 
-    if (!animated || !animationTiming) {
-        return node;
+    const built =
+        !animated || !animationTiming ? (
+            node
+        ) : (
+            <ElementAnimationPresence key={nodeKey} timing={animationTiming} visible={visible}>
+                {node}
+            </ElementAnimationPresence>
+        );
+    if (reuse && reuseKey && reuseDeps) {
+        reuse.entries.set(reuseKey, { resolved, deps: reuseDeps, children, node: built });
     }
-    return (
-        <ElementAnimationPresence key={nodeKey} timing={animationTiming} visible={visible}>
-            {node}
-        </ElementAnimationPresence>
-    );
+    return built;
 }
 
 function extractStyleOverrides(element: UIElement): CSSProperties | undefined {

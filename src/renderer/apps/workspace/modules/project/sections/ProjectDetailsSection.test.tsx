@@ -99,6 +99,21 @@ describe("ProjectDetailsSection", () => {
         expect(details.field.value).toBe("1.0");
     });
 
+    it("drops an edit to the description the author leaves with Escape, too", () => {
+        const details = mountDetails();
+        const description = screen.getByPlaceholderText("project.details.descriptionPlaceholder") as HTMLTextAreaElement;
+
+        // Real focus, so the blur Escape causes is a real one: `fireEvent.focus` leaves the element
+        // unfocused, `blur()` then does nothing, and the test passes without testing anything.
+        act(() => description.focus());
+        fireEvent.change(description, { target: { value: "A different game" } });
+        act(() => { fireEvent.keyDown(description, { key: "Escape" }); });
+
+        expect(document.activeElement).not.toBe(description);
+        expect(details.held).toHaveLength(0);
+        expect(description.value).toBe("");
+    });
+
     it("says so when the write fails, and shows what the manifest holds", async () => {
         const details = mountDetails();
 

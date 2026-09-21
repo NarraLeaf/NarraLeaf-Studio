@@ -1451,6 +1451,8 @@ declare module "@narraleaf/script" {
     		callerComponentParams?: Record<string, string>;
     		/** Which drawing the call came from, so the body's widget writes land on it. */
     		callerInstanceKey?: string;
+    		/** The list row the call came from, so the body reads the row the caller was answering for. */
+    		callerListItemScope?: UIListItemScope | null;
     		signal?: AbortSignal;
     		callerExecutionId?: string;
     	}) => Promise<{
@@ -1532,6 +1534,12 @@ declare module "@narraleaf/script" {
     } ? T : undefined;
     type GameScriptContext<Self extends ScriptSelf = ScriptSelf> = {
     	self: Self;
+    	/**
+    	 * The blueprint host API. Name a widget by its element id - \`ctx.self.elementId\`, or any id on
+    	 * the page - and it is read from the drawing this handler runs in, as a widget node reads it:
+    	 * inside a list row or a component placement, an element of that row or placement means this
+    	 * one's copy of it, and anything outside means the one on the page.
+    	 */
     	host: BlueprintHostApiRuntime;
     	broadcast: SurfaceBound<Self, ScriptBroadcast>;
     	surface: SurfaceBound<Self, ScriptSurfaceTransition>;

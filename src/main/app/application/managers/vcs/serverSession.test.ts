@@ -7,6 +7,7 @@ import {
     decodeServerAccount,
     isSignInRefusal,
     readSignInToken,
+    signInAddressFor,
     signInToServer,
 } from "./serverSession";
 
@@ -174,6 +175,88 @@ describe("reading the addresses out of a token", () => {
         await attempt.catch((error: VcsSignInError) => {
             expect(error.problem).toEqual({ kind: "address" });
         });
+    });
+});
+
+/**
+ * Where a token is presented.
+ *
+ * A token is a bearer credential, and the sign-in sends it to whatever address this settles on. So
+ * the address a request carries may not overrule the one the token names for itself - it used to,
+ * which made the destination of the credential a field anybody filling in the request could set.
+ * The typed address is still how a token that names no endpoint - a plain `loreserver`'s - is
+ * presented anywhere at all.
+ */
+describe("choosing where a token is presented", () => {
+    const NAMED = { authUrl: "https://team.example.lan:41402", authUrls: ["https://team.example.lan:41402"] };
+
+    it("presents a token where it says, when nothing else is given", () => {
+        expect(signInAddressFor(NAMED, "")).toBe("https://team.example.lan:41402");
+    });
+
+    it("refuses an address the token does not name, before anything is sent", () => {
+        expect(() => signInAddressFor(NAMED, "https://collector.example.net:41402")).toThrow(VcsSignInError);
+        try {
+            signInAddressFor(NAMED, "https://collector.example.net:41402");
+        } catch (error) {
+            // Said as a token that is not for this server, which is what it is: the panel's
+            // sentence for that already exists and names the remedy.
+            expect((error as VcsSignInError).problem).toEqual({ kind: "token" });
+        }
+    });
+
+    it("refuses the same host on another port, which is another endpoint", () => {
+        expect(() => signInAddressFor(NAMED, "https://team.example.lan:41403")).toThrow(VcsSignInError);
+    });
+
+    it("accepts the token's own endpoint however it is spelled, and uses the token's spelling", () => {
+        // The spellings a discovery answer and an audience are known to disagree on while
+        // naming one endpoint: case, a trailing slash.
+        expect(signInAddressFor(NAMED, "HTTPS://Team.Example.LAN:41402/")).toBe("https://team.example.lan:41402");
+    });
+
+    it("drops a default port the same way on both sides", () => {
+        const named = { authUrl: "https://team.example.lan", authUrls: ["https://team.example.lan"] };
+        expect(signInAddressFor(named, "https://team.example.lan:443")).toBe("https://team.example.lan");
+    });
+
+    it("accepts any of several endpoints a token names", () => {
+        const named = {
+            authUrl: "https://one.example.lan:41402",
+            authUrls: ["https://one.example.lan:41402", "https://two.example.lan:41402"],
+        };
+        expect(signInAddressFor(named, "https://two.example.lan:41402")).toBe("https://two.example.lan:41402");
+    });
+
+    it("takes a typed address for a token that names none, which is the case it exists for", () => {
+        const none = { authUrl: "", authUrls: [] };
+        expect(signInAddressFor(none, "https://lan.example:41402")).toBe("https://lan.example:41402");
+    });
+
+    it("asks for an address where neither side has one", () => {
+        const none = { authUrl: "", authUrls: [] };
+        try {
+            signInAddressFor(none, "  ");
+            expect.unreachable();
+        } catch (error) {
+            expect((error as VcsSignInError).problem).toEqual({ kind: "address" });
+        }
+    });
+
+    it("is what a sign-in goes through, so a mismatch is refused before the backend is reached", async () => {
+        const token = tokenWith({ ...ACCOUNT, aud: ["https://team.example.lan:41402", "lore://team.example.lan:41337"] });
+        // No backend is loaded in this file; reaching it would fail differently. The refusal is
+        // the token problem, which is only raised before anything is dialled.
+        const attempt = signInToServer({ repositoryPath: "", offline: false, cache: false }, {
+            remoteUrl: "lore://team.example.lan:41337",
+            authUrl: "https://collector.example.net:41402",
+            token,
+            userDataDir: "",
+        });
+        await attempt.then(
+            () => expect.unreachable(),
+            (error: VcsSignInError) => expect(error.problem).toEqual({ kind: "token" }),
+        );
     });
 });
 

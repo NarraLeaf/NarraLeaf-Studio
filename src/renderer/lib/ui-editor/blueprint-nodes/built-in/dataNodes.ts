@@ -55,7 +55,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { writeBlueprintMemoValue } from "../memoValues";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
@@ -170,22 +170,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
             { id: "result", kind: "output", semantic: "data", valueType: "any", label: "Value" },
         ],
         execute(ctx) {
-            const value = resolveDataPinValue(
-                ctx.graph,
-                ctx.node.id,
-                "value",
-                ctx.params,
-                ctx.blueprintLocals,
-                0,
-                {
-                    hostAdapter: ctx.hostAdapter,
-                    eventPayload: ctx.eventPayload,
-                    listItemScope: ctx.listItemScope,
-                    instanceKey: ctx.instanceKey,
-                    executionOwner: ctx.executionOwner,
-                    valueExecution: ctx.valueExecution,
-                },
-            );
+            const value = resolveNodeInput(ctx, "value");
             writeBlueprintMemoValue(ctx.blueprintLocals, ctx.node.id, value);
             return { nextPort: "next" };
         },

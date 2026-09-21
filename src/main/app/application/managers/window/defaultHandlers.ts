@@ -37,6 +37,7 @@ import {
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
+import { VcsUseServerSessionHandler } from "./handlers/vcsServerSessionAction";
 import {
     TeamCallHandler,
     TeamConnectionsHandler,
@@ -479,6 +480,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsGetRemoteHandler(),
         new VcsSetRemoteHandler(),
         new VcsGetServerSessionHandler(),
+        new VcsUseServerSessionHandler(),
         new VcsSignInHandler(),
         new VcsProbeServerHandler(),
         new VcsListServersHandler(),

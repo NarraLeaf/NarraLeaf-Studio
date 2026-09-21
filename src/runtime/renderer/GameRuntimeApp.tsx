@@ -223,8 +223,15 @@ function useRuntimePackPreload(input: {
             firstSurface,
             assetUrl: assetId => bridge.assetUrl(assetId),
             onProgress: (settled, total) => runtimeShellBootReporter.progress("preload", settled, total),
+            // The first frame waits for the first screen and nothing else; the rest of the pack keeps
+            // warming behind it. See `preloadRuntimePackAssets` for why the wait is no longer the pack.
+            onFirstSurfaceSettled: () => {
+                runtimeShellBootReporter.end("preload");
+                if (!cancelled) {
+                    setState({ key: preloadKey, ready: true, result: null });
+                }
+            },
         }).then(result => {
-            runtimeShellBootReporter.end("preload");
             if (cancelled) {
                 return;
             }

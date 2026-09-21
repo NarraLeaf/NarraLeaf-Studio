@@ -15,7 +15,9 @@ const { WINDOW_PROJECT_MISMATCH_CODE } = await import("@shared/types/window");
 const { WorkingFileRefusedError, readWorkingSetFile } = await import("../../vcs/workingFile");
 const {
     VcsAbortMergeHandler,
+    VcsAddServerHandler,
     VcsCheckpointHandler,
+    VcsCloneHandler,
     VcsCommitHandler,
     VcsCompleteMergeHandler,
     VcsDiffRevisionsHandler,
@@ -47,6 +49,7 @@ const {
     VcsSyncHandler,
     VcsUnresolveConflictsHandler,
 } = await import("./vcsAction");
+const { VcsUseServerSessionHandler } = await import("./vcsServerSessionAction");
 
 type AppWindowLike = Parameters<InstanceType<typeof VcsReadWorkingFileHandler>["handle"]>[0];
 
@@ -348,15 +351,24 @@ describe("the version-control writers take their project from the window", () =>
  * sends it - from a window holding no project at all, so an assertion there would refuse the only
  * way to make a project on a server. That is asserted here so the difference stays a decision.
  *
- * **None of this closes the family**, and the tests below say nothing about it: the address is a
- * payload field on `publishProject` and publishing rewrites the project's own remote; `signIn`'s
- * `authUrl` overrides the address its token names; and a session belongs to an account and a server
- * origin rather than to a project, so pointing two projects at one origin shares one credential.
+ * Which account a request spends is the manager's question - a sign-in serves a project only once
+ * the author has said so, per (server, project) pair - and is pinned in `serverSessionUse.test.ts`.
+ * What is pinned here is the half only a handler can see: that whatever a request says about "the
+ * project this is for" comes from the window, never from the payload, wherever it decides which
+ * project a sign-in is recorded for.
  */
 describe("the handlers that reach a server", () => {
     function makeServerWindow(projectPath?: string) {
         const call = () => vi.fn(async (_projectPath: string, ..._rest: unknown[]) => ({}));
-        const manager = { push: call(), signIn: call(), publishProject: call() };
+        const manager = {
+            push: call(),
+            signIn: call(),
+            publishProject: call(),
+            addServer: vi.fn(async (_options: Record<string, unknown>) => ({ session: {}, servers: [] })),
+            cloneRepository: call(),
+            getServerSession: call(),
+            useServerSession: call(),
+        };
         const app = { getVcsManager: () => manager };
         const window = {
             app,
@@ -440,6 +452,118 @@ describe("the handlers that reach a server", () => {
 
             expect(result.success).toBe(true);
             expect(manager.publishProject.mock.calls[0][0]).toBe(theirs);
+            // Said to the manager as the launcher's act, which it holds to a project with no
+            // server yet and records the sign-in for.
+            expect(manager.publishProject.mock.calls[0][3]).toEqual({ newProject: true });
+        });
+
+        it("publishes only its own project from a window that has one", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            const result = await new VcsPublishProjectHandler().handle(window, {
+                projectPath: theirs,
+                remoteOrigin: "lore://server.example:7000",
+                name: "a-game",
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(manager.publishProject).not.toHaveBeenCalled();
+        });
+
+        it("asks for its own project as the project's act, not the launcher's", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            await new VcsPublishProjectHandler().handle(window, {
+                projectPath: mine,
+                remoteOrigin: "lore://server.example:7000",
+                name: "a-game",
+            });
+
+            expect(manager.publishProject.mock.calls[0][0]).toBe(mine);
+            expect(manager.publishProject.mock.calls[0][3]).toEqual({ newProject: false });
+        });
+    });
+
+    describe("vcs.getServerSession", () => {
+        it("answers with where the project stands, not only the sign-in it uses", async () => {
+            const { window, manager } = makeServerWindow(mine);
+            const standing = { session: null, available: { remoteOrigin: "lore://x" }, declined: true };
+            manager.getServerSession.mockResolvedValue(standing);
+
+            const result = await new VcsGetServerSessionHandler().handle(window, { projectPath: mine });
+
+            expect(result.success && result.data).toEqual(standing);
+        });
+    });
+
+    describe("vcs.useServerSession", () => {
+        it("puts the question about the window's own project", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            const result = await new VcsUseServerSessionHandler().handle(window, { projectPath: mine + path.sep });
+
+            expect(result.success).toBe(true);
+            expect(manager.useServerSession.mock.calls[0][0]).toBe(mine);
+        });
+
+        it("will not put it about a project this window does not have open", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            const result = await new VcsUseServerSessionHandler().handle(window, { projectPath: theirs });
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(manager.useServerSession).not.toHaveBeenCalled();
+        });
+
+        it("will not put it from a window with no project", async () => {
+            const { window, manager } = makeServerWindow();
+
+            const result = await new VcsUseServerSessionHandler().handle(window, { projectPath: theirs });
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(manager.useServerSession).not.toHaveBeenCalled();
+        });
+    });
+
+    /**
+     * Signing in from inside a project is that project's answer to the sign-in question - so the
+     * project it answers for has to be the window's. There is no project field in this payload to
+     * believe, and there must never be one.
+     */
+    describe("vcs.addServer", () => {
+        it("records a sign-in made from a project's window for that project", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            await new VcsAddServerHandler().handle(window, { authUrl: "", remoteUrl: "", token: "t" });
+
+            expect(manager.addServer.mock.calls[0][0]).toMatchObject({ forProject: mine });
+        });
+
+        it("records one made from Settings or the launcher for no project", async () => {
+            const { window, manager } = makeServerWindow();
+
+            await new VcsAddServerHandler().handle(window, { authUrl: "", remoteUrl: "", token: "t" });
+
+            expect(manager.addServer.mock.calls[0][0]).not.toHaveProperty("forProject");
+        });
+    });
+
+    describe("vcs.clone", () => {
+        it("fetches with the sign-in from the wizard, which has no project of its own", async () => {
+            const { window, manager } = makeServerWindow();
+
+            await new VcsCloneHandler().handle(window, { url: "lore://server.example:7000/a-game", destination: theirs });
+
+            expect(manager.cloneRepository.mock.calls[0][2]).toEqual({ useSignIn: true });
+        });
+
+        it("fetches an anonymous copy for a project's window", async () => {
+            const { window, manager } = makeServerWindow(mine);
+
+            await new VcsCloneHandler().handle(window, { url: "lore://server.example:7000/a-game", destination: theirs });
+
+            expect(manager.cloneRepository.mock.calls[0][2]).toEqual({ useSignIn: false });
         });
     });
 });

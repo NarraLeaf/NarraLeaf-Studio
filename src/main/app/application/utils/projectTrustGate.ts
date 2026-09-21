@@ -54,6 +54,15 @@ export const DISTRUSTED_OPERATIONS = [
      * at a project's files is exactly what an author does before deciding to trust it.
      */
     "script editor",
+    /**
+     * Sending to, getting from, checking, connecting to or signing in to the project's server.
+     *
+     * A request to an address the project chose: the server is whatever the project's own
+     * `.lore/config.toml` names, and a copy of somebody else's project names somebody else's
+     * server. Gated in `VcsManager`, on the path the handler has already checked is the calling
+     * window's own project.
+     */
+    "server connection",
 ] as const;
 
 export type DistrustedOperation = typeof DISTRUSTED_OPERATIONS[number];

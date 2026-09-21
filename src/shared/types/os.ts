@@ -50,6 +50,8 @@ export enum FsRejectErrorCode {
     NOT_A_FILE = "NOT_A_FILE",
     NOT_A_DIR = "NOT_A_DIR",
     IO_ERROR = "IO_ERROR",
+    /** The volume is full (`ENOSPC`). Its own code because it is the one an author can clear by hand. */
+    NO_SPACE = "NO_SPACE",
     IPC_ERROR = "IPC_ERROR",
     INVALID_JSON = "INVALID_JSON",
     UNKNOWN = "UNKNOWN",

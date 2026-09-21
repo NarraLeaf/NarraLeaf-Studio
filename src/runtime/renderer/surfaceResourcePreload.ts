@@ -9,6 +9,7 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import {
+    collectBlueprintWarmupAssets,
     collectSurfaceWarmupAssetIds,
     collectWarmupAssetIds,
     warmInterfaceAssets,
@@ -37,6 +38,7 @@ function packSource(pack: GameRuntimePackV1): SurfaceWarmupSource {
         uidoc: pack.bundle.ui.uidoc,
         fontAssetIds: (pack.bundle.fonts ?? []).map(entry => entry.assetId),
         manifestIds: packManifestIds(pack),
+        blueprintDocument: pack.bundle.ui.localBlueprints,
     };
 }
 
@@ -51,12 +53,22 @@ export function collectRuntimePackAssetIds(pack: GameRuntimePackV1, firstSurface
     return collectWarmupAssetIds(packSource(pack), firstSurface.id);
 }
 
+/** Every asset this pack's blueprints name, with the kind each pin carries. */
+export function collectRuntimeBlueprintAssets(pack: GameRuntimePackV1): ReturnType<typeof collectBlueprintWarmupAssets> {
+    return collectBlueprintWarmupAssets(packSource(pack));
+}
+
+/**
+ * Warm the pack's interface. `onFirstSurfaceSettled` is when the first frame may show; the rest
+ * keeps warming behind it - see `warmInterfaceAssets`.
+ */
 export function preloadRuntimePackAssets(input: {
     pack: GameRuntimePackV1;
     firstSurface: UISurface;
     assetUrl: (assetId: string) => string;
     timeoutMs?: number;
     onProgress?: RuntimePreloadProgress;
+    onFirstSurfaceSettled?: (outcome: { complete: boolean }) => void;
 }): Promise<RuntimeSurfacePreloadResult> {
     return warmInterfaceAssets({
         source: packSource(input.pack),
@@ -66,5 +78,6 @@ export function preloadRuntimePackAssets(input: {
         loadFont: loadRuntimeFontFace,
         ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
         ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+        ...(input.onFirstSurfaceSettled ? { onFirstSurfaceSettled: input.onFirstSurfaceSettled } : {}),
     });
 }

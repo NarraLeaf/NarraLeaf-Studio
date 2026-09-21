@@ -388,7 +388,7 @@ import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/charac
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
 import type { BlueprintInputActionHostApi } from "./inputActionNodes";
-import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
+import type { BehaviorGraphValueExecution, BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -493,6 +493,48 @@ export type DataPinResolveRuntime = {
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
+
+/** The part of an executing node's context a data-pin read needs: where it is, and what it is running in. */
+export type DataPinReadingContext = Pick<
+    BehaviorNodeExecutionContext,
+    "graph" | "node" | "params" | "blueprintLocals" | "hostAdapter" | "eventPayload" | "listItemScope" | "instanceKey" | "executionOwner" | "valueExecution"
+>;
+
+/**
+ * The runtime half of a data-pin read, taken whole from the context of the node doing the reading.
+ *
+ * The one place that copies it. The node modules used to spell this object out for themselves -
+ * thirty-nine copies - and the copies had already drifted twice: `If` read a row's field as nothing
+ * because its copy predated `listItemScope`, and twenty-five copies predated `valueExecution`, so a
+ * widget getter wired into one of those nodes inside a value binding never told the binding to
+ * re-run. Each field is a thing some resolver below reads, and a field left off one copy is a pin
+ * that reads wrong in exactly the graphs that need it.
+ *
+ * Typed as every key of {@link DataPinResolveRuntime}, so a field added there does not compile until
+ * it is carried here too. `dataPinRuntimeIsBuiltOnce.test.ts` keeps this the only place it is built.
+ */
+export function dataPinRuntimeOf(ctx: DataPinReadingContext): DataPinResolveRuntime {
+    const runtime: { [K in keyof Required<DataPinResolveRuntime>]: DataPinResolveRuntime[K] } = {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+        valueExecution: ctx.valueExecution,
+    };
+    return runtime;
+}
+
+/**
+ * The value feeding one of the executing node's own input pins - the wired edge, or the literal
+ * typed into the node when nothing is wired.
+ *
+ * What a node module calls to read its inputs, and what the executor installs as `ctx.resolveInput`,
+ * so a built-in node and a plugin node read a pin the same way.
+ */
+export function resolveNodeInput(ctx: DataPinReadingContext, pinId: string): unknown {
+    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, dataPinRuntimeOf(ctx));
+}
 
 /**
  * The address every widget getter below reads from: the element, in the drawing asking about it.

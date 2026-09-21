@@ -349,6 +349,15 @@ export const workspace = {
         // The project is pointed at a server this machine has no account on. Said as a state,
         // with the row that fixes it directly underneath.
         noAccountHere: "This machine has no account on that server.",
+        // The machine has an account on that server and this project does not use it: never asked,
+        // or answered no. Said as a state, with the row that changes it underneath.
+        signInUnused: "This project does not use the sign-in for that server.",
+        // Opens the sign-in question for this project. The ellipsis marks a control that opens a
+        // window of its own.
+        useSignIn: "Use the sign-in as {name}…",
+        // On the sign-out control beside "Signed in as". Signing out here is this project's and no
+        // other's; Settings is where the sign-in leaves the machine.
+        signOutHint: "Only this project is signed out. Other projects that use this sign-in are not affected.",
         // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
         // is this catalog's mark for a control that opens somewhere else.
         manage: "Manage servers…",
@@ -750,13 +759,27 @@ export const workspace = {
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
         // "Storage" console channel carries. A failed write retries on a backoff that never gives
-        // up, so the wording says "still trying" rather than "lost".
+        // up, so the wording says "still trying" rather than "lost". The toast carries what the disk
+        // said only as a `reason` below: the system's own message is English, names the scratch file
+        // an atomic write renames from, and goes to the console line instead.
         save: {
             failedTitle: "Could not save {file}",
-            failedDetailTransient: "Still retrying in the background. {error}",
-            failedDetailPermanent: "Retrying fails until this is fixed. {error}",
+            failedDetailTransient: "Still retrying in the background.",
+            failedDetailPermanent: "Retrying fails until this is fixed.",
+            // `{retry}` is one of the two sentences above.
+            failedDetailWithReason: "{reason} {retry}",
+            // What the disk said, for the failures an author can do something about. Any other
+            // failure is named only in the console line.
+            reason: {
+                permissionDenied: "The file is read-only, or Studio is not allowed to write to it.",
+                folderMissing: "The folder it belongs in no longer exists.",
+                diskFull: "The disk is full.",
+            },
             retry: "Retry now",
             consoleFailed: "write failed ({code}, attempt {attempt}): {path} · {error}",
+            // A file whose writer reports its own failures and keeps nothing to try again (the project
+            // file): no toast from here, and no attempt count, because there is no second attempt.
+            consoleFailedNotRetried: "write failed ({code}), not retried: {path} · {error}",
             consoleRecovered: "write succeeded: {path}",
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
@@ -1222,6 +1245,9 @@ export const workspace = {
                     // because what the author does next is connect to that project.
                     alreadyPublished: "This project is already on that server as {name}, and that server gives a project one name.",
                     unknown: "That server did not record the project.",
+                    // The author said this project does not use the sign-in for that server, or
+                    // closed the question. Nothing was sent.
+                    declined: "This project does not use the sign-in for that server, so the project was not recorded.",
                     // Not a refusal: this project has been on that server before - a copied
                     // project folder carries the same repository - and it is registered under the
                     // name it was published as. Said rather than done quietly, because the author

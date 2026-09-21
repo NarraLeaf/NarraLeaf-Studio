@@ -5,6 +5,7 @@ import { devModeSavePreviewAssetId } from "@shared/types/devModeSave";
 import {
     AssetResolutionLedger,
     classifyAssetFailure,
+    describeAssetFieldFailure,
     describeAssetResolutionFailure,
     isAssetReferenceShaped,
     type AssetResolutionFailure,
@@ -114,6 +115,39 @@ describe("describeAssetResolutionFailure", () => {
                 expect(sentence, `${locale}: ${sentence}`).not.toMatch(/[{}]/);
                 expect(sentence).toContain("Art");
             }
+        }
+    });
+});
+
+// The line under an image, background or font field in the inspector and the scene card. It used to
+// interpolate the lookup's own error, which is `Asset not found: <uuid>`.
+describe("describeAssetFieldFailure", () => {
+    const en = createTranslator("en").t;
+
+    it("says what became of the asset, in the same three kinds as the issue list", () => {
+        expect(describeAssetFieldFailure(GONE, null, en)).toBe("This asset is no longer in this project.");
+        expect(describeAssetFieldFailure(CASTLE, "castle.png", en)).toBe("“castle.png” could not be read.");
+        expect(describeAssetFieldFailure("[object Object]", null, en)).toBe("This value is not an asset.");
+        expect(describeAssetFieldFailure(characterAvatarAssetId("character-1", "happy"), null, en))
+            .toBe("This asset could not be read.");
+    });
+
+    it("never prints the value asked for, in any language", () => {
+        for (const locale of ["en", "zh", "ja"] as const) {
+            const t = createTranslator(locale).t;
+            const sentences = [
+                describeAssetFieldFailure(GONE, null, t),
+                describeAssetFieldFailure(CASTLE, "castle.png", t),
+                describeAssetFieldFailure(CASTLE, null, t),
+                describeAssetFieldFailure("[object Object]", null, t),
+            ];
+            for (const sentence of sentences) {
+                expect(sentence, `${locale}: ${sentence}`).not.toMatch(UUID);
+                expect(sentence, `${locale}: ${sentence}`).not.toContain("[object Object]");
+                expect(sentence, `${locale}: ${sentence}`).not.toMatch(/app:\/\//);
+                expect(sentence, `${locale}: ${sentence}`).not.toMatch(/[{}]/);
+            }
+            expect(sentences[1]).toContain("castle.png");
         }
     });
 });

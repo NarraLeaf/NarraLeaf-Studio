@@ -192,6 +192,36 @@ export function describeAssetResolutionFailure(
     }
 }
 
+/**
+ * The same failure, said on the line under the field that names the asset.
+ *
+ * The inspector and the scene card put that line beneath an image, background or font field when
+ * what it names does not come. It is the same three facts as the issue list and is classified the
+ * same way, but the field it sits under already is the element and the property the issue list has
+ * to spell out - so the line says only what became of the asset. Like the issue list, it never
+ * contains the value asked for.
+ *
+ * `knownName` is what the project calls the thing asked for - an asset, or a set of them - or null
+ * when it has no record by that id. An editor field only ever sees a lookup fail (nothing there has
+ * a URL that fails to decode), so the classification is asked about the resolve step.
+ */
+export function describeAssetFieldFailure(requested: string, knownName: string | null, t: Translate): string {
+    const { kind, assetName } = classifyAssetFailure(
+        { requested, stage: "resolve" },
+        knownName ? { [requested]: knownName } : undefined,
+    );
+    switch (kind) {
+        case "missing":
+            return t("assets.reference.missing");
+        case "notAsset":
+            return t("assets.reference.notAsset");
+        case "unreadable":
+            return assetName
+                ? t("assets.reference.unreadableNamed", { asset: assetName })
+                : t("assets.reference.unreadable");
+    }
+}
+
 /** One key per slot drawing position, the same for every mount of it. */
 function siteKey(site: AssetResolutionSite): string {
     return `${site.surfaceId}\u0000${site.elementId ?? ""}\u0000${site.slot}\u0000${site.instanceKey}`;

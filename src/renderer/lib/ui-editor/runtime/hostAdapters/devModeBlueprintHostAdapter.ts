@@ -478,6 +478,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             callerComponentId: input.callerComponentId,
             callerComponentParams: input.callerComponentParams,
             callerInstanceKey: input.callerInstanceKey,
+            callerListItemScope: input.callerListItemScope,
+            document,
             runtimeScopeId: effectiveRuntimeScopeId,
             hostAdapter: adapter,
             debug,

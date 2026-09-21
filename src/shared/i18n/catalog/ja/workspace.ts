@@ -333,6 +333,9 @@ export const workspace = {
         destination: "サーバー",
         projectOnServer: "プロジェクト名：{name}",
         noAccountHere: "この端末はこのサーバーのアカウントを持っていない",
+        signInUnused: "このプロジェクトはこのサーバーのサインインを使っていない",
+        useSignIn: "{name} のサインインを使う…",
+        signOutHint: "サインアウトするのはこのプロジェクトだけで、このサインインを使うほかのプロジェクトには影響しない",
         // 設定を開く。サーバーの追加とサインアウトはそこで行う。
         manage: "サーバーを管理…",
         // サーバーに尋ねた結果。対処できることがあるときだけ表示する。問題のない
@@ -705,10 +708,17 @@ export const workspace = {
         // 「まだ試している」と書く。
         save: {
             failedTitle: "{file} を保存できなかった",
-            failedDetailTransient: "裏で再試行を続けている。{error}",
-            failedDetailPermanent: "これが直るまで、再試行しても変わらない。{error}",
+            failedDetailTransient: "裏で再試行を続けている",
+            failedDetailPermanent: "これが直るまで、再試行しても変わらない",
+            failedDetailWithReason: "{reason}。{retry}",
+            reason: {
+                permissionDenied: "ファイルが読み取り専用か、Studio に書き込み権限がない",
+                folderMissing: "保存先のフォルダーが存在しない",
+                diskFull: "ディスクの空き容量がない",
+            },
             retry: "いますぐ再試行",
             consoleFailed: "書き込み失敗（{code}、{attempt} 回目）：{path} · {error}",
+            consoleFailedNotRetried: "書き込み失敗（{code}、再試行なし）：{path} · {error}",
             consoleRecovered: "書き込み成功：{path}",
             flushFailed: "{label} を書き出せなかった：{error}",
             // 読む側。ディスクにはあるが解釈できないドキュメント。「Studio が作業を食べたのか」という
@@ -1054,6 +1064,7 @@ export const workspace = {
                     // プロジェクトへ接続することなので、名前を出す。
                     alreadyPublished: "このプロジェクトはそのサーバーでは既に {name} という名前で、そのサーバーは一つのプロジェクトに一つの名前しか認めない。",
                     unknown: "そのサーバーはプロジェクトを登録しなかった。",
+                    declined: "このプロジェクトはこのサーバーのサインインを使っていないため、プロジェクトは登録されなかった。",
                     // 拒否ではない。このプロジェクトは以前そのサーバーに置かれていて（複製した
                     // プロジェクトフォルダは同じリポジトリを持ち歩く）、そのときの名前で登録されている。
                     // 作者が入力した名前とアドレスの名前が違うので、黙って済ませない。

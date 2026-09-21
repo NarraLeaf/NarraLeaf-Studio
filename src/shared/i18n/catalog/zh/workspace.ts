@@ -320,6 +320,9 @@ export const workspace = {
         destination: "服务器",
         projectOnServer: "项目名：{name}",
         noAccountHere: "本机在该服务器上没有账号",
+        signInUnused: "该项目未使用此服务器的登录",
+        useSignIn: "使用 {name} 的登录…",
+        signOutHint: "仅该项目退出登录，使用此登录的其他项目不受影响",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
         // 向服务器问到的结果，只在有事可做时才画出来。一切正常的项目什么都不写：
@@ -673,10 +676,17 @@ export const workspace = {
         // 失败的写入会按退避阶梯一直重试、永不放弃，所以文案说的是「仍在重试」而不是「已丢失」。
         save: {
             failedTitle: "无法保存 {file}",
-            failedDetailTransient: "正在后台继续重试；{error}",
-            failedDetailPermanent: "在此问题修复之前重试无效；{error}",
+            failedDetailTransient: "正在后台继续重试",
+            failedDetailPermanent: "在此问题修复之前重试无效",
+            failedDetailWithReason: "{reason}；{retry}",
+            reason: {
+                permissionDenied: "文件为只读，或 Studio 没有写入权限",
+                folderMissing: "所在的文件夹已不存在",
+                diskFull: "磁盘已满",
+            },
             retry: "立即重试",
             consoleFailed: "写入失败（{code}，第 {attempt} 次尝试）：{path} · {error}",
+            consoleFailedNotRetried: "写入失败（{code}，不重试）：{path} · {error}",
             consoleRecovered: "写入成功：{path}",
             flushFailed: "{label} 刷盘失败：{error}",
             // 读取侧：文件在盘上，但读不懂。文案先说「没发生什么」——这时作者最怕的是「Studio 把我的东西吃了」。
@@ -1008,6 +1018,7 @@ export const workspace = {
                     // 一个仓库只能有一个名字。要说出名字，因为作者接下来要做的就是连到那个项目。
                     alreadyPublished: "这个项目在那台服务器上已经叫 {name}，而这台服务器规定一个项目只有一个名字。",
                     unknown: "该服务器未注册此项目。",
+                    declined: "该项目未使用此服务器的登录，项目未被注册。",
                     // 不是拒绝：这个项目以前就在那台服务器上（复制过来的项目目录带着同一个仓库），
                     // 而它是以当初发布的名字登记的。要说出来，因为作者输入的名字并不是地址里的那个。
                     connectedAs: "这个项目在那台服务器上已经叫 {name}，已按这个名字连接。用「发送」把本机的版本放到服务器那份之上。",
