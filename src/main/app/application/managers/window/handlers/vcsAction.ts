@@ -30,7 +30,7 @@ import type {
 } from "@shared/types/vcs";
 import { readLocalRepository } from "../../vcs/localRepositories";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
-import { requireWindowProject } from "../../../utils/windowProject";
+import { requireWindowProject, requireWindowProjectOrWriteGrant } from "../../../utils/windowProject";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -59,18 +59,32 @@ import { IPCHandler } from "./IPCHandler";
  *
  * # Which project a request may be about
  *
- * The handlers that overwrite the working tree out of history take their project from the window
- * with {@link requireWindowProject}: {@link VcsRestoreRevisionHandler}, {@link VcsSyncHandler}, and
- * the four merge handlers that put bytes on disk - {@link VcsResolveConflictsHandler},
- * {@link VcsCompleteMergeHandler}, {@link VcsRestartConflictsHandler} and
- * {@link VcsAbortMergeHandler}. What they have in common is the reason: each replaces the author's
- * current files with content out of history, and there is no undo for that - the previous bytes
- * were never committed, so nothing holds them. A payload naming another project therefore does not
- * merely act on the wrong project, it destroys work in it.
+ * The window's, not the payload's. Every handler here that names a project takes it through
+ * {@link requireWindowProject}, which holds the payload against the project the main process opened
+ * the window on and answers with the window's own spelling. The renderer only has the string because
+ * it read it back out of those props: `VersionControlService` sends every one of these calls with the
+ * workspace's own project, and the only other senders - the workspace's startup preflight asking for
+ * the merge state, and its recovery shell - are the same window asking about the same project.
  *
- * {@link VcsPushHandler} and {@link VcsSignInHandler} take theirs from the window too, on the
- * weaker ground that their only caller is the workspace's own version rail and it has never had
- * another project to name.
+ * What a foreign path would have bought differs a great deal, and is worth knowing when reading any
+ * one handler. {@link VcsRestoreRevisionHandler}, {@link VcsSyncHandler} and the four merge handlers
+ * that put bytes on disk replace the author's files with content out of history, and the bytes they
+ * replace were never committed, so nothing holds them - a request about another project destroys work
+ * in it. {@link VcsCommitHandler} and {@link VcsCheckpointHandler} add a revision to it, after settling
+ * the pending saves of whichever window has it open. Everything else reads: any file at any revision,
+ * the history with its authors, the merge in progress, which server the project reports to and who is
+ * signed in there. A scan for status is not even a pure read - it records new directories into staged
+ * state. None of that is anything a window may learn or do about a project it was not opened on.
+ *
+ * Two handlers are exceptions, each for its own reason:
+ *
+ *  - {@link VcsInitRepositoryHandler} is also asked by the project wizard, about the folder it has just
+ *    written a project into, from a window that has no project. It is bounded instead by
+ *    `requireWindowProjectOrWriteGrant`: the window's own project if it has one, and otherwise only a
+ *    folder the window was granted to write.
+ *  - {@link VcsPublishProjectHandler} is also asked by the launcher's server tab, about a project the
+ *    wizard has just made for it, again from a window with no project. It is left open knowingly - see
+ *    its own note.
  *
  * # The assertion does NOT close the handlers that talk to a server
  *
@@ -93,16 +107,6 @@ import { IPCHandler } from "./IPCHandler";
  *
  * So this family is not closed and nothing here should be read as saying it is. Closing it needs a
  * decision about what a server session is scoped to, which is a larger question than any handler.
- *
- * Two groups are deliberately still open, and they are different problems rather than one backlog:
- *
- *  - The reads, and the handlers that only add a revision. Naming another project there is still
- *    wrong, but it discloses or adds rather than destroys.
- *  - {@link VcsInitRepositoryHandler} and {@link VcsPublishProjectHandler}, which must never be
- *    guarded this way at all: the project wizard legitimately names a directory that is no window's
- *    project, and the launcher's server tab publishes a project the wizard has just made for it,
- *    from a window with no project of its own. Both want a gate on where the request may reach,
- *    which is not the question this one answers.
  */
 
 /**
@@ -128,7 +132,7 @@ export class VcsIsRepositoryHandler extends IPCHandler<IPCEventType.vcsIsReposit
         { projectPath }: IPCEvents[IPCEventType.vcsIsRepository]["data"],
     ): Promise<RequestStatus<{ isRepository: boolean }>> {
         return this.tryUse(async () => ({
-            isRepository: await window.app.getVcsManager().isRepository(projectPath),
+            isRepository: await window.app.getVcsManager().isRepository(requireWindowProject(window, projectPath)),
         }));
     }
 }
@@ -141,7 +145,7 @@ export class VcsGetInfoHandler extends IPCHandler<IPCEventType.vcsGetInfo> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetInfo]["data"],
     ): Promise<RequestStatus<VcsRepositoryInfo>> {
-        return this.tryUse(() => window.app.getVcsManager().getInfo(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getInfo(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -161,7 +165,10 @@ export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRep
         window: AppWindow,
         { projectPath, options }: IPCEvents[IPCEventType.vcsInitRepository]["data"],
     ): Promise<RequestStatus<VcsRepositoryInfo>> {
-        return this.tryUse(() => window.app.getVcsManager().initRepository(projectPath, options ?? {}));
+        // Not bounded to the window's project alone: the project wizard asks this about the folder it
+        // has just written a project into, from a window that has no project. See the helper.
+        return this.tryUse(async () => window.app.getVcsManager()
+            .initRepository(await requireWindowProjectOrWriteGrant(window, projectPath), options ?? {}));
     }
 }
 
@@ -182,7 +189,7 @@ export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
         window: AppWindow,
         { projectPath, options }: IPCEvents[IPCEventType.vcsCommit]["data"],
     ): Promise<RequestStatus<VcsCommitResult>> {
-        return this.tryUse(() => window.app.getVcsManager().commit(projectPath, options ?? {}));
+        return this.tryUse(() => window.app.getVcsManager().commit(requireWindowProject(window, projectPath), options ?? {}));
     }
 }
 
@@ -203,7 +210,7 @@ export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint>
         { projectPath, reason }: IPCEvents[IPCEventType.vcsCheckpoint]["data"],
     ): Promise<RequestStatus<{ revision: VcsCommitResult | null }>> {
         return this.tryUse(async () => ({
-            revision: await window.app.getVcsManager().checkpoint(projectPath, reason),
+            revision: await window.app.getVcsManager().checkpoint(requireWindowProject(window, projectPath), reason),
         }));
     }
 }
@@ -261,7 +268,7 @@ export class VcsGetStatusHandler extends IPCHandler<IPCEventType.vcsGetStatus> {
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetStatus]["data"],
     ): Promise<RequestStatus<VcsStatus>> {
-        return this.tryUse(() => window.app.getVcsManager().getStatus(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getStatus(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -274,7 +281,8 @@ export class VcsGetHistoryHandler extends IPCHandler<IPCEventType.vcsGetHistory>
         { projectPath, limit, includeDetails }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
     ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
         return this.tryUse(async () => ({
-            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeDetails }),
+            entries: await window.app.getVcsManager()
+                .getHistory(requireWindowProject(window, projectPath), limit ?? 0, { includeDetails }),
         }));
     }
 }
@@ -288,7 +296,10 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
         request: IPCEvents[IPCEventType.vcsReadBlob]["data"],
     ): Promise<RequestStatus<{ contentBase64: string }>> {
         return this.tryUse(async () => {
-            const bytes = await window.app.getVcsManager().readBlob(request);
+            const bytes = await window.app.getVcsManager().readBlob({
+                ...request,
+                projectPath: requireWindowProject(window, request.projectPath),
+            });
             return { contentBase64: bytes.toString("base64") };
         });
     }
@@ -345,7 +356,8 @@ export class VcsReadRevisionDocumentsHandler extends IPCHandler<IPCEventType.vcs
         { projectPath, revision, paths }: IPCEvents[IPCEventType.vcsReadRevisionDocuments]["data"],
     ): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>> {
         return this.tryUse(async () => {
-            const read = await window.app.getVcsManager().readRevisionDocuments(projectPath, revision, { paths });
+            const read = await window.app.getVcsManager()
+                .readRevisionDocuments(requireWindowProject(window, projectPath), revision, { paths });
             // An array rather than a record: a repository-relative path is arbitrary text
             // and `__proto__` as an object key is not something to find out about later.
             return {
@@ -367,7 +379,7 @@ export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetCha
         { projectPath, from, to }: IPCEvents[IPCEventType.vcsGetChangedPaths]["data"],
     ): Promise<RequestStatus<{ paths: string[] }>> {
         return this.tryUse(async () => ({
-            paths: await window.app.getVcsManager().getChangedPaths(projectPath, from, to),
+            paths: await window.app.getVcsManager().getChangedPaths(requireWindowProject(window, projectPath), from, to),
         }));
     }
 }
@@ -391,7 +403,7 @@ export class VcsDiffRevisionsHandler extends IPCHandler<IPCEventType.vcsDiffRevi
         window: AppWindow,
         { projectPath, from, to }: IPCEvents[IPCEventType.vcsDiffRevisions]["data"],
     ): Promise<RequestStatus<VcsRevisionDiffResult>> {
-        return this.tryUse(() => window.app.getVcsManager().diffRevisions(projectPath, from, to));
+        return this.tryUse(() => window.app.getVcsManager().diffRevisions(requireWindowProject(window, projectPath), from, to));
     }
 }
 
@@ -412,7 +424,7 @@ export class VcsDiffWorkingTreeHandler extends IPCHandler<IPCEventType.vcsDiffWo
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsDiffWorkingTree]["data"],
     ): Promise<RequestStatus<VcsWorkingTreeDiffResult>> {
-        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -424,7 +436,8 @@ export class VcsGetThreeWayHandler extends IPCHandler<IPCEventType.vcsGetThreeWa
         window: AppWindow,
         { projectPath, mine, theirs, path }: IPCEvents[IPCEventType.vcsGetThreeWay]["data"],
     ): Promise<RequestStatus<VcsThreeWayResult>> {
-        return this.tryUse(() => window.app.getVcsManager().getThreeWay(projectPath, mine, theirs, path));
+        return this.tryUse(() => window.app.getVcsManager()
+            .getThreeWay(requireWindowProject(window, projectPath), mine, theirs, path));
     }
 }
 
@@ -444,7 +457,7 @@ export class VcsGetRemoteHandler extends IPCHandler<IPCEventType.vcsGetRemote> {
         { projectPath }: IPCEvents[IPCEventType.vcsGetRemote]["data"],
     ): Promise<RequestStatus<{ url: string | null }>> {
         return this.tryUse(async () => ({
-            url: await window.app.getVcsManager().getRemote(projectPath),
+            url: await window.app.getVcsManager().getRemote(requireWindowProject(window, projectPath)),
         }));
     }
 }
@@ -465,8 +478,9 @@ export class VcsSetRemoteHandler extends IPCHandler<IPCEventType.vcsSetRemote> {
         { projectPath, url }: IPCEvents[IPCEventType.vcsSetRemote]["data"],
     ): Promise<RequestStatus<{ url: string | null }>> {
         return this.tryUse(async () => {
-            await window.app.getVcsManager().setRemote(projectPath, url);
-            return { url: await window.app.getVcsManager().getRemote(projectPath) };
+            const own = requireWindowProject(window, projectPath);
+            await window.app.getVcsManager().setRemote(own, url);
+            return { url: await window.app.getVcsManager().getRemote(own) };
         });
     }
 }
@@ -487,7 +501,7 @@ export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncSt
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"],
     ): Promise<RequestStatus<VcsSyncState>> {
-        return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getSyncState(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -508,7 +522,7 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
         { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"],
     ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
         return this.tryUse(async () => ({
-            session: await window.app.getVcsManager().getServerSession(projectPath),
+            session: await window.app.getVcsManager().getServerSession(requireWindowProject(window, projectPath)),
         }));
     }
 }
@@ -591,7 +605,7 @@ export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
         { projectPath }: IPCEvents[IPCEventType.vcsSignOut]["data"],
     ): Promise<RequestStatus<{ session: null }>> {
         return this.tryUse(async () => {
-            await window.app.getVcsManager().signOut(projectPath);
+            await window.app.getVcsManager().signOut(requireWindowProject(window, projectPath));
             return { session: null };
         });
     }
@@ -863,7 +877,7 @@ export class VcsGetMergeBaseHandler extends IPCHandler<IPCEventType.vcsGetMergeB
         { projectPath, a, b }: IPCEvents[IPCEventType.vcsGetMergeBase]["data"],
     ): Promise<RequestStatus<{ base?: RevisionId }>> {
         return this.tryUse(async () => ({
-            base: await window.app.getVcsManager().getMergeBase(projectPath, a, b),
+            base: await window.app.getVcsManager().getMergeBase(requireWindowProject(window, projectPath), a, b),
         }));
     }
 }
@@ -887,7 +901,7 @@ export class VcsGetMergeStateHandler extends IPCHandler<IPCEventType.vcsGetMerge
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.vcsGetMergeState]["data"],
     ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().getMergeState(projectPath));
+        return this.tryUse(() => window.app.getVcsManager().getMergeState(requireWindowProject(window, projectPath)));
     }
 }
 
@@ -911,7 +925,7 @@ export class VcsGetMergeDocumentHandler extends IPCHandler<IPCEventType.vcsGetMe
         window: AppWindow,
         { projectPath, path }: IPCEvents[IPCEventType.vcsGetMergeDocument]["data"],
     ): Promise<RequestStatus<VcsMergeDocument>> {
-        return this.tryUse(() => window.app.getVcsManager().getMergeDocument(projectPath, path));
+        return this.tryUse(() => window.app.getVcsManager().getMergeDocument(requireWindowProject(window, projectPath), path));
     }
 }
 
@@ -980,7 +994,7 @@ export class VcsUnresolveConflictsHandler extends IPCHandler<IPCEventType.vcsUnr
         window: AppWindow,
         { projectPath, paths }: IPCEvents[IPCEventType.vcsUnresolveConflicts]["data"],
     ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(projectPath, paths));
+        return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(requireWindowProject(window, projectPath), paths));
     }
 }
 
