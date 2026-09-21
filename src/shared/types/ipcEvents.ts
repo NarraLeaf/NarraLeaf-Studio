@@ -514,8 +514,11 @@ export type RequestStatus<T> = {
     code?: string;
 };
 
+/**
+ * Which project's Dev Mode persistence store a request is about: the window's own, by path. The
+ * identifier the store is named by is the main process's to read - see `DevModeSaveProjectRef`.
+ */
 export type BlueprintPersistenceProjectRef = {
-    projectIdentifier?: string;
     projectPath: string;
 };
 

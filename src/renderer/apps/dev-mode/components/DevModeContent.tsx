@@ -868,18 +868,12 @@ export function DevModeContent(props: DevModeContentProps) {
         return { kind: "surface" };
     }, [entry]);
 
-    const projectRef = useMemo<BlueprintPersistenceProjectRef & DevModeSaveProjectRef | null>(() => {
-        if (!projectPath) {
-            return null;
-        }
-        const rawIdentifier = bundle?.meta?.projectIdentifier;
-        const projectIdentifier =
-            typeof rawIdentifier === "string" && rawIdentifier.trim() ? rawIdentifier.trim() : undefined;
-        return {
-            projectIdentifier,
-            projectPath,
-        };
-    }, [bundle?.meta?.projectIdentifier, projectPath]);
+    // The path alone. The stores are named by the project's identifier when it has one, but the main
+    // process reads that out of this window's own project rather than taking it from here.
+    const projectRef = useMemo<BlueprintPersistenceProjectRef & DevModeSaveProjectRef | null>(
+        () => (projectPath ? { projectPath } : null),
+        [projectPath],
+    );
 
     const persistenceAdapter = useMemo(() => {
         if (!projectRef) {

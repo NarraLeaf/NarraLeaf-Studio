@@ -1,7 +1,6 @@
 import path from "path";
 import { screen, shell, type BrowserWindow } from "electron";
 import { AppHost, AppProtocol, UserDataNamespace } from "@shared/types/constants";
-import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
@@ -23,6 +22,7 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { WindowAppType } from "@shared/types/window";
 import { requireWindowProject } from "../../../utils/windowProject";
+import { requireWindowProjectStore, type ProjectStoreRef } from "../../../utils/windowProjectStore";
 
 export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch> {
     readonly name = IPCEventType.devModeLaunch;
@@ -123,7 +123,7 @@ export class DevModeWindowFocusGetHandler extends IPCHandler<IPCEventType.devMod
  * screenshot button was pressed is a project directory nobody could commit. Named by the same
  * per-project function the saves use, so "reset this project's player data" reaches all of it.
  */
-function screenshotsDirectory(window: AppWindow, projectRef: DevModeSaveProjectRef): string {
+function screenshotsDirectory(window: AppWindow, projectRef: ProjectStoreRef): string {
     return path.join(
         window.app.storageManager.getNamespacePath(UserDataNamespace.DevModeScreenshots),
         devModeProjectDirectoryName(projectRef),
@@ -136,6 +136,9 @@ function screenshotsDirectory(window: AppWindow, projectRef: DevModeSaveProjectR
  * Written through the same helper the packaged game writes through, so an author who takes a
  * screenshot here gets the same file, named the same way, in a folder laid out the same way as the
  * one a player would get. What differs is the directory, and only the directory.
+ *
+ * Which project's folder is the window's own, found by the main process along with the identifier
+ * the folder is named by - see `requireWindowProjectStore` for why the caller names neither.
  */
 export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devModeScreenshotSave> {
     readonly name = IPCEventType.devModeScreenshotSave;
@@ -146,7 +149,7 @@ export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devMod
         { projectRef }: IPCEvents[IPCEventType.devModeScreenshotSave]["data"],
     ): Promise<RequestStatus<BlueprintScreenshotResult>> {
         return this.tryUse(async () => writeScreenshotFile({
-            directory: screenshotsDirectory(window, projectRef),
+            directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
             capture: async () => (await window.win.webContents.capturePage()).toPNG(),
         }));
     }
@@ -162,7 +165,7 @@ export class DevModeScreenshotOpenFolderHandler
         { projectRef }: IPCEvents[IPCEventType.devModeScreenshotOpenFolder]["data"],
     ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>> {
         return this.tryUse(async () => openScreenshotsFolder({
-            directory: screenshotsDirectory(window, projectRef),
+            directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
             openPath: directory => shell.openPath(directory),
         }));
     }
