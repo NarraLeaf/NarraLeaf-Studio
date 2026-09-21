@@ -205,6 +205,7 @@ class CompileContext {
             surfaceKind: statement.surfaceKind,
             stageSlot: statement.slotId,
             inListTemplate: false,
+            rowFromPlacement: false,
         });
 
         const designSize = statement.designSize ?? previous?.designSize ?? { width: 1920, height: 1080 };
@@ -289,6 +290,10 @@ class CompileContext {
             surfaceKind: "appSurface",
             stageSlot: undefined,
             inListTemplate: false,
+            // A definition is drawn wherever it is placed, and a placement inside a list row hands
+            // that row to everything it draws - so a field binding here is read against the row
+            // the card sits in, and whether there is one is a fact about the placement.
+            rowFromPlacement: true,
         });
         this.components.push({
             component: {
@@ -337,6 +342,8 @@ class CompileContext {
             surfaceKind: "appSurface" | "stageSurface";
             stageSlot?: string;
             inListTemplate: boolean;
+            /** Inside a component definition, whose row (if any) is the one its placement is drawn in. */
+            rowFromPlacement: boolean;
         },
     ): string {
         const label = node.name ?? node.type;
@@ -410,7 +417,7 @@ class CompileContext {
             };
         }
 
-        const valueBindings = this.bindings(node, detail, context.inListTemplate);
+        const valueBindings = this.bindings(node, detail, context.inListTemplate || context.rowFromPlacement);
 
         const element: UIElement = {
             id,
