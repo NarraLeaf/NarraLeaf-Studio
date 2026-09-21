@@ -50,6 +50,7 @@ import type { MediaSupportService } from '@/lib/workspace/services/media/MediaSu
 import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
+import { describeAssetExportFailure } from './assetExportFailure';
 
 export type { ContextMenuTargetState };
 
@@ -1225,6 +1226,9 @@ export function useAssetActions({
             // The author has now seen the reference list and said go ahead, so this is the one place
             // allowed through the service guard. Every other caller — a group cascade, anything
             // programmatic — is refused by default.
+            // Named by the row the author picked, not by the service's reason: that reason is written
+            // for the log and names the record by id ("Asset not found: <id>"), which on screen is a
+            // UUID standing where the file's name should be. The reasons go to the console.
             const deleteFailures: string[] = [];
             await withAssetsService(async (assetsService) => {
                 await assetsService.transaction(async (svc) => {
@@ -1232,14 +1236,15 @@ export function useAssetActions({
                         const result = t.isGroup
                             ? await svc.deleteGroup(t.category, (t.item as AssetGroup).id, true, { allowReferenced: true })
                             : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
-                        if (!result.success && result.error) {
-                            deleteFailures.push(result.error);
+                        if (!result.success) {
+                            console.warn("[assets] delete refused", t.item.id, result.error);
+                            deleteFailures.push(t.item.name);
                         }
                     }));
                 });
             });
             if (deleteFailures.length > 0) {
-                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
+                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.map(name => `- ${name}`).join("\n"));
             }
             onActionComplete();
             return deleteFailures.length === 0;
@@ -1297,7 +1302,9 @@ export function useAssetActions({
                     fileName: single.relativePath.split("/").pop() ?? single.relativePath,
                 });
                 if (!saved.success) {
-                    uiService.showNotification(t("assets.export.failed", { error: saved.error ?? t("assets.unknownError") }), "error");
+                    uiService.showNotification(t("assets.export.failed", {
+                        error: describeAssetExportFailure({ code: saved.code, reason: saved.error }, t),
+                    }), "error");
                     return;
                 }
                 if (!saved.data.canceled) {
@@ -1313,7 +1320,9 @@ export function useAssetActions({
             })));
 
             if (!result.success) {
-                uiService.showNotification(t("assets.export.failed", { error: result.error ?? t("assets.unknownError") }), "error");
+                uiService.showNotification(t("assets.export.failed", {
+                    error: describeAssetExportFailure({ code: result.code, reason: result.error }, t),
+                }), "error");
                 return;
             }
             if (result.data.canceled) {
@@ -1335,12 +1344,14 @@ export function useAssetActions({
             );
             uiService.showAlert(
                 t("assets.export.partialTitle"),
-                failures.map(failure => `- ${failure.relativePath}: ${failure.reason}`).join("\n"),
+                failures.map(failure => `- ${failure.relativePath}: ${describeAssetExportFailure(failure, t)}`).join("\n"),
             );
         } catch (error) {
             console.error("Failed to export assets", error);
+            // Not the error's message: the one thrown on this side names the record it could not
+            // turn into a path by its id ("Invalid asset storage id: <id>"). It is in the console.
             uiService.showNotification(
-                t("assets.export.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
+                t("assets.export.failed", { error: t("assets.export.reason.copyFailed") }),
                 "error",
             );
         } finally {

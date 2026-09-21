@@ -930,7 +930,6 @@ export const story = {
         sceneMusicIntroLoop: "从 {from}s 播放，循环 {loop}s 至 {to}s",
         sceneMusicFromIn: "从 {from}s 开始",
         sceneMusicWholeClip: "整曲",
-        backgroundResolveError: "无法解析图片资产：{error}",
         selectDefaultBackground: "选择默认背景",
         tabInvalid: "故事场景编辑器标签无效",
         loadingScene: "正在加载故事场景…",

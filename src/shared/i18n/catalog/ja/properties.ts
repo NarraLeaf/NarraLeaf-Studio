@@ -115,7 +115,6 @@ export const properties = {
         projectDefault: "プロジェクト既定のフォント",
         projectSection: "プロジェクト",
         choose: "フォントを選ぶ",
-        loadError: "フォントを読み込めなかった（{error}）。アセットが正しくなるまで、プレビューは代替フォントで表示する",
         select: "フォントを選択",
     },
     imageFill: {
@@ -130,7 +129,6 @@ export const properties = {
         selectHint: "クリックするとアセットブラウザが開く",
         changeImage: "画像を変える",
         openEditor: "クリックでエディタを開く",
-        resolveError: "画像アセットを解決できなかった（{error}）。そのアセットが用意されるまで、プレビューは実際と違う",
         selectFillImage: "塗りに使う画像を選択",
         mode: {
             cover: "カバー",

@@ -121,7 +121,6 @@ export const properties = {
         /** The one-row picker section holding it, above the built-in stacks and the library. */
         projectSection: "Project",
         choose: "Choose font",
-        loadError: "The font could not be loaded ({error}). The preview uses a fallback until the asset is valid.",
         select: "Select Font",
     },
     imageFill: {
@@ -136,7 +135,6 @@ export const properties = {
         selectHint: "Asset browser opens on click",
         changeImage: "Change image",
         openEditor: "Click to open editor",
-        resolveError: "The image asset could not be resolved ({error}). The preview is inaccurate until it exists.",
         selectFillImage: "Select Fill Image",
         mode: {
             cover: "Cover",
