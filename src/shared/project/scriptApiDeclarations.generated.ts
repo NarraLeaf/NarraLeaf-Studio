@@ -1462,6 +1462,16 @@ declare module "@narraleaf/script" {
     	};
     	/** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
     	hostApi?: BlueprintHostApiRuntime;
+    	/**
+    	 * The widget address of \`elementId\` as a graph running in the drawing \`instanceKey\` means it.
+    	 *
+    	 * Asked of the runtime because the answer needs the document - whether the element is inside
+    	 * the row or the placement the graph is running in, or outside it - and a running graph does
+    	 * not hold one. The rule is \`resolveUIWidgetAddressFromDrawing\`; every node reaches it through
+    	 * \`addressWidgetFromExecution\`. A runtime without it (a test double) keeps every target in the
+    	 * running drawing, which is what addressing did before the rule.
+    	 */
+    	resolveWidgetAddress?: (elementId: string, instanceKey: string | undefined) => string;
     };
     type StoryVariableRuntimeAccess = {
     	/** Resolve \`variableId\` to its stored value, or the declared default when unset. */

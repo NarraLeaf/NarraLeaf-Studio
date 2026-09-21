@@ -29,12 +29,12 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_TEXT_SET_WRAP_MODE,
 } from "@shared/types/blueprint/graph";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
     blueprintRGBAColorToCss,
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type {
     BlueprintTextProperties,
@@ -167,8 +167,8 @@ function runtimeTextRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
     }
     // The drawing, not the template: a component draws its definition once per placement, so a
     // Text node inside one addresses a place no drawing reads unless it says which. See
-    // `widgetAddress.ts`; every other widget family does the same.
-    return { api, elementId: buildUIWidgetAddress(elementId, ctx.instanceKey) };
+    // `widgetTarget.ts`; every other widget family asks the same way.
+    return { api, elementId: addressWidgetFromExecution(ctx, elementId) };
 }
 
 function readCurrentText(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): BlueprintTextProperties {

@@ -2,8 +2,9 @@ import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-edito
 import type { DevModeBundle } from "@shared/types/devMode";
 import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
-import { isUIListItemInstanceKeyOf } from "@shared/types/ui-editor/list";
+import { isUIListItemInstanceKeyOf, leaveUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import { popUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
+import { resolveUIWidgetAddressFromDrawing } from "@shared/types/ui-editor/widgetDrawing";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime, UIHostAdapterElementEventOptions } from "../types";
 import {
@@ -72,6 +73,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             getParam: key => hostApi.frame.getParam(key),
             emit: (eventName, data) => hostApi.frame.emit(eventName, data),
         },
+        resolveWidgetAddress: (elementId, instanceKey) => resolveUIWidgetAddressFromDrawing(document, elementId, instanceKey),
         dispatchElementBlueprintEvent: async () => {
             /* assigned after adapter */
         },
@@ -254,13 +256,19 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
      * further would hand an ancestor a private copy of its own variables, freshly defaulted, for as
      * long as the pointer happened to be over a row. That reads as an ancestor whose variables never
      * remember anything, which is not a failure any author could see the cause of.
+     *
+     * Only the row's own part of the key goes. The list may be drawn inside a row of another list or
+     * inside a component placement, and the event is still in that drawing - the key it is left with
+     * is the one the list itself was drawn with. The scope does go whole: it describes the row being
+     * left, and the enclosing row's scope is not something the inner one carries.
      */
     const leavingListRow = (parentId: string, options: UIHostAdapterElementEventOptions | undefined): UIHostAdapterElementEventOptions | undefined => {
         if (!options || !isUIListItemInstanceKeyOf(options.instanceKey, parentId)) {
             return options;
         }
-        const { listItemScope: _scope, instanceKey: _key, ...rest } = options;
-        return rest;
+        const { listItemScope: _scope, instanceKey, ...rest } = options;
+        const outerKey = leaveUIListItemInstanceKey(instanceKey);
+        return outerKey ? { ...rest, instanceKey: outerKey } : rest;
     };
 
     const resolvePendingFlushes = (items: PendingFlush[]) => {

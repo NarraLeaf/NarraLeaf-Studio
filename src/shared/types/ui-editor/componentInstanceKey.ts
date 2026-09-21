@@ -12,13 +12,29 @@
  * Comments in English per project convention.
  */
 
-const SEGMENT_PREFIX = "component:";
-const SEPARATOR = "\0";
+import { appendUIInstanceKeySegment, joinUIInstanceKeySegments, splitUIInstanceKey } from "./instanceKey";
 
-/** `outer` is the key of the component this one sits inside, or empty at the top level. */
+const SEGMENT_PREFIX = "component:";
+
+/**
+ * `outer` is the key of the drawing this placement sits inside - a component, a list row - or empty
+ * at the top level.
+ */
 export function buildUIComponentInstanceKey(outer: string | undefined, instanceElementId: string): string {
-    const segment = `${SEGMENT_PREFIX}${instanceElementId}`;
-    return outer ? `${outer}${SEPARATOR}${segment}` : segment;
+    return appendUIInstanceKeySegment(outer, `${SEGMENT_PREFIX}${instanceElementId}`);
+}
+
+/**
+ * The placement element one key segment names, or null when the segment is not a placement's.
+ *
+ * For whoever walks a key a segment at a time and has to tell a placement's segment from a row's.
+ */
+export function readUIComponentInstanceSegment(segment: string): string | null {
+    if (!segment.startsWith(SEGMENT_PREFIX)) {
+        return null;
+    }
+    const id = segment.slice(SEGMENT_PREFIX.length);
+    return id.length > 0 ? id : null;
 }
 
 /**
@@ -28,15 +44,11 @@ export function buildUIComponentInstanceKey(outer: string | undefined, instanceE
  * placed inside another takes its own params, not its host's.
  */
 export function readUIComponentInstanceElementId(instanceKey: string | undefined): string | null {
-    if (!instanceKey) {
-        return null;
-    }
-    const segments = instanceKey.split(SEPARATOR);
+    const segments = splitUIInstanceKey(instanceKey);
     for (let i = segments.length - 1; i >= 0; i--) {
         const segment = segments[i]!;
         if (segment.startsWith(SEGMENT_PREFIX)) {
-            const id = segment.slice(SEGMENT_PREFIX.length);
-            return id.length > 0 ? id : null;
+            return readUIComponentInstanceSegment(segment);
         }
     }
     return null;
@@ -57,20 +69,17 @@ export function readUIComponentInstanceElementId(instanceKey: string | undefined
 export function popUIComponentInstanceKey(
     instanceKey: string | undefined,
 ): { instanceElementId: string; outerKey: string } | null {
-    if (!instanceKey) {
-        return null;
-    }
-    const segments = instanceKey.split(SEPARATOR);
+    const segments = splitUIInstanceKey(instanceKey);
     for (let i = segments.length - 1; i >= 0; i--) {
         const segment = segments[i]!;
         if (!segment.startsWith(SEGMENT_PREFIX)) {
             continue;
         }
-        const instanceElementId = segment.slice(SEGMENT_PREFIX.length);
-        if (instanceElementId.length === 0) {
+        const instanceElementId = readUIComponentInstanceSegment(segment);
+        if (!instanceElementId) {
             return null;
         }
-        return { instanceElementId, outerKey: segments.slice(0, i).join(SEPARATOR) };
+        return { instanceElementId, outerKey: joinUIInstanceKeySegments(segments.slice(0, i)) ?? "" };
     }
     return null;
 }
