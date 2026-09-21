@@ -197,11 +197,13 @@ export type GameAppHost = {
      * warm, which is what makes Start Game instant and keeps a title screen from painting before
      * `gameReady` has run the graphs behind it.
      *
-     * Dev Mode turns it on. Half of what Dev Mode is for is looking at the interface, and
-     * compiling the story and warming its first scene is the longest part of its boot - MEASURED
-     * at 2.3s of 3.3s on a full-length project, all of it behind a dark loading page. With this
-     * on the surfaces are up in about a second and the story boots behind them. What it costs is
-     * the guarantee: press Start before the environment is ready and the press waits for it.
+     * Dev Mode turns it on when it opens on its interface. Half of what Dev Mode is for is looking
+     * at the interface, and compiling the story and warming its first scene is the longest part of
+     * its boot - MEASURED at 2.3s of 3.3s on a full-length project, all of it behind a dark loading
+     * page. With this on the surfaces are up as soon as their own screen is warm and the story boots
+     * behind them. What it costs is the guarantee: press Start before the environment is ready and
+     * the press waits for it. A Dev Mode launch into a story leaves it off - the window opens on the
+     * stage, and drawing the interface ahead of it would only show a title nobody asked for.
      */
     surfacesBeforeStoryBoot?: boolean;
     /**

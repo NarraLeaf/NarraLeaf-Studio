@@ -17,10 +17,21 @@
  */
 
 let urls: ReadonlyMap<string, string> = new Map();
+let types: ReadonlyMap<string, string> = new Map();
 
-/** Replace the window's map. Called when the prewarm pass settles, and again when assets move. */
-export function publishDevModeAssetUrls(next: ReadonlyMap<string, string>): void {
+/**
+ * Replace the window's map. Called when the prewarm pass settles, and again when assets move.
+ *
+ * `nextTypes` is what kind of asset each id is, in the library's own `AssetType` words - what lets
+ * the window warm its first screen before drawing it, since a picture is warmed by decoding it and a
+ * typeface by registering it and a URL alone does not say which.
+ */
+export function publishDevModeAssetUrls(
+    next: ReadonlyMap<string, string>,
+    nextTypes: ReadonlyMap<string, string> = new Map(),
+): void {
     urls = next;
+    types = nextTypes;
 }
 
 export function resolveDevModeAssetUrl(assetId: string | null | undefined): string | null {
@@ -30,6 +41,19 @@ export function resolveDevModeAssetUrl(assetId: string | null | undefined): stri
     return urls.get(assetId) ?? null;
 }
 
+/** The library's word for what this asset is, or null when the window was not told. */
+export function resolveDevModeAssetType(assetId: string | null | undefined): string | null {
+    if (!assetId) {
+        return null;
+    }
+    return types.get(assetId) ?? null;
+}
+
+/** Every id the window holds a URL for - the Dev Mode stand-in for a pack's manifest. */
+export function publishedDevModeAssetIds(): Set<string> {
+    return new Set(urls.keys());
+}
+
 /** What the window is holding, for a caller that wants to warm all of it. */
 export function devModeAssetUrlCount(): number {
     return urls.size;
@@ -37,4 +61,5 @@ export function devModeAssetUrlCount(): number {
 
 export function clearDevModeAssetUrls(): void {
     urls = new Map();
+    types = new Map();
 }

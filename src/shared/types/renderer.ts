@@ -5,7 +5,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
-import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
@@ -692,7 +692,7 @@ export interface RendererPreloadedInterface {
         resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         /** Every asset the workspace can resolve, in one round trip, keyed by asset id. */
-        resolveAllAssetUrls(): Promise<RequestStatus<{ urls: Record<string, string> }>>;
+        resolveAllAssetUrls(): Promise<RequestStatus<AssetUrlDirectory>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
