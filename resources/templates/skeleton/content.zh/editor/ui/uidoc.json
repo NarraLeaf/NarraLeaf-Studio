@@ -57404,6 +57404,7 @@
       "name": "格子",
       "parentId": "5107c0a1-0000-4000-8000-000000000310",
       "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000360",
         "5107c0a1-0000-4000-8000-000000000312",
         "5107c0a1-0000-4000-8000-000000000314",
         "5107c0a1-0000-4000-8000-000000000315"
@@ -57576,6 +57577,7 @@
       "name": "格子",
       "parentId": "5107c0a1-0000-4000-8000-000000000320",
       "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000370",
         "5107c0a1-0000-4000-8000-000000000322",
         "5107c0a1-0000-4000-8000-000000000324",
         "5107c0a1-0000-4000-8000-000000000325"
@@ -57749,6 +57751,7 @@
       "parentId": "5107c0a1-0000-4000-8000-000000000330",
       "childrenIds": [
         "5107c0a1-0000-4000-8000-000000000333",
+        "5107c0a1-0000-4000-8000-000000000380",
         "5107c0a1-0000-4000-8000-000000000332",
         "5107c0a1-0000-4000-8000-000000000334"
       ],
@@ -57791,6 +57794,12 @@
         "textAlign": "center",
         "textVerticalAlign": "center",
         "textWrapMode": "nowrap"
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "unlocked"
+        }
       }
     },
     "5107c0a1-0000-4000-8000-000000000332": {
@@ -57906,6 +57915,7 @@
       "parentId": "5107c0a1-0000-4000-8000-000000000340",
       "childrenIds": [
         "5107c0a1-0000-4000-8000-000000000343",
+        "5107c0a1-0000-4000-8000-000000000390",
         "5107c0a1-0000-4000-8000-000000000342",
         "5107c0a1-0000-4000-8000-000000000344"
       ],
@@ -57948,6 +57958,12 @@
         "textAlign": "center",
         "textVerticalAlign": "center",
         "textWrapMode": "nowrap"
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "unlocked"
+        }
       }
     },
     "5107c0a1-0000-4000-8000-000000000342": {
@@ -58017,6 +58033,458 @@
         "textAlign": "left",
         "textVerticalAlign": "center"
       }
+    },
+    "5107c0a1-0000-4000-8000-000000000360": {
+      "id": "5107c0a1-0000-4000-8000-000000000360",
+      "type": "nl.container",
+      "name": "锁定底板",
+      "parentId": "5107c0a1-0000-4000-8000-000000000311",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000361"
+      ],
+      "layout": {
+        "x": 1,
+        "y": 1,
+        "width": 364,
+        "height": 204,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.raised",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "locked"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000361": {
+      "id": "5107c0a1-0000-4000-8000-000000000361",
+      "type": "nl.container",
+      "name": "锁定标记",
+      "parentId": "5107c0a1-0000-4000-8000-000000000360",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000362",
+        "5107c0a1-0000-4000-8000-000000000363",
+        "5107c0a1-0000-4000-8000-000000000364"
+      ],
+      "layout": {
+        "x": 158,
+        "y": 43,
+        "width": 48,
+        "height": 63,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000362": {
+      "id": "5107c0a1-0000-4000-8000-000000000362",
+      "type": "nl.container",
+      "name": "锁梁",
+      "parentId": "5107c0a1-0000-4000-8000-000000000361",
+      "childrenIds": [],
+      "layout": {
+        "x": 9,
+        "y": 0,
+        "width": 30,
+        "height": 36,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderRadiusLinked": false,
+        "borderRadiusTL": 15,
+        "borderRadiusTR": 15,
+        "borderColor": "nlbrand:text.subtle",
+        "borderWidth": 6,
+        "borderStyle": "solid"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000363": {
+      "id": "5107c0a1-0000-4000-8000-000000000363",
+      "type": "nl.container",
+      "name": "锁身",
+      "parentId": "5107c0a1-0000-4000-8000-000000000361",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 25,
+        "width": 48,
+        "height": 38,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:text.subtle",
+        "fillVisible": true,
+        "borderRadius": 6,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000364": {
+      "id": "5107c0a1-0000-4000-8000-000000000364",
+      "type": "nl.container",
+      "name": "锁孔",
+      "parentId": "5107c0a1-0000-4000-8000-000000000361",
+      "childrenIds": [],
+      "layout": {
+        "x": 20,
+        "y": 36,
+        "width": 8,
+        "height": 16,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.raised",
+        "fillVisible": true,
+        "borderRadius": 4,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000370": {
+      "id": "5107c0a1-0000-4000-8000-000000000370",
+      "type": "nl.container",
+      "name": "锁定底板",
+      "parentId": "5107c0a1-0000-4000-8000-000000000321",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000371"
+      ],
+      "layout": {
+        "x": 1,
+        "y": 1,
+        "width": 364,
+        "height": 204,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.raised",
+        "fillVisible": true,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "locked"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000371": {
+      "id": "5107c0a1-0000-4000-8000-000000000371",
+      "type": "nl.container",
+      "name": "锁定标记",
+      "parentId": "5107c0a1-0000-4000-8000-000000000370",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000372",
+        "5107c0a1-0000-4000-8000-000000000373",
+        "5107c0a1-0000-4000-8000-000000000374"
+      ],
+      "layout": {
+        "x": 158,
+        "y": 43,
+        "width": 48,
+        "height": 63,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000372": {
+      "id": "5107c0a1-0000-4000-8000-000000000372",
+      "type": "nl.container",
+      "name": "锁梁",
+      "parentId": "5107c0a1-0000-4000-8000-000000000371",
+      "childrenIds": [],
+      "layout": {
+        "x": 9,
+        "y": 0,
+        "width": 30,
+        "height": 36,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderRadiusLinked": false,
+        "borderRadiusTL": 15,
+        "borderRadiusTR": 15,
+        "borderColor": "nlbrand:text.subtle",
+        "borderWidth": 6,
+        "borderStyle": "solid"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000373": {
+      "id": "5107c0a1-0000-4000-8000-000000000373",
+      "type": "nl.container",
+      "name": "锁身",
+      "parentId": "5107c0a1-0000-4000-8000-000000000371",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 25,
+        "width": 48,
+        "height": 38,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:text.subtle",
+        "fillVisible": true,
+        "borderRadius": 6,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000374": {
+      "id": "5107c0a1-0000-4000-8000-000000000374",
+      "type": "nl.container",
+      "name": "锁孔",
+      "parentId": "5107c0a1-0000-4000-8000-000000000371",
+      "childrenIds": [],
+      "layout": {
+        "x": 20,
+        "y": 36,
+        "width": 8,
+        "height": 16,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.raised",
+        "fillVisible": true,
+        "borderRadius": 4,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000380": {
+      "id": "5107c0a1-0000-4000-8000-000000000380",
+      "type": "nl.container",
+      "name": "锁定标记",
+      "parentId": "5107c0a1-0000-4000-8000-000000000331",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000381",
+        "5107c0a1-0000-4000-8000-000000000382",
+        "5107c0a1-0000-4000-8000-000000000383"
+      ],
+      "layout": {
+        "x": 12,
+        "y": 22,
+        "width": 16,
+        "height": 21,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "locked"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000381": {
+      "id": "5107c0a1-0000-4000-8000-000000000381",
+      "type": "nl.container",
+      "name": "锁梁",
+      "parentId": "5107c0a1-0000-4000-8000-000000000380",
+      "childrenIds": [],
+      "layout": {
+        "x": 3,
+        "y": 0,
+        "width": 10,
+        "height": 12,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderRadiusLinked": false,
+        "borderRadiusTL": 5,
+        "borderRadiusTR": 5,
+        "borderColor": "nlbrand:text.subtle",
+        "borderWidth": 2,
+        "borderStyle": "solid"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000382": {
+      "id": "5107c0a1-0000-4000-8000-000000000382",
+      "type": "nl.container",
+      "name": "锁身",
+      "parentId": "5107c0a1-0000-4000-8000-000000000380",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 8,
+        "width": 16,
+        "height": 13,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:text.subtle",
+        "fillVisible": true,
+        "borderRadius": 2,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000383": {
+      "id": "5107c0a1-0000-4000-8000-000000000383",
+      "type": "nl.container",
+      "name": "锁孔",
+      "parentId": "5107c0a1-0000-4000-8000-000000000380",
+      "childrenIds": [],
+      "layout": {
+        "x": 7,
+        "y": 12,
+        "width": 2,
+        "height": 6,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:background",
+        "fillVisible": true,
+        "borderRadius": 1,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000390": {
+      "id": "5107c0a1-0000-4000-8000-000000000390",
+      "type": "nl.container",
+      "name": "锁定标记",
+      "parentId": "5107c0a1-0000-4000-8000-000000000341",
+      "childrenIds": [
+        "5107c0a1-0000-4000-8000-000000000391",
+        "5107c0a1-0000-4000-8000-000000000392",
+        "5107c0a1-0000-4000-8000-000000000393"
+      ],
+      "layout": {
+        "x": 12,
+        "y": 22,
+        "width": 16,
+        "height": 21,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      },
+      "valueBindings": {
+        "layout.visible": {
+          "kind": "listItemField",
+          "fieldId": "locked"
+        }
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000391": {
+      "id": "5107c0a1-0000-4000-8000-000000000391",
+      "type": "nl.container",
+      "name": "锁梁",
+      "parentId": "5107c0a1-0000-4000-8000-000000000390",
+      "childrenIds": [],
+      "layout": {
+        "x": 3,
+        "y": 0,
+        "width": 10,
+        "height": 12,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "fillVisible": false,
+        "borderRadiusLinked": false,
+        "borderRadiusTL": 5,
+        "borderRadiusTR": 5,
+        "borderColor": "nlbrand:text.subtle",
+        "borderWidth": 2,
+        "borderStyle": "solid"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000392": {
+      "id": "5107c0a1-0000-4000-8000-000000000392",
+      "type": "nl.container",
+      "name": "锁身",
+      "parentId": "5107c0a1-0000-4000-8000-000000000390",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 8,
+        "width": 16,
+        "height": 13,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:text.subtle",
+        "fillVisible": true,
+        "borderRadius": 2,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "5107c0a1-0000-4000-8000-000000000393": {
+      "id": "5107c0a1-0000-4000-8000-000000000393",
+      "type": "nl.container",
+      "name": "锁孔",
+      "parentId": "5107c0a1-0000-4000-8000-000000000390",
+      "childrenIds": [],
+      "layout": {
+        "x": 7,
+        "y": 12,
+        "width": 2,
+        "height": 6,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:background",
+        "fillVisible": true,
+        "borderRadius": 1,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
     }
   },
   "actions": {
@@ -58077,7 +58545,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-05T18:45:32.626Z"
+    "updatedAt": "2026-09-21T04:00:22.251Z"
   },
   "structs": {
     "extra.galleryEntry": {
@@ -58101,6 +58569,11 @@
         {
           "id": "unlocked",
           "key": "unlocked",
+          "type": "boolean"
+        },
+        {
+          "id": "locked",
+          "key": "locked",
           "type": "boolean"
         },
         {

@@ -334,7 +334,29 @@ describe("createDevModeBlueprintHostAdapter", () => {
         ]);
 
         await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
-            instanceKey: buildUIListItemInstanceKey("rows", "row-1"),
+            instanceKey: buildUIListItemInstanceKey(undefined, "rows", "row-1"),
+            listItemScope: { item: {}, index: 0, count: 1, key: "row-1" },
+        });
+
+        expect(fixture.heard("page")).toBe(true);
+        fixture.cleanup();
+    });
+
+    it("leaves a row inside a component still inside that placement", async () => {
+        // Leaving the row sheds the row and nothing else. Shedding the whole key took the placement
+        // with it, so the walk reached the definition's root not knowing which placement it was in,
+        // stopped there, and the page around the card never heard a press on one of its rows.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "card", type: "nl.container", placesComponent: "slot" },
+            { id: "card-root", type: "nl.container" },
+            { id: "rows", type: "nl.list" },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
+            componentId: "slot",
+            instanceKey: buildUIListItemInstanceKey(buildUIComponentInstanceKey(undefined, "card"), "rows", "row-1"),
             listItemScope: { item: {}, index: 0, count: 1, key: "row-1" },
         });
 

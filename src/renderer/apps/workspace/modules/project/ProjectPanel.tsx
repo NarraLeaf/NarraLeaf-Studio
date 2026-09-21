@@ -65,6 +65,12 @@ export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPa
             return;
         }
         setConfig(cloneProjectConfig(projectService.getProjectConfig()));
+        // Every manifest write and re-read, whoever made it. The sections read their rows from this
+        // config, so a change made elsewhere (the build dialog's switches, a reload after a hand edit)
+        // shows here rather than the panel going on showing what it had - and a row that sends a
+        // whole map built from what it shows (lint severities, the allowlist) does not send that
+        // stale map back.
+        return projectService.onConfigChanged(next => setConfig(cloneProjectConfig(next)));
     }, [projectService]);
 
     const handleConfigChange = useCallback((next: ProjectConfig) => {

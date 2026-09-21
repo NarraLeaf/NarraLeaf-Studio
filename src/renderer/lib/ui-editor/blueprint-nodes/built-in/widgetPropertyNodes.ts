@@ -4,7 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
@@ -139,7 +139,7 @@ function resolveTargetElementId(
         if (!elementId) {
             throw new BlueprintGraphExecutionError(`${target.label} node requires a widget execution owner`, ctx.node.id);
         }
-        return buildUIWidgetAddress(elementId, ctx.instanceKey);
+        return addressWidgetFromExecution(ctx, elementId);
     }
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
@@ -154,7 +154,7 @@ function resolveTargetElementId(
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
         throw new BlueprintGraphExecutionError(`${target.label} Element node can only target the current Surface`, ctx.node.id);
     }
-    return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
+    return addressWidgetFromExecution(ctx, ref.elementId);
 }
 
 function toBooleanValue(raw: unknown, fallback: boolean): boolean {

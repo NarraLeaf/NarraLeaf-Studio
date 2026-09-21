@@ -7,6 +7,7 @@ import {
     isKnownPuppetRuntimeId,
     knownPuppetRuntime,
 } from "@shared/utils/puppetRuntimes";
+import { requireWindowProject } from "../../../utils/windowProject";
 import { buildLive2DRuntime } from "../../puppet/live2dRuntimeBuild";
 import { authorizeActorFileSystemRequest } from "../actorAuthorization";
 import { AppWindow } from "../appWindow";
@@ -26,7 +27,9 @@ const GLUE_RESOURCE_DIR = "puppet-glue";
  * up in the registry rather than used as a path segment, the destination is derived here from the
  * project path, and that path is authorized against the window's own file-system grant — so the worst a
  * compromised renderer can do with this verb is rebuild a runtime in a project it could already write
- * to.
+ * to. Before either, the project is held against the window's own: a runtime is compiled on the
+ * author's machine and then run by that project, so which project it lands in is not the caller's
+ * choice even where a stray grant would have allowed the write.
  */
 export class PuppetRuntimeInstallSdkHandler extends IPCHandler<IPCEventType.puppetRuntimeInstallSdk> {
     readonly name = IPCEventType.puppetRuntimeInstallSdk;
@@ -48,8 +51,14 @@ export class PuppetRuntimeInstallSdkHandler extends IPCHandler<IPCEventType.pupp
         if (!projectPath?.trim() || !archivePath?.trim()) {
             return this.failed("A project and an SDK archive are both required");
         }
+        let ownProject: string;
+        try {
+            ownProject = requireWindowProject(window, projectPath);
+        } catch (error) {
+            return this.failed(error);
+        }
 
-        const targetDir = path.join(projectPath, ...PUPPET_RUNTIMES_PROJECT_DIR, runtime.backend);
+        const targetDir = path.join(ownProject, ...PUPPET_RUNTIMES_PROJECT_DIR, runtime.backend);
         for (const [candidate, mode] of [[targetDir, "write"], [archivePath, "read"]] as const) {
             const authorization = await authorizeActorFileSystemRequest(
                 window,

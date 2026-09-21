@@ -413,10 +413,10 @@ export function SwitchRenderer(props: WidgetRendererProps) {
             {canRenderParts && trackElement ? null : (
                 <div data-ui-switch-part="track" style={fallbackTrackStyle} />
             )}
+            {/* In the switch's own drawing, as the slider's parts are: see the note in its renderer. */}
             {canRenderParts && childrenIds.length > 0 && renderChildren
                 ? renderChildren({
                       childrenIds,
-                      instanceKey: `switch-${element.id}`,
                       elementOverrides,
                   })
                 : null}

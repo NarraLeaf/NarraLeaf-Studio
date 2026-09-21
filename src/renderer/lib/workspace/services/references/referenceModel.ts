@@ -1025,7 +1025,7 @@ function extractElementAssetReferences(
                 continue;
             }
             /**
-             * The literal names `surfaceResourcePreload.ts` keys its preload walk on. Until
+             * The literal names `surfaceAssetWarmup.ts` keys its preload walk on. Until
              * `nl.video` there was no widget storing a bare asset id under `assetId`, so this walk
              * only knew `imageFill` and `fontAssetId`, which meant a new widget naming its prop
              * `assetId` was preloaded by the shipped game and simultaneously invisible to "what uses

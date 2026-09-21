@@ -105,6 +105,28 @@ describe("compiling a .ui file", () => {
         expect(codes(text)).not.toContain("ui.list_field_outside_item");
     });
 
+    it("takes a row field for whether an element shows, on any type", () => {
+        // What the inspector's visibility field picker writes and `print` writes back out, so a
+        // dump of a surface that uses it has to compile again.
+        const text = `${MINIMAL}        Rows: nl.list id=rows @0,0 100x100\n`
+            + "            Row: nl.container @0,0 100x20\n"
+            + "                Lock: nl.container id=lock @0,0 20x20\n"
+            + "                    bind layout.visible = field locked\n";
+        const result = compile(text);
+        expect(result.diagnostics).toEqual([]);
+        expect(result.surfaces[0].elements.lock.valueBindings).toEqual({
+            "layout.visible": { kind: "listItemField", fieldId: "locked" },
+        });
+    });
+
+    it("refuses a value blueprint for whether an element shows, which nothing would evaluate", () => {
+        const text = `${MINIMAL}        Rows: nl.list id=rows @0,0 100x100\n`
+            + "            Row: nl.container @0,0 100x20\n"
+            + "                Lock: nl.container id=lock @0,0 20x20\n"
+            + "                    bind layout.visible = blueprint bp-1\n";
+        expect(codes(text)).toContain("ui.prop_not_bindable");
+    });
+
     it("notes a stage widget put on an app surface", () => {
         expect(codes(`${MINIMAL}        Line: nl.dialog.sentence @0,0 10x10\n`)).toContain("ui.palette_scope");
     });

@@ -3,6 +3,7 @@ import {
     clearDevModeAssetUrls,
     devModeAssetUrlCount,
     publishDevModeAssetUrls,
+    resolveDevModeAssetType,
     resolveDevModeAssetUrl,
 } from "./devModeAssetUrls";
 
@@ -38,6 +39,14 @@ describe("devModeAssetUrls", () => {
         publishDevModeAssetUrls(new Map([["b", "app://fs/two"]]));
         expect(resolveDevModeAssetUrl("a")).toBeNull();
         expect(resolveDevModeAssetUrl("b")).toBe("app://fs/two");
+    });
+
+    it("says what kind each asset is, and forgets it with the URLs", () => {
+        publishDevModeAssetUrls(new Map([["a", "app://fs/one"]]), new Map([["a", "font"]]));
+        expect(resolveDevModeAssetType("a")).toBe("font");
+        expect(resolveDevModeAssetType("b")).toBeNull();
+        clearDevModeAssetUrls();
+        expect(resolveDevModeAssetType("a")).toBeNull();
     });
 
     it("says nothing for an empty id, which is what an unset prop looks like", () => {
