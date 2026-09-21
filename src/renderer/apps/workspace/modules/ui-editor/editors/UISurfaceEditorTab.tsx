@@ -72,8 +72,8 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
-import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { useRegistry } from "@/apps/workspace/registry";
+import { useSurfaceTabSelection } from "./useSurfaceTabSelection";
 import {
     createComponentDocumentServiceAdapter,
     getComponentEditorSurfaceId,
@@ -202,26 +202,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         return stateService.on("selectionChanged", () => setSelectionVersion(v => v + 1));
     }, [stateService]);
 
-    useEffect(() => {
-        if (!stateService || !surface) {
-            return;
-        }
-        const current = stateService.getSelection();
-        if (isUIElementSelection(current)) {
-            if (current.data.surfaceId === surface.id && current.data.elementIds.length > 0) {
-                return;
-            }
-            selectSurfaceForProperties(stateService, surface.id, uiService);
-            return;
-        }
-        if (current.type === "scene") {
-            selectSurfaceForProperties(stateService, surface.id, uiService);
-            return;
-        }
-        if (current.type === null) {
-            selectSurfaceForProperties(stateService, surface.id, uiService);
-        }
-    }, [stateService, surface, uiService]);
+    // The one shared selection belongs to whichever surface tab is on screen; a hidden tab only
+    // remembers what was its own, so switching back hands that back. See `useSurfaceTabSelection`.
+    useSurfaceTabSelection({ stateService, documentService, surfaceId: surface?.id, active });
 
     const surfaceDiagnostics = useMemo(() => {
         if (!documentService || !surface) {
