@@ -23,14 +23,13 @@
  *    nothing is unlocked - has no art to give it. The backdrop sits *beneath* the art, so a
  *    silhouette the author did set (`lockedImageAssetId`) paints over it; and it is not drawn at
  *    all on an unlocked row, so an unlocked tile is exactly what it was without it.
- * 3. **A CG tile answers nothing, and that is deliberate.** Opening the picture at full size is the
- *    obvious next thing and is not here: a write made from inside a list row is addressed to that
- *    row's own drawing (`resolveDisplayableTargetElementId` and `resolveListElementId` in
- *    `blueprint-nodes/built-in/elementNodes.ts` both append `ctx.instanceKey` whatever the `Element`
- *    node points at), so a row cannot show, fill or hide anything outside itself - the write lands
- *    on an address nothing reads and nothing says so. Until a row can address the screen it is
- *    drawn on, a viewer would be a press that half works. The tiles therefore advertise nothing:
- *    no pointer cursor, no hover state, no cue.
+ * 3. **A CG tile answers nothing yet, and advertises nothing.** Opening the picture at full size is
+ *    the obvious next thing and is not here yet. The tiles were built when a write made from inside
+ *    a list row was addressed to that row's own drawing whatever it named, so a row could not show,
+ *    fill or hide anything outside itself. A row now addresses the drawing its target is really in
+ *    (`resolveUIWidgetAddressFromDrawing` in `@shared/types/ui-editor/widgetDrawing`), so a viewer
+ *    can be written plainly; until one is, the tiles keep advertising nothing - no pointer cursor,
+ *    no hover state, no cue - because a cue for a press that does nothing is worse than none.
  * 4. **The screen is reached from the title menu and from nowhere else.** Playing a recollection
  *    goes through `Start Game`, which replaces the current playthrough; return semantics were never
  *    built. The line that makes that safe is not a check inside the screen - a control that
