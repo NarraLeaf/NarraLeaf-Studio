@@ -16,17 +16,38 @@ const { WorkingFileRefusedError, readWorkingSetFile } = await import("../../vcs/
 const {
     VcsAbortMergeHandler,
     VcsAddServerHandler,
+    VcsCheckpointHandler,
     VcsCloneHandler,
+    VcsCommitHandler,
     VcsCompleteMergeHandler,
+    VcsDiffRevisionsHandler,
+    VcsDiffWorkingTreeHandler,
+    VcsGetChangedPathsHandler,
+    VcsGetHistoryHandler,
+    VcsGetInfoHandler,
+    VcsGetMergeBaseHandler,
+    VcsGetMergeDocumentHandler,
+    VcsGetMergeStateHandler,
+    VcsGetRemoteHandler,
     VcsGetServerSessionHandler,
+    VcsGetStatusHandler,
+    VcsGetSyncStateHandler,
+    VcsGetThreeWayHandler,
+    VcsInitRepositoryHandler,
+    VcsIsRepositoryHandler,
     VcsPublishProjectHandler,
     VcsPushHandler,
+    VcsReadBlobHandler,
+    VcsReadRevisionDocumentsHandler,
     VcsReadWorkingFileHandler,
     VcsResolveConflictsHandler,
     VcsRestartConflictsHandler,
     VcsRestoreRevisionHandler,
+    VcsSetRemoteHandler,
     VcsSignInHandler,
+    VcsSignOutHandler,
     VcsSyncHandler,
+    VcsUnresolveConflictsHandler,
 } = await import("./vcsAction");
 const { VcsUseServerSessionHandler } = await import("./vcsServerSessionAction");
 
@@ -544,5 +565,213 @@ describe("the handlers that reach a server", () => {
 
             expect(manager.cloneRepository.mock.calls[0][2]).toEqual({ useSignIn: false });
         });
+    });
+});
+
+/**
+ * Everything else that names a project: the reads, the two handlers that add a revision, and the
+ * ones that read or change which server a project reports to.
+ *
+ * Their only sender is the workspace asking about the project it has open - `VersionControlService`,
+ * its startup preflight and its recovery shell - so the assertion changes nothing for an author and
+ * refuses exactly the requests that were never theirs to make. What a foreign path would have bought
+ * ranges from a listing of somebody's history to any file of theirs at any revision, and a status
+ * scan that writes new directories into their staged state.
+ *
+ * The double answers every method, recording which project crossed, so each case fails on the
+ * manager being reached (or reached with the caller's spelling) rather than on a missing method.
+ */
+describe("every other version-control handler that names a project takes it from the window", () => {
+    function makeManagerWindow(projectPath?: string) {
+        const calls: { method: string; args: unknown[] }[] = [];
+        const answers: Record<string, unknown> = {
+            readBlob: Buffer.from("bytes"),
+            readRevisionDocuments: new Map<string, Buffer | null>(),
+        };
+        const manager = new Proxy({}, {
+            get: (_target, method: string) => async (...args: unknown[]) => {
+                calls.push({ method, args });
+                return method in answers ? answers[method] : {};
+            },
+        });
+        const app = { getVcsManager: () => manager };
+        const window = {
+            app,
+            getApp: () => app,
+            getProps: () => ({ projectPath }),
+        } as unknown as AppWindowLike;
+        return { window, calls };
+    }
+
+    /** The project argument of a recorded call: the first one, or the request's field for a blob. */
+    const projectOf = (args: unknown[]) =>
+        typeof args[0] === "string" ? args[0] : (args[0] as { projectPath: string }).projectPath;
+
+    type Run = (window: AppWindowLike, projectPath: string) => Promise<{ success: boolean; code?: string }>;
+    const readers: { name: string; run: Run }[] = [
+        { name: "vcs.isRepository", run: (w, projectPath) => new VcsIsRepositoryHandler().handle(w, { projectPath }) },
+        { name: "vcs.getInfo", run: (w, projectPath) => new VcsGetInfoHandler().handle(w, { projectPath }) },
+        { name: "vcs.commit", run: (w, projectPath) => new VcsCommitHandler().handle(w, { projectPath }) },
+        {
+            name: "vcs.checkpoint",
+            run: (w, projectPath) => new VcsCheckpointHandler().handle(w, { projectPath, reason: "interval" } as never),
+        },
+        { name: "vcs.getStatus", run: (w, projectPath) => new VcsGetStatusHandler().handle(w, { projectPath }) },
+        { name: "vcs.getHistory", run: (w, projectPath) => new VcsGetHistoryHandler().handle(w, { projectPath, limit: 5 }) },
+        {
+            name: "vcs.readBlob",
+            run: (w, projectPath) => new VcsReadBlobHandler().handle(w, { projectPath, revision: "r1", path: VERSIONED } as never),
+        },
+        {
+            name: "vcs.readRevisionDocuments",
+            run: (w, projectPath) => new VcsReadRevisionDocumentsHandler().handle(w, { projectPath, revision: "r1" } as never),
+        },
+        {
+            name: "vcs.getChangedPaths",
+            run: (w, projectPath) => new VcsGetChangedPathsHandler().handle(w, { projectPath, from: "r1", to: "r2" } as never),
+        },
+        {
+            name: "vcs.diffRevisions",
+            run: (w, projectPath) => new VcsDiffRevisionsHandler().handle(w, { projectPath, from: "r1", to: "r2" } as never),
+        },
+        { name: "vcs.diffWorkingTree", run: (w, projectPath) => new VcsDiffWorkingTreeHandler().handle(w, { projectPath }) },
+        {
+            name: "vcs.getThreeWay",
+            run: (w, projectPath) => new VcsGetThreeWayHandler().handle(w, {
+                projectPath, mine: "r1", theirs: "r2", path: VERSIONED,
+            } as never),
+        },
+        {
+            name: "vcs.getMergeBase",
+            run: (w, projectPath) => new VcsGetMergeBaseHandler().handle(w, { projectPath, a: "r1", b: "r2" } as never),
+        },
+        { name: "vcs.getMergeState", run: (w, projectPath) => new VcsGetMergeStateHandler().handle(w, { projectPath }) },
+        {
+            name: "vcs.getMergeDocument",
+            run: (w, projectPath) => new VcsGetMergeDocumentHandler().handle(w, { projectPath, path: VERSIONED }),
+        },
+        {
+            name: "vcs.unresolveConflicts",
+            run: (w, projectPath) => new VcsUnresolveConflictsHandler().handle(w, { projectPath, paths: [VERSIONED] }),
+        },
+        { name: "vcs.getRemote", run: (w, projectPath) => new VcsGetRemoteHandler().handle(w, { projectPath }) },
+        {
+            name: "vcs.setRemote",
+            run: (w, projectPath) => new VcsSetRemoteHandler().handle(w, { projectPath, url: "lore://server.example:7000/game" }),
+        },
+        { name: "vcs.getSyncState", run: (w, projectPath) => new VcsGetSyncStateHandler().handle(w, { projectPath }) },
+        { name: "vcs.getServerSession", run: (w, projectPath) => new VcsGetServerSessionHandler().handle(w, { projectPath }) },
+        { name: "vcs.signOut", run: (w, projectPath) => new VcsSignOutHandler().handle(w, { projectPath }) },
+    ];
+
+    for (const reader of readers) {
+        it(`${reader.name} answers for the window's own project, in the window's spelling`, async () => {
+            const { window, calls } = makeManagerWindow(mine);
+
+            const result = await reader.run(window, mine + path.sep);
+
+            expect(result.success).toBe(true);
+            expect(calls.length).toBeGreaterThan(0);
+            for (const call of calls) {
+                expect(projectOf(call.args)).toBe(mine);
+            }
+        });
+
+        it(`${reader.name} refuses a project this window does not have open, and reaches nothing`, async () => {
+            const { window, calls } = makeManagerWindow(mine);
+
+            const result = await reader.run(window, theirs);
+
+            expect(result.success).toBe(false);
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(calls).toEqual([]);
+        });
+
+        it(`${reader.name} refuses a window that has no project open`, async () => {
+            const { window, calls } = makeManagerWindow();
+
+            const result = await reader.run(window, mine);
+
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+            expect(calls).toEqual([]);
+        });
+    }
+});
+
+/**
+ * Putting a folder under version control: the one handler here asked legitimately about a folder
+ * that is no window's project.
+ *
+ * The project wizard asks it about the folder it has just written a new project into, and the wizard
+ * has no project of its own - asserting the window's project would refuse "create with version
+ * control" outright, from a window neither tsc nor the workspace ever sees. So a window with no
+ * project is held to the folders it was granted to WRITE, which the wizard's new folder is and
+ * somebody else's project is not; a window with a project is asked the ordinary question.
+ */
+describe("vcs.initRepository", () => {
+    function makeInitWindow(options: { projectPath?: string; writable: string[] }) {
+        const initRepository = vi.fn(async (_projectPath: string, _options: unknown) => ({}));
+        const isPathAllowed = vi.fn(async (_window: unknown, fsPath: string, mode: string) =>
+            mode === "write" && options.writable.includes(fsPath));
+        const app = { getVcsManager: () => ({ initRepository }), storageManager: { isPathAllowed } };
+        const window = {
+            app,
+            getApp: () => app,
+            getProps: () => (options.projectPath === undefined ? {} : { projectPath: options.projectPath }),
+        } as unknown as AppWindowLike;
+        return { window, initRepository, isPathAllowed };
+    }
+
+    it("puts the wizard's freshly written folder under version control", async () => {
+        const { window, initRepository, isPathAllowed } = makeInitWindow({ writable: [theirs] });
+
+        const result = await new VcsInitRepositoryHandler().handle(window, { projectPath: theirs });
+
+        expect(result.success).toBe(true);
+        expect(initRepository.mock.calls[0][0]).toBe(theirs);
+        expect(isPathAllowed).toHaveBeenCalledWith(window, theirs, "write");
+    });
+
+    it("refuses a window with no project a folder it was not granted to write", async () => {
+        const { window, initRepository } = makeInitWindow({ writable: [mine] });
+
+        const result = await new VcsInitRepositoryHandler().handle(window, { projectPath: theirs });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(initRepository).not.toHaveBeenCalled();
+    });
+
+    it("refuses a window with no project a request that names no folder", async () => {
+        const { window, initRepository } = makeInitWindow({ writable: [mine] });
+
+        for (const projectPath of [undefined, "", 7] as unknown as string[]) {
+            const result = await new VcsInitRepositoryHandler().handle(window, { projectPath });
+            expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        }
+        expect(initRepository).not.toHaveBeenCalled();
+    });
+
+    it("puts the workspace's own project under version control, in the window's spelling", async () => {
+        const { window, initRepository } = makeInitWindow({ projectPath: mine, writable: [mine] });
+
+        const result = await new VcsInitRepositoryHandler().handle(window, { projectPath: mine + path.sep });
+
+        expect(result.success).toBe(true);
+        expect(initRepository.mock.calls[0][0]).toBe(mine);
+    });
+
+    /**
+     * A window with a project may write more than its project - a folder the author picked to export
+     * into - and "anywhere it may write" would let it plant a repository there. It is asked about its
+     * own project and nothing else, whatever else it was granted.
+     */
+    it("refuses a workspace another folder, even one it was granted to write", async () => {
+        const { window, initRepository } = makeInitWindow({ projectPath: mine, writable: [mine, theirs] });
+
+        const result = await new VcsInitRepositoryHandler().handle(window, { projectPath: theirs });
+
+        expect(result.code).toBe(WINDOW_PROJECT_MISMATCH_CODE);
+        expect(initRepository).not.toHaveBeenCalled();
     });
 });

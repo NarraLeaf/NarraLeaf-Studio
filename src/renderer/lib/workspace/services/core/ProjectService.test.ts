@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeProjectConfig } from "@shared/utils/nlproj";
+import { decodeProjectConfig, encodeProjectConfig } from "@shared/utils/nlproj";
 import { ProjectService } from "./ProjectService";
 import { Services, type WorkspaceContext } from "../services";
 import type { ProjectConfig } from "../../project/project";
@@ -74,5 +74,165 @@ describe("ProjectService security configuration", () => {
         await service.reloadProjectConfig();
 
         expect(service.getSecurityConfiguration().encryptAssets).toBe(false);
+    });
+});
+
+/**
+ * A disk whose writes the test lets through one at a time, or refuses.
+ *
+ * A real write is a grant and a `PUT`, a few milliseconds each and not ordered between two callers,
+ * which is exactly the window these tests hold open on purpose.
+ */
+function mountHeldDisk(initial: ProjectConfig) {
+    const disk = { bytes: encodeProjectConfig(initial as never) };
+    const held: { bytes: Uint8Array; settle: (ok: boolean) => void }[] = [];
+    let inFlight = 0;
+    let mostInFlight = 0;
+    let reads = 0;
+    const filesystem = {
+        list: async () => ({ ok: true, data: [{ name: "Demo", ext: ".nlproj", type: "file" }] }),
+        readRaw: async () => {
+            reads += 1;
+            return { ok: true, data: disk.bytes };
+        },
+        writeRaw: (_path: string, bytes: Uint8Array) => new Promise(resolve => {
+            inFlight += 1;
+            mostInFlight = Math.max(mostInFlight, inFlight);
+            held.push({
+                bytes,
+                settle: ok => {
+                    inFlight -= 1;
+                    if (ok) {
+                        disk.bytes = bytes;
+                        resolve({ ok: true, data: undefined });
+                    } else {
+                        resolve({ ok: false, error: { message: "disk full" } });
+                    }
+                },
+            });
+        }),
+    };
+    const ctx = {
+        project: { getConfig: () => ({ projectPath: PROJECT_PATH }) } as unknown as WorkspaceContext["project"],
+        services: {
+            get: (serviceId: Services) => {
+                if (serviceId === Services.FileSystem) {
+                    return filesystem;
+                }
+                throw new Error(`Unexpected service lookup: ${serviceId}`);
+            },
+        },
+    } as WorkspaceContext;
+
+    /** Let the next queued write through (or refuse it), then give the queue a turn to move on. */
+    async function release(ok = true): Promise<void> {
+        await flush();
+        const next = held.shift();
+        if (!next) {
+            throw new Error("No write is waiting");
+        }
+        next.settle(ok);
+        await flush();
+    }
+
+    return {
+        ctx,
+        release,
+        pending: () => held.length,
+        mostInFlight: () => mostInFlight,
+        reads: () => reads,
+        onDisk: () => decodeProjectConfig(disk.bytes) as ProjectConfig,
+    };
+}
+
+async function flush(): Promise<void> {
+    for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+    }
+}
+
+describe("ProjectService manifest writes", () => {
+    it("lands two changes asked for together, both of them", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        // Two sections of the project panel, one click each, the second before the first has landed.
+        const window = service.updateWindowConfiguration({ resizable: false });
+        const preferences = service.updatePlayerPreferences({ autoForward: true });
+
+        await disk.release();
+        await disk.release();
+        await Promise.all([window, preferences]);
+
+        expect(disk.onDisk().app?.window?.resizable).toBe(false);
+        expect(disk.onDisk().app?.preferences?.autoForward).toBe(true);
+        expect(service.getWindowConfiguration().resizable).toBe(false);
+        expect(service.getPlayerPreferences().autoForward).toBe(true);
+        expect(disk.mostInFlight()).toBe(1);
+    });
+
+    it("builds each change on the one before it, so the last one asked for is what stays", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        const results = [
+            service.updateWindowConfiguration({ resizable: false }),
+            service.updateWindowConfiguration({ startFullscreen: true }),
+            service.updateWindowConfiguration({ resizable: true }),
+        ];
+        // Only one write is ever on its way; the next is not even built until it lands.
+        await flush();
+        expect(disk.pending()).toBe(1);
+
+        await disk.release();
+        await disk.release();
+        await disk.release();
+        const [first, second, third] = await Promise.all(results);
+
+        expect(first.app?.window).toMatchObject({ resizable: false, startFullscreen: false });
+        expect(second.app?.window).toMatchObject({ resizable: false, startFullscreen: true });
+        expect(third.app?.window).toMatchObject({ resizable: true, startFullscreen: true });
+        expect(disk.onDisk().app?.window).toMatchObject({ resizable: true, startFullscreen: true });
+    });
+
+    it("reports a refused write and carries on with the ones behind it, from what is on disk", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+
+        const refused = service.updateWindowConfiguration({ startFullscreen: true });
+        const after = service.updatePlayerPreferences({ skip: false });
+        const refusal = refused.then(() => null, (error: Error) => error.message);
+
+        await disk.release(false);
+        await disk.release();
+
+        expect(await refusal).toBe("disk full");
+        await after;
+        // The refused change is on neither the disk nor the copy the panel reads back.
+        expect(disk.onDisk().app?.window?.startFullscreen ?? false).toBe(false);
+        expect(service.getWindowConfiguration().startFullscreen).toBe(false);
+        expect(disk.onDisk().app?.preferences?.skip).toBe(false);
+        expect(service.getPlayerPreferences().skip).toBe(false);
+    });
+
+    it("re-reads the manifest only after a write in flight has landed", async () => {
+        const service = new ProjectService();
+        const disk = mountHeldDisk(config(false));
+        await service.initialize(disk.ctx, async () => undefined);
+        const readsAtStart = disk.reads();
+
+        const write = service.updateSecurityConfiguration({ encryptAssets: true });
+        const reload = service.reloadProjectConfig();
+        await flush();
+        expect(disk.reads()).toBe(readsAtStart);
+
+        await disk.release();
+        await Promise.all([write, reload]);
+
+        // A read that overtook the write would have put `false` back, for the next write to build on.
+        expect(service.getSecurityConfiguration().encryptAssets).toBe(true);
     });
 });

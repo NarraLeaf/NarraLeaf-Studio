@@ -5,13 +5,17 @@ import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHos
 import {
     RUNTIME_ISSUE_LIMIT,
     appendRuntimeIssue,
+    assetResolutionIssues,
     buildStoryRowLookups,
     countRuntimeIssues,
     locateRuntimeIssue,
     locateStoryBlock,
+    reconcileRuntimeIssues,
     runtimeIssueKey,
     type LocatedRuntimeIssue,
 } from "./runtimeIssueModel";
+import { createTranslator } from "@shared/i18n";
+import type { AssetResolutionFailure, AssetResolutionSite } from "@/lib/ui-editor/runtime/assetResolution";
 
 function narration(id: StoryBlockId, text: string, childrenIds: StoryBlockId[] = []): StoryBlock {
     return {
@@ -311,5 +315,71 @@ describe("countRuntimeIssues", () => {
 
     it("counts nothing in an empty list", () => {
         expect(countRuntimeIssues([])).toEqual({ errors: 0, warnings: 0 });
+    });
+});
+
+describe("asset failures in the issue list", () => {
+    const t = createTranslator("en").t;
+    const GONE = "4b645b59-1723-4ac9-98ab-e6859b837bef";
+    const CASTLE = "93bad884-1f14-4ad2-85fb-c05d7b5ffef6";
+    const cell = (instanceKey: string): AssetResolutionSite => ({
+        surfaceId: "surface-extra",
+        elementId: "element-art",
+        ownerName: "Art",
+        slot: "imageFill",
+        instanceKey,
+    });
+    const failure = (site: AssetResolutionSite, requested: string): AssetResolutionFailure => ({
+        site,
+        requested,
+        stage: "resolve",
+    });
+    const bundle = {
+        storyLibrary: { assetNames: { [CASTLE]: "castle.png" } },
+        ui: { uidoc: { surfaces: [{ id: "surface-extra", name: "Extra" }] } },
+    } as unknown as Parameters<typeof locateRuntimeIssue>[0];
+
+    it("is one issue per element, property and failure, however many drawings fail that way", () => {
+        const issues = assetResolutionIssues(
+            [failure(cell("row-1"), GONE), failure(cell("row-2"), GONE), failure(cell("row-3"), "[object Object]")],
+            { [CASTLE]: "castle.png" },
+            t,
+        );
+        expect(issues).toEqual([
+            {
+                level: "error",
+                origin: "interface",
+                surfaceId: "surface-extra",
+                message: "“Image Fill” on “Art” refers to an asset that is no longer in this project.",
+            },
+            {
+                level: "error",
+                origin: "interface",
+                surfaceId: "surface-extra",
+                message: "“Image Fill” on “Art” is set to a value that is not an asset.",
+            },
+        ]);
+    });
+
+    it("locates on the surface, by the name the author gave it", () => {
+        const [issue] = assetResolutionIssues([failure(cell(""), CASTLE)], { [CASTLE]: "castle.png" }, t);
+        const located = locateRuntimeIssue(bundle, issue!, "issue-1");
+        expect(located.surface).toEqual({ surfaceId: "surface-extra", surfaceName: "Extra" });
+        expect(located.location).toBeNull();
+        expect(located.message).toBe("“Image Fill” on “Art” refers to “castle.png”, which could not be read.");
+    });
+
+    it("retires an issue by its key and puts arrivals at the front", () => {
+        const located = (message: string, id: string): LocatedRuntimeIssue => locateRuntimeIssue(
+            bundle,
+            { level: "error", origin: "interface", surfaceId: "surface-extra", message },
+            id,
+        );
+        const stays = located("a blueprint failed", "issue-1");
+        const fixed = located("“Image Fill” on “Art” refers to an asset that is no longer in this project.", "issue-2");
+        const arriving = located("“Image Fill” on “Art” is set to a value that is not an asset.", "issue-3");
+
+        const next = reconcileRuntimeIssues([fixed, stays], new Set([runtimeIssueKey(fixed)]), [arriving]);
+        expect(next.map(issue => issue.id)).toEqual(["issue-3", "issue-1"]);
     });
 });

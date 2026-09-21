@@ -9,7 +9,11 @@ import { freezeProjectWrites } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { startRecoveryShell } from "@/lib/workspace/recovery/recoveryShell";
 import { Workspace } from "@/lib/workspace/workspace";
-import { createWorkspaceAssetUrlResolver, resolveAllWorkspaceAssetUrls } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import {
+    createWorkspaceAssetUrlResolver,
+    resolveAllWorkspaceAssetUrls,
+    workspaceAssetTypes,
+} from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -329,7 +333,13 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         // it goes, so one asset at a time meant one three-hop wait at a time.
         const allToken = getInterface().workspace.onResolveAllAssetUrls(async () => {
             try {
-                return { success: true, data: { urls: await resolveAllWorkspaceAssetUrls(context) } };
+                return {
+                    success: true,
+                    data: {
+                        urls: await resolveAllWorkspaceAssetUrls(context),
+                        types: workspaceAssetTypes(context),
+                    },
+                };
             } catch (error) {
                 return { success: false, error: error instanceof Error ? error.message : String(error) };
             }

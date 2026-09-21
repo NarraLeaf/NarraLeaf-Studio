@@ -13,7 +13,7 @@ export type UIVideoPreload = "none" | "metadata" | "auto";
 
 export type UIVideoWidgetProps = {
     /**
-     * Named `assetId` on purpose, not `videoAssetId`. `surfaceResourcePreload.ts` keys its preload
+     * Named `assetId` on purpose, not `videoAssetId`. `surfaceAssetWarmup.ts` keys its preload
      * walk on that literal property name, so the shipped game preloads this asset with no per-widget
      * code. `referenceModel.ts` now matches the same two literal names (it previously only knew
      * `imageFill`, `fontAssetId`, and `nl.image`'s legacy bare id).

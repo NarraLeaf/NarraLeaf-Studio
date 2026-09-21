@@ -1187,19 +1187,20 @@ window[RendererInterfaceKey].vcs
 
 ### 一次请求可以指名哪个工程
 
-`projectPath` 是渲染层填的字段，而 IPC 注册表是全进程一份、按 sender 找窗口的，所以**任何窗口都能发这 42 条里的
-任何一条**。会用历史覆盖工作树的六个——`restoreRevision` 与四个合并写，加 `sync`——因此用
-`requireWindowProject(window, projectPath)` 把工程取自**窗口自己的 props** 而不是 payload：这几条替换掉的字节从未
-被提交过，没有任何东西留着它们，指错工程不是「动了错的工程」而是**在那个工程里毁掉了工作**。`push` 与 `signIn`
-同样断言，理由弱一些：调用点只有工作区自己的版本轨。比较用 `normalizeProjectPath`（`D:\Game` 与 `d:\game` 是一个
-工程两个 session key），拒绝时把窗口自己的拼法交给下游，并且**不在日志里写出被指名的那个路径**——它不是这个作者的
-工程。拒绝会经 `ipcRegistry` 落到该窗口工程的日志面板上（`windowProjectRefusal.ts`）。
+`projectPath` 是渲染层填的字段，而 IPC 注册表是全进程一份、按 sender 找窗口的，所以**任何窗口都能发这 43 条里的
+任何一条**。因此凡是指名项目的 handler 都用 `requireWindowProject(window, projectPath)` 把项目取自**窗口自己的
+props** 而不是 payload。代价最重的是会用历史覆盖工作树的六个——`restoreRevision` 与四个合并写，加 `sync`：这几条
+替换掉的字节从未被提交过，没有任何东西留着它们，指错项目不是「动了错的项目」而是**在那个项目里毁掉了工作**。
+比较用 `normalizeProjectPath`（`D:\Game` 与 `d:\game` 是一个项目两个 session key），拒绝时把窗口自己的拼法交给下游，
+并且**不在日志里写出被指名的那个路径**——它不是这个作者的项目。拒绝会经 `ipcRegistry` 落到该窗口项目的日志面板上
+（`windowProjectRefusal.ts`）。
 
 断言路径只管「哪个项目」。「花谁的凭据、送到哪里」由下一节管。
 
 `publishProject` 从**没有项目的窗口**来时不断言路径：启动器的服务器页会让向导先把项目写到本机再送上去，而那个窗口
 自己没有项目，断言会把「在服务器上新建一个项目」这条路整条堵死。从有项目的窗口来时只能发布那个窗口自己的项目。
-`initRepository` 同理不能断言：向导合法地指一个还不是任何窗口项目的新目录。
+`initRepository` 同理不能只断言：向导合法地指一个还不是任何窗口项目的新目录。它用
+`requireWindowProjectOrWriteGrant`——有项目的窗口只能指自己的项目，没有项目的窗口只能指它被授权写入的目录。
 
 ### 登录按 (服务器, 项目) 作用
 
