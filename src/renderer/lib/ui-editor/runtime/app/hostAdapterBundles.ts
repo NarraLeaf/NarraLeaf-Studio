@@ -9,12 +9,15 @@
  * Those two used to build a host each, from the same inputs, for the same runtime scope, and the
  * host is not stateless: its adapter keeps the rows the page's lists have on screen (what a
  * broadcast or a window event fans out over), the page's transition state (what `Is Surface
- * Entering` reads) and its queue of pending flushes, and its host API keeps animation waiters. So
- * every one of `GameApp`'s dispatches ran against a page nobody had drawn: an Escape handler asking
- * "is the viewer open?" was answered from the moment the page was opened, and a broadcast sent from
- * it reached no row of any list. The widget state half of that is closed at the source - no host
- * API keeps a copy of it any more, see `readWidgetPatches` - but the rest is the host itself, so the
- * answer is that there is only one.
+ * Entering` reads) and its queue of pending flushes. So every one of `GameApp`'s dispatches ran
+ * against a page nobody had drawn: an Escape handler asking "is the viewer open?" was answered from
+ * the moment the page was opened, and a broadcast sent from it reached no row of any list. The
+ * widget state half of that is closed at the source - no host API keeps a copy of it any more, see
+ * `readWidgetPatches`, and the waits on a running animation live in the game's widget runtime store
+ * beside the animations - but the rest is the host itself, so the answer is that there is only one.
+ *
+ * "Whoever asks" includes the keys: they go to the host of whichever entry owns the keyboard, a
+ * layer as much as a page (see `keyboardOwner`).
  *
  * Keyed by the entry object, as the layer's own memo is: an entry cloned by navigation (a page
  * being gone back to, one leaving from behind) is drawn by a layer that re-memoises on it, and the
