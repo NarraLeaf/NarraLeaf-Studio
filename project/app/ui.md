@@ -229,7 +229,11 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   other bags, and `animation = {…}` its enter/exit record.
 - **`bind <prop> = blueprint <id>`** points a prop at a value blueprint;
   **`bind <prop> = field <fieldId>`** reads it from the list row the element is
-  being drawn for. `ui widget <type>` lists which props accept either.
+  being drawn for. `ui widget <type>` lists which props accept either. One more
+  is open to every type and is not in that list: `bind layout.visible = field
+  <fieldId>`, whether the element is drawn at all for this row - the lock on a
+  gallery cell, say. It reads a row's field and nothing else; a value blueprint
+  for it is refused, because nothing would evaluate one.
 - **`component <componentId> [param=value …]`** makes the element an instance of
   a component definition.
 

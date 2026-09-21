@@ -12,10 +12,17 @@
  *    they get rows. `src/builtin-plugins/gallery/design.md` (P2) is where the reasoning lives, and
  *    it names this as the decision most likely to be "simplified" into one uniform grid. It must
  *    not be.
- * 2. **Every cell reads its row, and no cell asks whether the row is locked.** The catalog's
- *    projection has already replaced a locked entry's picture with the placeholder and its name
- *    with the mask, so a condition in the template would be a second answer to a settled question -
- *    and the kind that fails open.
+ * 2. **Every cell reads its row, and what a locked row withholds is the catalog's answer alone.**
+ *    The catalog's projection has already replaced a locked entry's picture with the placeholder
+ *    (or with nothing) and its name with the mask, so no picture or name in the template is
+ *    conditioned on the lock - that would be a second answer to a settled question, and the kind
+ *    that fails open. The lock state is read for one thing only: to make a locked cell *look*
+ *    locked rather than empty. A tile gets a dark backdrop with a padlock drawn from plain
+ *    containers, and a row gets the same padlock at a third of the size where its play mark would
+ *    be. It is built from no picture, because the project that most needs it - a new one, where
+ *    nothing is unlocked - has no art to give it. The backdrop sits *beneath* the art, so a
+ *    silhouette the author did set (`lockedImageAssetId`) paints over it; and it is not drawn at
+ *    all on an unlocked row, so an unlocked tile is exactly what it was without it.
  * 3. **A CG tile answers nothing, and that is deliberate.** Opening the picture at full size is the
  *    obvious next thing and is not here: a write made from inside a list row is addressed to that
  *    row's own drawing (`resolveDisplayableTargetElementId` and `resolveListElementId` in
@@ -209,12 +216,18 @@ describe("the starter template's EXTRA screen", () => {
         expect(only(graph, GET_STATS).params?.galleryKind).toBe(kind);
     });
 
-    it("reads each cell off its row, and never asks a cell whether the row is locked", () => {
+    it("reads each cell off its row, and leaves what a locked row withholds to the catalog", () => {
         const struct = document.structs?.["extra.galleryEntry"];
         expect(struct, "the screen declares the row shape Get Gallery hands over").toBeDefined();
         const fields = new Set(struct!.fields.map(field => field.key));
+        // Both halves of the lock state are declared: a row that is not unlocked is not necessarily
+        // locked (a placeholder row on the canvas is neither), and a binding can only read a field,
+        // never its negation.
+        expect(fields).toContain("unlocked");
+        expect(fields).toContain("locked");
 
         let bound = 0;
+        const shownOnlyWhen: string[] = [];
         for (const { list } of SEGMENTS) {
             const pane = on(list, "nl.list");
             for (const element of descendants(pane.id)) {
@@ -222,20 +235,127 @@ describe("the starter template's EXTRA screen", () => {
                     expect(binding.kind, `${list} ▸ ${element.name} ▸ ${prop}`).toBe("listItemField");
                     expect(fields, `${list} ▸ ${element.name} ▸ ${prop}`).toContain(binding.fieldId);
                     bound += 1;
+                    if (prop === "layout.visible") {
+                        shownOnlyWhen.push(`${list} ▸ ${element.name} ▸ ${binding.fieldId}`);
+                    }
                 }
             }
-            // Masking is the catalog's answer, so nothing inside a template branches on it: no cell
-            // is hidden by a row's lock state, and no gallery node is read a second time per cell.
+            // Masking is the catalog's answer, so nothing that shows the row's content branches on
+            // it: the picture and the name are drawn whatever the lock state, and no gallery node is
+            // read a second time per cell.
             for (const element of descendants(pane.id).slice(1)) {
-                expect(Object.keys(element.valueBindings ?? {})).not.toContain("layout.visible");
+                if (["Art", "Name", "Name plate"].includes(element.name)) {
+                    expect(Object.keys(element.valueBindings ?? {}), `${list} ▸ ${element.name}`)
+                        .not.toContain("layout.visible");
+                }
                 for (const graph of graphsFor(element.id)) {
                     const gallery = Object.values(graph.nodes).filter(node => node.type.startsWith(GALLERY));
                     expect(gallery, `${list} ▸ ${element.name} reads the gallery again`).toEqual([]);
                 }
             }
         }
-        // Two tiles' picture and name, and two rows' name.
-        expect(bound).toBe(6);
+        // The lock state decides only the locked look, and on a row, whether the play mark
+        // promises a press that would do something.
+        expect(shownOnlyWhen).toEqual([
+            "CG grid ▸ Locked backdrop ▸ locked",
+            "Recollection grid ▸ Locked backdrop ▸ locked",
+            "Music rows ▸ Play mark ▸ unlocked",
+            "Music rows ▸ Locked mark ▸ locked",
+            "Voice rows ▸ Play mark ▸ unlocked",
+            "Voice rows ▸ Locked mark ▸ locked",
+        ]);
+        // Two tiles' picture, name and locked backdrop; two rows' name, play mark and lock.
+        expect(bound).toBe(12);
+    });
+
+    it.each(SEGMENTS.filter(segment => segment.wraps))(
+        "draws a locked $button tile as a dark block with a padlock, beneath the art and from no picture",
+        ({ list }) => {
+            const tile = document.elements[on(list, "nl.list").childrenIds?.[0] ?? ""]!;
+            const children = (tile.childrenIds ?? []).map(id => document.elements[id]!);
+            const backdrop = children.find(child => child.name === "Locked backdrop");
+            const art = children.find(child => child.name === "Art");
+            expect(backdrop, `${list} has no locked backdrop`).toBeDefined();
+            expect(art?.type).toBe("nl.image");
+
+            // Beneath the art: a silhouette the author set for a locked entry paints over the
+            // backdrop and is never covered by it. With no silhouette the image draws nothing, and
+            // the backdrop is what shows.
+            expect(children.indexOf(backdrop!)).toBeLessThan(children.indexOf(art!));
+            expect(backdrop!.valueBindings?.["layout.visible"]).toEqual({ kind: "listItemField", fieldId: "locked" });
+
+            // A flat slab inside the tile's one-pixel border, so a locked tile keeps its outline.
+            const tileBox = tile.layout as { width: number; height: number };
+            const tileBorder = (tile.props?.borderWidth as number | undefined) ?? 0;
+            expect(backdrop!.layout).toMatchObject({
+                x: tileBorder,
+                y: tileBorder,
+                width: tileBox.width - 2 * tileBorder,
+                height: tileBox.height - 2 * tileBorder,
+            });
+            expect(backdrop!.props?.fillVisible).toBe(true);
+            expect(String(backdrop!.props?.backgroundColor)).toMatch(/^nlbrand:/);
+
+            // Drawn from plain containers: no picture to ship, and no glyph whose look depends on
+            // which fonts the player's machine has.
+            for (const part of descendants(backdrop!.id)) {
+                expect(part.type, `${list} ▸ ${part.name}`).toBe("nl.container");
+                expect(part.props?.fillType ?? "color", `${list} ▸ ${part.name}`).toBe("color");
+                expect(part.props?.imageFill ?? null, `${list} ▸ ${part.name}`).toBeNull();
+                expect(part.props?.backgroundImage ?? "", `${list} ▸ ${part.name}`).toBe("");
+            }
+
+            // The padlock sits in the middle of the part of the tile the name plate leaves open.
+            const mark = descendants(backdrop!.id).find(part => part.name === "Locked mark")!;
+            const plate = children.find(child => child.name === "Name plate")!;
+            const box = mark.layout as { x: number; y: number; width: number; height: number };
+            const open = { width: tileBox.width, height: (plate.layout as { y: number }).y };
+            const centreX = tileBorder + box.x + box.width / 2;
+            const centreY = tileBorder + box.y + box.height / 2;
+            expect(Math.abs(centreX - open.width / 2)).toBeLessThanOrEqual(1);
+            expect(Math.abs(centreY - open.height / 2)).toBeLessThanOrEqual(1);
+        },
+    );
+
+    it("gives a locked row the tile's padlock at a third of the size, in place of the play mark", () => {
+        const tileMark = descendants(on("CG grid", "nl.list").id).find(element => element.name === "Locked mark")!;
+        const tileParts = descendants(tileMark.id).slice(1);
+        for (const { list } of SEGMENTS.filter(segment => !segment.wraps)) {
+            const row = document.elements[on(list, "nl.list").childrenIds?.[0] ?? ""]!;
+            const children = (row.childrenIds ?? []).map(id => document.elements[id]!);
+            const play = children.find(child => child.name === "Play mark")!;
+            const lock = children.find(child => child.name === "Locked mark");
+            expect(lock, `${list} has no lock mark`).toBeDefined();
+
+            // One slot, two tenants that never meet: the play mark promises a press that plays, and
+            // on a locked row that press does nothing, so the lock takes its place.
+            expect(play.valueBindings?.["layout.visible"]).toEqual({ kind: "listItemField", fieldId: "unlocked" });
+            expect(lock!.valueBindings?.["layout.visible"]).toEqual({ kind: "listItemField", fieldId: "locked" });
+            const slot = play.layout as { x: number; y: number; width: number; height: number };
+            const box = lock!.layout as { x: number; y: number; width: number; height: number };
+            expect(Math.abs(box.x + box.width / 2 - (slot.x + slot.width / 2))).toBeLessThanOrEqual(1);
+            expect(Math.abs(box.y + box.height / 2 - (slot.y + slot.height / 2))).toBeLessThanOrEqual(1);
+
+            // The same construct, not a second visual language: the same parts in the same order,
+            // the same colours, and every measurement a third of the tile's, give or take the pixel
+            // a small shape has to be rounded to.
+            const rowParts = descendants(lock!.id).slice(1);
+            expect(rowParts.map(part => part.name)).toEqual(tileParts.map(part => part.name));
+            rowParts.forEach((part, index) => {
+                const big = tileParts[index]!;
+                expect(part.type).toBe("nl.container");
+                expect(part.props?.borderColor).toBe(big.props?.borderColor);
+                if (part.name !== "Keyhole") {
+                    // The keyhole is cut in the colour behind it, which differs between a tile and a row.
+                    expect(part.props?.backgroundColor).toBe(big.props?.backgroundColor);
+                }
+                for (const key of ["x", "y", "width", "height"] as const) {
+                    const small = (part.layout as Record<string, number>)[key]!;
+                    const large = (big.layout as Record<string, number>)[key]!;
+                    expect(Math.abs(small * 3 - large), `${list} ▸ ${part.name} ▸ ${key}`).toBeLessThanOrEqual(3);
+                }
+            });
+        }
     });
 
     it("is reached from the title menu and from nowhere else", () => {
