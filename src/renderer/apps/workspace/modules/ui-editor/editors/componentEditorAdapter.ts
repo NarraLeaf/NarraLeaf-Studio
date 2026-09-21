@@ -54,6 +54,8 @@ function isComponentEditorWrapperRoot(element: UIElement, componentRootId: strin
 export class ComponentDocumentServiceAdapter {
     public readonly surfaceId: string;
     private readonly virtualRootId: string;
+    /** The last document built, and the base document and revision it was built from. */
+    private built: { base: UIDocument; revision: number; document: UIDocument } | null = null;
 
     public constructor(
         private readonly base: UIDocumentService,
@@ -63,8 +65,29 @@ export class ComponentDocumentServiceAdapter {
         this.virtualRootId = getComponentEditorRootId(componentId);
     }
 
+    /**
+     * The component shown as a document of its own: one surface, a virtual root, and the
+     * component's elements.
+     *
+     * The same object until the base document changes, as the base service's own document is.
+     * Built fresh on every read, the editor tab got a new surface on every render and everything it
+     * keeps per surface ran again - its whole canvas was re-rendered on each selection change
+     * anywhere in the workspace, while the tab was not even on screen. The base changes either in
+     * place, which moves its revision, or by being replaced (loaded, saved, restored from history),
+     * which changes the object; both are checked.
+     */
     public getDocument(): UIDocument {
         const baseDocument = this.base.getDocument();
+        const revision = this.base.getRevision();
+        if (this.built && this.built.base === baseDocument && this.built.revision === revision) {
+            return this.built.document;
+        }
+        const document = this.buildDocument(baseDocument);
+        this.built = { base: baseDocument, revision, document };
+        return document;
+    }
+
+    private buildDocument(baseDocument: UIDocument): UIDocument {
         const component = this.base.getComponent(this.componentId);
         if (!component) {
             return {
