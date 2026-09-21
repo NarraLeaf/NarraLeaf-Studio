@@ -60,13 +60,14 @@ function createHarness(document: UIDocument, ownerRecords: BlueprintDocument["ow
     }> = [];
     const coordinator = new UIBlueprintLifecycleCoordinator();
 
-    coordinator.setContext({
+    const context = {
         project: {} as any,
         services: {
             get(serviceId: Services) {
                 if (serviceId === Services.UIDocument) {
                     return {
                         getDocument: () => document,
+                        setAfterMutateHook: () => undefined,
                     };
                 }
                 if (serviceId === Services.LocalBlueprint) {
@@ -94,9 +95,10 @@ function createHarness(document: UIDocument, ownerRecords: BlueprintDocument["ow
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
-    });
+    };
+    coordinator.setContext(context as any);
 
-    return { coordinator, ensuredWidgets, removedWidgets };
+    return { coordinator, context, ensuredWidgets, removedWidgets };
 }
 
 describe("UIBlueprintLifecycleCoordinator", () => {
@@ -183,6 +185,26 @@ describe("UIBlueprintLifecycleCoordinator with plugin widgets", () => {
         coordinator.syncFromUidoc();
 
         expect(ensuredWidgets.map(entry => entry.elementId)).toEqual(["rating-a"]);
+    });
+
+    it("gives one to a plugin widget already on the page when its plugin loads", async () => {
+        const { coordinator, context, ensuredWidgets } = createHarness(pageWithRating());
+        coordinator.activate(context as any);
+        expect(ensuredWidgets).toEqual([]);
+
+        // Nothing in the document changes: the plugin arriving is what changes the answer.
+        widgetModuleRegistry.register({
+            type: RATING,
+            displayName: "Rating",
+            icon: (() => null) as never,
+            logicApi: { supportsPrivateBlueprint: true, events: [], commands: [], readableState: [], writableProps: [] },
+            createDefaultElement: () => ({}),
+            render: () => null,
+        }, { ownerPluginId: PLUGIN_ID });
+        await Promise.resolve();
+
+        expect(ensuredWidgets.map(entry => entry.elementId)).toEqual(["rating-a"]);
+        coordinator.dispose(context as any);
     });
 
     it("keeps the blueprint of a plugin widget whose plugin is not loaded", () => {
