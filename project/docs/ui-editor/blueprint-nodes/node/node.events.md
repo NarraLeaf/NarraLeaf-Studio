@@ -360,7 +360,7 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 
 `blueprint.event.head.preferenceChanged` - 指定 Game Preference 变化事件
 
-当当前活动 NarraLeaf `LiveGame` 的指定 Game Preference 字段变化时触发。节点通过 Inspector 参数 `Preference` 选择要监听的偏好键，底层订阅 NarraLeaf React `game.preference.onPreferenceChange`。该节点出现在 Global 蓝图和当前 active Surface 蓝图中；典型用途是设置 Page 的 Surface 蓝图里随 `BGM Volume`、`Voice Volume`、`Game Speed` 等偏好实时更新 Slider、文本或图标显示（控件层用 Element 分类节点写回目标控件）。
+当当前活动 NarraLeaf `LiveGame` 的指定 Game Preference 字段变化时触发。节点通过 Inspector 参数 `Preference` 选择要监听的偏好键，底层订阅 NarraLeaf React `game.preference.onPreferenceChange`。该节点出现在 Global 蓝图和 Surface 蓝图中：Global 先触发，然后是每个正在显示的 Surface——活动页面、叠在它上面的层（从最上层开始）、Frame 里显示的页面、故事放到舞台上的界面；层在完成首帧绘制之前不会收到。`On Fullscreen Changed`、`On Window Focus Changed`、`On Window Close Requested` 按同一顺序派发，其中 `On Window Close Requested` 在某个界面执行 `Keep Window Open` 后不再派发给它下面的界面。典型用途是设置 Page 的 Surface 蓝图里随 `BGM Volume`、`Voice Volume`、`Game Speed` 等偏好实时更新 Slider、文本或图标显示（控件层用 Element 分类节点写回目标控件）。
 
 监听目标是当前活动 `LiveGame` 的 preference 派发器：没有活动 game runtime 时不会订阅，也不会触发；`On Game Ready` 之后运行时会在新的 `LiveGame` 上重新建立订阅。通过 Preference Setter（如 `Set BGM Volume`）或 NarraLeaf 内部写入偏好都会触发该事件；`onPreferenceChange` 不保证对相同值去重，写入相同值时也可能再次触发。为提供 `previousValue`，运行时在订阅时用 `getPreferences()` 播种快照并缓存该键上一次已知值。避免在监听某偏好的图里再写入同一偏好，以免自触发循环。
 
@@ -376,7 +376,7 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 
 `blueprint.event.head.anyPreferenceChanged` - 任意 Game Preference 变化事件
 
-当当前活动 NarraLeaf `LiveGame` 的任意 Game Preference 字段变化时触发，底层订阅 NarraLeaf React `game.preference.onPreferenceChange(listener)`（对应 `event:game.preference.change`）。该节点出现在 Global 蓝图和当前 active Surface 蓝图中；用于集中处理设置变更，例如统一持久化当前设置或一次性刷新整个设置面板。
+当当前活动 NarraLeaf `LiveGame` 的任意 Game Preference 字段变化时触发，底层订阅 NarraLeaf React `game.preference.onPreferenceChange(listener)`（对应 `event:game.preference.change`）。该节点出现在 Global 蓝图和 Surface 蓝图中，派发范围与顺序同 `On Preference Changed`；用于集中处理设置变更，例如统一持久化当前设置或一次性刷新整个设置面板。
 
 没有活动 game runtime 时不会订阅，也不会触发；`On Game Ready` 之后在新的 `LiveGame` 上重新订阅。触发与去重语义、以及 `previousValue` 缓存方式与 `On Preference Changed` 一致。
 

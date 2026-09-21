@@ -99,7 +99,6 @@ import {
     dispatchGlobalBlueprintEvent,
     invokeBlueprintFnCall,
     dispatchSurfaceBlueprintEvent,
-    dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
 import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
@@ -207,6 +206,13 @@ import { clonePageProps } from "./pageProps";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
 import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
 import { announceSavedVariableWrites } from "./savedVariableWrites";
+import {
+    AmbientSurfaceTargets,
+    dispatchAmbientSurfaceEvent,
+    listAmbientSurfaceTargets,
+    type AmbientSurfaceDispatch,
+    type AmbientSurfaceTarget,
+} from "./ambientSurfaceEvents";
 import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
 import { offerUnclaimedPointerInput, RUNTIME_PLUGIN_OVERLAY_ATTR } from "./globalPointerInput";
 import { UI_TOUCH_GESTURE_EVENT } from "@/lib/ui-editor/runtime/input/touchGesture";
@@ -867,6 +873,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
     /** Saved-variable writes the engine reports, announced to value bindings; see `savedVariableWrites`. */
     const nlrSavedVariableTokenRef = useRef<{ cancel(): void } | null>(null);
+    /**
+     * The live surfaces this component does not draw itself - the stage's and the frames' - which
+     * register here so the window and preference events reach them too (see `ambientSurfaceEvents`).
+     */
+    const [ambientSurfaces] = useState(() => new AmbientSurfaceTargets());
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
     // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
@@ -3972,6 +3983,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             reducedMotion: prefersReducedMotion === true,
+            ambientSurfaces,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -4119,6 +4131,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return sessionId;
     }, [
         activeSurface,
+        ambientSurfaces,
         bootReporter,
         bundle,
         clearGameHiddenStudioPages,
@@ -4781,6 +4794,28 @@ export function GameApp(props: GameAppProps): ReactNode {
         ? { surface: keyboardOwnerEntry.surface, host: keyboardOwnerHost }
         : null;
 
+    /**
+     * Every live surface a preference, fullscreen, focus or close-request event reaches, in the order
+     * it reaches them (see `ambientSurfaceEvents`): the layers from the topmost down, the page, then
+     * the pages drawn in frames and the surfaces on the stage, which register themselves.
+     *
+     * A layer is live on the terms it takes keys on - drawn, and far enough in that its graphs run -
+     * so its heads start and stop hearing with the rest of it. The page is reached as it always has
+     * been. Read as the event arrives, like the keyboard owner above, so the listeners below do not
+     * have to be re-registered whenever the composite changes.
+     */
+    const ambientTargetsRef = useRef<() => AmbientSurfaceTarget[]>(() => []);
+    ambientTargetsRef.current = () => listAmbientSurfaceTargets({
+        layers: visibleLayers.map(({ layer, surface: layerSurface }) => ({
+            entry: layer,
+            surface: layerSurface,
+            live: renderedLayerKeys.has(layer.key) && prepaintReadyKeys.has(layer.key),
+        })),
+        page: activeEntry && activeSurface ? { entry: activeEntry, surface: activeSurface } : null,
+        hostAdapterBundleFor,
+        registered: ambientSurfaces,
+    });
+
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!core || !gameHostCapabilities) {
             return undefined;
@@ -4877,7 +4912,15 @@ export function GameApp(props: GameAppProps): ReactNode {
                     lifecycleRef.current.surfaceReady(input.runtimeScopeId, input.targetSurface.id),
                     executor,
                 );
+                // A page drawn in a frame is a live surface like any other: its window and
+                // preference heads hear what the page around it hears.
+                const leaveAmbient = ambientSurfaces.add({
+                    surface: input.targetSurface,
+                    hostAdapter: input.hostAdapter,
+                    runtimeScopeId: input.runtimeScopeId,
+                });
                 return () => {
+                    leaveAmbient();
                     executeLifecycleCommands(
                         lifecycleRef.current.surfaceUnmounted(input.runtimeScopeId, input.targetSurface.id),
                         executor,
@@ -4887,6 +4930,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
         };
     }, [
+        ambientSurfaces,
         bundle,
         core,
         // One dependency where sixty used to be: the capabilities memo is rebuilt whenever any
@@ -5441,93 +5485,55 @@ export function GameApp(props: GameAppProps): ReactNode {
         stageAdvanceHolderRef.current?.sync(stageCovered);
     });
 
+    /**
+     * What the four ambient events below are dispatched with: the global blueprint on the active
+     * page's host, as it always has been, and then every live surface - read from
+     * `ambientTargetsRef` as each event arrives, so a layer opened or a stage surface drawn after a
+     * listener was registered is still reached.
+     */
+    const ambientDispatch = useMemo<AmbientSurfaceDispatch | null>(() => {
+        if (!host.ready || !core || !hostAdapterBundle) {
+            return null;
+        }
+        return {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            document: bundle.ui.uidoc,
+            core,
+            globalHost: hostAdapterBundle,
+            readTargets: () => ambientTargetsRef.current(),
+        };
+    }, [bundle, core, host.ready, hostAdapterBundle]);
+
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface) {
+        if (!ambientDispatch) {
             dispatchPreferenceChangeRef.current = null;
             return;
         }
         dispatchPreferenceChangeRef.current = (key, value, previousValue) => {
             const eventPayload = { key, value: value ?? null, previousValue: previousValue ?? null };
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName: "gamePreferenceChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "gamePreferenceChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).catch(err => host.log("error", normalizeError(err)));
+            dispatchAmbientSurfaceEvent(ambientDispatch, "gamePreferenceChanged", eventPayload)
+                .catch(err => host.log("error", normalizeError(err)));
         };
         return () => {
             dispatchPreferenceChangeRef.current = null;
         };
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     // Window fullscreen transitions come from the main process, so they also cover
     // fullscreen toggled outside the game. Unlike the preference subscription this
     // one is owned by the host, so the effect can subscribe directly.
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeFullscreenChanged) {
+        if (!ambientDispatch || !host.subscribeFullscreenChanged) {
             return;
         }
         return host.subscribeFullscreenChanged(isFullscreen => {
-            const eventPayload = { isFullscreen };
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName: "windowFullscreenChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFullscreenChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).then(() => dispatchWidgetsBlueprintEvent({
-                document: bundle.ui.uidoc,
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFullscreenChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).catch(err => host.log("error", normalizeError(err)));
+            dispatchAmbientSurfaceEvent(ambientDispatch, "windowFullscreenChanged", { isFullscreen })
+                .catch(err => host.log("error", normalizeError(err)));
         });
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     /**
      * The window gaining or losing the player's attention, as a fact this app keeps.
@@ -5629,97 +5635,36 @@ export function GameApp(props: GameAppProps): ReactNode {
     // fullscreen dispatch above and owned by the host in the same way, so the two ambient window
     // events reach a graph by one route.
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeWindowFocusChanged) {
+        if (!ambientDispatch || !host.subscribeWindowFocusChanged) {
             return;
         }
         return host.subscribeWindowFocusChanged(isFocused => {
-            const eventPayload = { isFocused };
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName: "windowFocusChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFocusChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).then(() => dispatchWidgetsBlueprintEvent({
-                document: bundle.ui.uidoc,
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFocusChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).catch(err => host.log("error", normalizeError(err)));
+            dispatchAmbientSurfaceEvent(ambientDispatch, "windowFocusChanged", { isFocused })
+                .catch(err => host.log("error", normalizeError(err)));
         });
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     // The user asked to close the window; the main process holds the close open until the blueprint
-    // decides. A shared event control travels through the global then surface dispatch, so a Stop
-    // Event Bubble node in either cancels the close. Absent that, the window closes. Scoped like the
-    // keyboard heads (global + surface): the widget dispatch path does not thread the event control.
-    // Owned by the host, so the effect subscribes directly (like fullscreen).
+    // decides. A shared event control travels through the global blueprint and then every live
+    // surface from the top down, so `Keep Window Open` in any of them cancels the close and the
+    // surfaces under it are not asked. Absent that, the window closes. Surface heads only: the widget
+    // dispatch path does not thread the event control. Owned by the host, so the effect subscribes
+    // directly (like fullscreen).
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeCloseRequested) {
+        if (!ambientDispatch || !host.subscribeCloseRequested) {
             return;
         }
         return host.subscribeCloseRequested(async () => {
             const eventControl = createEventPropagationControl();
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             try {
-                await dispatchGlobalBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
-                    persistentVariables: bundle.ui.persistentVariables,
-                    eventName: "windowCloseRequested",
-                    eventControl,
-                    hostAdapter: hostAdapterBundle.hostAdapter,
-                    debug: core.debug,
-                    getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                    setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                    executionManager: core.executionManager,
-                });
-                if (!eventControl.isPropagationStopped()) {
-                    await dispatchSurfaceBlueprintEvent({
-                        blueprintDocument: bundle.ui.localBlueprints,
-                        persistentVariables: bundle.ui.persistentVariables,
-                        surfaceId: activeSurface.id,
-                        runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                        eventName: "windowCloseRequested",
-                        eventControl,
-                        hostAdapter: hostAdapterBundle.hostAdapter,
-                        debug: core.debug,
-                        getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                        setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                        executionManager: core.executionManager,
-                    });
-                }
+                await dispatchAmbientSurfaceEvent(ambientDispatch, "windowCloseRequested", undefined, eventControl);
             } catch (err) {
                 host.log("error", normalizeError(err));
             }
             // Default is to close; a handler that ran `Keep Window Open` cancels it.
             return !eventControl.isPropagationStopped();
         });
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     if (!activeSurface || !activeEntry) {
         return renderPlaceholder?.() ?? null;
