@@ -35,6 +35,9 @@ import { Service } from "../Service";
 import { IStoryService, Services, WorkspaceContext, type StoryPluginActionRegistration } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { itemWrite, storeWrite, type FsWriteReport } from "../autosave/writeReport";
+import { ASSET_UNDECODABLE } from "../assets/assetReadFailure";
+import { withReadFailureReason } from "@/lib/workspace/assets/assetReadFailure";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -133,6 +136,20 @@ type StoryStructureSnapshot = {
     entrySceneId?: StorySceneId;
     unassignedSceneIds?: StorySceneId[];
 };
+
+/**
+ * A motion asset that is in the list and could not be read.
+ *
+ * `code` is what the read answered, for a surface to word: the filesystem's code when the file could
+ * not be had, `ASSET_UNDECODABLE` when it was read and is not a motion this Studio can open. The
+ * message is for the log - it names the file's path, which is the motion's id.
+ */
+export class StoryAnimationReadError extends RendererError {
+    public constructor(message: string, public readonly code: string, cause?: unknown) {
+        super(message, { cause });
+        this.name = "StoryAnimationReadError";
+    }
+}
 
 export class StoryService extends Service<StoryService> implements IStoryService {
     private index: StoryLibraryIndex | null = null;
@@ -425,7 +442,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         const entry = this.getStoryEntry(storyId);
         if (!entry) {
-            throw new RendererError(`Story not found: ${storyId}`);
+            // The message is what every surface that asked shows, so it is the author's sentence:
+            // the id is all a missing story has, and an id names nothing an author can look for.
+            throw new RendererError(translate("story.readFailed.missing"), { cause: { storyId } });
         }
         const fs = this.getFileSystem();
         const path = this.getStoryDocumentPath(storyId);
@@ -442,7 +461,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 error: result.error,
                 severity: "degraded",
             });
-            throw new RendererError(result.error.message || `Failed to read story document: ${entry.name}`);
+            // Said by the story's name and what the read answered, the way the surfaces that asked
+            // show it. The read's own message - English, naming the file by the story's id - is in
+            // the anomaly record above.
+            throw new RendererError(
+                withReadFailureReason(
+                    translate("story.readFailed.named", { name: entry.name }),
+                    result.error.code === FsRejectErrorCode.INVALID_JSON ? ASSET_UNDECODABLE : result.error.code,
+                    translate,
+                ),
+                { cause: result.error },
+            );
         }
         try {
             const document = normalizeStoryDocument(result.data, new Date().toISOString());
@@ -465,12 +494,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // that into a sentence an author can act on. Rewrapping the text alone would leave that
             // reader nothing to recognise.
             //
-            // The text itself is the ladder's English sentence for every other reader, and the
-            // author's own language for those two - `showError` prints whatever it is handed, and
-            // the numbers are the whole point of handing it anything.
+            // The text itself is what every surface that asked shows - `showError` prints whatever
+            // it is handed - so it is the author's sentence: the two version refusals with their
+            // numbers, which are the whole point of saying anything, and otherwise that the story
+            // could not be read. The parser's English is in the anomaly record and the cause.
             throw new RendererError(
                 describeStoryDocumentRefusal(entry.name, error)
-                    ?? (error instanceof Error ? error.message : String(error)),
+                    ?? withReadFailureReason(
+                        translate("story.readFailed.named", { name: entry.name }),
+                        ASSET_UNDECODABLE,
+                        translate,
+                    ),
                 { cause: error },
             );
         }
@@ -721,14 +755,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         const result = await this.getFileSystem().readJSON<StoryAnimationAsset>(this.getAnimationAssetPath(animationId));
         if (!result.ok) {
-            throw new RendererError(result.error.message || `Failed to read story animation: ${entry.name}`);
+            throw new StoryAnimationReadError(
+                result.error.message || `Failed to read story animation: ${entry.name}`,
+                result.error.code === FsRejectErrorCode.INVALID_JSON ? ASSET_UNDECODABLE : result.error.code,
+                result.error,
+            );
         }
         try {
             const asset = normalizeStoryAnimationAsset(result.data, new Date().toISOString());
             this.animationAssets.set(animationId, asset);
             return asset;
         } catch (error) {
-            throw new RendererError(error instanceof Error ? error.message : String(error));
+            throw new StoryAnimationReadError(error instanceof Error ? error.message : String(error), ASSET_UNDECODABLE, error);
         }
     }
 
@@ -2537,16 +2575,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * still answers `ok` with `refused`, and a real failure is still `ok: false` with a code the
      * save-status surface already understands.
      */
-    private writeStoryFile(path: string, payload: string): Promise<FsRequestResult<void>> {
-        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8");
+    private writeStoryFile(path: string, payload: string, report: FsWriteReport): Promise<FsRequestResult<void>> {
+        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8", report);
     }
+
+    /**
+     * Every file here is written again by the auto-saver when a write fails - {@link settleWrite}
+     * re-owes it - so each is reported as retried, by the name the author knows it by: a story or a
+     * motion by its own name, the two lists by the store's.
+     */
+    private static readonly LIBRARY_WRITE = storeWrite("workspace.shell.save.stores.story", "retried");
 
     private async writeLibraryIndex(): Promise<void> {
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getLibraryIndex(), null, 2);
         this.libraryIndexDirty = false;
         this.libraryStampsDirty = false;
-        const result = await this.writeStoryFile(this.getIndexPath(), payload);
+        const result = await this.writeStoryFile(this.getIndexPath(), payload, StoryService.LIBRARY_WRITE);
         this.settleWrite(result, () => {
             // Both, unconditionally. These bytes carried the authored index *and* every stamp, and a
             // write that did not land tells us nothing about which half mattered; re-owing the
@@ -2572,7 +2617,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDocumentDir(storyId);
         const payload = JSON.stringify(document, null, 2);
         this.dirtyDocuments.delete(storyId);
-        const result = await this.writeStoryFile(this.getStoryDocumentPath(storyId), payload);
+        const result = await this.writeStoryFile(
+            this.getStoryDocumentPath(storyId),
+            payload,
+            itemWrite(this.getStoryEntry(storyId)?.name, "workspace.shell.save.stores.story", "retried"),
+        );
         this.settleWrite(result, () => {
             this.dirtyDocuments.add(storyId);
         });
@@ -2582,7 +2631,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getAnimationIndex(), null, 2);
         this.animationIndexDirty = false;
-        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload);
+        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload, StoryService.LIBRARY_WRITE);
         this.settleWrite(result, () => {
             this.animationIndexDirty = true;
         });
@@ -2592,7 +2641,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(asset, null, 2);
         this.dirtyAnimationAssets.delete(asset.id);
-        const result = await this.writeStoryFile(this.getAnimationAssetPath(asset.id), payload);
+        const result = await this.writeStoryFile(
+            this.getAnimationAssetPath(asset.id),
+            payload,
+            itemWrite(asset.name, "workspace.shell.save.stores.story", "retried"),
+        );
         this.settleWrite(result, () => {
             this.dirtyAnimationAssets.add(asset.id);
         });

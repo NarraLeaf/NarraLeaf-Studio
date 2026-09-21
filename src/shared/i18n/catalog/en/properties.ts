@@ -194,6 +194,7 @@ export const properties = {
             loadAsset: "Failed to load asset",
             deleteFailed: "Failed to delete thumbnail",
             saveFailed: "Failed to save thumbnail",
+            saveFailedWithReason: "Failed to save thumbnail. {reason}",
             unknown: "Unknown error",
         },
     },

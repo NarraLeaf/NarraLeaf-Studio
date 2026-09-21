@@ -16,6 +16,7 @@ import {
     normalizePersistentValueType,
 } from "@shared/variables/variableRegistryModel";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -601,6 +602,6 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
      * the stripped-and-stashed legacy entries the UIGraphService migration hands over.
      */
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.variables", "retried"));
     }
 }

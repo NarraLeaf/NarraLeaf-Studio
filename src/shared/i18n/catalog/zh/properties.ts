@@ -186,6 +186,7 @@ export const properties = {
             loadAsset: "加载资产失败",
             deleteFailed: "删除缩略图失败",
             saveFailed: "保存缩略图失败",
+            saveFailedWithReason: "保存缩略图失败；{reason}",
             unknown: "未知错误",
         },
     },

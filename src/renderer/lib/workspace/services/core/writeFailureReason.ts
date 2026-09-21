@@ -1,5 +1,6 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import { FsRejectErrorCode, type FsRejectError } from "@shared/types/os";
+import type { SavedFileName } from "../autosave/writeReport";
 
 type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
 
@@ -23,4 +24,31 @@ export function describeWriteFailureReason(error: Pick<FsRejectError, "code">, t
         default:
             return null;
     }
+}
+
+/**
+ * The sentence a surface shows for a write the author asked for that did not land: the thing by its
+ * name, then what the disk said when that is something to act on.
+ *
+ * For the surfaces that report their own writes (see `WriteFailureFollowUp`): an export, a text
+ * file's save, a thumbnail. `name` is what the author knows the file as - the name they gave the
+ * export, the asset's name, or a store's name - never the path it was written to, which for an
+ * asset is its id split into folders. A bare string is a name the author gave.
+ */
+export function describeFileWriteFailure(
+    name: SavedFileName | string,
+    error: Pick<FsRejectError, "code">,
+    t: Translate,
+): string {
+    const saved: SavedFileName = typeof name === "string" ? { item: name } : name;
+    const reason = describeWriteFailureReason(error, t);
+    if ("item" in saved) {
+        return reason
+            ? t("workspace.shell.save.fileFailed.withReason", { name: saved.item, reason })
+            : t("workspace.shell.save.fileFailed.plain", { name: saved.item });
+    }
+    const store = t(saved.store);
+    return reason
+        ? t("workspace.shell.save.storeFailed.withReason", { name: store, reason })
+        : t("workspace.shell.save.storeFailed.plain", { name: store });
 }

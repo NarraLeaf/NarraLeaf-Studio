@@ -2,6 +2,7 @@ import { AssetData, AssetType, AudioAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Asset } from "./types";
 import { AssetServiceBase } from "./AssetServiceBase";
+import { ASSET_UNDECODABLE } from "./assetReadFailure";
 
 export class AudioService extends AssetServiceBase {
 
@@ -12,6 +13,7 @@ export class AudioService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read audio file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
 
@@ -38,6 +40,7 @@ export class AudioService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to parse audio metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                code: ASSET_UNDECODABLE,
             };
         }
     }

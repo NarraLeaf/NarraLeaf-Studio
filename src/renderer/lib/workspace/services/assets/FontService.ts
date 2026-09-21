@@ -56,6 +56,7 @@ export class FontService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read font file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
 

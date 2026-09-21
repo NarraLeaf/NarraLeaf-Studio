@@ -19,6 +19,9 @@ import { storySceneHistoryScope } from "@/lib/workspace/services/history/history
 import { useWorkspace } from "../../../context";
 import { StoryScriptExportModal } from "./StoryScriptExportModal";
 import { StoryScriptImportModal } from "./StoryScriptImportModal";
+import { basename } from "@shared/utils/path";
+import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
+import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
 import {
     applicableScenePlans,
     applyStoryScriptScenes,
@@ -132,9 +135,17 @@ export function useStoryScriptIo(): StoryScriptIo {
                 return;
             }
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const written = await filesystem.write(targetPath, text, "utf-8");
+            // Reported here, where the author asked for it, by the name they gave the file - the
+            // save-status surface only logs it. Never the system's message, which is English and
+            // quotes the whole path.
+            const written = await filesystem.write(
+                targetPath,
+                text,
+                "utf-8",
+                itemWrite(basename(targetPath), "workspace.shell.save.stores.story", "handledByWriter"),
+            );
             if (!written.ok) {
-                throw new Error(written.error.message);
+                throw new Error(describeFileWriteFailure(basename(targetPath), written.error, t));
             }
             context.services.get<UIService>(Services.UI)
                 .showNotification(t("story.script.exported", { path: targetPath }), "success");

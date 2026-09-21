@@ -17,6 +17,7 @@ import {
     normalizeSaveSchemaFieldType,
 } from "@shared/saves/saveSchemaModel";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -335,6 +336,6 @@ export class SaveSchemaService extends Service<SaveSchemaService> implements ISa
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.saveSchema", "retried"));
     }
 }

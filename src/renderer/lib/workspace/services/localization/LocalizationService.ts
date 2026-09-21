@@ -33,6 +33,7 @@ import { ILocalizationService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -855,7 +856,7 @@ export class LocalizationService extends Service<LocalizationService> implements
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.localization", "retried"));
     }
 
     private getProjectService(): ProjectService {

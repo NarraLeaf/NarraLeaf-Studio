@@ -2,11 +2,27 @@ import type { DocumentStorage } from "@shared/documents/documentIo";
 import { createWorkingTreeDocumentSource, type DocumentSource } from "@shared/documents/documentSource";
 import { normalizeDocumentPath } from "@shared/documents/documentPath";
 import { getProjectDocumentSource } from "@/lib/app/documentSource";
-import { FsRejectErrorCode } from "@shared/types/os";
+import { FsRejectErrorCode, type FsRejectError } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { join } from "@shared/utils/path";
 import { Services, type WorkspaceContext } from "../services";
+import type { FsWriteReport } from "../autosave/writeReport";
 import type { FileSystemService } from "./FileSystem";
+
+/**
+ * A document write the disk refused.
+ *
+ * Its own class so that a writer which catches it can tell it from its other failures: the write
+ * itself was already reported to the author by the save-status surface, worded from the storage's
+ * {@link FsWriteReport}, and repeating it as `error.message` would put the path and the system's
+ * English on screen a second time.
+ */
+export class DocumentWriteError extends RendererError {
+    public constructor(path: string, public readonly fsError: FsRejectError) {
+        super(`Failed to write ${path}: ${fsError.message}`, { cause: fsError });
+        this.name = "DocumentWriteError";
+    }
+}
 
 /**
  * The renderer's half of the {@link DocumentStorage} port: project-relative paths in, the existing
@@ -32,9 +48,14 @@ import type { FileSystemService } from "./FileSystem";
 export type DocumentFileSystem = Pick<FileSystemService, "read" | "writeFileNoFollowOrCreate" | "createDir" | "copyFile">;
 
 export class RendererDocumentStorage implements DocumentStorage {
+    /**
+     * `report` goes with every write, and is what the save-status surface words a failure from: the
+     * store the documents belong to, and whether the service's auto-saver will try again.
+     */
     public constructor(
         private readonly fs: DocumentFileSystem,
         private readonly projectRoot: string,
+        private readonly report?: FsWriteReport,
     ) {}
 
     public async read(path: string): Promise<string | null> {
@@ -63,9 +84,9 @@ export class RendererDocumentStorage implements DocumentStorage {
      */
     public async write(path: string, text: string): Promise<void> {
         await this.ensureParentDirectory(path);
-        const result = await this.fs.writeFileNoFollowOrCreate(this.absolute(path), text, "utf-8");
+        const result = await this.fs.writeFileNoFollowOrCreate(this.absolute(path), text, "utf-8", this.report);
         if (!result.ok) {
-            throw new RendererError(`Failed to write ${path}: ${result.error.message}`);
+            throw new DocumentWriteError(path, result.error);
         }
     }
 
@@ -117,11 +138,19 @@ export class RendererDocumentStorage implements DocumentStorage {
     }
 }
 
-/** The one line a document service needs to reach its project's documents. */
-export function createProjectDocumentStorage(ctx: WorkspaceContext): DocumentStorage {
+/**
+ * The one line a document service needs to reach its project's documents.
+ *
+ * `report` is what a failed write is reported as. A service with an auto-saver passes its store and
+ * `retried`: every write it makes is the saver's, or a document seeded while the project opens,
+ * whose failure takes the open down with it. Reads and the working-tree source pass nothing, since
+ * they write nothing.
+ */
+export function createProjectDocumentStorage(ctx: WorkspaceContext, report?: FsWriteReport): DocumentStorage {
     return new RendererDocumentStorage(
         ctx.services.get<FileSystemService>(Services.FileSystem),
         ctx.project.getConfig().projectPath,
+        report,
     );
 }
 

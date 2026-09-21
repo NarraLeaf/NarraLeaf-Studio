@@ -3,6 +3,7 @@ import { FsRequestResult } from "@shared/types/os";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "../assetTypes";
+import { ASSET_LIBRARY_WRITE } from "../assetLibraryWrite";
 import {
     AssetOrderDocument,
     parseAssetOrderDocument,
@@ -120,6 +121,7 @@ export class AssetOrderManager {
             this.context.project.resolve(ProjectNameConvention.AssetsOrderShard(category)),
             serializeAssetOrderDocument(document),
             "utf-8",
+            ASSET_LIBRARY_WRITE,
         );
         // `ok` alone is not "on disk". A frozen workspace, or one whose working tree is being
         // re-read, answers `ok` with `refused` having written nothing (see `FsRequestResult`), and

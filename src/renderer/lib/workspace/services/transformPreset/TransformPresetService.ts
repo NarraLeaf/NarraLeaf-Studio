@@ -14,6 +14,7 @@ import {
     type ProjectTransformPresetDocument,
 } from "@shared/types/transformPreset";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -320,6 +321,6 @@ export class TransformPresetService extends Service<TransformPresetService> impl
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.transformPresets", "retried"));
     }
 }

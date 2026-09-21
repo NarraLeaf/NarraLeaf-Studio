@@ -763,11 +763,32 @@ export const workspace = {
         // said only as a `reason` below: the system's own message is English, names the scratch file
         // an atomic write renames from, and goes to the console line instead.
         save: {
-            failedTitle: "Could not save {file}",
+            // Titled by what the author knows the file as, never by its path: `{name}` is one of the
+            // store names below, `failedTitleNamed` carries something the author named (an asset, a
+            // story), and a write whose writer did not say what it was names no file at all.
+            failedTitle: "Could not save the {name}",
+            failedTitleNamed: "Could not save “{name}”",
+            failedTitleUnnamed: "Could not save a file",
+            // The first two are for a file an auto-saver keeps trying to write. The third is for a
+            // write nothing tries again (a folder list, a panel layout), which offers no retry.
             failedDetailTransient: "Still retrying in the background.",
             failedDetailPermanent: "Retrying fails until this is fixed.",
-            // `{retry}` is one of the two sentences above.
+            failedDetailNotSaved: "The change was not saved.",
+            // `{retry}` is one of the three sentences above.
             failedDetailWithReason: "{reason} {retry}",
+            // A write the author asked for, reported by the surface that asked: an export, a text
+            // file, a thumbnail. `{name}` is the file's or the asset's name.
+            // A store that could not be read when the project opened: its writes are refused, because
+            // what is in memory is empty and writing it would replace the file with nothing.
+            refusedUnreadable: "The {name} could not be read. Changes are not saved.",
+            fileFailed: {
+                plain: "Could not save “{name}”.",
+                withReason: "Could not save “{name}”. {reason}",
+            },
+            storeFailed: {
+                plain: "Could not save the {name}.",
+                withReason: "Could not save the {name}. {reason}",
+            },
             // What the disk said, for the failures an author can do something about. Any other
             // failure is named only in the console line.
             reason: {
@@ -784,7 +805,7 @@ export const workspace = {
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
-            unreadableTitle: "Could not read {file}",
+            unreadableTitle: "Could not read the {name}",
             unreadableDetail: "{reason} The file is unchanged. Nothing was written over it.",
             unreadableDetailQuarantined: "{reason} The file is unchanged. A copy of it is at {path}.",
             consoleUnreadable: "read failed ({kind}): {path} · {reason}",
@@ -824,6 +845,12 @@ export const workspace = {
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",
+                // Studio's own state rather than the author's project, named for the notice that
+                // says one of them could not be saved.
+                projectIcon: "project icon",
+                panelLayout: "panel layout",
+                recentColors: "recent colors",
+                pluginData: "plugin data",
                 // Not a document store: the row an author has open for editing, whose words the
                 // documents have not been told about yet.
                 openEditors: "the open editor",

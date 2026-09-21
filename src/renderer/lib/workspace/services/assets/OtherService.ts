@@ -12,6 +12,7 @@ export class OtherService extends AssetServiceBase {
             return {
                 success: false,
                 error: `Failed to read file: ${fileResult.error?.message || 'Unknown error'}`,
+                code: fileResult.error?.code,
             };
         }
 

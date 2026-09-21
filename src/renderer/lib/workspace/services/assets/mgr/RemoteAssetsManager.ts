@@ -10,6 +10,9 @@ import { basename, dirname, extname } from "@shared/utils/path";
 import { AssetsService } from "../../core/AssetsService";
 import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
+import { describeFileWriteFailure } from "../../core/writeFailureReason";
+import { itemWrite } from "../../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_TYPES, AssetCategory, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
@@ -324,9 +327,15 @@ export class RemoteAssetsManager {
             }
         }
 
-        const written = await fs.writeRaw(destPath, bytes);
+        // Reported by the caller - the import or the refresh the author asked for - by the name it
+        // arrived under, never by `destPath`, which is the asset's id split into folders.
+        const written = await fs.writeRaw(
+            destPath,
+            bytes,
+            itemWrite(name, "workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!written.ok) {
-            return { success: false, error: `Failed to store the remote asset: ${destPath}. ${written.error?.message}` };
+            return { success: false, error: describeFileWriteFailure(name, written.error, translate) };
         }
 
         // Recomputed from what actually landed, exactly as every other write path does: the hash is
@@ -393,7 +402,13 @@ export class RemoteAssetsManager {
             if (!created.ok) {
                 return null;
             }
-            const written = await fs.writeRaw(scratchPath, bytes);
+            // A scratch copy for the probe to read. A failure leaves the question unanswered, which
+            // is what `null` already says, and there is nothing for the author to do about it.
+            const written = await fs.writeRaw(
+                scratchPath,
+                bytes,
+                itemWrite(name, "workspace.shell.save.stores.assets", "handledByWriter"),
+            );
             if (!written.ok) {
                 return null;
             }

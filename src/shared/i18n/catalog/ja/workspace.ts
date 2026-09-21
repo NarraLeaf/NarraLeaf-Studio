@@ -707,10 +707,30 @@ export const workspace = {
         // 流れる行。書き込みの失敗は間隔を空けて諦めずに再試行するので、「失われた」ではなく
         // 「まだ試している」と書く。
         save: {
-            failedTitle: "{file} を保存できなかった",
+            // 作者が知っている名前で呼び、パスでは呼ばない。`{name}` は下のストア名、
+            // `failedTitleNamed` は作者が付けた名前（アセット、ストーリー）。書き込み側が何かを
+            // 言わなかったときは、ファイルを名指ししない。
+            failedTitle: "{name}を保存できなかった",
+            failedTitleNamed: "「{name}」を保存できなかった",
+            failedTitleUnnamed: "ファイルを保存できなかった",
+            // 最初の 2 つは自動保存が書き込みを続けるファイル用。3 つ目はもう書き込まれない
+            // ファイル用で、再試行は出さない。
             failedDetailTransient: "裏で再試行を続けている",
             failedDetailPermanent: "これが直るまで、再試行しても変わらない",
+            failedDetailNotSaved: "この変更は保存されていない",
             failedDetailWithReason: "{reason}。{retry}",
+            // 作者が求めた書き込みを、求めた画面が自分で報告する：書き出し、テキストファイル、サムネイル。
+            // プロジェクトを開いたときに読めなかったストア。メモリ上は空なので、書き込むとファイルを
+            // 空で上書きしてしまう。そのため書き込みを断る。
+            refusedUnreadable: "{name}を読めなかった。変更は保存されない",
+            fileFailed: {
+                plain: "「{name}」を保存できなかった",
+                withReason: "「{name}」を保存できなかった。{reason}",
+            },
+            storeFailed: {
+                plain: "{name}を保存できなかった",
+                withReason: "{name}を保存できなかった。{reason}",
+            },
             reason: {
                 permissionDenied: "ファイルが読み取り専用か、Studio に書き込み権限がない",
                 folderMissing: "保存先のフォルダーが存在しない",
@@ -723,7 +743,7 @@ export const workspace = {
             flushFailed: "{label} を書き出せなかった：{error}",
             // 読む側。ディスクにはあるが解釈できないドキュメント。「Studio が作業を食べたのか」という
             // 不安に対して、まず起きなかったことを言う。
-            unreadableTitle: "{file} を読めなかった",
+            unreadableTitle: "{name}を読めなかった",
             unreadableDetail: "{reason} ファイルは変わっていない。上書きもしていない",
             unreadableDetailQuarantined: "{reason} ファイルは変わっていない。その複製が {path} にある",
             consoleUnreadable: "読み込み失敗（{kind}）：{path} · {reason}",
@@ -761,6 +781,11 @@ export const workspace = {
                 characters: "キャラクター",
                 project: "プロジェクトの設定",
                 assets: "アセットのライブラリ",
+                // Studio 自身の状態で、作者のプロジェクトではない。「保存できなかった」の通知で使う。
+                projectIcon: "プロジェクトのアイコン",
+                panelLayout: "パネルのレイアウト",
+                recentColors: "最近使った色",
+                pluginData: "プラグインのデータ",
                 // ドキュメントの保存先ではない。作者が編集中の行で、その文字はまだドキュメントに
                 // 渡っていない。
                 openEditors: "編集中の行",

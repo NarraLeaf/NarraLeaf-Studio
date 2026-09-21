@@ -67,6 +67,9 @@ import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
 import { TranslationExportForm } from "./TranslationExportForm";
 import { LanguageSettingsForm, type FallbackCandidate } from "./LanguageSettingsForm";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { basename } from "@shared/utils/path";
+import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
+import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
@@ -433,9 +436,17 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                 return;
             }
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const result = await filesystem.write(targetPath, text, "utf-8");
+            // Reported here, where the author asked for it, by the name they gave the file - the
+            // save-status surface only logs it. Never the system's message, which is English and
+            // quotes the whole path.
+            const result = await filesystem.write(
+                targetPath,
+                text,
+                "utf-8",
+                itemWrite(basename(targetPath), "workspace.shell.save.stores.localization", "handledByWriter"),
+            );
             if (!result.ok) {
-                throw new Error(result.error.message);
+                throw new Error(describeFileWriteFailure(basename(targetPath), result.error, t));
             }
             uiService?.showNotification(
                 t("workspace.localization.exchange.exportDone", { count: exportRows.length, path: targetPath }),

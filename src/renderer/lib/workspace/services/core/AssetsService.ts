@@ -33,6 +33,8 @@ import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
+import { ASSET_LIBRARY_WRITE } from "../assets/assetLibraryWrite";
+import { storeWrite } from "../autosave/writeReport";
 import { UIService } from "./UIService";
 import { NotificationType } from "../ui/types";
 import { translate } from "@/lib/i18n";
@@ -1728,7 +1730,13 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         const thumbnailBuffer = await this.createThumbnailBuffer(imageResult.data.data);
         await this.ensureThumbnailDir(cachePath);
-        const writeResult = await fs.writeRaw(cachePath, thumbnailBuffer);
+        // A cache: a thumbnail that could not be stored is drawn again from the image next time,
+        // and costs the author nothing to be told about.
+        const writeResult = await fs.writeRaw(
+            cachePath,
+            thumbnailBuffer,
+            storeWrite("workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!writeResult.ok) {
             return { success: false, error: writeResult.error?.message };
         }
@@ -1881,7 +1889,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const data = JSON.stringify(metadata[type]);
 
-        return await filesystemService.writeFileNoFollow(this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)), data, "utf-8");
+        return await filesystemService.writeFileNoFollow(
+            this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)),
+            data,
+            "utf-8",
+            ASSET_LIBRARY_WRITE,
+        );
     }
 
     /**

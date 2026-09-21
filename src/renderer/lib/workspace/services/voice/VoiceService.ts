@@ -31,6 +31,7 @@ import { IVoiceService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { LocalizationService } from "../localization/LocalizationService";
@@ -593,7 +594,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.voice", "retried"));
     }
 
     private getProjectService(): ProjectService {

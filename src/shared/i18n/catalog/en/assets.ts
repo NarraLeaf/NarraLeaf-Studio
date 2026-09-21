@@ -44,7 +44,8 @@ export const assets = {
     /**
      * Renaming one row. Names the row and stops, for the reason `createGroup.failed` below carries
      * no reason either: a rename is only refused when the write fails, which already puts the
-     * workspace's own save failure on screen with the file and a retry.
+     * workspace's own save failure on screen - "Could not save the asset library", with what the
+     * disk said and that the change was not saved.
      *
      * The old name is the right one to say. The record is put back when the write fails, so that is
      * the name still on the row, and the one the author can look for.
@@ -57,10 +58,10 @@ export const assets = {
      * is the group list failing to reach the disk.
      *
      * Carries no reason on purpose. That write also raises the workspace's own save failure, which
-     * is already on screen naming the file and offering a retry, and repeating its sentence in a
-     * second toast says the same thing twice. What that one cannot say is which action was lost,
-     * and the row is drawn either way, so this is the only place the author is told the group in
-     * front of them is not real.
+     * is already on screen saying the asset library was not saved and why, and repeating its
+     * sentence in a second toast says the same thing twice. What that one cannot say is which
+     * action was lost, and the row is drawn either way, so this is the only place the author is told
+     * the group in front of them is not real.
      */
     createGroup: {
         failed: "Could not create the group",
@@ -132,6 +133,15 @@ export const assets = {
         unreadable: "This asset could not be read.",
         unreadableNamed: "“{asset}” could not be read.",
         notAsset: "This value is not an asset.",
+        // An editor that opened an asset and could not read it says one of the lines above, then
+        // - when the project still has the asset - what the read answered, for the answers an author
+        // can act on. Never the read's own message, which names the asset's storage path.
+        withReason: "{headline} {reason}",
+        reason: {
+            fileMissing: "Its file is missing from the project folder.",
+            accessDenied: "Studio is not allowed to read its file.",
+            undecodable: "Its file is damaged or is not in a format Studio can open.",
+        },
     },
     /**
      * The read-only asset overview page. "Actual" and "If trimmed" are load-bearing: a build still
