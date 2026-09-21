@@ -42,9 +42,50 @@ export function claimInputLaneVisit(event: Event, laneKey: string): boolean {
     return true;
 }
 
+/**
+ * The game's own answer to an input, by the event that carried it.
+ *
+ * The global blueprint hears a pointer input once, at the first lane it lands on, and every lane
+ * after that - the rest of the walk on the way out, and a lane behind that is handed a copy - starts
+ * its own actions only once that answer is in. Present with `null` once the global has been offered
+ * the input and nothing of it matched, so a lane further on does not offer it a second time.
+ *
+ * The promise resolves to whether whatever is on screen may still hear the input: false when a
+ * global handler stopped it. Keyed on the event object and inherited by the copy, in the same shape
+ * and for the same reason as the visit record above.
+ */
+const GLOBAL_INPUT_ANSWERS = new WeakMap<Event, Promise<boolean> | null>();
+
+/**
+ * Whether this is the first lane this input reached, marking the global's turn as taken if it is.
+ *
+ * True exactly once per physical input, however many lanes it crosses and however many copies of it
+ * are handed on.
+ */
+export function takeGlobalInputTurn(event: Event): boolean {
+    if (GLOBAL_INPUT_ANSWERS.has(event)) {
+        return false;
+    }
+    GLOBAL_INPUT_ANSWERS.set(event, null);
+    return true;
+}
+
+/** Record the global's answer to this input, for the lanes that come after the one that asked. */
+export function recordGlobalInputAnswer(event: Event, answer: Promise<boolean>): void {
+    GLOBAL_INPUT_ANSWERS.set(event, answer);
+}
+
+/** The global's answer to this input, or null when it answered nothing. */
+export function readGlobalInputAnswer(event: Event): Promise<boolean> | null {
+    return GLOBAL_INPUT_ANSWERS.get(event) ?? null;
+}
+
 /** Carry an event's visit record onto the copy that is handed to the lane behind. */
 function inheritInputLaneVisits(source: Event, clone: Event): void {
     VISITED_LANES.set(clone, new Set(VISITED_LANES.get(source) ?? []));
+    if (GLOBAL_INPUT_ANSWERS.has(source)) {
+        GLOBAL_INPUT_ANSWERS.set(clone, GLOBAL_INPUT_ANSWERS.get(source) ?? null);
+    }
 }
 
 /**
