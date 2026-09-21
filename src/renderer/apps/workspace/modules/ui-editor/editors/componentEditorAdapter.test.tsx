@@ -53,6 +53,7 @@ const document: UIDocument = {
 
 const base = {
     getDocument: () => document,
+    getRevision: () => 1,
     getComponent: (componentId: string) => document.components?.find(component => component.id === componentId),
 } as unknown as UIDocumentService;
 
@@ -95,5 +96,62 @@ describe("the component editor's document", () => {
 
         expect(markup).toContain('data-ui-surface-id="child"');
         expect(markup).toContain(CHILD_WORDS);
+    });
+});
+
+/**
+ * The editor tab reads this document on every render and keys what it does per surface on the
+ * surface object. Built afresh on every read, that object was new each time, so everything the tab
+ * keeps per surface ran again on every render - including, while that was keyed on the object, taking
+ * the workspace selection back from whatever page the author had clicked.
+ */
+describe("the component editor's document between changes", () => {
+    /** The reads the adapter makes of the real service, over a document the test can change. */
+    function changingBase() {
+        const state = { document: structuredClone(document), revision: 1 };
+        const service = {
+            getDocument: () => state.document,
+            getRevision: () => state.revision,
+            getComponent: (componentId: string) =>
+                state.document.components?.find(component => component.id === componentId),
+        } as unknown as UIDocumentService;
+        return { state, service };
+    }
+
+    it("is the same object, surface included, until the real document changes", () => {
+        const { service } = changingBase();
+        const adapter = createComponentDocumentServiceAdapter(service, "cardDef");
+
+        const first = adapter.getDocument();
+        const second = adapter.getDocument();
+
+        expect(second).toBe(first);
+        expect(second.surfaces[0]).toBe(first.surfaces[0]);
+    });
+
+    it("is rebuilt when the real document is edited in place", () => {
+        const { state, service } = changingBase();
+        const adapter = createComponentDocumentServiceAdapter(service, "cardDef");
+        const before = adapter.getDocument();
+
+        state.document.components![0]!.elements.window!.name = "Window";
+        state.revision += 1;
+        const after = adapter.getDocument();
+
+        expect(after).not.toBe(before);
+        expect(after.elements.window?.name).toBe("Window");
+    });
+
+    it("is rebuilt when the real document is replaced without the revision moving", () => {
+        const { state, service } = changingBase();
+        const adapter = createComponentDocumentServiceAdapter(service, "cardDef");
+        const before = adapter.getDocument();
+
+        // A save swaps in a copy with a new timestamp and leaves the revision where it was.
+        state.document = { ...state.document, name: "Saved" };
+        const after = adapter.getDocument();
+
+        expect(after).not.toBe(before);
+        expect(after.name).toBe("Saved");
     });
 });
