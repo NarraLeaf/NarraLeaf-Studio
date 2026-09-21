@@ -2,11 +2,11 @@
  * Which halves of a keyboard dispatch may run for one key press.
  *
  * A key reaches up to two places. The **global** blueprint's key heads, which belong to the game and
- * not to anything on screen, and the **active page's** own heads plus the input intents that page
- * answers to. They are gated differently, and getting that wrong is what this module exists to stop
- * happening again.
+ * not to anything on screen, and the **keyboard owner's** own heads plus the input intents it answers
+ * to - the active page, or the modal layer over it (see `app/keyboardOwner`). They are gated
+ * differently, and getting that wrong is what this module exists to stop happening again.
  *
- * The page half is conditional, and has to be: a page that is not drawn is not a page anyone is
+ * The owner half is conditional, and has to be: an entry that is not drawn is not one anyone is
  * pressing a key at, and while a layer owns the keyboard an Escape belongs to that layer rather than
  * to the page underneath it.
  *
@@ -24,7 +24,7 @@
 export type KeyboardDispatchScope = {
     /** The game-wide blueprint's key heads. */
     global: boolean;
-    /** The active page's own key heads, and the input intents that page declares. */
+    /** The keyboard owner's own key heads, and the input intents it declares. */
     surface: boolean;
 };
 
@@ -32,9 +32,9 @@ export type KeyboardDispatchScopeInput = {
     /** Whether there is a game app at all: no host, nothing to dispatch into. */
     gameReady: boolean;
     /**
-     * Whether the active page is drawn and currently owns the keyboard.
+     * Whether the entry that owns the keyboard - page or layer - is drawn and ready for a key.
      *
-     * The page lane's own answer, computed where the composite is known. Passed in rather than
+     * The composite's own answer, computed where it is known. Passed in rather than
      * derived so this module stays a statement of the rule and not a second copy of the layer stack.
      */
     surfaceKeyboardReady: boolean;

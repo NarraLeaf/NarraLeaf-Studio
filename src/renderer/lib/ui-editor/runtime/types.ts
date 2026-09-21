@@ -200,6 +200,11 @@ export type RenderSurfaceOptions = {
 
 export type RenderDocumentSurfaceOptions = RenderSurfaceOptions & {
     document: UIDocument;
+    /**
+     * The project's document, when `document` is a view of it that does not hold the project's
+     * pages' elements - the component editor's. A Page widget draws its page from this.
+     */
+    pageDocument?: UIDocument;
 };
 
 export type RenderComponentOptions = {

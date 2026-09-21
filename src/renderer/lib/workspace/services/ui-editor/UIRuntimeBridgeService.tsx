@@ -1,6 +1,7 @@
 import React from "react";
 import type { CSSProperties } from "react";
-import { type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
+import { type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
+import { buildUIComponentDocumentView } from "@shared/types/ui-editor/componentDocumentView";
 import { ElementRendererRegistry, ElementRendererDefinition } from "../../../ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "../../../ui-editor/runtime/builtin";
 import type {
@@ -119,6 +120,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                         <SurfaceBackgroundImageLayer surface={surface} />
                         <SurfaceElementTree
                             document={document}
+                            pageDocument={options.pageDocument}
                             surface={surface}
                             rootElement={rootElement}
                             rendererRegistry={this.rendererRegistry}
@@ -138,44 +140,15 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
         if (!component) {
             return null;
         }
-        const root = component.elements[component.rootElementId];
-        if (!root) {
+        // The same view a placement of the definition is drawn against, so a preview of it draws
+        // what a placement does - a Page widget inside included.
+        const view = buildUIComponentDocumentView(document, component);
+        if (!view) {
             return null;
         }
-
-        const rootWidth = Math.max(1, Math.abs(root.layout.width));
-        const rootHeight = Math.max(1, Math.abs(root.layout.height));
-        const surface: UISurface = {
-            id: `component:${component.id}`,
-            name: component.name,
-            host: "app",
-            kind: "appSurface",
-            designSize: { width: rootWidth, height: rootHeight },
-            rootElementId: root.id,
-        };
-        const rootSnapshot: UIElement = {
-            ...root,
-            parentId: null,
-            childrenIds: [...root.childrenIds],
-            layout: {
-                ...root.layout,
-                x: 0,
-                y: 0,
-            },
-            props: root.props ? { ...root.props } : undefined,
-            style: root.style ? { ...root.style } : undefined,
-            valueBindings: root.valueBindings ? { ...root.valueBindings } : undefined,
-            extra: root.extra ? { ...root.extra } : undefined,
-        };
-        const virtualDocument: UIDocument = {
-            ...document,
-            surfaces: [surface],
-            elements: {
-                ...document.elements,
-                ...component.elements,
-                [root.id]: rootSnapshot,
-            },
-        };
+        const { surface, root: rootSnapshot, document: virtualDocument } = view;
+        const rootWidth = surface.designSize.width;
+        const rootHeight = surface.designSize.height;
         const surfaceStyle: CSSProperties = {
             position: "relative",
             width: rootWidth,
@@ -194,6 +167,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                 renderContent={() => (
                     <SurfaceElementTree
                         document={virtualDocument}
+                        pageDocument={document}
                         surface={surface}
                         rootElement={rootSnapshot}
                         rendererRegistry={this.rendererRegistry}

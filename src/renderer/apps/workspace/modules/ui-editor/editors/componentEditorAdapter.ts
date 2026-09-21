@@ -140,7 +140,15 @@ export class ComponentDocumentServiceAdapter {
         }
         return {
             ...baseDocument,
-            surfaces: [surface],
+            // The project's pages stay listed beside the definition's own surface. Everything in this
+            // editor that asks the document about a page by id - a Page widget's picker and the page
+            // it draws on the canvas, its "open the page" button, what a paste says it could not
+            // resolve - is asking about the project's pages, not about the definition. With the
+            // definition's surface alone, a Page widget authored here could not be pointed at any
+            // page, and one pasted in drew "Missing Page". The pages' elements are not carried: the
+            // canvas draws a page from the project's own document (`pageDocument`), and this
+            // document's elements are the definition's.
+            surfaces: [surface, ...baseDocument.surfaces],
             elements,
         };
     }
