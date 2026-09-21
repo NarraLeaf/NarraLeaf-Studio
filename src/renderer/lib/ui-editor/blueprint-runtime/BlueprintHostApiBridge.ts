@@ -108,7 +108,7 @@ import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/he
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
 import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
-import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
+import { buildImageFillPropsChange } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
 import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
 import type {
@@ -163,6 +163,15 @@ export type DevModeWidgetRuntimePatch = {
      * exists: the record is the *document*, shared by every drawing of it. Writing text onto a
      * component's element made all six placements of that component show the sixth one's text, and
      * it also meant a running game was quietly editing the file the author saved.
+     *
+     * Only the props a write changed, key by key, and each key whole. A prop that is a group of
+     * fields - `imageFill`, `appearance`, `effects`, a frame's `params` - is one prop here: a write
+     * that changes one field of it writes the whole group, built from the group this drawing shows
+     * now, so the fields it did not mention are the drawing's rather than the author's. The drawing
+     * lays these over the record one key at a time and so does every reader, which is why a group
+     * is never merged field by field anywhere: `appearance` (variants, rows, conditions) has no such
+     * merge that means anything, and one place merging deeper than the rest would paint something
+     * other than what a graph reads back.
      */
     props?: Record<string, unknown>;
     display?: boolean;
@@ -180,8 +189,9 @@ export type DevModeWidgetRuntimePatch = {
  * One write laid over what a drawing already had, later winning.
  *
  * `props` is merged rather than replaced: each write states only the properties it changed, and a
- * shallow spread would drop everything an earlier write had put there. Every other field is one
- * fact, so last-writer-wins is what they mean.
+ * shallow spread would drop everything an earlier write had put there. The merge goes one key deep
+ * and no further - see {@link DevModeWidgetRuntimePatch.props} for why a group of fields is written
+ * whole instead. Every other field is one fact, so last-writer-wins is what they mean.
  *
  * The one merge there is. A host keeps the patches its drawings are painted from and a host API
  * reads them back, and the two have to agree on what a sequence of writes adds up to - a second
@@ -1499,7 +1509,10 @@ function jsonEquals(a: unknown, b: unknown): boolean {
  *
  * Every widget reader takes the override map for this reason. Reading the record alone answers what
  * the author saved, which stopped being the answer the moment a graph wrote anything - and made
- * every "did this actually change?" guard compare against the wrong value.
+ * every "did this actually change?" guard compare against the wrong value. Every prop write starts
+ * from it too (`changeWidgetProps`), for the same reason one step later.
+ *
+ * One key deep, as the drawing lays a patch over the record - see `DevModeWidgetRuntimePatch.props`.
  */
 function withWidgetPropOverride(
     element: UIElement,
@@ -2672,33 +2685,31 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
     };
 
     /**
-     * The props this drawing is working with: what the author wrote, under what the graph has since
-     * written over it.
+     * Change props of one drawing, starting from what that drawing shows now.
      *
-     * Every widget read and every widget write goes through this. Reading the authored props alone
-     * would make a second write to the same property recompute from the original value - "set the
-     * text, then append to it" would append to what the author typed - and it would make the change
-     * checks that guard each setter compare against the wrong thing and skip the write.
-     */
-    const effectiveProps = (address: string, element: UIElement): Record<string, unknown> => {
-        const override = runtimePatches.get(address)?.props;
-        return override ? { ...(element.props ?? {}), ...override } : (element.props ?? {});
-    };
-
-    /** The element as this drawing currently sees it. Never the record the document holds. */
-    const effectiveElement = (address: string, element: UIElement): UIElement => {
-        const override = runtimePatches.get(address)?.props;
-        return override ? { ...element, props: { ...(element.props ?? {}), ...override } } : element;
-    };
-
-    /**
-     * Write props for one drawing.
+     * The one road every prop setter writes by. `change` is handed the drawing - the authored record
+     * under every write this drawing has had, read at this address, so a row's copy of an element
+     * and never the page's or another row's - and returns the props it changes, a group of fields
+     * whole (see {@link DevModeWidgetRuntimePatch.props}). An empty answer writes nothing, and the
+     * return value says whether anything was written.
      *
-     * Takes the whole next bag rather than a delta, because that is what each setter already
-     * computes - and {@link mergeWidgetPatch} keeps the properties this write did not mention.
+     * The setter is given the drawing rather than the record to build from because building from
+     * the record wrote the author's value of every prop back over the drawing: the second write to
+     * an image put the authored picture back over the one the first write had set, and a button's
+     * pointer put back the label a graph had just changed - two nodes in a row, the second undoing
+     * the first, nothing reported.
      */
-    const writeWidgetProps = (address: string, props: Record<string, unknown>) => {
-        emitWidgetPatch(address, { props });
+    const changeWidgetProps = (
+        address: string,
+        record: UIElement,
+        change: (drawn: UIElement) => Record<string, unknown>,
+    ): boolean => {
+        const changes = change(withWidgetPropOverride(record, runtimePatches, address));
+        if (Object.keys(changes).length === 0) {
+            return false;
+        }
+        emitWidgetPatch(address, { props: changes });
+        return true;
     };
 
     const scheduleElementFlush = (elementId: string) => {
@@ -3231,7 +3242,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!textPatchChanges(current, normalized)) {
                         return;
                     }
-                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), ...normalized });
+                    changeWidgetProps(elementId, el, () => ({ ...normalized }));
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3260,23 +3271,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             ? patch.cursor
                             : current.cursor;
 
-                    let changed = false;
-                    const nextProps = { ...(el.props ?? {}) };
-                    if (hasLabelPatch && nextLabel !== current.label) {
-                        nextProps.label = nextLabel;
-                        changed = true;
+                    const changed = changeWidgetProps(elementId, el, drawn => {
+                        const changes: Record<string, unknown> = {};
+                        if (hasLabelPatch && nextLabel !== current.label) {
+                            changes.label = nextLabel;
+                        }
+                        if (hasCursorPatch && nextCursor !== current.cursor) {
+                            // The pointer lives in the appearance's default row, so the appearance
+                            // this drawing already has is the one to change - not the authored one.
+                            const flat = { ...getButtonProps(drawn), cursor: nextCursor };
+                            changes.cursor = nextCursor;
+                            changes.appearance = patchButtonDefaultCursorAppearance(flat.appearance, flat, nextCursor);
+                        }
+                        return changes;
+                    });
+                    if (changed) {
+                        scheduleElementFlush(elementId);
                     }
-                    if (hasCursorPatch && nextCursor !== current.cursor) {
-                        const flat = { ...getButtonProps(el), cursor: nextCursor };
-                        nextProps.cursor = nextCursor;
-                        nextProps.appearance = patchButtonDefaultCursorAppearance(flat.appearance, flat, nextCursor);
-                        changed = true;
-                    }
-                    if (!changed) {
-                        return;
-                    }
-                    writeWidgetProps(elementId, nextProps);
-                    scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3300,7 +3311,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (clipContent === current.clipContent) {
                         return;
                     }
-                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), clipContent });
+                    changeWidgetProps(elementId, el, () => ({ clipContent }));
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3342,18 +3353,25 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!fillChanged && !flipChanged) {
                         return;
                     }
-                    let nextProps: Record<string, unknown> = { ...(el.props ?? {}) };
-                    if (fillChanged) {
-                        const previousFill = getRectangleLikeProps(el).imageFill;
-                        const nextFill: ImageFill = {
-                            ...previousFill,
-                            mode: fitMode,
-                            assetId,
-                            cropPlacement: cropRect,
-                        };
-                        nextProps = buildImageFillPropsUpdate(el, nextFill);
-                    }
-                    writeWidgetProps(elementId, { ...nextProps, imageFlipX: flipX, imageFlipY: flipY });
+                    changeWidgetProps(elementId, el, drawn => {
+                        const changes: Record<string, unknown> = {};
+                        if (fillChanged) {
+                            // The fill this drawing shows, with this write's fields laid over it, and
+                            // the appearance rows it paints from brought into step with it.
+                            const nextFill: ImageFill = {
+                                ...getRectangleLikeProps(drawn).imageFill,
+                                mode: fitMode,
+                                assetId,
+                                cropPlacement: cropRect,
+                            };
+                            Object.assign(changes, buildImageFillPropsChange(drawn, nextFill));
+                        }
+                        if (flipChanged) {
+                            changes.imageFlipX = flipX;
+                            changes.imageFlipY = flipY;
+                        }
+                        return changes;
+                    });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3838,7 +3856,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
                         return;
                     }
-                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), targetSurfaceId, params });
+                    changeWidgetProps(elementId, el, () => ({ targetSurfaceId, params }));
                     const nextPatch: DevModeWidgetRuntimePatch = {
                         ...(runtimePatches.get(elementId) ?? {}),
                         frame: {
