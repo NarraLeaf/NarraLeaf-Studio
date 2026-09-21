@@ -25,6 +25,11 @@ function bands(plan: PreloadPlan | null): Record<string, string> {
     return Object.fromEntries((plan?.entries ?? []).map(entry => [entry.src, entry.band]));
 }
 
+/** A warm order with the fields a test does not care about filled in. */
+function order(fields: Partial<SceneWarmOrder>): SceneWarmOrder {
+    return { sceneName: "Scene", firstFrame: null, onEntry: [], blockOrder: [], byBlock: {}, rows: {}, ...fields };
+}
+
 const sceneOne = {};
 const sceneTwo = {};
 
@@ -37,7 +42,7 @@ function longScene(): SceneWarmOrder {
         blockOrder.push(blockId);
         byBlock[blockId] = [{ type: "image", url: `sprite-${index}.png` }];
     }
-    return { firstFrame: "bg.png", blockOrder, byBlock };
+    return order({ firstFrame: "bg.png", blockOrder, byBlock });
 }
 
 describe("Studio's preload scheduler", () => {
@@ -47,7 +52,7 @@ describe("Studio's preload scheduler", () => {
             scenes: { "scene-1": sceneOne, "scene-2": sceneTwo },
             warmOrder: {
                 "scene-1": longScene(),
-                "scene-2": { firstFrame: "next-bg.png", blockOrder: [], byBlock: {} },
+                "scene-2": order({ firstFrame: "next-bg.png" }),
             },
         }));
         const plan = scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
@@ -151,11 +156,10 @@ describe("Studio's preload scheduler", () => {
             scheduler.useCompiled(compiledWith({
                 scenes: { "scene-1": sceneOne },
                 warmOrder: {
-                    "scene-1": {
-                        firstFrame: null,
+                    "scene-1": order({
                         blockOrder: ["row-0"],
                         byBlock: { "row-0": [{ type: "audio", url: "theme.mp3" }, { type: "video", url: "clip.mp4" }, { type: "image", url: "a.png" }] },
-                    },
+                    }),
                 },
             }));
 
@@ -180,7 +184,7 @@ describe("Studio's preload scheduler", () => {
             }
             byBlock["row-2"] = [{ type: "video", url: "opening.mp4", video: opening }];
             byBlock["row-8"] = [{ type: "video", url: "ending.mp4", video: ending }];
-            return { firstFrame: "bg.png", blockOrder, byBlock } as unknown as SceneWarmOrder;
+            return order({ firstFrame: "bg.png", blockOrder, byBlock: byBlock as SceneWarmOrder["byBlock"] });
         }
 
         function schedulerWithClips() {
@@ -213,11 +217,10 @@ describe("Studio's preload scheduler", () => {
             scheduler.useCompiled(compiledWith({
                 scenes: { "scene-1": sceneOne },
                 warmOrder: {
-                    "scene-1": {
-                        firstFrame: null,
+                    "scene-1": order({
                         blockOrder: ["row-0"],
                         byBlock: { "row-0": [{ type: "video", url: "broken.mp4" }] },
-                    },
+                    }),
                 },
             }));
 
@@ -238,17 +241,20 @@ describe("Studio's preload scheduler", () => {
     });
 
     describe("reporting something nothing warmed", () => {
-        it("names the row that first asked for it", () => {
+        const blockId = "0b3f2c1e-9d4a-4c7e-8f21-5a6b7c8d9e0f";
+
+        it("names the row by its scene and position, the way the story editor does", () => {
             const said: string[] = [];
             const scheduler = createStudioPreloadScheduler();
             scheduler.useCompiled(compiledWith({
                 scenes: { "scene-1": sceneOne },
                 warmOrder: {
-                    "scene-1": {
-                        firstFrame: null,
-                        blockOrder: ["row-7"],
-                        byBlock: { "row-7": [{ type: "image", url: "late.png" }] },
-                    },
+                    "scene-1": order({
+                        sceneName: "The café",
+                        blockOrder: [blockId],
+                        byBlock: { [blockId]: [{ type: "image", url: "late.png" }] },
+                        rows: { [blockId]: 8 },
+                    }),
                 },
             }));
             scheduler.useMissingReport(message => said.push(message));
@@ -256,8 +262,73 @@ describe("Studio's preload scheduler", () => {
             scheduler.onMissing!({ type: "image", src: "late.png" });
             scheduler.onMissing!({ type: "image", src: "stranger.png" });
 
-            expect(said[0]).toContain("row-7");
-            expect(said[1]).toContain("no row asked for it");
+            expect(said[0]).toBe(`An image row 8 of "The café" asks for was shown without being warmed.`);
+            // This goes to Output, where a row id is a string the author has no way to look up.
+            expect(said[0]).not.toContain(blockId);
+            expect(said[1]).toBe("An image no row asked for was shown without being warmed: stranger.png.");
+        });
+
+        it("names the row in the scene being played, not the first scene that used the image", () => {
+            // The same character art is asked for in chapter one and again in the ending; a report
+            // raised in the ending that pointed at chapter one sent the author to the wrong scene.
+            const said: string[] = [];
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(compiledWith({
+                scenes: { "scene-1": sceneOne, "scene-2": sceneTwo },
+                warmOrder: {
+                    "scene-1": order({
+                        sceneName: "Chapter one",
+                        blockOrder: ["early"],
+                        byBlock: { early: [{ type: "image", url: "her.png" }] },
+                        rows: { early: 14 },
+                    }),
+                    "scene-2": order({
+                        sceneName: "The ending",
+                        blockOrder: ["late"],
+                        byBlock: { late: [{ type: "image", url: "her.png" }] },
+                        rows: { late: 3 },
+                    }),
+                },
+            }));
+            scheduler.useMissingReport(message => said.push(message));
+
+            scheduler.plan({ kind: "scene", scene: sceneTwo as never, story: null });
+            scheduler.onMissing!({ type: "image", src: "her.png" });
+
+            expect(said).toEqual([`An image row 3 of "The ending" asks for was shown without being warmed.`]);
+        });
+    });
+
+    describe("what the stage mounts when a scene starts", () => {
+        /** A character whose first entrance is far past the window, and whose default look the stage mounts on entry. */
+        function sceneWithLateCharacter(): SceneWarmOrder {
+            return order({ ...longScene(), onEntry: ["sprite-19.png"] });
+        }
+
+        it("warms it with the opening frame rather than leaving it to the row that first shows it", () => {
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(compiledWith({ scenes: { "scene-1": sceneOne }, warmOrder: { "scene-1": sceneWithLateCharacter() } }));
+
+            const plan = scheduler.plan({ kind: "scene", scene: sceneOne as never, story: null }) as PreloadPlan;
+
+            // Row 19 on its own would be idle; the stage fetches it on entry whatever the plan says.
+            expect(bands(plan)["sprite-19.png"]).toBe("soon");
+            // Still not the gate: the first frame does not show it.
+            expect(plan.entries.filter(entry => entry.band === "gate").map(entry => entry.src)).toEqual(["bg.png"]);
+        });
+
+        it("keeps it in the plan as the story advances, so the cache does not let go of what is mounted", () => {
+            const scheduler = createStudioPreloadScheduler();
+            scheduler.useCompiled(compiledWith({
+                scenes: { "scene-1": sceneOne },
+                warmOrder: { "scene-1": sceneWithLateCharacter() },
+                actions: [{ staticId: "a-2", blockId: "row-2" }],
+            }));
+
+            const plan = scheduler.plan({ kind: "advance", actionId: "a-2", scene: sceneOne as never, story: null }) as PreloadPlan;
+
+            expect(plan.keep).toContain("sprite-19.png");
+            expect(bands(plan)["sprite-19.png"]).toBe("soon");
         });
     });
 });

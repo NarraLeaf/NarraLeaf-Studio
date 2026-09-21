@@ -938,6 +938,8 @@ type SceneCompileContext = {
  * what they happened to show.
  */
 export type SceneWarmOrder = {
+    /** The scene as the author names it, for anything said about it at runtime. */
+    sceneName: string;
     /**
      * The url the scene opens with, or null when it opens on a colour or on nothing.
      *
@@ -945,10 +947,28 @@ export type SceneWarmOrder = {
      * holding a loading screen for.
      */
     firstFrame: string | null;
+    /**
+     * Images the stage mounts the moment the scene is entered, whichever row first shows them.
+     *
+     * The engine initialises every image a scene uses at the top of the scene, hidden, with the
+     * source it was built with - so a character whose first entrance is row fifty has her default
+     * look fetched on entry regardless of what a plan says about row fifty. Planning those by their
+     * row put them in idle time while the page was already loading them, which is how a scene entry
+     * came to report its own characters as shown before they were warmed. For a layered character
+     * this is the default selection of each layer, not every variant: the others are what later rows
+     * switch to, and they stay with those rows.
+     */
+    onEntry: string[];
     /** Block ids in compile order - which is row order within a scene, and a tree walk across branches. */
     blockOrder: string[];
     /** Media each block resolved, keyed by block id. Deduplicated within the block. */
     byBlock: Record<string, StoryWarmResource[]>;
+    /**
+     * Where each block in {@link byBlock} sits as the author counts it: the 1-based position of its
+     * top-level row in the scene. A row nested in a branch counts as the row that holds it. Absent
+     * for a block the scene cannot place.
+     */
+    rows: Record<string, number>;
 };
 
 /** One thing a row asked the player to have ready. */
@@ -1286,9 +1306,12 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             elementIdBindings,
             nextActionIndex,
             ...(sceneWarmOrder ? {warmOrder: sceneWarmOrder[scene.id] = {
+                sceneName: scene.name,
                 firstFrame: scenesBuild.initialBackgroundUrls?.[scene.id] ?? null,
+                onEntry: [],
                 blockOrder: [],
                 byBlock: {},
+                rows: {},
             }} : {}),
         };
         // Let the registered plugin compile passes read this scene and say what they attach around
@@ -4825,6 +4848,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
     } as any);
     setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
     ctx.images.set(name, image);
+    recordEntryImage(ctx, options?.src);
     return image;
 }
 
@@ -6756,10 +6780,74 @@ function recordWarmedAsset(
     if (!existing) {
         order.blockOrder.push(blockId);
         order.byBlock[blockId] = [{type: assetType, url}];
+        const row = topLevelRowNumber(ctx.scene, blockId);
+        if (row !== null) {
+            order.rows[blockId] = row;
+        }
         return;
     }
     if (!existing.some(resource => resource.url === url)) {
         existing.push({type: assetType, url});
+    }
+}
+
+/**
+ * The row an author would open to find a block: its top-level row's 1-based position in the scene.
+ *
+ * The same numbering the story editor's own messages use for a row, so a runtime report and an
+ * editor notification point at the same place. A block inside a branch is found through the row
+ * that holds it; null when the block is not in the scene at all.
+ */
+function topLevelRowNumber(scene: StoryScene, blockId: string): number | null {
+    let current = scene.blocks[blockId];
+    const visited = new Set<string>();
+    while (current?.parentId && !visited.has(current.id)) {
+        visited.add(current.id);
+        current = scene.blocks[current.parentId];
+    }
+    const index = current ? scene.rootBlockIds.indexOf(current.id) : -1;
+    return index < 0 ? null : index + 1;
+}
+
+/**
+ * Note what the stage will mount for an image the moment its scene is entered.
+ *
+ * Called where an image element is built, because the source it is built with is the one the engine
+ * initialises at the top of the scene (see {@link SceneWarmOrder.onEntry}). A layered source mounts
+ * each layer's default selection; a layer with no default among the tags mounts nothing.
+ */
+function recordEntryImage(
+    ctx: SceneCompileContext,
+    src: string | { layers: unknown[]; defaults: string[] } | undefined,
+): void {
+    const order = ctx.warmOrder;
+    if (!order || !src) {
+        return;
+    }
+    const urls: string[] = [];
+    if (typeof src === "string") {
+        urls.push(src);
+    } else {
+        const defaults = new Set(src.defaults);
+        for (const layer of src.layers) {
+            if (typeof layer === "string") {
+                urls.push(layer);
+            } else if (layer && typeof layer === "object") {
+                for (const [tag, url] of Object.entries(layer as Record<string, string | null>)) {
+                    if (url && defaults.has(tag)) {
+                        urls.push(url);
+                    }
+                }
+            }
+        }
+    }
+    for (const url of urls) {
+        // The placeholder an image is built with when it has no source yet is inline data, not
+        // something a cache could hold.
+        if (url.startsWith("data:") || order.onEntry.includes(url)) {
+            continue;
+        }
+        order.onEntry.push(url);
     }
 }
 
