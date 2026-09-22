@@ -361,3 +361,62 @@ describe("scanStoryEntryPoints", () => {
         expect([...blueprintDocumentGraphCarriers(null)]).toEqual([]);
     });
 });
+
+describe("scanStoryEntryPoints with a target reader", () => {
+    const node = { blueprintId: "bp-1", graphKind: "event", graphId: "ev-1", nodeId: "n-1" };
+
+    it("asks about a wired node and pairs what it answers against the documents", () => {
+        const asked: unknown[] = [];
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({}, [wiredTo("storyId"), wiredTo("sceneId")])]),
+            (storyId, sceneId) => storyId === "story-1" && (sceneId === "scene-3" || sceneId === "scene-4"),
+            ref => {
+                asked.push(ref);
+                // A catalogue says more than scene ids; only the pairings a document has are entries.
+                return { storyIds: ["story-1", "art-book"], sceneIds: ["scene-3", "scene-4", "scene-3", "cg-7"] };
+            },
+        );
+
+        expect(asked).toEqual([node]);
+        expect(scan.undecidable).toEqual([]);
+        expect([...(scan.byStory.get("story-1") ?? [])]).toEqual(["scene-3", "scene-4"]);
+        // Each scene once, however many rows name it.
+        expect(scan.sites.map(site => site.sceneId)).toEqual(["scene-3", "scene-4"]);
+    });
+
+    it("keeps a node undecidable when the reader cannot read it", () => {
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({ storyId: "story-1" }, [wiredTo("sceneId")])]),
+            everyScene,
+            () => null,
+        );
+
+        expect(scan.byStory.size).toBe(0);
+        expect(scan.undecidable).toEqual([{ ...node, blueprintName: "Title screen", missing: ["sceneId"] }]);
+    });
+
+    it("takes a node the reader says starts nothing as starting nothing", () => {
+        // A blank picker with nothing wired throws when it runs, so it can begin nowhere - which is
+        // a claim the scan can make only when someone read the node, not by default.
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({ storyId: "story-1", sceneId: "" })]),
+            everyScene,
+            () => ({ storyIds: ["story-1"], sceneIds: [] }),
+        );
+
+        expect(scan.undecidable).toEqual([]);
+        expect(scan.byStory.size).toBe(0);
+    });
+
+    it("never asks about a node its picker settles", () => {
+        const scan = scanStoryEntryPoints(
+            blueprintGraphCarriers([startStoryBlueprint({ storyId: "story-1", sceneId: "scene-7" })]),
+            everyScene,
+            () => {
+                throw new Error("asked about a picked node");
+            },
+        );
+
+        expect([...(scan.byStory.get("story-1") ?? [])]).toEqual(["scene-7"]);
+    });
+});

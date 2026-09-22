@@ -95,6 +95,21 @@ export const test = {
         cancelled: "{title} cancelled",
         errored: "{title} could not run",
     },
+    // Why the story checks cannot read where play begins, one finding per Start Game node. Shared by
+    // `reachableEndings` and `routeCoverage`, which ask the same question. `{origin}` is a node as its
+    // card names it, a story row, a list or a blueprint; `{target}` is one of the two words below.
+    entryPoint: {
+        target: {
+            story: "story",
+            scene: "scene",
+        },
+        assembled: "Start Game in \"{blueprint}\" takes a {target} assembled at run time (from \"{origin}\")",
+        unreadNode: "Start Game in \"{blueprint}\" takes its {target} from \"{origin}\", whose data this test does not read",
+        unreadPluginData: "Start Game in \"{blueprint}\" takes its {target} from \"{origin}\", and the {plugin} data in this project cannot be read",
+        engineRows: "Start Game in \"{blueprint}\" takes its {target} from the rows of \"{list}\", which the story fills while it plays",
+        undeclaredVariable: "Start Game in \"{blueprint}\" takes its {target} from a variable the project does not declare",
+        unreadable: "Start Game in \"{blueprint}\" takes its {target} from a value this test cannot follow",
+    },
     builtin: {
         projectDiagnostics: {
             title: "Project diagnostics",
@@ -148,7 +163,7 @@ export const test = {
             description: "Whether every scene, option and ending can be reached once conditions are read",
             skipped: {
                 noEntryPoint: "No story marks where play begins",
-                undecidableEntry: "A Start Story node picks its scene while the game runs, so where play begins cannot be read",
+                undecidableEntry: "Where play begins cannot be read from Start Game in \"{blueprint}\"",
                 storiesUnread: "A story could not be read",
             },
             // Each of these means the same thing in a different unit: the rows lead here, and the
@@ -173,7 +188,7 @@ export const test = {
             skipped: {
                 noEndings: "No story with an entry point marks an /ending",
                 noEntryPoint: "No story marks where play begins",
-                undecidableEntry: "A Start Story node picks its scene while the game runs, so where play begins cannot be read",
+                undecidableEntry: "Where play begins cannot be read from Start Game in \"{blueprint}\"",
                 storiesUnread: "A story could not be read",
             },
             finding: {

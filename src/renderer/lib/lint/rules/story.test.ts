@@ -6,6 +6,13 @@ import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument, type StoryScene } fr
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { EMPTY_STORY_EXPRESSION_SCOPE, parseStoryExpression } from "@shared/utils/storyExpressionParser";
+import {
+    blueprint as kitBlueprint,
+    document as kitDocument,
+    element as kitElement,
+    graph as kitGraph,
+    interfaceOf as kitInterface,
+} from "../../workspace/services/references/assetNameTestKit";
 import { createTestLintContext } from "../testContext";
 import type { LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintRuleId } from "../types";
@@ -1160,12 +1167,56 @@ describe("story/unreachable-scene", () => {
         expect(run("story/unreachable-scene", ctx)).toEqual([]);
     });
 
-    it("goes silent when a Start Game node picks no target at all", () => {
+    it("reads a Start Game node that picks no scene as starting nothing", () => {
+        // It throws when it runs ("Pick a Scene"), so it can begin nowhere. Going silent over it let
+        // one half-made button switch the rule off for the whole project.
         const ctx = createTestLintContext({
             stories: [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", [])], "sc1")],
             blueprintDocument: blueprintWithStartStory({ storyId: "s1" }),
         });
-        expect(run("story/unreachable-scene", ctx)).toEqual([]);
+        expect(run("story/unreachable-scene", ctx).map(finding => finding.location)).toEqual([
+            expect.objectContaining({ sceneId: "sc2" }),
+        ]);
+    });
+
+    describe("a recollection list that replays the clicked row", () => {
+        const recollection = kitDocument(kitBlueprint("bp-list", "Recollection", { kind: "widgetMain", surfaceId: "extra", elementId: "list" }, {
+            fill: kitGraph(
+                [
+                    { id: "entries", type: "narraleaf.gallery.getEntries", params: { galleryKind: "scene" } },
+                    { id: "self", type: "blueprint.element.ref", params: { surfaceId: "extra", elementId: "list", elementType: "nl.list" } },
+                    { id: "fill", type: "blueprint.element.list.setItems" },
+                ],
+                [["self", "element", "fill", "list"], ["entries", "entries", "fill", "items"]],
+            ),
+            open: kitGraph(
+                [
+                    { id: "click", type: "blueprint.event.head.itemClick" },
+                    { id: "rowStory", type: "blueprint.list.getItemField", params: { field: "storyId" } },
+                    { id: "rowScene", type: "blueprint.list.getItemField", params: { field: "sceneId" } },
+                    { id: "play", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY },
+                ],
+                [["click", "then", "play", "in"], ["rowStory", "value", "play", "storyId"], ["rowScene", "value", "play", "sceneId"]],
+            ),
+        }));
+        const extra = kitInterface({ id: "extra", name: "Extra", rootElementId: "root" }, [
+            kitElement("root", "nl.container", null, { childrenIds: ["list"] }),
+            kitElement("list", "nl.list", "root"),
+        ]);
+        const stories = [story("s1", "Main", [scene("sc1", "Prologue", []), scene("sc2", "Cut", []), scene("sc3", "Memory", [])], "sc1")];
+        const catalogue = { pluginId: "narraleaf.gallery", namespace: "narraleaf.gallery.items", data: { items: [{ kind: "scene", scene: { storyId: "s1", sceneId: "sc3" } }] } };
+
+        it("counts every scene the Gallery lists as a place play begins", () => {
+            const ctx = createTestLintContext({ stories, blueprintDocument: recollection, uiDocument: extra, pluginStores: [catalogue] });
+            expect(run("story/unreachable-scene", ctx).map(finding => finding.location)).toEqual([
+                expect.objectContaining({ sceneId: "sc2" }),
+            ]);
+        });
+
+        it("goes silent when the plugins' stores were not read", () => {
+            const ctx = createTestLintContext({ stories, blueprintDocument: recollection, uiDocument: extra, pluginStores: null });
+            expect(run("story/unreachable-scene", ctx)).toEqual([]);
+        });
     });
 
     it("goes silent when a Start Game node wires its target, picked scene and all", () => {
