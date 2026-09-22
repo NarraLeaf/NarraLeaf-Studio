@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
+import type { FileHandle } from "fs/promises";
 import {Dirent, default as fsSync, Stats} from "fs";
 import {randomBytes} from "crypto";
 import mime from "mime-types";
@@ -68,6 +69,32 @@ export class Fs {
 
     public static readRaw(path: string): Promise<FsRequestResult<Buffer>> {
         return this.wrap(fs.readFile(path));
+    }
+
+    /**
+     * Open a regular file for reading and report its size, for a caller that serves it in pieces
+     * rather than holding all of it at once.
+     *
+     * The size is taken from the open handle, not from a separate `stat` of the path, so a response
+     * that declares a length and then reads bytes gets both from the same file even if the path is
+     * replaced in between. A directory opens without complaint on Windows, so it is refused here with
+     * the `EISDIR` a {@link readRaw} of it would have raised. The caller owns the handle and must
+     * close it.
+     */
+    public static openForRead(path: string): Promise<FsRequestResult<{ handle: FileHandle; size: number }>> {
+        return this.wrap((async () => {
+            const handle = await fs.open(path, "r");
+            try {
+                const stats = await handle.stat();
+                if (!stats.isFile()) {
+                    throw this.createNodeError("EISDIR", `Not a file: ${path}`);
+                }
+                return { handle, size: stats.size };
+            } catch (error) {
+                await handle.close().catch(() => undefined);
+                throw error;
+            }
+        })());
     }
 
     /**
