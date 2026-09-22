@@ -31,6 +31,7 @@ import {
     type AssetCompressionReport,
     type AssetCompressionTrackReport,
     type BuildPreflightFinding,
+    type GameBuildArch,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildMobilePlatform,
@@ -263,6 +264,25 @@ export function resolveElectronDistDirForApp(
     }
     // <dist>/electron[.exe]
     return path.dirname(currentExecutable);
+}
+
+/**
+ * Whether the Electron installation Studio runs on can be the runtime a desktop target ships.
+ *
+ * Only when it is the same platform *and* the same architecture. The installation is one binary
+ * for one machine, and electron-builder copies whatever directory it is given without asking what
+ * it holds - so handing it the host's Electron for any other arch packages the host's binaries
+ * under the target's name: a "Windows arm64" build that is an x64 program, an Intel-Mac build that
+ * cannot start on an Intel Mac, a universal build whose two halves are the same arm64 app. Every
+ * other target leaves `electronDist` unset, and electron-builder downloads (and caches) the release
+ * for exactly that platform and arch. `universal` is never a host arch, so it always downloads.
+ */
+export function hostElectronServesTarget(
+    target: { platform: GameBuildDesktopPlatform; arch: GameBuildArch },
+    hostPlatform: GameBuildDesktopPlatform = currentGameBuildPlatform(),
+    hostArch: string = process.arch,
+): boolean {
+    return target.platform === hostPlatform && target.arch === hostArch;
 }
 
 // Moved to @shared/types/gameBuild so the build dialog derives the displayed
@@ -2223,18 +2243,23 @@ export class GameBuildManager {
                 message: `installer tooling will be downloaded from ${binariesMirror}`,
             });
         }
-        const crossTargets = desktopTargets.filter(target => target.platform !== hostPlatform);
-        if (electronMirror && crossTargets.length > 0) {
+        // The host's own Electron serves only a target that matches it in platform *and* arch
+        // (hostElectronServesTarget); every other desktop target downloads its own.
+        const downloadingTargets = desktopTargets
+            .map(target => ({ platform: target.platform, arch: normalizeGameBuildArch(target.platform, target.arch) }))
+            .filter(target => !hostElectronServesTarget(target, hostPlatform))
+            .map(target => `${target.platform} ${target.arch}`);
+        if (electronMirror && downloadingTargets.length > 0) {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `cross-building for ${crossTargets.map(t => t.platform).join(", ")}; using Electron mirror ${electronMirror}`,
+                message: `cross-building for ${downloadingTargets.join(", ")}; using Electron mirror ${electronMirror}`,
             });
-        } else if (crossTargets.length > 0) {
+        } else if (downloadingTargets.length > 0) {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `cross-building for ${crossTargets.map(t => t.platform).join(", ")}; downloading Electron on first use (cached afterwards)`,
+                message: `cross-building for ${downloadingTargets.join(", ")}; downloading Electron on first use (cached afterwards)`,
             });
         }
         const workerConfig: GameBuildWorkerConfig = {
@@ -2266,7 +2291,10 @@ export class GameBuildManager {
                     debuggable,
                     Boolean(encryptionKey),
                 ),
-                ...(target.platform === hostPlatform
+                ...(hostElectronServesTarget(
+                    { platform: target.platform, arch: normalizeGameBuildArch(target.platform, target.arch) },
+                    hostPlatform,
+                )
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),
                 ...await this.resolveTargetIcon(session, projectPath, projectConfig, target.platform),
