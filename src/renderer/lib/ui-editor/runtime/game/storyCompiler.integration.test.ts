@@ -17,6 +17,9 @@ import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
 const EMPTY_APPEARANCE: CharacterAppearanceSummary = { kind: "preset", poses: [], defaultPoseId: null };
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
+import { openStoryPersistence } from "@/lib/ui-editor/runtime/app/storyPersistence";
+import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
 
 function declarationBlock(id: string, valueType: "boolean" | "number", defaultValue?: number | boolean): StoryBlock {
     return {
@@ -2915,12 +2918,26 @@ describe("compileStudioStoryToNlr voice", () => {
         });
     });
 
-    it("falls back to a REGISTRY-declared persistent variable's default while the host has stored nothing", async () => {
-        // The registry is where persistent variables are declared after the migration, but the
-        // compiler collected its default-value table from the document's `/persis` rows alone. So a
-        // flag the author gave a starting value reached the runtime with no default at all and read as
-        // empty until something wrote it - while Dev Mode's variables panel, which reads the merged
-        // view, showed the default and disagreed with the running game.
+    it("reads a REGISTRY-declared persistent variable's default while the host has stored nothing", async () => {
+        // The registry is where persistent variables are declared after the migration. A flag the
+        // author gave a starting value once reached the running story with no default at all and
+        // read as empty until something wrote it - while Dev Mode's variables panel, which reads the
+        // merged view, showed the default and disagreed with the running game.
+        //
+        // The default comes from the persistence scope a game builds, not from the compiler: the
+        // port here is the one `GameApp` hands a story, over a scope declared from the bundle.
+        const persistentVariables = {
+            "reg-chapter": {
+                id: "reg-chapter",
+                name: "Chapter",
+                scope: "persistent" as const,
+                valueType: "number" as const,
+                defaultValue: 3,
+                storageKey: "key_chapter",
+            },
+        };
+        const scope = new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults({ ui: { persistentVariables } }) });
+        const persistence = await openStoryPersistence(scope);
         const say: StoryBlock = {
             id: "say",
             kind: "nodeAction",
@@ -2943,17 +2960,8 @@ describe("compileStudioStoryToNlr voice", () => {
             document: baseDocument({ say }, ["say"]),
             sceneId: "scene-1",
             // The host has never written this key, which is the whole state under test.
-            persistence: { get: () => undefined, set: () => undefined },
-            persistentVariables: {
-                "reg-chapter": {
-                    id: "reg-chapter",
-                    name: "Chapter",
-                    scope: "persistent",
-                    valueType: "number",
-                    defaultValue: 3,
-                    storageKey: "key_chapter",
-                },
-            },
+            persistence: persistence.port,
+            persistentVariables,
         });
 
         expect(compiled.diagnostics).toEqual([]);

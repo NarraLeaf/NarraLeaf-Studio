@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
+import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import { computeStoryStageSnapshot } from "./storyStageSnapshot";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
@@ -608,10 +610,12 @@ describe("computeStoryStageSnapshot and the host's persistent store", () => {
         expect(onStage(() => 1)).toEqual(["cg1"]);
     });
 
-    it("falls back to the declared default for a key the store has never held", () => {
+    it("reads the declared default for a key the store has never held", () => {
         // What the runtime reads there too - an unwritten persistent variable is its default, not
-        // nothing, so the walk must not treat "unset" as "no arm matches".
-        expect(onStage(() => undefined)).toEqual(["cg0"]);
+        // nothing, so the walk must not treat "unset" as "no arm matches". The default is the
+        // store's answer, so the reader here is the scope a game builds, over a store holding nothing.
+        const scope = new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults({ ui: { persistentVariables } }) });
+        expect(onStage(key => scope.persistenceGet(key) as number | undefined)).toEqual(["cg0"]);
     });
 
     it("takes the else arm when the stored value matches none of them", () => {
