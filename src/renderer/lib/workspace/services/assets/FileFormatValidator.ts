@@ -103,7 +103,10 @@ export class FileFormatValidator {
                 return { success: true, data: void 0 };
         }
 
-        // If format was detected, verify it matches the file extension
+        // If format was detected, verify it matches the file extension. Bytes that match no signature
+        // here pass: a file picked from disk is the file the author means, and a format this table
+        // does not know is not evidence against it. A download is held to more than that - see
+        // `remoteSnapshotRefusal` for why the two differ.
         if (detectedFormat && detectedFormat !== 'unknown') {
             const formatMatches = this.checkFormatMatch(type, fileExt, detectedFormat);
             if (!formatMatches) {
@@ -298,6 +301,42 @@ export class FileFormatValidator {
         return FORMAT_EXTENSIONS[type][detected]?.[0] ?? null;
     }
 
+    /**
+     * Whether the bytes carry the signature of a format this type of asset takes.
+     *
+     * Wider than the detection {@link validateFileFormat} runs, which exists to catch a name and
+     * bytes that disagree and so only needs the formats a name could be confused with. This answers
+     * for every format the type accepts - AVIF, ICO, cursors and SVG among images, Matroska audio,
+     * Ogg video, QuickTime files that open without an `ftyp` box - because a remote import stands on
+     * it, and a format left out here would be a format no URL could serve.
+     *
+     * Types with no signature to read answer true: JSON is checked by parsing it, and `Other` is
+     * the type for bytes Studio holds no opinion about.
+     */
+    public recognizes(type: AssetType, buffer: Uint8Array): boolean {
+        switch (type) {
+            case AssetType.Image:
+                return isKnown(this.detectImageFormat(buffer))
+                    || isIconOrCursor(buffer)
+                    || hasIsoBrand(buffer, AVIF_BRANDS)
+                    || isSvgDocument(buffer);
+            case AssetType.Audio:
+                // `.weba` and `.mka` are Matroska, which the audio detector has no case for.
+                return isKnown(this.detectAudioFormat(buffer)) || isMatroska(buffer);
+            case AssetType.Video:
+                // `.ogv`, `.ogm` and `.ogx` are Ogg, which the video detector has no case for.
+                return isKnown(this.detectVideoFormat(buffer)) || isOgg(buffer) || isBareQuickTime(buffer);
+            case AssetType.Font: {
+                // Not EOT: its only mark is two bytes at offset 34, which a line of text can carry,
+                // and the format is refused by name before this is ever asked about one.
+                const detected = this.detectFontFormat(buffer);
+                return (isKnown(detected) && detected !== "eot") || startsWith(buffer, APPLE_TRUETYPE);
+            }
+            default:
+                return true;
+        }
+    }
+
     private checkFormatMatch(type: AssetType, extension: string, detectedFormat: string): boolean {
         const formatMaps: Record<AssetType, Record<string, string[]>> = FORMAT_EXTENSIONS;
 
@@ -310,6 +349,145 @@ export class FileFormatValidator {
 
         return false;
     }
+}
+
+function isKnown(detected: string | null): boolean {
+    return detected !== null && detected !== "unknown";
+}
+
+function startsWith(buffer: Uint8Array, signature: readonly number[]): boolean {
+    return buffer.length >= signature.length && signature.every((byte, index) => buffer[index] === byte);
+}
+
+function ascii(buffer: Uint8Array, from: number, to: number): string {
+    return String.fromCharCode(...buffer.subarray(from, to));
+}
+
+/** `true`: the tag TrueType fonts from classic Mac OS open with, in place of `00 01 00 00`. */
+const APPLE_TRUETYPE = [0x74, 0x72, 0x75, 0x65];
+
+/** ICO and CUR share a header: a zero word, then 1 for an icon or 2 for a cursor, then a count that is not zero. */
+function isIconOrCursor(buffer: Uint8Array): boolean {
+    return buffer.length >= 6
+        && buffer[0] === 0 && buffer[1] === 0
+        && (buffer[2] === 1 || buffer[2] === 2) && buffer[3] === 0
+        && (buffer[4] !== 0 || buffer[5] !== 0);
+}
+
+const AVIF_BRANDS: ReadonlySet<string> = new Set(["avif", "avis"]);
+
+/**
+ * Whether the bytes open with an ISO-BMFF `ftyp` box that names one of `brands`, as its major brand
+ * or among the compatible ones after the minor version. An AVIF file commonly declares `mif1` first
+ * and `avif` further in.
+ */
+function hasIsoBrand(buffer: Uint8Array, brands: ReadonlySet<string>): boolean {
+    if (buffer.length < 12 || ascii(buffer, 4, 8) !== "ftyp") {
+        return false;
+    }
+    if (brands.has(ascii(buffer, 8, 12))) {
+        return true;
+    }
+    const boxSize = ((buffer[0] << 24) >>> 0) + (buffer[1] << 16) + (buffer[2] << 8) + buffer[3];
+    const end = Math.min(buffer.length, boxSize);
+    for (let at = 16; at + 4 <= end; at += 4) {
+        if (brands.has(ascii(buffer, at, at + 4))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function isMatroska(buffer: Uint8Array): boolean {
+    return startsWith(buffer, [0x1A, 0x45, 0xDF, 0xA3]);
+}
+
+function isOgg(buffer: Uint8Array): boolean {
+    return startsWith(buffer, [0x4F, 0x67, 0x67, 0x53]);
+}
+
+/** Atoms a QuickTime file written before `ftyp` existed opens with. */
+const QUICKTIME_LEADING_ATOMS: ReadonlySet<string> = new Set(["moov", "mdat", "wide", "free", "skip", "pnot"]);
+
+function isBareQuickTime(buffer: Uint8Array): boolean {
+    return buffer.length >= 8 && QUICKTIME_LEADING_ATOMS.has(ascii(buffer, 4, 8));
+}
+
+/** How far into a text file to look for its first element. Generous: editors write long comment banners. */
+const TEXT_SNIFF_BYTES = 16 * 1024;
+
+/**
+ * How a markup text opens: the name its doctype declares, and its first element, both lower-cased
+ * with any namespace prefix kept. Read past a byte order mark, whitespace, the XML declaration,
+ * processing instructions and comments. Both are null for bytes that open with anything else - which
+ * every binary format does - or whose opening is out of reach.
+ */
+export function leadingMarkup(buffer: Uint8Array): { doctype: string | null; element: string | null } {
+    let text = new TextDecoder("utf-8").decode(buffer.subarray(0, TEXT_SNIFF_BYTES));
+    if (text.charCodeAt(0) === 0xfeff) {
+        text = text.slice(1);
+    }
+    let doctype: string | null = null;
+    let at = 0;
+    for (;;) {
+        while (at < text.length && /\s/.test(text[at])) {
+            at += 1;
+        }
+        if (text.startsWith("<?", at)) {
+            const close = text.indexOf("?>", at);
+            if (close < 0) {
+                return { doctype, element: null };
+            }
+            at = close + 2;
+            continue;
+        }
+        if (text.startsWith("<!--", at)) {
+            const close = text.indexOf("-->", at);
+            if (close < 0) {
+                return { doctype, element: null };
+            }
+            at = close + 3;
+            continue;
+        }
+        if (text.slice(at, at + 9).toLowerCase() === "<!doctype") {
+            doctype = /^\s*([^\s>[]+)/.exec(text.slice(at + 9, at + 256))?.[1].toLowerCase() ?? null;
+            // An internal subset holds `>` of its own, so it is stepped over as a whole.
+            const close = text.indexOf(">", at);
+            const bracket = text.indexOf("[", at);
+            const end = bracket >= 0 && (close < 0 || bracket < close)
+                ? text.indexOf(">", Math.max(text.indexOf("]", bracket), bracket))
+                : close;
+            if (end < 0) {
+                return { doctype, element: null };
+            }
+            at = end + 1;
+            continue;
+        }
+        break;
+    }
+    const element = /^<([A-Za-z_][\w.-]*(?::[A-Za-z_][\w.-]*)?)[\s>/]/.exec(text.slice(at, at + 256));
+    return { doctype, element: element ? element[1].toLowerCase() : null };
+}
+
+/** An SVG document: XML text whose root element is `svg`, prefixed or not. */
+export function isSvgDocument(buffer: Uint8Array): boolean {
+    const { element } = leadingMarkup(buffer);
+    return element === "svg" || !!element?.endsWith(":svg");
+}
+
+/**
+ * The elements an HTML document can open with, after the list browsers use to sniff an unlabelled
+ * response as HTML (the WHATWG MIME Sniffing standard, "rules for identifying an unknown MIME type").
+ */
+const HTML_LEADING_ELEMENTS: ReadonlySet<string> = new Set([
+    "html", "head", "body", "script", "iframe", "h1", "div", "font", "table", "a", "style", "title", "b", "br", "p",
+    "meta", "link",
+]);
+
+/** Whether the bytes are an HTML document: a sign-in page, an error page, a consent wall. */
+export function looksLikeHtml(buffer: Uint8Array): boolean {
+    const { doctype, element } = leadingMarkup(buffer);
+    return doctype === "html" || (element !== null && HTML_LEADING_ELEMENTS.has(element));
 }
 
 /**

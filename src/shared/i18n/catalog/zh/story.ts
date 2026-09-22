@@ -1063,6 +1063,7 @@ export const story = {
             breakOutsideLoop: "该跳出行不在重复组内，没有可跳出的循环",
             repeatUntilUnusable: "该“重复直到”没有可用的条件，已跳过整组",
             sharedSceneVariables: "场景“{first}”与“{second}”的场景变量存放在同一名称下，会相互覆盖",
+            sharedSceneVariablesSameName: "两个场景“{name}”的场景变量存放在同一名称下，会相互覆盖",
         },
         notOnStage: {
             image: "图片“{name}”不在舞台上；需要由此前的行创建",

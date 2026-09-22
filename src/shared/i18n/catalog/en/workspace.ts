@@ -950,6 +950,12 @@ export const workspace = {
                 unplayableContainer: "NarraLeaf cannot open {container} files. Convert the file and import the converted copy from disk.",
                 unplayableFormat: "NarraLeaf cannot open this file's format. Convert the file and import the converted copy from disk.",
                 unplayableNoStreams: "The file holds no sound or picture that NarraLeaf can play.",
+                // A sign-in page, a consent wall, an error page served as a success.
+                webPage: "The address returned a web page instead of a file.",
+                // Text or a document, or bytes that match no format of the section being imported into.
+                unrecognizedImage: "The address did not return an image in a format NarraLeaf recognizes.",
+                unrecognizedMedia: "The address did not return sound or video in a format NarraLeaf recognizes.",
+                unrecognizedFont: "The address did not return a font in a format NarraLeaf recognizes.",
             },
             // An entry of a translation file or a recording script that was skipped while the rest
             // were read. Positions are the file's own: a spreadsheet row, a JSON array entry, a line

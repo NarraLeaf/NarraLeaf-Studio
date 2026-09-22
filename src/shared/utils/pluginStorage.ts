@@ -48,6 +48,11 @@ export function parsePluginStore(storeNamespace: string): { pluginId: string; na
     return { pluginId: rest.slice(0, delimiter), namespace };
 }
 
+/** One store a plugin keeps in the project, as read from disk - or the fact that it would not read. */
+export type PluginStoreReading =
+    | { pluginId: string; namespace: string; data: unknown }
+    | { pluginId: string; namespace: string; unreadable: true };
+
 /**
  * Recover the owning plugin id from a store namespace (a filename stem, without
  * `.json`), or null when the store is not plugin-owned (e.g. a core store).

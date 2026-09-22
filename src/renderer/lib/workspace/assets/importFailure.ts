@@ -202,6 +202,17 @@ export function describeAssetImportRefusal(refusal: AssetImportRefusal | undefin
             return t("workspace.shell.import.remote.bundle");
         case "remoteUnplayable":
             return describeRemoteUnplayable(refusal.cause, t);
+        case "remotePage":
+            return t("workspace.shell.import.remote.webPage");
+        case "remoteUnrecognized":
+            switch (refusal.expected) {
+                case "image":
+                    return t("workspace.shell.import.remote.unrecognizedImage");
+                case "media":
+                    return t("workspace.shell.import.remote.unrecognizedMedia");
+                case "font":
+                    return t("workspace.shell.import.remote.unrecognizedFont");
+            }
     }
 }
 

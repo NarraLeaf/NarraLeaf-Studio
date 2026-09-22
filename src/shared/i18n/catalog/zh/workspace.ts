@@ -823,6 +823,12 @@ export const workspace = {
                 unplayableContainer: "NarraLeaf 无法打开 {container} 文件；请转换文件后从本地导入",
                 unplayableFormat: "NarraLeaf 无法打开该文件的格式；请转换文件后从本地导入",
                 unplayableNoStreams: "文件中没有 NarraLeaf 可播放的声音或画面",
+                // 登录页、同意页，或以成功状态返回的错误页。
+                webPage: "该地址返回的是网页，而不是文件",
+                // 文本或文档，或与导入分类中任何格式都不符的字节。
+                unrecognizedImage: "该地址返回的内容不是 NarraLeaf 可识别的图片格式",
+                unrecognizedMedia: "该地址返回的内容不是 NarraLeaf 可识别的音频或视频格式",
+                unrecognizedFont: "该地址返回的内容不是 NarraLeaf 可识别的字体格式",
             },
             // 翻译文件或录音本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
             // JSON 数组的项、PO 文件的行。

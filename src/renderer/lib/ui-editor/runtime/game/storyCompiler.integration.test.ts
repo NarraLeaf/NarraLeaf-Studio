@@ -1386,6 +1386,46 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
+    it("flags a scene stored without a runtime name whose display name another scene's runtime name matches", async () => {
+        // A document from before every scene had one compiles such a scene under its display name, so
+        // that is the name it collides under - and the name Studio would otherwise have handed out.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        document.scenes["scene-1"].runtimeName = "chapter_1";
+        document.scenes["scene-2"].runtimeName = "";
+        document.scenes["scene-2"].name = "chapter_1";
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "error",
+            message: "The scenes “Scene 1” and “chapter_1” keep their scene variables under one name, so each overwrites the other's.",
+        });
+    });
+
+    it("names two colliding scenes once when the author gave them one title", async () => {
+        // The pair a project made before internal names were minted unique most often holds: two
+        // scenes both called "Chapter 1". Naming the title twice would read as a fault in the sentence.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        for (const id of ["scene-1", "scene-2"] as const) {
+            document.scenes[id].name = "Chapter 1";
+            document.scenes[id].runtimeName = "chapter_1";
+        }
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "error",
+            message: "The two scenes named “Chapter 1” keep their scene variables under one name, so each overwrites the other's.",
+        });
+    });
+
+    it("says nothing about two scenes whose display names match but whose runtime names do not", async () => {
+        // What Studio makes of a second "Chapter 1" now: the same title, its own namespace.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        document.scenes["scene-1"].name = "Chapter 1";
+        document.scenes["scene-1"].runtimeName = "chapter_1";
+        document.scenes["scene-2"].name = "Chapter 1";
+        document.scenes["scene-2"].runtimeName = "chapter_1_2";
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics.some(entry => entry.message.includes("keep their scene variables"))).toBe(false);
+    });
+
     it("seeds declared scene-local defaults at the scene head and compiles declaration rows to nothing", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: narrationBlock("say", "text-say", "Hello.") }, ["say"]),

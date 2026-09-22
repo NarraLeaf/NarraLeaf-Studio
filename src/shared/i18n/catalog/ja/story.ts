@@ -1113,6 +1113,7 @@ export const story = {
             breakOutsideLoop: "この中断は繰り返しの中にないため、抜けるループがない",
             repeatUntilUnusable: "この「まで繰り返し」には使える条件がない。グループは飛ばした",
             sharedSceneVariables: "シーン「{first}」と「{second}」はシーン変数を同じ名前で保存しているため、互いに上書きする",
+            sharedSceneVariablesSameName: "2 つのシーン「{name}」はシーン変数を同じ名前で保存しているため、互いに上書きする",
         },
         notOnStage: {
             image: "画像「{name}」はステージにない。それより前の行で作成する必要がある",

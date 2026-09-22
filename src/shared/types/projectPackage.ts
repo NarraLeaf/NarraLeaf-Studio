@@ -36,3 +36,36 @@ const IMPORT_CODES: ReadonlySet<string> = new Set(Object.values(ProjectPackageIm
 export function isProjectPackageImportErrorCode(code: unknown): code is ProjectPackageImportErrorCode {
     return typeof code === "string" && IMPORT_CODES.has(code);
 }
+
+/**
+ * Why a project could not be written out as a package, as the `code` a failed
+ * `workspaceExportProjectPackage` carries.
+ *
+ * The same split as the import side: main's message is English and names the export folder and the
+ * project file that failed, for the log, and the workspace words the failure from this code. The two
+ * sides of an export are the project being read and the folder being written, so each code is about
+ * one of them.
+ */
+export enum ProjectPackageExportErrorCode {
+    /** The chosen folder is inside Studio's own storage, which no package may be written into. */
+    FolderProtected = "PACKAGE_EXPORT_FOLDER_PROTECTED",
+    /** The disk will not let Studio write into the chosen folder. */
+    FolderReadOnly = "PACKAGE_EXPORT_FOLDER_READ_ONLY",
+    /** The chosen folder is no longer there. */
+    FolderMissing = "PACKAGE_EXPORT_FOLDER_MISSING",
+    /** The disk the chosen folder is on ran out of space. */
+    DiskFull = "PACKAGE_EXPORT_DISK_FULL",
+    /** The disk will not let Studio read a file or folder of the project. */
+    ProjectUnreadable = "PACKAGE_EXPORT_PROJECT_UNREADABLE",
+    /** A file of the project is held open by another program in a way that stops it being read. */
+    ProjectFileBusy = "PACKAGE_EXPORT_PROJECT_FILE_BUSY",
+    /** A file of the project was moved or deleted while the export was reading the project. */
+    ProjectChanged = "PACKAGE_EXPORT_PROJECT_CHANGED",
+}
+
+const EXPORT_CODES: ReadonlySet<string> = new Set(Object.values(ProjectPackageExportErrorCode));
+
+/** Whether a `RequestStatus.code` is one of the packer's. */
+export function isProjectPackageExportErrorCode(code: unknown): code is ProjectPackageExportErrorCode {
+    return typeof code === "string" && EXPORT_CODES.has(code);
+}

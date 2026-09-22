@@ -127,6 +127,8 @@ export const wizard = {
             packageUnreadable: "Studio is not allowed to read the package file.",
             folderProtected: "The chosen folder is inside Studio's own storage. Choose another folder.",
             diskFull: "The disk is full.",
+            // Under the reason, when the folder still holds part of what the failed attempt wrote.
+            leftBehind: "Part of the unpacked contents could not be removed from the folder. Empty the folder before trying again.",
         },
     },
     // The clone flow's first page. Deliberately short: everything else about the project is

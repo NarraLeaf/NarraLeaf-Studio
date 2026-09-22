@@ -125,8 +125,9 @@ export async function fetchRemoteAsset(
         bytes,
         etag: response.headers.get("etag") ?? undefined,
         lastModified: response.headers.get("last-modified") ?? undefined,
-        // Recorded for diagnostics only. What the asset *is* gets decided by the format validator
-        // reading the bytes, because a Content-Type is a claim and magic bytes are evidence.
+        // A claim, not evidence of what the bytes are: the renderer's format gate decides that from
+        // the bytes, and holds this only against them - a server declaring a web page or text has
+        // said the answer is not the file.
         contentType: response.headers.get("content-type") ?? undefined,
     };
 }
