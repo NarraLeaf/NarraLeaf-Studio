@@ -95,6 +95,17 @@ export function readProjectPackageVersion(head: Uint8Array): 1 | 2 | null {
     return null;
 }
 
+/**
+ * Whether these first eight bytes are a package's magic with a version after the one this build
+ * writes - a package from a newer Studio, which {@link readProjectPackageVersion} answers `null` for
+ * like any other file it cannot read.
+ */
+export function isNewerProjectPackage(head: Uint8Array): boolean {
+    return startsWith(head, new Uint8Array(MAGIC_PREFIX))
+        && head.length >= PROJECT_PACKAGE_BODY_OFFSET
+        && head[MAGIC_PREFIX.length] > PROJECT_PACKAGE_FORMAT_VERSION;
+}
+
 export function encodeProjectPackageIndex(index: ProjectPackageIndex): Uint8Array {
     const encoded = msgpack.encode(index);
     return encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded);

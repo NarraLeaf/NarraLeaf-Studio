@@ -27,10 +27,17 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
+const workspaceBridge = vi.hoisted(() => ({
+    close: vi.fn(),
+    returnToLauncher: vi.fn(),
+    openRecent: vi.fn(),
+    setRecoveryMode: vi.fn(),
+}));
+
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         getWindowProps: vi.fn().mockResolvedValue({ success: true, data: { projectPath: "D:/games/demo" } }),
-        workspace: { close: vi.fn(), openRecent: vi.fn(), setRecoveryMode: vi.fn() },
+        workspace: workspaceBridge,
         app: { exportDiagnostics: vi.fn() },
         selectFolder: vi.fn(),
     }),
@@ -79,9 +86,53 @@ describe("ProjectLockedScreen", () => {
         expect(screen.queryByText("workspace.recovery.enter")).toBeNull();
     });
 
+    it("goes back to the launcher from the launcher button, rather than only closing the window", () => {
+        // A plain close on the last window leaves Studio running in the tray with nothing on
+        // screen, which is not what a button called "Open launcher" promises.
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+
+        screen.getByText("workspace.shell.openLauncher").click();
+
+        expect(workspaceBridge.returnToLauncher).toHaveBeenCalledTimes(1);
+        expect(workspaceBridge.close).not.toHaveBeenCalled();
+    });
+
     it("shows no stack trace, because nothing here failed", () => {
         render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
 
+        expect(screen.queryByText("workspace.shell.showStackTrace")).toBeNull();
+    });
+});
+
+/**
+ * The same screen for a window that had the project and lost it: another Studio took it over while
+ * this one's heartbeat stood still, and this window stopped writing when it found out.
+ */
+describe("ProjectLockedScreen after a takeover", () => {
+    it("says the project is open elsewhere now, and that nothing here is saved any more", () => {
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText("workspace.shell.projectTakenOverTitle")).toBeTruthy();
+        const sentence = screen.getByText(/workspace\.shell\.projectTakenOverElsewhere/);
+        expect(sentence.textContent).toContain("host=studio-two");
+        expect(screen.queryByText(/workspace\.shell\.projectLocked/)).toBeNull();
+    });
+
+    it("says the machine is this one rather than naming it", () => {
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, sameHost: true }} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText(/workspace\.shell\.projectTakenOverHere/)).toBeTruthy();
+        expect(screen.queryByText(/studio-two/)).toBeNull();
+    });
+
+    it("offers the same ways out, and still not recovery mode", () => {
+        const onRetry = vi.fn();
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={onRetry} takenOver />);
+
+        screen.getByText("workspace.shell.retry").click();
+        expect(onRetry).toHaveBeenCalledTimes(1);
+        expect(screen.getByText("workspace.shell.openLauncher")).toBeTruthy();
+        expect(screen.queryByText("workspace.recovery.enter")).toBeNull();
         expect(screen.queryByText("workspace.shell.showStackTrace")).toBeNull();
     });
 });

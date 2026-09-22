@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import { translate } from "@/lib/i18n";
+import { isProjectPackageImportErrorCode, ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
 import { isStudioProject } from "./projectVerification";
 
 /**
@@ -12,6 +13,40 @@ export type ImportOutcome =
     | { status: "imported"; root: string; projectName?: string; fileCount?: number }
     | { status: "notAProject"; root: string }
     | { status: "failed"; error: string };
+
+/**
+ * Why an unpack failed, in the interface's language, from the code main answered with.
+ *
+ * Main's own message is English and names the package, the folder and the file inside the package
+ * that failed - it goes to the log. A failure with no code the page has words for (a disk error no
+ * author can act on, a grant the page never asked for) gets the one general sentence.
+ */
+export function describePackageImportFailure(code: string | undefined): string {
+    if (!isProjectPackageImportErrorCode(code)) {
+        return translate("wizard.import.error.generic");
+    }
+    switch (code) {
+        case ProjectPackageImportErrorCode.NotAPackage:
+            return translate("wizard.import.error.notAPackage");
+        case ProjectPackageImportErrorCode.NewerVersion:
+            return translate("wizard.import.error.newerVersion");
+        case ProjectPackageImportErrorCode.Damaged:
+            return translate("wizard.import.error.damaged");
+        case ProjectPackageImportErrorCode.PackageMissing:
+            return translate("wizard.import.error.packageMissing");
+        case ProjectPackageImportErrorCode.PackageUnreadable:
+            return translate("wizard.import.error.packageUnreadable");
+        case ProjectPackageImportErrorCode.FolderNotEmpty:
+            // The same sentence the folder field gives before the button is pressed.
+            return translate("wizard.validation.notEmpty");
+        case ProjectPackageImportErrorCode.FolderProtected:
+            return translate("wizard.import.error.folderProtected");
+        case ProjectPackageImportErrorCode.FolderReadOnly:
+            return translate("wizard.validation.cannotWrite");
+        case ProjectPackageImportErrorCode.DiskFull:
+            return translate("wizard.import.error.diskFull");
+    }
+}
 
 /**
  * Unpacking a project someone handed over as a `.nlspkg` file.
@@ -46,7 +81,8 @@ export class ImportService {
         try {
             const result = await getInterface().workspace.importProjectPackage(packagePath, targetDir);
             if (!result.success) {
-                return { status: "failed", error: result.error || translate("wizard.import.error.generic") };
+                console.warn("[wizard] the package could not be unpacked", result.error);
+                return { status: "failed", error: describePackageImportFailure(result.code) };
             }
 
             const root = result.data.projectPath;
@@ -59,7 +95,9 @@ export class ImportService {
                 }
                 : { status: "notAProject", root };
         } catch (error) {
-            return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+            // A rejected call is the bridge's or the platform's sentence, for the log.
+            console.error("[wizard] the package import threw", error);
+            return { status: "failed", error: translate("wizard.import.error.generic") };
         }
     }
 }

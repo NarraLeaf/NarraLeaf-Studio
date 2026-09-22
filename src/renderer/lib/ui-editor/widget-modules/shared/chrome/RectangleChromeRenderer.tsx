@@ -151,13 +151,13 @@ export function RectangleChromeRenderer({
 
     const normalizedFillOpacity = Math.max(0, Math.min(1, props.fillOpacity));
     const parsedBg = parseColorValue(String(props.backgroundColor ?? ""), { hex: "#FFFFFF", alpha: 1 });
-    const colorFill =
-        props.fillVisible && props.fillType === "color"
-            ? colorValueToCss({
-                  hex: parsedBg.hex,
-                  alpha: normalizedFillOpacity * (parsedBg.alpha ?? 1),
-              })
-            : "transparent";
+    // No fill is the fill's own colour at zero alpha, not the keyword `transparent`: motion cannot
+    // interpolate a keyword, so a fill that fades in on hover with a transition the author declared
+    // would jump instead (and say so in the console), in both directions.
+    const colorFill = colorValueToCss({
+        hex: parsedBg.hex,
+        alpha: props.fillVisible && props.fillType === "color" ? normalizedFillOpacity * (parsedBg.alpha ?? 1) : 0,
+    });
 
     const cornerRadii: FillLayerRadii = {
         borderTopLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTL,
@@ -440,23 +440,31 @@ export function RectangleChromeRenderer({
               }
             : null;
 
+    /**
+     * Per-side properties only - never `border`, `borderWidth` or `borderColor`.
+     *
+     * When the stroke transitions, motion animates it one side at a time (`borderTopColor`, ...), and
+     * a shorthand in the same style would be written over the sides motion is tweening on every
+     * render that changed it: React warns about exactly that on each hover, and the stroke snaps to
+     * its end colour for a frame before the tween takes over. The stroke node is a plain `div` with
+     * no border of its own, so nothing needs resetting for the inside and fallback cases either.
+     */
     if (strokeStyle) {
-        strokeStyle.borderStyle = props.borderStyle;
         if (props.strokeAlign === "center") {
             const sideWidth = (side: StrokeEdge) =>
                 strokeSideApplies(props.strokeSide, side) ? `${props.borderWidth}px` : "0px";
 
-            strokeStyle.borderWidth = "0px";
+            strokeStyle.borderStyle = props.borderStyle;
             strokeStyle.borderTopWidth = sideWidth("top");
             strokeStyle.borderRightWidth = sideWidth("right");
             strokeStyle.borderBottomWidth = sideWidth("bottom");
             strokeStyle.borderLeftWidth = sideWidth("left");
-            strokeStyle.borderColor = strokeColor;
+            strokeStyle.borderTopColor = strokeColor;
+            strokeStyle.borderRightColor = strokeColor;
+            strokeStyle.borderBottomColor = strokeColor;
+            strokeStyle.borderLeftColor = strokeColor;
         } else if (props.strokeAlign === "inside") {
-            strokeStyle.border = "none";
             strokeStyle.boxShadow = `inset 0 0 0 ${props.borderWidth}px ${strokeColor}`;
-        } else {
-            strokeStyle.border = "none";
         }
     }
 

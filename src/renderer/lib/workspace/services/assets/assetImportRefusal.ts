@@ -1,5 +1,6 @@
 import type { FsRejectErrorCode } from "@shared/types/os";
 import type { RequestStatus } from "@shared/types/ipcEvents";
+import type { RemoteAssetFetchErrorCode } from "@shared/types/remoteAsset";
 import type { Asset, AssetSource } from "./types";
 import type { AssetType } from "./assetTypes";
 
@@ -38,7 +39,32 @@ export type AssetImportRefusal =
     /** A model folder with no files in it. */
     | { kind: "emptyFolder" }
     /** A model folder whose copy in the project does not hold every file the source did. */
-    | { kind: "copyIncomplete" };
+    | { kind: "copyIncomplete" }
+    /** The project is frozen or being re-read, and takes no new content until that is over. */
+    | { kind: "projectNotAccepting" }
+    /**
+     * A URL the main process could not fetch, by the fetcher's code: no answer, a status that is not
+     * a success, a file over the ceiling, a project that is not trusted.
+     */
+    | { kind: "remoteFetch"; code: RemoteAssetFetchErrorCode }
+    /** The server answered an import with "not modified", which leaves nothing to store. */
+    | { kind: "remoteNoContent" }
+    /** A URL the bytes of which are a model: a model is a folder, and one URL cannot stand for one. */
+    | { kind: "remoteBundle" }
+    /**
+     * Sound or video from a URL the player cannot play. A local file is offered a conversion; bytes
+     * pinned to a URL cannot be converted in place, so this is a refusal with the reason in it.
+     */
+    | { kind: "remoteUnplayable"; cause: RemoteUnplayableCause };
+
+/** Which part of a fetched media file the player cannot read. */
+export type RemoteUnplayableCause =
+    /** Streams in codecs nothing here decodes, by their probe names: `hevc`, `prores`. */
+    | { kind: "codecs"; codecs: readonly string[] }
+    /** A container nothing here opens, by its probe name when the probe gave one. */
+    | { kind: "container"; container: string | null }
+    /** Nothing in it is a sound or a picture that can be played. */
+    | { kind: "noStreams" };
 
 /** An answer from a step that brings a picked file into the library: what it made, or why not. */
 export type RefusableStatus<T> = RequestStatus<T> & { refusal?: AssetImportRefusal };

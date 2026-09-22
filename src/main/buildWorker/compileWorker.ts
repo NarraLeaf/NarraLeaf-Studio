@@ -1,5 +1,6 @@
 import path from "path";
 import { compileGameRuntimeArtifact } from "@/app/application/managers/preview/compiler/gameRuntimeArtifactCompiler";
+import { describeWorkerFailure } from "@shared/build/buildRefusal";
 import type {
     CompileWorkerInboundMessage,
     CompileWorkerOutboundMessage,
@@ -90,7 +91,7 @@ parentPort.on("message", event => {
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })
         .catch((error: unknown) => {
-            const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
-            send({ type: "error", message: detail });
+            // A refusal is sent as its sentence; anything else is a defect and keeps its stack.
+            send({ type: "error", message: describeWorkerFailure(error) });
         });
 });

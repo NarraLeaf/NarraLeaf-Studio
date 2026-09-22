@@ -1,8 +1,14 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { REMOTE_ASSET_FETCH_TIMEOUT_MS, REMOTE_ASSET_MAX_BYTES } from "@shared/constants/remoteAsset";
 import { FsRejectErrorCode } from "@shared/types/os";
+import { RemoteAssetFetchErrorCode } from "@shared/types/remoteAsset";
 import type { ExchangeProblem } from "@shared/utils/exchangeProblem";
 import { basename } from "@shared/utils/path";
-import type { AssetImportRefusal } from "@/lib/workspace/services/assets/assetImportRefusal";
+import type {
+    AssetImportRefusal,
+    RefusableStatus,
+    RemoteUnplayableCause,
+} from "@/lib/workspace/services/assets/assetImportRefusal";
 
 type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
 
@@ -40,6 +46,25 @@ export function summarizeImportFailures(
         lines.push(t("assets.import.moreFailures", { count: remaining }));
     }
     return lines.join("\n");
+}
+
+/**
+ * The files an importer turned away, by path and the reason the author is told, in the order they
+ * were handed over. `results` answers 1:1 with `paths`, which is the importer's contract; the
+ * importer's own sentence for each is logged, since it is English and names the storage path.
+ */
+export function collectImportFailures(
+    paths: readonly string[],
+    results: readonly RefusableStatus<unknown>[],
+    t: Translate,
+): { path: string; reason: string | null }[] {
+    return results.flatMap((result, index) => {
+        if (result.success) {
+            return [];
+        }
+        console.warn(`[assets] could not import ${paths[index]}`, result.error);
+        return [{ path: paths[index], reason: describeAssetImportRefusal(result.refusal, t) }];
+    });
 }
 
 /**
@@ -94,7 +119,28 @@ export function describeExchangeProblem(problem: ExchangeProblem, t: Translate):
                 : t("workspace.shell.import.skipped.notEntry");
         case "unreadableLine":
             return t("workspace.shell.import.skipped.unreadableLine", { n: problem.at.line });
+        case "noTake":
+            return problem.at
+                ? t("workspace.shell.import.skipped.noTakeAtRow", { n: problem.at.row })
+                : t("workspace.shell.import.skipped.noTake");
     }
+}
+
+/** How many skipped entries a summary spells out before it says how many more there were. */
+const SKIPPED_LIMIT = 5;
+
+/**
+ * The entries of a translation file or a recording script that were skipped, as the detail under
+ * one notice: a line each for the first few, by where they sit in the file and why, then how many
+ * more. The author has the file open beside Studio, and the row number is what finds the entry.
+ */
+export function summarizeSkippedEntries(problems: readonly ExchangeProblem[], t: Translate): string {
+    const lines = problems.slice(0, SKIPPED_LIMIT).map(problem => describeExchangeProblem(problem, t));
+    const remaining = problems.length - lines.length;
+    if (remaining > 0) {
+        lines.push(t("assets.import.moreFailures", { count: remaining }));
+    }
+    return lines.join("\n");
 }
 
 /**
@@ -146,5 +192,65 @@ export function describeAssetImportRefusal(refusal: AssetImportRefusal | undefin
             return t("workspace.shell.import.reason.emptyFolder");
         case "copyIncomplete":
             return t("workspace.shell.import.reason.copyIncomplete");
+        case "projectNotAccepting":
+            return t("workspace.shell.import.reason.projectNotAccepting");
+        case "remoteFetch":
+            return describeRemoteFetchFailure(refusal.code, t);
+        case "remoteNoContent":
+            return t("workspace.shell.import.remote.noContent");
+        case "remoteBundle":
+            return t("workspace.shell.import.remote.bundle");
+        case "remoteUnplayable":
+            return describeRemoteUnplayable(refusal.cause, t);
+    }
+}
+
+/**
+ * Why a URL could not be fetched, from the code the main process answered with. Every code has a
+ * sentence: they are all things an author can act on, or at least wait out.
+ */
+export function describeRemoteFetchFailure(code: RemoteAssetFetchErrorCode, t: Translate): string {
+    switch (code) {
+        case RemoteAssetFetchErrorCode.InvalidUrl:
+            return t("workspace.shell.import.remote.invalidUrl");
+        case RemoteAssetFetchErrorCode.UnsupportedScheme:
+            return t("workspace.shell.import.remote.unsupportedScheme");
+        case RemoteAssetFetchErrorCode.Distrusted:
+            // The sentence every other refusal of a distrusted project uses, so it reads the same
+            // whichever control the author met it on.
+            return t("workspace.shell.distrust.unavailable");
+        case RemoteAssetFetchErrorCode.Unreachable:
+            return t("workspace.shell.import.remote.unreachable");
+        case RemoteAssetFetchErrorCode.Timeout:
+            return t("workspace.shell.import.remote.timeout", { seconds: Math.round(REMOTE_ASSET_FETCH_TIMEOUT_MS / 1000) });
+        case RemoteAssetFetchErrorCode.NotFound:
+            return t("workspace.shell.import.remote.notFound");
+        case RemoteAssetFetchErrorCode.AccessDenied:
+            return t("workspace.shell.import.remote.accessDenied");
+        case RemoteAssetFetchErrorCode.ServerError:
+            return t("workspace.shell.import.remote.serverError");
+        case RemoteAssetFetchErrorCode.Refused:
+            return t("workspace.shell.import.remote.refused");
+        case RemoteAssetFetchErrorCode.TooLarge:
+            return t("workspace.shell.import.remote.tooLarge", { limit: Math.round(REMOTE_ASSET_MAX_BYTES / (1024 * 1024)) });
+    }
+}
+
+/**
+ * Why fetched sound or video will not play. Probe names are lower case (`hevc`); a format name reads
+ * as one in capitals, the way the file-type sentences above write JPEG and TTC.
+ */
+function describeRemoteUnplayable(cause: RemoteUnplayableCause, t: Translate): string {
+    switch (cause.kind) {
+        case "codecs":
+            return t("workspace.shell.import.remote.unplayableCodecs", {
+                codecs: cause.codecs.map(codec => codec.toUpperCase()).join(", "),
+            });
+        case "container":
+            return cause.container
+                ? t("workspace.shell.import.remote.unplayableContainer", { container: cause.container.toUpperCase() })
+                : t("workspace.shell.import.remote.unplayableFormat");
+        case "noStreams":
+            return t("workspace.shell.import.remote.unplayableNoStreams");
     }
 }

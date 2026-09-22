@@ -20,6 +20,11 @@ export type VoiceCsvRow = {
     line: string;
     status: string;
     note: string;
+    /**
+     * Where the row sits in the file it was read from, as a spreadsheet numbers it (the header is
+     * row 1), so a row that is skipped can be named. Absent on rows built for export.
+     */
+    row?: number;
 };
 
 export function serializeVoiceCsv(rows: readonly VoiceCsvRow[]): string {
@@ -50,10 +55,11 @@ export function parseVoiceCsv(text: string): ParsedVoiceCsv {
     const rows: VoiceCsvRow[] = [];
     const problems: ExchangeProblem[] = [];
     table.rows.forEach((cells, lineIndex) => {
+        // The row number a spreadsheet shows beside it: the header is row 1.
+        const row = lineIndex + 2;
         const unitId = table.cell(cells, "unit_id").trim();
         if (!unitId) {
-            // The row number a spreadsheet shows beside it: the header is row 1.
-            problems.push({ code: "missingId", at: { row: lineIndex + 2 } });
+            problems.push({ code: "missingId", at: { row } });
             return;
         }
         rows.push({
@@ -64,6 +70,7 @@ export function parseVoiceCsv(text: string): ParsedVoiceCsv {
             line: table.cell(cells, "line"),
             status: table.cell(cells, "status").trim().toLowerCase(),
             note: table.cell(cells, "note"),
+            row,
         });
     });
     return { rows, problems };

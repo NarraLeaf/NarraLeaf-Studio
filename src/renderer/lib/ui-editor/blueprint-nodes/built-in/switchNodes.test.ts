@@ -224,7 +224,7 @@ describe("switch blueprint nodes", () => {
                 hostAdapter: createSwitchHostAdapter(store),
                 executionOwner: SELF_OWNER,
             }),
-        ).rejects.toThrow("nl.switch");
+        ).rejects.toThrow("This node acts only on widgets of type Switch.");
         expect(store).toEqual({});
     });
 });

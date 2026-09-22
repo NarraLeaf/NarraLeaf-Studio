@@ -32,16 +32,14 @@ import {
     BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 
 const dataOnlyExecute: BlueprintNodeDef["execute"] = ctx => {
-    throw new BlueprintGraphExecutionError(
-        "Collection nodes are pure and must not sit on the execution path",
-        ctx.node.id,
-    );
+    throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.pureOnExecPath"), ctx.node.id);
 };
 
 const inPin = (

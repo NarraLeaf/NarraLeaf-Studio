@@ -41,10 +41,32 @@ export interface ProjectSessionLockManagerOptions {
      * process to race with and the delay would only be a delay.
      */
     takeoverSettleMs?: number;
+    /**
+     * How long to keep watching a silent claim whose process is still running on this machine
+     * before taking it over. One heartbeat period unless a test says otherwise - see
+     * {@link ProjectSessionLockManager.claimLock}.
+     */
+    staleConfirmMs?: number;
+    /** How the manager waits. Replaceable so a test can act inside the wait instead of sitting it out. */
+    sleep?: (ms: number) => Promise<void>;
+    /**
+     * Called when a heartbeat finds that another Studio has taken over a project this one held.
+     *
+     * The manager has already stopped heartbeating the project and records it as held elsewhere
+     * by then; what is left is the part only the app can do - telling the project's window to stop
+     * writing. Called once per takeover.
+     */
+    onTakenOver?: (projectPath: string, holder: ProjectSessionHolder) => void;
 }
 
 /** How long a takeover waits before reading back what it wrote. */
 const DEFAULT_TAKEOVER_SETTLE_MS = 150;
+
+function defaultSleep(ms: number): Promise<void> {
+    // Unreferenced, like the heartbeat: a wait inside a claim is not a reason to keep a quitting
+    // process alive.
+    return new Promise<void>(resolve => setTimeout(resolve, ms).unref?.());
+}
 
 /** A lock this process is holding. */
 interface HeldLock {
@@ -77,6 +99,10 @@ export class ProjectSessionLockManager {
      *
      * Only a refusal is remembered. A claim that could not be made at all - a folder that cannot
      * hold a lock file - opens the project unlocked, and is not something to refuse later either.
+     *
+     * A project this Studio held and then lost to a takeover is remembered here too (see
+     * {@link loseTo}): its window is still up, and the other Studio has the project exactly as it
+     * would have if this one had been refused at the door.
      */
     private readonly refused = new Map<string, ProjectSessionHolder>();
     private readonly identity: ProjectSessionIdentity;
@@ -85,6 +111,9 @@ export class ProjectSessionLockManager {
     private readonly isProcessAlive: (pid: number) => boolean;
     private readonly heartbeatMs: number;
     private readonly takeoverSettleMs: number;
+    private readonly staleConfirmMs: number;
+    private readonly sleep: (ms: number) => Promise<void>;
+    private readonly onTakenOver: ((projectPath: string, holder: ProjectSessionHolder) => void) | null;
     private heartbeatTimer: NodeJS.Timeout | null = null;
     /** One acquisition per project at a time, so two callers cannot both write a claim. */
     private readonly claims = new Map<string, Promise<ProjectSessionLockOutcome>>();
@@ -95,6 +124,9 @@ export class ProjectSessionLockManager {
         this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
         this.heartbeatMs = options.heartbeatMs ?? PROJECT_SESSION_HEARTBEAT_MS;
         this.takeoverSettleMs = options.takeoverSettleMs ?? DEFAULT_TAKEOVER_SETTLE_MS;
+        this.staleConfirmMs = options.staleConfirmMs ?? this.heartbeatMs;
+        this.sleep = options.sleep ?? defaultSleep;
+        this.onTakenOver = options.onTakenOver ?? null;
         this.identity = {
             pid: options.pid ?? process.pid,
             hostname: options.hostname ?? os.hostname(),
@@ -115,10 +147,11 @@ export class ProjectSessionLockManager {
      * question it answers is "was this Studio turned away from the project", not "does it hold it":
      * the second would refuse to run a project from a read-only volume, which opens by design.
      *
-     * The answer is the last claim's, and changes only with the next one. A window on the error
-     * screen keeps being refused after the other Studio closes, until Retry claims again - which is
-     * right, because that window's workspace has still not started, and nothing that needs one
-     * can run beside it.
+     * The answer is the last claim's - or the takeover's, when a heartbeat found the project gone -
+     * and changes only with the next claim. A window on the error screen keeps being refused after
+     * the other Studio closes, until Retry claims again - which is right, because that window's
+     * workspace has still not started (or, after a takeover, has stopped), and nothing that needs
+     * one can run beside it.
      */
     public heldElsewhere(projectPath: string): ProjectSessionHolder | null {
         return this.refused.get(keyFor(projectPath)) ?? null;
@@ -236,17 +269,26 @@ export class ProjectSessionLockManager {
      * Public so a test can drive it without a timer. A lock that has been taken over is dropped
      * rather than rewritten - the project belongs to the other session now, and stamping this one's
      * heartbeat back over it would take it away again from a Studio that is editing.
+     *
+     * Dropping it is not the whole answer, though, and for a long time it was: the log said the
+     * project had been taken over and the workspace went on editing and saving, so two Studios were
+     * writing one project with nothing on screen in either. A takeover now also records the project
+     * as held elsewhere - so everything {@link heldElsewhere} guards refuses it, as for any project
+     * another Studio has - and is reported through `onTakenOver`, which is how its window learns to
+     * stop writing.
      */
     public async beat(): Promise<void> {
         for (const held of [...this.held.values()]) {
             try {
                 const onDisk = await this.readRecord(held.lockPath);
                 if (onDisk !== null && !this.isOwnRecord(onDisk)) {
-                    this.held.delete(keyFor(held.projectPath));
-                    this.logger.warn(
-                        "[Project] The session lock on", held.projectPath,
-                        "was taken over by another NarraLeaf Studio while this one held it.",
-                    );
+                    this.loseTo(held, onDisk);
+                    continue;
+                }
+                if (this.held.get(keyFor(held.projectPath)) !== held) {
+                    // Lost or released while the read was out - a beat that overlapped this one
+                    // found the takeover first. Writing now would stamp this session back over
+                    // the Studio that has the project.
                     continue;
                 }
                 held.record = { ...held.record, heartbeat: new Date(this.now()).toISOString() };
@@ -287,6 +329,27 @@ export class ProjectSessionLockManager {
 
             if (claim.kind === "held") {
                 return { ok: false, holder: claim.holder };
+            }
+
+            if (claim.kind === "stale" && claim.holderRunning && existing !== null) {
+                // The heartbeat is the only evidence against a holder whose process is still
+                // running here, and it is weakest exactly when it matters most: a computer that has
+                // just woken resumes every Studio on it at once, each with a heartbeat as old as the
+                // sleep and each about to write a new one. So watch for one heartbeat period before
+                // acting. A holder that is really there speaks in that time, and this claim is
+                // refused as it should be; one that stays silent is taken over as before.
+                this.logger.info(
+                    "[Project] The session lock on", resolved,
+                    `is held by a Studio that is still running but ${claim.reason};`,
+                    `looking again in ${Math.round(this.staleConfirmMs / 1000)}s before taking it over.`,
+                );
+                await this.sleep(this.staleConfirmMs);
+                const later = await this.readRecord(lockPath);
+                if (!sameRecord(later, existing)) {
+                    // It spoke, let go, or somebody else got in while this one waited. Whichever it
+                    // was, the next round decides on what is there now.
+                    continue;
+                }
             }
 
             if (claim.kind === "stale") {
@@ -369,6 +432,37 @@ export class ProjectSessionLockManager {
         this.startHeartbeat();
     }
 
+    /**
+     * Give up a project whose claim another Studio has written over, and say so.
+     *
+     * Once per takeover: two heartbeats can overlap on a disk slow enough to have let a takeover
+     * happen at all, and both would find the same foreign record.
+     */
+    private loseTo(held: HeldLock, onDisk: ProjectSessionLockRecord): void {
+        const key = keyFor(held.projectPath);
+        if (this.held.get(key) !== held) {
+            return;
+        }
+        this.held.delete(key);
+        const holder = describeHolder(onDisk, onDisk.hostname === this.identity.hostname);
+        // Refused from now on, exactly as a claim that met this record would have been: the
+        // project is the other Studio's, and nothing this one could start on it - Dev Mode, a
+        // preview, a build - may run beside it.
+        this.refused.set(key, holder);
+        this.logger.warn(
+            "[Project] The session lock on", held.projectPath,
+            "was taken over by another NarraLeaf Studio while this one held it; its workspace stops writing.",
+        );
+        if (!this.onTakenOver) {
+            return;
+        }
+        try {
+            this.onTakenOver(held.projectPath, holder);
+        } catch (error) {
+            this.logger.warn("[Project] Could not report the takeover of", held.projectPath, error);
+        }
+    }
+
     private isOwnRecord(record: ProjectSessionLockRecord): boolean {
         return record.pid === this.identity.pid
             && record.hostname === this.identity.hostname
@@ -416,6 +510,23 @@ type ClaimAttempt =
     | { outcome: "lost"; holder: ProjectSessionHolder }
     /** The file could not be written at all. */
     | { outcome: "unwritable" };
+
+/**
+ * Whether two reads found the same claim, heartbeat and all.
+ *
+ * Every field rather than the heartbeat alone: a holder that let go and a new one that took the
+ * project in the same instant would otherwise read as the first one having stayed silent.
+ */
+function sameRecord(a: ProjectSessionLockRecord | null, b: ProjectSessionLockRecord | null): boolean {
+    if (a === null || b === null) {
+        return a === b;
+    }
+    return a.pid === b.pid
+        && a.hostname === b.hostname
+        && a.installation === b.installation
+        && a.startedAt === b.startedAt
+        && a.heartbeat === b.heartbeat;
+}
 
 /** The identity key: the same normalization every other per-project map in Studio is keyed by. */
 function keyFor(projectPath: string): string {

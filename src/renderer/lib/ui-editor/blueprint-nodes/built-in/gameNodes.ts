@@ -94,6 +94,8 @@ import {
     readSaveCapture,
     storeSaveCapture,
 } from "./saveCaptureStore";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import type {
@@ -244,6 +246,8 @@ type GamePreferenceNodeMeta = {
     setterDisplayName?: string;
     pinId: string;
     pinLabel: string;
+    /** The same label in the author's language, for the errors a setter raises about its value. */
+    pinLabelKey: TranslationKey;
     valueType: "boolean" | "float" | "string";
     defaultValue: BlueprintGamePreferenceValue;
     min?: number;
@@ -260,6 +264,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Auto Forward",
         pinId: "autoForward",
         pinLabel: "Auto Forward",
+        pinLabelKey: "blueprint.port.autoForward",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "auto", "forward", "dialog", "nlr"],
@@ -274,6 +279,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Auto Forward Delay",
         pinId: "autoForwardDelay",
         pinLabel: "Auto Forward Delay",
+        pinLabelKey: "blueprint.port.autoForwardDelay",
         valueType: "float",
         defaultValue: 3000,
         min: 0,
@@ -290,6 +296,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Text Fade In",
         pinId: "textRevealDuration",
         pinLabel: "Text Fade In",
+        pinLabelKey: "blueprint.port.textRevealDuration",
         valueType: "float",
         defaultValue: 0,
         min: 0,
@@ -303,6 +310,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip",
         pinId: "skip",
         pinLabel: "Skip",
+        pinLabelKey: "blueprint.port.skip",
         valueType: "boolean",
         defaultValue: true,
         keywords: ["game", "preference", "skip", "dialog", "nlr"],
@@ -318,6 +326,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip Read Text",
         pinId: "skipReadText",
         pinLabel: "Skip Read Text",
+        pinLabelKey: "blueprint.port.skipReadText",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "read", "text", "unread", "dialog"],
@@ -333,6 +342,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Mute When Unfocused",
         pinId: "muteOnWindowBlur",
         pinLabel: "Mute When Unfocused",
+        pinLabelKey: "blueprint.port.muteWhenUnfocused",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "mute", "focus", "blur", "window", "audio", "silence", "background"],
@@ -349,6 +359,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skipping",
         pinId: "skipping",
         pinLabel: "Skipping",
+        pinLabelKey: "blueprint.port.skipping",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "skipping", "mode", "hold", "fast", "forward"],
@@ -365,6 +376,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         getterDisplayName: "Is Dialog Shown",
         pinId: "isShown",
         pinLabel: "Is Shown",
+        pinLabelKey: "blueprint.port.isShown",
         valueType: "boolean",
         defaultValue: true,
         keywords: [
@@ -380,6 +392,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Game Speed",
         pinId: "gameSpeed",
         pinLabel: "Game Speed",
+        pinLabelKey: "blueprint.port.gameSpeed",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -392,6 +405,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         getterDisplayName: "Get Sentence Speed",
         pinId: "cps",
         pinLabel: "CPS",
+        pinLabelKey: "blueprint.port.cps",
         valueType: "float",
         defaultValue: 10,
         min: 0,
@@ -406,6 +420,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Voice Volume",
         pinId: "voiceVolume",
         pinLabel: "Voice Volume",
+        pinLabelKey: "blueprint.port.voiceVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -419,6 +434,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Voice Fade Duration",
         pinId: "voiceFadeDuration",
         pinLabel: "Voice Fade",
+        pinLabelKey: "blueprint.port.voiceFade",
         valueType: "float",
         defaultValue: 0,
         min: 0,
@@ -432,6 +448,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Voice End Mode",
         pinId: "voiceEndMode",
         pinLabel: "Voice End Mode",
+        pinLabelKey: "blueprint.port.voiceEndMode",
         valueType: "string",
         defaultValue: "stop",
         keywords: ["game", "preference", "voice", "end", "mode", "fade", "stop", "none", "audio", "nlr"],
@@ -444,6 +461,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set BGM Volume",
         pinId: "bgmVolume",
         pinLabel: "BGM Volume",
+        pinLabelKey: "blueprint.port.bgmVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -463,6 +481,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set SFX Volume",
         pinId: "soundVolume",
         pinLabel: "SFX Volume",
+        pinLabelKey: "blueprint.port.sfxVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -476,6 +495,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Global Volume",
         pinId: "globalVolume",
         pinLabel: "Global Volume",
+        pinLabelKey: "blueprint.port.globalVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -489,6 +509,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip Delay",
         pinId: "skipDelay",
         pinLabel: "Skip Delay",
+        pinLabelKey: "blueprint.port.skipDelay",
         valueType: "float",
         defaultValue: 500,
         min: 0,
@@ -502,6 +523,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip Interval",
         pinId: "skipInterval",
         pinLabel: "Skip Interval",
+        pinLabelKey: "blueprint.port.skipInterval",
         valueType: "float",
         defaultValue: 100,
         min: 0,
@@ -557,7 +579,7 @@ function readGamePin(ctx: GameNodeContext, pinId: string): unknown {
  */
 function requireGameLocals(ctx: GameNodeContext): Record<string, unknown> {
     if (!ctx.blueprintLocals) {
-        throw new BlueprintGraphExecutionError("There is no execution scope to hold the game", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.cannotRunHere"), ctx.node.id);
     }
     return ctx.blueprintLocals;
 }
@@ -580,8 +602,7 @@ function resolveSaveId(ctx: GameNodeContext): string {
     if (slot) {
         if (slot.source === "run") {
             throw new BlueprintGraphExecutionError(
-                "This node needs a save in storage. The slot it was given names the running game, "
-                + "which only Start Game can inherit from.",
+                translate("blueprint.runtimeError.slotIsRunningGame", { node: translate("blueprint.node.startGame") }),
                 ctx.node.id,
             );
         }
@@ -589,7 +610,7 @@ function resolveSaveId(ctx: GameNodeContext): string {
     }
     const id = String(readGamePin(ctx, "id") ?? "").trim();
     if (!id) {
-        throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noSave"), ctx.node.id);
     }
     return id;
 }
@@ -613,8 +634,11 @@ async function resolveInheritedSave(
         const captured = readSaveCapture(requireGameLocals(ctx), slot);
         if (captured === null) {
             throw new BlueprintGraphExecutionError(
-                "Inherit From names a captured game this run is not holding. A capture belongs to "
-                + "the chain that took it, so Current Game has to run in the same one as Start Game.",
+                translate("blueprint.runtimeError.captureNotHeld", {
+                    pin: translate("blueprint.port.inheritFrom"),
+                    capture: translate("blueprint.node.currentGame"),
+                    start: translate("blueprint.node.startGame"),
+                }),
                 ctx.node.id,
             );
         }
@@ -623,7 +647,7 @@ async function resolveInheritedSave(
     const stored = await api.game.readSaveGame(slot.id);
     if (stored === null || stored === undefined) {
         throw new BlueprintGraphExecutionError(
-            `Inherit From names save "${slot.id}", which is not in storage`,
+            translate("blueprint.runtimeError.saveNotStored", { pin: translate("blueprint.port.inheritFrom") }),
             ctx.node.id,
         );
     }
@@ -699,8 +723,17 @@ function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execut
     const portId = hasDataInputValue(ctx, "cps") || !hasDataInputValue(ctx, "speed") ? "cps" : "speed";
     const value = resolveNodeInput(ctx, portId);
     const cps = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(cps) || cps <= 0) {
-        throw new BlueprintGraphExecutionError("CPS must be a positive number", ctx.node.id);
+    if (!Number.isFinite(cps)) {
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.cps") }),
+            ctx.node.id,
+        );
+    }
+    if (cps <= 0) {
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.valueAbove", { name: translate("blueprint.port.cps"), min: "0" }),
+            ctx.node.id,
+        );
     }
     return cps;
 }
@@ -711,28 +744,34 @@ function resolvePreferenceValue(
 ): BlueprintGamePreferenceValue {
     const resolvedValue = resolveNodeInput(ctx, meta.pinId);
     const value = resolvedValue === undefined ? meta.defaultValue : resolvedValue;
+    const name = translate(meta.pinLabelKey);
     if (meta.valueType === "boolean") {
         if (typeof value !== "boolean") {
-            throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be a boolean`, ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.valueNotBoolean", { name }), ctx.node.id);
         }
         return value;
     }
     if (meta.valueType === "string") {
         const text = String(value ?? "").trim();
         if (meta.key === "voiceEndMode" && text !== "fade" && text !== "stop" && text !== "none") {
-            throw new BlueprintGraphExecutionError('Voice End Mode must be "fade", "stop", or "none"', ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.voiceEndModeInvalid", { name }), ctx.node.id);
         }
         return text as BlueprintGamePreferenceValue;
     }
     const numberValue = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(numberValue)) {
-        throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be a finite number`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.valueNotNumber", { name }), ctx.node.id);
     }
     if (typeof meta.min === "number") {
         const invalid = meta.minExclusive ? numberValue <= meta.min : numberValue < meta.min;
         if (invalid) {
-            const suffix = meta.minExclusive ? `greater than ${meta.min}` : `${meta.min} or greater`;
-            throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be ${suffix}`, ctx.node.id);
+            throw new BlueprintGraphExecutionError(
+                translate(
+                    meta.minExclusive ? "blueprint.runtimeError.valueAbove" : "blueprint.runtimeError.valueAtLeast",
+                    { name, min: String(meta.min) },
+                ),
+                ctx.node.id,
+            );
         }
     }
     return numberValue;
@@ -887,12 +926,18 @@ const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const trackId = readTrackVolumeTarget(ctx);
             if (!trackId) {
-                throw new BlueprintGraphExecutionError("Set Track Volume: pick a track", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickTrack", { node: translate("blueprint.node.setTrackVolume") }),
+                    ctx.node.id,
+                );
             }
             const raw = resolveNodeInput(ctx, "volume");
             const volume = typeof raw === "number" ? raw : Number(raw);
             if (!Number.isFinite(volume)) {
-                throw new BlueprintGraphExecutionError("Volume must be a finite number", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.volume") }),
+                    ctx.node.id,
+                );
             }
             // Clamping rather than rejecting is the host's job (and the engine's) - a slider bound
             // to 0..100 asking for 100 means "as loud as it goes", not "fail the graph".
@@ -1578,7 +1623,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             const index = Number(wired ?? ctx.params.index);
             if (!Number.isInteger(index) || index < 0) {
                 throw new BlueprintGraphExecutionError(
-                    "Select Choice: index must be a non-negative integer",
+                    translate("blueprint.runtimeError.valueNotIndex", { name: translate("blueprint.port.index") }),
                     ctx.node.id,
                 );
             }
@@ -1620,10 +1665,16 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             const sceneId = resolveStartStoryTarget(ctx, "sceneId");
             const startBlockId = resolveStartStoryTarget(ctx, "startBlockId");
             if (!storyId) {
-                throw new BlueprintGraphExecutionError("Pick a Story, or wire a Story Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickStory", { node: translate("blueprint.node.startGame") }),
+                    ctx.node.id,
+                );
             }
             if (!sceneId) {
-                throw new BlueprintGraphExecutionError("Pick a Scene, or wire a Scene Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickScene", { node: translate("blueprint.node.startGame") }),
+                    ctx.node.id,
+                );
             }
             const api = requireHostApi(ctx);
             // Resolved before the launch, so a slot naming nothing refuses the whole thing rather
@@ -1660,7 +1711,10 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const surfaceId = resolveStartStoryTarget(ctx, "surfaceId");
             if (!surfaceId) {
-                throw new BlueprintGraphExecutionError("Pick a Page, or wire a Page Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickPage", { node: translate("blueprint.node.quitGame") }),
+                    ctx.node.id,
+                );
             }
             await requireHostApi(ctx).game.quit(surfaceId);
             return { nextPort: undefined };
@@ -1837,7 +1891,13 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         execute(ctx) {
             const id = String(readGamePin(ctx, "id") ?? "").trim();
             if (!id) {
-                throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.saveSlot"),
+                        pin: translate("blueprint.port.id"),
+                    }),
+                    ctx.node.id,
+                );
             }
             return { outputValues: { slot: toBlueprintSaveSlot("stored", id) } };
         },
@@ -1867,15 +1927,14 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             if (isSaveCaptureLimitReached(requireGameLocals(ctx))) {
                 throw new BlueprintGraphExecutionError(
-                    "Current Game has already captured this run several times over. A capture is a "
-                    + "whole playthrough; taking one per loop iteration is not what this is for.",
+                    translate("blueprint.runtimeError.captureRepeated", { node: translate("blueprint.node.currentGame") }),
                     ctx.node.id,
                 );
             }
             const captured = await requireHostApi(ctx).game.captureRun();
             if (captured === null || captured === undefined) {
                 throw new BlueprintGraphExecutionError(
-                    "There is no game running to capture",
+                    translate("blueprint.runtimeError.noGameToCapture", { node: translate("blueprint.node.currentGame") }),
                     ctx.node.id,
                 );
             }

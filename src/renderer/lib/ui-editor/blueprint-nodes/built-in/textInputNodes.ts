@@ -14,7 +14,9 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_INPUT_SET_VALUE,
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type { BlueprintTextInputPropertiesPatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
@@ -125,27 +127,21 @@ function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], ta
     if (ref) {
         if (ref.elementType !== TEXT_INPUT_ELEMENT_TYPE) {
             throw new BlueprintGraphExecutionError(
-                "Text Input node requires an nl.textInput element",
+                translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(TEXT_INPUT_ELEMENT_TYPE) }),
                 ctx.node.id,
             );
         }
         if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-            throw new BlueprintGraphExecutionError(
-                "Text Input node can only target the current Surface",
-                ctx.node.id,
-            );
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
         }
         return { api, elementId: addressWidgetFromExecution(ctx, ref.elementId) };
     }
     if (target === "element") {
-        throw new BlueprintGraphExecutionError(
-            "Text Input Element node requires a Text Input input",
-            ctx.node.id,
-        );
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     const elementId = ctx.executionOwner?.elementId;
     if (!elementId) {
-        throw new BlueprintGraphExecutionError("Text Input node requires a Text Input target", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     return { api, elementId: addressWidgetFromExecution(ctx, elementId) };
 }

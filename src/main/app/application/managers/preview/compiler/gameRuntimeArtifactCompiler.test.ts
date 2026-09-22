@@ -860,6 +860,75 @@ describe("game runtime artifact compiler", () => {
         )).rejects.toThrow();
     });
 
+    describe("the author's compiled scripts", () => {
+        async function createScriptProject(projectPath: string): Promise<void> {
+            await createMinimalProject(projectPath, {
+                blueprintDocument: {
+                    schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                    blueprints: {
+                        "bp-script": {
+                            id: "bp-script",
+                            name: "App",
+                            owner: { kind: "globalMain" },
+                            graphs: {
+                                eventIds: ["layer-script"],
+                                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/boot.ts" } } },
+                                functions: {},
+                            },
+                        },
+                    },
+                    ownerRecords: { globalMain: { blueprintId: "bp-script" } },
+                },
+            });
+            await writeAsset(projectPath, ASSET_ID, "local image bytes");
+            await writeProjectIcon(projectPath, "configured icon bytes");
+            await fs.mkdir(path.join(projectPath, "scripts"), { recursive: true });
+            await fs.writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot() { return 'booted'; }\n", "utf-8");
+        }
+
+        it("are named relative to the page, and sit loose beside it in an unprotected build", async () => {
+            const projectPath = path.join(tempDir, "project");
+            const runtimeDistDir = path.join(tempDir, "runtime-dist");
+            await createRuntimeDist(runtimeDistDir);
+            await createScriptProject(projectPath);
+
+            const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47352));
+
+            const entry = Object.values(result.pack.bundle.ui.scripts ?? {})[0];
+            expect(entry?.diagnostics).toBeUndefined();
+            expect(entry?.url).toBe("scripts/scripts_boot.js");
+            expect(await fs.readFile(path.join(result.appDir, "scripts", "scripts_boot.js"), "utf-8")).toContain("booted");
+        });
+
+        /*
+         * A protected build moves the interface code into the store so that reading the game's code
+         * takes opening the store first. The scripts were moved in and also left behind, so the
+         * package shipped them as plain text beside the store meant to hold them.
+         */
+        it("are inside the protected store and nowhere else", async () => {
+            const projectPath = path.join(tempDir, "project");
+            const runtimeDistDir = path.join(tempDir, "runtime-dist");
+            await createRuntimeDist(runtimeDistDir);
+            await createScriptProject(projectPath);
+
+            const result = await compileGameRuntimeArtifact({
+                ...previewCompileInput(projectPath, runtimeDistDir, 47353),
+                encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            });
+
+            await expect(fs.access(path.join(result.appDir, "scripts"))).rejects.toThrow();
+            const reader = await openAssetArchive(
+                path.join(result.appDir, ARCHIVE_READER_FILENAME),
+                path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
+            );
+            try {
+                expect((await reader.read("scripts/scripts_boot.js")).toString("utf-8")).toContain("booted");
+            } finally {
+                await reader.close();
+            }
+        });
+    });
+
     it("refuses an output root that is not absolute", async () => {
         // Nothing is created first: the point is that the refusal lands before the compile deletes
         // `<root>/app`, which a relative root would resolve against the host's working directory -

@@ -7,7 +7,12 @@ import {
     findProjectConfigFileName,
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
-import { readProjectPackageInto, writeProjectPackage } from "../../../utils/projectPackageFile";
+import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
+import {
+    ProjectPackageImportError,
+    readProjectPackageInto,
+    writeProjectPackage,
+} from "../../../utils/projectPackageFile";
 import { directoryHoldsNothing } from "../../../utils/directoryHoldsNothing";
 import type { ProjectTrustManager } from "../../projectTrustManager";
 import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
@@ -113,7 +118,10 @@ export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventTyp
 
             const resolvedTarget = path.resolve(targetDir);
             if (await window.app.storageManager.isPathProtected(resolvedTarget)) {
-                return this.failed("Selected import folder is inside protected Studio storage.");
+                return this.failed(new ProjectPackageImportError(
+                    ProjectPackageImportErrorCode.FolderProtected,
+                    "Selected import folder is inside protected Studio storage.",
+                ));
             }
             if (!await window.app.storageManager.isPathAllowed(window, resolvedTarget, "write")) {
                 return this.failed(`File system access is not allowed for import folder: ${resolvedTarget}`);

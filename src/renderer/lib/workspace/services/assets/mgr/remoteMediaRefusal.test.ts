@@ -39,24 +39,19 @@ describe("remoteMediaRefusal", () => {
             { index: 0, codec_type: "video", codec_name: "hevc" },
             { index: 1, codec_type: "audio", codec_name: "aac" },
         ]));
-        const refusal = remoteMediaRefusal(outcome);
-        expect(refusal).toContain("hevc");
-        expect(refusal).toContain("NarraLeaf cannot play");
-        // The instruction has to be one the author can follow: converting in place is not offered.
-        expect(refusal).toContain("import that instead");
+        expect(remoteMediaRefusal(outcome)).toEqual({ kind: "codecs", codecs: ["hevc"] });
     });
 
     it("refuses a container that will not open, and names the container", () => {
         const outcome = probed(report("avi", [
             { index: 0, codec_type: "video", codec_name: "h264" },
         ]));
-        const refusal = remoteMediaRefusal(outcome);
-        expect(refusal).toContain("avi");
+        expect(remoteMediaRefusal(outcome)).toEqual({ kind: "container", container: "avi" });
     });
 
     it("refuses a file with nothing playable in it", () => {
         const outcome = probed(report("mov,mp4,m4a,3gp,3g2,mj2", []));
-        expect(remoteMediaRefusal(outcome)).toContain("no sound or picture");
+        expect(remoteMediaRefusal(outcome)).toEqual({ kind: "noStreams" });
     });
 
     it("does not refuse when the probe never answered", () => {

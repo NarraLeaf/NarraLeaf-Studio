@@ -10,6 +10,7 @@ import {
     useStageSlotSurfaceRuntime,
     type GameUiSlotHostOptions,
 } from "./StageSlotSurfaceShell";
+import { refusal } from "./runtimeRefusals";
 
 const CHOICE_LIST_WIDGET_TYPE = "nl.choice.list";
 
@@ -136,7 +137,7 @@ export function ChoiceSlotSurface(props: {
             onSelectChoice: async (index: number) => {
                 const own = ownRuntimeRef.current;
                 if (!own) {
-                    throw new Error("Select Choice: no active choice menu");
+                    throw refusal("game.run.noChoiceMenu", "blueprint.node.selectChoice");
                 }
                 own.choose(index);
             },
@@ -173,7 +174,7 @@ export function ChoiceSlotSurface(props: {
         const choose = (index: number) => {
             const choice = menu.evaluated[index];
             if (!choice) {
-                throw new Error(`Select Choice: no choice at index ${index}`);
+                throw refusal("game.run.noChoiceAtIndex", "blueprint.node.selectChoice", { index: String(index) });
             }
             const ctx = getChoiceScriptCtx(menu.gameState);
             const { hidden, disabled } = evaluateChoiceFlags(choice, ctx);

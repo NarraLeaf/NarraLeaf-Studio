@@ -37,6 +37,7 @@ import {
     type InGameLanguageChange,
 } from "@shared/types/localization";
 import { LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
+import { translate } from "@/lib/i18n";
 
 export type LocaleRestartLogLevel = "info" | "warning" | "error";
 
@@ -96,11 +97,7 @@ export async function applyLocaleChange(seam: LocaleChangeSeam, code: string): P
         return "switched";
     }
     if (!seam.restartApplication) {
-        seam.report(
-            "warning",
-            "The language changed while a playthrough was running, and this host cannot restart. "
-            + "Text already on screen, the backlog and any playing voice stay in the previous language.",
-        );
+        seam.report("warning", translate("game.run.language.noRestart"));
         return "unsupported";
     }
     if (seam.inGame === "restart") {
@@ -109,7 +106,7 @@ export async function applyLocaleChange(seam: LocaleChangeSeam, code: string): P
         // written is a note for the launch that follows, which only Dev Mode acts on - its restart
         // is a session reload, and a reload puts the author back into the story on purpose.
         await seam.persistenceSet(LOCALE_RESTART_FRESH_KEY, "1");
-        seam.report("info", "The language changed; restarting without keeping the playthrough.");
+        seam.report("info", translate("game.run.language.restartFresh"));
         await seam.restartApplication();
         return "restartingWithoutSave";
     }
@@ -121,17 +118,14 @@ export async function applyLocaleChange(seam: LocaleChangeSeam, code: string): P
         // save nothing will ever read.
         await seam.persistenceSet(LOCALE_RESTART_RESUME_KEY, LOCALE_RESTART_SAVE_ID);
     } catch (error) {
-        seam.report(
-            "error",
-            `The language changed but the playthrough could not be saved, so the game was not restarted: ${
-                error instanceof Error ? error.message : String(error)
-            }`,
-        );
+        seam.report("error", translate("game.run.language.saveFailed", {
+            error: error instanceof Error ? error.message : String(error),
+        }));
         return "failed";
     }
     // Said out loud, at info: this is the one moment a player's game ends and comes back on its
     // own, and an author watching a log has to be able to tell it from a crash.
-    seam.report("info", "The playthrough was parked for the language change; restarting.");
+    seam.report("info", translate("game.run.language.parked"));
     await seam.restartApplication();
     return "restarting";
 }
@@ -229,23 +223,23 @@ export async function resumeAfterLocaleRestart(seam: LocaleResumeSeam): Promise<
         return "none";
     }
     await seam.persistenceSet(LOCALE_RESTART_RESUME_KEY, undefined);
-    seam.report("info", "A language change parked a playthrough; restoring it.");
+    seam.report("info", translate("game.run.language.restoring"));
     let loaded = false;
     try {
         loaded = await seam.loadSave(marker);
     } catch (error) {
-        seam.report("error", `The playthrough could not be resumed after the language change: ${
-            error instanceof Error ? error.message : String(error)
-        }`);
+        seam.report("error", translate("game.run.language.resumeFailed", {
+            error: error instanceof Error ? error.message : String(error),
+        }));
         return "failed";
     }
     if (!loaded) {
-        seam.report("warning", "The playthrough parked by the language change was not accepted; it is still stored.");
+        seam.report("warning", translate("game.run.language.resumeRefused"));
         // `loadSave` has already told the player and the author what it refused and why; saying it
         // twice in different words would just be a second opinion on the same record.
         return "failed";
     }
-    seam.report("info", "The playthrough parked by the language change was restored.");
+    seam.report("info", translate("game.run.language.restored"));
     try {
         await seam.deleteSave(marker);
     } catch {

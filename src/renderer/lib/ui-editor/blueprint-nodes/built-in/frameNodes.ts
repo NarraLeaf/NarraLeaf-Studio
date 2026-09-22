@@ -31,6 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
@@ -257,7 +258,10 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             // event instead of saving the window - a bug that would otherwise never report itself.
             if (ctx.eventName !== BLUEPRINT_EVENT_SLOT_WINDOW_CLOSE_REQUESTED || !ctx.eventControl) {
                 throw new BlueprintGraphExecutionError(
-                    "Keep Window Open: there is no close request to cancel. It only works below an On Window Close Requested head.",
+                    translate("blueprint.runtimeError.needsCloseRequest", {
+                        node: translate("blueprint.node.keepWindowOpen"),
+                        head: translate("blueprint.node.onWindowCloseRequested"),
+                    }),
                     ctx.node.id,
                 );
             }
@@ -500,7 +504,13 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const url = String(readPin(ctx, BLUEPRINT_EXTERNAL_LINK_PARAM_URL) ?? "").trim();
             if (!url) {
-                throw new BlueprintGraphExecutionError("Open Link: pick or wire an address", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.openLink"),
+                        pin: translate("blueprint.port.url"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const result = await requireHostApi(ctx).navigation.openExternal({ url });
             return {
@@ -654,7 +664,13 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const eventName = String(readPin(ctx, "event") ?? "").trim();
             if (!eventName) {
-                throw new BlueprintGraphExecutionError("Missing page event name", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.emitPageEvent"),
+                        pin: translate("blueprint.port.event"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const data = readPin(ctx, "data");
             await api.frame.emit(eventName, data);

@@ -3,9 +3,9 @@ import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
-import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
+import { RemoteAssetFetchErrorCode, type RemoteAssetFetchResult } from "@shared/types/remoteAsset";
 import { fileExtensionFromBytes, MEDIA_SNIFF_PREFIX_BYTES } from "@shared/utils/mediaSniff";
-import { fetchRemoteAsset } from "../../remoteAssetFetcher";
+import { fetchRemoteAsset, RemoteAssetFetchError } from "../../remoteAssetFetcher";
 import { refuseDistrustedWindow } from "../../../utils/projectTrustGate";
 import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
@@ -36,7 +36,9 @@ export class AssetFetchRemoteHandler extends IPCHandler<IPCEventType.assetFetchR
     ): Promise<RequestStatus<RemoteAssetFetchResult>> {
         const distrusted = refuseDistrustedWindow(window, "remote asset download");
         if (distrusted) {
-            return this.failed(new Error(distrusted));
+            // Coded like every other refusal of this fetch, so the renderer says it in the words the
+            // rest of the interface uses for a distrusted project rather than printing this one.
+            return this.failed(new RemoteAssetFetchError(RemoteAssetFetchErrorCode.Distrusted, distrusted));
         }
         return this.tryUse(() => fetchRemoteAsset(data.url, data.validators));
     }

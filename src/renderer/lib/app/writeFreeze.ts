@@ -1,5 +1,6 @@
 import { resolveDocumentSpecForPath } from "@shared/documents/registry";
 import { localizationDocumentSpec, voiceDocumentSpec } from "@shared/documents/specs";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import type { RevisionId } from "@shared/types/vcs";
 import { isVersioned } from "@shared/vcs/workingSet";
 import { sep } from "@shared/utils/path";
@@ -87,7 +88,31 @@ export type WorkspaceFreezeReason =
         session: string;
         /** Project-relative, in the repository's own spelling - the input {@link isVersioned} takes. */
         writable: readonly string[];
-    };
+    }
+    /**
+     * Another NarraLeaf Studio has taken the project over, and this window no longer has it.
+     *
+     * Armed by main, never by the author: this Studio's session heartbeat found somebody else's
+     * claim where its own was, which means the other Studio judged this one gone and opened the
+     * project - it has read every document and is writing them. What this window holds in memory
+     * is the project as it stood before that, one whole file per document, and any save from here
+     * would put it back over the other Studio's work. So every write is refused, from the moment
+     * the message arrives, without a flush first: what this window still owed the disk is owed to
+     * a project that is no longer its to write.
+     *
+     * **The one freeze nothing in the window lifts.** There is no thaw, and a freeze for any other
+     * reason may not replace it - a live session re-arming its partial freeze, a merge arriving, a
+     * revision being opened would each turn "nothing is written" back into "something is". The way
+     * out is the window itself: reopening the project in it claims the project afresh, and closing
+     * it lets go. `holder` is what the screen tells the author about the other Studio.
+     *
+     * **And the one freeze that covers the whole folder**, not only what the repository stores.
+     * The others leave `.nlstudio/`, `editor/cache/` and `dist/` writable because those are this
+     * editor's own state and a freeze that stopped them would look like a broken application. After
+     * a takeover they are the other Studio's editor state, and this window has no editor left on
+     * screen to keep any of it for.
+     */
+    | { kind: "taken-over"; holder: ProjectSessionHolder };
 
 export type WorkspaceFreeze = {
     /** The project whose data is frozen. Writes anywhere else are none of this module's business. */
@@ -180,16 +205,41 @@ const refusalObservers = new Set<(refusal: RefusedWrite) => void>();
  * does. Re-freezing with a different reason is allowed and replaces the old one.
  */
 export function freezeProjectWrites(freeze: WorkspaceFreeze): void {
+    if (frozen && isTakenOver(frozen) && sameProject(frozen.projectPath, freeze.projectPath)) {
+        // Replacing it with anything else would make something writable again - see the reason's
+        // own note. A second takeover report is the same fact and changes nothing either.
+        return;
+    }
     frozen = freeze;
     announceFreeze();
 }
 
+/**
+ * Let project data be written again.
+ *
+ * Except after a takeover, which this does not lift (see the `taken-over` reason): every caller of
+ * this is leaving a view or tearing a workspace down, and none of them makes the project this
+ * Studio's to write again. A project switch still clears it, through
+ * {@link thawForeignProjectWrites}, because there the freeze belongs to a project this window has
+ * already let go of.
+ */
 export function thawProjectWrites(): void {
     if (!frozen) {
         return;
     }
+    if (isTakenOver(frozen)) {
+        return;
+    }
     frozen = null;
     announceFreeze();
+}
+
+/**
+ * Whether this freeze is a takeover - the one kind that stays until the window lets the project go.
+ * Exported so the controls that would lift a freeze can decline to offer it.
+ */
+export function isTakenOver(freeze: WorkspaceFreeze | null): boolean {
+    return freeze?.reason.kind === "taken-over";
 }
 
 /**
@@ -219,7 +269,10 @@ export function thawForeignProjectWrites(projectPath: string): void {
     if (sameProject(frozen.projectPath, projectPath)) {
         return;
     }
-    thawProjectWrites();
+    // Directly rather than through `thawProjectWrites`, which keeps a takeover: that freeze is
+    // about the project this window has already closed, and nothing of it applies to this one.
+    frozen = null;
+    announceFreeze();
 }
 
 /** The active freeze, or null when project data is writable. */
@@ -345,6 +398,7 @@ export function freezeAllowsWrite(reason: WorkspaceFreezeReason, projectRelative
         case "manual":
         case "merge":
         case "recovery":
+        case "taken-over":
             return false;
         case "live-session": {
             // Compared the way this module compares every other pair of paths: {@link canonical}
@@ -398,10 +452,14 @@ export function refuseFrozenWrite(...paths: (string | null | undefined)[]): Work
             continue;
         }
         // Taken from the module that owns the project-root comparison rather than re-derived: this
-        // is the same relative path {@link isVersioned} judged, in the same spelling.
-        const relative = versionedProjectRelativePath(active.projectPath, path);
+        // is the same relative path {@link isVersioned} judged, in the same spelling. A takeover
+        // asks the wider question - anywhere in the folder - for the reason its note gives.
+        const relative = active.reason.kind === "taken-over"
+            ? repositoryRelative(active.projectPath, path)
+            : versionedProjectRelativePath(active.projectPath, path);
         if (relative === null) {
-            // Not project data - editor state, a cache, an export to the author's desktop.
+            // Not project data - editor state, a cache, an export to the author's desktop - or,
+            // after a takeover, not inside the project at all.
             continue;
         }
         if (freezeAllowsWrite(active.reason, relative) || derivedWriteAllowed(active, relative)) {

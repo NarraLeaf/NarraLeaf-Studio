@@ -44,12 +44,12 @@ describe("createSessionGate", () => {
         const gate = createSessionGate<LiveGameStub>(refs);
 
         expect(gate.isInGame()).toBe(false);
-        expect(() => gate.requireLiveGame("Skip")).toThrow("Skip: game runtime is not available");
+        expect(() => gate.requireLiveGame("blueprint.node.skip")).toThrow("“Skip” needs a running game.");
 
         const liveGame = mount(refs, "session-1");
 
         expect(gate.isInGame()).toBe(true);
-        expect(gate.requireLiveGame("Skip")).toBe(liveGame);
+        expect(gate.requireLiveGame("blueprint.node.skip")).toBe(liveGame);
     });
 
     it("keeps answering across a relaunch, without being rebuilt", () => {
@@ -63,10 +63,10 @@ describe("createSessionGate", () => {
         refs.liveGame.current = null;
         refs.liveGameSessionId.current = null;
         expect(gate.isInGame()).toBe(false);
-        expect(() => gate.requireLiveGame("Set Auto Forward")).toThrow(/game runtime is not available/);
+        expect(() => gate.requireLiveGame(null)).toThrow("This node needs a running game.");
 
         const second = mount(refs, "session-2");
-        expect(gate.requireLiveGame("Set Auto Forward")).toBe(second);
+        expect(gate.requireLiveGame(null)).toBe(second);
     });
 
     it("refuses a live game left over from a superseded session", () => {
@@ -78,7 +78,7 @@ describe("createSessionGate", () => {
         // still in `liveGame` belongs to the one being torn down.
         refs.sessionId.current = "session-2";
 
-        expect(() => gate.requireLiveGame("Save Game")).toThrow("Save Game: game runtime is not available");
+        expect(() => gate.requireLiveGame("blueprint.node.saveGame")).toThrow("“Save Game” needs a running game.");
     });
 
     it("separates a mounted session from a stage that is on screen", () => {
@@ -91,7 +91,7 @@ describe("createSessionGate", () => {
         refs.stageVisible.current = false;
         expect(gate.isInGame()).toBe(false);
         // The live game is still reachable, though — that is a different question.
-        expect(gate.requireLiveGame("Get Auto Forward").id).toBe("session-1");
+        expect(gate.requireLiveGame(null).id).toBe("session-1");
     });
 
     it("answers that a playthrough is running for a session mounted after it was built", () => {
@@ -136,9 +136,9 @@ describe("createSessionGate", () => {
         expect(gate.isPlaythroughRunning()).toBe(false);
     });
 
-    it("names the operation in the failure, because an author reads it in the issues panel", () => {
+    it("names the node in the failure, by its canvas title, because an author reads it in the issues panel", () => {
         const gate = createSessionGate<LiveGameStub>(createRefs());
-        expect(() => gate.requireLiveGame("Set Sentence Speed"))
-            .toThrow("Set Sentence Speed: game runtime is not available");
+        expect(() => gate.requireLiveGame("blueprint.node.setSentenceSpeed"))
+            .toThrow("“Set Sentence Speed” needs a running game.");
     });
 });
