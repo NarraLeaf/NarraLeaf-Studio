@@ -23,7 +23,7 @@ import { PluginRestartHint } from "./PluginRestartHint";
 import { PluginTaskLine } from "./PluginTaskLine";
 import { ACTIVITY_LABEL_KEYS, ACTIVITY_TONES } from "./pluginActivityLabels";
 import { useProjectDependencyRows } from "./useProjectDependencyRows";
-import { useWorkspacePluginActivity, type PluginActivity } from "./useWorkspacePluginActivity";
+import { canReloadInWorkspace, useWorkspacePluginActivity, type PluginActivity } from "./useWorkspacePluginActivity";
 
 type PluginsTab = "installed" | "store";
 
@@ -183,7 +183,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
             items.push({ id: "update", label: t("plugins.store.update"), onClick: () => catalog.installFromStore(plugin.pluginId) });
         }
         // Reloading a plugin that is not running here would be a no-op dressed as an action.
-        if (live && activity.activityOf(plugin) !== "off" && plugin.manifest.entries.studio) {
+        if (live && canReloadInWorkspace(activity.activityOf(plugin)) && plugin.manifest.entries.studio) {
             items.push({ id: "reload", label: t("plugins.workspace.reload"), onClick: () => reload(plugin.pluginId) });
         }
         // Uninstall is the one action a recovery window may not offer. That mode exists because

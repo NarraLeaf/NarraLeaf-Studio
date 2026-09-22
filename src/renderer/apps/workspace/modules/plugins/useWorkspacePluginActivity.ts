@@ -27,6 +27,22 @@ export type PluginActivity =
     /** Switched off (or not yet authorized) in the installed record; nothing to say about this window. */
     | "off";
 
+/**
+ * Whether reloading the plugin in this window would do anything.
+ *
+ * Named states rather than "not these ones", so a state added to {@link PluginActivity} later has
+ * to be judged rather than inheriting a control by default.
+ *
+ * `off` and `runtimeOnly` have nothing to start here. `suppressed` is the one that looked like it
+ * did: the loader refuses a plugin this project holds back whatever else is true of it, so a reload
+ * ran, reported success and left the plugin exactly as it was. What releases the hold is Rescan in
+ * Project ▸ App, which the details page's own note names - so the action is not offered rather than
+ * offered and explained, which would say the same thing twice.
+ */
+export function canReloadInWorkspace(activity: PluginActivity | null): boolean {
+    return activity === "running" || activity === "failed" || activity === "stopped";
+}
+
 export interface WorkspacePluginActivityState {
     /** Live session state: what is loaded, what failed. */
     session: WorkspacePluginActivity;

@@ -154,20 +154,7 @@ function planUpdate(input: DependencyRemedyInput, installedVersion: string): Dep
     return { steps: ["update"] };
 }
 
-/**
- * Whether this project has a dependency it cannot use as things stand.
- *
- * The predicate behind the warning raised on open, and it is deliberately narrower than "not
- * satisfied": an outdated plugin loads, registers everything it contributes, and the project works.
- * What this asks is whether a plugin the project names contributes *nothing* right now - absent,
- * withheld, or switched off - because that is the state in which the author's own blueprints,
- * widgets and story rows quietly become unknown types.
- */
-export function hasUnmetDependency(entries: readonly DependencyResolutionEntry[]): boolean {
-    return entries.some(isUnmet);
-}
-
-/** One dependency whose plugin contributes nothing to this project as things stand. */
-export function isUnmet(entry: DependencyResolutionEntry): boolean {
-    return entry.status === "missing" || entry.suppressed || entry.installedEnabled === false;
-}
+// Whether a row's plugin contributes nothing to the project - the predicate behind the warning
+// raised on open and behind the counts that repeat it - is `isDependencyUnavailable` in
+// `dependencyStatusDisplay`, beside the row states the banner writes from. This file plans what to
+// do about a row; that one decides what the row is.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasUnmetDependency, isUnmet, planDependencyRemedy } from "./dependencyRemedy";
+import { planDependencyRemedy } from "./dependencyRemedy";
 import type { DependencyResolutionEntry, ProjectPluginDependency } from "@shared/types/pluginDependencies";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 
@@ -159,33 +159,5 @@ describe("planDependencyRemedy", () => {
         const older = entry({ status: "outdated", installedVersion: "1.0.0", dependency: dependency({ authoredVersion: "1.2.0" }) });
         expect(plan(older, published("1.2.0"), { installedStatus: "needsAuthorization" }).steps)
             .toEqual(["update"]);
-    });
-});
-
-describe("isUnmet", () => {
-    it("counts the three states in which the plugin contributes nothing", () => {
-        expect(isUnmet(entry({ status: "missing", suppressed: true, installedVersion: undefined }))).toBe(true);
-        expect(isUnmet(entry({ status: "incompatible", suppressed: true }))).toBe(true);
-        expect(isUnmet(entry({ installedEnabled: false }))).toBe(true);
-    });
-
-    /**
-     * The predicate behind a warning raised whenever a project opens, so the false positive matters
-     * more than the false negative: an outdated plugin loads and the project works, and a warning
-     * about it is one the author learns to close without reading.
-     */
-    it("does not count a plugin that is merely older than the project expects", () => {
-        expect(isUnmet(entry({ status: "outdated", installedVersion: "1.0.0" }))).toBe(false);
-        expect(hasUnmetDependency([entry(), entry({ status: "outdated" })])).toBe(false);
-    });
-
-    it("counts a soft dependency the same way: its data is there and nothing reads it", () => {
-        const dataOnly = entry({
-            dependency: dependency({ hard: false }),
-            status: "missing",
-            suppressed: false,
-            installedVersion: undefined,
-        });
-        expect(isUnmet(dataOnly)).toBe(true);
     });
 });
