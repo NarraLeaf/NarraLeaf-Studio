@@ -36,6 +36,7 @@ import type { TranslationKey, Translator } from "@shared/i18n";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import { authoredNameOrNull, scrubGeneratedIds } from "@shared/utils/generatedId";
 
 /**
  * Row lookups built straight off the Dev Mode bundle: characters as the compiler sees them (a name,
@@ -169,9 +170,23 @@ export function locateStoryBlock(
 /** Where a Game UI failure happened, in the terms the interface editor names things by. */
 export type SurfaceLocation = {
     surfaceId: string;
-    /** What the author called it, or the id when the document no longer has that surface. */
-    surfaceName: string;
+    /**
+     * What the author called it, or null when the document no longer has that surface (or never
+     * named it) - the place is then said as "a page no longer in this project", never as its id.
+     */
+    surfaceName: string | null;
 };
+
+/**
+ * The heading a surface location reads as: the surface by the author's name for it, or - for one the
+ * document no longer has - as a page that is gone. One function so the strip and the panel cannot
+ * say the same place two ways.
+ */
+export function surfacePlaceHeading(surface: SurfaceLocation, t: Translator["t"]): string {
+    return surface.surfaceName
+        ? t("devMode.issues.onSurface", { surface: surface.surfaceName })
+        : t("devMode.issues.onSurfaceGone");
+}
 
 /** A reported failure, with wherever it turned out to be. */
 export type LocatedRuntimeIssue = {
@@ -199,15 +214,16 @@ export type LocatedRuntimeIssue = {
 /**
  * Name the surface a failure came from.
  *
- * Falls back to the id rather than to nothing: a surface deleted since the bundle was built still
- * happened somewhere, and an id an author can search for beats "unknown".
+ * A surface the document no longer has still happened somewhere, so the location is kept - but it is
+ * named as gone rather than by its id, which the interface never shows and nothing an author can find
+ * answers to. The id stays on the location for the list's own keying.
  */
 export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefined): SurfaceLocation | null {
     if (!surfaceId) {
         return null;
     }
     const surface = bundle.ui?.uidoc?.surfaces.find(entry => entry.id === surfaceId);
-    return { surfaceId, surfaceName: surface?.name || surfaceId };
+    return { surfaceId, surfaceName: authoredNameOrNull(surface?.name) };
 }
 
 /**
@@ -434,7 +450,10 @@ export function locateRuntimeIssue(
     return {
         id,
         level: issue.level,
-        message: issue.message,
+        // Studio's own sentences carry no id; this is for the ones it did not write - an engine's
+        // error, a plugin's, an author's script - which reach the list verbatim. The stack keeps the
+        // raw text for whoever needs it.
+        message: scrubGeneratedIds(issue.message),
         origin: issue.origin,
         ...(issue.stack ? { stack: issue.stack } : {}),
         location: locateStoryBlock(bundle, issue.blockId),

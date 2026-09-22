@@ -13,7 +13,9 @@ export function pickBehaviorGraphEntry(graph: UIGraph): UIGraphEntry {
     }
     const keys = Object.keys(entries);
     if (keys.length === 0) {
-        throw new Error(`Graph "${graph.id}" has no entries`);
+        // A caller mistake, never an author's: every graph the editor saves has an entry, and the one
+        // caller (graph validation) catches this. English, and without the graph's id.
+        throw new Error("The graph has no entries");
     }
     return entries[keys[0]];
 }

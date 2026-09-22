@@ -11,6 +11,9 @@
  */
 
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+// Diagnostics reach the Dev Mode Issues panel under the row that runs this blueprint, so they are
+// worded from the catalog in the window's language, like the story compiler's own.
+import { translate } from "@/lib/i18n";
 import { Script } from "narraleaf-react";
 import type { Scene, ScriptCtx } from "narraleaf-react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
@@ -119,7 +122,7 @@ type StoryActionExecutionEnv = {
 export function compileStoryActionBlueprintToScript(input: CompileStoryActionScriptInput): unknown {
     const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
     if (!bp) {
-        input.onDiagnostic?.("Story Action Blueprint not found; the action was skipped.");
+        input.onDiagnostic?.(translate("story.compile.blueprint.missing"));
         return null;
     }
     const script = soleScriptLayer(bp);
@@ -160,7 +163,7 @@ function compileStoryActionScriptModule(
         const abort = new AbortController();
         const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
         if (!handler) {
-            reportMissingDefaultExport(input, name, layer, "this action was skipped");
+            reportMissingDefaultExport(input, name, layer, "skipped");
             return () => undefined;
         }
         const storyCtx = buildStoryScriptContext(input, ctx, abort.signal);
@@ -188,7 +191,7 @@ function buildStoryScriptContext(
     const access = buildStoryVariableAccess(input, ctx);
     const persistence = input.persistence;
     const unavailable = () => {
-        throw new Error("This game has no persistence bridge, so ctx.persistent cannot be read here");
+        throw new Error(translate("game.run.persistenceUnavailable"));
     };
     return {
         self: { kind: "storyRow" },
@@ -286,14 +289,12 @@ function evaluateStoryScriptValueSync(
 ): unknown {
     const handler = resolveScriptDefault(scriptLayerKey(input.blueprintId, layer.layerId));
     if (!handler) {
-        reportMissingDefaultExport(input, name, layer, "nothing was evaluated");
+        reportMissingDefaultExport(input, name, layer, "empty");
         return undefined;
     }
     const value = handler(buildStorySyncScriptContext(input, ctx));
     if (value instanceof Promise) {
-        input.onDiagnostic?.(
-            `"${name}" is evaluated where the story cannot wait, so ${layer.script.scriptRef} must return a value rather than a promise.`,
-        );
+        input.onDiagnostic?.(translate("story.compile.blueprint.asyncValue", { name, file: layer.script.scriptRef }));
         return undefined;
     }
     return value;
@@ -311,14 +312,18 @@ function reportMissingDefaultExport(
     input: CompileStoryActionScriptInput,
     name: string,
     layer: ScriptLayerEntry,
-    outcome: string,
+    /** What became of the row: skipped (an action) or evaluated to nothing (a value). */
+    outcome: "skipped" | "empty",
 ): void {
     if (!isScriptMounted(scriptLayerKey(input.blueprintId, layer.layerId))) {
         return;
     }
-    input.onDiagnostic?.(
-        `"${name}" exports no default from ${layer.script.scriptRef}, which is how a story row enters a script; ${outcome}.`,
-    );
+    input.onDiagnostic?.(translate(
+        outcome === "skipped"
+            ? "story.compile.blueprint.noDefaultExportSkipped"
+            : "story.compile.blueprint.noDefaultExportEmpty",
+        { name, file: layer.script.scriptRef },
+    ));
 }
 
 type StorableNamespaceLike = {
@@ -475,11 +480,11 @@ async function invokeStoryActionFn(options: {
 }): Promise<{ returns: Record<string, unknown> }> {
     const { fnRef, args, depth, input } = options;
     if (depth >= MAX_STORY_FN_CALL_DEPTH) {
-        throw new Error(`Fn call depth exceeded ${MAX_STORY_FN_CALL_DEPTH} (recursive call?)`);
+        throw new Error(translate("blueprint.runtimeError.fnDepth", { depth: String(MAX_STORY_FN_CALL_DEPTH) }));
     }
     const decl = findBlueprintFnByRef(input.blueprintDocument, fnRef);
     if (!decl) {
-        throw new Error(`Fn does not exist: ${fnRef}`);
+        throw new Error(translate("blueprint.runtimeError.fnMissing"));
     }
     // Project-wide fns are callable from anywhere; a story fn only from a scene that reaches its
     // row. Every other position - a surface, a widget, a component definition - is a UI pool a
@@ -489,7 +494,7 @@ async function invokeStoryActionFn(options: {
         declAnchor.kind === "project" ||
         (declAnchor.kind === "storyRow" && input.sceneFnCatalog.blueprintIds.has(declAnchor.blueprintId));
     if (!visible) {
-        throw new Error(`Fn "${decl.name}" is not available in this scene`);
+        throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
     const blueprintLocals: Record<string, unknown> = {};
     const seededArgs: Record<string, unknown> = {};
@@ -523,6 +528,6 @@ function sceneLocalNamespaceName(scene: Scene): string {
 
 function assertSerializable(value: unknown): void {
     if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
-        throw new Error("Saved and Persistent variables must hold serializable values");
+        throw new Error(translate("game.run.variablesNotSerializable"));
     }
 }

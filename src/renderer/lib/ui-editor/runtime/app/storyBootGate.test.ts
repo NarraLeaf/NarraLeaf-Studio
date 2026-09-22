@@ -119,7 +119,7 @@ describe("createStoryStartGate", () => {
             pendingBoot: { current: Promise.resolve() },
             start: { current: null },
         });
-        await expect(gate({ storyId: "s", sceneId: "c" })).rejects.toThrow("runtime is not ready");
+        await expect(gate({ storyId: "s", sceneId: "c" })).rejects.toThrow("“Start Game” needs a running game.");
     });
 });
 

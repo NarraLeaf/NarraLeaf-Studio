@@ -1872,7 +1872,7 @@ describe("built-in blueprint nodes", () => {
         it("refuses when nothing is asking to close the window", async () => {
             // No dispatch at all - a macro run by hand, or a graph under the wrong head.
             await expect(runKeepWindowOpen({})).rejects.toThrow(
-                /Keep Window Open: there is no close request to cancel/,
+                /“Keep Window Open” runs only below “On Window Close Requested”/,
             );
         });
 
@@ -1882,7 +1882,7 @@ describe("built-in blueprint nodes", () => {
             const eventControl = createEventControl();
 
             await expect(runKeepWindowOpen({ eventName: "keyDown", eventControl })).rejects.toThrow(
-                /Keep Window Open: there is no close request to cancel/,
+                /“Keep Window Open” runs only below “On Window Close Requested”/,
             );
             expect(eventControl.isPropagationStopped()).toBe(false);
         });
@@ -2051,7 +2051,7 @@ describe("built-in blueprint nodes", () => {
                 entry: { start: { nodeId: "head", port: "in" } },
                 hostAdapter: createPageNavigationHostAdapter([]),
                 blueprintLocals: {},
-            })).rejects.toThrow(/no game running/);
+            })).rejects.toThrow(/there is no running game to capture/);
         });
 
         /**
@@ -3194,7 +3194,7 @@ describe("built-in blueprint nodes", () => {
             entry: { start: { nodeId: "restore", port: "in" } },
             hostAdapter: createGameSaveHostAdapter({ restoredIds: [] }),
             blueprintLocals: {},
-        })).rejects.toThrow(/entry id is required/);
+        })).rejects.toThrow("“Restore From History”: “Entry Id” is empty.");
     });
 
     it("reads the lines ahead of the play head and steps forward into them", async () => {
@@ -5731,7 +5731,7 @@ describe("built-in blueprint nodes", () => {
             },
             entry: { start: { nodeId: "choose", port: "in" } },
             hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
-        })).rejects.toThrow("Select Choice: index must be a non-negative integer");
+        })).rejects.toThrow("“Index” must be a whole number, 0 or greater.");
     });
 
     it("exposes Blueprint Value nodes through the editor palette facade", () => {
@@ -6463,7 +6463,7 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter,
                 executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
             }),
-        )).rejects.toThrow("cannot target nl.slider");
+        )).rejects.toThrow("This node cannot act on this kind of widget.");
         expect(setVariantCalled).toBe(false);
     });
 
@@ -7758,7 +7758,7 @@ describe("fn blueprint nodes", () => {
                 params: { fnRef: "fn:bp-a:head" },
                 hostAdapter: { host: "player" },
             }),
-        ).rejects.toThrow(/Fn runtime is unavailable/);
+        ).rejects.toThrow("“Call Fn” needs a running game.");
 
         await expect(
             callDef.execute({
@@ -7776,7 +7776,7 @@ describe("fn blueprint nodes", () => {
                     },
                 },
             }),
-        ).rejects.toThrow(/Pick a function/);
+        ).rejects.toThrow("“Call Fn”: pick a function.");
     });
 
     it("resolves fn head parameter pins with per-pin labels and types", () => {

@@ -26,6 +26,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -67,7 +68,13 @@ function resolveHistoryEntryId(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
     const value = resolveNodeInput(ctx, "id");
     const id = String(value ?? "").trim();
     if (!id) {
-        throw new BlueprintGraphExecutionError("Restore From History: entry id is required", ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.inputEmpty", {
+                node: translate("blueprint.node.restoreFromHistory"),
+                pin: translate("blueprint.port.entryId"),
+            }),
+            ctx.node.id,
+        );
     }
     return id;
 }

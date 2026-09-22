@@ -541,7 +541,9 @@ export class DevModeManager {
                     source: "Dev Mode",
                     message: `nlang compile failed:\n${detail}`,
                 });
-                this.queueSessionError(session, `nlang compile failed:\n${detail}`);
+                // The window heads this with its own "session failed to start", in the author's
+                // language; an English label in front of the detail would only say it again.
+                this.queueSessionError(session, detail);
                 return;
             }
             this.emitVerbose(session, `nlang compile finished in ${Date.now() - started} ms`);
@@ -584,7 +586,7 @@ export class DevModeManager {
                 source: "Dev Mode",
                 message: `Dev Mode bundle failed:\n${message}`,
             });
-            this.queueSessionError(session, `Dev Mode bundle failed:\n${message}`);
+            this.queueSessionError(session, message);
         }
     }
 

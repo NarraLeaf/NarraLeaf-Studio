@@ -7,6 +7,7 @@
  */
 
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import { needsRunningGame } from "./runtimeRefusals";
 
 /**
  * Whether the surface stack may draw.
@@ -111,7 +112,7 @@ export function createStoryStartGate(input: {
             await input.pendingBoot.current;
             const start = input.start.current;
             if (!start) {
-                throw new Error("Start Game: runtime is not ready");
+                throw needsRunningGame("blueprint.node.startGame");
             }
             await start(request, options);
         })();
