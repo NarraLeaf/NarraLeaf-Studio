@@ -119,6 +119,38 @@ import {
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
 import { silenceRuntimeConsole } from "./runtimeConsole";
+import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
+
+/**
+ * When this process was created, as the operating system recorded it - the zero of the game's
+ * performance timeline.
+ *
+ * Earlier than anything this file can observe for itself: by the time its first line runs,
+ * Electron has already started and loaded the bundle, and that is time a player waited through
+ * too. Node's own uptime stands in on a platform that cannot say.
+ */
+const processCreatedAt = process.getCreationTime?.() ?? Date.now() - process.uptime() * 1000;
+/** When Electron finished starting and this shell began its own work. */
+let appReadyAt: number | null = null;
+/** When the window existed and its page was asked for. */
+let windowCreatedAt: number | null = null;
+
+/**
+ * What the page is told about its own launch; see `@shared/types/gameLaunchTiming`.
+ *
+ * Handed over on the page's address, the same channel the crash policy takes, so a page reloaded
+ * after a crash is told the same thing - it is the same process, launched at the same moment.
+ */
+function gameLaunchTiming(): GameLaunchTiming {
+    const milestones: GameLaunchTiming["milestones"] = [];
+    if (appReadyAt !== null) {
+        milestones.push({ name: "appReady", at: appReadyAt });
+    }
+    if (windowCreatedAt !== null) {
+        milestones.push({ name: "windowCreated", at: windowCreatedAt });
+    }
+    return { origin: "process", zero: processCreatedAt, milestones };
+}
 
 const appDir = __dirname;
 
@@ -533,6 +565,7 @@ void app.whenReady().then(async () => {
     if (startupBlocked || secondCopy) {
         return;
     }
+    appReadyAt = Date.now();
     resources = await createRuntimeResources(appDir, {
         // Where a player puts a patch: the folder their copy of the game sits in,
         // which is the first place anyone looks for one. The same folder the
@@ -602,9 +635,11 @@ void app.whenReady().then(async () => {
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
+    windowCreatedAt = Date.now();
     await mainWindow.loadURL(buildGameRuntimeIndexUrl({
         policy: normalizeGameCrashPolicy(pack.crash?.policy),
         logPath: runtimeLogPath(userDataDir),
+        launch: gameLaunchTiming(),
     })).catch(error => {
         if (isQuitting) {
             return;
@@ -1196,6 +1231,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             noLink: true,
         })).response,
         now: () => Date.now(),
+        launch: gameLaunchTiming,
     });
     // Auto mode plays for an hour without a single input, which the system reads as an idle
     // machine; the renderer says when the story is moving on its own and this holds the display

@@ -1002,6 +1002,13 @@ export type StoryWarmResource = {
     type: "image" | "video" | "audio";
     url: string;
     /**
+     * The project's id for the asset the url was resolved from - after any asset set or variant was
+     * resolved, so it names the file the url serves. For the performance timeline, whose entries
+     * name the asset they spent time on: the url alone is opaque, and in Dev Mode it is a grant that
+     * changes every session.
+     */
+    assetId?: string;
+    /**
      * The clip this row built, for a video.
      *
      * A url is enough for an image, which the player fetches and caches under it. It is not enough
@@ -6870,16 +6877,17 @@ async function resolveAsset(
     },
 ): Promise<string | null> {
     const variants = options?.variants;
+    const resolvedAssetId = variants
+        ? resolveVariantReference({
+            variants,
+            assetId,
+            blockId,
+            localization: ctx.localization,
+            diagnostics: ctx.diagnostics,
+        })
+        : resolveSetReference(ctx, assetId, blockId);
     const url = await resolveAssetUrlCached({
-        assetId: variants
-            ? resolveVariantReference({
-                variants,
-                assetId,
-                blockId,
-                localization: ctx.localization,
-                diagnostics: ctx.diagnostics,
-            })
-            : resolveSetReference(ctx, assetId, blockId),
+        assetId: resolvedAssetId,
         assetType,
         blockId,
         resolveAssetUrl: ctx.resolveAssetUrl,
@@ -6887,7 +6895,7 @@ async function resolveAsset(
         diagnostics: ctx.diagnostics,
         ...(options?.owner ? { owner: options.owner } : {}),
     });
-    recordWarmedAsset(ctx, blockId, assetType, url);
+    recordWarmedAsset(ctx, blockId, assetType, url, resolvedAssetId);
     return url;
 }
 
@@ -6908,6 +6916,7 @@ function recordWarmedAsset(
     blockId: string,
     assetType: StoryAssetKind,
     url: string | null,
+    assetId: string,
 ): void {
     const order = ctx.warmOrder;
     if (!order || !url) {
@@ -6919,7 +6928,7 @@ function recordWarmedAsset(
     const existing = order.byBlock[blockId];
     if (!existing) {
         order.blockOrder.push(blockId);
-        order.byBlock[blockId] = [{type: assetType, url}];
+        order.byBlock[blockId] = [{type: assetType, url, ...(assetId ? { assetId } : {})}];
         const row = topLevelRowNumber(ctx.scene, blockId);
         if (row !== null) {
             order.rows[blockId] = row;
@@ -6927,7 +6936,7 @@ function recordWarmedAsset(
         return;
     }
     if (!existing.some(resource => resource.url === url)) {
-        existing.push({type: assetType, url});
+        existing.push({type: assetType, url, ...(assetId ? { assetId } : {})});
     }
 }
 

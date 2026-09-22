@@ -588,6 +588,16 @@ export const GAME_RUNTIME_CRASH_POLICY_QUERY_PARAM = "nlpolicy";
 
 export const GAME_RUNTIME_LOG_PATH_QUERY_PARAM = "nllog";
 
+/**
+ * When the game's process started and what it did before the page existed, for the page's own
+ * performance timeline (see `@shared/types/gameLaunchTiming`).
+ *
+ * On the address for the reason the two above are: it has to be readable before anything else is,
+ * and it describes the process rather than any one page - so a page reloaded after a crash carries
+ * the same launch, which is still when this process began.
+ */
+export const GAME_RUNTIME_LAUNCH_QUERY_PARAM = "nllaunch";
+
 export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
 
 export type GameCrashPolicy = typeof GAME_CRASH_POLICIES[number];

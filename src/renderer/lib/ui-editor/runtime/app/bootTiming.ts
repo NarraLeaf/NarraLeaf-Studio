@@ -37,6 +37,8 @@
  * Comments in English per project convention.
  */
 
+import { createGameTimelineFamily, gameTimelineNow } from "./gameTimeline";
+
 /** A stretch of the boot with a start and an end. */
 export type GameBootSpan = "bundle" | "story" | "preload";
 
@@ -78,38 +80,31 @@ export function gameBootSpanMeasure(span: GameBootSpan): string {
 export const GAME_BOOT_FIRST_FRAME_MARK = `${GAME_BOOT_MEASURE}.firstFrame`;
 
 /**
- * The timeline this module writes to, or null where there is not one.
+ * How many boot entries a page keeps buffered, across every `nl.boot` name together.
  *
- * Every browser and every test environment this runs in has `performance`, but a node context
- * without `performance.mark` is reachable (a unit test importing a module that boots), and a
- * missing timeline must cost the boot nothing rather than throw inside it.
+ * A packaged game boots once and writes about a dozen. A Dev Mode window can boot again for every
+ * story an author starts in it, all day, and without a ceiling that is a buffer that only grows -
+ * the timeline keeps what a page writes for as long as the page lives. See `gameTimeline`, which
+ * owns the rule for every name the runtime writes.
  */
-function timeline(): Performance | null {
-    const candidate = typeof performance === "undefined" ? null : performance;
-    return candidate && typeof candidate.mark === "function" && typeof candidate.now === "function"
-        ? candidate
-        : null;
-}
+const BOOT_ENTRIES_RETAINED = 400;
 
-function now(): number {
-    return timeline()?.now() ?? 0;
-}
+const bootEntries = createGameTimelineFamily(BOOT_ENTRIES_RETAINED);
+
+const now = gameTimelineNow;
 
 function mark(name: string): void {
-    try {
-        timeline()?.mark(name);
-    } catch {
-        // A timeline that refuses a mark is not a reason for a game not to start.
-    }
+    bootEntries.write(name, timeline => {
+        timeline.mark(name);
+    });
 }
 
 function measure(name: string, startMark: string, endMark: string): void {
-    try {
-        timeline()?.measure(name, startMark, endMark);
-    } catch {
-        // Same: a measure whose start mark was dropped (a buffer cleared by a profiler between the
-        // two calls) is a gap in the timeline, not a failure of the boot.
-    }
+    // A measure whose start mark was dropped (a buffer cleared by a profiler between the two calls)
+    // throws, and the family swallows it: a gap in the timeline, not a failure of the boot.
+    bootEntries.write(name, timeline => {
+        timeline.measure(name, startMark, endMark);
+    });
 }
 
 export type GameBootReporter = {
@@ -190,13 +185,12 @@ export function createGameBootReporter(
             }
             mark(GAME_BOOT_FIRST_FRAME_MARK);
             // From the page's time origin, which is the only start every shell shares. The process
-            // began earlier than that on a desktop shell; what happened in between is the main
-            // process's own to report, and it writes it to the game log.
-            try {
-                timeline()?.measure(GAME_BOOT_MEASURE, { start: 0, end: GAME_BOOT_FIRST_FRAME_MARK });
-            } catch {
-                // Older timelines take marks by name only; the phase measures still stand.
-            }
+            // began earlier than that on a desktop shell; the `nl.launch` mark (see `gameTimeline`)
+            // says how much earlier, and what the process did before the page existed.
+            // A timeline that takes marks by name only refuses this; the phase measures still stand.
+            bootEntries.write(GAME_BOOT_MEASURE, timeline => {
+                timeline.measure(GAME_BOOT_MEASURE, { start: 0, end: GAME_BOOT_FIRST_FRAME_MARK });
+            });
             publish({ phase: "firstFrame", at: now() });
         },
     };

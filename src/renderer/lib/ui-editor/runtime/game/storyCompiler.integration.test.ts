@@ -2760,6 +2760,8 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(resources).toEqual([{
             type: "video",
             url: "nlr://asset-opening",
+            // The asset the url was resolved from, which is what the performance timeline names.
+            assetId: "asset-opening",
             video: compiled.sceneElements?.["scene-1"]?.videos.get("opening"),
         }]);
         expect(compiled.sceneElements?.["scene-1"]?.videos.get("opening")).toBeDefined();
@@ -5603,6 +5605,8 @@ describe("the images a scene mounts on entry", () => {
         // The other expression is what a later row switches to, and it stays with that row.
         expect(order?.onEntry).not.toContain("nlr://asset-cross");
         expect(order?.byBlock.enter?.map(resource => resource.url)).toContain("nlr://asset-cross");
+        // Each named by the asset it resolved from - the layer's own option, not the character.
+        expect(order?.byBlock.enter?.find(resource => resource.url === "nlr://asset-cross")?.assetId).toBe("asset-cross");
     });
 
     it("says where the entrance is the way the story editor counts rows", async () => {
