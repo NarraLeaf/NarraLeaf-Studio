@@ -1,31 +1,7 @@
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
-import { UI_TOUCH_GESTURE_EVENT } from "@/lib/ui-editor/runtime/input/touchGesture";
+import { useRef, type CSSProperties, type ReactNode } from "react";
+import { SWALLOW_PRESS_HANDLERS, useSwallowTouchGestures } from "@/lib/ui-editor/runtime/input/swallowPresses";
 
 const BOX_STYLE: CSSProperties = { position: "absolute", inset: 0 };
-
-function stopHere(event: SyntheticEvent): void {
-    event.stopPropagation();
-}
-
-function stopContextMenuHere(event: SyntheticEvent): void {
-    // Nothing further up answers it, so nothing further up gets to prevent the browser's own menu.
-    event.preventDefault();
-    event.stopPropagation();
-}
-
-const SWALLOW_PRESSES = {
-    onClick: stopHere,
-    onDoubleClick: stopHere,
-    onAuxClick: stopHere,
-    onContextMenu: stopContextMenuHere,
-    onWheel: stopHere,
-    onPointerDown: stopHere,
-    onPointerUp: stopHere,
-};
-
-function stopNativeHere(event: Event): void {
-    event.stopPropagation();
-}
 
 /**
  * The box a frame draws its pages in: the frame's whole area, under every page it shows.
@@ -46,23 +22,11 @@ function stopNativeHere(event: Event): void {
  *
  * Stopping here rather than taking the frame's page out of hit testing: the page the frame is going
  * to must go on taking presses, and a page's elements answer a press before it bubbles up to here.
- * A recognised touch gesture travels under a private event name React has no prop for, so it is
- * stopped by a listener of the same kind the surface lane uses to hear it.
  */
 export function FramePageBox(props: { changingPage: boolean; children: ReactNode }): ReactNode {
     const { changingPage, children } = props;
     const boxRef = useRef<HTMLDivElement | null>(null);
-
-    // Attached in the commit that starts the change, as the press handlers below are, so no gesture
-    // arrives in between.
-    useLayoutEffect(() => {
-        const box = boxRef.current;
-        if (!box || !changingPage) {
-            return undefined;
-        }
-        box.addEventListener(UI_TOUCH_GESTURE_EVENT, stopNativeHere);
-        return () => box.removeEventListener(UI_TOUCH_GESTURE_EVENT, stopNativeHere);
-    }, [changingPage]);
+    useSwallowTouchGestures(boxRef, changingPage);
 
     return (
         <div
@@ -70,7 +34,7 @@ export function FramePageBox(props: { changingPage: boolean; children: ReactNode
             data-ui-frame-page-box=""
             data-ui-frame-changing-page={changingPage ? "" : undefined}
             style={BOX_STYLE}
-            {...(changingPage ? SWALLOW_PRESSES : {})}
+            {...(changingPage ? SWALLOW_PRESS_HANDLERS : {})}
         >
             {children}
         </div>
