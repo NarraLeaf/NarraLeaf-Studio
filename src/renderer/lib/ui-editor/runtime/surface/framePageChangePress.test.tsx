@@ -28,6 +28,7 @@ import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/W
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { ensureAnimationFramePolyfill } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
 import { installResizeObserverStub } from "@/lib/ui-editor/runtime/testing/drawingLabFixture";
+import { boxHolds, laidOutBoxIn } from "@/lib/ui-editor/runtime/testing/boxLayoutModel";
 import { GameSurfaceRenderer } from "./GameSurfaceRenderer";
 
 const CROSS_FADE = {
@@ -201,6 +202,47 @@ function press(container: HTMLElement, topmost: Element): void {
     }
 }
 
+function frameOf(container: HTMLElement): HTMLElement {
+    return container.querySelector<HTMLElement>("[data-ui-element-id='frame']")!;
+}
+
+/**
+ * Everything in the frame's page box drawn at `point` (in the frame's coordinates), the one on top
+ * first - for the presses that need to know what lies under a page, not only inside it.
+ *
+ * Paint order is the browser's for this tree: each page is a layer with a z-index of its own, and
+ * within one, what comes later in the document is drawn over what comes before. A page clips what it
+ * draws to its own box. Where each box is, jsdom cannot say, so `boxLayoutModel` works it out.
+ */
+function drawnAt(container: HTMLElement, point: { x: number; y: number }): HTMLElement[] {
+    const frame = frameOf(container);
+    const pageBox = frame.querySelector<HTMLElement>("[data-ui-frame-page-box]")!;
+    const candidates = [pageBox, ...Array.from(pageBox.querySelectorAll<HTMLElement>("*"))];
+    return candidates
+        .map((node, order) => {
+            const layer = node.closest<HTMLElement>("[data-ui-surface-prepaint]");
+            return { node, order, layer, z: layer ? Number(layer.style.zIndex) : Number.NEGATIVE_INFINITY };
+        })
+        .filter(({ node, layer }) =>
+            !node.closest("[style*='display: none']")
+            && boxHolds(laidOutBoxIn(frame, node), point)
+            && (!layer || boxHolds(laidOutBoxIn(frame, layer), point)))
+        .sort((a, b) => b.z - a.z || b.order - a.order)
+        .map(({ node }) => node);
+}
+
+/** Press at `point`: on the topmost thing drawn there that takes pointer events, if anything does. */
+function pressAt(container: HTMLElement, point: { x: number; y: number }): Element | null {
+    const target = drawnAt(container, point).find(takesPointerEvents) ?? null;
+    if (target) {
+        fireEvent.click(target);
+    }
+    return target;
+}
+
+const surfaceUnder = (node: Element | null | undefined) =>
+    node?.closest<HTMLElement>("[data-ui-surface-id][data-ui-surface-prepaint]")?.dataset.uiSurfaceId ?? null;
+
 async function settle(ms = 20): Promise<void> {
     await act(async () => {
         await new Promise(resolve => setTimeout(resolve, ms));
@@ -273,5 +315,40 @@ describe("a frame on a dialogue box", () => {
         expect(layerOf(dialogueBox.container, "tabA")).not.toBeNull();
         expect(dialogueBox.presses).toContain("open:mouseClick");
         expect(dialogueBox.advances).toEqual([]);
+    });
+
+    it("with the leaving page drawn over the arriving one, hands a press to what the arriving page has under it", async () => {
+        const dialogueBox = renderDialogue("tabA");
+        await pageShown(dialogueBox.container, "tabA");
+
+        dialogueBox.showPage("tabB");
+        await pageShown(dialogueBox.container, "tabB");
+        await waitFor(() => expect(isLeaving(layerOf(dialogueBox.container, "tabA"))).toBe(true));
+
+        // Close and Open sit at the same place on their pages, Note and Caption too, and the page
+        // on its way out is drawn on top of the one arriving - that is what lets its exit be seen.
+        const overClose = { x: 100, y: 30 };
+        const overNote = { x: 100, y: 130 };
+        const overNothing = { x: 500, y: 300 };
+        expect(surfaceUnder(drawnAt(dialogueBox.container, overClose)[0])).toBe("tabA");
+        expect(surfaceUnder(drawnAt(dialogueBox.container, overNote)[0])).toBe("tabA");
+
+        // None of it takes the press: it goes to the arriving page's element under it, or - where
+        // that page has nothing - to the page itself, and no further than the frame.
+        const onButton = pressAt(dialogueBox.container, overClose);
+        const onText = pressAt(dialogueBox.container, overNote);
+        const onNothing = pressAt(dialogueBox.container, overNothing);
+        expect([onButton, onText, onNothing].map(surfaceUnder)).toEqual(["tabB", "tabB", "tabB"]);
+        expect(onButton?.closest("[data-ui-element-id]")?.getAttribute("data-ui-element-id")).toBe("open");
+        expect(onText?.closest("[data-ui-element-id]")?.getAttribute("data-ui-element-id")).toBe("caption");
+        expect(layerOf(dialogueBox.container, "tabA")).not.toBeNull();
+        expect(dialogueBox.presses).toContain("open:mouseClick");
+        expect(dialogueBox.presses.filter(entry => entry.startsWith("close:") || entry.startsWith("note:"))).toEqual([]);
+        expect(dialogueBox.advances).toEqual([]);
+
+        // Once the page has gone, a press where the page has nothing is a press on the dialogue box.
+        await waitFor(() => expect(layerOf(dialogueBox.container, "tabA")).toBeNull(), { timeout: 3000 });
+        pressAt(dialogueBox.container, overNothing);
+        expect(dialogueBox.advances).toEqual(["advance"]);
     });
 });

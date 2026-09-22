@@ -577,6 +577,11 @@ export const workspace = {
         projectTakenOverTitle: "This project is now open in another NarraLeaf Studio",
         projectTakenOverHere: "Open on this computer since {time}. Changes in this window are no longer saved. Retry once it has been closed there.",
         projectTakenOverElsewhere: "Open on {host} since {time}. Changes in this window are no longer saved. Retry once it has been closed there.",
+        // The same loss, found only after the other Studio had closed the project again. The time is
+        // when the other one opened it.
+        projectDisplacedTitle: "This project was opened in another NarraLeaf Studio",
+        projectDisplacedHere: "Opened on this computer at {time}. Changes in this window are no longer saved. Retry to reopen the project.",
+        projectDisplacedElsewhere: "Opened on {host} at {time}. Changes in this window are no longer saved. Retry to reopen the project.",
         openLauncher: "Open launcher",
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",

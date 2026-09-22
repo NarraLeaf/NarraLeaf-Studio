@@ -13,6 +13,24 @@
  * by another row in the same file. So the file is compiled twice: once against the stored scene, and
  * again against the scene the first pass produced. Only the second pass's diagnostics are kept.
  *
+ * A new row is minted ONCE across the two passes, not once per pass. The second pass resolves names
+ * against the first pass's scene, so a `/set hp` there is bound to the id the first pass gave the
+ * `/local hp` line - and a second pass that minted that row afresh would leave the `/set` naming a
+ * row in no scene at all. The same holds for every reference that stores a row id: a condition on a
+ * variable, a target bound to the row that put it on stage.
+ *
+ * ## A declaration is not its own duplicate
+ *
+ * Studio resolves a `/local` line against the scene it is being committed into, which does not hold
+ * that row yet. Both scenes a file is resolved against DO hold it - the stored one when the line has
+ * an anchor, the first pass's when it does not - so a declaration checked against either finds
+ * itself. A declaration line is therefore resolved against the variables the rows ABOVE it declare:
+ * the scene as it would stand had the file been typed top to bottom, with this row not yet in it.
+ * Rows below are left out too, so of two lines declaring one name it is the later that is refused -
+ * the first is the one a bare name resolves to, which is the rule `story/label-duplicate` follows.
+ * A stored row the file no longer mentions is left out with them, because applying the file deletes
+ * it and its name with it.
+ *
  * ## What the anchor buys
  *
  * A line carrying an anchor is a line that already has a row, and that row supplies everything the
@@ -47,6 +65,7 @@ import {
 } from "@/apps/workspace/modules/story/scene-editor/storyCommandResolution";
 import type { StoryCommandContext } from "@/apps/workspace/modules/story/scene-editor/storyCommandValues";
 import { getCommandSpec } from "@/apps/workspace/modules/story/scene-editor/commands/registry";
+import { DECLARATION_COMMANDS } from "@/apps/workspace/modules/story/scene-editor/commands/specs/variables";
 import { errorAt, type StoryFileAst, type StoryFileDiagnostic, type StoryFileLine } from "./ast";
 import { conditionFromSource, type ConditionLookups } from "./condition";
 import { sameRowContent } from "./equal";
@@ -73,11 +92,39 @@ export type CompileResult = {
 export function compileStoryFile(input: CompileInput): CompileResult {
     // First pass against the stored scene, discarded except for the scene it produces; second pass
     // against that, which is the one whose diagnostics an author reads. See the note above.
-    const first = compilePass(input, input.contextFor(input.existing));
-    return compilePass(input, input.contextFor(first.scene ?? input.existing));
+    const minted = new Map<number, string[]>();
+    const first = compilePass(input, input.contextFor(input.existing), minted, null);
+    return compilePass(input, input.contextFor(first.scene ?? input.existing), minted, first.lineRowIds);
 }
 
-function compilePass(input: CompileInput, context: StoryCommandContext): CompileResult {
+type PassResult = CompileResult & {
+    /** The row each line of the file became, by line index; null where the line built nothing. */
+    lineRowIds: (StoryBlockId | null)[];
+};
+
+/**
+ * The id source for one line in one pass: the ids this line was given in an earlier pass, in the
+ * order it asked for them, and fresh ones only past the end of that list. See the note on minting
+ * above.
+ */
+function lineMinter(minted: Map<number, string[]>, lineIndex: number, mintId: () => string): () => string {
+    let next = 0;
+    return () => {
+        const ids = minted.get(lineIndex) ?? [];
+        if (next >= ids.length) {
+            ids.push(mintId());
+            minted.set(lineIndex, ids);
+        }
+        return ids[next++];
+    };
+}
+
+function compilePass(
+    input: CompileInput,
+    context: StoryCommandContext,
+    minted: Map<number, string[]>,
+    priorLineRowIds: readonly (StoryBlockId | null)[] | null,
+): PassResult {
     const diagnostics: StoryFileDiagnostic[] = [];
     const byAnchor = anchorTable(input.existing);
     const blocks: Record<StoryBlockId, StoryBlock> = {};
@@ -85,17 +132,29 @@ function compilePass(input: CompileInput, context: StoryCommandContext): Compile
     /** The open block at each depth, so a line knows what it hangs under. */
     const openAt: (StoryBlock | null)[] = [];
     const usedIds = new Set<StoryBlockId>();
+    const lines = input.ast.lines;
+    const previousOf = lines.map(line => resolveAnchor(line, byAnchor, input.ast, diagnostics));
+    // The row each line stands for in the scene this pass resolves against: the stored row its anchor
+    // names, or the row the first pass built for it. What "the rows above" a declaration means.
+    const contextRowIds = lines.map((_line, index) => previousOf[index]?.id ?? priorLineRowIds?.[index] ?? null);
+    const lineRowIds: (StoryBlockId | null)[] = lines.map(() => null);
+    const rowsAbove = new Set<StoryBlockId>();
 
-    for (const line of input.ast.lines) {
-        const previous = resolveAnchor(line, byAnchor, input.ast, diagnostics);
+    for (const [index, line] of lines.entries()) {
+        const previous = previousOf[index];
         const built = buildLineBlock(line, {
             previous,
             context,
+            rowsAbove,
             prose: input.prose,
             conditions: input.conditions,
             data: input.ast.data,
-            mintId: input.mintId,
+            mintId: lineMinter(minted, index, input.mintId),
         });
+        const contextRowId = contextRowIds[index];
+        if (contextRowId) {
+            rowsAbove.add(contextRowId);
+        }
         if (!built.ok) {
             diagnostics.push(...built.diagnostics);
             continue;
@@ -128,6 +187,7 @@ function compilePass(input: CompileInput, context: StoryCommandContext): Compile
             ...(line.disabled ? { disabled: true } : {}),
         } as StoryBlock;
         blocks[placed.id] = placed;
+        lineRowIds[index] = placed.id;
         if (parent) {
             blocks[parent.id] = { ...blocks[parent.id], childrenIds: [...blocks[parent.id].childrenIds, placed.id] } as StoryBlock;
         } else {
@@ -144,7 +204,7 @@ function compilePass(input: CompileInput, context: StoryCommandContext): Compile
     const scene: StoryScene | null = base
         ? { ...base, name: input.ast.sceneName ?? base.name, rootBlockIds, blocks: inStoredOrder(blocks, base) }
         : null;
-    return { scene, diagnostics };
+    return { scene, diagnostics, lineRowIds };
 }
 
 /**
@@ -181,6 +241,11 @@ function inStoredOrder(
 type LineContext = {
     previous: StoryBlock | null;
     context: StoryCommandContext;
+    /**
+     * The rows that come before this line, in the scene `context` was built from. A declaration is
+     * resolved against the variables these declare and no others - see the note at the top.
+     */
+    rowsAbove: ReadonlySet<StoryBlockId>;
     prose: ProseLookups;
     conditions: ConditionLookups;
     data: Record<string, StoryBlock>;
@@ -320,7 +385,10 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
         return { ok: false, diagnostics };
     }
     const spec = getCommandSpec(parsed.def.commandId);
-    const { args, issues } = resolveCommandLine(parsed, ctx.context);
+    const context = DECLARING_COMMAND_IDS.has(parsed.def.commandId)
+        ? withSceneVariablesFrom(ctx.context, ctx.rowsAbove)
+        : ctx.context;
+    const { args, issues } = resolveCommandLine(parsed, context);
     for (const issue of issues) {
         diagnostics.push(
             errorAt(
@@ -364,14 +432,30 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
             ],
         };
     }
-    const built = spec.build(args, { generateId: ctx.mintId, context: ctx.context });
+    const built = spec.build(args, { generateId: ctx.mintId, context });
     // The row the anchor names keeps its id, so a line an agent edited is the same row - and with it
     // every save anchor filed under it. Everything else comes from the line.
     return { ok: true, block: ctx.previous ? carryIdentity(built, ctx.previous) : built };
 }
 
+/** The commands whose row declares a variable - the ones that must not find themselves. */
+const DECLARING_COMMAND_IDS: ReadonlySet<string> = new Set(Object.values(DECLARATION_COMMANDS));
+
 /**
- * What a rebuilt row takes from the row it replaces: its id, and its text's identity.
+ * `context` with its scene variables narrowed to the ones `rows` declare.
+ *
+ * Only the scene scope is narrowed, because it is the only one a row declares: saved and persistent
+ * variables are project registry entries, and a line never stands for one of those.
+ */
+function withSceneVariablesFrom(context: StoryCommandContext, rows: ReadonlySet<StoryBlockId>): StoryCommandContext {
+    return {
+        ...context,
+        variables: context.variables.filter(entry => entry.ref.scope !== "scene" || rows.has(entry.ref.variableId)),
+    };
+}
+
+/**
+ * What a rebuilt row takes from the row it replaces: its id, and the identities filed under it.
  *
  * A `build` mints a fresh id for the block and a fresh `textId` for any segment it writes, because
  * from its own point of view it is making a new row. Here it is not - the line carried an anchor -
@@ -379,6 +463,10 @@ function buildCommand(line: StoryFileLine, ctx: LineContext): LineResult {
  * because someone edited a prompt would unlink each of those with nothing recording what they were.
  * The prose reader does the same for the same reason; this is that rule for the rows a command
  * writes.
+ *
+ * A declaration's `storageKey` is the same kind of thing: the key a save file holds the variable's
+ * value under. Studio's own edits to a declaration - renaming it, retyping it, changing its default
+ * - never touch it, so an edited `/local` line keeps it too.
  */
 function carryIdentity(built: StoryBlock, previous: StoryBlock): StoryBlock {
     const next = { ...built, id: previous.id } as StoryBlock;
@@ -388,6 +476,9 @@ function carryIdentity(built: StoryBlock, previous: StoryBlock): StoryBlock {
         if (carried && fresh) {
             (next.payload as Record<string, unknown>)[slot] = { ...fresh, textId: carried.textId, role: carried.role };
         }
+    }
+    if (next.kind === "declaration" && previous.kind === "declaration") {
+        return { ...next, payload: { ...next.payload, storageKey: previous.payload.storageKey } };
     }
     return next;
 }

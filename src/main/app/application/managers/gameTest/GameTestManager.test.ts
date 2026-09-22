@@ -622,6 +622,7 @@ describe("GameTestManager: how a test's game holds its content", () => {
         parameters: {},
         asShipped,
         edition: defaultTestEdition(),
+        plugins: [],
     });
 
     /** What the compile was handed, which is where "sealed" and "loose" part ways. */
@@ -787,6 +788,7 @@ describe("GameTestManager: which build a test's game is", () => {
             parameters: {},
             asShipped: false,
             edition: defaultTestEdition(),
+            plugins: [],
         });
 
         await makeManager({ settings: authorChoseDemoWithDlc() }).launch({ projectPath, runId: "run-1" });
@@ -807,6 +809,7 @@ describe("GameTestManager: which build a test's game is", () => {
             parameters: {},
             asShipped: false,
             edition: { variant: { id: DEMO_ID, name: "Demo" }, dlc: [{ id: "voices", name: "Voice pack" }] },
+            plugins: [],
         });
 
         // A profile that chose nothing: the line alone decides.

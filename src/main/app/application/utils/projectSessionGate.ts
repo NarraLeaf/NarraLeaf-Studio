@@ -50,6 +50,12 @@ export function projectHeldElsewhereMessage(
     holder: ProjectSessionHolder,
 ): string {
     const subject = operation.charAt(0).toUpperCase() + operation.slice(1);
+    if (holder.released) {
+        // The other Studio took the project and has closed it again since; there is nothing to
+        // close there, only this window to open again.
+        return `${subject} is unavailable: this project was opened in another NarraLeaf Studio ${describeWhere(holder)}. `
+            + "Open the project here again.";
+    }
     return `${subject} is unavailable: this project is open in another NarraLeaf Studio ${describeWhere(holder)}. `
         + "Close it there, then open the project here again.";
 }

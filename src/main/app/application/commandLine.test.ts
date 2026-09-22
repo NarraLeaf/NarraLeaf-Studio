@@ -30,6 +30,7 @@ const NO_BUILD = {
     userDataDir: null,
     signingPath: null,
     settings: [],
+    plugins: [],
     allowUnsigned: false,
     error: null,
 } as const;
@@ -44,6 +45,7 @@ const NO_CHECK = {
     asShipped: false,
     variant: null,
     dlc: [],
+    plugins: [],
     reportPath: null,
     userDataDir: null,
     error: null,
@@ -372,6 +374,7 @@ describe("parseMainCommandLine", () => {
             userDataDir: "D:\profiles\agent",
             signingPath: "D:\keys\signing.json",
             settings: [],
+            plugins: [],
             allowUnsigned: true,
             error: null,
         });
@@ -471,6 +474,7 @@ describe("parseMainCommandLine", () => {
             asShipped: false,
             variant: null,
             dlc: [],
+            plugins: [],
             reportPath: "out/test.json",
             userDataDir: null,
             error: null,
@@ -704,6 +708,102 @@ describe("parseMainCommandLine", () => {
 
                 expect(options.check.error).toBe("Both --test and --lint were given: one launch answers one question");
             }
+        });
+    });
+
+    /**
+     * `--build-plugin`, `--test-plugin` and `--lint-plugin` switch a plugin on for one run. A misread
+     * line is a run that loads less than the job asked for - which a sweep over the project reports as
+     * unknown nodes, or not at all.
+     */
+    describe("--build-plugin, --test-plugin and --lint-plugin", () => {
+        const lint = (...extra: string[]) => parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--lint=C:/games/demo", ...extra,
+        ]).check;
+
+        it("name no plugin unless the line says so", () => {
+            expect(lint().plugins).toEqual([]);
+            expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--build", "demo"]).build.plugins).toEqual([]);
+        });
+
+        it("keep every plugin named, in order and as typed, one per flag", () => {
+            const check = lint("--lint-plugin=Gallery", "--lint-plugin= narraleaf.menu-bar ", "--lint-plugin=Quick Save");
+
+            expect(check.plugins).toEqual(["Gallery", "narraleaf.menu-bar", "Quick Save"]);
+            expect(check.kind).toBe("lint");
+            expect(check.error).toBeNull();
+        });
+
+        it("belong to the job their prefix names", () => {
+            const test = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--test", "demo", "--test-id=walkthrough", "--test-plugin=Gallery",
+            ]);
+            expect(test.check.plugins).toEqual(["Gallery"]);
+            expect(test.check.error).toBeNull();
+
+            const build = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--build", "demo", "--build-plugin=Gallery", "--build-plugin=Menu Bar",
+            ]);
+            expect(build.build.plugins).toEqual(["Gallery", "Menu Bar"]);
+            expect(build.build.error).toBeNull();
+            expect(build.check.requested).toBe(false);
+        });
+
+        it("do not split a name on commas, which a plugin's name may have", () => {
+            expect(lint("--lint-plugin=Stats, Charts").plugins).toEqual(["Stats, Charts"]);
+        });
+
+        it("refuse a separate value with the spelling that works, and leave the next argument alone", () => {
+            // A plugin's name is free text, and a separate value shaped like `scheme:rest` kills the
+            // launch on Windows before Studio runs - the case `--test-variant` takes only `=` for.
+            const check = lint("--lint-plugin", "Quick Save");
+            expect(check.plugins).toEqual([]);
+            expect(check.error).toBe('--lint-plugin takes its value after an equals sign: write --lint-plugin="Quick Save"');
+
+            const build = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build", "demo", "--build-plugin", "Gallery"]).build;
+            expect(build.plugins).toEqual([]);
+            expect(build.error).toBe("--build-plugin takes its value after an equals sign: write --build-plugin=Gallery");
+        });
+
+        it("refuse a missing value", () => {
+            expect(lint("--lint-plugin").error).toBe("Missing --lint-plugin value: write --lint-plugin=<name>");
+            expect(lint("--lint-plugin=  ").error).toBe("Missing --lint-plugin value: write --lint-plugin=<name>");
+            // A flag after it is not its value.
+            const check = parseMainCommandLine(["NarraLeaf-Studio.exe", "--lint-plugin", "--lint", "demo"]).check;
+            expect(check.selector).toBe("demo");
+            expect(check.error).toBe("Missing --lint-plugin value: write --lint-plugin=<name>");
+        });
+
+        it("are not forgiven by a later occurrence, which names a different plugin", () => {
+            // Forgiving the first would run without Gallery while the line said to run with it.
+            const check = lint("--lint-plugin", "Gallery", "--lint-plugin=Menu Bar");
+
+            expect(check.plugins).toEqual(["Menu Bar"]);
+            expect(check.error).toBe("--lint-plugin takes its value after an equals sign: write --lint-plugin=Gallery");
+        });
+
+        it("are refused without the job they belong to, like every companion flag", () => {
+            expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--lint-plugin=Gallery"]).check.error)
+                .toBe("Missing --test or --lint: the check flags name a check nothing asked for");
+            expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--build-plugin=Gallery"]).build.error)
+                .toBe("Missing --build: the build flags name a build nothing asked for");
+        });
+
+        it("are refused beside the other check, as two checks on one line", () => {
+            const test = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--test", "demo", "--test-id=walkthrough", "--lint-plugin=Gallery",
+            ]);
+            expect(test.check.error).toBe("Both --test and --lint were given: one launch answers one question");
+
+            expect(lint("--test-plugin=Gallery").error)
+                .toBe("Both --test and --lint were given: one launch answers one question");
+        });
+
+        it("are refused beside a build when they name a check", () => {
+            const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--build", "demo", "--lint-plugin=Gallery"]);
+
+            expect(options.check.requested).toBe(true);
+            expect(options.check.error).not.toBeNull();
         });
     });
 });

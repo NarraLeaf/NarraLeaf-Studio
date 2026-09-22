@@ -52,10 +52,42 @@ import type { ProjectSessionHolder } from "@shared/types/projectSession";
  * the workspace freezes for good and says the project is now open in another Studio. A holder that
  * is running notices within one heartbeat period; one that was suspended notices on its first
  * heartbeat after it resumes.
+ *
+ * ## The claim going missing
+ *
+ * A holder can also find no claim at all where its own was, and that alone says nothing: the file
+ * is gone both when somebody cleared out `.nlstudio/` by hand or a sync client dropped it - nobody
+ * else was ever here, and the holder should simply write its claim again - and when another Studio
+ * took the project over and has since closed it, which removes that Studio's claim on the way out.
+ * The second is the takeover again, only found late: the other Studio saved its work over the
+ * project, and a holder that wrote its claim back and carried on would save its own stale documents
+ * over that work without ever knowing the other one was there. A takeover is normally seen within
+ * one heartbeat, but a holder that was suspended can sleep through the other Studio's whole session.
+ *
+ * Nothing the lock leaves behind tells the two apart, so every claim also leaves a record that
+ * outlives it: {@link PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH} is rewritten with the claimant's
+ * record each time a session takes the project, and releasing the project does not remove it. A
+ * holder whose claim is missing reads it (see {@link decideHeldProjectSession}): a last claim made
+ * by another session after this one's says somebody had the project in between, and the holder stops
+ * writing as it would for a takeover it had seen; otherwise it writes its claim again and carries on.
+ * Modification times of the project's documents were not used for this - nothing on disk says which
+ * Studio wrote a file, and sync clients and version control touch them for reasons of their own.
+ *
+ * A Studio from before the last-claim record never writes one, so a takeover by one of those that
+ * has already closed again still goes unnoticed; every claim this version makes is covered.
  */
 
 /** Where the claim lives, relative to the project directory. */
 export const PROJECT_SESSION_LOCK_RELATIVE_PATH = path.join(".nlstudio", "session.lock");
+
+/**
+ * Where the last claim anybody made on the project is kept, relative to the project directory.
+ *
+ * The same record as the lock's, written once when a session takes the project and never removed, so
+ * that a holder that finds its claim gone can tell whether somebody else had the project meanwhile.
+ * Under `.nlstudio/` with the lock, which version control and an export both leave out.
+ */
+export const PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH = path.join(".nlstudio", "session.last");
 
 /** How often a held lock rewrites its heartbeat. */
 export const PROJECT_SESSION_HEARTBEAT_MS = 15_000;
@@ -140,7 +172,7 @@ export function decideProjectSessionClaim(
     }
 
     const sameHost = record.hostname === context.self.hostname;
-    if (sameHost && record.installation === context.self.installation && record.pid === context.self.pid) {
+    if (isRecordOf(record, context.self)) {
         return { kind: "own" };
     }
 
@@ -163,6 +195,81 @@ export function decideProjectSessionClaim(
     }
 
     return { kind: "held", holder: describeHolder(record, sameHost) };
+}
+
+/** What a heartbeat makes of the disk, for a project this process holds. */
+export type HeldProjectSessionState =
+    /** This session's claim is where it left it. Renew the heartbeat. */
+    | { kind: "own" }
+    /** Another session's claim is where this one's was. */
+    | { kind: "taken-over"; by: ProjectSessionLockRecord }
+    /**
+     * This session's claim is gone, and the last claim on the project was made by another session
+     * after this one made its own: somebody had the project in between, and has let go of it since.
+     * The same loss as a takeover, found after the fact.
+     */
+    | { kind: "displaced"; by: ProjectSessionLockRecord }
+    /** This session's claim is gone and nothing says anybody else has had the project. Claim it again. */
+    | { kind: "reclaim" };
+
+/** What {@link decideHeldProjectSession} needs to know besides the two files. */
+export interface HeldProjectSessionContext {
+    /** This process's identity. */
+    self: ProjectSessionIdentity;
+    /**
+     * The last claim as it stood once this session had taken the project: this session's own
+     * record, or - when writing it failed - whatever was there already. A last claim that is still
+     * this one is not news, whoever it names.
+     */
+    lastClaimAtOwnClaim: ProjectSessionLockRecord | null;
+}
+
+/**
+ * Whether a project this process holds is still its own, and what to do when its claim is gone.
+ *
+ * Pure for the same reason as {@link decideProjectSessionClaim}. `lock` is the record in the lock
+ * file, `null` when the file is missing or cannot be read; `lastClaim` is the record in
+ * {@link PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH}, `null` likewise, and consulted only when `lock`
+ * is `null`.
+ *
+ * A missing last-claim record is no evidence of anybody: it is what a cleared `.nlstudio/` looks
+ * like, and what a project last opened by a Studio from before the record existed looks like. Only
+ * a record naming some other session, and not the one that was there when this session claimed,
+ * says that another Studio took the project after this one did.
+ */
+export function decideHeldProjectSession(
+    lock: ProjectSessionLockRecord | null,
+    lastClaim: ProjectSessionLockRecord | null,
+    context: HeldProjectSessionContext,
+): HeldProjectSessionState {
+    if (lock !== null) {
+        return isRecordOf(lock, context.self) ? { kind: "own" } : { kind: "taken-over", by: lock };
+    }
+
+    if (
+        lastClaim === null
+        || isRecordOf(lastClaim, context.self)
+        || (context.lastClaimAtOwnClaim !== null && isSameClaim(lastClaim, context.lastClaimAtOwnClaim))
+    ) {
+        return { kind: "reclaim" };
+    }
+    return { kind: "displaced", by: lastClaim };
+}
+
+/** Whether a record was written by the process `identity` describes. */
+export function isRecordOf(record: ProjectSessionLockRecord, identity: ProjectSessionIdentity): boolean {
+    return record.pid === identity.pid
+        && record.hostname === identity.hostname
+        && record.installation === identity.installation;
+}
+
+/**
+ * Whether two records are the same claim - one session taking the project once.
+ *
+ * The heartbeat is left out: it is the one field that moves while the claim stays the same.
+ */
+function isSameClaim(a: ProjectSessionLockRecord, b: ProjectSessionLockRecord): boolean {
+    return isRecordOf(a, b) && a.startedAt === b.startedAt;
 }
 
 /** The part of a record a workspace window may be told about. */

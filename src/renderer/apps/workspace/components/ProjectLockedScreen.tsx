@@ -14,6 +14,9 @@ interface ProjectLockedScreenProps {
      * other Studio's, and the ways out are the same two - but it says "now", and it says that
      * nothing typed here is saved any more, because this author was working in this window a
      * moment ago and may not have noticed it stop.
+     *
+     * When the other Studio has let the project go again by the time this one found out
+     * (`holder.released`), the screen says the project *was* opened there rather than that it is.
      */
     takenOver?: boolean;
 }
@@ -39,6 +42,13 @@ export function ProjectLockedScreen({ holder, onRetry, takenOver = false }: Proj
 
     const error = React.useMemo(() => {
         const since = formatHeldSince(holder.startedAt);
+        if (takenOver && holder.released) {
+            // The other Studio took the project and has closed it since, so it is not "open" there
+            // and there is nothing to close: the way back is Retry, which opens it here again.
+            return new Error(holder.sameHost
+                ? t("workspace.shell.projectDisplacedHere", { time: since })
+                : t("workspace.shell.projectDisplacedElsewhere", { host: holder.hostname, time: since }));
+        }
         if (takenOver) {
             return new Error(holder.sameHost
                 ? t("workspace.shell.projectTakenOverHere", { time: since })
@@ -53,7 +63,9 @@ export function ProjectLockedScreen({ holder, onRetry, takenOver = false }: Proj
         <ErrorScreen
             error={error}
             onRetry={onRetry}
-            title={t(takenOver ? "workspace.shell.projectTakenOverTitle" : "workspace.shell.projectLockedTitle")}
+            title={t(!takenOver
+                ? "workspace.shell.projectLockedTitle"
+                : holder.released ? "workspace.shell.projectDisplacedTitle" : "workspace.shell.projectTakenOverTitle")}
             allowRecovery={false}
             showStackTrace={false}
         />

@@ -131,6 +131,27 @@ point resolve against. A line with an anchor keeps its row; a line without one i
 a new row; **a line deleted takes its row with it**, because a file describes the
 whole scene.
 
+### A scene variable is a row
+
+`/local hp 5` declares a scene variable, and the row it lands is the variable -
+there is no other record of it to create. `show` prints a declaration back as the
+line that declares it, with the type always written, because a line that leaves
+the type out has it inferred from the default:
+
+```
+/local hp default=5 type=number desc='Player health'  ⟦63dbd907⟧
+```
+
+A declaration is checked against the rows above it and never against itself, so
+of two lines declaring one name (case does not count) the later one is refused
+with `duplicateVariable`. A stored row the file leaves out does not count: the
+file deletes it, and its name with it.
+
+Every other row names a variable by its declaration's id, not by its spelling. So
+an edited `/local` line keeps its row and the storage key a save holds its value
+under, and a `/set` or `? hp == 6` anywhere in the file can name a variable the
+same file declares.
+
 ### `»` - the rows with no spelling
 
 Some rows have no line that reads back as themselves: a `/transform` on a portrait
