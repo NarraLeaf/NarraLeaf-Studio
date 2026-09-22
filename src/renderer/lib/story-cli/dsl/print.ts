@@ -95,6 +95,10 @@ export function printStoryScene(input: PrintInput): PrintResult {
     const opaqueRows: { anchor: string; label: string }[] = [];
     const body: string[] = [];
     let rows = 0;
+    // The rows already written, which is what "the rows above" a line are when it is read back: a
+    // declaration is checked against the variables those declare and no others (see `compile.ts`).
+    // Document order is file order, so this is the set the compiler hands the same line.
+    const rowsAbove = new Set<StoryBlockId>();
 
     const walk = (blockIds: readonly StoryBlockId[], depth: number): void => {
         for (const blockId of blockIds) {
@@ -104,7 +108,8 @@ export function printStoryScene(input: PrintInput): PrintResult {
             }
             rows += 1;
             const anchor = anchors.get(block.id) ?? block.id;
-            const line = spellRow(block, input);
+            const line = spellRow(block, input, rowsAbove);
+            rowsAbove.add(block.id);
             if (line) {
                 body.push(`${INDENT_UNIT.repeat(depth)}${markerFor(line.shape)}${line.text}${anchorSuffix(anchor, block)}`);
             } else {
@@ -175,7 +180,7 @@ type SpelledLine = { shape: StoryLineShape; text: string };
  * Three sources, one gate. Which source answered is not interesting; whether the answer reads back
  * as this very row is the whole question.
  */
-function spellRow(block: StoryBlock, input: PrintInput): SpelledLine | null {
+function spellRow(block: StoryBlock, input: PrintInput, rowsAbove: ReadonlySet<StoryBlockId>): SpelledLine | null {
     const candidate = candidateLine(block, input);
     if (!candidate) {
         return null;
@@ -196,6 +201,7 @@ function spellRow(block: StoryBlock, input: PrintInput): SpelledLine | null {
         {
             previous: block,
             context: input.context,
+            rowsAbove,
             prose: input.prose,
             conditions: input.conditions,
             data: {},
