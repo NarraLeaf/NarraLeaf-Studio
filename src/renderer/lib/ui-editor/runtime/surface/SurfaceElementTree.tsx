@@ -78,6 +78,15 @@ import {
     sameResolvedElement,
     type ElementReuseCache,
 } from "@/lib/ui-editor/runtime/surface/elementReuse";
+import {
+    SurfaceTreeInteractivityContext,
+    SurfaceTreeLifecycleSignalsContext,
+    useSurfaceTreeInteractivity,
+    type SurfaceLifecycleSignals,
+    type SurfaceTreeInteractivity,
+} from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
+
+export type { SurfaceLifecycleSignals } from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -128,11 +137,6 @@ export type NestedSurfaceRuntime = {
     getWidgetRuntimePatches?(input: NestedSurfaceRuntimeInput): Record<string, DevModeWidgetRuntimePatch> | undefined;
 };
 
-export type SurfaceLifecycleSignals = {
-    beforeSurfaceExit: number;
-    afterSurfaceEnter: number;
-};
-
 export type SurfaceElementTreeProps = {
     document: UIDocument;
     /**
@@ -155,6 +159,13 @@ export type SurfaceElementTreeProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath?: string[];
     editorChrome?: boolean;
+    /**
+     * Whether the tree takes pointer / keyboard input, and the surface's lifecycle signals.
+     *
+     * Handed to the tree's readers through context rather than down the walk - see
+     * `surfaceTreeContext` - so a change of either reaches the few things that read it without
+     * rebuilding every element.
+     */
     interactive?: boolean;
     keyboardInteractive?: boolean;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
@@ -197,38 +208,87 @@ export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
     if (props.blueprintBindingContext) {
         return <SurfaceValueRuntimeBoundary {...props} />;
     }
-    return renderSurfaceElementTreeWithValueRuntime(props, null);
+    const { interactive, keyboardInteractive, surfaceLifecycleSignals, ...treeProps } = props;
+    return provideSurfaceTreeInputs(
+        { interactive: interactive ?? true, keyboardInteractive: keyboardInteractive ?? interactive ?? true },
+        surfaceLifecycleSignals,
+        renderSurfaceElementTreeWithValueRuntime(treeProps, null),
+    );
+}
+
+/** The tree-wide inputs its readers take from context; see `surfaceTreeContext`. */
+function provideSurfaceTreeInputs(
+    interactivity: SurfaceTreeInteractivity,
+    surfaceLifecycleSignals: SurfaceLifecycleSignals | undefined,
+    tree: ReactNode,
+): ReactNode {
+    return (
+        <SurfaceTreeInteractivityContext.Provider value={interactivity}>
+            <SurfaceTreeLifecycleSignalsContext.Provider value={surfaceLifecycleSignals}>
+                {tree}
+            </SurfaceTreeLifecycleSignalsContext.Provider>
+        </SurfaceTreeInteractivityContext.Provider>
+    );
 }
 
 function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
+    // Split off before the memoised tree below sees them: they reach their readers through context,
+    // so a change of either must not count as a change of the tree's inputs.
+    const { interactive, keyboardInteractive, surfaceLifecycleSignals, ...treeProps } = props;
     const {
         document,
         surface,
         hostAdapter,
         blueprintBindingContext,
-    } = props;
+    } = treeProps;
+    const pointerInteractive = interactive ?? true;
+    const keysInteractive = keyboardInteractive ?? interactive ?? true;
+    const interactivity = useMemo<SurfaceTreeInteractivity>(
+        () => ({ interactive: pointerInteractive, keyboardInteractive: keysInteractive }),
+        [keysInteractive, pointerInteractive],
+    );
     // Kept as a value, not a write-only tick setter: it is the only thing that can tell the memo
     // below that the value runtime handed out different values for the same document.
     const [bindingTick, setBindingTick] = useState(0);
     const runtimeScopeId = hostAdapter.blueprintRuntime?.runtimeScopeId ?? null;
     /**
-     * The store is built by an effect rather than by `useMemo`, because `dispose()` is terminal:
-     * a disposed store answers every `sync` / `ensureElementValue` with an early return and has no
-     * way back. `React.StrictMode` - on in every unpackaged build, see `renderApp.tsx` - mounts,
-     * tears down, and mounts again, and that second mount re-runs the effects against the *same*
-     * instance the first mount captured. A memoized store would be killed by the throwaway
+     * The store's lifetime belongs to an effect rather than to `useMemo`, because `dispose()` is
+     * terminal: a disposed store answers every `sync` / `ensureElementValue` with an early return
+     * and has no way back. `React.StrictMode` - on in every unpackaged build, see `renderApp.tsx` -
+     * mounts, tears down, and mounts again, and that second mount re-runs the effects against the
+     * *same* instance the first mount captured. A memoized store would be killed by the throwaway
      * teardown and then synced while dead, so nothing on the surface would ever resolve and
-     * nothing would say so. Letting the effect own the instance means the remount gets a live one.
+     * nothing would say so. Letting the effect own the instance - adopting the one the first render
+     * was drawn with, and building a new one every time it runs again - means the remount gets a
+     * live one.
      */
-    const [valueRuntime, setValueRuntime] = useState<BlueprintValueRuntimeStore | null>(null);
+    const [valueRuntime, setValueRuntime] = useState<BlueprintValueRuntimeStore | null>(
+        // Built with the first render so the tree is drawn with it from the start. A store that has
+        // not been synced answers like no store at all - nothing resolves until `sync` below - so
+        // this draws exactly what `null` did, and saves handing the store over by redrawing every
+        // element on the page right after it mounted. Constructing one does nothing else, so a
+        // render React throws away leaves nothing behind.
+        () => new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1)),
+    );
+    const firstStoreAdoptedRef = useRef(false);
 
     useEffect(() => {
-        const store = new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1));
-        setValueRuntime(store);
+        // The first run adopts the store the first render was drawn with. Every later run builds its
+        // own: a new scope or surface wants a fresh one, and StrictMode's remount comes after a
+        // teardown that disposed the first - which is the case this effect exists to own.
+        const adopt = !firstStoreAdoptedRef.current && valueRuntime !== null;
+        firstStoreAdoptedRef.current = true;
+        const store = adopt ? valueRuntime : new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1));
+        if (!adopt) {
+            setValueRuntime(store);
+        }
         return () => {
             store.dispose();
             setValueRuntime(current => (current === store ? null : current));
         };
+        // `valueRuntime` is read only to adopt the first render's store; its later changes are this
+        // effect's own doing and must not re-run it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runtimeScopeId, surface.id]);
 
     useEffect(() => {
@@ -276,10 +336,17 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         };
     }, [blueprintBindingContext, valueRuntime]);
 
-    return <SurfaceElementTreeContent {...props} valueRuntime={valueRuntime} bindingTick={bindingTick} />;
+    return provideSurfaceTreeInputs(
+        interactivity,
+        surfaceLifecycleSignals,
+        <SurfaceElementTreeContent {...treeProps} valueRuntime={valueRuntime} bindingTick={bindingTick} />,
+    );
 }
 
-type SurfaceElementTreeContentProps = SurfaceElementTreeProps & {
+/** A tree's props less the inputs it hands out through context. */
+type SurfaceElementTreeWalkProps = Omit<SurfaceElementTreeProps, "interactive" | "keyboardInteractive" | "surfaceLifecycleSignals">;
+
+type SurfaceElementTreeContentProps = SurfaceElementTreeWalkProps & {
     valueRuntime: BlueprintValueRuntimeStore | null;
     /** See {@link SurfaceValueRuntimeBoundary}: the value runtime's own "I changed" counter. */
     bindingTick: number;
@@ -292,7 +359,7 @@ type SurfaceElementTreeContentProps = SurfaceElementTreeProps & {
  * and handing back an unchanged element's node when some did - because they rest on the same
  * promises, and two copies of the condition would be free to drift apart.
  */
-function treeInputsAreTheWholeTruth(props: SurfaceElementTreeProps): boolean {
+function treeInputsAreTheWholeTruth(props: SurfaceElementTreeWalkProps): boolean {
     // Only a host that promised its document is a snapshot - see `staticDocument`.
     if (props.staticDocument !== true) {
         return false;
@@ -363,7 +430,7 @@ const SurfaceElementTreeContent = memo(function SurfaceElementTreeContent(
 }, areSurfaceElementTreeInputsEqual);
 
 function renderSurfaceElementTreeWithValueRuntime(
-    props: SurfaceElementTreeProps,
+    props: SurfaceElementTreeWalkProps,
     valueRuntime: BlueprintValueRuntimeStore | null,
     reuse: ElementReuseCache | null = null,
 ): ReactNode {
@@ -392,11 +459,8 @@ function renderSurfaceElementTreeWithValueRuntime(
         props.nestedSurfaceRuntime,
         props.surfacePath ?? [surface.id],
         editorChrome,
-        props.interactive ?? true,
-        props.keyboardInteractive ?? props.interactive ?? true,
         valueRuntime,
         [],
-        props.surfaceLifecycleSignals,
         props.blueprintLifecycleReady ?? true,
         null,
         props.animationPlan ?? null,
@@ -470,8 +534,6 @@ function NestedSurfaceRenderer(props: {
     useAppearanceInspectorPreview: boolean;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath: string[];
-    parentInteractive: boolean;
-    parentKeyboardInteractive: boolean;
     /** The frame's own event dispatch, in the drawing the frame is in; see `NestedSurfaceRuntimeInput`. */
     dispatchFrameEvent: UIWidgetEventDispatch;
 }) {
@@ -484,9 +546,12 @@ function NestedSurfaceRenderer(props: {
         useAppearanceInspectorPreview,
         nestedSurfaceRuntime,
         surfacePath,
-        parentInteractive,
-        parentKeyboardInteractive,
     } = props;
+    // The tree the frame is drawn in; the page inside takes input only when that tree does.
+    const {
+        interactive: parentInteractive,
+        keyboardInteractive: parentKeyboardInteractive,
+    } = useSurfaceTreeInteractivity();
     // Every pass of the tree above hands these over as new objects - the frame is cloned for each
     // pass, a component's surface is rebuilt for each drawing, a bound params object is merged anew
     // - and the runtime input below is keyed on them. A new identity there tore the page's whole
@@ -1140,10 +1205,7 @@ function renderLinkedComponentInstanceContent(input: {
     listItemScope: UIListItemScope | null;
     componentPath: string[];
     valueRuntime: BlueprintValueRuntimeStore | null;
-    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
     blueprintLifecycleReady?: boolean;
-    interactive?: boolean;
-    keyboardInteractive?: boolean;
     animationPlan: SurfaceAnimationPlan | null;
 }): ReactNode | null {
     const link = getUIComponentLink(input.instanceElement);
@@ -1258,11 +1320,8 @@ function renderLinkedComponentInstanceContent(input: {
                     // there, which is the half of the original `false` worth keeping - an author
                     // edits the definition, not one drawing of it.
                     liveContent,
-                    input.interactive ?? true,
-                    input.keyboardInteractive ?? input.interactive ?? true,
                     input.valueRuntime,
                     [...input.componentPath, component.id],
-                    input.surfaceLifecycleSignals,
                     input.blueprintLifecycleReady ?? true,
                     componentParams,
                     componentAnimationPlan,
@@ -1288,12 +1347,14 @@ function renderElementTree(
     instanceKey = "",
     nestedSurfaceRuntime?: NestedSurfaceRuntime,
     surfacePath: string[] = [surface.id],
+    /**
+     * Whether this tree's wrappers carry the editor's element chrome - element ids, pointer and key
+     * handling. Whether the tree takes input *right now* is not an argument: it changes for the whole
+     * tree at once and is read from context (see `surfaceTreeContext`).
+     */
     editorChrome = true,
-    interactive = true,
-    keyboardInteractive = interactive,
     valueRuntime: BlueprintValueRuntimeStore | null = null,
     componentPath: string[] = [],
-    surfaceLifecycleSignals?: SurfaceLifecycleSignals,
     blueprintLifecycleReady = true,
     /** Resolved params of the component instance this subtree belongs to; null outside one. */
     componentParams: Record<string, string> | null = null,
@@ -1408,11 +1469,8 @@ function renderElementTree(
                 nestedSurfaceRuntime,
                 surfacePath,
                 editorChrome,
-                interactive,
-                keyboardInteractive,
                 valueRuntime,
                 componentPath,
-                surfaceLifecycleSignals,
                 blueprintLifecycleReady,
                 componentParams,
                 animationPlan,
@@ -1459,10 +1517,7 @@ function renderElementTree(
               nestedSurfaceRuntime,
               surfacePath.join(REUSE_KEY_PATH_SEPARATOR),
               editorChrome,
-              interactive,
-              keyboardInteractive,
               valueRuntime,
-              surfaceLifecycleSignals,
               blueprintLifecycleReady,
               componentParamsKey(componentParams),
               animationPlan,
@@ -1492,10 +1547,7 @@ function renderElementTree(
         listItemScope: listItemScope ?? null,
         componentPath,
         valueRuntime,
-        surfaceLifecycleSignals,
         blueprintLifecycleReady,
-        interactive,
-        keyboardInteractive,
         animationPlan,
     });
     const content = linkedComponentContent ?? (renderer
@@ -1519,8 +1571,6 @@ function renderElementTree(
                       useAppearanceInspectorPreview={useAppearanceInspectorPreview}
                       nestedSurfaceRuntime={nestedSurfaceRuntime}
                       surfacePath={surfacePath}
-                      parentInteractive={interactive}
-                      parentKeyboardInteractive={keyboardInteractive}
                       dispatchFrameEvent={dispatchEvent}
                   />
               ),
@@ -1570,8 +1620,9 @@ function renderElementTree(
                 runtimePatch?.layout && Object.prototype.hasOwnProperty.call(runtimePatch.layout, "opacity"),
             )}
             hostAdapter={hostAdapter}
-            interactive={editorChrome && interactive}
-            keyboardInteractive={editorChrome && keyboardInteractive}
+            // The chrome half only; whether the tree takes input right now is read from context.
+            interactive={editorChrome}
+            keyboardInteractive={editorChrome}
             useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
@@ -1593,7 +1644,6 @@ function renderElementTree(
                     componentParams={componentParams}
                     listItemScope={listItemScope}
                     instanceKey={instanceKey || undefined}
-                    surfaceLifecycleSignals={surfaceLifecycleSignals}
                 />
             ) : null}
             {animatedContent}

@@ -361,6 +361,115 @@ describe("reusing the nodes of elements that did not change", () => {
         expect(renders.b).toBe(mounted.b + 1);
     });
 
+    /**
+     * The tree-wide inputs that change for every element at once - whether the page takes input yet,
+     * and its lifecycle signals - reach their readers through context (see `surfaceTreeContext`).
+     * Each test holds both halves: the change arrives, and no widget is rebuilt to deliver it.
+     */
+    it("opens a page to input without rebuilding a single widget", () => {
+        const renders: Record<string, number> = {};
+        const definitions: ElementRendererDefinition[] = [
+            { type: "nl.root", render: props => <>{props.children}</> },
+            {
+                type: REUSE_TYPE,
+                render: props => {
+                    renders[props.element.id] = (renders[props.element.id] ?? 0) + 1;
+                    return <span data-probe={props.element.id}>[{String(props.element.props?.caption ?? "")}]</span>;
+                },
+            },
+        ];
+        markTrustedElementRenderers(definitions);
+        const registry = new ElementRendererRegistry(definitions);
+        const document = twoProbeDocument();
+        const adapter = hostAdapter();
+        const context = bindingContext(new SurfaceStateStore("scope-1"));
+        const tree = (interactive: boolean) => (
+            <SurfaceElementTree
+                document={document}
+                surface={surface}
+                rootElement={document.elements.root!}
+                rendererRegistry={registry}
+                hostAdapter={adapter}
+                blueprintBindingContext={context}
+                staticDocument
+                hostRenderTick={0}
+                interactive={interactive}
+                keyboardInteractive={interactive}
+            />
+        );
+        const view = render(tree(false));
+        const mounted = { ...renders };
+        expect(view.container.querySelector('[data-ui-element-id="a"]')).toBeNull();
+
+        view.rerender(tree(true));
+
+        // Reached: the wrapper now carries the element id a press is traced back to.
+        expect(view.container.querySelector('[data-ui-element-id="a"]')).not.toBeNull();
+        expect(view.container.querySelector('[data-ui-element-id="b"]')).not.toBeNull();
+        // Without rebuilding what the wrappers hold.
+        expect(renders).toEqual(mounted);
+        expect(view.container.querySelector('[data-probe="a"]')?.textContent).toBe("[A]");
+    });
+
+    it("tells every element the page entered without rebuilding a single widget", async () => {
+        const renders: Record<string, number> = {};
+        const definitions: ElementRendererDefinition[] = [
+            { type: "nl.root", render: props => <>{props.children}</> },
+            {
+                type: REUSE_TYPE,
+                render: props => {
+                    renders[props.element.id] = (renders[props.element.id] ?? 0) + 1;
+                    return <span>[{String(props.element.props?.caption ?? "")}]</span>;
+                },
+            },
+        ];
+        markTrustedElementRenderers(definitions);
+        const registry = new ElementRendererRegistry(definitions);
+        const document = twoProbeDocument();
+        const heard: string[] = [];
+        const adapter = hostAdapter();
+        adapter.blueprintRuntime!.dispatchElementBlueprintEvent = async (elementId: string, eventName: string) => {
+            heard.push(`${elementId}:${eventName}`);
+        };
+        const context = bindingContext(new SurfaceStateStore("scope-1"));
+        const tree = (afterSurfaceEnter: number) => (
+            <SurfaceElementTree
+                document={document}
+                surface={surface}
+                rootElement={document.elements.root!}
+                rendererRegistry={registry}
+                hostAdapter={adapter}
+                blueprintBindingContext={context}
+                editorChrome={false}
+                staticDocument
+                hostRenderTick={0}
+                surfaceLifecycleSignals={{ beforeSurfaceExit: 0, afterSurfaceEnter }}
+            />
+        );
+        const view = render(tree(0));
+        const mounted = { ...renders };
+
+        await act(async () => {
+            view.rerender(tree(1));
+        });
+
+        expect(heard.filter(entry => entry.endsWith(":afterSurfaceEnter")).sort()).toEqual([
+            "a:afterSurfaceEnter",
+            "b:afterSurfaceEnter",
+            "root:afterSurfaceEnter",
+        ]);
+        expect(renders).toEqual(mounted);
+    });
+
+    it("draws the page once on mount, with the value store already in hand", () => {
+        // The store used to arrive by an effect after mount, and since every element's drawing
+        // depends on it, its arrival redrew the whole page a second time.
+        const { renders, tree } = setup({ trusted: true });
+        render(tree({}));
+
+        expect(renders).toEqual({ a: 1, b: 1 });
+    });
+
     it("never reuses anything on a canvas that edits its document in place", () => {
         // The editor mutates the document it hands the tree and re-sends the same reference, so the
         // tree may not remember anything there - `staticDocument` is what says it may.
