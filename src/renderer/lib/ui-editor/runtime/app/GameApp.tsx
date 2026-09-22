@@ -73,32 +73,25 @@ import {
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
 import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
-import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/pageAnimation";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createBlueprintDevtoolsApi,
-    createDevModeBlueprintHostApi,
     type BlueprintLayerShowRequest,
     type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import {
     useBlueprintRuntimeCore,
     type BlueprintRuntimeCore,
 } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { BlueprintScriptIssue } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
-import {
-    executeLifecycleCommands,
-    SurfaceLifecycleOrchestrator,
-} from "./lifecycle/surfaceLifecycleOrchestrator";
+import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import {
     dispatchGlobalBlueprintEvent,
     invokeBlueprintFnCall,
-    dispatchSurfaceBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
 import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
@@ -160,8 +153,9 @@ import {
 } from "./AppSurfaceLayer";
 import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
-import { buildGameHostApiOptions, type GameHostCapabilities } from "./gameHostApiOptions";
+import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { buildPageHostAdapterBundle, cacheHostAdapterBundles } from "./hostAdapterBundles";
+import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { createFocusMuteController, type FocusMuteOutput } from "./focusMute";
 import {
     createGameUiSlotComponents,
@@ -4788,119 +4782,28 @@ export function GameApp(props: GameAppProps): ReactNode {
         registered: ambientSurfaces,
     });
 
+    /**
+     * The runtime every page drawn in a Page widget runs on, on the pages and layers of this game.
+     * The slot surfaces build theirs with the same function from the same session inputs (see
+     * `StageSlotSurfaceBody`), so an embedded page is the same live page wherever it is placed.
+     */
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!core || !gameHostCapabilities) {
             return undefined;
         }
-        const globalState = {
-            get: (key: string) => core.scopeBridge.globalGet(key),
-            subscribe: (listener: () => void) => core.scopeBridge.subscribeGlobals(listener),
-        };
-        return {
-            createHostAdapter: input => {
-                const runtimeScopeId = input.runtimeScopeId;
-                let nestedHostAdapter: UIHostAdapter | null = null;
-                const hostApi = createDevModeBlueprintHostApi(buildGameHostApiOptions(gameHostCapabilities, {
-                    document: bundle.ui.uidoc,
-                    scope: core.scopeBridge,
-                    emit: event => core.debug.emit(event),
-                    activeSurfaceId: input.targetSurface.id,
-                    runtimeScopeId,
-                    pageProps: input.params,
-                    // Inherited rather than decided: a frame is drawn inside a page, so whether it
-                    // is over a running game is that page's answer, not one of its own.
-                    isGameOverlay: () =>
-                        input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
-                    // As the page around it; see `createStoryStartGate`.
-                    startStory: storyStartGate,
-                    widgetPatches: {
-                        setByScope: setWidgetPatchesByScope,
-                        byScopeRef: widgetPatchesByScopeRef,
-                    },
-                    resolveHostAdapter: () => nestedHostAdapter,
-                    frame: {
-                        params: input.params,
-                        // Through the frame's own dispatch, so it lands in the drawing the frame is in:
-                        // a frame in a list row hears its page as that row, not as nobody.
-                        emit: async (eventName, data) => {
-                            const payload = { event: eventName, data };
-                            if (input.dispatchFrameEvent) {
-                                await input.dispatchFrameEvent("pageEvent", payload);
-                                return;
-                            }
-                            await input.parentHostAdapter.blueprintRuntime?.dispatchElementBlueprintEvent(
-                                input.frameElement.id,
-                                "pageEvent",
-                                payload,
-                            );
-                        },
-                    },
-                }));
-                nestedHostAdapter = createDevModeBlueprintHostAdapter({
-                    bundle,
-                    surface: input.targetSurface,
-                    runtimeScopeId,
-                    scopeBridge: core.scopeBridge,
-                    debug: core.debug,
-                    hostApi,
-                    executionManager: core.executionManager,
-                });
-                return nestedHostAdapter;
+        return createNestedSurfaceHost({
+            core,
+            capabilities: gameHostCapabilities,
+            bundle,
+            // As the page around it; see `createStoryStartGate`.
+            startStory: storyStartGate,
+            widgetPatches: {
+                setByScope: setWidgetPatchesByScope,
+                byScopeRef: widgetPatchesByScopeRef,
             },
-            createBindingContext: input => ({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceState: core.scopeBridge.getSurfaceStore(input.runtimeScopeId),
-                debug: core.debug,
-                coalescer: core.bindingDebugCoalescer,
-                globalState,
-                pageProps: input.params,
-            }),
-            mountSurface: input => {
-                const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
-                const executor = {
-                    openScope: (scopeId: string) => core.executionManager.openScope(scopeId),
-                    closeScope: (scopeId: string, reason: string) => core.executionManager.closeScope(scopeId, reason),
-                    dispatchSurfaceEvent: (command: { eventName: "surfaceInit" | "surfaceUnmount" | "beforeSurfaceExit" | "afterSurfaceEnter"; scopeId: string; surfaceId: string; allowClosedScopeExecution?: boolean }) => {
-                        void dispatchSurfaceBlueprintEvent({
-                            blueprintDocument: bundle.ui.localBlueprints,
-                            persistentVariables: bundle.ui.persistentVariables,
-                            surfaceId: command.surfaceId,
-                            runtimeScopeId: command.scopeId,
-                            eventName: command.eventName,
-                            hostAdapter: input.hostAdapter,
-                            debug: core.debug,
-                            getSurfaceState: key => surfaceStore.get(key),
-                            setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                            executionManager: core.executionManager,
-                            ...(command.allowClosedScopeExecution ? { allowClosedScopeExecution: true } : {}),
-                        });
-                    },
-                    setTransitionState: () => undefined,
-                    bumpLifecycleSignal: () => undefined,
-                    clearInteraction: () => undefined,
-                };
-                executeLifecycleCommands(
-                    lifecycleRef.current.surfaceReady(input.runtimeScopeId, input.targetSurface.id),
-                    executor,
-                );
-                // A page drawn in a frame is a live surface like any other: its window and
-                // preference heads hear what the page around it hears.
-                const leaveAmbient = ambientSurfaces.add({
-                    surface: input.targetSurface,
-                    hostAdapter: input.hostAdapter,
-                    runtimeScopeId: input.runtimeScopeId,
-                });
-                return () => {
-                    leaveAmbient();
-                    executeLifecycleCommands(
-                        lifecycleRef.current.surfaceUnmounted(input.runtimeScopeId, input.targetSurface.id),
-                        executor,
-                    );
-                };
-            },
-            getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
-        };
+            lifecycleRef,
+            ambientSurfaces,
+        });
     }, [
         ambientSurfaces,
         bundle,
@@ -4908,8 +4811,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         // One dependency where sixty used to be: the capabilities memo is rebuilt whenever any
         // callback in it is, so a frame's host follows exactly what it followed before.
         gameHostCapabilities,
+        lifecycleRef,
         setWidgetPatchesByScope,
         startStoryInGame,
+        storyStartGate,
         widgetPatchesByScopeRef,
     ]);
 
