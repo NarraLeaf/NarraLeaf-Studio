@@ -4930,6 +4930,78 @@ describe("stage object references", () => {
         expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["show", "retitle", "vol"]));
     });
 
+    /**
+     * A `show` row that names its own source creates what it reveals, so nothing has to have made it
+     * first. The rule above it is unchanged and is what these sit against: a `show` naming a name and
+     * no source is still a row addressing something that has to exist.
+     */
+    it("builds and reveals a picture the row names itself", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
+            }, ["show"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(["show"]);
+        expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["sunset"]);
+    });
+
+    it("lets a later row address the picture such a show row left on stage", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
+                hide: actionBlock("hide", {
+                    action: "image",
+                    operation: "hide",
+                    objectName: "sunset",
+                    target: { kind: "image", name: "sunset", label: "sunset", sourceBlockId: "show" },
+                }),
+            }, ["show", "hide"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(["show", "hide"]);
+    });
+
+    it("builds and reveals a clip the row names itself", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
+                play: actionBlock("play", {
+                    action: "video",
+                    operation: "play",
+                    objectName: "intro",
+                    target: { name: "intro", label: "intro", sourceBlockId: "show" },
+                }),
+            }, ["show", "play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(["show", "play"]);
+    });
+
+    it("still reports a show row that names neither a source nor anything on stage", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "poster" }),
+            }, ["show"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "show", message: "Image “poster” is not on stage; an earlier row has to create it." },
+        ]);
+        expect(compiledRows(compiled)).toEqual([]);
+    });
+
     it("routes the music channel through its built-in reference without reporting it", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({

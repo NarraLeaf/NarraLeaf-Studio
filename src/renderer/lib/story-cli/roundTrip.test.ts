@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { StoryDocument, StoryScene } from "@shared/types/story";
+import { declaredStageObject } from "@shared/types/story";
 import { commandI18nStore } from "@/lib/i18n/commandLocale";
 import { compileStoryFile } from "./dsl/compile";
 import { sameRowContent } from "./dsl/equal";
@@ -177,6 +178,46 @@ describe("a row that names a row the same file adds", () => {
             ? (transform.payload as { target?: { sourceBlockId?: string } }).target
             : undefined;
         expect(target?.sourceBlockId).toBe(entrance!.id);
+    });
+
+    /**
+     * `/show <asset>` through the two passes, which is where its `name=` earns its place.
+     *
+     * The second pass resolves against the scene the first one produced, so by then the element this
+     * very line created answers to its own name on the stage. `name=` is what says the line creates
+     * one, and without it the second reading would take the subject for that element and drop the
+     * source - so the key is not decoration, it is what makes the row read back as itself.
+     */
+    it("keeps a /show that names a file reading as the row that creates it", () => {
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n/show classroom name=classroom\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const [show] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        expect(show?.kind === "action" && show.payload).toMatchObject({
+            action: "image",
+            operation: "show",
+            objectName: "classroom",
+            assetId: "64ce569f-7104-4c57-9baf-20d14d1e0ddb",
+        });
+        // And it reads as a declaration everywhere downstream, which is what lets a later row address
+        // the object it left on the stage.
+        expect(declaredStageObject(show!)).toMatchObject({ kind: "image", name: "classroom" });
     });
 });
 

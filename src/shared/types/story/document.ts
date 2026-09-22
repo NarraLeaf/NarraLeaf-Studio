@@ -232,7 +232,17 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // optional, and the reason is the same one `ending` gives: a v24 Studio reads an unknown control
 // payload as an ordinary group and compiles it to nothing, so the story would run straight past the
 // row into whatever follows it and never leave the scene. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 25 as const;
+// v26 lets a `show` row name its own source: an `image` or `video` `show` carrying an `assetId`
+// creates the element it reveals, so a picture that is not on stage yet takes one row rather than a
+// `create` row followed by a `show` row. `/show Alice` always worked in one line; `/show poster` did
+// not, and nothing on screen drew the boundary between them.
+// No migration: a v25 document cannot carry an `assetId` on a `show` row - the command line never
+// wrote one there and the inspector's asset field only reached rows that read it. The bump is not
+// optional, and the reason is what a v25 Studio would *play*: it reads the operation, ignores the
+// source, finds no object of that name on stage and compiles the row to nothing - so the picture the
+// author put on the line would simply not appear, and lint would call the row a dangling reference.
+// Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 26 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -844,6 +854,14 @@ export type StoryActionPayload =
            * reveal, and they are NOT migrated: such a row now declares and the object stays
            * invisible until a `show` row is added. `story/declared-never-shown` reports the ones
            * that never are.
+           *
+           * **A `show` that carries {@link assetId} is the one-row form**, and it is the exception the
+           * two-row rule needed: showing a picture that is not on stage yet otherwise meant going back
+           * for a `create` row, while `/show Alice` worked straight away - the same verb with a
+           * boundary nothing on screen drew. Such a row creates the image, names it via
+           * {@link objectName}, sources it and reveals it. It is not a second operation on purpose:
+           * one verb, one row shape, and the object it leaves behind is addressable by every later
+           * row exactly as a `create` row's is.
            */
           action: "image";
           operation: "create" | "setSource" | "show" | "hide";
@@ -939,6 +957,10 @@ export type StoryActionPayload =
            *
            * `create` declares, like the `image` arm's: it compiles to `Video.preload()`, which puts a
            * hidden element on stage so the clip starts buffering, and `show` is what reveals it.
+           *
+           * A `show` carrying {@link assetId} is the one-row form, on the same terms as the `image`
+           * arm's - it builds the clip, names it and reveals it. Revealing is still not playing: the
+           * element is on screen holding its first frame, and `/play` is what runs it.
            *
            * Additive: the four transport operations and `timeMs` are new in A3, and no document
            * written before them carries either, so no schema bump.

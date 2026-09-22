@@ -20,7 +20,7 @@ import {
     type StoryCommandParamsShape,
     type StoryCommandValidateContext,
 } from "../spec";
-import { actionableTargetRef, displayableTargetRef, vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
+import { actionableTargetRef, deriveShownObjectName, displayableTargetRef, vfxOperationBlock, withPlacementTransform, withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
@@ -102,8 +102,10 @@ function validateTransitionForTarget(
     }
     // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them
     // at all - there is no legal word to name, and reporting against a table they do not use would be
-    // reporting the wrong thing.
-    if (target.objectKind !== "video" && target.objectKind !== "vfx" && transformEffectFor(context, word) === undefined) {
+    // reporting the wrong thing. A clip named out of the library is the same clip, so it reads the
+    // same way; a picture is a Displayable whichever slot found it.
+    const kind = target.type === "asset" ? target.assetType : target.objectKind;
+    if (kind !== "video" && kind !== "vfx" && transformEffectFor(context, word) === undefined) {
         return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
     }
     return [];
@@ -159,6 +161,45 @@ function stageObjectBlockId(
     }
 }
 
+/**
+ * `/show <asset>` - the row that creates what it reveals.
+ *
+ * One block, not two: a create row followed by a show row would be the very boundary this form
+ * exists to remove, and the payload already holds everything both of them said. The name the element
+ * takes is `name=`, or the file's own name when the line gives none (`deriveShownObjectName`), and it
+ * is written into `objectName` exactly as a create row writes it - so `/hide`, `/transform` and every
+ * other verb address the object afterwards without knowing which shape made it.
+ *
+ * An image is placed the way `/image` places one: `pos=` wins over `in=`, because a transform holds
+ * one preset and a placement is the more specific instruction. A clip is neither placed nor faded -
+ * a `Video` is an `Actionable` with no transform pipeline - so it carries the source and the name and
+ * nothing else, and `/play` is still what runs it.
+ */
+function buildShowAsset(
+    target: Extract<StoryCommandTargetValue, { type: "asset" }>,
+    args: { readonly name?: StoryCommandValue; readonly pos?: StoryCommandValue; readonly d?: StoryCommandValue },
+    ctx: StoryCommandBuildContext,
+    word: StoryCommandValue | undefined,
+): StoryBlock {
+    const name = asText(args.name) ?? target.name;
+    if (target.assetType === "video") {
+        const block = createBlockForCommand("videoShow", ctx.generateId);
+        if (block.kind !== "action" || block.payload.action !== "video") {
+            return block;
+        }
+        return { ...block, payload: { ...block.payload, objectName: name, assetId: target.assetId } };
+    }
+    const block = createBlockForCommand("imageShow", ctx.generateId);
+    if (block.kind !== "action" || block.payload.action !== "image") {
+        return block;
+    }
+    const payload = { ...block.payload, objectName: name, assetId: target.assetId };
+    const transform = args.pos
+        ? withPlacementTransform(payload.transform, args.pos, args.d)
+        : withRevealTransform(payload.transform, "reveal", word, args.d);
+    return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
+}
+
 function buildShowHide<P extends StoryCommandParamsShape>(
     direction: "show" | "hide",
     args: ResolvedArgsOf<P> & {
@@ -174,6 +215,13 @@ function buildShowHide<P extends StoryCommandParamsShape>(
     const target = asTarget(args.target);
     // One slot per direction, so a build reads whichever its verb owns; the other is never declared.
     const word = direction === "show" ? args.in : args.out;
+
+    // A file, named where a thing on stage would be: the row creates the element and reveals it, which
+    // is what `/show sunset` on a picture no earlier row made has to mean. `/hide` never reaches here -
+    // its slot reads no library, because there is nothing to conceal that was never revealed.
+    if (target?.type === "asset") {
+        return buildShowAsset(target, args, ctx, word);
+    }
 
     // A character, or nothing yet: the default block is the character one - the most common subject.
     if (!target || target.type === "character") {
@@ -271,13 +319,23 @@ export const show = defineStoryCommand({
     aliases: ["enter"],
     category: "character",
     icon: Eye,
-    examples: ["/show Alice", "/show Alice smile pos=left", "/show hero in=fade d=0.3"],
+    examples: ["/show Alice", "/show Alice smile pos=left", "/show night pos=center in=fade d=0.5"],
     // Inline quick-edit: how long the entrance takes - the duration this line writes onto the
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],
     params: {
-        target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
+        // The slot reads the picture and clip libraries as well as the stage. Showing something that
+        // is not on stage yet used to mean going back for an `/image` row and returning, while
+        // `/show Alice` worked straight away - one verb with a boundary nothing on screen drew.
+        // Video is in for the same reason it had to be: a `/show` that took pictures and not clips
+        // would put the boundary back one step further in.
+        target: targetParam(SHOW_HIDE_ACCEPTS, { core: true, assets: ["image", "video"], namedBy: "name" }),
         form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
+        // What the element this row creates is called on stage, for the rows that address it later.
+        // Only meaningful on the library form - `validate` refuses it on anything already on stage,
+        // which is a thing that has a name of its own already - and omitting it is the ordinary case:
+        // the file's own name stands, the rule `/image` and `/sound` follow.
+        name: { hint: "objectName", type: { kind: "text" } },
         pos: placementParam(),
         // `in=`, not `t=`. What this slot writes is a TRANSFORM preset - a bag of props the entrance
         // interpolates - and it always was: the engine ignores a character's `StoryTransitionRef` on
@@ -294,13 +352,34 @@ export const show = defineStoryCommand({
         opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
         rate: { hint: "rate", type: { kind: "number", min: 0 } },
     },
+    deriveArgs: deriveShownObjectName(),
     build: (args, ctx) => buildShowHide("show", args, ctx),
     validate: (args, ctx) => [
         ...validateTransitionForTarget("show", args, ctx),
         ...validateFormTarget(args, ctx),
         ...validateOverlayOnlyParams(args, ctx),
+        ...validateNameTarget(args, ctx),
     ],
 });
+
+/**
+ * `name=` on a `/show` whose subject is already on stage.
+ *
+ * The key names the element the row CREATES, so on a subject that exists it names nothing: the object
+ * has a name already, and the one written here would be stored and read by nobody. Refused rather
+ * than dropped, so an author who meant to rename something is told that this is not the row for it.
+ */
+function validateNameTarget(
+    args: { readonly target?: StoryCommandValue; readonly name?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const target = asTarget(args.target);
+    const span = args.name === undefined ? undefined : ctx.spanOf("name");
+    if (!span || !target || target.type === "asset") {
+        return [];
+    }
+    return [{ code: "unsupportedParam", span, key: "name", kind: showHideSubjectWord(target) }];
+}
 
 /**
  * `opacity=` / `rate=` on a `/show` whose subject is not an ambience overlay.
@@ -332,7 +411,13 @@ function showHideSubjectWord(target: StoryCommandTargetValue | undefined): strin
     if (!target) {
         return "target";
     }
-    return target.type === "character" ? "character" : target.type === "reserved" ? "layer" : target.objectKind;
+    if (target.type === "character") {
+        return "character";
+    }
+    if (target.type === "reserved") {
+        return "layer";
+    }
+    return target.type === "asset" ? target.assetType : target.objectKind;
 }
 
 export const hide = defineStoryCommand({

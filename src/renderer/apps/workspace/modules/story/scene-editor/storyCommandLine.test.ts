@@ -146,6 +146,35 @@ describe("projectStoryCommandLine", () => {
         expect(project("/wait click")).toBe("/wait click");
     });
 
+    /**
+     * `/show <asset>` - the row that creates what it reveals.
+     *
+     * `name=` is on the line even where it repeats the file's own name, and that is the whole point of
+     * it being there: once the row exists, the element it made answers to that word on stage, so a
+     * line without the key would read back as a reveal of that element and quietly drop the source.
+     * The second half of this test is that failure, prevented.
+     */
+    it("names the element a show row creates, so the line reads back as the row that made it", () => {
+        // The house reveal fills the slots the line left empty, the same one `/show Alice` prints.
+        expect(project("/show night")).toBe("/show night name=night in=fade d=0.25s");
+        expect(project("/show night name=sky pos=center")).toBe("/show night name=sky pos=center d=0.25s");
+        // A clip is neither placed nor faded, so its line is the file and the name and nothing else.
+        expect(project("/show intro")).toBe("/show intro name=intro");
+
+        // The context as it is once the row exists: the picture is on stage under its own name.
+        const staged: StoryCommandContext = {
+            ...CONTEXT,
+            stageObjects: { ...CONTEXT.stageObjects, image: [...CONTEXT.stageObjects.image, "night"] },
+        };
+        expect(comparable(build("/show night name=night", staged))).toMatchObject({
+            action: "image", operation: "show", objectName: "night", assetId: "i2",
+        });
+        // And without the key it is a reveal of what is on stage, which is what `/show` has always meant.
+        expect(comparable(build("/show night", staged)))
+            .toMatchObject({ action: "image", operation: "show", objectName: "night" });
+        expect((build("/show night", staged).payload as { assetId?: string }).assetId).toBeUndefined();
+    });
+
     it("keeps the loop flag on the row, because it is what the row IS", () => {
         // A `loop` row does not hold the scene up, and the only thing that says so on the line is
         // the word - so it prints next to the subject rather than being inferred from the payload.

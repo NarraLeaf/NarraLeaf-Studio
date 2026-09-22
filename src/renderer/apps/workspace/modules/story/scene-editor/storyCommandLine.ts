@@ -20,6 +20,7 @@ import {
     listSceneLabels,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    revealCreates,
     storyVariableRefKey,
 } from "@shared/types/story";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
@@ -1179,6 +1180,16 @@ function imageSentence(
             ],
         };
     }
+    // The one-row form: the slot names the FILE, and `name=` says what the element it creates is
+    // called. Always written, even where it repeats the file's name, because it is what says the line
+    // creates something - a line without it reads as a reveal of whatever answers to that word on
+    // stage, which is what this row's own object does the moment it exists.
+    if (revealCreates(payload)) {
+        return {
+            commandId,
+            args: [positional("target", asset, swapAsset), arg("name", name), placement, reveal("reveal"), duration],
+        };
+    }
     return {
         commandId,
         args: [positional("target", name, object), reveal(payload.operation === "show" ? "reveal" : "conceal"), duration],
@@ -1299,6 +1310,20 @@ function videoSentence(
         return {
             commandId,
             args: [positional("target", name, object), positional("time", seconds(payload.timeMs), { apply: next => ({ ...payload, timeMs: msOf(next) }) })],
+        };
+    }
+    // The one-row form - see `imageSentence`. A clip carries no placement and no fade, so the line is
+    // the file and the name and nothing else.
+    if (revealCreates(payload)) {
+        return {
+            commandId,
+            args: [
+                positional("target", assetWord(lookups, payload.assetId), {
+                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                    ...assetLink(lookups, payload.assetId),
+                }),
+                arg("name", name),
+            ],
         };
     }
     return { commandId, args: [positional("target", name, object)] };

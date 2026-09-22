@@ -1195,7 +1195,7 @@ export const story = {
         jump: { label: "跳转", detail: "前往另一个场景，未带「返回」时当前场景会被卸载" },
         wait: { label: "等待", detail: "等待数秒，或等待点击" },
         nvl: { label: "NVL", detail: "切换堆叠对白面板" },
-        show: { label: "显示", detail: "显示角色或舞台对象" },
+        show: { label: "显示", detail: "显示角色、舞台对象，或资产库中的图片与视频" },
         hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
         face: { label: "外观", detail: "切换角色显示的外观：姿态、差分或表情" },
         motion: { label: "动作", detail: "设置由运行时绘制的角色所播放的动作" },

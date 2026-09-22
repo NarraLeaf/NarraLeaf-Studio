@@ -1382,7 +1382,7 @@ export const story = {
         jump: { label: "Jump", detail: "Go to another scene, unloading this one unless Return is set" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
-        show: { label: "Show", detail: "Show a character or a stage object" },
+        show: { label: "Show", detail: "Show a character, a stage object, or an image or video from the asset library" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
         face: { label: "Appearance", detail: "Change which of a character's looks is showing" },
         motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },

@@ -1251,7 +1251,7 @@ export const story = {
         jump: { label: "ジャンプ", detail: "別のシーンへ移る。「戻り」がなければいまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
-        show: { label: "表示", detail: "キャラクターや舞台のオブジェクトを出す" },
+        show: { label: "表示", detail: "キャラクター、舞台のオブジェクト、アセットライブラリの画像や動画を出す" },
         hide: { label: "非表示", detail: "キャラクターや舞台のオブジェクトを隠す" },
         face: { label: "見た目", detail: "キャラクターのどの見た目を表示するかを切り替える" },
         motion: { label: "モーション", detail: "ランタイムが描くキャラクターに再生させるモーションを決める" },

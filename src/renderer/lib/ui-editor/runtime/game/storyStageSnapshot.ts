@@ -19,6 +19,7 @@ import {
     declaresStageObject,
     isStoryExpressionEvaluable,
     resolveDisplayableTargetRef,
+    revealCreates,
     savedVariableDefs,
     sceneVariableDefs,
     storyPersistentDefs,
@@ -722,7 +723,10 @@ class SnapshotWalker {
         if (payload.layer) {
             record.layer = payload.layer;
         }
-        if ((payload.operation === "create" || payload.operation === "setSource")) {
+        // A `show` that names an asset creates the image it reveals, so it sources it here too -
+        // this walk and the compile must answer "what is on stage at this row" identically, or a
+        // launch from a later row plays a scene with a blank where the picture was.
+        if (payload.operation === "create" || payload.operation === "setSource" || revealCreates(payload)) {
             if (payload.assetId) {
                 record.source = { type: "asset", assetId: payload.assetId };
             } else if (payload.color) {

@@ -99,6 +99,7 @@ import {
     sceneRuntimeName,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    revealCreates,
     sceneVariableDefs,
     soundStageObjectName,
     storyPersistentDefs,
@@ -4161,7 +4162,11 @@ async function compileImageAction(
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
         : payload.color;
 
-    if ((payload.operation === "create" || payload.operation === "setSource") && src) {
+    // A `show` that names an asset is a declaration too (`revealCreates`), so it sources the image it
+    // is about to reveal - in that order, since the reveal is what the player sees and it must not
+    // fade in on the picture the element was built with.
+    const sources = payload.operation === "create" || payload.operation === "setSource" || revealCreates(payload);
+    if (sources && src) {
         // A transition only on the swap. A create DECLARES - the object is mounted at opacity zero
         // and nothing is looking at it until a `/show` reveals it - so a transition here plays out
         // in full on an invisible element and changes nothing that reaches the player. The property
@@ -4258,7 +4263,9 @@ async function compileVideoAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): Promise<NlrStatement[]> {
-    // `create` builds the clip; the transport verbs address one an earlier row built.
+    // `create` builds the clip, and so does a `show` that names one (`revealCreates`); the transport
+    // verbs address one an earlier row built. `show` needs no `preload` beside it - the engine mounts
+    // the element on the show itself - so the one-row form is one statement.
     const video = declaresStageObject(payload)
         ? await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id)
         : findStageVideo(ctx, block.id, payload);

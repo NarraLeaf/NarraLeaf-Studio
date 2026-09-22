@@ -131,6 +131,26 @@ point resolve against. A line with an anchor keeps its row; a line without one i
 a new row; **a line deleted takes its row with it**, because a file describes the
 whole scene.
 
+### `/show <asset>` writes `name=`, and has to
+
+`/show` reaches the picture and clip libraries as well as the stage: `/show sunset` on
+a file no row has put on stage creates the element and reveals it in one row, the way
+`/sound hit` plays a clip without a row declaring it first. `name=` is what the element
+is called afterwards - `/hide`, `/transform` and every other verb address it by that
+word - and it defaults to the file's own name.
+
+**The key is always written, even where it repeats the file's name.** Once the row
+exists, the element it made answers to that word on the stage, so a line without the key
+reads as a reveal of *that element* and drops the source. That is also the rule the
+other way round: a line with no `name=` means whatever answers to the name on stage,
+which is what `/image sunset` followed by `/show sunset` has always meant.
+
+⚠ A line typed here by hand without the key is the one shape that misreads. The file is
+compiled twice (the second pass is what lets a row name something the file just added
+above it), and the second reading finds the object the first one created. `check` says
+`story/stage-object-missing` and `apply` writes nothing, so it fails loudly - but the
+message names the wrong problem. Write `name=`, or run `show` and copy what it prints.
+
 ### A scene variable is a row
 
 `/local hp 5` declares a scene variable, and the row it lands is the variable -

@@ -285,26 +285,31 @@ function MarkGlyph({ mark }: { mark: StoryCandidateMark }) {
 }
 
 /**
- * The 160px disk-cached downscale of a project image, by id.
+ * The 160px disk-cached downscale of a project picture or clip, by id.
  *
  * The thumbnail rather than the asset: a menu of twenty backgrounds must not decode twenty full-size
  * images to draw twenty 20px squares, and the badge cache already renders, caches and shares exactly
- * that reading (`BadgeImageSource`). A missing asset resolves to `null` and the row keeps its glyph.
+ * that reading (`BadgeImageSource`). A clip's thumbnail is its first frame, produced the same way and
+ * kept in the same cache. A missing asset resolves to `null` and the row keeps its glyph.
  */
-function useImageThumbnailUrl(assetId: string | undefined): string | null {
+function useAssetThumbnailUrl(
+    assetType: "image" | "audio" | "video",
+    assetId: string | undefined,
+): string | null {
     const { context, isInitialized } = useWorkspace();
-    const asset = useMemo<Asset<AssetType.Image> | null>(() => {
-        if (!assetId || !context || !isInitialized) {
+    const asset = useMemo<Asset<AssetType.Image> | Asset<AssetType.Video> | null>(() => {
+        if (!assetId || !context || !isInitialized || (assetType !== "image" && assetType !== "video")) {
             return null;
         }
         const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
-        return assets?.[AssetType.Image]?.[assetId] ?? null;
-    }, [assetId, context, isInitialized]);
+        const type = assetType === "video" ? AssetType.Video : AssetType.Image;
+        return assets?.[type]?.[assetId] ?? null;
+    }, [assetId, assetType, context, isInitialized]);
     return useBadgeImageUrl(asset ? { kind: "thumbnail", asset } : null);
 }
 
 function ImageMark({ mark }: { mark: Extract<StoryCandidateMark, { kind: "asset" }> }) {
-    const url = useImageThumbnailUrl(mark.assetId);
+    const url = useAssetThumbnailUrl(mark.assetType, mark.assetId);
     if (!url) {
         return <MarkGlyph mark={mark} />;
     }
@@ -369,7 +374,11 @@ export function StoryCandidateSpeakerMark({ character }: { character: Character 
 }
 
 export function StoryCandidateMarkView({ mark, characters }: { mark: StoryCandidateMark; characters: readonly Character[] }) {
-    if (mark.kind === "asset" && mark.assetType === "image" && mark.assetId) {
+    // A clip draws its first frame beside a picture's thumbnail, and that is not decoration: a slot
+    // that offers the library AND the stage at once (`/show`) can hold two rows reading the same word,
+    // and "the one with a picture is the file" is the only thing that tells them apart. A clip drawn
+    // as a film glyph was indistinguishable from a clip already on the stage, which draws that glyph.
+    if (mark.kind === "asset" && (mark.assetType === "image" || mark.assetType === "video") && mark.assetId) {
         return <ImageMark mark={mark} />;
     }
     if ((mark.kind === "character" || mark.kind === "appearance") && mark.characterId) {
