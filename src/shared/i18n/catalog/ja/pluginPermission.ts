@@ -81,6 +81,7 @@ export const pluginPermission = {
             node: "プラグイン自身のコードがゲームの一部として動く",
         },
         buildDependencyHosts: "{hosts} からダウンロードする",
+        studioApi: "Studio API：{capability}",
         /**
          * API 名ではなくプレイヤーのデータを主語にして書く。信頼するかどうかを決める人にとって
          * 「state.write」は何も意味しない。

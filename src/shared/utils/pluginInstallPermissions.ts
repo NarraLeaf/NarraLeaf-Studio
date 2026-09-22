@@ -1,107 +1,14 @@
 import type {
     PluginFileSystemPermissionMode,
     PluginInstallPermission,
-    PluginRuntimeCapability,
-    PluginSidecarKind,
 } from "../types/pluginPermissions";
 
-export const NO_INSTALL_PERMISSIONS_COPY = "No privileged Studio controls are included in this install approval.";
-
-export function describePluginInstallPermissions(permissions: readonly PluginInstallPermission[] | undefined): string[] {
-    if (!permissions?.length) {
-        return [NO_INSTALL_PERMISSIONS_COPY];
-    }
-
-    return permissions.map(describePluginInstallPermission);
-}
-
-export function describePluginInstallPermission(permission: PluginInstallPermission): string {
-    switch (permission.kind) {
-        case "filesystem":
-            return `${formatFileSystemMode(permission.mode)} ${permission.recursive ? "inside" : "for"} ${singleLine(permission.path, "declared path")}`;
-        case "api":
-            return `Use Studio API capability: ${singleLine(permission.capability, "declared capability")}`;
-        case "runtime":
-            return `In your game: ${describeRuntimeCapability(permission.capability)}`;
-        case "sidecar":
-            return `${describeSidecarKind(permission.sidecarKind)} (${singleLine(permission.id, "sidecar")}`
-                + `${permission.platforms.length > 0 ? `, for ${permission.platforms.join(", ")}` : ""})`;
-        case "buildDependency":
-            return `Download binaries while building your game (${singleLine(permission.id, "dependency")}`
-                + `${permission.hosts.length > 0 ? `, from ${permission.hosts.join(", ")}` : ""})`;
-        case "externalLink":
-            // The patterns are listed rather than counted: "open 3 addresses" is not something a
-            // person can decide about, and the whole value of a declared pattern is that it is
-            // readable.
-            return "In your game: send the player to "
-                + (permission.patterns.length > 0
-                    ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
-                    : "declared addresses");
-        case "network":
-            // Listed rather than counted, for the reason the addresses above are: a host is the
-            // whole content of this decision, and "connects to 3 servers" is not a thing anyone can
-            // answer.
-            return "In your game: request data from "
-                + (permission.patterns.length > 0
-                    ? permission.patterns.map(pattern => singleLine(pattern, "declared address")).join(", ")
-                    : "declared addresses");
-        default:
-            return exhaustive(permission);
-    }
-}
-
 /**
- * What the sidecar actually starts. The two are not the same promise, so they do not share a line:
- * a `node` sidecar is not a third-party binary the game launches, it is the plugin's own code with
- * the reach of the game around it.
- *
- * A grant written before the kind was recorded has none, so an unknown value falls back to the
- * looser sentence rather than guessing the lighter of the two.
+ * How an install permission reads on screen is not here: every word the approval prompt and the
+ * plugin details show comes from the `pluginPermission` catalog, rendered by
+ * `renderer/lib/plugins/PluginInstallPermissions.tsx`. An English description used to be built in
+ * this file, and the Studio group of the prompt showed it verbatim in every language.
  */
-function describeSidecarKind(kind: PluginSidecarKind): string {
-    switch (kind) {
-        case "executable":
-            return "Ship a separate program and run it with your game";
-        case "node":
-            return "Ship the plugin's own code and run it as part of your game";
-        default:
-            return "Ship a program and run it with your game";
-    }
-}
-
-/**
- * Plain-language stakes for each runtime capability. Deliberately phrased around
- * the player's data rather than the API name: "state.write" means nothing to the
- * person deciding whether to trust the plugin.
- */
-function describeRuntimeCapability(capability: PluginRuntimeCapability): string {
-    switch (capability) {
-        case "store":
-            return "store its own data alongside the player's saves";
-        case "events":
-            return "observe game progress (scenes, dialogue, choices, saves)";
-        case "state.read":
-            return "read story variables";
-        case "state.write":
-            return "change story variables";
-        case "saves.read":
-            return "read the player's save list and metadata";
-        case "saves.write":
-            return "overwrite the player's saves and load them";
-        case "ui.overlay":
-            return "draw on top of the game";
-        case "assets":
-            return "resolve packaged asset URLs";
-        case "locale":
-            return "read and follow the game language";
-        case "diagnostics":
-            return "read what the game’s image and audio caches are holding";
-        case "process.memory":
-            return "read how much of the computer’s memory the game is using";
-        default:
-            return capability;
-    }
-}
 
 /**
  * Whether every permission in `next` is already covered by something the user
@@ -195,26 +102,4 @@ function coversPath(
 
 function normalizePathSegments(value: string): string[] {
     return value.replace(/\\/g, "/").split("/").filter(Boolean);
-}
-
-function formatFileSystemMode(mode: PluginFileSystemPermissionMode): string {
-    switch (mode) {
-        case "read":
-            return "Read access";
-        case "write":
-            return "Write access";
-        case "readwrite":
-            return "Read and write access";
-        default:
-            return mode;
-    }
-}
-
-function singleLine(value: string, fallback: string): string {
-    const normalized = value.replace(/\s+/g, " ").trim();
-    return normalized || fallback;
-}
-
-function exhaustive(value: never): never {
-    throw new Error(`Unsupported plugin install permission: ${JSON.stringify(value)}`);
 }

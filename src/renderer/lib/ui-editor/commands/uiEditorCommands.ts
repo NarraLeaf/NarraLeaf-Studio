@@ -1,7 +1,11 @@
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
-import { resolveInsertTargetParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import {
+    aimPasteAtElement,
+    settlePasteTarget,
+    type UIEditorPasteTarget,
+} from "@/lib/ui-editor/tree/resolvePasteTarget";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -32,10 +36,7 @@ import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
-export type UIEditorPasteTarget = {
-    parentId: string;
-    beforeChildId: string | null;
-};
+export type { UIEditorPasteTarget };
 
 function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceId: string, elementId: string): Blueprint | undefined {
     const bpId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
@@ -232,14 +233,28 @@ export function uiEditorCutSelection(
  *
  * The one place a clipboard payload becomes elements, whether it came from this window, from
  * another project's, or from the duplicate gesture that never went near a clipboard at all.
+ *
+ * `aim` is where the gesture pointed; the payload lands at the nearest place from there that takes
+ * it (`settlePasteTarget`). Every gesture used to hand its aim straight to the document, which
+ * refused it without a word whenever the aim was inside a widget that holds only its own parts - so
+ * Ctrl+V with a Slider's handle selected, or Ctrl+D on the handle, did nothing at all.
  */
 function applyClipboardPayload(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
-    target: UIEditorPasteTarget,
+    aim: UIEditorPasteTarget,
     payload: UIEditorClipboardPayload,
 ): boolean {
+    const target = settlePasteTarget(
+        documentService.getDocument(),
+        surfaceId,
+        aim,
+        payload.topLevelElementIds.map(id => payload.elements[id]),
+    );
+    if (!target) {
+        return false;
+    }
     const result = documentService.pasteClipboardPayload(surfaceId, target.parentId, target.beforeChildId, payload);
     if (!result.ok || result.newRootIds.length === 0) {
         return false;
@@ -301,13 +316,8 @@ export function uiEditorPaste(
     input: { hitElementId?: string | null; primaryElementId?: string | null },
 ): Promise<boolean> {
     void localBp;
-    return pasteFromClipboard(documentService, stateService, surfaceId, () => {
-        const resolved = resolveInsertTargetParent(documentService.getDocument(), surfaceId, {
-            hitElementId: input.hitElementId,
-            primaryElementId: input.primaryElementId,
-        });
-        return resolved ? { parentId: resolved.parentId, beforeChildId: null } : null;
-    });
+    return pasteFromClipboard(documentService, stateService, surfaceId, () =>
+        aimPasteAtElement(documentService.getDocument(), surfaceId, input.hitElementId, input.primaryElementId));
 }
 
 export function uiEditorPasteAfterSelection(

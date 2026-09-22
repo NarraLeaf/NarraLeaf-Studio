@@ -4,11 +4,11 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import type {
+    PluginFileSystemPermissionMode,
     PluginInstallPermission,
     PluginRuntimeCapability,
     PluginSidecarKind,
 } from "@shared/types/pluginPermissions";
-import { describePluginInstallPermission } from "@shared/utils/pluginInstallPermissions";
 
 type PermissionOf<K extends PluginInstallPermission["kind"]> = Extract<PluginInstallPermission, { kind: K }>;
 
@@ -113,6 +113,36 @@ const SIDECAR_KIND_KEYS: Record<PluginSidecarKind, TranslationKey> = {
 function sidecarKindLabel(kind: PluginSidecarKind | undefined, t: Translator["t"]): string | null {
     const key = kind ? SIDECAR_KIND_KEYS[kind] : undefined;
     return key ? t(key) : null;
+}
+
+const FILE_SYSTEM_MODE_KEYS: Record<PluginFileSystemPermissionMode, TranslationKey> = {
+    "read": "pluginPermission.mode.read",
+    "write": "pluginPermission.mode.write",
+    "readwrite": "pluginPermission.mode.readwrite",
+};
+
+/** Read, write or both, as the file access rows name it. An unknown mode shows as declared. */
+export function fileSystemModeLabel(mode: PluginFileSystemPermissionMode, t: Translator["t"]): string {
+    const key = FILE_SYSTEM_MODE_KEYS[mode];
+    return key ? t(key) : mode;
+}
+
+/**
+ * One author-declared Studio control, in the words the file access and API prompts use for the same
+ * grant when a plugin asks for it later. The path and the capability are the plugin's own, and shown
+ * as declared: they are what is being agreed to.
+ */
+export function studioPermissionLabel(
+    permission: PermissionOf<"filesystem"> | PermissionOf<"api">,
+    t: Translator["t"],
+): string {
+    if (permission.kind === "api") {
+        return t("pluginPermission.permissions.studioApi", { capability: permission.capability });
+    }
+    const mode = fileSystemModeLabel(permission.mode, t);
+    return permission.recursive
+        ? t("pluginPermission.filesystem.permissionRecursive", { mode, path: permission.path })
+        : t("pluginPermission.filesystem.permissionSingle", { mode, path: permission.path });
 }
 
 export interface PluginInstallPermissionSectionsProps {
@@ -257,7 +287,7 @@ export function PluginInstallPermissionSections({
                 <PermissionGroup label={t("pluginPermission.permissions.section.studio")} rounded={rounded}>
                     {groups.studio.map((permission, index) => (
                         <PermissionRow key={index}>
-                            {describePluginInstallPermission(permission)}
+                            {studioPermissionLabel(permission, t)}
                         </PermissionRow>
                     ))}
                 </PermissionGroup>
