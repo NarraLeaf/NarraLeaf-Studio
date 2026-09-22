@@ -432,7 +432,9 @@ export class PluginManager {
             source: this.formatInstallSource(record.installSource),
             permissions: record.manifest.permissions,
             persistence: "permanent",
-            reason: "Approve the permissions declared by this plugin manifest.",
+            // No `reason`. The prompt's own copy says what approving an install grants, in the
+            // author's language; a reason is the requester's word, and here the requester is
+            // Studio, whose words live in the catalog rather than in a request built in English.
             requestedAt: Date.now(),
         };
     }

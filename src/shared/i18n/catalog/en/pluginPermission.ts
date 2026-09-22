@@ -81,6 +81,8 @@ export const pluginPermission = {
             node: "Runs the plugin's own code as part of the game",
         },
         buildDependencyHosts: "Downloads from {hosts}",
+        /** A Studio API the plugin declared it calls, by the capability id it declared. */
+        studioApi: "Studio API: {capability}",
         /**
          * Phrased around the player's data, not the API name - "state.write"
          * means nothing to the person deciding whether to trust the plugin.

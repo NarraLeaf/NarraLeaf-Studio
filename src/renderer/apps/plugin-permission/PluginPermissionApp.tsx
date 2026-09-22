@@ -11,8 +11,7 @@ import {
     PluginPermissionPromptProps,
     PluginPermissionRequest,
 } from "@shared/types/pluginPermissions";
-import { describePluginInstallPermissions } from "@shared/utils/pluginInstallPermissions";
-import { PluginInstallPermissionSections } from "@/lib/plugins/PluginInstallPermissions";
+import { fileSystemModeLabel, PluginInstallPermissionSections } from "@/lib/plugins/PluginInstallPermissions";
 import { WindowAppType, WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 type PermissionCopy = {
@@ -78,9 +77,9 @@ function buildPermissionCopy(props: PluginPermissionPromptProps, t: Translator["
                     t("pluginPermission.install.body1"),
                     t("pluginPermission.install.body2"),
                 ],
-                // Nothing requested still needs saying out loud, so the "no
-                // privileged controls" line falls through to the flat list.
-                permissions: requested.length > 0 ? [] : describePluginInstallPermissions(undefined),
+                // Nothing requested still needs saying out loud, in the words the plugin's details
+                // use for the same state, so it falls through to the flat list.
+                permissions: requested.length > 0 ? [] : [t("plugins.noPermissions")],
                 installPermissions: requested,
                 detail: t("pluginPermission.install.source", { source: request.source }),
             };
@@ -98,11 +97,11 @@ function buildPermissionCopy(props: PluginPermissionPromptProps, t: Translator["
                 permissions: [
                     request.recursive
                         ? t("pluginPermission.filesystem.permissionRecursive", {
-                              mode: formatMode(request.mode, t),
+                              mode: fileSystemModeLabel(request.mode, t),
                               path: request.path,
                           })
                         : t("pluginPermission.filesystem.permissionSingle", {
-                              mode: formatMode(request.mode, t),
+                              mode: fileSystemModeLabel(request.mode, t),
                               path: request.path,
                           }),
                 ],
@@ -134,19 +133,6 @@ function buildPermissionCopy(props: PluginPermissionPromptProps, t: Translator["
                 body: [t("pluginPermission.generic.body")],
                 permissions: [],
             };
-    }
-}
-
-function formatMode(mode: string, t: Translator["t"]): string {
-    switch (mode) {
-        case "read":
-            return t("pluginPermission.mode.read");
-        case "write":
-            return t("pluginPermission.mode.write");
-        case "readwrite":
-            return t("pluginPermission.mode.readwrite");
-        default:
-            return mode;
     }
 }
 

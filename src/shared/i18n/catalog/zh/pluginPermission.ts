@@ -68,6 +68,7 @@ export const pluginPermission = {
             node: "插件自身的代码作为游戏的一部分运行",
         },
         buildDependencyHosts: "下载来源：{hosts}",
+        studioApi: "Studio API：{capability}",
         runtimeCapability: {
             store: "在玩家的存档旁保存自己的数据",
             events: "获知游戏进程（场景、对白、选项、存档）",
