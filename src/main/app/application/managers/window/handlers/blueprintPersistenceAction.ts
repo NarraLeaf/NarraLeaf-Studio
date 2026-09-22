@@ -76,9 +76,17 @@ export class BlueprintPersistenceGetValueHandler extends IPCHandler<IPCEventType
     }
 }
 
+/**
+ * Writes are answered for a window that has started closing, and they have to be: the game flushes
+ * what it owes from the page's `beforeunload` - the playtime run since the last whole minute, the
+ * last lines marked read - and that runs after the window's `close`. Refusing it lost those on every
+ * Dev Mode close. The write reaches only the closing window's own project store, which is exactly
+ * what the same page could write a moment earlier.
+ */
 export class BlueprintPersistenceSetValueHandler extends IPCHandler<IPCEventType.blueprintPersistenceSetValue> {
     readonly name = IPCEventType.blueprintPersistenceSetValue;
     readonly type = IPCMessageType.request;
+    readonly servesClosingWindow = true;
 
     public async handle(
         window: AppWindow,
@@ -98,9 +106,11 @@ export class BlueprintPersistenceSetValueHandler extends IPCHandler<IPCEventType
     }
 }
 
+/** A removal is a write like any other; see {@link BlueprintPersistenceSetValueHandler}. */
 export class BlueprintPersistenceRemoveValueHandler extends IPCHandler<IPCEventType.blueprintPersistenceRemoveValue> {
     readonly name = IPCEventType.blueprintPersistenceRemoveValue;
     readonly type = IPCMessageType.request;
+    readonly servesClosingWindow = true;
 
     public async handle(
         window: AppWindow,
