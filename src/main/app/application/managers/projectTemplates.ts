@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
 import { pickTemplateContentLocale, type ProjectTemplateDescriptor } from "@shared/types/projectTemplate";
 import { isStageSizeUsable, stageSizesEqual, type StageSize } from "@shared/types/stageSize";

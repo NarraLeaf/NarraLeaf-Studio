@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { constants as fsConstants } from "fs";
 import path from "path";
 import type {

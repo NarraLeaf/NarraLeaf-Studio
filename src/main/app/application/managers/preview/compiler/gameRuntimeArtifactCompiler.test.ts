@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createProjectToken,
     createAssetOverlay,
-    derivePackKey,
     projectStamp,
     archiveReaderPath,
     OVERLAY_FILE_EXTENSION,
@@ -864,7 +863,6 @@ describe("game runtime artifact compiler", () => {
         await fs.mkdir(pluginInstallDir, { recursive: true });
         await fs.writeFile(path.join(pluginInstallDir, "runtime.js"), "export default {};", "utf-8");
 
-        const packKey = derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16));
         const manifest = {
             manifestVersion: 2 as const,
             id: "acme.sample-plugin",
@@ -883,7 +881,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47330),
-            encryptionKey: packKey,
+            protectAssets: true,
             runtimePlugins: [{
                 manifest,
                 entry: "runtime.js",
@@ -987,7 +985,7 @@ describe("game runtime artifact compiler", () => {
 
             const result = await compileGameRuntimeArtifact({
                 ...previewCompileInput(projectPath, runtimeDistDir, 47353),
-                encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+                protectAssets: true,
             });
 
             await expect(fs.access(path.join(result.appDir, "scripts"))).rejects.toThrow();
@@ -1135,7 +1133,7 @@ describe("game runtime artifact compiler", () => {
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
             debuggable: true,
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         expect(result.pack.debuggable).toBe(true);
@@ -1183,7 +1181,7 @@ describe("game runtime artifact compiler", () => {
             entry: { kind: "surface", surfaceId: "surface-main" },
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         const reader = await openAssetArchive(
@@ -1246,7 +1244,7 @@ describe("game runtime artifact compiler", () => {
             entry: { kind: "surface", surfaceId: "surface-main" },
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         const reader = await openAssetArchive(
@@ -2134,7 +2132,7 @@ describe("weather clips in the pack", () => {
             mode: "production",
             packaging: true,
             platformKeys: ["windows-x64"],
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
             // No toolchain, and nowhere to put one.
         })).rejects.toThrow(/Asset protection could not compile this title's content codec/);
     });
@@ -2158,7 +2156,7 @@ describe("weather clips in the pack", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47380),
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         for (const name of ["index.html", "renderer.js", "renderer.css"]) {
@@ -2216,7 +2214,7 @@ describe("weather clips in the pack", () => {
             mode: "production",
             packaging: true,
             platformKeys: [hostKey, otherKey],
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
             titleCompiler: toolchain as string,
         });
 

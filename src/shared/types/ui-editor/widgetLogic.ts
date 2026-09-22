@@ -273,6 +273,14 @@ const WINDOW_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+/**
+ * The events the host raises on every widget on a page rather than the widget raising them itself:
+ * a key press (heard from `window` by every widget that lists it), a broadcast, and the two window
+ * events. What a plugin widget with a blueprint is given without declaring them; see
+ * `sanitizeContributedWidgetLogicApi`.
+ */
+const AMBIENT_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [...KEYBOARD_EVENTS, ...BROADCAST_EVENTS, ...WINDOW_EVENTS];
+
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
@@ -913,6 +921,14 @@ export type ContributedLogicApiProblem = { eventId: string; message: string };
  *   graph in the widget's blueprint runs whenever the plugin raises it. An event nothing can start
  *   on cannot be listened to, so it is not offered as though it could.
  *
+ * One thing is put in: **the ambient events**, for a widget with a blueprint of its own. A key
+ * press, a broadcast and the window going fullscreen or losing focus are not things a widget raises;
+ * the host raises them on every widget on the page, and the node palette offers their heads in every
+ * widget's blueprint on that ground (their scope is the owner kind, not a list of widget types). The
+ * built-in widgets all list them for the same reason. A plugin's widget that did not was offered
+ * On Key Down and never heard a key - so the host lists them for it, as it does for its own, unless
+ * the plugin declared an event of the same id itself.
+ *
  * What was taken out is returned beside the result so the registration site can say so to the
  * plugin's author; Studio's interface never shows it.
  */
@@ -949,6 +965,13 @@ export function sanitizeContributedWidgetLogicApi(
             continue;
         }
         events.push({ ...eventDef, headNodeTypes: heads });
+    }
+    if (logicApi.supportsPrivateBlueprint === true) {
+        for (const ambient of AMBIENT_WIDGET_EVENTS) {
+            if (!events.some(eventDef => eventDef.id === ambient.id)) {
+                events.push(ambient);
+            }
+        }
     }
     return {
         logicApi: {

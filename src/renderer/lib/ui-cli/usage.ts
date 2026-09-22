@@ -15,6 +15,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { propAssignmentKey } from "./dsl/parse";
 import { printElementTree } from "./dsl/print";
 import { elementPath } from "./project";
 
@@ -168,6 +169,6 @@ export function formatPropValues(sites: readonly UsageSite[], propKey: string): 
     }
     return [...counts.entries()]
         .sort((a, b) => b[1].count - a[1].count)
-        .map(([value, entry]) => `${String(entry.count).padStart(3)}x  ${propKey} = ${value}\n       ${entry.where[0]}`)
+        .map(([value, entry]) => `${String(entry.count).padStart(3)}x  ${propAssignmentKey(propKey)} = ${value}\n       ${entry.where[0]}`)
         .join("\n");
 }

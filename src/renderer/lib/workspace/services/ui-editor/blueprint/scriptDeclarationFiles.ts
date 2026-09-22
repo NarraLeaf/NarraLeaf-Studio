@@ -29,9 +29,16 @@ import {
     PROJECT_DECLARATIONS_PATH,
     SCRIPT_API_DECLARATIONS_PATH,
     renderProjectDeclarations,
+    type ScriptPluginEventFieldKind,
+    type ScriptPluginWidgetFacts,
     type ScriptProjectFacts,
     type ScriptSurfaceFacts,
 } from "@shared/project/scriptDeclarations";
+import { getContributedWidget, listContributedWidgets } from "@shared/types/ui-editor/contributedWidgets";
+import { SCRIPT_WIDGET_TYPES } from "@/lib/ui-editor/blueprint-runtime/script/scriptContext";
+import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { SCRIPT_API_DECLARATIONS } from "@shared/project/scriptApiDeclarations.generated";
 import {
     SCRIPTS_DIR,
@@ -50,9 +57,19 @@ import { StoryService } from "../../story/StoryService";
 import { VariableRegistryService } from "../../variables/VariableRegistryService";
 import { storeWrite } from "../../autosave/writeReport";
 
+const BUILTIN_SCRIPT_WIDGET_TYPES: ReadonlySet<string> = new Set(SCRIPT_WIDGET_TYPES);
+
+/**
+ * Whether a script can sit on an element of this type and the declarations can name it: one of
+ * Studio's scriptable widgets, or a loaded plugin's widget with a blueprint of its own.
+ */
+function isScriptableElementType(type: string): boolean {
+    return BUILTIN_SCRIPT_WIDGET_TYPES.has(type) || getContributedWidget(type)?.logicApi?.supportsPrivateBlueprint === true;
+}
+
 /** Elements of one surface or component, in document order, each with the type its ctx is built from. */
 function elementsOf(document: UIDocument, ids: readonly UIElementId[]): ScriptSurfaceFacts["elements"] {
-    const out: { id: string; name: string; type: string }[] = [];
+    const out: { id: string; name: string; type: string; scriptable: boolean }[] = [];
     const walk = (elementId: UIElementId): void => {
         const element = document.elements[elementId];
         if (!element) {
@@ -60,7 +77,12 @@ function elementsOf(document: UIDocument, ids: readonly UIElementId[]): ScriptSu
         }
         // `nl.root` is the tree's own handle rather than a widget an author writes against.
         if (element.type !== "nl.root") {
-            out.push({ id: element.id, name: element.name ?? element.type, type: element.type });
+            out.push({
+                id: element.id,
+                name: element.name ?? element.type,
+                type: element.type,
+                scriptable: isScriptableElementType(element.type),
+            });
         }
         for (const childId of element.childrenIds ?? []) {
             walk(childId);
@@ -68,6 +90,62 @@ function elementsOf(document: UIDocument, ids: readonly UIElementId[]): ScriptSu
     };
     for (const id of ids) {
         walk(id);
+    }
+    return out;
+}
+
+/** A plugin head's data output pin, as the kind of field it puts in the event argument. */
+function fieldKindOf(valueType: string | undefined): ScriptPluginEventFieldKind {
+    switch (valueType) {
+        case "float":
+        case "integer":
+            return "number";
+        case "string":
+            return "string";
+        case "boolean":
+            return "boolean";
+        default:
+            return "unknown";
+    }
+}
+
+/**
+ * The widgets loaded plugins contribute that a script can sit on, with the events it may export.
+ *
+ * The events come from the same function the dispatcher and the Dev Mode check read, so what the
+ * types offer is what the runtime calls. A plugin event's fields are its heads' data output pins -
+ * the fields of the payload a graph on the same event reads - looked up in the node registry the
+ * plugin registered them in.
+ */
+export function collectScriptPluginWidgetFacts(): ScriptPluginWidgetFacts[] {
+    const out: ScriptPluginWidgetFacts[] = [];
+    for (const declared of listContributedWidgets()) {
+        if (declared.logicApi?.supportsPrivateBlueprint !== true) {
+            continue;
+        }
+        const events: ScriptPluginWidgetFacts["events"][number][] = [];
+        for (const event of scriptEventsOfContributedLogicApi(declared.logicApi).events) {
+            if (!event.pluginHeadTypes) {
+                events.push({ id: event.eventId, builtin: true });
+                continue;
+            }
+            const fields: Record<string, ScriptPluginEventFieldKind> = {};
+            for (const head of event.pluginHeadTypes) {
+                for (const pin of blueprintNodeRegistry.get(head)?.pins ?? []) {
+                    if (pin.kind === "output" && pin.semantic === "data" && !(pin.id in fields)) {
+                        fields[pin.id] = fieldKindOf(pin.valueType);
+                    }
+                }
+            }
+            events.push({ id: event.eventId, builtin: false, fields });
+        }
+        let displayName = declared.type;
+        try {
+            displayName = widgetModuleRegistry.get(declared.type)?.displayName || declared.type;
+        } catch {
+            // A plugin's display name is its own getter; a throwing one names the widget by its type.
+        }
+        out.push({ type: declared.type, displayName, pluginId: declared.ownerPluginId, events });
     }
     return out;
 }
@@ -121,6 +199,7 @@ export function collectScriptProjectFacts(context: WorkspaceContext): ScriptProj
             name: action.name,
         })),
         locales: config.locales.map(locale => locale.code),
+        pluginWidgets: collectScriptPluginWidgetFacts(),
     };
 }
 

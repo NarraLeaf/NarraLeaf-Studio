@@ -1,5 +1,11 @@
-import fs from "fs/promises";
+// Two modules on purpose. `studioArchiveFs` is the patched one, and it reads only the built-in
+// plugins, which a packaged Studio keeps inside its own app.asar. Every other plugin folder is one
+// somebody else wrote - picked by the author, or downloaded from the registry - and is reached
+// through `fs`, which is unpatched: see unpatchedFs.ts for what the patch does to a file named like
+// an archive, which a plugin is free to ship.
+import studioArchiveFs from "fs/promises";
 import path from "path";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import { UserDataNamespace, AppHost, AppProtocol } from "@shared/types/constants";
 import type {
     PluginInstallPermission,
@@ -37,6 +43,9 @@ type BuiltInPluginSource = {
     sourcePath: string;
     manifest: NormalizedPluginManifestV2;
 };
+
+/** What reading a plugin package's manifest needs from a file-system module. */
+type PluginPackageFiles = Pick<typeof fs, "readFile" | "stat">;
 
 const DEFAULT_STATE: PluginRegistryState = {
     "plugin.records": {},
@@ -558,7 +567,7 @@ export class PluginManager {
 
         let entries: import("fs").Dirent[];
         try {
-            entries = await fs.readdir(builtInPluginsDir, { withFileTypes: true });
+            entries = await studioArchiveFs.readdir(builtInPluginsDir, { withFileTypes: true });
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
                 throw error;
@@ -573,7 +582,7 @@ export class PluginManager {
 
             const sourcePath = path.join(builtInPluginsDir, entry.name);
             try {
-                const manifest = await this.readManifest(sourcePath);
+                const manifest = await this.readManifest(sourcePath, studioArchiveFs);
                 const installPath = this.getInstallPath(manifest.id);
                 await this.replacePluginDirectory(sourcePath, installPath);
                 builtInSources.set(manifest.id, { sourcePath, manifest });
@@ -668,14 +677,14 @@ export class PluginManager {
      */
     private async copyDirectoryFromAsar(sourceDir: string, destDir: string): Promise<void> {
         await fs.mkdir(destDir, { recursive: true });
-        const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+        const entries = await studioArchiveFs.readdir(sourceDir, { withFileTypes: true });
         for (const entry of entries) {
             const sourceEntry = path.join(sourceDir, entry.name);
             const destEntry = path.join(destDir, entry.name);
             if (entry.isDirectory()) {
                 await this.copyDirectoryFromAsar(sourceEntry, destEntry);
             } else if (entry.isFile()) {
-                await fs.writeFile(destEntry, await fs.readFile(sourceEntry));
+                await fs.writeFile(destEntry, await studioArchiveFs.readFile(sourceEntry));
             }
             // Plugin packages contain only regular files and directories; other
             // entry types (symlinks, sockets) are intentionally skipped.
@@ -708,9 +717,13 @@ export class PluginManager {
         });
     }
 
-    private async readManifest(pluginDir: string): Promise<NormalizedPluginManifestV2> {
+    /**
+     * Read and check a plugin package's manifest, through `files`: the patched module for a built-in
+     * package still inside Studio's archive, the unpatched one (the default) for everything else.
+     */
+    private async readManifest(pluginDir: string, files: PluginPackageFiles = fs): Promise<NormalizedPluginManifestV2> {
         const manifestPath = path.join(pluginDir, "manifest.json");
-        const raw = await fs.readFile(manifestPath, "utf-8");
+        const raw = await files.readFile(manifestPath, "utf-8");
         const parsed = JSON.parse(raw);
         const result = validatePluginManifest(parsed);
         if (!result.ok) {
@@ -725,13 +738,13 @@ export class PluginManager {
             if (!this.isSameOrChild(entryPath, root)) {
                 throw new Error(`Plugin ${target} entry must stay inside the plugin package`);
             }
-            const entryStat = await fs.stat(entryPath).catch(() => null);
+            const entryStat = await files.stat(entryPath).catch(() => null);
             if (!entryStat?.isFile()) {
                 throw new Error(`Plugin ${target} entry file not found: ${entry}`);
             }
         }
         if (result.manifest.icon) {
-            await this.verifyIconFile(pluginDir, result.manifest.icon);
+            await this.verifyIconFile(pluginDir, result.manifest.icon, files);
         }
         return result.manifest;
     }
@@ -744,13 +757,13 @@ export class PluginManager {
      * the icon, show the monogram — produces a plugin that looks fine to the
      * user and wrong to its author, with nothing anywhere saying why.
      */
-    private async verifyIconFile(pluginDir: string, icon: string): Promise<void> {
+    private async verifyIconFile(pluginDir: string, icon: string, files: PluginPackageFiles): Promise<void> {
         const root = path.resolve(pluginDir);
         const iconPath = path.resolve(pluginDir, ...icon.split(/[\\/]+/));
         if (!this.isSameOrChild(iconPath, root)) {
             throw new Error("Plugin icon must stay inside the plugin package");
         }
-        const stat = await fs.stat(iconPath).catch(() => null);
+        const stat = await files.stat(iconPath).catch(() => null);
         if (!stat?.isFile()) {
             throw new Error(`Plugin icon file not found: ${icon}`);
         }
@@ -759,7 +772,7 @@ export class PluginManager {
         if (stat.size > PLUGIN_ICON_MAX_BYTES) {
             throw new Error(`Plugin icon must be at most ${Math.floor(PLUGIN_ICON_MAX_BYTES / 1024)} KB`);
         }
-        const error = validatePluginIconBytes(await fs.readFile(iconPath), icon);
+        const error = validatePluginIconBytes(await files.readFile(iconPath), icon);
         if (error) {
             throw new Error(error);
         }

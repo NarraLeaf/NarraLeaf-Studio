@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../utils/unpatchedFs";
 import path from "path";
 import type { App } from "@/app/app";
 import type { AppWindow } from "./managers/window/appWindow";

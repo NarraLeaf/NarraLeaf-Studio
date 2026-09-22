@@ -1,4 +1,6 @@
 import { Logger } from "@shared/utils/logger";
+// The patched module, for {@link FileSystemHandler} alone: see the comment where it reads.
+import studioArchiveFs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { AssetResolved, AssetResolver, ProtocolHandler, ProtocolResponse, ProtocolRule, ProtocolScheme } from "./types";
@@ -68,14 +70,20 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
         }
 
         const filePath = fileURLToPath(resolved.path);
-        const result = await Fs.readRaw(filePath);
-
-        if (!result.ok) {
+        // Through Electron's patched `fs`, not `Fs`. Every directory this handler serves is Studio's
+        // own - `public` and the window bundles live inside app.asar in a packaged build, and the
+        // icons in `resources` - and only the patched module can read inside the archive. `Fs` goes
+        // around the patch because everything else it reads belongs to an author (unpatchedFs.ts);
+        // the author files this protocol serves go through `FileSystemHashHandler` below.
+        let data: Buffer;
+        try {
+            data = await studioArchiveFs.readFile(filePath);
+        } catch (error) {
             // A file that was never built is a 404, not a 500. `dist` can go missing
             // under a running dev session, and an opaque 500 with an empty body hides
             // which bundle is absent; 500 stays for genuine read failures.
-            const missing = result.error.code === FsRejectErrorCode.NOT_FOUND;
-            this.logger.error(`Error reading file: ${filePath} - ${result.error.message}`);
+            const missing = (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+            this.logger.error(`Error reading file: ${filePath} - ${error instanceof Error ? error.message : String(error)}`);
             return {
                 statusCode: missing ? 404 : 500,
                 headers: {},
@@ -95,7 +103,7 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
                     "Cache-Control": "public, max-age=180, immutable"
                 })
             },
-            data: result.data
+            data
         } as ProtocolResponse;
     }
 

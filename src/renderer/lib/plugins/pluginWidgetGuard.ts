@@ -1,4 +1,6 @@
+import { sanitizeContributedWidgetPartSlots } from "@shared/types/ui-editor/contributedWidgets";
 import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { RuntimeWidgetRendererProps } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import { narrowWidgetEventDispatchForPlugin } from "@/lib/ui-editor/runtime/widgetEventDispatch";
@@ -234,6 +236,37 @@ export function sanitizePluginWidgetLogicApi(
     return result.logicApi;
 }
 
+/** What a plugin widget declares about itself, held to what the host can honour. */
+export type PluginWidgetDeclaration = {
+    logicApi: WidgetLogicApi | undefined;
+    acceptsChildren: boolean;
+    partSlots: readonly string[];
+};
+
+/**
+ * The three declarations every shared capability lookup answers a plugin widget from - its events,
+ * and which kind of parent it is - through the same checks wherever a plugin widget is registered.
+ *
+ * Read by the workspace's registration below and by the interface command line when it is handed a
+ * plugin (`ui-cli/plugins.ts`), so the tool and the editor cannot disagree about what a widget
+ * holds. What is set aside is said on the console, naming the plugin and the widget, because the
+ * plugin's author is the only one who can fix it.
+ */
+export function sanitizePluginWidgetDeclaration(
+    pluginId: string,
+    module: Pick<PluginWidgetModule, "type" | "logicApi" | "acceptsChildren" | "partSlots">,
+): PluginWidgetDeclaration {
+    const logicApi = sanitizePluginWidgetLogicApi(pluginId, module.type, module.logicApi);
+    for (const problem of scriptEventsOfContributedLogicApi(logicApi).problems) {
+        console.warn(`[plugin:${pluginId}] widget ${module.type}, event "${problem.eventId}": ${problem.message}.`);
+    }
+    const structure = sanitizeContributedWidgetPartSlots(module.partSlots, module.acceptsChildren === true);
+    for (const problem of structure.problems) {
+        console.warn(`[plugin:${pluginId}] widget ${module.type}: ${problem.message}.`);
+    }
+    return { logicApi, acceptsChildren: structure.acceptsChildren, partSlots: structure.partSlots };
+}
+
 /**
  * Wrap a plugin's widget module so every callback the host makes into it is handed the narrowed
  * surface.
@@ -254,12 +287,13 @@ export function guardPluginWidgetModule(
 
     // What the registry holds is what the shared lookups answer with (`contributedWidgets.ts`), so
     // the declaration is held to the plugin's own heads here, once, before anything reads it.
-    const logicApi = sanitizePluginWidgetLogicApi(pluginId, module.type, module.logicApi);
+    const { logicApi, acceptsChildren, partSlots } = sanitizePluginWidgetDeclaration(pluginId, module);
     const guarded: UIWidgetModule = {
         type: module.type,
         extends: module.extends,
         logicApi,
-        acceptsChildren: module.acceptsChildren === true,
+        acceptsChildren,
+        ...(partSlots.length > 0 ? { partSlots } : {}),
         displayName: module.displayName,
         icon: module.icon,
         createDefaultElement: () => module.createDefaultElement(),

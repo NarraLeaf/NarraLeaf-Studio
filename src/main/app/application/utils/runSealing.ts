@@ -61,21 +61,20 @@ export type RunSealingChoice =
 export type RunSealing = { by: RunSealingChoice["by"]; asked: boolean } & (
     | { kind: "unprotected" }
     | { kind: "loose-by-choice" }
-    | { kind: "sealed"; key: string }
+    | { kind: "sealed" }
 );
 
 export type RunSealingInput = {
     projectPath: string;
     /** Where this run's "as shipped" answer comes from. See {@link RunSealingChoice}. */
     choice: RunSealingChoice;
-    /**
-     * How this host obtains the pack key. Injected rather than imported, because the key comes out
-     * of a native binding and the decision above it does not - which is what lets the decision be
-     * tested without one.
-     */
-    resolveKey: () => Promise<string>;
 };
 
+/**
+ * The answer is a decision and nothing more: a sealed run hands the compile `protectAssets` and
+ * the codec package makes everything the store is sealed with itself, fresh for that compile. There
+ * is no key for a host to fetch or keep.
+ */
 export async function resolveRunSealing(input: RunSealingInput): Promise<RunSealing> {
     const { choice } = input;
     const asked = choice.by === "command-line"
@@ -90,7 +89,7 @@ export async function resolveRunSealing(input: RunSealingInput): Promise<RunSeal
     if (!asked) {
         return { by: choice.by, asked, kind: "loose-by-choice" };
     }
-    return { by: choice.by, asked, kind: "sealed", key: await input.resolveKey() };
+    return { by: choice.by, asked, kind: "sealed" };
 }
 
 /**

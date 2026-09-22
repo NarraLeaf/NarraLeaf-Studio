@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import type { Dirent } from "fs";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../utils/unpatchedFs";
 import path from "path";
 import { CacheNamespace } from "@shared/types/constants";
 import type { PluginBuildDependencyTargetContribution } from "@shared/types/plugins";

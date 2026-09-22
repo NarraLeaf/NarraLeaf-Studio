@@ -87,6 +87,9 @@ import type {
     ScriptSelf,
     StoryScriptContext,
     StorySyncScriptContext,
+    BuiltinScriptWidgetType,
+    PluginScriptWidgets,
+    PluginScriptWidgetType,
     ScriptWidgetType,
     StoryActionHandler,
     StoryConditionHandler,
@@ -186,8 +189,11 @@ export type ScriptEventPayload<E extends ScriptEventId> = {
     readonly [K in keyof (typeof SCRIPT_EVENT_PAYLOADS)[E]]: DecodePin<(typeof SCRIPT_EVENT_PAYLOADS)[E][K]>;
 };
 
-/** `mouseClick` is exported as `onMouseClick`; the rule, not a table. */
-export type ScriptEventExportName<E extends ScriptEventId> = `on${Capitalize<E>}`;
+/**
+ * `mouseClick` is exported as `onMouseClick`; the rule, not a table. Over any event name, because a
+ * plugin widget's own events follow the same rule under names its plugin chose.
+ */
+export type ScriptEventExportName<E extends string> = `on${Capitalize<E>}`;
 
 export function scriptEventExportName<E extends ScriptEventId>(eventId: E): ScriptEventExportName<E> {
     return `on${eventId.charAt(0).toUpperCase()}${eventId.slice(1)}` as ScriptEventExportName<E>;
@@ -361,7 +367,7 @@ export const SCRIPT_EVENTS_BY_WIDGET = {
     "nl.choice.list": LIST_EVENTS,
     "nl.nvl.list": LIST_EVENTS,
     "nl.nvl.texts": ROW_WIDGET_EVENTS,
-} as const satisfies Record<ScriptWidgetType, readonly ScriptEventId[]>;
+} as const satisfies Record<BuiltinScriptWidgetType, readonly ScriptEventId[]>;
 
 /**
  * Events a widget script loses inside a component definition.
@@ -430,14 +436,45 @@ export type SurfaceHandler<E extends (typeof SCRIPT_EVENTS_BY_ANCHOR)["surface"]
     SurfaceSelf,
     E
 >;
-export type WidgetHandler<
-    W extends ScriptWidgetType,
-    E extends (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number],
-> = ScriptEventHandler<ElementSelf<W>, E>;
+/**
+ * The events a script on widget type `W` may export, each with the `event` argument it is handed.
+ *
+ * Studio's own widgets answer from {@link SCRIPT_EVENTS_BY_WIDGET}; a plugin's widget answers from
+ * {@link PluginScriptWidgets}, which the project's declarations fill in. Split and joined rather than
+ * chosen between, so a `W` that is a union - a caller that does not know the element - is still
+ * every event any of them has, the loose answer {@link ScriptModuleFor} documents.
+ */
+export type WidgetScriptEvents<W extends ScriptWidgetType> = BuiltinWidgetScriptEvents<Extract<W, BuiltinScriptWidgetType>>
+    & ContributedWidgetScriptEvents<Extract<W, PluginScriptWidgetType>>;
+
+type BuiltinWidgetScriptEvents<W extends BuiltinScriptWidgetType> = {
+    [E in (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number]]: ScriptEventPayload<E>;
+};
+
+// `{}` is the identity of the intersection above: a W with no plugin half adds no events.
+type ContributedWidgetScriptEvents<W extends PluginScriptWidgetType> = [W] extends [never] ? {} : PluginScriptWidgets[W];
+
+/** The id of an event a script on widget type `W` may export. */
+export type WidgetEventId<W extends ScriptWidgetType> = Extract<keyof WidgetScriptEvents<W>, string>;
+
+/**
+ * The `event` argument of one widget event, for the declaration form of a handler:
+ *
+ *     export function onRated(ctx: WidgetCtx<"acme.rating.stars">, event: WidgetEvent<"acme.rating.stars", "rated">) {}
+ *
+ * On Studio's own widgets it is the same type as {@link ScriptEvent}; it exists for the widgets a
+ * plugin contributes, whose events are not in that vocabulary.
+ */
+export type WidgetEvent<W extends ScriptWidgetType, E extends WidgetEventId<W>> = WidgetScriptEvents<W>[E];
+
+export type WidgetHandler<W extends ScriptWidgetType, E extends WidgetEventId<W>> = (
+    ctx: GameScriptContext<ElementSelf<W>>,
+    event: WidgetScriptEvents<W>[E],
+) => void | Promise<void>;
 export type ComponentWidgetHandler<
     W extends ScriptWidgetType,
-    E extends Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>,
-> = ScriptEventHandler<ComponentElementSelf<W>, E>;
+    E extends Exclude<WidgetEventId<W>, ComponentExcludedEvent>,
+> = (ctx: GameScriptContext<ComponentElementSelf<W>>, event: WidgetScriptEvents<W>[E]) => void | Promise<void>;
 
 /** A module's optional named exports, one per event the slot admits. */
 export type ScriptEventExports<Self extends ScriptSelf, E extends ScriptEventId> = {
@@ -454,15 +491,13 @@ export type GlobalScriptModule = ScriptEventExports<{ kind: "project" }, (typeof
 
 export type SurfaceScriptModule = ScriptEventExports<SurfaceSelf, (typeof SCRIPT_EVENTS_BY_ANCHOR)["surface"][number]>;
 
-export type WidgetScriptModule<W extends ScriptWidgetType> = ScriptEventExports<
-    ElementSelf<W>,
-    (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number]
->;
+export type WidgetScriptModule<W extends ScriptWidgetType> = {
+    [K in WidgetEventId<W> as ScriptEventExportName<K>]?: WidgetHandler<W, K>;
+};
 
-export type ComponentWidgetScriptModule<W extends ScriptWidgetType> = ScriptEventExports<
-    ComponentElementSelf<W>,
-    Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>
->;
+export type ComponentWidgetScriptModule<W extends ScriptWidgetType> = {
+    [K in Exclude<WidgetEventId<W>, ComponentExcludedEvent> as ScriptEventExportName<K>]?: ComponentWidgetHandler<W, K>;
+};
 
 export type StoryScriptModule<Mode extends "action" | "value" | "condition" = "action"> = {
     default: Mode extends "value" ? StoryValueHandler : Mode extends "condition" ? StoryConditionHandler : StoryActionHandler;
