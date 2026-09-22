@@ -47,6 +47,7 @@ import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { CommandLineCheckRun } from "./application/commandLineCheck";
+import { getCommandLineRunEnd } from "./application/commandLineRunEnd";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
 import { decideReopenAction } from "./application/reopenAction";
@@ -748,6 +749,13 @@ export class App extends BaseApp {
         // a once-per-profile notice, it spends itself on the one moment it cannot be true, so the
         // first real residency is then the silent one.
         if (this.isQuitting()) {
+            return;
+        }
+        // Nor is a command-line run's window going away, which is its run ending - and the run owns
+        // what happens next (see `commandLineRunEnd.ts`). Residency would put a notification on an
+        // operator's screen and spend the profile's once-only notice on a process about to exit;
+        // quitting would exit 0 underneath a run that has not reported.
+        if (getCommandLineRunEnd()) {
             return;
         }
         if (this.trayManager?.isActive()) {
