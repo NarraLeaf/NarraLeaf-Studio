@@ -89,6 +89,7 @@ import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { countBuildStep } from "../../../../../buildWorker/stepProgress";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
+import { isHostLitter } from "@shared/utils/hostLitter";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
@@ -876,6 +877,7 @@ export async function compileGameRuntimeArtifact(
             target,
             include: shipped?.include ?? null,
             ...(input.assetReplacements ? { assetReplacements: input.assetReplacements } : {}),
+            onNotice: message => notices.push(message),
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -935,6 +937,7 @@ export async function compileGameRuntimeArtifact(
             appDir,
             projectPath: input.projectPath,
             target,
+            onNotice: message => notices.push(message),
         });
 
         // What this payload can say about DLC, as the assembler stated it - the one place that
@@ -1818,6 +1821,8 @@ async function copyProjectAssets(input: {
      */
     include: ReadonlySet<string> | null;
     assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
+    /** Where a bundle asset reports the files it left out (see listBundleFiles). */
+    onNotice?: (message: string) => void;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     /*
@@ -1941,18 +1946,23 @@ async function copyAssetBundle(input: {
     normalized: ReturnType<typeof normalizeAssetRecord>;
     sourceDir: string;
     authoredEntry?: string;
+    onNotice?: (message: string) => void;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const { normalized, sourceDir } = input;
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
 
     let files: string[];
+    const litter: string[] = [];
     try {
-        files = sortBundlePaths(await listBundleFiles(sourceDir));
+        files = sortBundlePaths(await listBundleFiles(sourceDir, "", litter));
     } catch (error) {
         throw new Error(
             `Failed to read model bundle "${normalized.name}" (${normalized.id}) at ${sourceDir}: ` +
             `${error instanceof Error ? error.message : String(error)}`,
         );
+    }
+    if (litter.length > 0) {
+        input.onNotice?.(leftOutLitterNotice(`model "${normalized.name}"`, litter));
     }
     if (files.length === 0) {
         throw new Error(`Model bundle "${normalized.name}" (${normalized.id}) is empty at ${sourceDir}`);
@@ -2031,13 +2041,26 @@ async function copyAssetBundle(input: {
     return manifest;
 }
 
-/** Every regular file under `root`, relative and `/`-separated. */
-async function listBundleFiles(root: string, prefix = ""): Promise<string[]> {
+/**
+ * Every regular file under `root` that ships, relative and `/`-separated.
+ *
+ * Host litter is not part of the bundle, wherever in the tree it sits: a Finder `.DS_Store`, an
+ * Explorer `Thumbs.db`, macOS's `._` twins, an editor's swap file, a `.git` checkout the folder was
+ * cloned as (see hostLitter.ts). These folders reach a project whole, from an export on somebody's
+ * disk, and the reason a bundle ships every file - only its manifest knows which ones matter - says
+ * nothing about files no manifest can name. `litter`, when given, collects what was passed over so
+ * the caller can say so in the build log.
+ */
+async function listBundleFiles(root: string, prefix = "", litter?: string[]): Promise<string[]> {
     const collected: string[] = [];
     for (const dirent of await fs.readdir(root, { withFileTypes: true })) {
         const relative = prefix ? `${prefix}/${dirent.name}` : dirent.name;
+        if (isHostLitter(dirent.name)) {
+            litter?.push(relative);
+            continue;
+        }
         if (dirent.isDirectory()) {
-            collected.push(...await listBundleFiles(path.join(root, dirent.name), relative));
+            collected.push(...await listBundleFiles(path.join(root, dirent.name), relative, litter));
         } else if (dirent.isFile()) {
             const normalized = normalizeBundlePath(relative);
             if (normalized) {
@@ -2046,6 +2069,12 @@ async function listBundleFiles(root: string, prefix = ""): Promise<string[]> {
         }
     }
     return collected;
+}
+
+/** The build-log line for litter a folder copy passed over. */
+function leftOutLitterNotice(what: string, litter: readonly string[]): string {
+    return `left out of ${what}: ${litter.join(", ")} - files a file manager, editor or version `
+        + "control leaves in a folder, never part of what a game reads";
 }
 
 function readAuthoredBundleEntry(rawAsset: AssetMetadataRecord): string | undefined {
@@ -2202,6 +2231,8 @@ async function copyPuppetRuntimes(input: {
     appDir: string;
     projectPath: string;
     target: PackTarget;
+    /** Where a backend reports the files it left out (see listBundleFiles). */
+    onNotice?: (message: string) => void;
 }): Promise<GameRuntimePackPuppetRuntimeEntry[]> {
     const root = path.join(input.projectPath, ...PUPPET_RUNTIMES_PROJECT_DIR);
     let dirents;
@@ -2211,9 +2242,15 @@ async function copyPuppetRuntimes(input: {
         return [];
     }
     const entries: GameRuntimePackPuppetRuntimeEntry[] = [];
-    for (const dirent of dirents.filter(item => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+    // A `__MACOSX` or `.git` beside the backends is not a backend, and would only earn a warning below.
+    const backends = dirents.filter(item => item.isDirectory() && !isHostLitter(item.name));
+    for (const dirent of backends.sort((a, b) => a.name.localeCompare(b.name))) {
         const sourceDir = path.join(root, dirent.name);
-        const files = sortBundlePaths(await listBundleFiles(sourceDir));
+        const litter: string[] = [];
+        const files = sortBundlePaths(await listBundleFiles(sourceDir, "", litter));
+        if (litter.length > 0) {
+            input.onNotice?.(leftOutLitterNotice(`puppet runtime "${dirent.name}"`, litter));
+        }
         if (!files.includes(PUPPET_RUNTIME_ENTRY_FILE)) {
             console.warn(
                 "[gameRuntimeArtifactCompiler]",

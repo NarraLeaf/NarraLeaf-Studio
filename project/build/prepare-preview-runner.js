@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { rootDir } = require('./utils');
+const { isElectronDistLitter } = require('./electron-dist-litter');
 
 const electronPackageDir = path.dirname(require.resolve('electron'));
 const electronDistDir = path.join(electronPackageDir, 'dist');
@@ -29,7 +30,26 @@ fs.mkdirSync(path.dirname(targetDir), { recursive: true });
 // "icudtl.dat not found in bundle", "GPU process isn't usable. Goodbye.". On any
 // other machine the links simply dangle. Verified against Node 22: the option
 // exists since 18.17/20.1.
-fs.cpSync(electronDistDir, targetDir, { recursive: true, verbatimSymlinks: true });
+//
+// The filter is what keeps this machine out of the installer. node_modules/electron/dist
+// is a folder Electron runs from, so it holds whatever running it left there -
+// on Windows a `debug.log` beside the executable, Chromium's default log file - and
+// whatever a file manager wrote while someone looked inside it.
+const leftBehind = [];
+fs.cpSync(electronDistDir, targetDir, {
+    recursive: true,
+    verbatimSymlinks: true,
+    filter: source => {
+        if (source !== electronDistDir && isElectronDistLitter(path.basename(source))) {
+            leftBehind.push(path.relative(electronDistDir, source));
+            return false;
+        }
+        return true;
+    },
+});
+if (leftBehind.length > 0) {
+    console.log(`[preview-runner] Left out (not part of Electron): ${leftBehind.join(', ')}`);
+}
 
 // The copy above is the only thing standing between a working preview and that
 // failure mode, and nothing downstream checks: electron-builder copies symlinks
