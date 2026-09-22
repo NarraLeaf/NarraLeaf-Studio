@@ -522,6 +522,10 @@ export const workspace = {
         projectTakenOverTitle: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
         projectTakenOverHere: "この端末で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
         projectTakenOverElsewhere: "{host} で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
+        // 同じく引き継がれたが、気づいた時点で相手はすでにプロジェクトを閉じていた場合。時刻は相手が開いた時点。
+        projectDisplacedTitle: "このプロジェクトは別の NarraLeaf Studio で開かれた",
+        projectDisplacedHere: "この端末で {time} に開かれ、このウィンドウでの変更は保存されない。再試行するとプロジェクトを開き直す",
+        projectDisplacedElsewhere: "{host} で {time} に開かれ、このウィンドウでの変更は保存されない。再試行するとプロジェクトを開き直す",
         openLauncher: "ランチャーを開く",
         panelRenderError: "このパネルで描画のエラーが起きた",
         mainEditorRegion: "メインのエディタ",
