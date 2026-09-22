@@ -20,25 +20,6 @@ export const FILE_STREAM_THRESHOLD_BYTES = 8 * 1024 * 1024;
 const STREAM_CHUNK_BYTES = 256 * 1024;
 
 /**
- * Bytes `start..start+length-1` of an open file, read into one buffer.
- *
- * Shorter than `length` only when the file shrank after it was measured; the caller reports what it
- * actually has rather than the length it expected.
- */
-export async function readFileSpan(handle: FileHandle, start: number, length: number): Promise<Buffer> {
-    const buffer = Buffer.alloc(length);
-    let filled = 0;
-    while (filled < length) {
-        const { bytesRead } = await handle.read(buffer, filled, length - filled, start + filled);
-        if (bytesRead === 0) {
-            break;
-        }
-        filled += bytesRead;
-    }
-    return filled === length ? buffer : buffer.subarray(0, filled);
-}
-
-/**
  * Bytes `start..end` (inclusive) of an open file as a response body that reads on demand.
  *
  * Pull-driven rather than an adapted Node stream on purpose: a read happens only when the consumer

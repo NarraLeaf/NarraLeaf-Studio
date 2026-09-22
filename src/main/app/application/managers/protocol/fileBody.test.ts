@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSpan, streamFileSpan } from "./fileBody";
+import { streamFileSpan } from "./fileBody";
 
 /**
  * A streamed body owns the file handle it reads from, and the renderer decides when it is done with
@@ -68,29 +68,5 @@ describe("streamFileSpan", () => {
 
         await expect(new Response(streamFileSpan(handle, 0, SIZE - 1)).arrayBuffer()).rejects.toThrow();
         expect(close).toHaveBeenCalledTimes(1);
-    });
-});
-
-describe("readFileSpan", () => {
-    let tempDir: string;
-
-    beforeEach(async () => {
-        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-span-"));
-    });
-
-    afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
-    });
-
-    it("reads the span, and only what is there when the file is shorter", async () => {
-        const filePath = path.join(tempDir, "short.bin");
-        await fs.writeFile(filePath, Buffer.from("0123456789"));
-        const handle = await fs.open(filePath, "r");
-        try {
-            expect((await readFileSpan(handle, 2, 3)).toString()).toBe("234");
-            expect((await readFileSpan(handle, 8, 10)).toString()).toBe("89");
-        } finally {
-            await handle.close();
-        }
     });
 });

@@ -98,6 +98,27 @@ export class Fs {
     }
 
     /**
+     * Bytes `start..start+length-1` of a file opened with {@link openForRead}, in one buffer.
+     *
+     * Shorter than `length` only when the file shrank after it was measured, so a caller reports the
+     * length it actually has rather than the one it expected. The handle stays open either way.
+     */
+    public static readSpan(handle: FileHandle, start: number, length: number): Promise<FsRequestResult<Buffer>> {
+        return this.wrap((async () => {
+            const buffer = Buffer.alloc(length);
+            let filled = 0;
+            while (filled < length) {
+                const { bytesRead } = await handle.read(buffer, filled, length - filled, start + filled);
+                if (bytesRead === 0) {
+                    break;
+                }
+                filled += bytesRead;
+            }
+            return filled === length ? buffer : buffer.subarray(0, filled);
+        })());
+    }
+
+    /**
      * Write a file so that a reader only ever sees the old contents or the new ones.
      *
      * The signature is unchanged; only the mechanism is. `fs.writeFile` truncates the target and

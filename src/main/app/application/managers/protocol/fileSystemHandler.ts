@@ -11,7 +11,7 @@ import { decodeTextBytes, encodeTextBytes, resolveTextEncodingId } from "../../.
 import { decodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import { FileStorageBatchEntry, FileStorageInfo, StorageManager } from "../storageManager";
 import { INERT_CONTENT_TYPE, isExecutableContentType, type ProjectCodePolicy } from "./executableContent";
-import { FILE_STREAM_THRESHOLD_BYTES, readFileSpan, streamFileSpan } from "./fileBody";
+import { FILE_STREAM_THRESHOLD_BYTES, streamFileSpan } from "./fileBody";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
     private rules: ProtocolRule[] = [];
@@ -306,15 +306,18 @@ export class FileSystemHashHandler implements ProtocolHandler {
             };
         }
 
-        const opened = await Fs.openForRead(filePath);
-        if (!opened.ok) {
-            const missing = opened.error.code === FsRejectErrorCode.NOT_FOUND;
-            this.logger.error(`Error reading bundle file: ${filePath} - ${opened.error.message}`);
+        const readFailed = (error: FsRejectError): ProtocolResponse => {
+            const missing = error.code === FsRejectErrorCode.NOT_FOUND;
+            this.logger.error(`Error reading bundle file: ${filePath} - ${error.message}`);
             return {
                 statusCode: missing ? 404 : 500,
                 headers: { "Content-Type": "text/plain" },
-                data: missing ? "Not found" : `Failed to read file: ${opened.error.message}`
+                data: missing ? "Not found" : `Failed to read file: ${error.message}`
             };
+        };
+        const opened = await Fs.openForRead(filePath);
+        if (!opened.ok) {
+            return readFailed(opened.error);
         }
 
         return this.fileResponse(request, opened.data, {
@@ -322,7 +325,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
             // Same reasoning as a session grant: the hash is minted per resolve, so cached bytes
             // cannot outlive the record they belong to.
             "Cache-Control": "private, max-age=3600"
-        }, { byteRanges: true });
+        }, { byteRanges: true, readFailed });
     }
 
     /**
@@ -330,8 +333,9 @@ export class FileSystemHashHandler implements ProtocolHandler {
      *
      * The grant's lifetime decides two things here, and they are the same decision:
      *
-     *  - **When it is spent.** A one-shot grant is destroyed as soon as its file has been opened for
-     *    this request; a session grant stays valid until the owner window revokes it.
+     *  - **When it is spent.** A one-shot grant is destroyed by the first request that gets its bytes -
+     *    read whole, or a stream of them handed to the renderer - and not by one that failed; a
+     *    session grant stays valid until the owner window revokes it.
      *  - **Whether it answers a `Range`.** A media element reads a clip as a series of range requests
      *    - one to start, another for every seek outside what it has buffered - so honouring ranges on
      *    a grant that dies after the first request would advertise something the second request
@@ -383,11 +387,10 @@ export class FileSystemHashHandler implements ProtocolHandler {
         if (!opened.ok) {
             return this.readFailed(opened.error);
         }
-        spend();
         return this.fileResponse(request, opened.data, {
             ...this.contentTypeHeaders(storageInfo, storageInfo.path, "application/octet-stream"),
             ...cacheHeaders,
-        }, { byteRanges: sessionLived });
+        }, { byteRanges: sessionLived, readFailed: error => this.readFailed(error), onServed: spend });
     }
 
     /**
@@ -409,6 +412,10 @@ export class FileSystemHashHandler implements ProtocolHandler {
      * Takes ownership of `file.handle`. A streamed body closes it when the renderer is done with the
      * stream; every other path closes it before returning.
      *
+     * `onServed` runs only when the response carries the file's bytes: after a buffered read has
+     * succeeded, or once a stream of them is handed over. A read that fails after the file opened is
+     * answered by `readFailed` instead, as a failed open is.
+     *
      * The range grammar is the one the packaged runtime's `serveAsset` answers with, from the same
      * {@link resolveSingleByteRange}: a single `bytes=` range, suffix ranges included, is a `206`;
      * one past the end of the file is a `416`; anything else - several ranges, a malformed header -
@@ -418,7 +425,11 @@ export class FileSystemHashHandler implements ProtocolHandler {
         request: Request,
         file: { handle: FileHandle; size: number },
         headers: Record<string, string>,
-        { byteRanges }: { byteRanges: boolean },
+        { byteRanges, readFailed, onServed }: {
+            byteRanges: boolean;
+            readFailed: (error: FsRejectError) => ProtocolResponse;
+            onServed?: () => void;
+        },
     ): Promise<ProtocolResponse> {
         const { handle, size } = file;
         let handedToStream = false;
@@ -445,11 +456,16 @@ export class FileSystemHashHandler implements ProtocolHandler {
                 handedToStream = true;
                 sent = length;
             } else {
-                data = await readFileSpan(handle, start, length);
+                const read = await Fs.readSpan(handle, start, length);
+                if (!read.ok) {
+                    return readFailed(read.error);
+                }
+                data = read.data;
                 // What was actually read, should the file have shrunk since it was measured.
                 sent = data.byteLength;
             }
 
+            onServed?.();
             return {
                 statusCode: partial ? 206 : 200,
                 headers: {

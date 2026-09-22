@@ -6,6 +6,7 @@ import { StorageManager } from "../storageManager";
 import type { AppWindow } from "../window/appWindow";
 import { encodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import { FsRejectErrorCode } from "@shared/types/os";
+import { Fs } from "@shared/utils/fs";
 import { FileSystemHandler, FileSystemHashHandler } from "./fileSystemHandler";
 import { FILE_STREAM_THRESHOLD_BYTES } from "./fileBody";
 
@@ -320,6 +321,24 @@ describe("FileSystemHashHandler byte ranges", () => {
         expect((await handler.handle(rangeRequest(url))).statusCode).toBe(500);
         await fs.writeFile(target, bytesFrom(0, 10));
         expect((await handler.handle(rangeRequest(url))).statusCode).toBe(200);
+    });
+
+    it("does not spend a one-shot grant when the file opened but could not be read", async () => {
+        const url = `app://fs/${grant(filePath, "once")}`;
+        const readSpan = vi.spyOn(Fs, "readSpan").mockResolvedValueOnce({
+            ok: false,
+            error: { code: FsRejectErrorCode.IO_ERROR, message: "EIO: i/o error, read" },
+        });
+        try {
+            const failed = await handler.handle(rangeRequest(url));
+            expect(failed.statusCode).toBe(500);
+            expect(failed.headers["Content-Type"]).toBe("application/json");
+            expect(JSON.parse(String(failed.data)).error.code).toBe(FsRejectErrorCode.IO_ERROR);
+        } finally {
+            readSpan.mockRestore();
+        }
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(200);
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(404);
     });
 
     it("serves ranges inside a directory grant, which is asked many times too", async () => {
