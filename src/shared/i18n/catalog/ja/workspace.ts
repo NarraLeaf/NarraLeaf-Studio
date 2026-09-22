@@ -148,6 +148,9 @@ export const workspace = {
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
             importScriptSummary: "{applied} 行を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
+            importScriptSkipped: {
+                other: "{count} 行を飛ばした",
+            },
             readFailed: "{name} のボイスの割り当てを読み込めなかった",
             alreadyAdded: "{name} はすでにボイスの言語の一覧にある",
             languageGone: "このボイスの言語はもう一覧にない",
@@ -829,6 +832,28 @@ export const workspace = {
                 notAFolder: "モデルはフォルダーごと読み込む",
                 emptyFolder: "フォルダーが空",
                 copyIncomplete: "フォルダー内の一部のファイルをプロジェクトにコピーできなかった",
+                projectNotAccepting: "プロジェクトはいま変更を受け付けていない",
+            },
+            // URL がアセットにならなかった理由、またはリモートアセットの取得元を確認できなかった理由。
+            // サーバーとアドレスについて述べ、ステータス行や URL そのものは引用しない。
+            remote: {
+                invalidUrl: "このアドレスは有効な URL ではない",
+                unsupportedScheme: "ダウンロードできるのは http と https のアドレスだけ",
+                unreachable: "サーバーに接続できなかった",
+                timeout: "サーバーが {seconds} 秒以内に応答しなかった",
+                notFound: "サーバーのこのアドレスにファイルがない",
+                accessDenied: "サーバーがこのファイルのダウンロードを許可していない",
+                serverError: "サーバーでエラーが起きた。時間をおいて再試行する",
+                refused: "サーバーがリクエストを受け付けなかった",
+                tooLarge: "ファイルがリモートアセットの上限 {limit} MB を超えている",
+                noContent: "サーバーが中身を返さなかった",
+                bundle: "モデルは URL から読み込めない",
+                // {codecs} と {container} はファイル自身が名乗る形式名（HEVC、AVI）。ダウンロードした
+                // ファイルはその場で変換できないので、変換したものをローカルから読み込む。
+                unplayableCodecs: "NarraLeaf では {codecs} を再生できない。変換したファイルをローカルから読み込む",
+                unplayableContainer: "NarraLeaf では {container} ファイルを開けない。変換したファイルをローカルから読み込む",
+                unplayableFormat: "NarraLeaf ではこのファイルの形式を開けない。変換したファイルをローカルから読み込む",
+                unplayableNoStreams: "ファイルに NarraLeaf で再生できる音声も映像もない",
             },
             // 翻訳ファイルや収録台本で飛ばした項目。残りは読み込む。位置はファイル自身の数え方で、
             // 表の行、JSON 配列の項目、PO ファイルの行。
@@ -839,6 +864,8 @@ export const workspace = {
                 notEntry: "翻訳ではない項目がある",
                 notEntryAtEntry: "{n} 番目の項目は翻訳ではない",
                 unreadableLine: "{n} 行目を読み取れない",
+                noTake: "未収録の台詞の行がある。その行のメモと状態は反映していない",
+                noTakeAtRow: "{n} 行目の台詞は未収録。メモと状態は反映していない",
             },
         },
         fileDialogFailed: "ファイルのダイアログを開けなかった",

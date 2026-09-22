@@ -9,6 +9,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { describeAssetImportRefusal } from "@/lib/workspace/assets/importFailure";
 import { useWorkspace } from "../../../context";
 
 /**
@@ -68,9 +69,12 @@ export function AssetSourceSection({ asset }: { asset: Asset }) {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
             const result = await assetsService.refreshRemoteAsset(remote);
             if (!result.success) {
+                // The refusal worded for the author; the service's own sentence is English and
+                // quotes the server's status line, so it goes to the log.
+                console.warn(`[assets] could not check the source of ${remote.name}`, result.error);
                 context.services.get<UIService>(Services.UI).showAlert(
                     t("properties.asset.remote.refreshFailedTitle"),
-                    result.error || t("assets.unknownError"),
+                    describeAssetImportRefusal(result.refusal, t) ?? t("assets.unknownError"),
                 );
             }
         } finally {

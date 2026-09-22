@@ -13,7 +13,7 @@
 | `useWorkspace()` | 必须处于 Workspace 上下文内，用于 `context`、`isInitialized`。 |
 | `useAssetData` | 加载 `assets` / `groups`，提供 `loadAssets`、loading / error。 |
 | `useAssetFilters` | 提供筛选配置与 `filteredAssets` / `filteredGroups`（仅作用于**项目资产**）。 |
-| `AssetsService` | 图片预览默认走 `fetch`；导入走 `importLocalAssets`。 |
+| `AssetsService` | 图片预览默认走 `fetch`；导入走 `importFromPaths`。 |
 
 若不在 Workspace 内挂载，数据与导入行为可能不可用（与 `context` 一致）。
 
@@ -152,7 +152,9 @@ export interface AssetSelectorVirtualGroup {
 
 ## 本机导入
 
-工具栏 **Import from disk** 调用 `assetsService.importLocalAssets(assetType)`，成功后 `loadAssets()`，并把新资产 id 并入当前 `selection`（多选语义下便于直接 Choose）。
+工具栏 **Import from disk** 先按类型打开系统对话框（模型等目录型资产选文件夹，其余按 `AssetExtensions[assetType]` 过滤选文件），再调用 `assetsService.importFromPaths(assetType, paths)`，成功后 `loadAssets()`，并把新资产 id 并入当前 `selection`（多选语义下便于直接 Choose）。
+
+进度与失败走资产面板同一个导入条（`ImportQueueStrip` + `useImportQueue`），画在筛选区下方：导入中显示进度，结束后逐个列出未能导入的文件（悬停看原因，原因由 `describeAssetImportRefusal` 按界面语言措辞），带「重试」。对话框本身打不开时发一条 `workspace.shell.fileDialogFailed` 通知。重新打开选择器时清空上一次的失败列表。
 
 ---
 

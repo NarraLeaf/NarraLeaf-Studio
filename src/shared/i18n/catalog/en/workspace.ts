@@ -159,6 +159,11 @@ export const workspace = {
             importFailed: "Could not import the audio files",
             importScript: "Import recording script…",
             importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
+            // Beside the summary when rows of the script were skipped; the detail lists them by row.
+            importScriptSkipped: {
+                one: "{count} row was skipped",
+                other: "{count} rows were skipped",
+            },
             // As `localization.panel.readFailed`, for a voice language's assignments.
             readFailed: "The voice assignments for {name} could not be read.",
             // As the localization panel's refusals, for the voice language list.
@@ -910,6 +915,30 @@ export const workspace = {
                 notAFolder: "Models are imported as a folder.",
                 emptyFolder: "The folder is empty.",
                 copyIncomplete: "Not every file in the folder could be copied into the project.",
+                // The project is frozen or being re-read from disk; it takes no new assets until then.
+                projectNotAccepting: "The project is not accepting changes right now.",
+            },
+            // Why a URL did not become an asset, or a remote asset's source could not be checked.
+            // Said about the server and the address, never quoting the status line or the URL.
+            remote: {
+                invalidUrl: "The address is not a valid URL.",
+                unsupportedScheme: "Only http and https addresses can be downloaded.",
+                unreachable: "Studio could not connect to the server.",
+                timeout: "The server did not respond within {seconds} seconds.",
+                notFound: "The server has no file at this address.",
+                accessDenied: "The server does not allow this file to be downloaded.",
+                serverError: "The server reported an error. Try again later.",
+                refused: "The server did not accept the request.",
+                tooLarge: "The file is larger than {limit} MB, the limit for a remote asset.",
+                noContent: "The server returned no content.",
+                bundle: "Models cannot be imported from a URL.",
+                // `{codecs}` and `{container}` are the format names the file itself declares (HEVC, AVI).
+                // A downloaded file cannot be converted in place, so the way on is a converted copy
+                // imported from disk.
+                unplayableCodecs: "NarraLeaf cannot play {codecs}. Convert the file and import the converted copy from disk.",
+                unplayableContainer: "NarraLeaf cannot open {container} files. Convert the file and import the converted copy from disk.",
+                unplayableFormat: "NarraLeaf cannot open this file's format. Convert the file and import the converted copy from disk.",
+                unplayableNoStreams: "The file holds no sound or picture that NarraLeaf can play.",
             },
             // An entry of a translation file or a recording script that was skipped while the rest
             // were read. Positions are the file's own: a spreadsheet row, a JSON array entry, a line
@@ -921,6 +950,9 @@ export const workspace = {
                 notEntry: "An entry is not a translation.",
                 notEntryAtEntry: "Entry {n} is not a translation.",
                 unreadableLine: "Line {n} could not be read.",
+                // A recording-script row with a note or a status for a line that has no take.
+                noTake: "A row is for a line that is not voiced. Its note and status were not applied.",
+                noTakeAtRow: "Row {n} is for a line that is not voiced. Its note and status were not applied.",
             },
         },
         // The system's open or save dialog failed to appear at all.
