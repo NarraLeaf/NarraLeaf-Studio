@@ -562,7 +562,10 @@ export function useProjectWizard() {
         try {
             const outcome = await ImportService.importProject(projectData.packagePath, projectData.location);
             if (outcome.status === "failed") {
-                setImportFailure({ kind: "failed", message: outcome.error });
+                setImportFailure({ kind: "failed", message: outcome.error, leftBehind: outcome.leftBehind });
+                // The attempt may have changed what the folder holds - created it and taken it away
+                // again, or left part of itself in it - so the field says what is there now.
+                void validateProjectDirectory(projectData.location);
                 return;
             }
             if (outcome.status === "notAProject") {
@@ -576,7 +579,7 @@ export function useProjectWizard() {
         } finally {
             setImportStatus("idle");
         }
-    }, [projectData.packagePath, projectData.location]);
+    }, [projectData.packagePath, projectData.location, validateProjectDirectory]);
 
     /**
      * Choose the package, through the native dialog that also grants access to it.

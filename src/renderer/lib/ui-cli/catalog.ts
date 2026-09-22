@@ -28,6 +28,7 @@ import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { propAssignmentKey } from "./dsl/parse";
 import { nearest } from "./text";
 
 export type WidgetPropDoc = {
@@ -143,6 +144,10 @@ const WIDGET_NOTES: Readonly<Record<string, readonly string[]>> = {
     "nl.frame": [
         "A frame draws another Page inside this one. `targetSurfaceId` names the surface, and `params` is "
             + "the prop bag that surface reads through `Get Page Prop`.",
+        "`props.animation = {…}` overrides how the target Page enters and leaves inside this frame; unset, "
+            + "the Page's own animation plays. It is written with the prefix because a bare `animation = {…}` "
+            + "is the frame element's own enter/exit, as on every element - the same shape of record, so "
+            + "writing the wrong one is not an error, it just animates the frame instead of its page.",
     ],
     "nl.root": [
         "Every surface and every component definition has exactly one, and it is not insertable: it is "
@@ -433,12 +438,14 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
     if (detail.props.length > 0) {
         lines.push("");
         lines.push("  props (write these as `key = value` under the element)");
-        const width = Math.max(...detail.props.map(prop => prop.key.length));
-        for (const prop of detail.props) {
+        // Keyed as a `.ui` file writes them, so a prop that needs `props.` is shown with it.
+        const keys = detail.props.map(prop => propAssignmentKey(prop.key));
+        const width = Math.max(...keys.map(key => key.length));
+        for (const [index, prop] of detail.props.entries()) {
             const value = JSON.stringify(prop.defaultValue) ?? "(unset)";
             const shown = value.length > 60 ? `${value.slice(0, 57)}...` : value;
             lines.push(
-                `    ${prop.key.padEnd(width)}  ${prop.valueType.padEnd(7)} = ${shown}`
+                `    ${keys[index].padEnd(width)}  ${prop.valueType.padEnd(7)} = ${shown}`
                     + (prop.inherited ? `  (from ${detail.extends})` : ""),
             );
         }

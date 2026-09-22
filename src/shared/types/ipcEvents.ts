@@ -192,6 +192,7 @@ export enum IPCEventType {
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
     appOpenLogsFolder = "app.openLogsFolder",
+    appOpenThirdPartyNotices = "app.openThirdPartyNotices",
     appProbeDownloadSource = "app.probeDownloadSource",
     appCacheInventory = "app.cacheInventory",
     appCacheClear = "app.cacheClear",
@@ -1089,6 +1090,18 @@ export type IPCEvents = {
      * export above answers "give me a file to send"; this answers "let me look at them myself".
      */
     [IPCEventType.appOpenLogsFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
+    };
+    /**
+     * Open Studio's own third-party notice (`THIRD-PARTY-NOTICES.txt`) in the system's text editor.
+     *
+     * Takes no path for the reason the logs folder takes none: main names the one file itself, so
+     * this cannot be used to open anything else.
+     */
+    [IPCEventType.appOpenThirdPartyNotices]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: Record<string, never>;

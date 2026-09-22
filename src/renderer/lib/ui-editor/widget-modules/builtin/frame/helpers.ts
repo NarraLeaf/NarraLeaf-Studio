@@ -15,5 +15,8 @@ export function createDefaultFrameProps(): FrameWidgetProps {
     return {
         ...DEFAULT_UI_FRAME_WIDGET_PROPS,
         params: {},
+        // Named but unset: a new Page component plays the target Page's own animation. Naming the
+        // key is what makes the override a declared prop of this type rather than a stray one.
+        animation: undefined,
     };
 }

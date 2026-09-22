@@ -8,6 +8,8 @@ const { postcssPlugin } = require('./postCss-plugin');
 // The runtime's import boundary. Kept in its own module so the vitest guard can load the same
 // allow lists this build enforces (see src/renderer/lib/ui-editor/runtime/app/importBoundary.test.ts).
 const { runtimeAliasPlugin } = require('./runtime-alias-plugin');
+// Records which npm packages each runtime bundle contains, for the notice every game ships.
+const { thirdPartyNoticesPlugin } = require('./third-party-notices');
 
 const runtimeSourceDir = path.join(rootDir, 'src', 'runtime');
 const runtimeOutDir = path.join(rootDir, 'dist', 'runtime');
@@ -106,12 +108,16 @@ async function buildRuntime(options = {}) {
         ...commonNodeOptions,
         entryPoints: [path.join(runtimeSourceDir, 'main', 'main.ts')],
         outfile: path.join(runtimeOutDir, 'main.js'),
+        // koffi is not inlined, but its code still reaches every desktop game: the pack compiler
+        // copies it beside main.js without its licence file, so the notice has to carry it.
+        plugins: [thirdPartyNoticesPlugin({ shipsWith: ['koffi'] })],
     });
 
     await esbuild.build({
         ...commonNodeOptions,
         entryPoints: [path.join(runtimeSourceDir, 'preload', 'preload.ts')],
         outfile: path.join(runtimeOutDir, 'preload.js'),
+        plugins: [thirdPartyNoticesPlugin()],
     });
 
     await esbuild.build({
@@ -139,7 +145,7 @@ async function buildRuntime(options = {}) {
             '.woff': 'file',
             '.woff2': 'file',
         },
-        plugins: [runtimeAliasPlugin(), postcssPlugin()],
+        plugins: [runtimeAliasPlugin(), postcssPlugin(), thirdPartyNoticesPlugin()],
     });
 
     // Web runtime shell: replaces main.js/preload.js when a game is exported as
@@ -157,6 +163,7 @@ async function buildRuntime(options = {}) {
         define: productionDefine,
         target: ['chrome114'],
         tsconfig: runtimeTsconfig,
+        plugins: [thirdPartyNoticesPlugin()],
     });
 
     fs.writeFileSync(path.join(runtimeOutDir, 'index.html'), runtimeHtml(), 'utf-8');

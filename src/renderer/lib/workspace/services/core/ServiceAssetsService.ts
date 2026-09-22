@@ -1,5 +1,6 @@
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
+import { parsePluginStore, type PluginStoreReading } from "@shared/utils/pluginStorage";
 import { isStudioStateStore } from "@shared/vcs/serviceStores";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -76,6 +77,34 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
     public async readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>> {
         this.ensureReady();
         return this.getFileSystem().readJSON<T>(this.resolveStoreFile(namespace));
+    }
+
+    /**
+     * Every store a plugin keeps in the project, whichever plugin and whether or not it is installed
+     * here, or null when the directory could not be listed.
+     *
+     * Attributed from the filename (`parsePluginStore`), so the answer is a property of the project
+     * rather than of this Studio's plugin list. A store that exists and will not read is reported as
+     * such rather than dropped: a reader that took the rest as the whole would claim to know what the
+     * plugin holds.
+     */
+    public async readPluginStores(): Promise<PluginStoreReading[] | null> {
+        this.ensureReady();
+        const listed = await this.getFileSystem().list(this.servicesDir);
+        if (!listed.ok) {
+            // A project that never wrote a store has no services directory yet, and nothing in it.
+            return listed.error.code === FsRejectErrorCode.NOT_FOUND ? [] : null;
+        }
+        const stores: PluginStoreReading[] = [];
+        for (const entry of listed.data) {
+            const owner = entry.type === "file" && entry.ext === ".json" ? parsePluginStore(entry.name) : null;
+            if (!owner || isStudioStateStore(entry.name)) {
+                continue;
+            }
+            const read = await this.getFileSystem().readJSON<unknown>(this.resolveVersionedStoreFile(entry.name));
+            stores.push(read.ok ? { ...owner, data: read.data } : { ...owner, unreadable: true });
+        }
+        return stores;
     }
 
     /**

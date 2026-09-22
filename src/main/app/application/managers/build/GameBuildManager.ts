@@ -175,6 +175,7 @@ import { DownloadTaskBridge } from "../tasks/downloadTasks";
 import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
 import { collectProgressCarryFindings } from "./progressCarryPreflight";
+import { gameThirdPartyNotices, THIRD_PARTY_NOTICES_FILENAME } from "./thirdPartyNotices";
 
 type BuildSession = {
     id: string;
@@ -1975,6 +1976,15 @@ export class GameBuildManager {
         if (pluginSelection.errors.length > 0) {
             throw new Error(`Plugin validation failed:\n${pluginSelection.errors.join("\n")}`);
         }
+        // Here rather than beside the copyright notice below, where it is shipped: a Studio whose
+        // notice documents are missing cannot package any game, and that is better learnt before
+        // the compile than after it.
+        const thirdPartyNotices = await this.writeThirdPartyNotices(projectPath, {
+            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+            plugins: pluginSelection.selected,
+            desktop: desktopTargets.length > 0,
+            web: Boolean(webTarget) || mobileTargets.length > 0,
+        });
         // Only a desktop package seals its payload. The web export cannot (its files are served
         // over HTTP by nature), and the mobile packages keep that same site in a container whose
         // key ships inside them, which is a format rather than a protection. Both are reported to
@@ -2189,6 +2199,12 @@ export class GameBuildManager {
         if (copyrightFile && webArtifact) {
             await fs.copyFile(copyrightFile, path.join(webArtifact.appDir, COPYRIGHT_NOTICE_FILENAME));
         }
+        // The third-party notice goes to the same two places, and always: the runtime's npm
+        // packages are inside every game whatever the project says, and their licences ask for
+        // their notices to travel with every copy.
+        if (thirdPartyNotices.web && webArtifact) {
+            await fs.copyFile(thirdPartyNotices.web, path.join(webArtifact.appDir, THIRD_PARTY_NOTICES_FILENAME));
+        }
         this.ensureNotCancelled(session);
 
         this.emit(session, { level: "info", source: "Build", message: "packaging..." });
@@ -2230,6 +2246,7 @@ export class GameBuildManager {
             electronVersion: process.versions.electron,
             ...(identity.copyright ? { copyright: identity.copyright } : {}),
             ...(copyrightFile ? { copyrightFile } : {}),
+            ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
             asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
@@ -3541,6 +3558,41 @@ export class GameBuildManager {
         // one thing every reader of one expects is that the last line ends.
         await fs.writeFile(target, `${text}\n`, "utf-8");
         return target;
+    }
+
+    /**
+     * Stage the third-party notice for each kind of package this build writes, and answer with
+     * their paths: `desktop` for the Electron packages, `web` for the site the web export and both
+     * mobile packages serve. They differ because the two carry different runtime files (see
+     * thirdPartyNotices.ts). A kind the build does not write is null.
+     *
+     * Files for the reason the copyright notice is one, beside it in the build scratch directory.
+     */
+    private async writeThirdPartyNotices(
+        projectPath: string,
+        input: {
+            runtimeDistDir: string;
+            plugins: readonly GameRuntimePluginSource[];
+            desktop: boolean;
+            web: boolean;
+        },
+    ): Promise<{ desktop: string | null; web: string | null }> {
+        const dir = path.join(projectPath, ".nlstudio", "build");
+        const write = async (shell: "electron" | "web", fileName: string): Promise<string> => {
+            const text = await gameThirdPartyNotices({
+                runtimeDistDir: input.runtimeDistDir,
+                shell,
+                plugins: input.plugins,
+            });
+            const target = path.join(dir, fileName);
+            await fs.mkdir(dir, { recursive: true });
+            await fs.writeFile(target, text, "utf-8");
+            return target;
+        };
+        return {
+            desktop: input.desktop ? await write("electron", THIRD_PARTY_NOTICES_FILENAME) : null,
+            web: input.web ? await write("web", `web-${THIRD_PARTY_NOTICES_FILENAME}`) : null,
+        };
     }
 
     /**

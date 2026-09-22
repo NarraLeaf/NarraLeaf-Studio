@@ -567,6 +567,11 @@ export interface RendererPreloadedInterface {
          */
         openLogsFolder(): Promise<RequestStatus<void>>;
         /**
+         * Open Studio's third-party notice in the system's text editor. Takes no path: the file is
+         * the one main knows, in the app's resources.
+         */
+        openThirdPartyNotices(): Promise<RequestStatus<void>>;
+        /**
          * Whether a download mirror answers. In the host because the renderer never opens a
          * network connection of its own, a URL the user just typed included.
          */

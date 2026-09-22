@@ -4,6 +4,7 @@ import type {
     BlueprintGraphEdge,
     BlueprintGraphIr,
     BlueprintGraphNode,
+    BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
@@ -75,7 +76,10 @@ import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemCont
 import type { StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import type { BlueprintAssetNameFlow } from "@/lib/ui-editor/blueprint-nodes/types";
-import { parseBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import {
+    getEffectiveBlueprintVariableRecord,
+    parseBlueprintVariableRef,
+} from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { collectExecReachableNodeIds, findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { mergeBlueprintAssetPins, type BlueprintAssetPin, type BlueprintAssetPinResolver } from "./assetNameCatalog";
 
@@ -117,6 +121,13 @@ import { mergeBlueprintAssetPins, type BlueprintAssetPin, type BlueprintAssetPin
  *
  * The sinks are every input pin a node declares as carrying an asset (`assetRef`), Play Sound's
  * wired clip included, and every value binding on a widget property that draws an asset.
+ *
+ * ## The same walk, asked for values
+ *
+ * Every path that ends at no origin ends somewhere a value was written down, and the walk records
+ * where ({@link WrittenValueSource}). The asset judgement ignores those ends; {@link traceWrittenValues}
+ * collects them, for a question that needs the value itself - which scenes a `Start Game` fed from a
+ * list row can begin at.
  */
 
 // ---------------------------------------------------------------------------
@@ -191,6 +202,36 @@ export interface AssetNameGap {
     origin: AssetNameOrigin;
 }
 
+/**
+ * Where a value that is not put together was written down: the other end of every path the walk
+ * follows that does not end at an origin.
+ *
+ * The asset judgement needs only to know such a place exists - the package carries whatever it
+ * names - so it reads none of these. A caller that needs the value itself (which scene a `Start
+ * Game` fed from a list row can begin at) reads each one; see {@link traceWrittenValues}.
+ */
+export type WrittenValueSource =
+    /**
+     * A value the walk already holds: typed on a node's unwired input, a local variable's declared
+     * default, the rows an author wrote on a list, a literal a story row writes.
+     */
+    | { kind: "value"; value: unknown }
+    /**
+     * A node that declares it hands out data written in the project (`assetNames: "written"`)
+     * without saying where: its own stored value for a literal, a component instance's param, what
+     * a plugin publishes into the game.
+     */
+    | {
+        kind: "node";
+        site: AssetNameNodeSite;
+        owner: BlueprintOwnerRef;
+        params: Record<string, unknown>;
+    }
+    /** A project variable's declared default, which lives in the variable registry. */
+    | { kind: "variableDefault"; scope: StoryVariableRef["scope"]; variableId: string }
+    /** The rows a Game UI list is handed by the engine - choice options, notifications, lines. */
+    | { kind: "engineRows"; elementId: string; elementName: string };
+
 // ---------------------------------------------------------------------------
 // What the judgement reads
 // ---------------------------------------------------------------------------
@@ -226,6 +267,11 @@ export interface StoryVariableWrite {
     target: StoryVariableRef;
     /** The variables the value is read from; empty when it is written in the row. */
     reads: readonly StoryVariableRef[];
+    /**
+     * The literals the row writes, or can pass on: the whole value of `/set x 5`, both arms of a
+     * `? :`. Absent reads as none.
+     */
+    values?: readonly unknown[];
     /** Set when the row computes the value, which makes the row itself the origin. */
     computed?: Extract<AssetNameOrigin, { kind: "storyRow" }>;
 }
@@ -341,19 +387,20 @@ export function createAssetPinLookup(resolve: BlueprintAssetPinResolver | undefi
  * index into a collection. Everything else - arithmetic, string building, a call, a blueprint's
  * value - puts something new together, and a name out of it is assembled.
  */
-function readStoryExpression(expr: StoryExpr, reads: StoryVariableRef[]): boolean {
+function readStoryExpression(expr: StoryExpr, reads: StoryVariableRef[], values: unknown[]): boolean {
     switch (expr.kind) {
         case "literal":
+            values.push(expr.value);
             return true;
         case "var":
             reads.push(expr.target);
             return true;
         case "ternary":
-            return readStoryExpression(expr.consequent, reads) && readStoryExpression(expr.alternate, reads);
+            return readStoryExpression(expr.consequent, reads, values) && readStoryExpression(expr.alternate, reads, values);
         case "array":
-            return expr.items.every(item => readStoryExpression(item, reads));
+            return expr.items.every(item => readStoryExpression(item, reads, values));
         case "index":
-            return readStoryExpression(expr.target, reads);
+            return readStoryExpression(expr.target, reads, values);
         default:
             return false;
     }
@@ -364,7 +411,8 @@ function readStoryExpression(expr: StoryExpr, reads: StoryVariableRef[]): boolea
  *
  * Only rows can write: a declaration's default is written in the project and so contributes nothing
  * a variable could be tainted by. Stories never put a variable into an asset slot themselves, so
- * this is the whole of what they add to the judgement.
+ * this is the whole of what they add to the judgement. The literals a row writes ride along for
+ * {@link traceWrittenValues}, which needs the value and not only whether it was put together.
  */
 export function extractStoryVariableWrites(document: StoryDocument, storyName: string): StoryVariableWrite[] {
     const writes: StoryVariableWrite[] = [];
@@ -375,10 +423,19 @@ export function extractStoryVariableWrites(document: StoryDocument, storyName: s
             }
             const payload = block.payload;
             const reads: StoryVariableRef[] = [];
-            const passesOn = payload.expression ? readStoryExpression(payload.expression.ast, reads) : true;
+            const values: unknown[] = [];
+            let passesOn = true;
+            if (payload.expression) {
+                passesOn = readStoryExpression(payload.expression.ast, reads, values);
+            } else {
+                // With no expression the row writes its literal, which is `value`; with one, `value`
+                // is only the last literal the row held and never reaches the game.
+                values.push(payload.value);
+            }
             writes.push({
                 target: payload.target,
                 reads,
+                ...(values.length > 0 ? { values } : {}),
                 ...(passesOn
                     ? {}
                     : {
@@ -547,6 +604,12 @@ export const ASSET_BINDING_PROPS: Readonly<Record<string, BlueprintAssetPinKind>
     "imageFill.assetId": "image",
 };
 
+/**
+ * The one list whose rows only the project writes. Every other list-like widget extends it for a
+ * Game UI slot - choices, notifications, lines - and is handed rows by the engine as well.
+ */
+const LIST_WIDGET_TYPE = "nl.list";
+
 type GraphKind = AssetNameNodeSite["graphKind"];
 
 /** One graph of one blueprint, and what the walk needs to know about where it sits. */
@@ -566,9 +629,14 @@ interface GraphSite {
     declaresFunction: boolean;
 }
 
+/**
+ * What feeds a slot: another slot, a place a value is put together, or a place one is written down.
+ * The asset judgement treats the third as clean; {@link traceWrittenValues} collects it.
+ */
 type Contribution =
     | { kind: "slot"; key: string }
-    | { kind: "origin"; origin: AssetNameOrigin };
+    | { kind: "origin"; origin: AssetNameOrigin }
+    | { kind: "written"; source: WrittenValueSource };
 
 /** Where a list is, as far as naming it goes. */
 interface ElementPlace {
@@ -645,9 +713,21 @@ class AssetNameWalk {
                 continue;
             }
             this.listIds.push(element.id);
-            // Rows the author wrote on the list are written in the project, and so add nothing. Rows
-            // bound to page props come from whatever opened the page; rows bound to page or project
-            // state come from a script, which this walk cannot read.
+            // Rows the author wrote on the list are written in the project, and so add nothing to the
+            // asset judgement - but they are values a row reader can hand on. A Game UI list is also
+            // handed rows by the engine while the story plays, which nothing in the project states.
+            const authored = (element.props as { items?: unknown } | undefined)?.items;
+            if (Array.isArray(authored) && authored.length > 0) {
+                this.addWriter(listKey(element.id), { kind: "written", source: { kind: "value", value: authored } });
+            }
+            if (element.type !== LIST_WIDGET_TYPE) {
+                this.addWriter(listKey(element.id), {
+                    kind: "written",
+                    source: { kind: "engineRows", elementId: element.id, elementName: elementLabel(element) },
+                });
+            }
+            // Rows bound to page props come from whatever opened the page; rows bound to page or
+            // project state come from a script, which this walk cannot read.
             const binding = (element.props as { itemsBinding?: { kind?: unknown } | null } | undefined)?.itemsBinding;
             if (binding && typeof binding === "object") {
                 if (binding.kind === "pageProp") {
@@ -819,6 +899,9 @@ class AssetNameWalk {
             for (const read of write.reads) {
                 this.addWriter(key, { kind: "slot", key: varKey(read.scope, read.variableId) });
             }
+            for (const value of write.values ?? []) {
+                this.addWriter(key, { kind: "written", source: { kind: "value", value } });
+            }
         }
     }
 
@@ -863,8 +946,11 @@ class AssetNameWalk {
     }
 
     private nodeOrigin(site: GraphSite, node: BlueprintGraphNode): AssetNameOrigin {
+        return { kind: "node", ...this.nodeSite(site, node) };
+    }
+
+    private nodeSite(site: GraphSite, node: BlueprintGraphNode): AssetNameNodeSite {
         return {
-            kind: "node",
             blueprintId: site.blueprint.id,
             blueprintName: site.blueprint.name,
             ownerKey: site.ownerKey,
@@ -953,6 +1039,12 @@ class AssetNameWalk {
 
     // -- the slots ---------------------------------------------------------------------------
 
+    /** The slot one node input is, or null when the walk does not index that node's graph. */
+    inputSlotKey(pin: { blueprintId: string; graphKind: GraphKind; graphId: string; nodeId: string; pinId: string }): string | null {
+        const site = this.graphByKey.get(graphKey(pin.blueprintId, pin.graphKind, pin.graphId));
+        return site?.nodes[pin.nodeId] ? inputKey(site, pin.nodeId, pin.pinId) : null;
+    }
+
     /** What feeds one slot. */
     contributions(key: string): Contribution[] {
         const parts = key.split(KEY_SEPARATOR);
@@ -973,11 +1065,23 @@ class AssetNameWalk {
         if (carrier === "list" && key !== LIST_UNKNOWN_TARGET) {
             return [...(this.writers.get(key) ?? []), { kind: "slot", key: LIST_UNKNOWN_TARGET }];
         }
+        // A variable holds its declared default until something writes it, so the default is one of
+        // the values it can hand on. Written in the project either way, which is all the asset
+        // judgement needs to know.
         if (carrier === "local" && !wildcard) {
-            return [...(this.writers.get(key) ?? []), { kind: "slot", key: localWildcardKey(parts[1]) }];
+            return [
+                ...(this.writers.get(key) ?? []),
+                { kind: "slot", key: localWildcardKey(parts[1]) },
+                { kind: "written", source: { kind: "value", value: this.localDefault(parts[1], parts[2]) } },
+            ];
         }
         if (carrier === "var" && !wildcard) {
-            return [...(this.writers.get(key) ?? []), { kind: "slot", key: varWildcardKey(parts[1] as StoryVariableRef["scope"]) }];
+            const scope = parts[1] as StoryVariableRef["scope"];
+            return [
+                ...(this.writers.get(key) ?? []),
+                { kind: "slot", key: varWildcardKey(scope) },
+                { kind: "written", source: { kind: "variableDefault", scope, variableId: parts[2] } },
+            ];
         }
         if (carrier === "binding") {
             return this.valueBindingContributions(parts[1]);
@@ -986,10 +1090,12 @@ class AssetNameWalk {
     }
 
     private inputContributions(site: GraphSite, node: BlueprintGraphNode, pinId: string): Contribution[] {
-        // An input with no edge holds what is written on the node, which is written in the project.
-        return (site.incoming.get(incomingEdgeKey(node.id, pinId)) ?? [])
-            .filter(edge => site.nodes[edge.from.nodeId])
-            .map(edge => ({ kind: "slot" as const, key: outputKey(site, edge.from.nodeId, edge.from.port) }));
+        const edges = (site.incoming.get(incomingEdgeKey(node.id, pinId)) ?? []).filter(edge => site.nodes[edge.from.nodeId]);
+        if (edges.length === 0) {
+            // An input with no edge holds what is written on the node, which is written in the project.
+            return [{ kind: "written", source: { kind: "value", value: node.params?.[pinId] } }];
+        }
+        return edges.map(edge => ({ kind: "slot" as const, key: outputKey(site, edge.from.nodeId, edge.from.port) }));
     }
 
     private outputContributions(site: GraphSite, node: BlueprintGraphNode, pinId: string): Contribution[] {
@@ -1013,7 +1119,15 @@ class AssetNameWalk {
         }
         switch (pin?.assetName ?? info.flow) {
             case "written":
-                return [];
+                return [{
+                    kind: "written",
+                    source: {
+                        kind: "node",
+                        site: this.nodeSite(site, node),
+                        owner: site.blueprint.owner,
+                        params: node.params ?? {},
+                    },
+                }];
             case "forward":
                 return this.dataInputSlots(site, node);
             default:
@@ -1061,6 +1175,12 @@ class AssetNameWalk {
         }
         const carrier = CARRIER_READS.get(node.type);
         return carrier ? [{ kind: "slot", key: carrier }] : null;
+    }
+
+    /** The default a blueprint declares for one of its variables, or undefined when it declares none. */
+    private localDefault(blueprintId: string, variableId: string): unknown {
+        const blueprint = this.project.blueprintDocument?.blueprints?.[blueprintId];
+        return blueprint ? getEffectiveBlueprintVariableRecord(blueprint)[variableId]?.defaultValue : undefined;
     }
 
     private varRead(scope: StoryVariableRef["scope"], variableId: unknown): Contribution[] | null {
@@ -1216,9 +1336,10 @@ export function findAssetNameGaps(project: AssetNameProject, describer: AssetNam
         for (const contribution of walk.contributions(key)) {
             if (contribution.kind === "origin") {
                 seeds.push({ key, origin: contribution.origin });
-            } else {
+            } else if (contribution.kind === "slot") {
                 slots.push(contribution.key);
             }
+            // A value written down in the project is one the package carries: nothing to report.
         }
         dependencies.set(key, slots);
         for (let index = slots.length - 1; index >= 0; index -= 1) {
@@ -1266,6 +1387,81 @@ export function findAssetNameGaps(project: AssetNameProject, describer: AssetNam
         }
     }
     return gaps;
+}
+
+/** One input pin of one node, by where it sits. */
+export interface ValuePinRef {
+    blueprintId: string;
+    graphKind: GraphKind;
+    graphId: string;
+    nodeId: string;
+    pinId: string;
+}
+
+/**
+ * Where the value arriving at one input pin comes from.
+ *
+ * `origin` is the first place it is put together, when there is one - the same answer the asset
+ * judgement gives a sink. `written` is every place it is written down, followed through the same
+ * carriers: variables, list rows, function parameters, page props. When `origin` is absent,
+ * `written` is the whole of what the pin can receive.
+ */
+export interface ValueTrace {
+    origin?: AssetNameOrigin;
+    written: WrittenValueSource[];
+}
+
+/**
+ * Follow the values arriving at some input pins back to where they are put together or written down.
+ *
+ * The walk the asset judgement runs, asked about pins that do not carry assets: a `Start Game`'s
+ * scene, fed from the row a recollection list was clicked on, is written in the Gallery's catalogue
+ * exactly as a picture taken from the same row is. Asking the one walk means a carrier it learns to
+ * follow is followed for both questions, and neither can grow a reading of a list row the other
+ * does not share.
+ *
+ * Null for a pin the walk does not index - a blueprint no owner resolves never runs, and so has no
+ * graph here - which a caller reads as "cannot say", never as "receives nothing".
+ */
+export function traceWrittenValues(
+    project: AssetNameProject,
+    describer: AssetNameNodeDescriber,
+    pins: readonly ValuePinRef[],
+): Array<ValueTrace | null> {
+    const walk = new AssetNameWalk(project, describer);
+    const cache = new Map<string, Contribution[]>();
+    const contributionsOf = (key: string): Contribution[] => {
+        let found = cache.get(key);
+        if (!found) {
+            found = walk.contributions(key);
+            cache.set(key, found);
+        }
+        return found;
+    };
+    return pins.map(pin => {
+        const start = walk.inputSlotKey(pin);
+        if (!start) {
+            return null;
+        }
+        const trace: ValueTrace = { written: [] };
+        const seen = new Set<string>([start]);
+        const queue = [start];
+        // Breadth-first, so the origin named is the nearest one - the node an author is most likely
+        // to recognise as the one that assembles the value.
+        for (let head = 0; head < queue.length; head += 1) {
+            for (const contribution of contributionsOf(queue[head])) {
+                if (contribution.kind === "origin") {
+                    trace.origin ??= contribution.origin;
+                } else if (contribution.kind === "written") {
+                    trace.written.push(contribution.source);
+                } else if (!seen.has(contribution.key)) {
+                    seen.add(contribution.key);
+                    queue.push(contribution.key);
+                }
+            }
+        }
+        return trace;
+    });
 }
 
 /**

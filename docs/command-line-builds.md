@@ -37,8 +37,11 @@ running the command twice. One variant, one platform, one format, one exit code.
 | `--build-user-data-dir` | A profile folder for this run | the machine's own profile |
 | `--build-signing` | A JSON file naming this run's signing credentials | the project's own selection, from the machine's vault |
 | `--build-setting` | `key=value`, repeatable; `build.*` keys only | the profile's settings |
+| `--build-plugin=` | A plugin to switch on for this run, by name or id; repeatable | the profile's own plugins; see [below](#plugins-a-scratch-profile-has-switched-off) |
 
-Every value-taking flag accepts both `--flag value` and `--flag=value`.
+Every value-taking flag accepts both `--flag value` and `--flag=value`, except `--build-plugin`, which
+takes only `--build-plugin=value`: a plugin's name is free text, like the names the
+[check flags](command-line-checks.md#the-flags) take only that way.
 
 > **On Windows, write a value containing a colon as `--flag=value`.** A launch dies before Studio
 > writes anything when a bare argument looks like `scheme:rest`: `--build-variant a:b` exits with no
@@ -105,6 +108,9 @@ timestamps, and two blocks a job would otherwise have to grep English for:
 - `experimental` — what experimental mode did to this run. A debuggable build looks like any other
   build on disk, so this is the only place a job that archived one can find out.
 
+`plugins` lists what `--build-plugin` named, each by the name the plugin gives itself, with its
+manifest id, its version and `enabledForRun` — false for one the profile already ran.
+
 The shape is `CommandLineBuildReport` in `src/shared/types/commandLineBuild.ts`. Fields are added
 without a schema bump; `schema` changes only when one changes meaning.
 
@@ -119,10 +125,10 @@ opens it — and useless for one that wants an exit code, so a build refuses ins
 A dedicated agent does not need it. A machine that is both an agent and somebody's computer does.
 
 **A different profile is a different everything.** The signing vault lives under it, and so do the
-machine's build settings — a scratch profile has neither. That is what the next two sections are
+machine's build settings — a scratch profile has neither. That is what the next three sections are
 for. So does the plugin list: a scratch profile has the plugins Studio ships with **Gallery** and
-**Menu Bar** switched off, and a project that declares one of them exits `studio-failed` there until
-it is switched on (see [command-line checks](command-line-checks.md#plugins)).
+**Menu Bar** switched off, and a project that declares one of them exits `studio-failed` there unless
+the run switches it on ([below](#plugins-a-scratch-profile-has-switched-off)).
 
 Whether the *download* caches come with it depends on the install. `resolveCacheRoot` puts them
 beside the executable where the platform allows that, and under the profile where it does not:
@@ -202,6 +208,25 @@ The build console names the settings a run was given by key only, and the report
 them. Their values are URLs a job assembled, and a mirror URL carrying an access token is a token in
 a file somebody archives.
 
+## Plugins a scratch profile has switched off
+
+A build loads the plugins the profile runs, as a check does
+([command-line checks](command-line-checks.md#plugins)), and a project made from the starter template
+declares Gallery — which a fresh profile has switched off. `--build-plugin` switches a plugin on for
+this run:
+
+```sh
+--build-plugin=Gallery
+```
+
+Repeatable, one plugin per flag, named by the name the plugin list shows or by its manifest id.
+**Nothing is written to the profile**: the plugin is loaded, counted by the checks and packed into
+the game as if it had been switched on, and the profile's plugin list is left as it was. A plugin
+whose permissions the profile has never granted is refused rather than granted on the run's behalf;
+the plugins Studio ships are granted when it installs them, so Gallery and Menu Bar never are. Every
+refusal, and a named plugin that fails to start, is `studio-failed`. The rules are the checks' own,
+set out in [command-line checks](command-line-checks.md#switching-a-plugin-on-for-one-run).
+
 ## Nothing appears on screen, and nothing needs a display
 
 The operator may be using this machine, and an agent has no screen at all. Four separate things had
@@ -240,7 +265,8 @@ narraleaf-studio \
   --build-report /srv/artifacts/my-game/report.json \
   --build-user-data-dir /var/lib/narraleaf-agent/profile \
   --build-signing /run/secrets/signing.json \
-  --build-setting build.electronMirror=https://mirror.example/electron/
+  --build-setting build.electronMirror=https://mirror.example/electron/ \
+  --build-plugin=Gallery
 ```
 
 How that line is delivered to the machine — SSH, a CI runner, a scheduler — is outside Studio.

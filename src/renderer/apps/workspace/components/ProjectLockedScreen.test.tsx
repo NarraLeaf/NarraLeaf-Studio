@@ -125,6 +125,24 @@ describe("ProjectLockedScreen after a takeover", () => {
         expect(screen.queryByText(/studio-two/)).toBeNull();
     });
 
+    it("says the project was opened elsewhere, not that it is, once the other Studio has closed it", () => {
+        // Found only after the other Studio let go again: there is nothing left to close there, and
+        // "Retry once it has been closed there" would send the author looking for a window that is gone.
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, released: true }} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText("workspace.shell.projectDisplacedTitle")).toBeTruthy();
+        const sentence = screen.getByText(/workspace\.shell\.projectDisplacedElsewhere/);
+        expect(sentence.textContent).toContain("host=studio-two");
+        expect(screen.queryByText(/workspace\.shell\.projectTakenOver/)).toBeNull();
+    });
+
+    it("says the machine is this one there too", () => {
+        render(<ProjectLockedScreen holder={{ ...ELSEWHERE, sameHost: true, released: true }} onRetry={() => undefined} takenOver />);
+
+        expect(screen.getByText(/workspace\.shell\.projectDisplacedHere/)).toBeTruthy();
+        expect(screen.queryByText(/studio-two/)).toBeNull();
+    });
+
     it("offers the same ways out, and still not recovery mode", () => {
         const onRetry = vi.fn();
         render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={onRetry} takenOver />);

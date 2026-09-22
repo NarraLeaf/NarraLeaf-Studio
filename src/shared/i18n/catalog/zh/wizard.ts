@@ -105,6 +105,8 @@ export const wizard = {
             packageUnreadable: "Studio 没有读取该项目包文件的权限",
             folderProtected: "所选文件夹位于 Studio 自身的存储目录中；请选择其他文件夹",
             diskFull: "磁盘空间不足",
+            // 写在原因下方：失败的这次导入写入的内容仍有一部分留在文件夹中。
+            leftBehind: "已解包的部分内容未能从该文件夹中删除；请先清空该文件夹再重试",
         },
     },
     source: {

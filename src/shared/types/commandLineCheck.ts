@@ -1,6 +1,7 @@
 import type {
     CommandLineLintResult,
     CommandLineRunLogLine,
+    CommandLineRunPlugin,
     CommandLineTestResult,
 } from "./commandLineRun";
 
@@ -137,6 +138,13 @@ export type CommandLineCheckReport = {
     lint?: CommandLineLintResult;
     /** Present for `--test-list`, which answers about the registry rather than about the project. */
     tests?: CommandLineTestListing[];
+    /**
+     * The plugins the line named with `--test-plugin` / `--lint-plugin`, each by the name the plugin
+     * gives itself, in the order the line named them. `enabledForRun` says which of them the line
+     * switched on and which this profile already ran. Empty when the line named none, and when a
+     * name found no plugin to switch on - `error` says which.
+     */
+    plugins: CommandLineRunPlugin[];
     /** One sentence saying what went wrong, or null when nothing did. */
     error: string | null;
     log: CommandLineRunLogLine[];

@@ -522,6 +522,10 @@ export const workspace = {
         projectTakenOverTitle: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
         projectTakenOverHere: "この端末で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
         projectTakenOverElsewhere: "{host} で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
+        // 同じく引き継がれたが、気づいた時点で相手はすでにプロジェクトを閉じていた場合。時刻は相手が開いた時点。
+        projectDisplacedTitle: "このプロジェクトは別の NarraLeaf Studio で開かれた",
+        projectDisplacedHere: "この端末で {time} に開かれ、このウィンドウでの変更は保存されない。再試行するとプロジェクトを開き直す",
+        projectDisplacedElsewhere: "{host} で {time} に開かれ、このウィンドウでの変更は保存されない。再試行するとプロジェクトを開き直す",
         openLauncher: "ランチャーを開く",
         panelRenderError: "このパネルで描画のエラーが起きた",
         mainEditorRegion: "メインのエディタ",
@@ -860,6 +864,12 @@ export const workspace = {
                 unplayableContainer: "NarraLeaf では {container} ファイルを開けない。変換したファイルをローカルから読み込む",
                 unplayableFormat: "NarraLeaf ではこのファイルの形式を開けない。変換したファイルをローカルから読み込む",
                 unplayableNoStreams: "ファイルに NarraLeaf で再生できる音声も映像もない",
+                // サインインページ、同意画面、成功として返されたエラーページ。
+                webPage: "このアドレスが返したのはファイルではなくウェブページ",
+                // テキストや文書、または読み込み先の区分のどの形式にも当たらないバイト列。
+                unrecognizedImage: "このアドレスが返した内容は NarraLeaf が認識できる画像形式ではない",
+                unrecognizedMedia: "このアドレスが返した内容は NarraLeaf が認識できる音声・動画形式ではない",
+                unrecognizedFont: "このアドレスが返した内容は NarraLeaf が認識できるフォント形式ではない",
             },
             // 翻訳ファイルや収録台本で飛ばした項目。残りは読み込む。位置はファイル自身の数え方で、
             // 表の行、JSON 配列の項目、PO ファイルの行。
