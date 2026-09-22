@@ -47,6 +47,7 @@ import { SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { CommandLineCheckRun } from "./application/commandLineCheck";
+import { getCommandLineRunEnd } from "./application/commandLineRunEnd";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
 import { decideReopenAction } from "./application/reopenAction";
@@ -108,6 +109,13 @@ interface LauncherStartupOptions {
      * the home screen.
      */
     deferShow?: boolean;
+    /**
+     * Build it for a command-line run: never shown, never focused, never held back as a home screen
+     * to fall back to, and never allowed to put a prompt in front of anybody. The run opens its
+     * project from it and nothing else - there is nobody to hand a home screen to, and a launcher
+     * "revealed" because the run's workspace went away is a window on an operator's desktop.
+     */
+    unattended?: boolean;
 }
 
 /**
@@ -398,7 +406,7 @@ export class App extends BaseApp {
 
     async launchLauncher(
         options: Partial<Electron.BrowserWindowConstructorOptions>,
-        { deferShow = false }: LauncherStartupOptions = {},
+        { deferShow = false, unattended = false }: LauncherStartupOptions = {},
     ): Promise<AppWindow<WindowAppType.Launcher>> {
         // Asked once, and used twice: it decides the window's size as well as the mode the
         // renderer opens in, so setup gets its room from the first frame rather than growing the
@@ -408,7 +416,9 @@ export class App extends BaseApp {
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
             isolated: true,
-            autoFocus: true,
+            autoFocus: !unattended,
+            failurePrompts: !unattended,
+            unattended,
             preload: this.getPreloadScript(),
             windowControlPolicy: WindowControlPolicy.MacNativeOutsideTitleBar,
             options: {
@@ -431,7 +441,9 @@ export class App extends BaseApp {
         });
         window.setTitle("Launcher - NarraLeaf Studio");
         this.applyWindowIcon(window);
-        if (deferShow) {
+        if (unattended) {
+            // Nothing to hold back: this one is never anybody's home screen.
+        } else if (deferShow) {
             this.holdLauncherBack(window);
         } else {
             window.showWhenReady();
@@ -561,19 +573,20 @@ export class App extends BaseApp {
      * caller wants the home screen *seen*, so they also reveal one that is being held back - a
      * launcher exists either way, and without this they would return happily having shown nothing.
      */
-    async ensureLauncher({ deferShow = false }: LauncherStartupOptions = {}): Promise<void> {
+    async ensureLauncher({ deferShow = false, unattended = false }: LauncherStartupOptions = {}): Promise<void> {
+        const keepOffScreen = deferShow || unattended;
         if (this.hasAliveLauncher()) {
-            if (!deferShow) {
+            if (!keepOffScreen) {
                 this.revealHeldBackLauncher();
             }
             return;
         }
         if (this.launcherStartup) {
             const startup = this.launcherStartup;
-            return deferShow ? startup : startup.then(() => this.revealHeldBackLauncher());
+            return keepOffScreen ? startup : startup.then(() => this.revealHeldBackLauncher());
         }
 
-        this.launcherStartup = this.launchLauncher({}, { deferShow }).then(launcher => {
+        this.launcherStartup = this.launchLauncher({}, { deferShow, unattended }).then(launcher => {
             launcher.onKeyUp("F12", () => {
                 launcher.toggleDevTools();
             });
@@ -736,6 +749,13 @@ export class App extends BaseApp {
         // a once-per-profile notice, it spends itself on the one moment it cannot be true, so the
         // first real residency is then the silent one.
         if (this.isQuitting()) {
+            return;
+        }
+        // Nor is a command-line run's window going away, which is its run ending - and the run owns
+        // what happens next (see `commandLineRunEnd.ts`). Residency would put a notification on an
+        // operator's screen and spend the profile's once-only notice on a process about to exit;
+        // quitting would exit 0 underneath a run that has not reported.
+        if (getCommandLineRunEnd()) {
             return;
         }
         if (this.trayManager?.isActive()) {
@@ -909,6 +929,16 @@ export class App extends BaseApp {
                 + ' a call that outlives this may take the process down on the way out.',
             );
         }
+    }
+
+    /**
+     * The longest {@link drainForShutdown} will take, as it would be computed right now.
+     *
+     * For a command-line run, which has to know how long its own teardown may legitimately run
+     * before a process still alive past it is one that has stopped - see `commandLineRunEnd.ts`.
+     */
+    public getShutdownDeadlineMs(): number {
+        return SHUTDOWN_BASE_DEADLINE_MS + this.resolveQuitCheckpointTimeoutMs();
     }
 
     public async openStartupWindow(): Promise<void> {

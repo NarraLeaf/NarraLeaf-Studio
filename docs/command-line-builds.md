@@ -88,7 +88,13 @@ The log and the report say which variant was built by the same name: `building M
 `studio-failed` also covers a profile that cannot run the project — a plugin the project declares
 that this profile has not got, has switched off or cannot start — and a run in which something asked
 a question nobody was there to answer. A build loads the project's plugins exactly as a check does;
-both are set out in [command-line checks](command-line-checks.md#plugins).
+both are set out in [command-line checks](command-line-checks.md#plugins). And it covers Studio
+itself failing, from the moment the process starts: a profile folder it cannot use, an internal
+error, a build that stops making progress for the fifteen-minute silence deadline plus a minute.
+None of them puts a box on screen; each ends the build with a line saying what the box would have
+said, and a report. They are set out in
+[command-line checks](command-line-checks.md#when-studio-itself-fails), and a build meets them the
+same way.
 
 The distinction that matters most is between `gate-refused` and `studio-failed`. A project whose
 story has an unresolved command is a project someone has to change; Studio failing to open the
@@ -119,7 +125,7 @@ without a schema bump; `schema` changes only when one changes meaning.
 Electron keys its single-instance lock on the profile directory, so a second Studio on the same
 profile is refused and exits. That is right for a launch that wants a window — the running Studio
 opens it — and useless for one that wants an exit code, so a build refuses instead, with
-`studio-failed`, rather than running inside somebody's session.
+`studio-failed` and a report, rather than running inside somebody's session.
 
 `--build-user-data-dir <folder>` gives the run a profile of its own and, with it, a lock of its own.
 A dedicated agent does not need it. A machine that is both an agent and somebody's computer does.
@@ -235,7 +241,9 @@ the home screen; the output folder is never opened in the file manager; and the 
 up a native dialog when its page crashes, which would otherwise block the run on an answer nobody is
 there to give. Nothing else may ask a question either — a file picker, a plugin's permission prompt,
 a workspace dialog — and the first one asked ends the run with `studio-failed`, naming what asked
-([command-line checks](command-line-checks.md#nothing-is-asked)).
+([command-line checks](command-line-checks.md#nothing-is-asked)). Nor does Studio's own failure: a
+profile it cannot start in, or an internal error, ends the build with `studio-failed` instead of
+an error box ([command-line checks](command-line-checks.md#when-studio-itself-fails)).
 
 Two more things make a headless host work at all:
 

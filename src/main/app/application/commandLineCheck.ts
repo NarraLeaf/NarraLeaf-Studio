@@ -3,6 +3,7 @@ import path from "path";
 import type { App } from "@/app/app";
 import type { AppWindow } from "./managers/window/appWindow";
 import { WindowAppType } from "@shared/types/window";
+import type { AppEventToken } from "@shared/types/app";
 import {
     COMMAND_LINE_CHECK_EXIT_CODES,
     COMMAND_LINE_CHECK_REPORT_SCHEMA,
@@ -29,6 +30,7 @@ import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
 import { readProjectDlcFromDir } from "./utils/dlcFile";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
+import { COMMAND_LINE_RUN_SILENCE_MS, getCommandLineRunEnd } from "./commandLineRunEnd";
 import {
     defaultTestEdition,
     describeTestEdition,
@@ -102,16 +104,6 @@ import {
  * `utils/commandLinePlugins.ts`.
  */
 
-/**
- * How long the workspace may say nothing at all before the run gives up on it.
- *
- * An idle deadline rather than a total one, and reset by every line the check writes: a walkthrough
- * of a long story or a sweep of a two-thousand-asset library takes as long as it takes, and a total
- * deadline would cancel exactly the runs that most needed to finish. What this catches is the other
- * shape: a window that opened, said nothing, and is never going to.
- */
-const WORKSPACE_SILENCE_TIMEOUT_MS = 30 * 60 * 1000;
-
 export class CommandLineCheckRun {
     private readonly log: CommandLineRunLogLine[] = [];
     private readonly startedAt = Date.now();
@@ -141,6 +133,10 @@ export class CommandLineCheckRun {
         // report file the caller is going to look for.
         this.reportPath = options.reportPath ? path.resolve(process.cwd(), options.reportPath) : null;
         this.check = options.kind ?? "lint";
+        // From here on a failure outside this run's own flow - a fatal error in the main process, a
+        // window that asks something, the watchdog - ends the run through this run's own finish, with
+        // its log and its report. See `commandLineRunEnd.ts`.
+        getCommandLineRunEnd()?.attach(sentence => this.finish("studio-failed", sentence));
 
         if (options.error) {
             return this.finish("invocation", options.error);
@@ -202,6 +198,7 @@ export class CommandLineCheckRun {
         // After everything the line could have got wrong, so a mistyped flag is still exit 2 on a
         // line that also names a plugin this profile lacks - and before the workspace opens, which is
         // where the plugins it loads are decided.
+        getCommandLineRunEnd()?.waitingOn("the plugins this line names to be found");
         const plugins = await enableCommandLinePlugins(
             this.app.pluginManager,
             options.plugins,
@@ -275,12 +272,15 @@ export class CommandLineCheckRun {
     private async runInWorkspace(job: CommandLineRunJob): Promise<void> {
         const projectPath = this.projectPath!;
         let workspace: AppWindow<WindowAppType.Workspace>;
+        const end = getCommandLineRunEnd();
         try {
-            await this.app.ensureLauncher({ deferShow: true });
+            end?.waitingOn("the window the project is opened from to load");
+            await this.app.ensureLauncher({ unattended: true });
             const launcher = this.app.findLauncherWindow();
             if (!launcher) {
                 return this.finish("studio-failed", "Studio could not prepare a window to open the project from.");
             }
+            end?.waitingOn("the project's workspace window to load");
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
                 commandLineRun: job,
@@ -288,17 +288,22 @@ export class CommandLineCheckRun {
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
         }
+        end?.waitingOn("the workspace to report");
+        const silenceMs = COMMAND_LINE_RUN_SILENCE_MS[this.check];
 
         await new Promise<void>(resolve => {
             let settled = false;
             let deadline: ReturnType<typeof setTimeout>;
+            // Assigned by the subscription below, which can settle the run before it returns: what
+            // the page said before the run was listening is handed over as the run subscribes.
+            let token: AppEventToken | null = null;
             const settle = (run: () => Promise<void>) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 clearTimeout(deadline);
-                token.cancel();
+                token?.cancel();
                 void run().then(resolve, resolve);
             };
             const armDeadline = () => {
@@ -306,13 +311,13 @@ export class CommandLineCheckRun {
                 deadline = setTimeout(() => {
                     settle(() => this.finish(
                         "studio-failed",
-                        `The workspace said nothing for ${Math.round(WORKSPACE_SILENCE_TIMEOUT_MS / 60000)} minutes, so the run was abandoned.`,
+                        `The workspace said nothing for ${Math.round(silenceMs / 60000)} minutes, so the run was abandoned.`,
                     ));
-                }, WORKSPACE_SILENCE_TIMEOUT_MS);
+                }, silenceMs);
             };
             armDeadline();
 
-            const token = workspace.onCommandLineRunEvent(event => {
+            token = workspace.onCommandLineRunEvent(event => {
                 armDeadline();
                 if (event.kind === "log") {
                     const { kind: _kind, ...line } = event;
@@ -321,6 +326,9 @@ export class CommandLineCheckRun {
                 }
                 settle(() => this.finishFromWorkspace(event));
             });
+            if (settled) {
+                token.cancel();
+            }
 
             // "closed", not "close": a page process that died is `destroy()`ed rather than closed,
             // and that is exactly the case this is here to catch.
@@ -448,6 +456,10 @@ export class CommandLineCheckRun {
         }
         this.finished = true;
         const exitCode = COMMAND_LINE_CHECK_EXIT_CODES[outcome];
+        // The outcome is decided, and only the teardown is left - which is bounded, so a process
+        // still alive well past its bound exits with this code rather than waiting on it.
+        const end = getCommandLineRunEnd();
+        end?.finishing(exitCode, this.app.getShutdownDeadlineMs());
         // Unless the check has just said it, the same way the build's finish does: one problem
         // printed twice reads as two.
         if (error && this.log[this.log.length - 1]?.message !== error) {
@@ -477,8 +489,11 @@ export class CommandLineCheckRun {
             log: this.log,
         };
 
+        end?.waitingOn("the report to be written");
         await this.writeReport(report);
+        end?.waitingOn("the open project to be put down");
         await this.app.drainForShutdown();
+        end?.waitingOn("standard output to drain");
         await flushStandardOutput();
         this.app.electronApp.exit(exitCode);
     }
@@ -524,6 +539,8 @@ export class CommandLineCheckRun {
      */
     private record(line: CommandLineRunLogLine): void {
         this.log.push(line);
+        // Every line is progress, to the watchdog as to the run's own deadline.
+        getCommandLineRunEnd()?.progress();
         const source = line.source ? `${line.source}: ` : "";
         const text = `[${line.level}] ${source}${line.message}`;
         process.stdout.write(`${text}\n`);

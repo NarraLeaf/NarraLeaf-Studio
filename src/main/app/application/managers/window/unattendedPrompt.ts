@@ -1,4 +1,4 @@
-import { describeUnattendedRefusal, type CommandLineRunEvent } from "@shared/types/commandLineRun";
+import { describeUnattendedRefusal } from "@shared/types/commandLineRun";
 import type { PluginPermissionRequest } from "@shared/types/pluginPermissions";
 
 /**
@@ -20,7 +20,8 @@ import type { PluginPermissionRequest } from "@shared/types/pluginPermissions";
 /** The two things a refusal needs from a window. `AppWindow` is one. */
 export type UnattendedPromptTarget = {
     isUnattended(): boolean;
-    reportCommandLineRunEvent(event: CommandLineRunEvent): void;
+    /** End the run the window belongs to, as an `environment` refusal. See `AppWindow.endUnattendedRun`. */
+    endUnattendedRun(message: string): void;
 };
 
 /**
@@ -37,7 +38,7 @@ export function refuseUnattendedPrompt(
     }
     const message = describeUnattendedRefusal(what);
     warn?.(message);
-    target.reportCommandLineRunEvent({ kind: "finished", ok: false, refusal: "environment", error: message });
+    target.endUnattendedRun(message);
     throw new Error(message);
 }
 

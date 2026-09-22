@@ -19,6 +19,9 @@ import {
     UILayout,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
+    uiElementTypeAcceptsUserChildren,
+    getUIStructuralChildSlot,
+    getUIStructuralSlotPointerProp,
     getUIComponentLink,
     isLinkedUIComponentElement,
     type UIComponentParam,
@@ -64,7 +67,7 @@ import {
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { isValidUIInsertParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { pasteParentAccepts } from "@/lib/ui-editor/tree/resolvePasteTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
     cloneWidgetMainBlueprintForPaste,
@@ -3568,9 +3571,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
         const target = component?.elements[targetParentId];
-        if (!component || !target || !uiElementTypeAcceptsChildren(target.type)) {
+        // The same answer a page gives (`pasteParentAccepts`), asked of the definition's own elements.
+        if (!component || !target || !pasteParentAccepts(
+            { ...document, elements: component.elements },
+            target,
+            payload.topLevelElementIds.map(id => payload.elements[id]),
+        )) {
             return { ok: false, reason: "invalid_target" };
         }
+        const fillsPartSlots = !uiElementTypeAcceptsUserChildren(target.type);
         if (beforeChildId != null) {
             const before = component.elements[beforeChildId];
             if (!before || before.parentId !== targetParentId) {
@@ -3602,13 +3611,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
                 const copy = stripElementForComponentDefinition(source);
                 copy.id = newId;
-                copy.parentId = payload.topLevelElementIds.includes(oldId)
+                const isTop = payload.topLevelElementIds.includes(oldId);
+                copy.parentId = isTop
                     ? targetParentId
                     : source.parentId && elementIdMap[source.parentId]
                       ? elementIdMap[source.parentId]
                       : null;
                 copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
                 liveComponent.elements[newId] = copy;
+                const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(liveParent.type, copy.extra) : null;
+                const pointer = partSlot ? getUIStructuralSlotPointerProp(liveParent.type, partSlot) : null;
+                if (pointer) {
+                    liveParent.props = { ...(liveParent.props ?? {}), [pointer]: newId };
+                }
             }
             const insertAt = beforeChildId ? liveParent.childrenIds.indexOf(beforeChildId) : -1;
             const withoutMoved = liveParent.childrenIds.filter(id => !newRootIds.includes(id));
@@ -3915,7 +3930,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         const allowed = collectSubtreeElementIds(document, effectiveRootId);
         const target = document.elements[targetParentId];
-        if (!target || !allowed.has(targetParentId) || !isValidUIInsertParent(target) || isLinkedUIComponentElement(target)) {
+        const pastedTops = payload.topLevelElementIds.map(id => payload.elements[id]);
+        if (!target || !allowed.has(targetParentId) || !pasteParentAccepts(document, target, pastedTops)) {
             return { ok: false, reason: "invalid_target" };
         }
         if (beforeChildId != null) {
@@ -3924,6 +3940,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return { ok: false, reason: "invalid_target" };
             }
         }
+        // Past the check above, a target that takes no author's children is a widget taking back its
+        // own parts - a copied handle into a Slider whose handle is gone.
+        const fillsPartSlots = !uiElementTypeAcceptsUserChildren(target.type);
 
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
@@ -3981,7 +4000,17 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     }
                 }
 
-                if (isTop) {
+                const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(parentEl.type, copy.extra) : null;
+                if (partSlot) {
+                    // A part's layout is its place inside its widget, so it keeps it: a handle copied
+                    // from one Slider sits where a handle sits in the next. The widget is pointed at
+                    // it too, where it keeps its parts' ids - see `getUIStructuralSlotPointerProp`.
+                    copy.layout = roundUILayoutGeometryFields({ ...copy.layout });
+                    const pointer = getUIStructuralSlotPointerProp(parentEl.type, partSlot);
+                    if (pointer) {
+                        parentEl.props = { ...(parentEl.props ?? {}), [pointer]: newId };
+                    }
+                } else if (isTop) {
                     const mergeLookup = (id: string) => doc.elements[id] ?? payload.elements[id];
                     const patch = layoutPatchForReparent(doc, oldEl, targetParentId, mergeLookup);
                     let layout = { ...copy.layout, ...patch };

@@ -21,12 +21,14 @@ function makeApp() {
         quit: () => calls.push("quit"),
     };
 
-    function addWindow(type: WindowAppType) {
+    function addWindow(type: WindowAppType, unattended = false) {
         const entry = { window: null as unknown, closed: false };
         const window = {
             app,
             getApp: () => app,
             getWindowType: () => type,
+            isUnattended: () => unattended,
+            endUnattendedRun: (message: string) => calls.push(`end-run:${message}`),
             isClosed: () => entry.closed,
             forceClose: () => {
                 entry.closed = true;
@@ -75,6 +77,20 @@ describe("AppTerminateHandler", () => {
         handler.handle(failing, { err: "boom" });
 
         expect(calls).toEqual(["crash"]);
+    });
+
+    it("ends a command-line run on the failure its window reported, and never asks about restarting", () => {
+        // The run's only window: the ordinary answer would be the restart prompt, a synchronous
+        // message box nobody is there to dismiss.
+        const { addWindow, calls } = makeApp();
+        const failing = addWindow(WindowAppType.Workspace, true);
+
+        handler.handle(failing, { err: "TypeError\nCannot read properties of undefined (reading 'x')" });
+
+        expect(calls).toEqual([
+            "end-run:The workspace window stopped on an error: TypeError: Cannot read properties of undefined (reading 'x')",
+            "close:workspace",
+        ]);
     });
 
     it("still quits when a renderer asks to terminate without an error", () => {

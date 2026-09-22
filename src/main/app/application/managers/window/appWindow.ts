@@ -19,6 +19,7 @@ import { installScriptedFileDialogBridge } from "./fileDialog";
 import { decideDetachedWindowOpen } from "./detachedWindowGuard";
 import { describeWindowSubject } from "./windowCrash";
 import { refuseUnattendedPrompt } from "./unattendedPrompt";
+import { endCommandLineRunOnFailure, getCommandLineRunEnd } from "@/app/application/commandLineRunEnd";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
 import { getMainTranslator } from "@/app/application/i18n";
 
@@ -369,9 +370,32 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      */
     private commandLineRunListeners: Array<(event: CommandLineRunEvent) => void> = [];
 
-    /** Whether this window has nobody at the screen. See {@link WindowConfig.unattended}. */
+    /**
+     * Whether this window has nobody at the screen. See {@link WindowConfig.unattended}.
+     *
+     * Also true for every window of a process that is a command-line run, whatever it was built
+     * with: that process has nobody at any of its screens, and a window that forgot to say so -
+     * the launcher a run opens its project from, anything a later change adds - must not be the one
+     * that puts a prompt up.
+     */
     public isUnattended(): boolean {
-        return this.config.unattended === true;
+        return this.config.unattended === true || getCommandLineRunEnd() !== null;
+    }
+
+    /**
+     * End the command-line run this window belongs to, on `message`, as an `environment` refusal:
+     * exit 4, the message on the run's log and in its report.
+     *
+     * Through the window's own run when it is running one - the workspace a run opened, which is
+     * where the run is listening - and through the process's ending otherwise: the launcher a run
+     * opens its project from is part of the run too, and has nobody listening to it.
+     */
+    public endUnattendedRun(message: string): void {
+        if (this.commandLineRunListeners.length > 0) {
+            this.reportCommandLineRunEvent({ kind: "finished", ok: false, refusal: "environment", error: message });
+            return;
+        }
+        endCommandLineRunOnFailure(message);
     }
 
     /**
@@ -388,8 +412,27 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         refuseUnattendedPrompt(this, what, message => this.getApp().logger.warn(`[Window] ${message}`));
     }
 
+    /**
+     * What the page said about its run before the run was listening.
+     *
+     * The run subscribes once the window's page has loaded, and the page starts its own work as it
+     * loads - so a page that fails at once (a project it cannot read) can say why a moment before
+     * anybody hears it. Kept and handed over on subscription, rather than lost and replaced by the
+     * run's own "could not open this project" and nothing more.
+     */
+    private pendingCommandLineRunEvents: CommandLineRunEvent[] = [];
+
     /** The renderer's half of a headless run; see `WorkspaceCommandLineRunHandler`. */
     public reportCommandLineRunEvent(event: CommandLineRunEvent): void {
+        if (this.commandLineRunListeners.length === 0) {
+            // Kept only for a window that was opened to do a run, which is the only one anybody will
+            // subscribe to - and only so many, since what matters is the first few things it said.
+            const opensRun = Boolean((this.props as { commandLineRun?: unknown } | undefined)?.commandLineRun);
+            if (opensRun && this.pendingCommandLineRunEvents.length < 100) {
+                this.pendingCommandLineRunEvents.push(event);
+            }
+            return;
+        }
         for (const listener of [...this.commandLineRunListeners]) {
             listener(event);
         }
@@ -397,6 +440,11 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     public onCommandLineRunEvent(fn: (event: CommandLineRunEvent) => void): AppEventToken {
         this.commandLineRunListeners.push(fn);
+        const pending = this.pendingCommandLineRunEvents;
+        this.pendingCommandLineRunEvents = [];
+        for (const event of pending) {
+            fn(event);
+        }
         return {
             cancel: () => {
                 this.commandLineRunListeners = this.commandLineRunListeners.filter(listener => listener !== fn);
@@ -801,7 +849,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
                 this.expectedProcessSwap = false;
                 return;
             }
-            void this.offerReloadForCrash(details.reason);
+            void this.offerReloadForCrash(details.reason, details.exitCode);
         });
 
         webContents.on("did-finish-load", () => {
@@ -824,8 +872,18 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      * Not during a quit. Windows die as part of shutting down, and a modal question at that point
      * would hold the quit open on an answer nobody is there to give.
      */
-    private async offerReloadForCrash(reason: string): Promise<void> {
+    private async offerReloadForCrash(reason: string, exitCode: number): Promise<void> {
         const win = this.getBrowserWindow();
+        if (this.isUnattended()) {
+            // Nobody to ask, and nobody who will ever reload it. Said with the reason while the run
+            // can still carry it - once the window is gone, all anybody would learn is that it went.
+            this.endUnattendedRun(
+                `The ${this.getWindowType()} window's page stopped (${reason}, exit code ${exitCode})`
+                + " before the run reported a result.",
+            );
+            win.destroy();
+            return;
+        }
         if (this.getApp().isQuitting() || this.getConfig().failurePrompts === false) {
             win.destroy();
             return;
@@ -882,7 +940,10 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      */
     private async offerReloadForHang(): Promise<void> {
         const win = this.getBrowserWindow();
-        if (this.hangPromptOpen || this.getApp().isQuitting() || this.getConfig().failurePrompts === false) {
+        // Not in a window nobody is looking at. A long build genuinely stops answering, and killing it
+        // would be worse than waiting; a run that is truly stuck is ended by its own deadline.
+        if (this.hangPromptOpen || this.getApp().isQuitting() || this.getConfig().failurePrompts === false
+            || this.isUnattended()) {
             return;
         }
         this.hangPromptOpen = true;
