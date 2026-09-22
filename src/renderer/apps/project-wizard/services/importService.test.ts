@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
 import { ImportService } from "./importService";
 
 const mocks = vi.hoisted(() => ({
@@ -107,22 +108,43 @@ describe("ImportService.importProject", () => {
         expect(await runImport()).toEqual({ status: "notAProject", root: TARGET });
     });
 
-    it("passes the main process's own refusal through", async () => {
+    /**
+     * Main's own sentence is English and names the package, the folder and the file inside the
+     * package that failed. The page says why from the code instead, in the interface's language.
+     */
+    it.each([
+        [ProjectPackageImportErrorCode.NotAPackage, "wizard.import.error.notAPackage"],
+        [ProjectPackageImportErrorCode.NewerVersion, "wizard.import.error.newerVersion"],
+        [ProjectPackageImportErrorCode.Damaged, "wizard.import.error.damaged"],
+        [ProjectPackageImportErrorCode.PackageMissing, "wizard.import.error.packageMissing"],
+        [ProjectPackageImportErrorCode.PackageUnreadable, "wizard.import.error.packageUnreadable"],
+        [ProjectPackageImportErrorCode.FolderNotEmpty, "wizard.validation.notEmpty"],
+        [ProjectPackageImportErrorCode.FolderProtected, "wizard.import.error.folderProtected"],
+        [ProjectPackageImportErrorCode.FolderReadOnly, "wizard.validation.cannotWrite"],
+        [ProjectPackageImportErrorCode.DiskFull, "wizard.import.error.diskFull"],
+    ])("words the refusal %s from its code, not from main's message", async (code, key) => {
         mocks.workspace.importProjectPackage.mockResolvedValue({
             success: false,
-            error: "Selected import folder is inside protected Studio storage.",
+            error: "Could not copy \"assets/content/53/22/b0e3\": EACCES: permission denied, open 'D:/game/x'",
+            code,
         });
 
-        expect(await runImport()).toEqual({
-            status: "failed",
-            error: "Selected import folder is inside protected Studio storage.",
-        });
+        expect(await runImport()).toEqual({ status: "failed", error: key });
         expect(mocks.fs.list).not.toHaveBeenCalled();
+    });
+
+    it("gives the general sentence for a refusal it has no code for", async () => {
+        mocks.workspace.importProjectPackage.mockResolvedValue({
+            success: false,
+            error: "File system access is not allowed for package: D:/Downloads/My-Game.nlspkg",
+        });
+
+        expect(await runImport()).toEqual({ status: "failed", error: "wizard.import.error.generic" });
     });
 
     it("survives a thrown error", async () => {
         mocks.workspace.importProjectPackage.mockRejectedValue(new Error("unreadable archive"));
 
-        expect(await runImport()).toEqual({ status: "failed", error: "unreadable archive" });
+        expect(await runImport()).toEqual({ status: "failed", error: "wizard.import.error.generic" });
     });
 });
