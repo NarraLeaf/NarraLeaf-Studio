@@ -38,6 +38,7 @@ import {
     assembleDevModeBundleFromProjectPath,
 } from "./bundleAssembler";
 import type { DevModeBundleLoadContext } from "./types";
+import { BuildRefusal } from "@shared/build/buildRefusal";
 
 const STORY_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -959,6 +960,16 @@ describe("bundleAssembler script blueprints", () => {
         await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
     });
 
+    /** The message an assembly was refused with; a test that expected a refusal fails without one. */
+    async function refusalOf(assembling: Promise<unknown>): Promise<string> {
+        try {
+            await assembling;
+        } catch (error) {
+            return error instanceof Error ? error.message : String(error);
+        }
+        throw new Error("the assembly was expected to be refused");
+    }
+
     /** The smallest project that holds one script blueprint on the project's own graph. */
     async function createScriptProject(): Promise<string> {
         const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-script-bundle-"));
@@ -1026,12 +1037,12 @@ describe("bundleAssembler script blueprints", () => {
         // A `file:` URL because that is what the Dev Mode document's policy admits, and under the
         // project's own `.nlstudio/` because version control and an export both leave that out.
         expect(entry?.url?.startsWith("file:///")).toBe(true);
-        const written = path.join(projectPath, ".nlstudio", "dev-mode", "scripts", "scripts_boot.mjs");
+        const written = path.join(projectPath, ".nlstudio", "dev-mode", "scripts", "scripts_boot.js");
         expect(entry?.url).toBe(pathToFileURL(written).toString());
         expect((await readFile(written, "utf-8"))).toContain("onAppBoot");
     });
 
-    it("writes where a build says, and names each file by the scheme the build gives", async () => {
+    it("writes where a build says, and names each file the way the build gives", async () => {
         const projectPath = await createScriptProject();
         const appDir = path.join(projectPath, ".build", "app");
         const bundle = await assembleDevModeBundleFromProjectPath({
@@ -1040,14 +1051,94 @@ describe("bundleAssembler script blueprints", () => {
             revision: 1,
             scriptOutput: {
                 directory: path.join(appDir, "scripts"),
-                toUrl: filePath => `nlgame://runtime/scripts/${path.basename(filePath)}`,
+                toUrl: filePath => `scripts/${path.basename(filePath)}`,
             },
         });
 
-        // The URL a packaged game imports: the runtime scheme's `runtime` host serves this path from
-        // the store when sealed and from the app dir otherwise. Never a `file:` URL, which the
-        // shipped page's policy refuses.
-        expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("nlgame://runtime/scripts/scripts_boot.mjs");
-        expect((await readFile(path.join(appDir, "scripts", "scripts_boot.mjs"), "utf-8"))).toContain("onAppBoot");
+        // What a pack carries: a name relative to the page, which the runtime resolves against the
+        // document it runs in - the runtime scheme on the desktop, the site in a web export. Never a
+        // `file:` URL, which the shipped page's policy refuses.
+        expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("scripts/scripts_boot.js");
+        expect((await readFile(path.join(appDir, "scripts", "scripts_boot.js"), "utf-8"))).toContain("onAppBoot");
+    });
+
+    /*
+     * A package that ships a script layer the author wrote and nothing runs is the build producing
+     * less than was asked for, with nothing anywhere saying so - the failure that reached players
+     * when every build's compile failed the same way. So a package refuses, and says which file.
+     */
+    it("refuses a package whose script does not compile, naming the file", async () => {
+        const projectPath = await createScriptProject();
+        await writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot( {\n", "utf-8");
+        const appDir = path.join(projectPath, ".build", "app");
+
+        const assembling = assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale: "en",
+            scriptOutput: { directory: path.join(appDir, "scripts"), toUrl: filePath => `scripts/${path.basename(filePath)}` },
+        });
+
+        await expect(assembling).rejects.toBeInstanceOf(BuildRefusal);
+        const message = await refusalOf(assembling);
+        expect(message.split("\n")[0]).toBe("1 script could not be compiled.");
+        expect(message).toContain("scripts/boot.ts");
+    });
+
+    it("writes the refusal's count in the author's language", async () => {
+        const projectPath = await createScriptProject();
+        await writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot( {\n", "utf-8");
+
+        const message = await refusalOf(assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale: "zh",
+            scriptOutput: { directory: path.join(projectPath, ".build", "scripts"), toUrl: filePath => filePath },
+        }));
+
+        expect(message.split("\n")[0]).toBe("有 1 个脚本无法编译");
+    });
+
+    it("keeps Dev Mode running with the layer dead and the failure reported", async () => {
+        const projectPath = await createScriptProject();
+        await writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot( {\n", "utf-8");
+        const notices: string[] = [];
+
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            onNotice: message => notices.push(message),
+        });
+
+        const entry = bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")];
+        expect(entry?.url).toBeUndefined();
+        expect(entry?.diagnostics?.[0]?.message).toContain("scripts/boot.ts");
+        expect(notices.some(notice => notice.includes("scripts/boot.ts"))).toBe(true);
+    });
+
+    it("builds a package whose script only has type errors", async () => {
+        // The rule the whole feature rests on: types are stripped, never checked, so a build never
+        // depends on the type check the author's editor runs.
+        const projectPath = await createScriptProject();
+        await writeFile(
+            path.join(projectPath, "scripts", "boot.ts"),
+            'const n: number = "not a number";\nexport function onAppBoot(): number { return n; }\n',
+            "utf-8",
+        );
+
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            scriptOutput: { directory: path.join(projectPath, ".build", "scripts"), toUrl: filePath => `scripts/${path.basename(filePath)}` },
+        });
+
+        expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("scripts/scripts_boot.js");
     });
 });

@@ -516,6 +516,15 @@ export const build = {
         one: "Build stopped: {count} asset name is assembled at run time. See the console.",
         other: "Build stopped: {count} asset names are assembled at run time. See the console.",
     },
+    /**
+     * A package build whose scripts did not all compile. Written in the main process, first line of
+     * the failure the build reports; the compiler's own line for each file follows it, naming the
+     * file, line and column.
+     */
+    scriptsNotCompiled: {
+        one: "{count} script could not be compiled.",
+        other: "{count} scripts could not be compiled.",
+    },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",
     contentCoverageSummary: {

@@ -25,6 +25,7 @@ import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
+import { listScriptCompileFailures } from "../devMode/pipeline/scriptCompiler";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import {
@@ -546,6 +547,12 @@ export class GameTestManager {
                 "verbose",
                 `game compiled: ${artifact.copiedAssetCount} asset(s) in ${formatSeconds(Date.now() - compileStartedAt)}`,
             );
+            // A test runs with a script that did not compile, as a preview does, and says so: the
+            // layer does nothing, and a result read without this line would be about a game the
+            // author did not write.
+            for (const message of listScriptCompileFailures(artifact.pack?.bundle?.ui?.scripts)) {
+                this.emitConsole(session, "error", message);
+            }
 
             const binary = resolvePreviewRunnerBinaryForApp(this.app);
             // The last point at which a cancel is free: everything from here to the end of this
