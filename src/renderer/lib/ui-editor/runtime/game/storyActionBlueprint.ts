@@ -191,7 +191,7 @@ function buildStoryScriptContext(
     const access = buildStoryVariableAccess(input, ctx);
     const persistence = input.persistence;
     const unavailable = () => {
-        throw new Error("This game has no persistence bridge, so ctx.persistent cannot be read here");
+        throw new Error(translate("game.run.persistenceUnavailable"));
     };
     return {
         self: { kind: "storyRow" },
@@ -480,11 +480,11 @@ async function invokeStoryActionFn(options: {
 }): Promise<{ returns: Record<string, unknown> }> {
     const { fnRef, args, depth, input } = options;
     if (depth >= MAX_STORY_FN_CALL_DEPTH) {
-        throw new Error(`Fn call depth exceeded ${MAX_STORY_FN_CALL_DEPTH} (recursive call?)`);
+        throw new Error(translate("blueprint.runtimeError.fnDepth", { depth: String(MAX_STORY_FN_CALL_DEPTH) }));
     }
     const decl = findBlueprintFnByRef(input.blueprintDocument, fnRef);
     if (!decl) {
-        throw new Error(`Fn does not exist: ${fnRef}`);
+        throw new Error(translate("blueprint.runtimeError.fnMissing"));
     }
     // Project-wide fns are callable from anywhere; a story fn only from a scene that reaches its
     // row. Every other position - a surface, a widget, a component definition - is a UI pool a
@@ -494,7 +494,7 @@ async function invokeStoryActionFn(options: {
         declAnchor.kind === "project" ||
         (declAnchor.kind === "storyRow" && input.sceneFnCatalog.blueprintIds.has(declAnchor.blueprintId));
     if (!visible) {
-        throw new Error(`Fn "${decl.name}" is not available in this scene`);
+        throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
     const blueprintLocals: Record<string, unknown> = {};
     const seededArgs: Record<string, unknown> = {};
@@ -528,6 +528,6 @@ function sceneLocalNamespaceName(scene: Scene): string {
 
 function assertSerializable(value: unknown): void {
     if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
-        throw new Error("Saved and Persistent variables must hold serializable values");
+        throw new Error(translate("game.run.variablesNotSerializable"));
     }
 }

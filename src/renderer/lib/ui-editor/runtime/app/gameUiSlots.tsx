@@ -19,6 +19,9 @@ import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { readNlrLastDialogSpeaker } from "./nlrDialogReaders";
 import { findStageSurfaceForSlot } from "./stageSlots";
+import { needsRunningGame, refusal } from "./runtimeRefusals";
+import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 
 /**
  * Project Game UI slot components resolved from the uidoc's stage surfaces. A missing entry means
@@ -187,7 +190,7 @@ export const STUDIO_SKIP_KEY_BINDING = "studio.skipAction";
 
 export type LiveGameUiCallbackDeps = {
     /** Returns the active LiveGame or throws a `${operation}: game runtime is not available` error. */
-    requireLiveGame: (operation: string) => LiveGame;
+    requireLiveGame: (asker: TranslationKey | null) => LiveGame;
     /** Latest LiveGame or null; read lazily so callbacks stay stable across session churn. */
     getLiveGame: () => LiveGame | null;
     /** The choice menus on the stage (see `ChoiceMenus`); more than one can be. */
@@ -379,7 +382,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
 
         onRestoreHistory: async (id?: string): Promise<void> => {
             const token = String(id ?? "").trim();
-            const liveGame = requireLiveGame("Restore From History");
+            const liveGame = requireLiveGame("blueprint.node.restoreFromHistory");
             // Snapshot-based restore works both during live play and after loading a save (where the
             // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted;
             // "go back one line" falls through to undo.
@@ -395,7 +398,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onRedoHistory: async (): Promise<void> => {
-            const liveGame = requireLiveGame("Redo Next History Entry");
+            const liveGame = requireLiveGame("blueprint.node.redoNextHistoryEntry");
             liveGameHistoryControls(liveGame).redo?.call(liveGame);
         },
 
@@ -426,7 +429,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         onSelectChoice: async (index: number): Promise<void> => {
             const runtime = choiceMenus.current();
             if (!runtime) {
-                throw new Error("Select Choice: no active choice menu");
+                throw refusal("game.run.noChoiceMenu", "blueprint.node.selectChoice");
             }
             runtime.choose(index);
         },
@@ -442,45 +445,45 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             }
             // No dialog surface of its own: the engine draws the box, and its stage announcer
             // answers a click anywhere on the player.
-            const liveGame = requireLiveGame("Next");
+            const liveGame = requireLiveGame("blueprint.node.next");
             const gameState = liveGame.getGameState();
             if (!gameState) {
-                throw new Error("Next: game state is not available");
+                throw needsRunningGame("blueprint.node.next");
             }
             const clickTarget = gameState.mainContentNode ?? gameState.playerCurrent;
             if (!clickTarget) {
-                throw new Error("Next: virtual click target is not available");
+                throw needsRunningGame("blueprint.node.next");
             }
             clickTarget.click();
         },
 
         onSkip: async (): Promise<void> => {
-            requireLiveGame("Skip").skipDialog();
+            requireLiveGame("blueprint.node.skip").skipDialog();
         },
 
         onShowDialog: async (): Promise<void> => {
-            requireLiveGame("Show Dialog").game.preference.setPreference("showDialog", true);
+            requireLiveGame("blueprint.node.showDialog").game.preference.setPreference("showDialog", true);
         },
 
         onHideDialog: async (): Promise<void> => {
-            requireLiveGame("Hide Dialog").game.preference.setPreference("showDialog", false);
+            requireLiveGame("blueprint.node.hideDialog").game.preference.setPreference("showDialog", false);
         },
 
         onToggleDialogDisplay: async (): Promise<void> => {
-            const preference = requireLiveGame("Toggle Dialog Display").game.preference;
+            const preference = requireLiveGame("blueprint.node.toggleDialogDisplay").game.preference;
             preference.setPreference("showDialog", preference.getPreference("showDialog") !== true);
         },
 
         onSetSentenceSpeed: async (cps: number): Promise<void> => {
             const value = typeof cps === "number" ? cps : Number(cps);
             if (!Number.isFinite(value) || value <= 0) {
-                throw new Error("Set Sentence Speed: CPS must be a positive number");
+                throw new Error(translate("blueprint.runtimeError.valueAbove", { name: "CPS", min: "0" }));
             }
-            requireLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
+            requireLiveGame("blueprint.node.setSentenceSpeed").game.preference.setPreference("cps", value);
         },
 
         onGetGamePreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
-            const preference = requireLiveGame(`Get ${key} Preference`).game.preference as {
+            const preference = requireLiveGame(null).game.preference as {
                 getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
             };
             return preference.getPreference(key) as BlueprintGamePreferenceValue;
@@ -490,7 +493,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             key: BlueprintGamePreferenceKey,
             value: BlueprintGamePreferenceValue,
         ): Promise<void> => {
-            const preference = requireLiveGame(`Set ${key} Preference`).game.preference as {
+            const preference = requireLiveGame(null).game.preference as {
                 setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
             };
             preference.setPreference(key, value);

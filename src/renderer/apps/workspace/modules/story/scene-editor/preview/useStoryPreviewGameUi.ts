@@ -47,6 +47,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import { SaveSchemaService } from "@/lib/workspace/services/saves/SaveSchemaService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { buildPersistentRuntimeTable, buildSavedRuntimeTable } from "@shared/variables/variableRegistryModel";
+import type { TranslationKey } from "@shared/i18n";
 
 const PREVIEW_BUNDLE_ID = "workspace-story-preview";
 
@@ -73,7 +74,7 @@ export type StoryPreviewGameUiHost = {
     /** Build a per-session NLR Game rendering the project's custom Game UI slots. */
     createPreviewGame: (input: {
         sessionId: string;
-        requireLiveGame: (operation: string) => LiveGame;
+        requireLiveGame: (asker: TranslationKey | null) => LiveGame;
         getLiveGame: () => LiveGame | null;
         /** Invert a dialog-avatar URL back to its asset id, from this compile's own inverse. */
         resolveAvatarAssetId?: (url: string) => string | null;
@@ -215,7 +216,7 @@ export function useStoryPreviewGameUi(input: {
 
     const createPreviewGame = useCallback((gameInput: {
         sessionId: string;
-        requireLiveGame: (operation: string) => LiveGame;
+        requireLiveGame: (asker: TranslationKey | null) => LiveGame;
         getLiveGame: () => LiveGame | null;
         resolveAvatarAssetId?: (url: string) => string | null;
     }): StoryPreviewGame => {
