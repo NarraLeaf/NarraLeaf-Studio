@@ -672,6 +672,12 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             uiService?.showNotification(t("workspace.localization.table.invalidKeyName"), "warning");
             return false;
         }
+        // `setKey` writes whatever it is given, so adding a name that exists would replace that key's
+        // source text without a word. The widget inspector's "new key" form refuses it the same way.
+        if (localizationService.getKeysIfLoaded()?.keys[trimmed]) {
+            uiService?.showNotification(t("workspace.localization.table.keyExists", { name: trimmed }), "warning");
+            return false;
+        }
         try {
             localizationService.setKey(trimmed, { sourceText });
             return true;

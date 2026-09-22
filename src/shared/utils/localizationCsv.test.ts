@@ -20,7 +20,7 @@ describe("translation csv round-trip", () => {
         ];
         const csv = serializeTranslationCsv(rows);
         const parsed = parseTranslationCsv(csv);
-        expect(parsed.errors).toEqual([]);
+        expect(parsed.problems).toEqual([]);
         expect(parsed.rows).toEqual(rows);
     });
 
@@ -34,11 +34,12 @@ describe("translation csv round-trip", () => {
         const csv = "﻿unit_id,target\n,orphan\nt-1,ok\n";
         const parsed = parseTranslationCsv(csv);
         expect(parsed.rows).toEqual([row({ unitId: "t-1", target: "ok" })]);
-        expect(parsed.errors).toHaveLength(1);
+        expect(parsed.problems).toEqual([{ code: "missingId", at: { row: 2 } }]);
     });
 
     it("rejects files without the unit_id column", () => {
-        expect(parseTranslationCsv("source,target\nA,B\n").errors).toEqual(["Missing required column: unit_id"]);
+        expect(parseTranslationCsv("source,target\nA,B\n").problems).toEqual([{ code: "noIdColumn" }]);
+        expect(parseTranslationCsv("").problems).toEqual([{ code: "empty" }]);
     });
 });
 

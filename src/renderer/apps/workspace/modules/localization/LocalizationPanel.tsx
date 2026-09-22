@@ -29,7 +29,11 @@ const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["ex
 import { useRegistry } from "../../registry";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import {
+    LocalizationService,
+    isSourceLocked,
+    localeDisplayNameIn,
+} from "@/lib/workspace/services/localization/LocalizationService";
 import {
     buildTranslationExchangeRows,
     extractCharacterTranslationRows,
@@ -70,6 +74,12 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { basename } from "@shared/utils/path";
 import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
 import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
+import {
+    describeExchangeProblem,
+    describeImportFailure,
+    fileLevelProblem,
+    importReadFailureReason,
+} from "@/lib/workspace/assets/importFailure";
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
@@ -317,6 +327,16 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         if (!localizationService || !uiService) {
             return;
         }
+        // Said before the confirmation rather than after it: asking the author to confirm a removal
+        // the service is going to refuse is a question with no right answer.
+        const current = localizationService.getConfiguration();
+        if (isSourceLocked(current, code)) {
+            uiService.showNotification(
+                t("workspace.localization.panel.sourceLocked", { name: localeDisplayNameIn(current, code) }),
+                "warning",
+            );
+            return;
+        }
         const confirmed = await uiService.showConfirm(
             t("workspace.localization.panel.removeConfirm", { name: displayName }),
             t("workspace.localization.panel.removeConfirmDetail"),
@@ -428,8 +448,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             const extension = TRANSLATION_EXCHANGE_FORMAT_INFO[format].extension;
             const selection = await appPrivilegedFacade.fs.selectSaveFile(`${code}.${extension}`, [extension]);
             if (!selection.success || !selection.data.ok) {
-                const message = selection.success && !selection.data.ok ? selection.data.error.message : undefined;
-                throw new Error(message || "Save dialog failed");
+                // The dialog's own failure is for the log; it is English and says nothing to act on.
+                console.warn("[localization] the save dialog failed", selection);
+                throw new Error(t("workspace.shell.fileDialogFailed"));
             }
             const targetPath = selection.data.data;
             if (!targetPath) {
@@ -531,17 +552,24 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             }
             const filePath = selection.data.data[0];
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
+            // Every refusal below names the file by its name and says why in the author's terms. The
+            // read's own message is English and quotes the whole path, and the parsers answer in codes.
             const content = await filesystem.read(filePath, "utf-8");
             if (!content.ok) {
-                throw new Error(content.error.message || t("workspace.localization.exchange.importFailed"));
+                console.warn("[localization] could not read the translation file", content.error);
+                throw new Error(describeImportFailure(filePath, importReadFailureReason(content.error.code, t), t));
             }
             const format = detectTranslationExchangeFormat(filePath, content.data);
             if (!format) {
-                throw new Error(t("workspace.localization.exchange.importUnsupported"));
+                throw new Error(describeImportFailure(filePath, t("workspace.localization.exchange.importUnsupported"), t));
             }
             const parsed = parseTranslationExchange(format, content.data);
             if (parsed.rows.length === 0) {
-                throw new Error(parsed.errors[0] || t("workspace.localization.exchange.importNoRows"));
+                throw new Error(describeImportFailure(
+                    filePath,
+                    describeExchangeProblem(fileLevelProblem(parsed.problems), t),
+                    t,
+                ));
             }
 
             // A file that names a different language than the one it is being
@@ -562,9 +590,12 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
             const currentSourceByUnit = new Map(rows.map(row => [row.unitId, row.sourceText]));
             const summary = localizationService.applyImportedRows(code, parsed.rows, currentSourceByUnit);
             uiService.showNotification(t("workspace.localization.panel.importSummary", { ...summary }), "success");
-            if (parsed.errors.length > 0) {
+            if (parsed.problems.length > 0) {
                 uiService.showNotification(
-                    t("workspace.localization.exchange.importWarnings", { count: parsed.errors.length, first: parsed.errors[0] }),
+                    t("workspace.localization.exchange.importWarnings", {
+                        count: parsed.problems.length,
+                        first: describeExchangeProblem(parsed.problems[0], t),
+                    }),
                     "warning",
                 );
             }

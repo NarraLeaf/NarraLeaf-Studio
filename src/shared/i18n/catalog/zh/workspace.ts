@@ -21,6 +21,9 @@ export const workspace = {
             staleCount: "{count} 条待校对",
             importSummary: "已导入 {applied} 条翻译（{unchanged} 条未变更，{unknown} 条未知，{skippedEmpty} 条空译文已跳过）",
             readFailed: "{name} 的译文无法读取",
+            alreadyAdded: "{name} 已在语言列表中",
+            sourceLocked: "{name} 是源语言；请先移除其他语言，或将其他语言设为源语言",
+            languageGone: "该语言已不在语言列表中",
         },
         settings: {
             menu: "语言设置…",
@@ -29,6 +32,9 @@ export const workspace = {
             fallbackLabel: "回退语言",
             fallbackHint: "此处缺少译文的条目将改使用该语言；该语言亦无译文时使用源语言",
             fallbackLoops: "会绕回本语言",
+            fallbackSelf: "回退语言不能是该语言本身",
+            fallbackGone: "该回退语言已不在语言列表中",
+            fallbackLoop: "{fallback} 会绕回 {name}",
         },
         exchange: {
             exportMenu: "导出翻译…",
@@ -50,9 +56,7 @@ export const workspace = {
             exportAction: "导出",
             exportDone: "已导出 {count} 条到 {path}",
             exportEmpty: "没有可导出的条目",
-            importFailed: "无法读取该文件",
             importUnsupported: "可导入的格式为 CSV、XLIFF、PO 与 JSON",
-            importNoRows: "该文件中没有翻译条目",
             importWarnings: "有 {count} 条被跳过，第一条：{first}",
             localeMismatch: "该文件标注的语言是 {declared}，导入目标为 {name}",
             localeMismatchDetail: "译文写入所选语言，与文件中的标注无关",
@@ -77,6 +81,7 @@ export const workspace = {
             keyNamePlaceholder: "键名（menu.start…）",
             keySourcePlaceholder: "源语言文案",
             invalidKeyName: "键名只能由字母、数字组成，中间可用点、下划线或连字符分隔",
+            keyExists: "已存在名为“{name}”的键",
             removeKey: "移除键",
             removeKeyConfirm: "移除 {name}？",
             removeKeyConfirmDetail: "该键的已有译文仍保留在语言文件中",
@@ -139,8 +144,9 @@ export const workspace = {
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
             importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
-            importScriptFailed: "无法读取该录音本",
             readFailed: "{name} 的配音指派无法读取",
+            alreadyAdded: "{name} 已在配音语言列表中",
+            languageGone: "该配音语言已不在列表中",
             namingTitle: "录音文件名规则",
             namingHint: "可用占位符：{tokens}；导入的音频按此名称与对白匹配",
             namingReset: "恢复默认",
@@ -760,6 +766,42 @@ export const workspace = {
                 openEditors: "正在编辑的行",
             },
         },
+        // 带入项目却未成功的文件：资产、翻译文件、录音本、故事脚本。{name} 是文件本身的名称，
+        // 不是路径；原因取自下面的 reason，只列作者能处理的。永不显示读取器或导入器自带的消息。
+        import: {
+            failed: "无法导入“{name}”",
+            withReason: "{headline}；{reason}",
+            reason: {
+                missing: "该文件已不存在",
+                accessDenied: "Studio 没有读取该文件的权限",
+                empty: "文件为空",
+                // unit_id 是导出文件中该列的列名，照译者看到的写法保留。
+                noIdColumn: "文件缺少 unit_id 列",
+                notFormat: "该文件不是可读取的 {format} 文件",
+                noRows: "文件中没有可导入的条目",
+                wrongType: "此处不能导入 .{ext} 文件",
+                cannotDisplay: "NarraLeaf 无法显示 .{ext} 文件；请先转换为 {first} 或 {second} 再导入",
+                cannotPlay: "NarraLeaf 无法播放 .{ext} 文件；请先转换为 {first} 或 {second} 再导入",
+                cannotUse: "NarraLeaf 无法使用 .{ext} 文件；请先转换为 {first} 或 {second} 再导入",
+                mismatch: "文件扩展名为 .{ext}，但内容是 {actual} 格式",
+                copyFailed: "无法复制到项目文件夹",
+                projectReadOnly: "Studio 没有写入项目文件夹的权限",
+                notAFolder: "模型需以文件夹导入",
+                emptyFolder: "文件夹为空",
+                copyIncomplete: "文件夹中有文件未能复制到项目中",
+            },
+            // 翻译文件或录音本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
+            // JSON 数组的项、PO 文件的行。
+            skipped: {
+                missingId: "有条目缺少 ID",
+                missingIdAtRow: "第 {n} 行缺少 ID",
+                missingIdAtEntry: "第 {n} 项缺少 ID",
+                notEntry: "有条目不是译文",
+                notEntryAtEntry: "第 {n} 项不是译文",
+                unreadableLine: "第 {n} 行无法读取",
+            },
+        },
+        fileDialogFailed: "无法打开文件对话框",
         // 重读工作树：磁盘上的内容不再是编辑器显示的内容（解除冻结、恢复版本）。正常情况下作者
         // 什么都不该看到——只有某一部分读不回来时才出声，因为那时面板里是旧内容。
         reload: {
