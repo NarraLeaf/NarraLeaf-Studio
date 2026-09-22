@@ -18,6 +18,7 @@ import { decideWindowNavigation } from "./navigationGuard";
 import { installScriptedFileDialogBridge } from "./fileDialog";
 import { decideDetachedWindowOpen } from "./detachedWindowGuard";
 import { describeWindowSubject } from "./windowCrash";
+import { refuseUnattendedPrompt } from "./unattendedPrompt";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
 import { getMainTranslator } from "@/app/application/i18n";
 
@@ -46,6 +47,16 @@ export interface WindowConfig<T extends WindowAppType> {
      * answering and killing it would be worse than waiting.
      */
     failurePrompts?: boolean;
+    /**
+     * Whether this window was opened to do a job with nobody at the screen - `--build`, `--test`,
+     * `--lint`. Defaults to false.
+     *
+     * The same fact `failurePrompts: false` answers for the crash and hang prompts, stated for
+     * everything else that would ask somebody something: a file picker, a plugin's permission
+     * prompt. Each of those waits for an answer, and in this window nobody will ever give one, so
+     * {@link AppWindow.refuseUnattendedPrompt} ends the run instead of letting it wait.
+     */
+    unattended?: boolean;
 }
 
 export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
@@ -357,6 +368,25 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
      * nothing else in Studio has any business hearing about it.
      */
     private commandLineRunListeners: Array<(event: CommandLineRunEvent) => void> = [];
+
+    /** Whether this window has nobody at the screen. See {@link WindowConfig.unattended}. */
+    public isUnattended(): boolean {
+        return this.config.unattended === true;
+    }
+
+    /**
+     * Refuse to ask anybody anything from a window nobody is looking at, and end its run for it.
+     *
+     * Called by everything that would otherwise put a question in front of a person and wait: the
+     * file pickers (`fileDialog.ts`) and the plugin permission prompt. Does nothing in an ordinary
+     * window; throws in an unattended one. See `unattendedPrompt.ts` for why the run ends too.
+     *
+     * `what` is the sentence's subject - who asked, and for what - so the operator reading the log
+     * learns which plugin or which step to look at.
+     */
+    public refuseUnattendedPrompt(what: string): void {
+        refuseUnattendedPrompt(this, what, message => this.getApp().logger.warn(`[Window] ${message}`));
+    }
 
     /** The renderer's half of a headless run; see `WorkspaceCommandLineRunHandler`. */
     public reportCommandLineRunEvent(event: CommandLineRunEvent): void {

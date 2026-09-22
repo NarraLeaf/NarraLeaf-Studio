@@ -347,7 +347,9 @@ export class CommandLineCheckRun {
             ? "invocation"
             : event.refusal === "unavailable"
                 ? "refused"
-                : event.test
+                : event.refusal === "environment"
+                    ? "studio-failed"
+                    : event.test
                     ? outcomeForTestStatus(event.test.status)
                     // A lint sweep that finished and did not pass is the project failing the check.
                     // Anything that produced nothing and named no refusal is Studio failing to

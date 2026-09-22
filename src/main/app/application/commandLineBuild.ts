@@ -492,6 +492,12 @@ export class CommandLineBuildRun {
             }
             return this.finish("success", null, event);
         }
+        // Before either half is asked about: a build this profile could not have made whole - a
+        // plugin the project declares that is not running here, a dialog nobody could answer - never
+        // reached the checks, and is a machine to look at rather than a project to change.
+        if (event.refusal === "environment") {
+            return this.finish("studio-failed", event.error ?? "Studio could not run this build here.", event);
+        }
         // Which half failed is not something the renderer can say - a check refuses without ever
         // reaching the main process, and a pipeline failure looks the same from up there. The
         // session does say it: no session for this project means nothing was ever compiled, so the

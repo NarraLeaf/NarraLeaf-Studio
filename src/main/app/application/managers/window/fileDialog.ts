@@ -30,6 +30,7 @@ import { dialog } from "electron";
 import type { Translator } from "@shared/i18n";
 import { getMainTranslator } from "../../i18n";
 import type { AppWindow } from "./appWindow";
+import { describeFileDialog } from "./unattendedPrompt";
 
 /**
  * The translator a picker's own text is produced with.
@@ -114,6 +115,9 @@ export async function showOpenDialog(
     window: AppWindow,
     options: Electron.OpenDialogOptions,
 ): Promise<Electron.OpenDialogReturnValue> {
+    // Ahead of both answers, the system's and the scripted one: in a window nobody is looking at
+    // there is no one to pick a path, by hand or by driver.
+    window.refuseUnattendedPrompt(describeFileDialog("open", options.title));
     if (!isScripted(window)) {
         return dialog.showOpenDialog(window.win, options);
     }
@@ -145,6 +149,7 @@ export async function showSaveDialog(
     window: AppWindow,
     options: Electron.SaveDialogOptions,
 ): Promise<Electron.SaveDialogReturnValue> {
+    window.refuseUnattendedPrompt(describeFileDialog("save", options.title));
     if (!isScripted(window)) {
         return dialog.showSaveDialog(window.win, options);
     }
