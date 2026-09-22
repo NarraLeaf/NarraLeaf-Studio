@@ -69,6 +69,10 @@ export const plugins = {
         uninstalled: "Plugin uninstalled.",
         reloading: "Reloading plugin…",
         reloaded: "Plugin reloaded.",
+        // Starting a plugin whose last load failed: the record forgets the failure, and the loader
+        // serves it again.
+        starting: "Starting plugin…",
+        started: "Plugin started.",
     },
     error: {
         load: "Failed to load plugins",

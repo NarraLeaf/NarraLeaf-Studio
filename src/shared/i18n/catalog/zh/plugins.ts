@@ -60,6 +60,9 @@ export const plugins = {
         uninstalled: "插件已卸载",
         reloading: "正在重新载入插件…",
         reloaded: "插件已重新载入",
+        // 载入失败的插件重试：记录清除失败，插件重新被载入。
+        starting: "正在启动插件…",
+        started: "插件已启动",
     },
     error: {
         load: "加载插件失败",

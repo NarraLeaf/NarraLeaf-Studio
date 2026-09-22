@@ -41,6 +41,7 @@ function plugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
         status: "enabled",
         installedAt: 0,
         updatedAt: 0,
+        grantedManifestVersion: "3.1.0",
         ...overrides,
     } as PluginListItem;
 }
@@ -83,11 +84,13 @@ function open(options: {
             onUninstall={() => {}}
             onInstall={() => {}}
             onReload={() => {}}
+            onRetry={() => {}}
         />,
     );
 }
 
 const RELOAD = "plugins.workspace.reload";
+const RETRY = "common.retry";
 
 afterEach(cleanup);
 
@@ -124,15 +127,52 @@ describe("PluginDetailsPage - which actions it offers", () => {
     });
 
     it("offers the grant, and no reload, for a plugin waiting for its permissions", () => {
-        open({ installed: plugin({ status: "needsAuthorization", enabled: false }), activity: "off" });
+        open({
+            installed: plugin({ status: "needsAuthorization", enabled: false, grantedManifestVersion: null }),
+            activity: "off",
+        });
         expect(screen.getByText("plugins.authorize")).toBeTruthy();
+        expect(screen.queryByText(RELOAD)).toBeNull();
+        expect(screen.queryByText("common.enable")).toBeNull();
+    });
+
+    /**
+     * The second defect of the same shape, and the worse one: the switch used to be read off the
+     * status word, which reports a failure ahead of the record's own on/off, so a plugin that threw
+     * while starting was offered no control at all. A third-party one could at least be uninstalled
+     * and installed again; a built-in one had no way out of the state whatsoever.
+     */
+    it("offers a plugin whose last load failed a way to try again, and the switch beside it", () => {
+        open({ installed: plugin({ status: "error", enabled: true }), activity: "off" });
+        expect(screen.getByText(RETRY)).toBeTruthy();
+        expect(screen.getByText("common.disable")).toBeTruthy();
+        // Nothing is loaded for it in this window, and the loader serves no descriptor for a record
+        // that carries a failure, so a reload would have nothing to fetch.
         expect(screen.queryByText(RELOAD)).toBeNull();
     });
 
-    it("offers no reload for a plugin whose installed record carries a failure", () => {
-        // Nothing is loaded for it in this window, so there is nothing here to stop and start again.
-        open({ installed: plugin({ status: "error" }), activity: "off" });
+    it("offers a failed plugin that is switched off the switch alone", () => {
+        // Enable clears the recorded failure on its way past, so it is the way back already; a retry
+        // beside it would be the same press under another name.
+        open({ installed: plugin({ status: "error", enabled: false }), activity: "off" });
+        expect(screen.getByText("common.enable")).toBeTruthy();
+        expect(screen.queryByText(RETRY)).toBeNull();
+    });
+
+    it("offers no reload for a failed record this window has not caught up with", () => {
+        // The moment after a retry throws again: the session says the load failed, and the record
+        // says so too, but the list was read before the attempt. Reload would be refused.
+        open({ installed: plugin({ status: "error", enabled: true }), activity: "failed" });
         expect(screen.queryByText(RELOAD)).toBeNull();
+        expect(screen.getByText(RETRY)).toBeTruthy();
+    });
+
+    it("offers no retry in a window that loads no plugins at all", () => {
+        // Recovery: the record stays writable, so the switch stays; nothing here can be started, and
+        // a retry that only cleared the record would report a start that never happened.
+        open({ installed: plugin({ status: "error", enabled: true }), activity: "off", canReload: false });
+        expect(screen.queryByText(RETRY)).toBeNull();
+        expect(screen.getByText("common.disable")).toBeTruthy();
     });
 
     it("offers only the install for a plugin this machine has not got", () => {
