@@ -323,3 +323,9 @@ window server for a GPU process to attach to.
 A **windowed** test is the exception, and it is an exception by definition: it launches a game
 process, and that process draws. Use `--test-list` to see which tests those are before running one
 on a host with no display.
+
+That window does not have to stay in view. A game a test launches keeps drawing and keeping time
+when it is minimized, moved off screen or covered by another window, so a run on a machine somebody
+is using is not failed by whatever they bring to the front. Only the games tests launch behave this
+way; a player's game, and a preview an author starts, pause their drawing when hidden, as Chromium
+does by default.
