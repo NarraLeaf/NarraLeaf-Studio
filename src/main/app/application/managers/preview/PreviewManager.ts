@@ -356,7 +356,7 @@ export class PreviewManager {
             }
             const sealing = await resolveRunSealing({
                 projectPath: normalizedProjectPath,
-                settings: this.app.getGlobalState(),
+                choice: { by: "preview-setting", settings: this.app.getGlobalState() },
                 resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), normalizedProjectPath),
             });
             const sealingLine = runSealingLogLine(sealing);
