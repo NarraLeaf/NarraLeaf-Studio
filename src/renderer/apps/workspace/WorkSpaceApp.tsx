@@ -14,6 +14,7 @@ import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { useRecoveryOffer } from "./hooks/useRecoveryOffer";
 import { useUpdateOffer } from "./hooks/useUpdateOffer";
 import { useDependencyOffer } from "./hooks/useDependencyOffer";
+import { useProjectTakenOver } from "./hooks/useWorkspaceFrozen";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { DetachedEditorsHost } from "./detached/DetachedEditorsHost";
@@ -59,6 +60,7 @@ function WorkspaceContent() {
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
     const { isInitialized, error, startupStage, retry, commandLineRun } = useWorkspace();
+    const takenOverBy = useProjectTakenOver();
 
     // A window opened by `--build`, `--test` or `--lint` never becomes an editor. Ahead of the two
     // screens below because it has to answer them too: an overlay this window cannot show would
@@ -66,6 +68,21 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
     // do the same silently.
     if (commandLineRun) {
         return <CommandLineRunGate isInitialized={isInitialized} error={error} />;
+    }
+
+    // Another NarraLeaf Studio has taken this project over, and this window stopped writing the
+    // moment it heard. The editor goes rather than staying up frozen: an author left typing into a
+    // workspace that silently keeps nothing loses exactly the work this screen exists to protect,
+    // and there is no state of this window to return to - it no longer has the project.
+    //
+    // Ahead of the opening overlay because a takeover can land mid-startup, and ahead of the error
+    // screens because it is the newer, truer account of this window. Retry reloads the window
+    // rather than re-running the startup in place: the latch that refuses every write belongs to
+    // this renderer and is deliberately never lifted within it, so the way back to a workspace that
+    // may write is a fresh one - which claims the project again, and lands on the ordinary lock
+    // screen while the other Studio still has it.
+    if (takenOverBy) {
+        return <ProjectLockedScreen holder={takenOverBy} takenOver onRetry={reopenHere} />;
     }
 
     // Say what is taking the time while the workspace boots. The overlay keeps the window blank for
@@ -89,6 +106,11 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
     }
 
     return (<>{children}</>);
+}
+
+/** Load this window again from nothing, which asks for the project afresh. */
+function reopenHere(): void {
+    window.location.reload();
 }
 
 /**

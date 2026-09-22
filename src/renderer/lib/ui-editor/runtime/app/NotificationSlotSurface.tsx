@@ -25,9 +25,10 @@ type NlrNotification = {
  *
  * Rendered `passive`: toasts are something the game says, not something the player operates, and
  * the slot floats over the stage for the whole session. NarraLeaf's own wrapper is already
- * pointer-events-none, but every widget wrapper sets it back to `auto`, so the toast list's box -
- * 440x400 pinned to the top right, present whether or not anything is in it - was eating every
- * click in that corner of the stage. The dialogue simply did not advance there.
+ * pointer-events-none, and the element tree turns pointer events back on for itself at every level:
+ * without `passive` the toast list's box - 440x400 pinned to the top right, present whether or not
+ * anything is in it - eats every click in that corner of the stage, and a toast every click on it.
+ * The dialogue simply does not advance there.
  */
 export function NotificationSlotSurface(props: {
     options: GameUiSlotHostOptions;

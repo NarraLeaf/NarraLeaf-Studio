@@ -476,6 +476,13 @@ export class SaveStatusService extends Service<SaveStatusService> {
         if (refusal.reason.kind === "recovery") {
             return;
         }
+        // A project another Studio has taken over is said once, by the screen that replaces the
+        // editor, and there is no editor left under it to go on producing saves. A toast about a
+        // save that "did not happen" would repeat that screen in a smaller voice, and is the
+        // mechanism for freezes the author entered and can leave - neither of which is true here.
+        if (refusal.reason.kind === "taken-over") {
+            return;
+        }
 
         if (this.frozenToast) {
             return;

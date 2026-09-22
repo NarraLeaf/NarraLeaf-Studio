@@ -388,8 +388,12 @@ export type PluginStorageService = {
  * stays writable, and everything else in the project - a plugin's own stored documents included -
  * does not. Nothing a plugin can write is on the writable side of it, so for a plugin it behaves
  * exactly like the others: `frozen` is true, and the buttons come off.
+ *
+ * `taken-over` means another NarraLeaf Studio has opened this project and this window has stopped
+ * writing it for good - there is no way back within the window. The workspace replaces its editor
+ * with a screen that says so, so a plugin sees it at most once, on its way out.
  */
-export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery" | "live-session";
+export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery" | "live-session" | "taken-over";
 
 /**
  * The state of the project a plugin's data lives in.

@@ -3,7 +3,9 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import {
+    PROJECT_SESSION_HEARTBEAT_MS,
     PROJECT_SESSION_LOCK_RELATIVE_PATH,
     PROJECT_SESSION_LOCK_STALE_MS,
     parseProjectSessionLockRecord,
@@ -60,6 +62,9 @@ interface HarnessOptions {
     pid?: number;
     hostname?: string;
     userDataDir?: string;
+    /** Stands in for the wait before a silent live claim is taken; resolves at once by default. */
+    sleep?: (ms: number) => Promise<void>;
+    onTakenOver?: (projectPath: string, holder: ProjectSessionHolder) => void;
 }
 
 function manager(options: HarnessOptions = {}) {
@@ -73,6 +78,8 @@ function manager(options: HarnessOptions = {}) {
         hostname: options.hostname ?? "studio-one",
         // Nothing is racing inside a single test, so the confirmation delay would only be a delay.
         takeoverSettleMs: 0,
+        sleep: options.sleep ?? (async () => undefined),
+        onTakenOver: options.onTakenOver,
     });
 }
 
@@ -436,5 +443,232 @@ describe("ProjectSessionLockManager.heldElsewhere", () => {
 
     it("has nothing to say about a project it was never asked for", () => {
         expect(manager().heldElsewhere(path.join(os.tmpdir(), "never-opened"))).toBeNull();
+    });
+});
+
+/**
+ * A Studio that held a project and lost it: another one judged it gone - its heartbeat stood still
+ * for the whole staleness window, as a suspended process's or a debugger-stopped one's does - and
+ * took the project over. The holder finds out on its own next heartbeat, and until this was
+ * reported anywhere it went on editing and saving beside the Studio that had taken it.
+ */
+describe("ProjectSessionLockManager when a held project is taken over", () => {
+    it("reports the takeover its heartbeat finds, with the other Studio as the lock screen names it", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const locks = manager({ now: time.now, onTakenOver });
+        await locks.acquire(project);
+
+        await writeLock(project, otherSession(time.now()));
+        await locks.beat();
+
+        expect(onTakenOver).toHaveBeenCalledTimes(1);
+        const [reportedPath, holder] = onTakenOver.mock.calls[0];
+        expect(path.resolve(reportedPath)).toBe(path.resolve(project));
+        expect(holder).toEqual({
+            hostname: "studio-two",
+            startedAt: new Date(time.now()).toISOString(),
+            sameHost: false,
+        });
+        locks.dispose();
+    });
+
+    it("refuses the project from then on, as if it had been refused at the door", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const locks = manager({ now: time.now });
+        await locks.acquire(project);
+
+        // The taker runs on this machine too, so the screen says "this computer" rather than a name.
+        await writeLock(project, otherSession(time.now(), { hostname: "studio-one", pid: 7000 }));
+        await locks.beat();
+
+        // What Dev Mode, the preview, test runs and builds ask before they start.
+        expect(locks.heldElsewhere(project)).toMatchObject({ sameHost: true });
+        expect(locks.holds(project)).toBe(false);
+        locks.dispose();
+    });
+
+    it("reports it once, however many heartbeats find it", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const locks = manager({ now: time.now, onTakenOver });
+        await locks.acquire(project);
+
+        await writeLock(project, otherSession(time.now()));
+        // Two heartbeats in flight at once - a disk slow enough to let a takeover happen at all is
+        // slow enough for the next beat to start before this one has read the file.
+        await Promise.all([locks.beat(), locks.beat()]);
+        await locks.beat();
+
+        expect(onTakenOver).toHaveBeenCalledTimes(1);
+        locks.dispose();
+    });
+
+    it("leaves the other Studio's claim exactly as it found it, heartbeat and all", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const locks = manager({ now: time.now });
+        await locks.acquire(project);
+
+        const theirs = otherSession(time.now());
+        await writeLock(project, theirs);
+        time.advance(PROJECT_SESSION_HEARTBEAT_MS);
+        await locks.beat();
+        await locks.release(project);
+
+        // Neither a heartbeat stamped over it nor a release deleting it: either would hand the
+        // project back to a Studio that stopped writing it.
+        expect(await readLock(project)).toEqual(theirs);
+        locks.dispose();
+    });
+
+    it("says nothing when the claim is still its own", async () => {
+        const project = await scratchProject();
+        const onTakenOver = vi.fn();
+        const locks = manager({ onTakenOver });
+        await locks.acquire(project);
+
+        await locks.beat();
+
+        expect(onTakenOver).not.toHaveBeenCalled();
+        expect(locks.heldElsewhere(project)).toBeNull();
+        locks.dispose();
+    });
+
+    it("does not let a failing report stop the heartbeat for the projects it still holds", async () => {
+        const lost = await scratchProject();
+        const kept = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const locks = manager({
+            now: time.now,
+            onTakenOver: () => {
+                throw new Error("no window to tell");
+            },
+        });
+        await locks.acquire(lost);
+        await locks.acquire(kept);
+
+        await writeLock(lost, otherSession(time.now()));
+        time.advance(PROJECT_SESSION_HEARTBEAT_MS);
+        await locks.beat();
+
+        expect(locks.holds(kept)).toBe(true);
+        expect(Date.parse((await readLock(kept))?.heartbeat ?? "")).toBe(time.now());
+        locks.dispose();
+    });
+});
+
+/**
+ * A claim whose heartbeat is stale while the process behind it is still running on this machine.
+ *
+ * That Studio may only be late: a computer that has just woken from sleep resumes every process on
+ * it with a heartbeat as old as the sleep, and each is about to write a new one. Taking the project
+ * the instant a second Studio asks would hand it over from a Studio that is fine. So the claim looks
+ * again one heartbeat later, and takes the project only if nothing has moved.
+ */
+describe("ProjectSessionLockManager and a silent Studio that is still running here", () => {
+    const SILENT_FOR = PROJECT_SESSION_LOCK_STALE_MS + 30_000;
+
+    function silentLiveHolder(now: number): ProjectSessionLockRecord {
+        return otherSession(now - SILENT_FOR, { hostname: "studio-one", pid: 7000 });
+    }
+
+    it("waits one heartbeat period before taking it", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        await writeLock(project, silentLiveHolder(time.now()));
+        const waits: number[] = [];
+
+        const locks = manager({
+            now: time.now,
+            alive: new Set([4242, 7000]),
+            sleep: async ms => {
+                waits.push(ms);
+                time.advance(ms);
+            },
+        });
+
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+        expect(waits).toEqual([PROJECT_SESSION_HEARTBEAT_MS]);
+        expect((await readLock(project))?.pid).toBe(4242);
+        locks.dispose();
+    });
+
+    it("stays out when that Studio speaks during the wait", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const silent = silentLiveHolder(time.now());
+        await writeLock(project, silent);
+
+        const locks = manager({
+            now: time.now,
+            alive: new Set([4242, 7000]),
+            sleep: async ms => {
+                time.advance(ms);
+                // The holder wakes and heartbeats, the way a resumed Studio does straight away.
+                await writeLock(project, { ...silent, heartbeat: new Date(time.now()).toISOString() });
+            },
+        });
+
+        const outcome = await locks.acquire(project);
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+            expect(outcome.holder.sameHost).toBe(true);
+        }
+        // Its claim is untouched, and nothing of this Studio's was written.
+        expect((await readLock(project))?.pid).toBe(7000);
+        expect(locks.holds(project)).toBe(false);
+        locks.dispose();
+    });
+
+    it("walks in when that Studio lets go during the wait", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        await writeLock(project, silentLiveHolder(time.now()));
+
+        const locks = manager({
+            now: time.now,
+            alive: new Set([4242, 7000]),
+            sleep: async ms => {
+                time.advance(ms);
+                await fs.rm(lockPathOf(project), { force: true });
+            },
+        });
+
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+        expect((await readLock(project))?.pid).toBe(4242);
+        locks.dispose();
+    });
+
+    it("does not wait for a Studio whose process is gone", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        await writeLock(project, silentLiveHolder(time.now()));
+        const sleep = vi.fn(async () => undefined);
+
+        const locks = manager({ now: time.now, alive: new Set([4242]), sleep });
+
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+        expect(sleep).not.toHaveBeenCalled();
+        locks.dispose();
+    });
+
+    it("does not wait for a silent Studio on another machine", async () => {
+        // Nothing here can say whether a remote process runs, so its heartbeat is the whole
+        // evidence, as it always was.
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        await writeLock(project, otherSession(time.now() - SILENT_FOR));
+        const sleep = vi.fn(async () => undefined);
+
+        const locks = manager({ now: time.now, sleep });
+
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+        expect(sleep).not.toHaveBeenCalled();
+        locks.dispose();
     });
 });

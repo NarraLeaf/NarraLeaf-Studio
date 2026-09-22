@@ -10,13 +10,19 @@ import { refusesOperations } from "./workspaceFreeze";
  * Every kind is listed here by hand rather than derived from the type, so that adding a sixth kind
  * fails a test instead of quietly inheriting whichever answer the union's shape happens to give.
  */
-const ALL_KINDS: readonly WorkspaceFreezeKind[] = ["revision", "manual", "merge", "recovery", "live-session"];
+const ALL_KINDS: readonly WorkspaceFreezeKind[] = ["revision", "manual", "merge", "recovery", "live-session", "taken-over"];
 
 describe("refusesOperations", () => {
     it("holds for every freeze that means the author is not reading their working tree", () => {
         for (const kind of ["revision", "manual", "merge", "recovery"] as const) {
             expect(refusesOperations(kind)).toBe(true);
         }
+    });
+
+    it("holds for a workspace whose project another Studio has taken over", () => {
+        // The working tree is the other Studio's now, and everything these operations write into
+        // the project folder would be written beside it.
+        expect(refusesOperations("taken-over")).toBe(true);
     });
 
     it("does not hold for a live session, whose content IS the working tree", () => {

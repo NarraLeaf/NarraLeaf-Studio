@@ -29,15 +29,25 @@ would report a verdict about something the caller did not ask about.
 | `--test-list` | — | reports the registry instead of running anything |
 | `--test-parameter` | `id=value`, repeatable | each parameter's own default |
 | `--test-as-shipped` | — (or `=true` / `=false`) | loose files; see [below](#loose-files-or-the-shipped-form) |
+| `--test-variant=` | A build variant's name | `main`, the release build; see [below](#which-variant-which-dlc) |
+| `--test-dlc=` | DLC names or ids, comma-separated; repeatable | no DLC |
 | `--test-report` | Where to write the JSON report | no report file |
 | `--test-user-data-dir` | A profile folder for this run | the machine's own profile |
 | `--lint` | A project folder, or the name of a recently-opened project | — (required for a sweep) |
 | `--lint-report` | Where to write the JSON report | no report file |
 | `--lint-user-data-dir` | A profile folder for this run | the machine's own profile |
 
-Every value-taking flag accepts both `--flag value` and `--flag=value`. `--test-list` and
-`--test-as-shipped` take no separate value; the second also accepts `=true` or `=false` for a job
-that states it from a variable.
+Every value-taking flag accepts both `--flag value` and `--flag=value`, except `--test-variant` and
+`--test-dlc`, which take only `--flag=value`. `--test-list` and `--test-as-shipped` take no separate
+value; the second also accepts `=true` or `=false` for a job that states it from a variable.
+
+> **On Windows, write any value with a colon in it as `--flag=value`.** A launch dies before Studio
+> writes anything when a separate argument looks like `scheme:rest`: `--test-id
+> narraleaf-studio:walkthrough` exits with no output and no report, while
+> `--test-id=narraleaf-studio:walkthrough` — or the short `--test-id walkthrough` — is read normally.
+> That is why the two flags that carry names an author typed accept only the `=` form: a variant
+> called `Next Fest: Demo` cannot be told apart from that shape. The separate form is refused with
+> the spelling that works.
 
 A companion flag given without `--test` or `--lint` is refused rather than ignored, exactly as a
 `--build-*` flag without `--build` is: the alternative is a launch that opens the editor while the
@@ -138,16 +148,20 @@ machine that did. Nothing is written back either — neither to the machine's se
 project.
 
 The run says which path it took. When the test launches its game, the log carries one line about the
-content, and the next line carries how long the compile took, which is the step whose cost depends
-on the path:
+content, then two about which build the game is ([below](#which-variant-which-dlc)), then how long
+the compile took, which is the step whose cost depends on the path:
 
 ```text
 [info] Test: assets: sealed in a protected store, as this project's release build holds them (--test-as-shipped)
+[info] Test: variant: main, the release build
+[info] Test: DLC: none
 [verbose] Test: game compiled: 11 asset(s) in 0.5 s
 ```
 
 ```text
 [info] Test: assets: loose files; this project's release build seals them, which --test-as-shipped would test
+[info] Test: variant: main, the release build
+[info] Test: DLC: none
 [verbose] Test: game compiled: 11 asset(s) in 0.4 s
 ```
 
@@ -163,6 +177,55 @@ the sealed path ran:
 `--lint` has no counterpart and needs none. A lint sweep reads the project; it never compiles or
 launches the game, so there is no content form for it to choose. `--test-as-shipped` beside `--lint`
 is refused as a bad invocation, as every other `--test` flag is.
+
+### Which variant, which DLC
+
+A game a test launches is one build of the project: one [build variant](command-line-builds.md), and
+whichever of the project's DLC is installed beside it. By default it is the release build — the
+variant called `main` — with no DLC, which is the game a player who bought only the game has.
+`--test-variant` and `--test-dlc` name another:
+
+```sh
+narraleaf-studio --test /srv/projects/my-game --test-id=walkthrough \
+  --test-variant=Demo --test-dlc="Summer Route,voice_pack"
+```
+
+**Names, the way the project's author wrote them.** A variant is named by its name — `main`, or
+whatever the author called theirs in **Project ▸ App** — matched without regard to case. A DLC is
+named by its name or by its id, the author-chosen word the DLC's file is named after; a name wins
+when both would match, and a DLC whose name has a comma in it is named by its id. `--test-dlc` takes
+a comma-separated list and may also be given more than once.
+
+**The line is the only thing asked**, as it is for `--test-as-shipped`. Studio's **Run as** and **Run
+with DLC** choices are an author's habits at one machine and are not read by a command-line run at
+all: the same line tests the same build on an agent that never chose anything and on a developer's
+machine that chose a demo with every DLC ticked. Nothing is written back to the machine's settings
+or to the project.
+
+**A name the project does not have is refused** with exit code 2 before anything is opened, and the
+refusal lists the ones it does have:
+
+```text
+[error] Test: The project has no build variant "Dmeo". It has: main, Demo.
+[error] Test: invocation (exit 2)
+```
+
+So is a DLC made for a different variant than the one the run is. A build refuses a DLC sealed for
+another variant, so no player of this one can install it, and a green run on that pair would be about
+a game nobody can have. The refusal names the variant the DLC belongs to and the DLC this one can
+take.
+
+The run says which build it was, on the two lines after the one about the content:
+
+```text
+[info] Test: variant: "Demo" (--test-variant)
+[info] Test: DLC: "Summer Route", "Voice pack" (--test-dlc)
+```
+
+A **headless** test launches no game and reads the project's documents as they stand — every story,
+every row — so naming a variant or DLC for one changes nothing it looks at. The names are still
+checked, and the run ends with a warning saying the build it named was not the one read. Beside
+`--lint` both flags are refused, as every other `--test` flag is.
 
 ### What counts as a pass
 
@@ -234,10 +297,10 @@ computer does.
 
 Unlike a build, a check needs nothing else out of the profile — no signing vault, no packager
 mirrors — so there is no `--test-setting` to put anything back. What a scratch profile does change is
-the plugin list, and with it the test registry: see above. It also changes the two run habits a
-test's game still takes from the profile it runs in — which build variant a run is, and which DLC it
-has installed — and a scratch profile has neither, so its game is the release edition with no DLC.
-Whether that game is sealed is not one of them: that is `--test-as-shipped`, and nothing else.
+the plugin list, and with it the test registry: see above. It changes nothing about the game a test
+launches: whether it is sealed, which variant it is and which DLC it has are `--test-as-shipped`,
+`--test-variant` and `--test-dlc`, and nothing else — never the profile's own **Preview as
+shipped**, **Run as** or **Run with DLC**.
 
 ## Trust
 
@@ -260,3 +323,9 @@ window server for a GPU process to attach to.
 A **windowed** test is the exception, and it is an exception by definition: it launches a game
 process, and that process draws. Use `--test-list` to see which tests those are before running one
 on a host with no display.
+
+That window does not have to stay in view. A game a test launches keeps drawing and keeping time
+when it is minimized, moved off screen or covered by another window, so a run on a machine somebody
+is using is not failed by whatever they bring to the front. Only the games tests launch behave this
+way; a player's game, and a preview an author starts, pause their drawing when hidden, as Chromium
+does by default.

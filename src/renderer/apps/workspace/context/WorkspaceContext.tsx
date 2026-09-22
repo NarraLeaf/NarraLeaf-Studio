@@ -5,7 +5,7 @@ import type { CommandLineRunJob } from "@shared/types/commandLineRun";
 import { throwException } from "@shared/utils/error";
 import { getInterface } from "@/lib/app/bridge";
 import { setCrashRecoveryFlush } from "@/lib/app/errorHandling/crashRecovery";
-import { freezeProjectWrites } from "@/lib/app/writeFreeze";
+import { freezeProjectWrites, getProjectWriteFreeze, isTakenOver } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { startRecoveryShell } from "@/lib/workspace/recovery/recoveryShell";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -20,6 +20,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { translate } from "@/lib/i18n";
 import { Service } from "@/lib/workspace/services/Service";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
+import { watchForSessionTakeover } from "@/lib/workspace/startup/sessionTakeover";
 import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
 import type { WorkspaceStartupStage } from "../components/WorkspaceOpeningOverlay";
 
@@ -364,6 +365,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             if (!currentContext) {
                 return { success: true, data: { confirmed: true } };
             }
+            // A project another Studio took over has nothing here left to lose - nothing typed in
+            // this window can be saved - and the editor that would draw the sheet is no longer on
+            // screen. Asking would leave the close waiting on a dialog nobody can see.
+            if (isTakenOver(getProjectWriteFreeze())) {
+                return { success: true, data: { confirmed: true } };
+            }
 
             const uiService = currentContext.services.get<UIService>(Services.UI);
             const confirmed = await uiService.showConfirm(
@@ -382,13 +389,27 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             if (!currentContext) {
                 return { success: true, data: { flushed: true } };
             }
+            // Nothing is owed to a project another Studio has taken over. The latch would refuse
+            // every one of these writes anyway; not attempting them keeps a close from filling the
+            // console with a refusal per document.
+            if (isTakenOver(getProjectWriteFreeze())) {
+                return { success: true, data: { flushed: true } };
+            }
             const result = await flushPendingSaves(currentContext);
             return { success: true, data: { flushed: result.flushed } };
         });
 
+        // Another NarraLeaf Studio has taken this window's project over. On mount rather than
+        // with the context, like the two handlers above, because a takeover can land while the
+        // workspace is still starting - see `watchForSessionTakeover`.
+        const takenOverToken = watchForSessionTakeover(
+            () => contextRef.current?.project.getConfig().projectPath ?? null,
+        );
+
         return () => {
             token.cancel();
             flushToken.cancel();
+            takenOverToken.cancel();
         };
     }, []);
 

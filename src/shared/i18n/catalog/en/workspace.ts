@@ -408,6 +408,7 @@ export const workspace = {
         liveBlockedMerge: "Finish the merge to start or join a live session.",
         liveBlockedRecovery: "Live sessions are unavailable in recovery mode.",
         liveBlockedSession: "This workspace is already in a live session.",
+        liveBlockedTakenOver: "This project is now open in another NarraLeaf Studio.",
         // Where this window stands in the room it is in, in the slot the member count uses
         // outside one. Values with no labels, like every other fact in this panel.
         liveHost: "Host",
@@ -566,6 +567,11 @@ export const workspace = {
         projectLockedTitle: "This project is open in another NarraLeaf Studio",
         projectLockedHere: "Open on this computer since {time}. Retry once it has been closed there.",
         projectLockedElsewhere: "Open on {host} since {time}. Retry once it has been closed there.",
+        // The same project, lost while this window had it open: another Studio took it over, and
+        // from then on nothing typed here is written. The time is when the other one took it.
+        projectTakenOverTitle: "This project is now open in another NarraLeaf Studio",
+        projectTakenOverHere: "Open on this computer since {time}. Changes in this window are no longer saved. Retry once it has been closed there.",
+        projectTakenOverElsewhere: "Open on {host} since {time}. Changes in this window are no longer saved. Retry once it has been closed there.",
         openLauncher: "Open launcher",
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",

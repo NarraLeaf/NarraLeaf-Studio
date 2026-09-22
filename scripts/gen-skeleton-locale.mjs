@@ -558,6 +558,13 @@ function buildVariant(locale) {
                 node.value = translations.units?.[node.value] ? node.value : say(node.value);
                 return;
             }
+            // An ending's name is text a player reads - wherever the game lists its endings - and it
+            // has no translation unit of its own, so the table answers for it as for any other
+            // string the author typed.
+            if (node.control === "ending" && typeof node.name === "string") {
+                node.name = say(node.name);
+                return;
+            }
             Object.values(node).forEach(walk);
         };
         walk(document.value);

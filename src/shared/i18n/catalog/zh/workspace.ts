@@ -357,6 +357,7 @@ export const workspace = {
         liveBlockedMerge: "完成合并后才能开始或加入实时会话",
         liveBlockedRecovery: "恢复模式下无法使用实时会话",
         liveBlockedSession: "该工作区已在一场实时会话中",
+        liveBlockedTakenOver: "该项目现已在另一个 NarraLeaf Studio 中打开",
         // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
         liveHost: "主持",
         liveGuest: "参与",
@@ -489,6 +490,10 @@ export const workspace = {
         projectLockedTitle: "该项目已在另一个 NarraLeaf Studio 中打开",
         projectLockedHere: "本机自 {time} 起打开，关闭后可重试",
         projectLockedElsewhere: "{host} 自 {time} 起打开，在该设备上关闭后可重试",
+        // 同一个项目，在本窗口打开期间被另一个 Studio 接管：此后在这里做的任何更改都不会写入。时间是对方接管的时刻。
+        projectTakenOverTitle: "该项目现已在另一个 NarraLeaf Studio 中打开",
+        projectTakenOverHere: "本机自 {time} 起打开，此窗口中的更改不再保存，关闭后可重试",
+        projectTakenOverElsewhere: "{host} 自 {time} 起打开，此窗口中的更改不再保存，在该设备上关闭后可重试",
         openLauncher: "打开启动器",
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",

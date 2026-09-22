@@ -149,6 +149,19 @@ export class SurfaceLifecycleOrchestrator {
     }
 
     /**
+     * The layer was brought back before its exit finished - Back to a page that is still fading
+     * out, which the presence group answers by keeping the same layer rather than drawing a new one.
+     *
+     * The page is arriving again from this moment, so it reads as entering rather than exiting:
+     * left as it was, `Is Surface Exiting` went on answering true for the length of the return's
+     * enter animation, on a page already back on screen and taking presses. The arrival ends the
+     * usual way, with {@link enterComplete}, which `beforeExit` has already re-armed.
+     */
+    public returned(scopeId: string): LifecycleCommand[] {
+        return [{ kind: "setTransitionState", scopeId, state: { isEntering: true, isExiting: false } }];
+    }
+
+    /**
      * The enter animation completed. Idempotent per enter generation: the
      * redundant enter-complete paths in SurfaceAnimationLayer (animation
      * callback, zero-duration effect, timeout fallback) yield exactly one
