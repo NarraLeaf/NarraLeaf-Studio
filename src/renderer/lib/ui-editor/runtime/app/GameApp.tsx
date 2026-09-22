@@ -188,7 +188,7 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
-import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
+import { createStoryStartGate, publishMenuEnvironmentMount, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
 import { clearStoryPosition, recordStoryRow, recordStoryScene } from "./lastStoryPosition";
@@ -696,6 +696,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     // in-flight boot) when nlrSession / hostAdapterBundle identities churn — the boot itself
     // mutates nlrSession, which would otherwise self-cancel before nlrPreloadDone is ever set.
     const runBootRef = useRef<(() => Promise<void>) | null>(null);
+    /**
+     * Puts a menu's environment back under the page a run was quit to - see where it is written,
+     * beside the boot. A ref for the boot's reason and one more: `quitGame`, the one caller, is
+     * declared long before the functions this is built from.
+     */
+    const remountMenuEnvironmentRef = useRef<(() => void) | null>(null);
     /**
      * The boot's phases, written to the page's performance timeline and handed to the host.
      *
@@ -2437,6 +2443,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // while something is still arriving over it. In `finally` because a page that failed to
             // open must not leave a dead stage painted over whatever the player is looking at.
             setStageRetainedForQuit(false);
+            // The page the run was quit to is a menu, and a menu stands on an environment of its
+            // own - the one just torn down belonged to the run.
+            remountMenuEnvironmentRef.current?.();
         }
     }, [
         clearCurrentDialogState,
@@ -4512,6 +4521,26 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [menuController, pluginHost]);
 
+    /**
+     * The environment a menu stands on.
+     *
+     * Initialises the environment (gameReady) and fully warms the scene the project's Start Game
+     * would enter - fetched and decoded - but does NOT enter the game; the player stays on the menu.
+     * Getting the target right is the whole point: a warm environment for the wrong scene has to be
+     * recompiled and remounted on start. A project with no such scene gets an empty one.
+     *
+     * A menu needs this even though nothing is being played on it: it is what a button's click
+     * sound plays through, what a volume slider moves, and what Load and Continue read a save into.
+     */
+    const mountMenuEnvironment = async (): Promise<void> => {
+        const defaultScene = resolveStagePreloadTarget(bundle);
+        if (defaultScene) {
+            await initDefaultSceneEnvironment(defaultScene);
+        } else {
+            await startEmptyNlrEnvironment();
+        }
+    };
+
     // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
     // preload the configured default scene (or launch directly into a story entry), otherwise
     // boot an empty NLR environment. gameReady fires here, once, at boot.
@@ -4544,17 +4573,26 @@ export function GameApp(props: GameAppProps): ReactNode {
                 snapshotId: host.bootAction.snapshotId,
             });
         } else {
-            // Menu launch: initialise the environment (gameReady) and fully warm the scene the
-            // project's Start Game would enter — fetched and decoded — but do NOT enter the game;
-            // the player stays on the menu. Getting the target right is the whole point: a warm
-            // environment for the wrong scene has to be recompiled and remounted on start.
-            const defaultScene = resolveStagePreloadTarget(bundle);
-            if (defaultScene) {
-                await initDefaultSceneEnvironment(defaultScene);
-            } else {
-                await startEmptyNlrEnvironment();
-            }
+            await mountMenuEnvironment();
         }
+    };
+
+    /**
+     * The same menu launch, for the page a run was just quit to.
+     *
+     * `quitGame` tears the run's environment down, which is right - it holds the playthrough that
+     * ended - and nothing used to mount another. So from the first Return to title on, the title
+     * screen stood on no game at all: its buttons' sounds were skipped, a volume slider changed
+     * nothing, and Load and Continue failed outright with "game runtime is not available".
+     */
+    remountMenuEnvironmentRef.current = () => {
+        void publishMenuEnvironmentMount({
+            mount: mountMenuEnvironment,
+            pendingBoot: nlrBootPromiseRef,
+            isSuperseded: err => err instanceof NlrSessionSupersededError,
+            onSuperseded: err => host.log("info", `[${host.id}] menu environment superseded: ${normalizeError(err)}`),
+            onFailure: err => reportFailure(err, { prefix: `[${host.id}] the menu's game environment could not be mounted: ` }),
+        });
     };
 
     // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps are
