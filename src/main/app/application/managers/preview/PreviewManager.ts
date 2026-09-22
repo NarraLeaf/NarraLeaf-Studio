@@ -3,6 +3,7 @@ import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
+import { unpatchedFsPromises } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -264,8 +265,9 @@ export class PreviewManager {
             throw new Error("Stop the preview before resetting its player data");
         }
         const userDataDir = path.join(path.resolve(projectPath), ".nlstudio", "preview", "userData");
-        await fs.promises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
-        await fs.promises.rm(path.join(userDataDir, "persistence.json"), { force: true });
+        // Inside the author's project, so unpatched like every other path there (see unpatchedFs.ts).
+        await unpatchedFsPromises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
+        await unpatchedFsPromises.rm(path.join(userDataDir, "persistence.json"), { force: true });
     }
 
     private cancelLaunches(key: string): void {

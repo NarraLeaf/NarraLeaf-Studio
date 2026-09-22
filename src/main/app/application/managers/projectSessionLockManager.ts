@@ -1,5 +1,4 @@
-import fsSync from "fs";
-import fs from "fs/promises";
+import { unpatchedFs as fsSync, unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import { createHash } from "crypto";
 import os from "os";
 import path from "path";

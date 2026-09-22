@@ -22,7 +22,7 @@
  * layer the author wrote and nobody runs is the build doing something other than what was asked.
  */
 
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { pathToFileURL } from "url";
 import type { BlueprintDocument, BlueprintDiagnostic } from "@shared/types/blueprint/document";

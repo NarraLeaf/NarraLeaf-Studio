@@ -8,7 +8,7 @@ import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, shell } from "electron";
 import type { Dirent } from "fs";
-import { promises as fs } from "fs";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import os from "os";
 import path from "path";
 import {

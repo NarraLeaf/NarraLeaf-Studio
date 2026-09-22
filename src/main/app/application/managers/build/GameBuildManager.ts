@@ -2,7 +2,7 @@ import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
 import { projectHeldElsewhereRefusal } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import { existsSync } from "fs";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
 import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME, wrapPackKey } from "@narraleaf/bindings";

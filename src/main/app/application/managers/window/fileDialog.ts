@@ -24,7 +24,8 @@
  * All of it lives in the main process and is injected into the page on demand: a Studio that is not
  * in this mode has no such global, no IPC event, and no renderer code for one.
  */
-import fs from "fs";
+import type { Stats } from "fs";
+import { unpatchedFs as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { dialog } from "electron";
 import type { Translator } from "@shared/i18n";
@@ -253,7 +254,7 @@ function absoluteOrNull(target: unknown): string | null {
     return path.isAbsolute(target) ? path.resolve(target) : null;
 }
 
-function statOrNull(target: string): fs.Stats | null {
+function statOrNull(target: string): Stats | null {
     try {
         return fs.statSync(target);
     } catch {

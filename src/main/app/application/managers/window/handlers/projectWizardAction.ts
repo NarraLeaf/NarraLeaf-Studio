@@ -2,7 +2,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { app } from "electron";
-import fs from "fs";
+import { unpatchedFs as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { resolveDefaultProjectDirectory } from "../../../defaultProjectDirectory";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
