@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { CommandLineRunEvent } from "@shared/types/commandLineRun";
 import { describePermissionAsker, refuseUnattendedPrompt } from "./unattendedPrompt";
 
 /**
@@ -8,35 +7,34 @@ import { describePermissionAsker, refuseUnattendedPrompt } from "./unattendedPro
  * never be refused because of this.
  */
 function target(unattended: boolean) {
-    const events: CommandLineRunEvent[] = [];
+    const endings: string[] = [];
     return {
-        events,
+        endings,
         window: {
             isUnattended: () => unattended,
-            reportCommandLineRunEvent: (event: CommandLineRunEvent) => events.push(event),
+            endUnattendedRun: (message: string) => {
+                endings.push(message);
+            },
         },
     };
 }
 
 describe("refuseUnattendedPrompt", () => {
     it("does nothing in a window somebody is looking at", () => {
-        const { window, events } = target(false);
+        const { window, endings } = target(false);
 
         expect(() => refuseUnattendedPrompt(window, "Something asked")).not.toThrow();
-        expect(events).toEqual([]);
+        expect(endings).toEqual([]);
     });
 
-    it("ends an unattended window's run as an environment failure, and throws the same sentence", () => {
-        const { window, events } = target(true);
+    it("ends an unattended window's run, and throws the same sentence", () => {
+        const { window, endings } = target(true);
 
         expect(() => refuseUnattendedPrompt(window, "Something asked for a file picker"))
             .toThrow(/^Something asked for a file picker, and a command-line run has nobody at the screen/);
-        expect(events).toEqual([{
-            kind: "finished",
-            ok: false,
-            refusal: "environment",
-            error: expect.stringMatching(/^Something asked for a file picker, and a command-line run/),
-        }]);
+        expect(endings).toEqual([
+            expect.stringMatching(/^Something asked for a file picker, and a command-line run/),
+        ]);
     });
 });
 

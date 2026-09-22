@@ -102,6 +102,15 @@ export class AppTerminateHandler extends IPCHandler<IPCEventType.appTerminate> {
         const timestamp = new Date().toISOString();
         window.app.logger.error(`A ${window.getWindowType()} window reported a fatal error at ${timestamp}: ${data.err}`);
 
+        // A window nobody is looking at: its run ends on the failure it reported, rather than on the
+        // window going away or on the restart prompt below - the one says nothing about why, and the
+        // other waits for somebody who is not there.
+        if (window.isUnattended()) {
+            window.endUnattendedRun(`The ${window.getWindowType()} window stopped on an error: ${firstLine(data.err)}`);
+            window.forceClose();
+            return this.success(void 0 as never);
+        }
+
         const others = window.app.windowManager.getWindows()
             .filter(candidate => candidate !== window && !candidate.isClosed());
         if (others.length === 0) {
@@ -146,8 +155,32 @@ export class AppReportRendererErrorHandler extends IPCHandler<IPCEventType.appRe
             lines.push(`Component stack:${data.componentStack}`);
         }
         window.app.logger.error(lines.join("\n"));
+
+        // "boundary" is the one report that replaces the whole window with the crash screen, which
+        // waits for somebody to press Reload. In a window nobody is looking at that is a run waiting
+        // out its silence deadline, so the run ends here with what the screen would have said.
+        if (data.source === "boundary" && window.isUnattended()) {
+            window.endUnattendedRun(
+                `The ${window.getWindowType()} window stopped on an error and put up its crash screen: ${firstLine(data.message)}`,
+            );
+        }
         return this.success(void 0 as never);
     }
+}
+
+/**
+ * The first line of a failure a renderer reported; the rest is a stack, which the log keeps.
+ *
+ * A page that failed to start reports its error as the error's name on one line and its message on
+ * the next (`renderApp`), and "TypeError" alone tells an operator nothing - so a bare name keeps the
+ * line after it.
+ */
+function firstLine(text: string): string {
+    const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+    if (lines.length > 1 && /^[A-Za-z]*Error$/.test(lines[0])) {
+        return `${lines[0]}: ${lines[1]}`;
+    }
+    return lines[0] ?? text;
 }
 
 export class AppWindowControlHandler extends IPCHandler<IPCEventType.appWindowControl> {
