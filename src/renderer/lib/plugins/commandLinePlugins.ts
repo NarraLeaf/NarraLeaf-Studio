@@ -5,7 +5,6 @@ import type { DependencyResolutionEntry } from "@shared/types/pluginDependencies
 import type { PluginListItem } from "@shared/types/plugins";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
-import { isUnmet } from "@/lib/workspace/project/dependencyRemedy";
 import { loadWorkspacePlugins } from "./pluginRuntime";
 import { workspacePluginSession } from "./workspacePluginSession";
 
@@ -32,9 +31,10 @@ import { workspacePluginSession } from "./workspacePluginSession";
  * of unknown nodes, a build without the plugin's runtime. So it is the one place the run parts from
  * the editor: every such plugin is named on the log, by its name and the version the project was
  * made with, and the run ends as a Studio failure (exit 4) - a machine to look at, not a project to
- * change. The predicate is the editor's own (`isUnmet`), widened by the two states in which a
- * plugin is installed and switched on and still contributes nothing: waiting for its permissions to
- * be approved, and failing to start.
+ * change. The states are the same five the editor's warning counts - absent, held back for its
+ * version, waiting for its permissions, switched off, failed to start - plus the one only a run can
+ * see, a plugin that threw while starting for this run. Each is written out here rather than shared
+ * with the editor's predicate, because a log has to say which of the five it is.
  *
  * ## Plugins the line switched on
  *
@@ -256,9 +256,9 @@ function unmetState(
         return `is installed at ${entry.installedVersion ?? plugin.manifest.version}, a different major version,`
             + " so Studio holds it back from this project";
     }
-    // The editor's own predicate has nothing left to say past this point but "switched off"; asked
-    // rather than restated, so the two cannot come to disagree about what that means.
-    if (isUnmet(entry) || !plugin.enabled) {
+    // Both halves of "switched off", because they can disagree: the resolution was taken from the
+    // installed list at some earlier moment, and the record read here is the one this run holds.
+    if (entry.installedEnabled === false || !plugin.enabled) {
         return SWITCHED_OFF;
     }
     if (plugin.status === "needsAuthorization") {

@@ -7,11 +7,11 @@ import { Services, type WorkspaceContext } from "@/lib/workspace/services/servic
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import {
     isActionable,
-    isUnmet,
     planDependencyRemedy,
     type DependencyRemedy,
     type DependencyRemedyStep,
 } from "@/lib/workspace/project/dependencyRemedy";
+import { isDependencyUnavailable } from "@/lib/workspace/project/dependencyStatusDisplay";
 import {
     PROJECT_DEPENDENCY_SCHEMA_VERSION,
     type DependencyResolutionEntry,
@@ -151,7 +151,7 @@ export function useProjectDependencyRows(
     }), [catalog.installedById, catalog.registryById, entries, registryKnown]);
 
     const actionable = useMemo(() => rows.filter(row => isActionable(row.remedy)), [rows]);
-    const unavailable = useMemo(() => rows.filter(row => isUnmet(row.entry)).length, [rows]);
+    const unavailable = useMemo(() => rows.filter(row => isDependencyUnavailable(row.entry)).length, [rows]);
 
     // Read through a ref so the run closure never captures a stale list: every step re-reads the
     // installed set, and the row objects it was handed are from before that.
