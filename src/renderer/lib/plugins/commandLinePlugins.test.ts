@@ -103,6 +103,18 @@ describe("findUnmetPluginDependencies", () => {
         );
 
         expect(unmet[0].state).toMatch(/^is installed at 4\.0\.0, a different major version/);
+        expect(unmet[0].held).toBe(true);
+        expect(unmet[0].switchOn).toBeUndefined();
+    });
+
+    it("does not call a plugin that is not installed held, though the resolver suppresses it too", () => {
+        const unmet = findUnmetPluginDependencies(
+            [entry({ status: "missing", installedVersion: undefined, installedEnabled: undefined, suppressed: true })],
+            [],
+            {},
+        );
+
+        expect(unmet[0].held).toBeUndefined();
     });
 
     it("counts a plugin waiting for its permissions, which is on and loads nothing", () => {
@@ -182,6 +194,33 @@ describe("describeUnmetPlugins", () => {
         ], "--build-plugin");
 
         expect(sentence).toMatch(/ To switch the ones switched off on for this run only, add --build-plugin="Menu Bar"\.$/);
+    });
+
+    /**
+     * Installing, switching on and the flag all leave a hold where it is, so the sentence the other
+     * states end on would send the reader round a loop. Only the author's Rescan releases it.
+     */
+    it("sends a plugin held back for its version to Rescan in Studio, not to the plugin list", () => {
+        const sentence = describeUnmetPlugins([{
+            plugin: '"Gallery" 2.0.0',
+            state: "is installed at 3.1.0, a different major version, so Studio holds it back from this project",
+            held: true,
+        }], "--lint-plugin");
+
+        expect(sentence).toBe('This project holds back a plugin it needs, installed here at a different major version: "Gallery" 2.0.0.'
+            + " To use the installed version, open the project in Studio and press Rescan under Project ▸ App.");
+    });
+
+    it("says each remedy once when held and unrunnable plugins come together", () => {
+        const sentence = describeUnmetPlugins([
+            { plugin: '"Menu Bar" 1.0.0', state: "is switched off in this profile", switchOn: "Menu Bar" },
+            { plugin: '"Gallery" 2.0.0', state: "is installed at 3.1.0, a different major version", held: true },
+        ], "--lint-plugin");
+
+        expect(sentence).toMatch(/^This profile cannot run a plugin this project needs: "Menu Bar" 1\.0\.0\./);
+        expect(sentence).toContain('To switch it on for this run only, add --lint-plugin="Menu Bar".');
+        expect(sentence).toContain('This project holds back a plugin it needs, installed here at a different major version: "Gallery" 2.0.0.');
+        expect(sentence).not.toContain("--lint-plugin=Gallery");
     });
 
     it("says nothing about a flag when none would help", () => {

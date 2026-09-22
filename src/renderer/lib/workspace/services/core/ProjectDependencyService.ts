@@ -8,7 +8,7 @@ import {
     type ProjectDependencyTable,
     type ProjectPluginDependency,
 } from "@shared/types/pluginDependencies";
-import { resolveDependencies } from "@shared/utils/resolveDependencies";
+import { isHeldBack, resolveDependencies } from "@shared/utils/resolveDependencies";
 import { parsePluginStore } from "@shared/utils/pluginStorage";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { FsRejectErrorCode } from "@shared/types/os";
@@ -50,6 +50,19 @@ export interface DependencyUsageRecord {
     byName?: boolean;
 }
 
+/**
+ * Who asked for a scan, which decides whether it may release a plugin Studio holds back.
+ *
+ * - `automatic` - the scans Studio runs by itself: before a run, before an export, and the live view
+ *   Project ▸ App shows when it opens. They keep the table in step with what the project uses - a row
+ *   for a plugin it has started to use, none for a plugin it no longer uses - and never move the
+ *   version recorded for a held plugin, so a hold outlasts every run and export.
+ * - `rescan` - the author pressed Rescan, in Project ▸ App or in the build dialog. That is the answer
+ *   a hold waits for: every held plugin's recorded version becomes the installed one, and the hold
+ *   is released.
+ */
+export type DependencyScanTrigger = "automatic" | "rescan";
+
 export interface DependencyScanInput {
     /**
      * Every reference to a plugin the scan found. Complete for every plugin, loaded or not: a loaded
@@ -64,6 +77,8 @@ export interface DependencyScanInput {
      * vouch for, so no recorded dependency is dropped and none loses a use it recorded.
      */
     complete: boolean;
+    /** `automatic` when absent, the answer that can never release a hold by accident. */
+    trigger?: DependencyScanTrigger;
 }
 
 /**
@@ -135,9 +150,12 @@ export class ProjectDependencyService
      * Compute a live resolution from a fresh scan of current usage WITHOUT
      * persisting the table or changing suppression state. Used by the read-only
      * dependencies panel so viewing it never writes the manifest.
+     *
+     * An automatic scan, so a held plugin reads as held: what the panel shows on opening is what
+     * the next run will do, and releasing a hold is its Rescan button's job.
      */
     public async previewResolve(): Promise<ProjectDependencyResolution> {
-        return this.computeResolution(await this.rescan());
+        return this.computeResolution(await this.rescan("automatic"));
     }
 
     private async computeResolution(table: ProjectDependencyTable): Promise<ProjectDependencyResolution> {
@@ -152,8 +170,10 @@ export class ProjectDependencyService
      * still be waiting for its auto-save, and a scan that re-read the files replaced the open
      * documents with the older copies on disk - taking the edit with it - whenever a run, which
      * scans first, started within a second of one.
+     *
+     * `trigger` says whether the author asked for this scan (see {@link DependencyScanTrigger}).
      */
-    public async rescan(): Promise<ProjectDependencyTable> {
+    public async rescan(trigger: DependencyScanTrigger): Promise<ProjectDependencyTable> {
         const plugins = await this.listPlugins();
         const installed = plugins.map(toInstalledPlugin);
         const existing = this.getProjectService().getDependencyTable();
@@ -170,12 +190,16 @@ export class ProjectDependencyService
         await this.collectStorageUsage(scan, listPublishedNamespaces(plugins));
         await this.collectStoryActionUsage(scan);
 
-        return buildDependencyTable({ usage: scan.usage, installed, existing, complete: scan.complete });
+        return buildDependencyTable({ usage: scan.usage, installed, existing, complete: scan.complete, trigger });
     }
 
-    /** Scan, persist the fresh table into the manifest, then re-resolve. */
-    public async rescanAndPersist(): Promise<ProjectDependencyResolution> {
-        const table = await this.rescan();
+    /**
+     * Scan, persist the fresh table into the manifest, then re-resolve.
+     *
+     * `rescan` only for the author's own Rescan: it is the one scan that releases a held plugin.
+     */
+    public async rescanAndPersist(trigger: DependencyScanTrigger): Promise<ProjectDependencyResolution> {
+        const table = await this.rescan(trigger);
         await this.getProjectService().setDependencyTable(table);
         return this.resolve();
     }
@@ -473,19 +497,31 @@ function listPublishedNamespaces(plugins: readonly PluginListItem[]): Map<string
  * row outlives its evidence is a scan that could not read every document.
  *
  * What a row says:
- * - **version** - the installed one, when the scan saw the project use the plugin through a loaded
- *   type, a story row or a store. A plugin known only by the names of its types is not loaded here -
- *   absent, switched off, or withheld for its version - so nothing has been made with the installed
- *   one, and the recorded version stands. Moving it would lift the very suppression that keeps an
- *   incompatible major away from a project made with the old one.
+ * - **version** - for a plugin Studio holds back from the project (see {@link isHeldBack}), the
+ *   recorded one, until the author's Rescan records the installed one and so releases the hold. A
+ *   held plugin is the one case where the project's own rows cannot speak for the version: its
+ *   stores and story rows are still there to be found, and recording the installed version on
+ *   their evidence released the hold on the next run, with the notice still telling the author the
+ *   hold would last until they acted. Otherwise, the installed one, when the scan saw the project
+ *   use the plugin through a loaded type, a story row or a store. A plugin known only by the names
+ *   of its types is not loaded here - absent or switched off - so nothing has been made with the
+ *   installed one, and the recorded version stands.
  * - **hard** - from the references found. A store's weight is read off the installed manifest, so
  *   with no plugin installed, or a document unread, the recorded answer is kept as well.
  * - **usedBy** - what the scan found, plus what was recorded if the scan was incomplete.
  */
 export function buildDependencyTable(input: DependencyScanInput): ProjectDependencyTable {
     const { usage, installed, existing, complete } = input;
+    const releaseHolds = input.trigger === "rescan";
     const installedById = new Map(installed.map(plugin => [plugin.id, plugin] as const));
     const existingById = new Map((existing?.plugins ?? []).map(plugin => [plugin.id, plugin] as const));
+    // The recorded version, unless the author's Rescan is releasing the hold on it.
+    const heldVersion = (prior: ProjectPluginDependency | undefined, info: InstalledPlugin | undefined): string | null => {
+        if (!prior || !info || !isHeldBack(prior, info.version)) {
+            return null;
+        }
+        return releaseHolds ? info.version : prior.authoredVersion;
+    };
 
     // Fold usage records into one accumulator per plugin.
     const accumulators = new Map<string, {
@@ -510,9 +546,9 @@ export function buildDependencyTable(input: DependencyScanInput): ProjectDepende
         const prior = existingById.get(pluginId);
         const name = info?.name ?? prior?.name;
         const publisher = info?.publisher ?? prior?.publisher;
-        const authoredVersion = accumulator.byNameOnly
+        const authoredVersion = heldVersion(prior, info) ?? (accumulator.byNameOnly
             ? prior?.authoredVersion ?? info?.version ?? "0.0.0"
-            : info?.version ?? prior?.authoredVersion ?? "0.0.0";
+            : info?.version ?? prior?.authoredVersion ?? "0.0.0");
         const usedBy = accumulator.usedBy;
         if (!complete) {
             for (const [kind, ids] of Object.entries(prior?.usedBy ?? {}) as [DependencyKind, string[]][]) {
@@ -533,9 +569,13 @@ export function buildDependencyTable(input: DependencyScanInput): ProjectDepende
     }
 
     if (!complete) {
+        // Kept for want of evidence either way, but the author's Rescan still speaks for its version:
+        // a hold that Rescan left in place because some story would not load is one the author has
+        // no way to release.
         for (const prior of existing?.plugins ?? []) {
             if (!merged.has(prior.id)) {
-                merged.set(prior.id, prior);
+                const version = heldVersion(prior, installedById.get(prior.id));
+                merged.set(prior.id, version === null ? prior : { ...prior, authoredVersion: version });
             }
         }
     }

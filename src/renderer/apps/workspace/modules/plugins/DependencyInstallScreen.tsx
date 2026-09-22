@@ -273,6 +273,8 @@ function describeObstacle(remedy: DependencyRemedy, t: Translator["t"]): string 
             return t("plugins.dependencies.noCompatibleVersion");
         case "needsStudio":
             return t("plugins.store.needsStudio", { range: remedy.studioRange ?? "" });
+        case "rescanInProject":
+            return t("plugins.dependencies.rescanInProject");
         default:
             return null;
     }

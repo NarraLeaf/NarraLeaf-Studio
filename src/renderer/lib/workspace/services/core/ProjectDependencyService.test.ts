@@ -9,6 +9,7 @@ import {
     type TypeOwnership,
 } from "./ProjectDependencyService";
 import { PROJECT_DEPENDENCY_SCHEMA_VERSION, type ProjectDependencyTable } from "@shared/types/pluginDependencies";
+import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 
 const GALLERY: InstalledPlugin = {
@@ -300,6 +301,171 @@ describe("buildDependencyTable", () => {
             blueprintNode: ["acme.kit.spin"],
             widget: ["acme.kit.card"],
         });
+    });
+});
+
+/**
+ * A project made with Gallery 2, opened where Gallery 3 is installed: Studio holds Gallery back from
+ * it. The project still has Gallery's nodes, which nothing loaded here can claim, and Gallery's
+ * store, which is attributed from its filename whether or not Gallery is loaded.
+ */
+describe("buildDependencyTable - a plugin held back for its version", () => {
+    const GALLERY_3: InstalledPlugin = { ...GALLERY, version: "3.1.0" };
+    const GALLERY_2_ROW = {
+        id: "narraleaf.gallery",
+        name: "NarraLeaf Gallery",
+        publisher: "NarraLeaf",
+        builtIn: true,
+        authoredVersion: "2.0.0",
+        hard: true,
+        usedBy: {
+            blueprintNode: ["narraleaf.gallery.add"],
+            storage: ["plugin__narraleaf.gallery__narraleaf.gallery.items"],
+        },
+    };
+    const STORE: DependencyUsageRecord = {
+        pluginId: "narraleaf.gallery",
+        kind: "storage",
+        id: "plugin__narraleaf.gallery__narraleaf.gallery.items",
+        hard: true,
+    };
+    const STORY_ROW: DependencyUsageRecord = {
+        pluginId: "narraleaf.gallery",
+        kind: "storyAction",
+        id: "narraleaf.gallery.unlock",
+        hard: true,
+    };
+    const scan = (
+        trigger: "automatic" | "rescan" | undefined,
+        found: DependencyUsageRecord[] = [namedUsage("narraleaf.gallery", "narraleaf.gallery.add"), STORE],
+        complete = true,
+    ) => buildDependencyTable({
+        usage: found,
+        installed: [GALLERY_3],
+        existing: table(GALLERY_2_ROW),
+        complete,
+        ...(trigger ? { trigger } : {}),
+    });
+    const held = (result: ProjectDependencyTable) =>
+        resolveDependencies(result, [GALLERY_3]).suppressedPluginIds.includes("narraleaf.gallery");
+
+    it("starts out held", () => {
+        expect(held(table(GALLERY_2_ROW))).toBe(true);
+    });
+
+    /**
+     * The hole this closes: a store is evidence the scan reads whether or not the plugin is loaded,
+     * and it used to record the installed version - so the scan before every run released the hold
+     * while the notice still said it would last until the author updated the table.
+     */
+    it("keeps the recorded version through an automatic scan that finds the plugin's store", () => {
+        const result = scan("automatic");
+        expect(result.plugins[0].authoredVersion).toBe("2.0.0");
+        expect(held(result)).toBe(true);
+    });
+
+    it("keeps the recorded version through an automatic scan that finds a story row of the plugin's", () => {
+        const result = scan("automatic", [STORY_ROW]);
+        expect(result.plugins[0].authoredVersion).toBe("2.0.0");
+        expect(held(result)).toBe(true);
+    });
+
+    it("stays held however many automatic scans run", () => {
+        let current = table(GALLERY_2_ROW);
+        for (let run = 0; run < 3; run += 1) {
+            current = buildDependencyTable({
+                usage: [namedUsage("narraleaf.gallery", "narraleaf.gallery.add"), STORE],
+                installed: [GALLERY_3],
+                existing: current,
+                complete: true,
+                trigger: "automatic",
+            });
+        }
+        expect(current.plugins[0].authoredVersion).toBe("2.0.0");
+        expect(held(current)).toBe(true);
+    });
+
+    it("treats a scan that does not say who asked for it as automatic", () => {
+        expect(scan(undefined).plugins[0].authoredVersion).toBe("2.0.0");
+    });
+
+    it("still records what the project uses on an automatic scan", () => {
+        const result = scan("automatic", [STORE]);
+        expect(result.plugins[0].usedBy).toEqual({ storage: ["plugin__narraleaf.gallery__narraleaf.gallery.items"] });
+    });
+
+    it("still drops the row on an automatic scan once nothing refers to the plugin", () => {
+        expect(scan("automatic", []).plugins).toEqual([]);
+    });
+
+    it("records the installed version on the author's Rescan, which releases the hold", () => {
+        const result = scan("rescan");
+        expect(result.plugins[0].authoredVersion).toBe("3.1.0");
+        expect(held(result)).toBe(false);
+    });
+
+    it("releases a plugin known only by the names of its types on the author's Rescan", () => {
+        // Held, so not loaded: its nodes are all the scan can find, and before Rescan could release
+        // anything those were exactly the evidence that never moved the version.
+        const result = scan("rescan", [namedUsage("narraleaf.gallery", "narraleaf.gallery.add")]);
+        expect(result.plugins[0].authoredVersion).toBe("3.1.0");
+        expect(held(result)).toBe(false);
+    });
+
+    it("releases a held row the author's Rescan kept only because a document could not be read", () => {
+        const result = scan("rescan", [], false);
+        expect(result.plugins[0].authoredVersion).toBe("3.1.0");
+        expect(held(result)).toBe(false);
+    });
+
+    it("keeps a held row an automatic scan could not see as it was", () => {
+        expect(scan("automatic", [], false).plugins).toEqual([GALLERY_2_ROW]);
+    });
+
+    it("releases a plugin the author also switched off, which then reads as switched off", () => {
+        const result = buildDependencyTable({
+            usage: [namedUsage("narraleaf.gallery", "narraleaf.gallery.add")],
+            installed: [{ ...GALLERY_3, enabled: false }],
+            existing: table(GALLERY_2_ROW),
+            complete: true,
+            trigger: "rescan",
+        });
+        expect(result.plugins[0].authoredVersion).toBe("3.1.0");
+    });
+
+    it("moves a recorded version within the same major on an automatic scan, which is no hold", () => {
+        const result = buildDependencyTable({
+            usage: [STORE],
+            installed: [GALLERY_3],
+            existing: table({ ...GALLERY_2_ROW, authoredVersion: "3.0.0" }),
+            complete: true,
+            trigger: "automatic",
+        });
+        expect(result.plugins[0].authoredVersion).toBe("3.1.0");
+    });
+
+    it("moves a data-only dependency at another major on an automatic scan: nothing holds it back", () => {
+        const result = buildDependencyTable({
+            usage: [{ ...STORE, hard: false }],
+            installed: [GALLERY_3],
+            existing: table({ ...GALLERY_2_ROW, hard: false }),
+            complete: true,
+            trigger: "automatic",
+        });
+        expect(result.plugins[0].authoredVersion).toBe("3.1.0");
+    });
+
+    it("leaves a switched-off plugin's compatible recorded version alone on the author's Rescan", () => {
+        // Nothing is held, so Rescan has nothing to accept: the project is not being made with the
+        // installed version of a plugin that is not running.
+        const result = buildDependencyTable({
+            usage: [namedUsage("narraleaf.gallery", "narraleaf.gallery.add")],
+            installed: [{ ...GALLERY_3, enabled: false }],
+            existing: table({ ...GALLERY_2_ROW, authoredVersion: "3.2.0" }),
+            complete: true,
+            trigger: "rescan",
+        });
+        expect(result.plugins[0].authoredVersion).toBe("3.2.0");
     });
 });
 

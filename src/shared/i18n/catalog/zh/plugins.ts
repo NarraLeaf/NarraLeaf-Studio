@@ -83,6 +83,8 @@ export const plugins = {
         authorized: "已授权",
         notInRegistry: "不在注册表中",
         noCompatibleVersion: "无兼容版本",
+        // 因版本被停用的插件：解除停用的「重新扫描」在「项目 ▸ 应用」中，不在此处。
+        rescanInProject: "点击「项目 ▸ 应用」中的「重新扫描」以使用已安装的版本",
         task: {
             running: "正在安装依赖…",
             done: "依赖已安装",
@@ -97,7 +99,8 @@ export const plugins = {
             runtimeOnly: "仅游戏运行时",
             runtimeOnlyHint: "该插件只扩展运行中的游戏，在编辑器中没有可执行的部分",
             suppressed: "已为本项目停用",
-            suppressedHint: "已安装的版本与本项目所依赖的版本不兼容；更新插件，或在「项目 ▸ 应用」中重新扫描依赖表",
+            // 解除停用的只有「重新扫描」，所以提示写明按钮名与位置。
+            suppressedHint: "已安装的版本与本项目所依赖的版本不兼容；点击「项目 ▸ 应用」中的「重新扫描」以使用已安装的版本",
             failed: "载入失败",
         },
         pendingReopen: "下次打开本项目时生效",

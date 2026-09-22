@@ -56,6 +56,7 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import { rescanProjectDependencies } from "@/lib/plugins/rescanDependencies";
 import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import type {
     DependencyStatus,
@@ -1692,7 +1693,8 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                         throw new Error(message);
                     }
                     try {
-                        return buildPluginEntries(await dependencyService.rescanAndPersist());
+                        // The author's Rescan, so it releases a plugin held back for its version.
+                        return buildPluginEntries(await rescanProjectDependencies(context));
                     } catch (error) {
                         uiService.showNotification(error instanceof Error ? error.message : String(error), "error");
                         throw error;

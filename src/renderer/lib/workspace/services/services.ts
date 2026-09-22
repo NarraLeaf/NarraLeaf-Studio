@@ -1647,8 +1647,10 @@ interface IProjectDependencyService extends IService {
     onResolutionChanged(handler: () => void): () => void;
     resolve(): Promise<ProjectDependencyResolution>;
     previewResolve(): Promise<ProjectDependencyResolution>;
-    rescan(): Promise<ProjectDependencyTable>;
-    rescanAndPersist(): Promise<ProjectDependencyResolution>;
+    rescan(trigger: import("./core/ProjectDependencyService").DependencyScanTrigger): Promise<ProjectDependencyTable>;
+    rescanAndPersist(
+        trigger: import("./core/ProjectDependencyService").DependencyScanTrigger,
+    ): Promise<ProjectDependencyResolution>;
 }
 
 export {

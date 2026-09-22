@@ -6,6 +6,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import { rescanProjectDependencies } from "@/lib/plugins/rescanDependencies";
 import type { PluralKey, Translator } from "@shared/i18n";
 import type {
     DependencyKind,
@@ -27,7 +28,8 @@ const USAGE_KEYS: Record<DependencyKind, PluralKey> = {
  * Read-only view of the plugins this project depends on, with each plugin's
  * compatibility status against what is installed. Plugins flagged incompatible
  * are disabled for the project; this panel explains why. "Rescan" re-derives the
- * table from current usage and persists it.
+ * table from current usage and persists it - and is the one place, with the build
+ * dialog's, where a plugin held back for its version is released.
  */
 export function ProjectDependenciesSection(_props: ProjectSectionProps) {
     const { t } = useTranslation();
@@ -63,17 +65,18 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
         return () => { active = false; off(); };
     }, [service]);
 
+    // The author's Rescan, which alone releases a plugin held back for its version.
     const rescan = useCallback(async () => {
-        if (!service || busy) {
+        if (!service || !context || busy) {
             return;
         }
         setBusy(true);
         try {
-            setResolution(await service.rescanAndPersist());
+            setResolution(await rescanProjectDependencies(context));
         } finally {
             setBusy(false);
         }
-    }, [service, busy]);
+    }, [service, context, busy]);
 
     const entries = resolution?.entries ?? [];
 

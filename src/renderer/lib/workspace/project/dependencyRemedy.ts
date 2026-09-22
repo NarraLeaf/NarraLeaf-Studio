@@ -4,8 +4,9 @@
  * The dependency table says what the project needs; {@link resolveDependencies} says what state
  * that need is in. Neither says what to do about it, and the three answers are genuinely
  * different: a plugin that is absent has to be installed, one the author switched off has to be
- * enabled, one at the wrong major has to be updated. A screen that offered a single button for all
- * three would be wrong twice out of three times.
+ * enabled, one at the wrong major has to be updated - or accepted at the version installed, which
+ * is the author's Rescan in Project ▸ App and is not done from here. A screen that offered a single
+ * button for all three would be wrong twice out of three times.
  *
  * Pure, and separate from the surface that renders it, because the same verdict decides two things
  * that must not disagree: which control a row carries, and what the one-press run does.
@@ -34,7 +35,14 @@ export type DependencyRemedyObstacle =
     /** The registry's version is not one this project can use - typically a newer major. */
     | "noCompatibleVersion"
     /** The registry has not been read, so nothing about availability can be stated yet. */
-    | "registryUnavailable";
+    | "registryUnavailable"
+    /**
+     * Studio holds the installed plugin back for its version and nothing here resolves it, but the
+     * row is not a dead end: the author's Rescan in Project ▸ App records the installed version,
+     * which releases the hold. Said in place of whatever the registry answered, because a held
+     * plugin always has this way out and the registry's answer does not lead anywhere.
+     */
+    | "rescanInProject";
 
 export interface DependencyRemedy {
     steps: DependencyRemedyStep[];
@@ -97,9 +105,10 @@ export function planDependencyRemedy(input: DependencyRemedyInput): DependencyRe
         if (update.obstacle) {
             // An outdated plugin still loads and still works, so an unreachable registry is not
             // worth reporting on its row - it is reported once, for the panel. An incompatible one
-            // is withheld from the project, so the row has to say why nothing can be done.
+            // that is withheld from the project leads to the Rescan that releases it; one that is
+            // not withheld (a data-only dependency) says why nothing can be done here.
             if (entry.status === "incompatible") {
-                return update;
+                return entry.suppressed ? { steps: [], obstacle: "rescanInProject" } : update;
             }
         } else {
             steps.push("update");

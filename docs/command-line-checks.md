@@ -349,7 +349,8 @@ loads the profile's list; a run that loaded less than the editor would call a no
 What a project declares is that table, which Studio keeps and nobody edits. A plugin is in it for as
 long as anything in the project refers to it — a blueprint node, a widget, a story row, data the
 plugin stored in the project — whether or not the plugin is installed or switched on where the table
-is written, and it leaves at the next write after the last of those goes. A run reads the table as it
+is written, and it leaves at the next write after the last of those goes. For a plugin held back for its
+version, the version it records moves only on **Rescan**, as described below. A run reads the table as it
 was last written, so a project whose last use of a plugin was removed and then committed without the
 game being run from Studio since still declares that plugin; run it once, or press **Rescan** under
 **Project ▸ App**.
@@ -372,6 +373,19 @@ lets the author carry on, because somebody is there to decide; a run has nobody,
 would answer about a project that is missing part of itself on this machine — a sweep full of
 unknown nodes, a build without the plugin's runtime. A plugin the project does not declare that fails
 to start is logged as an error and does not stop the run, as it does not stop the editor.
+
+A plugin **held back for its version** is the one no profile can fix. The project's table records the
+version the project was made with; when the installed plugin is a different major version, Studio
+holds it back from the project until the author presses **Rescan** under **Project ▸ App** (or in
+the build dialog), which records the installed version. Running the game from Studio and exporting
+the project rewrite the table too, but never that version, so a hold outlasts both. Installing,
+switching on and `--lint-plugin` leave it where it is, and the last sentence says so:
+
+```text
+[error] Plugins: this project needs "Gallery" 2.0.0, which is installed at 3.1.0, a different major version, so Studio holds it back from this project
+[error] Lint: This project holds back a plugin it needs, installed here at a different major version: "Gallery" 2.0.0. To use the installed version, open the project in Studio and press Rescan under Project ▸ App.
+[error] Lint: studio-failed (exit 4)
+```
 
 This matters most for a **scratch profile**: it has every plugin Studio ships, with **Gallery** and
 **Menu Bar** switched off, and a project made from the starter template declares Gallery. Such a

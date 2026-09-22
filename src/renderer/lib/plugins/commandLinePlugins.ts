@@ -69,6 +69,12 @@ export type UnmetPluginDependency = {
      * a plugin that is not here cannot be switched on, and one never granted is refused by the flag.
      */
     switchOn?: string;
+    /**
+     * Set for a plugin the project holds back because the installed version is a different major.
+     * Nothing about the profile changes that - no install, no switch, no flag - only the author's
+     * Rescan in Studio, so the closing sentence sends the reader there instead.
+     */
+    held?: true;
 };
 
 /** What the log needs to know about an installed plugin. A subset of `PluginListItem`. */
@@ -217,6 +223,7 @@ export function findUnmetPluginDependencies(
                 plugin: `"${name}" ${entry.dependency.authoredVersion}`,
                 state,
                 ...(switchOn ? { switchOn } : {}),
+                ...(plugin && entry.status !== "missing" && entry.suppressed ? { held: true as const } : {}),
             });
         }
     }
@@ -272,8 +279,21 @@ function unmetState(
  * Ends on the flag that switches a plugin on for this run, where one would: in a throwaway profile a
  * switched-off built-in is the usual reason, and the line that fixes it is what a job's author needs
  * to read, not a menu in an editor the job never opens.
+ *
+ * A plugin the project holds back for its version gets a sentence of its own. No profile runs it -
+ * installing, switching on and the flag all leave the hold where it is - and what releases it is the
+ * author's Rescan in Studio, which is where that sentence sends the reader.
  */
 export function describeUnmetPlugins(unmet: readonly UnmetPluginDependency[], flag: string): string {
+    const held = unmet.filter(entry => entry.held);
+    const unrunnable = unmet.filter(entry => !entry.held);
+    return [
+        ...(unrunnable.length > 0 ? [describeUnrunnable(unrunnable, flag)] : []),
+        ...(held.length > 0 ? [describeHeld(held)] : []),
+    ].join(" ");
+}
+
+function describeUnrunnable(unmet: readonly UnmetPluginDependency[], flag: string): string {
     const plugins = unmet.map(entry => entry.plugin).join(", ");
     const sentence = unmet.length === 1
         ? `This profile cannot run a plugin this project needs: ${plugins}. Install or switch it on in`
@@ -287,6 +307,16 @@ export function describeUnmetPlugins(unmet: readonly UnmetPluginDependency[], fl
     const flags = switchable.map(value => `${flag}=${value.includes(" ") ? `"${value}"` : value}`).join(" ");
     const which = unmet.length === 1 ? "it" : switchable.length === unmet.length ? "them" : "the ones switched off";
     return `${sentence} To switch ${which} on for this run only, add ${flags}.`;
+}
+
+function describeHeld(held: readonly UnmetPluginDependency[]): string {
+    const plugins = held.map(entry => entry.plugin).join(", ");
+    return held.length === 1
+        ? `This project holds back a plugin it needs, installed here at a different major version: ${plugins}.`
+            + " To use the installed version, open the project in Studio and press Rescan under Project ▸ App."
+        : `This project holds back ${held.length} plugins it needs, installed here at a different major version:`
+            + ` ${plugins}. To use the installed versions, open the project in Studio and press Rescan under`
+            + " Project ▸ App.";
 }
 
 /** The run's closing sentence for the plugins the line named that would not start. */

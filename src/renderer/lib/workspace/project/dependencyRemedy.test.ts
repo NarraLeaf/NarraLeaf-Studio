@@ -115,11 +115,30 @@ describe("planDependencyRemedy", () => {
         expect(plan(withheld, published("2.0.0")).steps).toEqual(["update", "enable"]);
     });
 
-    it("offers nothing when the published version is no more usable than the installed one", () => {
+    it("offers no update when the published version is no more usable than the installed one", () => {
         // Authored against major 1, the registry has moved to major 2: installing it would trade
-        // one stated incompatibility for the same one at a higher number.
+        // one stated incompatibility for the same one at a higher number. A data-only dependency
+        // is not withheld, so the registry's answer is the row's.
+        const dataOnly = entry({
+            dependency: dependency({ hard: false }),
+            status: "incompatible",
+            suppressed: false,
+            installedVersion: "2.0.0",
+        });
+        expect(plan(dataOnly, published("2.1.0"))).toEqual({ steps: [], obstacle: "noCompatibleVersion" });
+    });
+
+    /**
+     * A withheld plugin that no update here can bring back - the usual case being a built-in whose
+     * major moved with Studio - is released by the author's Rescan in Project ▸ App, and the row says
+     * so instead of reporting a registry that could not have helped.
+     */
+    it("leads a withheld plugin no update resolves to Rescan, whatever the registry answered", () => {
         const withheld = entry({ status: "incompatible", suppressed: true, installedVersion: "2.0.0" });
-        expect(plan(withheld, published("2.1.0"))).toEqual({ steps: [], obstacle: "noCompatibleVersion" });
+        const rescan = { steps: [], obstacle: "rescanInProject" };
+        expect(plan(withheld, published("2.1.0"))).toEqual(rescan);
+        expect(plan(withheld, null)).toEqual(rescan);
+        expect(plan(withheld, null, { registryKnown: false })).toEqual(rescan);
     });
 
     it("leaves an outdated plugin alone when nothing newer is published", () => {

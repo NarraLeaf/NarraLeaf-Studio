@@ -3,6 +3,7 @@ import type {
     DependencyStatus,
     ProjectDependencyResolution,
     ProjectDependencyTable,
+    ProjectPluginDependency,
 } from "../types/pluginDependencies";
 import { classifyCompatibility } from "./semver";
 
@@ -11,6 +12,20 @@ export interface InstalledPluginInfo {
     id: string;
     version: string;
     enabled: boolean;
+}
+
+/**
+ * Whether Studio holds an installed plugin back from a project: the project depends on it hard, and
+ * the installed version is a different major from the one the table records.
+ *
+ * The one predicate for a hold, shared by the resolver that applies it and the table scan that must
+ * leave it in place until the author rescans.
+ */
+export function isHeldBack(
+    dependency: Pick<ProjectPluginDependency, "hard" | "authoredVersion">,
+    installedVersion: string,
+): boolean {
+    return dependency.hard && classifyCompatibility(dependency.authoredVersion, installedVersion) === "incompatible";
 }
 
 /**
@@ -50,7 +65,7 @@ export function resolveDependencies(
             installedVersion: match.version,
             installedEnabled: match.enabled,
             status,
-            suppressed: dependency.hard && verdict === "incompatible",
+            suppressed: isHeldBack(dependency, match.version),
         };
     });
 

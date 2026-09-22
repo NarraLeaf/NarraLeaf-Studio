@@ -129,7 +129,8 @@ export const fileActionGroup: ModuleActionGroup = {
 
                     // Refresh the plugin dependency table so the exported package
                     // records exactly which plugins this project needs. Best-effort:
-                    // a scan failure must not block the export itself.
+                    // a scan failure must not block the export itself. An automatic
+                    // scan, so a plugin held back for its version is exported held.
                     //
                     // Deferred rather than attempted while the project is frozen. Exporting is
                     // one of the two things File keeps alive on a frozen workspace, and nobody
@@ -141,7 +142,7 @@ export const fileActionGroup: ModuleActionGroup = {
                         try {
                             await context.services
                                 .get<ProjectDependencyService>(Services.ProjectDependency)
-                                .rescanAndPersist();
+                                .rescanAndPersist("automatic");
                         } catch (error) {
                             console.warn("[export] plugin dependency rescan failed", error);
                         }

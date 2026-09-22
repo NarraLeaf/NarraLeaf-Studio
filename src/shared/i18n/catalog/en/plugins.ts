@@ -114,6 +114,8 @@ export const plugins = {
         notInRegistry: "Not in the registry",
         /** Published, but not at a version this project can use. */
         noCompatibleVersion: "No compatible version",
+        /** A plugin held back for its version: the Rescan that releases it is in Project ▸ App, not here. */
+        rescanInProject: "Click Rescan in Project ▸ App to use the installed version.",
         task: {
             running: "Installing dependencies…",
             done: "Dependencies installed.",
@@ -133,7 +135,8 @@ export const plugins = {
             runtimeOnly: "Game runtime only",
             runtimeOnlyHint: "This plugin only extends the running game. It contributes nothing to the editor.",
             suppressed: "Off for this project",
-            suppressedHint: "The installed version is incompatible with the one this project was authored against. Update it, or update the project's dependency table from Project ▸ App.",
+            // Rescan is the one thing that releases the hold, so the hint names the button and where it is.
+            suppressedHint: "The installed version is incompatible with the one this project was authored against. Click Rescan in Project ▸ App to use the installed version.",
             failed: "Failed to load",
         },
         // A plugin that changed state while the workspace could not act on it.

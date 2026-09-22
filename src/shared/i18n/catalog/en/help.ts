@@ -987,7 +987,9 @@ export const help = {
                 + "- What a plugin contributes appears in the same places as the built-in equivalents, marked "
                 + "with the plugin it came from.\n"
                 + "- A project records the plugins it depends on. Opened on a machine that is missing one, it "
-                + "states which plugin is missing and what in the project uses it.",
+                + "states which plugin is missing and what in the project uses it.\n"
+                + "- A plugin installed at a different major version from the one the project was made with is off "
+                + "for the project until Rescan in Project ▸ App records the installed version.",
         },
     },
 } as const;
