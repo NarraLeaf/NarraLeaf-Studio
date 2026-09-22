@@ -35,9 +35,16 @@ import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
-import type { DocumentNameContext } from "@/lib/vcs/documentName";
-import { documentNameOf, renderDocumentName } from "@/lib/vcs/documentName";
-import { useDocumentNames } from "@/lib/vcs/storyTitles";
+import type { DocumentName, DocumentNameContext } from "@/lib/vcs/documentName";
+import {
+    documentNameOf,
+    documentNameSourcesFor,
+    numberRepeatedNames,
+    renderDocumentName,
+} from "@/lib/vcs/documentName";
+import { readableStoragePath } from "@/lib/vcs/identifierDisplay";
+import { useDocumentNames } from "@/lib/vcs/nameSources";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
@@ -622,23 +629,18 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
  * the refresh is the way to the other half. The rail therefore runs no document comparison at all,
  * rather than running one whenever a row was opened.
  */
-/**
- * The one side this rail is ever about.
- *
- * The rail lists what has changed on disk, so the titles it needs are the ones on disk. Held as a
- * module constant rather than written at the call site because `useDocumentNames` keys its read on
- * the identity of the sides it is given.
- */
-const WORKING_TREE_SIDES = { before: null, after: { at: "working-tree" } } as const;
-
 export function ChangesSection({ surface }: { surface: VersionSurface }) {
-    // Named the way the comparison names them, so one story is not `Demo` in the comparison and an
-    // id in the rail beside it.
-    const names = useDocumentNames(WORKING_TREE_SIDES);
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { status } = surface;
     const view = useMemo(() => (status ? buildChangeList(status.files) : null), [status]);
+    const names = useRailNames(surface, view?.rows ?? null);
+    // Numbered over the rows actually drawn, so two stand-ins on the list read "Story 1" and
+    // "Story 2" rather than one word twice (`numberRepeatedNames`).
+    const rowNames = useMemo(
+        () => numberRepeatedNames((view?.rows ?? []).map(file => documentNameOf(file.path, names))),
+        [view, names],
+    );
 
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
@@ -694,8 +696,8 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
 
             {view !== null && view.rows.length > 0 && (
                 <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
-                    {view.rows.map(file => (
-                        <ChangeRow key={file.path} file={file} names={names} />
+                    {view.rows.map((file, position) => (
+                        <ChangeRow key={file.path} file={file} name={rowNames[position]} names={names} />
                     ))}
                     {view.hidden > 0 && (
                         <p className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -706,6 +708,38 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
             )}
         </div>
     );
+}
+
+/**
+ * What the rail's rows are named from.
+ *
+ * Read the way the comparison reads its names (`nameSources.ts`), so one scene is not `Demo` in the
+ * comparison and a stand-in in the rail beside it, and one imported picture is `Forest Clearing` in
+ * both. Two things are particular to the rail:
+ *
+ *  - **The older side is the head.** A deleted asset's record is gone from the working tree along
+ *    with its bytes, so the only place its name still exists is the version this list is measured
+ *    against - which is also what the comparison tab would read it from.
+ *  - **It re-reads whenever the list does.** The rail's rows are the working tree's, and they are
+ *    renamed and imported underneath it; names read once at mount would call a picture imported a
+ *    minute later by its stand-in until the panel was closed. Only the libraries the listed paths
+ *    are named from are read (`documentNameSourcesFor`), so a list of three edited scenes costs one
+ *    story index per side and never the asset shards.
+ */
+function useRailNames(surface: VersionSurface, rows: readonly VcsFileChange[] | null): DocumentNameContext {
+    const head = surface.state.kind === "current" ? surface.state.head : null;
+    const sides = useMemo<ComparisonSides>(
+        () => ({
+            before: head === null ? null : { at: "revision", revision: head },
+            after: { at: "working-tree" },
+        }),
+        [head],
+    );
+    const sources = useMemo(
+        () => documentNameSourcesFor((rows ?? []).flatMap(file => (file.fromPath ? [file.path, file.fromPath] : [file.path]))),
+        [rows],
+    );
+    return useDocumentNames(sides, { sources, refreshKey: surface.status });
 }
 
 /**
@@ -722,30 +756,35 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
  * not on `frozen`) - so switching it off would take away the only way to see what is uncommitted
  * precisely while the author is unable to commit it.
  *
- * The path is split so the FILE NAME survives a narrow column and the directory is what gets cut - and
- * cut at its head, not its tail, because the distinguishing end of a path here is the last thing on it
- * (`editor/story/chapter-01.json` against `editor/story/chapter-02.json` differ in the one character an
- * ordinary trailing ellipsis would eat). Overflowing to the left is what `direction: rtl` on the
- * directory box buys; the inner span puts the characters back in reading order, which an
- * all-neutral directory name (`2026/07`) would otherwise get wrong. Inline rather than as utilities:
- * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
- * has burned us before.
+ * The row draws the thing's NAME, never its path: the comparison's naming layer answers for it
+ * (`documentName.ts`), numbered apart by the list above where two stand-ins would read the same. The
+ * path goes in the tooltip where it is one an author could look for, and nowhere when it carries an
+ * id - a story's folder, an asset's shard - because the interface never shows one.
  */
-function ChangeRow({ file, names }: { file: VcsFileChange; names: DocumentNameContext }) {
+function ChangeRow({ file, name: named, names }: {
+    file: VcsFileChange;
+    name: DocumentName;
+    names: DocumentNameContext;
+}) {
     const { t } = useTranslation();
-    // What the author calls this thing, not the file it is stored in. The rail has no comparison
-    // to read a story's title out of, so a document that has a name of its own is qualified by its
-    // id rather than given a title this surface cannot see - the whole path is in the tooltip.
-    const name = renderDocumentName(documentNameOf(file.path, names), t);
+    // What the author calls this thing, not the file it is stored in: a scene's title, an asset's
+    // name, the name of a kind - through the same layer the comparison names its rows with.
+    const name = renderDocumentName(named, t);
     const Icon = CHANGE_ICONS[file.kind];
     // Not cast to `TranslationKey`: the template resolves to a union of the five literal keys, so a
     // renamed or missing one is a type error here rather than a string that renders as itself.
     const kindLabel = t(`workspace.shell.versionControl.changeKind.${file.kind}`);
-    // The whole repository-relative path, plus where a move or copy came from - the row itself has no
-    // room for an origin, and dropping it would make a move indistinguishable from an add.
-    const title = file.fromPath
-        ? `${file.path}\n${t("workspace.shell.versionControl.changeFromPath", { path: file.fromPath })}`
-        : file.path;
+    // The path, where it is one an author could look for, plus where a move or copy came from - the
+    // row itself has no room for an origin, and dropping it would make a move indistinguishable from
+    // an add. The origin is NAMED, like the row: a moved asset's old path is its id.
+    const title = [
+        readableStoragePath(file.path),
+        file.fromPath
+            ? t("workspace.shell.versionControl.changeFrom", {
+                name: renderDocumentName(documentNameOf(file.fromPath, names), t),
+            })
+            : null,
+    ].filter(Boolean).join("\n") || undefined;
 
     return (
         <div

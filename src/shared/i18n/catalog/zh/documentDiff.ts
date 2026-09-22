@@ -636,7 +636,17 @@ export const documentDiff = {
         assetsOrder: "资产排序",
         characters: "角色表",
         assetContent: "资产文件",
+        assetOfType: {
+            image: "图片资产",
+            audio: "音频资产",
+            video: "视频资产",
+            json: "JSON 资产",
+            font: "字体资产",
+            model: "模型资产",
+            other: "其他资产",
+        },
         qualified: "{name}（{qualifier}）",
+        numbered: "{name} {index}",
     },
     category: {
         story: "故事",

@@ -232,3 +232,35 @@ describe("formatBytes", () => {
         expect(formatBytes(Number.NaN)).toBe("—");
     });
 });
+
+/**
+ * A producer states what it compared, and what it compared is often an id: a reference to a scene,
+ * a folder, a record. The label is where those become text, so it is where they stop.
+ */
+describe("a change label never carries a generated id", () => {
+    const SCENE = "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33";
+    const translator = translatorFor({ "documentDiff.structural.property": "{name}" });
+
+    it("draws an id inside a changed value as an ellipsis, and keeps the rest of the value", () => {
+        const view = resolveDocumentChangeLabel(
+            {
+                path: ["place"],
+                kind: "changed",
+                label: { key: "documentDiff.structural.property", params: { name: "place", from: `scene:${SCENE}`, to: "home" } },
+            },
+            translator,
+        );
+
+        expect(view).toEqual({ primary: "place", from: "scene:…", to: "home" });
+    });
+
+    it("still tells a subject from the label by the raw values, before anything is elided", () => {
+        const view = resolveDocumentChangeLabel(
+            { path: [SCENE], kind: "added", label: { key: "documentDiff.structural.property", params: { name: SCENE } }, subject: SCENE },
+            translator,
+        );
+
+        expect(view.primary).toBe("…");
+        expect(view.detail).toBeUndefined();
+    });
+});

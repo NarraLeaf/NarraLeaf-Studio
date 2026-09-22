@@ -105,11 +105,50 @@ describe("resolveMergeDecisionLabel", () => {
             untranslated: true,
         });
     });
+
+    it("keeps the path's shape and draws its ids as an ellipsis", () => {
+        const view = resolveMergeDecisionLabel(
+            decision("conflict", { path: ["scenes", "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33", "blocks", "51d4f8dc-dd7d-41b6-86e1-863ecf109ad8"] }),
+            translator,
+        );
+
+        expect(view.primary).toBe("scenes / … / blocks / …");
+    });
 });
 
 describe("describeMergeSides", () => {
     const held = (value: unknown) => ({ present: true as const, value });
     const missing = { present: false as const };
+
+    /**
+     * A record is drawn field by field and verbatim, and records carry ids - an asset's own, a list
+     * of scene ids. The values are the author's; the ids inside them are not shown.
+     */
+    it("draws a generated id inside a name or a value as an ellipsis", () => {
+        const id = "f5e8519a-fdee-48e6-b064-51136de15c8e";
+        const { mine, theirs } = describeMergeSides(
+            held({ name: "Forest at Dusk", id, next: `scene:${id}` }),
+            held({ name: "Forest Clearing.png", id, next: `scene:${id}` }),
+        );
+
+        const drawn = JSON.stringify([mine, theirs]);
+        expect(drawn).not.toContain(id);
+        expect(mine.lines).toEqual([
+            { name: "name", text: "Forest at Dusk" },
+            { name: "id", text: "…" },
+            { name: "next", text: "scene:…" },
+        ]);
+    });
+
+    it("still counts two different ids as a disagreement, though both read as an ellipsis", () => {
+        const { mine } = describeMergeSides(
+            held({ note: "same", target: "11111111-1111-4111-8111-111111111111" }),
+            held({ note: "same", target: "22222222-2222-4222-8222-222222222222" }),
+        );
+
+        // The field the sides disagree about leads, as it would for any other value.
+        expect(mine.lines[0]).toEqual({ name: "target", text: "…" });
+    });
 
     /** "The other side does not have this entry" is a real answer, not an empty one. */
     it("marks a side that does not hold the entry", () => {
@@ -264,7 +303,7 @@ describe("buildConflictRows", () => {
         const rows = buildConflictRows(
             ["editor/story/stories/s-1/storydoc.json"],
             EMPTY_STATE,
-            { storyTitles: new Map([["s-1", "The Forest"]]) },
+            { ...NO_DOCUMENT_NAMES, storyTitles: new Map([["s-1", "The Forest"]]) },
         );
 
         expect(rows[0]!.name).toEqual({ source: "authored", text: "The Forest" });
@@ -272,21 +311,30 @@ describe("buildConflictRows", () => {
 
     /**
      * During a merge the story index can be one of the conflicted files, so there is a real chance
-     * of having no title. That answers with the kind and the id - which is an identifier and cannot
-     * be mistaken for something the author typed - and never with the file name.
+     * of having no title. That answers with what the thing is - never the file name, and never the
+     * id the path is made of, which the interface does not show.
      */
-    it("falls back to the kind and the id when the title could not be read", () => {
+    it("falls back to what the thing is when the title could not be read", () => {
         const rows = buildConflictRows(
             ["editor/story/stories/s-1/storydoc.json"],
             EMPTY_STATE,
             NO_DOCUMENT_NAMES,
         );
 
-        expect(rows[0]!.name).toEqual({
-            source: "unnamed",
-            key: "documentDiff.name.story",
-            qualifier: "s-1",
-        });
+        expect(rows[0]!.name).toEqual({ source: "unnamed", key: "documentDiff.name.story" });
+    });
+
+    it("numbers two stories whose titles could not be read, so the list can still be worked through", () => {
+        const rows = buildConflictRows(
+            ["editor/story/stories/s-1/storydoc.json", "editor/story/stories/s-2/storydoc.json"],
+            EMPTY_STATE,
+            NO_DOCUMENT_NAMES,
+        );
+
+        expect(rows.map(row => row.name)).toEqual([
+            { source: "unnamed", key: "documentDiff.name.story", ordinal: 1 },
+            { source: "unnamed", key: "documentDiff.name.story", ordinal: 2 },
+        ]);
     });
 
     it("draws one row per conflicted file, whatever is inside it", () => {

@@ -24,6 +24,7 @@ import {
     storyVariableRefKey,
 } from "@shared/types/story";
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
+import { parseSceneTranslationUnitId } from "@shared/types/localization";
 import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
@@ -632,12 +633,26 @@ function conditionOperatorTakesValue(operator: Extract<StoryConditionRef, { kind
  * Recognized structurally rather than from a stored "this was an /inc" flag, so a `/set gold gold + 1`
  * typed longhand reads as an increment too — it *is* one.
  *
+ * A stored SCENE REFERENCE (`scene:<id>`) reads as the scene's name, which is what the runtime
+ * resolves it to wherever it is later shown and what the row editor prints for it
+ * (`storyCommandLine.ts`, `assignedValueArg`). A reference whose scene is gone reads as the unknown
+ * scene rather than as its id: the id is never shown, and "unknown scene" is the dangling reference
+ * said out loud. A caller with no scene table keeps the stored spelling, as it always has.
+ *
  * This mirrors `describeAssignment` in `storySceneProjection`, which formats the same block for the
  * text projection.
  */
-function describeAssignment(payload: Extract<StoryActionPayload, { action: "setVariable" }>, name: string): string {
+function describeAssignment(
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>,
+    name: string,
+    scenes: Record<StorySceneId, StoryScene> | undefined,
+): string {
     const ast = payload.expression?.ast;
     if (!ast) {
+        const sceneId = typeof payload.value === "string" ? parseSceneTranslationUnitId(payload.value) : null;
+        if (sceneId !== null && scenes !== undefined) {
+            return `${name} = ${getStorySceneName(scenes, sceneId)}`;
+        }
         return `${name} = ${String(payload.value)}`;
     }
     const targetKey = storyVariableRefKey(payload.target);
@@ -800,7 +815,7 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             const handle = actionableSubjectWord(scene, payload.target, "audio", payload.objectName);
             return `${verbWord(payload, payload.operation)} ${handle || named || payload.assetId || translate("story.describe.unassigned")}`;
         }
-        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, lookups));
+        if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, lookups), lookups.scenes);
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
         // The stage-object rows all read their subject off the reference rather than off their own
         // `objectName` - see `displayableSubjectWord` for why, and for what a row with no reference

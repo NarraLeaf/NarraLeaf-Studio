@@ -101,9 +101,9 @@ describe("ChangeIndexPane", () => {
         expect(container.querySelectorAll("[data-testid='group-caveat']")).toHaveLength(0);
     });
 
-    it("names an asset file by what it is, rather than drawing its hash", () => {
-        // The one row whose file name says nothing at all. Its path is still in the tooltip, so
-        // naming it hides nothing - and leaving it out would hide the state entirely.
+    it("names an asset file by what it is, rather than drawing its id", () => {
+        // The one row whose file name says nothing at all: its path IS the asset's id, sharded.
+        // Neither the id nor the path reaches the screen - not on the row and not in its tooltip.
         const orphan: DocumentDiffEntry = {
             path: "assets/content/99/55/3d15abb54213bad7203798a1adc4",
             kind: "changed",
@@ -132,13 +132,18 @@ describe("ChangeIndexPane", () => {
         const { container } = pane([shard, orphan], () => true);
 
         expect(rows(container)).toHaveLength(2);
-        // What it is plus which asset it belongs to - not a hash, and not a claim that no record
-        // names it, which this pass has no way to know.
+        // What it is - not its id, and not a claim that no record names it, which this pass has no
+        // way to know.
         expect(rows(container)[1].textContent).toContain("documentDiff.name.assetContent");
-        expect(rows(container)[1].textContent).toContain("99553d15-abb5");
+        expect(rows(container)[1].textContent).not.toContain("99553d15");
         expect(rows(container)[1].textContent).not.toContain("3d15abb54213bad");
-        expect(rows(container)[1].getAttribute("data-tip"))
-            .toBe("assets/content/99/55/3d15abb54213bad7203798a1adc4");
+        expect(rows(container)[1].getAttribute("data-tip")).toBeNull();
+    });
+
+    it("keeps a path in the tooltip where it is one an author could look for", () => {
+        const { container } = pane([entry("editor/variables.json", 1)], () => true);
+
+        expect(rows(container)[0].getAttribute("data-tip")).toBe("editor/variables.json");
     });
 
     it("draws one line for an asset stored as a record and a file", () => {

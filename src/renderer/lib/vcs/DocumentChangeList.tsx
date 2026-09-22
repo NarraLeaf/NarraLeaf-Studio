@@ -3,6 +3,7 @@ import type { DocumentChange, DocumentDiff } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { changePathAttribute } from "./compare/splitNavigation";
+import { readableChangePath } from "./identifierDisplay";
 import {
     buildDocumentChangeRows,
     CHANGE_KIND_GLYPH,
@@ -193,7 +194,7 @@ export function DocumentChangeLine({
     const translator = useTranslation();
     const { t } = translator;
     const label = resolveDocumentChangeLabel(row.change, translator);
-    const path = row.change.path.join(" / ");
+    const path = readableChangePath(row.change.path);
     const textSize = dense ? "text-2xs" : "text-xs";
 
     const Row = reveal ? "button" : "div";
@@ -219,9 +220,10 @@ export function DocumentChangeLine({
                 reveal && "nl-focus-ring w-full cursor-default rounded-sm text-left transition-colors hover:bg-fill",
                 className,
             )}
-            // The full path, because a row shows the change and not where in the document it sits.
+            // The full path, because a row shows the change and not where in the document it sits -
+            // with its ids drawn as an ellipsis, since the row already names what they identify.
             // Absent for a change at the document root, where there is no path to give.
-            data-tip={path || undefined}
+            data-tip={path}
             data-change-path={changePathAttribute(row.change.path)}
             data-change-row={row.key}
         >
