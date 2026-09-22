@@ -211,8 +211,10 @@ export type GameBuildWorkerTarget = {
     fuses: GameBuildWorkerFuses;
     /**
      * Local Electron dist to package from. Only set when the target matches
-     * the host platform; cross builds leave it unset so electron-builder
-     * downloads (and caches) the right dist.
+     * the host in platform and arch (hostElectronServesTarget); every other
+     * target leaves it unset so electron-builder downloads (and caches) the
+     * right dist. Either way, what of it ships is decided by
+     * electronRuntimeFiles.ts rather than by what the directory holds.
      */
     electronDist?: string;
     /**

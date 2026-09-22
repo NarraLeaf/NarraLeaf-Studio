@@ -8,6 +8,7 @@ import {
     type GameBuildFormat,
 } from "@shared/types/gameBuild";
 import { writeArtifactDigests } from "./artifactDigests";
+import { tidyElectronStage } from "./electronRuntimeFiles";
 import {
     describeMacSigning,
     describeWindowsSigning,
@@ -59,7 +60,11 @@ const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
     universal: Arch.universal,
 };
 
-function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Configuration {
+function builderConfiguration(
+    config: GameBuildWorkerConfig,
+    target: GameBuildWorkerTarget,
+    log: GameBuildLogger,
+): Configuration {
     const extraFiles = extraFilesFor(config);
     return {
         // Each platform's options are gated on the target's own platform, not
@@ -77,13 +82,29 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         productName: config.productName,
         electronVersion: config.electronVersion,
         ...(target.electronDist ? { electronDist: target.electronDist } : {}),
+        // Runs once the Electron runtime is unpacked and before anything of the game's joins it,
+        // whichever way the runtime arrived. A copied installation carries whatever its machine
+        // left in it and a macOS one would lose its licences; see electronRuntimeFiles.ts.
+        afterExtract: async context => {
+            const { removedLitter } = await tidyElectronStage({
+                appOutDir: context.appOutDir,
+                platform: target.platform,
+                ...(target.electronDist ? { sourceDist: target.electronDist } : {}),
+            });
+            if (removedLitter.length > 0) {
+                log(
+                    "info",
+                    `left out of the ${target.platform} package: ${removedLitter.join(", ")} - found in the `
+                    + "Electron runtime, but put there by this machine rather than shipped by Electron",
+                );
+            }
+        },
         ...(target.iconPath ? { icon: target.iconPath } : {}),
         ...(config.copyright ? { copyright: config.copyright } : {}),
         // `to` is the app's content root, which is next to the executable on Windows and Linux and
-        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in. On
-        // Windows and Linux that is also where electron-builder leaves Electron's own
-        // LICENSE.electron.txt and LICENSES.chromium.html, which is why the third-party notice is
-        // there too.
+        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in, and
+        // the one that holds Electron's own LICENSE.electron.txt and LICENSES.chromium.html (put
+        // there by electron-builder on Windows and Linux, by tidyElectronStage on macOS).
         ...(extraFiles.length > 0 ? { extraFiles } : {}),
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
@@ -194,7 +215,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                     // which the dialog's artifact preview could not have predicted.
                     targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
                     projectDir: appDir,
-                    config: builderConfiguration(config, target),
+                    config: builderConfiguration(config, target, log),
                 });
                 artifacts.push(...produced.map(artifact => path.resolve(artifact)));
             }
