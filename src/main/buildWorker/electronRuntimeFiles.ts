@@ -13,10 +13,10 @@
  * it is found holding is whatever the machine has put there since it was installed. It is a folder
  * Electron runs from: on Windows, Chromium's default log destination is a `debug.log` beside the
  * executable, which fills up with crash-reporter errors from any process that logs before Electron
- * has configured logging. It is also a folder a file manager may have opened. Every such file used
- * to ship, along with the placeholder app, in every game built for the host. An installed Studio is
- * not immune: its preview runner is a real Electron that runs on the author's machine, from a folder
- * the author can write to, and it is the installation an installed Studio packages from.
+ * has configured logging. It is also a folder a file manager may have opened. Left alone, every such
+ * file ships, along with the placeholder app, in every game built for the host. An installed Studio
+ * is no exception: its preview runner is a real Electron that runs on the author's machine, from a
+ * folder the author can write to, and it is the installation an installed Studio packages from.
  *
  * {@link tidyElectronStage} runs as electron-builder's `afterExtract` hook, when the app directory
  * holds the distribution and nothing else yet, on both paths and every platform. It makes a copied
@@ -31,7 +31,7 @@
  *     holds the rule against the complete file lists of real Electron releases, so it cannot drop
  *     anything a release contains.
  *  2. The two files electron-builder drops from a download are dropped from a copy too.
- *  3. On macOS, Electron's licence and Chromium's credits are moved inside the bundle. See
+ *  3. On macOS, Electron's licence and Chromium's credits are put inside the bundle. See
  *     {@link macLicenceDestination}.
  */
 
