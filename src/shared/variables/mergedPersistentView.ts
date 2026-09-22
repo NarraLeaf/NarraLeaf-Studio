@@ -19,7 +19,7 @@
  */
 
 import type { StoryDocument, StoryLiteralValue, StorySavedVariableDefinition, StoryVariableValueType } from "../types/story/document";
-import { storyPersistentDefs } from "../types/story/declarations";
+import { savedVariableDefs, storyPersistentDefs } from "../types/story/declarations";
 import type { VariableRegistryEntry } from "../types/variables/registry";
 
 export type MergedPersistentSource = "registry" | "story";
@@ -154,4 +154,31 @@ export function declaredPersistentDefaults(bundle: {
         Object.values(bundle.ui.persistentVariables ?? {}),
         Object.values(bundle.storyLibrary?.documents ?? {}).flatMap(document => Object.values(storyPersistentDefs(document))),
     ));
+}
+
+/**
+ * What each saved variable one build declares opens at, keyed by the id a blueprint node names it by
+ * (a registry entry's id, or a story declaration row's block id - both minted as UUIDs by their own
+ * surface, so the two cannot collide). `null` for a variable declared with no default.
+ *
+ * For a reader with no playthrough to ask - a title screen reading `Get Saved Var` before any story
+ * has started, or been compiled. Every story rather than the one about to run, for the reason
+ * {@link declaredPersistentDefaults} gives: the screen reads before a story is chosen. Built from the
+ * documents themselves, not from a compile, so the answer does not depend on whether one has run.
+ */
+export function declaredSavedDefaults(bundle: {
+    ui: { savedVariables?: Readonly<Record<string, VariableRegistryEntry>> };
+    storyLibrary?: { documents: Readonly<Record<string, StoryDocument>> };
+}): Record<string, StoryLiteralValue | null> {
+    const view = buildMergedVariableView(
+        Object.values(bundle.ui.savedVariables ?? {}),
+        Object.values(bundle.storyLibrary?.documents ?? {}).flatMap(document => Object.values(savedVariableDefs(document))),
+    );
+    const defaults: Record<string, StoryLiteralValue | null> = {};
+    for (const entry of view.entries) {
+        if (!Object.prototype.hasOwnProperty.call(defaults, entry.id)) {
+            defaults[entry.id] = entry.defaultValue ?? null;
+        }
+    }
+    return defaults;
 }

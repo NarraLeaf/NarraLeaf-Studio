@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils/cn";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { getInterface } from "@/lib/app/bridge";
 import { DevModePanelModeToggle, type DevModePanelChrome } from "./DevModePanelChrome";
-import { countRuntimeIssues, type LocatedRuntimeIssue } from "./runtimeIssueModel";
+import { countRuntimeIssues, surfacePlaceHeading, type LocatedRuntimeIssue } from "./runtimeIssueModel";
 import { RUNTIME_ISSUE_TONE, type RuntimeIssueTone } from "./runtimeIssueTone";
 
 export type RuntimeIssuesPanelProps = {
@@ -203,7 +203,7 @@ function RuntimeIssueEntry(props: {
                         // than on a line - so it gets the same headline treatment and not the
                         // apologetic "could not be traced" one.
                         <span className="font-medium">
-                            {t("devMode.issues.onSurface", { surface: issue.surface.surfaceName })}
+                            {surfacePlaceHeading(issue.surface, t)}
                         </span>
                     ) : issue.pluginName ? (
                         // The third kind of place: the plugin itself. Located for the same reason a

@@ -211,8 +211,8 @@ describe("Localization blueprint nodes", () => {
             } as UIGraph,
             host,
         );
-        // An unreadable output pin resolves to "" here, which Set Language rejects as
-        // "Unknown language: (empty)" - so reaching this assertion is the contract.
+        // An unreadable output pin resolves to "" here, which Set Language rejects as an empty
+        // Language pin - so reaching this assertion is the contract.
         expect(host.setCalls).toEqual(["ja"]);
     });
 });

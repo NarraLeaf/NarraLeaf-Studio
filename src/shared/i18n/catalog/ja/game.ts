@@ -34,6 +34,44 @@ export const game = {
             engine: "{error}",
         },
     },
+    // 英語カタログを参照。走っているゲームが、それを見ている側に伝える文言。{node} はキャンバスの
+    // 表示名に訳されたもので、どの文も id を含まない。
+    run: {
+        voicePlayFailed: "この行のボイスを再生できなかった",
+        choiceVoicePlayFailed: "この選択肢のボイスを再生できなかった",
+        savedVariableUndeclared: "「{node}」：実行中のストーリーはこのセーブ変数を宣言していない",
+        valueNotSerializable: "「{node}」：セーブ変数にはセーブファイルに書き込める値しか入れられない",
+        variablesNotSerializable: "セーブ変数と永続変数にはセーブファイルに書き込める値しか入れられない",
+        persistenceUnavailable: "ここでは永続変数を使えない",
+        storyMissing: "「{node}」：指定したストーリーはもうこのプロジェクトにない",
+        sceneMissing: "「{node}」：指定したシーンはもうこのプロジェクトにない",
+        noChoiceMenu: "「{node}」：メニューが表示されていない",
+        noChoiceAtIndex: "「{node}」：メニューに {index} 番目の選択肢がない",
+        saveCaptureFailed: "「{node}」：このセーブの画面を撮れなかった。セーブはスクリーンショットなしで書き込んだ",
+        relaunchUnavailable: "開始し直せる実行中のストーリーがない",
+        storyNotRestartable: "実行中だったストーリーを開始し直せなかった",
+        saveStoryMissing: "このセーブが属するストーリーはこのビルドにない",
+        storyCannotStart: "ここではストーリーを開始できない",
+        noGameToResume: "再開先のゲームが立ち上がらなかった",
+        resume: {
+            relaunchRowGone: "この実行を始めた行はもう存在しない。シーンの最初の行から始めた",
+            sceneGone: "再生中のシーンはもう存在しない。ストーリーを最初から始めた",
+            storyGone: "再生中のストーリーはもう存在しない。ゲームを最初から始めた",
+            rowGoneBefore: "再生中の行はもう存在しない。その前の行から再開した",
+            rowGoneSceneStart: "再生中の行はもう存在しない。シーンの先頭から再開した",
+        },
+        language: {
+            noRestart: "プレイ中に言語が変わったが、ここではゲームを再起動できない。画面上のテキスト、バックログ、再生中のボイスは元の言語のまま",
+            restartFresh: "言語が変わった。プレイの進行を残さずにゲームを再起動する",
+            saveFailed: "言語は変わったが、プレイの進行を保存できなかったため、ゲームは再起動していない：{error}",
+            parked: "言語の変更のためにプレイの進行を退避した。ゲームを再起動する",
+            restoring: "言語の変更で退避したプレイの進行を復元している",
+            resumeFailed: "言語の変更後、プレイの進行を再開できなかった：{error}",
+            resumeRefused: "言語の変更で退避したプレイの進行は受け付けられなかった。保存されたまま残っている",
+            restored: "言語の変更で退避したプレイの進行を復元した",
+            returnFailed: "言語の変更後、ゲームを最初に戻せなかった：{error}",
+        },
+    },
     /**
      * 描き続けられなくなったときにゲームが画面に出すもの。ゲーム自身の描画で起きた失敗と、
      * そもそも読めなかったパックの両方。

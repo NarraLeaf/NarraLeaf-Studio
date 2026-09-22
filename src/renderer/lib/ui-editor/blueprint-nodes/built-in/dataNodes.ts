@@ -53,6 +53,7 @@ import {
     BLUEPRINT_VALUE_TYPE_RECT,
     BLUEPRINT_VALUE_TYPE_VECTOR2D,
 } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -63,10 +64,7 @@ const JSON_OBJECT_INPUT_PINS_KEY = "__jsonObjectInputPins";
 const JSON_ARRAY_INPUT_PINS_KEY = "__jsonArrayInputPins";
 
 const dataOnlyExecute: BlueprintNodeDef["execute"] = ctx => {
-    throw new BlueprintGraphExecutionError(
-        "Data nodes are pure and must not sit on the execution path",
-        ctx.node.id,
-    );
+    throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.pureOnExecPath"), ctx.node.id);
 };
 
 const anyIn = (id: string, label: string): BlueprintNodePinDef => ({

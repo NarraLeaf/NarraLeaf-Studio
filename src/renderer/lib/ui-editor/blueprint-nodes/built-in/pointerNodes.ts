@@ -46,6 +46,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { UI_DISPLAYABLE_WIDGET_TYPES } from "@shared/types/ui-editor/displayableWidgets";
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
@@ -164,12 +165,12 @@ export const pointerBlueprintNodes: BlueprintNodeDef[] = [
             const travel = readTravel(ctx);
             const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
             if (!ref) {
-                throw new BlueprintGraphExecutionError("Move Mouse To Element requires an Element input", ctx.node.id);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
             }
             // The rule every other element node keeps: a graph reaches its own surface, and a
             // component's graph its own definition.
             if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-                throw new BlueprintGraphExecutionError("Move Mouse To Element can only target the current Surface", ctx.node.id);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
             }
             // Measured rather than computed: the centre of where the widget is drawn is the point a
             // click would land on, and a widget mid-animation or in a list row is not where the
