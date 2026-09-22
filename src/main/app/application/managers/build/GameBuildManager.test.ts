@@ -11,6 +11,7 @@ import {
     hasSigningIdentityForPlatform,
     isDesktopTarget,
     isMobileTarget,
+    hostElectronServesTarget,
     resolveElectronDistDirForApp,
     signingSecretsResolved,
     toWorkerAndroidSigning,
@@ -332,6 +333,34 @@ describe("resolveElectronDistDirForApp", () => {
         } finally {
             Object.defineProperty(process, "platform", { value: original });
         }
+    });
+});
+
+/*
+ * electron-builder copies whatever directory it is handed as `electronDist` and never looks at the
+ * architecture inside it, so this predicate is the only thing standing between an arm64 host and an
+ * "x64" game that is an arm64 program.
+ */
+describe("hostElectronServesTarget", () => {
+    it("serves only the target that matches the host in platform and arch", () => {
+        expect(hostElectronServesTarget({ platform: "windows", arch: "x64" }, "windows", "x64")).toBe(true);
+        expect(hostElectronServesTarget({ platform: "macos", arch: "arm64" }, "macos", "arm64")).toBe(true);
+    });
+
+    it("sends every other arch of the host platform to a download", () => {
+        expect(hostElectronServesTarget({ platform: "windows", arch: "arm64" }, "windows", "x64")).toBe(false);
+        expect(hostElectronServesTarget({ platform: "macos", arch: "x64" }, "macos", "arm64")).toBe(false);
+        expect(hostElectronServesTarget({ platform: "linux", arch: "arm64" }, "linux", "x64")).toBe(false);
+    });
+
+    it("never serves a universal macOS build, which no single installation can be", () => {
+        expect(hostElectronServesTarget({ platform: "macos", arch: "universal" }, "macos", "arm64")).toBe(false);
+        expect(hostElectronServesTarget({ platform: "macos", arch: "universal" }, "macos", "x64")).toBe(false);
+    });
+
+    it("never serves another platform", () => {
+        expect(hostElectronServesTarget({ platform: "windows", arch: "arm64" }, "macos", "arm64")).toBe(false);
+        expect(hostElectronServesTarget({ platform: "linux", arch: "x64" }, "windows", "x64")).toBe(false);
     });
 });
 
