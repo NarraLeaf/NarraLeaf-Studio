@@ -654,7 +654,7 @@ export default definePlugin({
 | --- | --- |
 | 安装失败 | `manifest.json` 不是合法 JSON，或 `id` / `version` / `entries` 校验失败（`manifestVersion` 必须是 `2`，`entries` 至少声明一个 target，每个入口文件必须存在）。 |
 | 授权后仍不能启用 | `manifest.version` 已变更，需要重新批准当前版本。 |
-| workspace 不加载插件 | 插件不是 `enabled` 状态、没有声明 `entries.studio`，或上次有 `lastError`。 |
+| workspace 不加载插件 | 插件不是 `enabled` 状态、没有声明 `entries.studio`，或上次有 `lastError`。改好代码后在插件面板按「重试」——它清掉 `lastError` 并在当前窗口重新载入。 |
 | `import` 失败 | 入口不是 ESM，或打包后仍有未被处理的外部依赖。 |
 | `definePlugin` 不可用 | 插件不在 workspace plugin runtime 中运行，或导入名不是 `narraleaf-studio/plugin`。 |
 | `defineRuntimePlugin` 不可用 | 代码不在游戏执行环境（Dev Mode/Preview/Production）中运行，或导入名不是 `narraleaf-studio/runtime`。 |

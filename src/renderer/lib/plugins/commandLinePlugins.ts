@@ -268,7 +268,11 @@ function unmetState(
         return `could not start: ${failure}`;
     }
     if (plugin.status === "error") {
-        return `could not start the last time it was loaded, and is held back until it is switched off and on: ${plugin.lastError ?? "no reason recorded"}`;
+        // Reached only for a plugin this profile has switched on, the two checks above having taken
+        // the switched-off cases. What releases it is the record forgetting the failure, which is
+        // Try again in Studio's plugin list.
+        return "could not start the last time it was loaded, and is held back until it is started again"
+            + ` from Studio's plugin list: ${plugin.lastError ?? "no reason recorded"}`;
     }
     return null;
 }

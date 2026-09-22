@@ -38,6 +38,12 @@ export type PluginActivity =
  * ran, reported success and left the plugin exactly as it was. What releases the hold is Rescan in
  * Project ▸ App, which the details page's own note names - so the action is not offered rather than
  * offered and explained, which would say the same thing twice.
+ *
+ * This answers for the window only. The record has the other half of the same question - the main
+ * process serves a descriptor only for a record with no failure on it, so a plugin whose last load
+ * failed has nothing here to reload either, and what starts one of those is Try again
+ * (`pluginRecordActions`). The surfaces ask both, because a window's copy of the record can be a
+ * moment behind a load that has just failed.
  */
 export function canReloadInWorkspace(activity: PluginActivity | null): boolean {
     return activity === "running" || activity === "failed" || activity === "stopped";
