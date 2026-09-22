@@ -238,7 +238,10 @@ export function ErrorScreen({ error, onRetry, title, allowRecovery = true, showS
                         >
                             {copied ? <ClipboardCheck className="h-4 w-4" /> : <ClipboardCopy className="h-4 w-4" />}
                         </button>
-                        <p className="pr-8 text-sm text-danger font-mono whitespace-pre-wrap break-all">{error.message}</p>
+                        {/* `break-words`, not `break-all`: a path or a stack frame with no space in
+                            it still breaks where it would overflow, and a sentence - the lock
+                            screens are whole sentences - no longer splits in the middle of a word. */}
+                        <p className="pr-8 text-sm text-danger font-mono whitespace-pre-wrap break-words">{error.message}</p>
                         {showStackTrace && error.stack && (
                             <details className="mt-3">
                                 <summary className="text-xs text-danger cursor-default hover:text-danger/80">
