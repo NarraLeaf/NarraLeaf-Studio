@@ -24,8 +24,10 @@ import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
+import { defaultTestEdition, testEditionLogLines } from "../../utils/testEdition";
 import {
     formatPreviewProcessOutput,
     hostSidecarPlatformKey,
@@ -139,9 +141,10 @@ type GameTestSession = {
      * The headless job the project's window was opened for, or null for a window an author is at.
      *
      * Captured when the launch arrives, off the window's props - which main set when it opened the
-     * window and the renderer has no way to change. It decides two things: where this run's "as
-     * shipped" answer comes from (see {@link sealingChoiceFor}), and that the host's own lines about
-     * the game also go on the command-line log, which is the only thing a job reads.
+     * window and the renderer has no way to change. It decides three things: where this run's "as
+     * shipped" answer comes from (see {@link sealingChoiceFor}), which build its game is (see {@link
+     * editionFor}), and that the host's own lines about the game also go on the command-line log,
+     * which is the only thing a job reads.
      */
     commandLineRun: CommandLineRunJob | null;
     /**
@@ -497,8 +500,12 @@ export class GameTestManager {
             const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(session);
 
-            const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
-            const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
+            const edition = await this.editionFor(session);
+            for (const line of edition.logLines) {
+                // Beside the line about the content, and at the same level: which build ran is the
+                // other fact about the game a job asked for by name.
+                this.emitConsole(session, "info", line);
+            }
             const compileStartedAt = Date.now();
             const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath: session.projectPath,
@@ -513,15 +520,15 @@ export class GameTestManager {
                     controlPort: session.controlPort,
                     controlToken: session.controlToken,
                 },
-                // What edition this run is. Read from the machine's own setting rather than taken
-                // from the launch request: nothing about a run needs the renderer's word for it, and
-                // the three launch surfaces keep the shapes they had. `packaging` stays off - this
-                // folds the variant without planning what a package would leave out.
-                ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
-                // And which DLC it has installed, from the same setting. A walkthrough test that ran
-                // with content the author had not ticked would pass on a game nobody ships - and the
-                // default, none, is the package every player starts from.
-                includedDlc: runDlc,
+                // What edition this run is, and which DLC it has installed - see `editionFor` for
+                // who decides. Never taken from the launch request: nothing about a run needs the
+                // renderer's word for it, and the three launch surfaces keep the shapes they had.
+                // `packaging` stays off - this folds the variant without planning what a package
+                // would leave out.
+                ...(edition.appTag ? { appTag: edition.appTag } : {}),
+                // A walkthrough test that ran with content nobody asked for would pass on a game
+                // nobody ships - and the default, none, is the package every player starts from.
+                includedDlc: edition.includedDlc,
                 runtimePlugins: pluginSelection.selected,
                 // "preview" and not "production": a test needs the control server, which a shipped
                 // pack deliberately does not have.
@@ -854,6 +861,44 @@ export class GameTestManager {
             return { by: "preview-setting", settings: this.app.getGlobalState() };
         }
         return { by: "command-line", asShipped: job.kind === "test" && job.asShipped };
+    }
+
+    /**
+     * Which build this session's game is: the variant it is assembled as, and the DLC beside it.
+     *
+     * The same two sources as {@link sealingChoiceFor}, for the same reason. A run an author starts
+     * reads the machine's "Run as" and "Run with DLC" choices, which are that author's. A headless
+     * `--test` run reads what its line named - resolved against the project before the window opened
+     * - and never the machine's: a build agent never made a choice and a developer did, so reading
+     * them would make one line test two builds. A line that named nothing runs the release variant
+     * with no DLC. Any other headless job never launches a test's game; were one to, it would get the
+     * same default, since nothing about it asked for anything else.
+     *
+     * Only a headless run says which build it is, on the command-line log - the one record a job keeps
+     * of what was tested. An author sees their choice on the Run button.
+     */
+    private async editionFor(session: GameTestSession): Promise<{
+        appTag: { id: string; name: string } | null;
+        includedDlc: string[];
+        logLines: string[];
+    }> {
+        const job = session.commandLineRun;
+        if (!job) {
+            const variant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
+            return {
+                appTag: variant ? { id: variant.id, name: variant.name } : null,
+                includedDlc: await resolveRunDlc(this.app.getGlobalState(), session.projectPath),
+                logLines: [],
+            };
+        }
+        const edition = job.kind === "test" ? job.edition : defaultTestEdition();
+        return {
+            // The release variant is assembled by stating no variant at all, exactly as an author's
+            // run with nothing chosen is - so the default here compiles the same bytes as that one.
+            appTag: edition.variant.id === APP_TAG_ID_RELEASE ? null : { ...edition.variant },
+            includedDlc: edition.dlc.map(part => part.id),
+            logLines: testEditionLogLines(edition),
+        };
     }
 
     /**

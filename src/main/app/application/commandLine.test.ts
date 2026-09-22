@@ -42,6 +42,8 @@ const NO_CHECK = {
     list: false,
     parameters: [],
     asShipped: false,
+    variant: null,
+    dlc: [],
     reportPath: null,
     userDataDir: null,
     error: null,
@@ -467,6 +469,8 @@ describe("parseMainCommandLine", () => {
             list: false,
             parameters: ["ending=good", "verbose=true"],
             asShipped: false,
+            variant: null,
+            dlc: [],
             reportPath: "out/test.json",
             userDataDir: null,
             error: null,
@@ -614,6 +618,92 @@ describe("parseMainCommandLine", () => {
 
             expect(check.asShipped).toBe(true);
             expect(check.error).toBeNull();
+        });
+    });
+
+    /**
+     * `--test-variant` and `--test-dlc` decide which build a test's game is. They are the only source
+     * of that answer for a headless run, so a line misread here is a job testing a build it never
+     * named - and both builds usually pass.
+     */
+    describe("--test-variant and --test-dlc", () => {
+        const test = (...extra: string[]) => parseMainCommandLine([
+            "NarraLeaf-Studio.exe", "--test", "C:/games/demo", "--test-id=walkthrough", ...extra,
+        ]).check;
+
+        it("name nothing unless the line says so", () => {
+            expect(test().variant).toBeNull();
+            expect(test().dlc).toEqual([]);
+        });
+
+        it("read a variant by name, kept as typed", () => {
+            const check = test("--test-variant=Next Fest: Demo");
+
+            expect(check.variant).toBe("Next Fest: Demo");
+            expect(check.kind).toBe("test");
+            expect(check.error).toBeNull();
+        });
+
+        it("keep the last variant when one is given twice, as a value flag does", () => {
+            expect(test("--test-variant=Demo", "--test-variant=main").variant).toBe("main");
+        });
+
+        it("read DLC from a list and from repeated flags alike, once each", () => {
+            const check = test("--test-dlc=Epilogue, summer_route", "--test-dlc=Voice pack", "--test-dlc=Epilogue");
+
+            expect(check.dlc).toEqual(["Epilogue", "summer_route", "Voice pack"]);
+            expect(check.error).toBeNull();
+        });
+
+        it("refuse a separate value with the spelling that works, and leave the next argument alone", () => {
+            // A separate value shaped like `scheme:rest` kills the launch on Windows before Studio
+            // runs, so the `=` form is the only one these two take.
+            const variant = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--test", "demo", "--test-id=walkthrough", "--test-variant", "Demo",
+            ]).check;
+            expect(variant.variant).toBeNull();
+            expect(variant.error).toBe("--test-variant takes its value after an equals sign: write --test-variant=Demo");
+
+            expect(test("--test-dlc", "Voice pack").error)
+                .toBe('--test-dlc takes its value after an equals sign: write --test-dlc="Voice pack"');
+        });
+
+        it("refuse a missing value", () => {
+            expect(test("--test-variant").error).toBe("Missing --test-variant value: write --test-variant=<name>");
+            expect(test("--test-variant=").error).toBe("Missing --test-variant value: write --test-variant=<name>");
+            expect(test("--test-dlc=, ,").error).toBe("Missing --test-dlc value: write --test-dlc=<name>[,<name>]");
+            // A flag after it is not its value.
+            const check = parseMainCommandLine([
+                "NarraLeaf-Studio.exe", "--test-variant", "--test", "demo", "--test-id=walkthrough",
+            ]).check;
+            expect(check.selector).toBe("demo");
+            expect(check.error).toBe("Missing --test-variant value: write --test-variant=<name>");
+        });
+
+        it("are forgiven by a later occurrence that is well-formed", () => {
+            const check = test("--test-variant", "--test-variant=Demo");
+
+            expect(check.variant).toBe("Demo");
+            expect(check.error).toBeNull();
+        });
+
+        it("are refused without --test, like every companion flag", () => {
+            for (const flag of ["--test-variant=Demo", "--test-dlc=Epilogue", "--test-variant"]) {
+                const options = parseMainCommandLine(["NarraLeaf-Studio.exe", flag]);
+
+                expect(options.check.requested).toBe(true);
+                expect(options.check.error).not.toBeNull();
+            }
+            expect(parseMainCommandLine(["NarraLeaf-Studio.exe", "--test-dlc=Epilogue"]).check.error)
+                .toBe("Missing --test or --lint: the check flags name a check nothing asked for");
+        });
+
+        it("are refused beside --lint, which launches no game", () => {
+            for (const flag of ["--test-variant=Demo", "--test-dlc=Epilogue"]) {
+                const options = parseMainCommandLine(["NarraLeaf-Studio.exe", "--lint", "demo", flag]);
+
+                expect(options.check.error).toBe("Both --test and --lint were given: one launch answers one question");
+            }
         });
     });
 });

@@ -11,6 +11,9 @@ import { IPCEventType } from "@shared/types/ipcEvents";
 import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "../../utils/previewAsShipped";
+import { RUN_DLC_ON_SETTINGS_KEY } from "../../utils/runDlc";
+import { RUN_VARIANT_SETTINGS_KEY } from "../../utils/runVariant";
+import { defaultTestEdition } from "../../utils/testEdition";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
@@ -187,8 +190,11 @@ function captureEvents() {
  *
  * `previewAsShippedFor` is the one project this machine's "Preview as shipped" setting is on for;
  * absent, the profile never touched it - which is what a build agent's profile looks like.
+ * `settings` are any other global settings the profile holds, by key.
  */
-const makeManager = (options: { previewAsShippedFor?: string } = {}) => new GameTestManager({
+const makeManager = (
+    options: { previewAsShippedFor?: string; settings?: Record<string, unknown> } = {},
+) => new GameTestManager({
     logger: { error: () => undefined },
     // A trusting ledger: these cases are about what the manager does once it is allowed to
     // start, not about who may start it. The refusal has its own tests.
@@ -205,7 +211,7 @@ const makeManager = (options: { previewAsShippedFor?: string } = {}) => new Game
     getGlobalState: () => ({
         get: (key: string) => key === PREVIEW_AS_SHIPPED_SETTINGS_KEY && options.previewAsShippedFor
             ? { [normalizeProjectPath(options.previewAsShippedFor)]: true }
-            : undefined,
+            : options.settings?.[key],
     }),
     getAppInfo: () => ({ version: "0.0.0-test" }),
 } as unknown as ConstructorParameters<typeof GameTestManager>[0]);
@@ -605,6 +611,7 @@ describe("GameTestManager: how a test's game holds its content", () => {
         testId: "narraleaf-studio:walkthrough",
         parameters: {},
         asShipped,
+        edition: defaultTestEdition(),
     });
 
     /** What the compile was handed, which is where "sealed" and "loose" part ways. */
@@ -677,6 +684,137 @@ describe("GameTestManager: how a test's game holds its content", () => {
         expect(compiledWithKey()).toBeUndefined();
 
         // No headless job, so nobody is reading a command-line log.
+        expect(logged).toEqual([]);
+    });
+});
+
+/**
+ * Which build a test's game is: the variant it is assembled as, and the DLC installed beside it.
+ *
+ * The same split as the content's form above. An author's run reads the machine's "Run as" and "Run
+ * with DLC" choices; a headless `--test` run reads what its line named and nothing else, so the same
+ * line tests the same build on an agent that never chose anything and on a developer's machine that
+ * chose a demo with every DLC ticked.
+ */
+describe("GameTestManager: which build a test's game is", () => {
+    const DEMO_ID = "5f0c2b1e-8d3a-4c77-9a2e-6b1d0f4e9c21";
+    let projectPath = "";
+    let children: (EventEmitter & Record<string, unknown>)[] = [];
+
+    function fakeChild() {
+        const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        child.pid = 4343;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = vi.fn(() => true);
+        children.push(child);
+        return child;
+    }
+
+    function projectWindow(commandLineRun?: CommandLineRunJob) {
+        const logged: string[] = [];
+        vi.mocked(findWorkspaceWindow).mockReturnValue({
+            sendIpcEvent: () => undefined,
+            getProps: () => ({ projectPath, ...(commandLineRun ? { commandLineRun } : {}) }),
+            reportCommandLineRunEvent: (event: CommandLineRunEvent) => {
+                if (event.kind === "log") {
+                    logged.push(event.message);
+                }
+            },
+        } as never);
+        return logged;
+    }
+
+    /** A profile whose author chose the demo and ticked every DLC for this project. */
+    const authorChoseDemoWithDlc = () => ({
+        [RUN_VARIANT_SETTINGS_KEY]: { [normalizeProjectPath(projectPath)]: DEMO_ID },
+        [RUN_DLC_ON_SETTINGS_KEY]: { [normalizeProjectPath(projectPath)]: ["epilogue", "voices"] },
+    });
+
+    const compiled = () => vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls[0][1];
+
+    beforeEach(async () => {
+        projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-game-test-edition-"));
+        await fs.writeFile(
+            path.join(projectPath, getProjectConfigFileName("Corridor")),
+            encodeProjectConfig({ name: "Corridor" } as never),
+        );
+        await fs.mkdir(path.join(projectPath, "editor"), { recursive: true });
+        await fs.writeFile(path.join(projectPath, "editor", "app-tags.json"), JSON.stringify({
+            schemaVersion: 1,
+            tags: [{ id: DEMO_ID, name: "Demo", overrides: {} }],
+        }));
+        await fs.writeFile(path.join(projectPath, "editor", "dlc.json"), JSON.stringify({
+            schemaVersion: 1,
+            dlcs: [
+                { id: "epilogue", name: "Epilogue", attachTo: "main" },
+                { id: "voices", name: "Voice pack", attachTo: DEMO_ID },
+            ],
+        }));
+        children = [];
+        vi.mocked(spawn).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue(
+            { appDir: path.join(os.tmpdir(), "app"), copiedAssetCount: 3 } as never,
+        );
+    });
+
+    afterEach(async () => {
+        for (const child of children) {
+            child.exitCode = 0;
+            child.emit("exit", 0, null);
+        }
+        await fs.rm(projectPath, { recursive: true, force: true });
+    });
+
+    it("runs a headless line that named nothing as the release build with no DLC, whatever the author chose", async () => {
+        const logged = projectWindow({
+            kind: "test",
+            testId: "narraleaf-studio:walkthrough",
+            parameters: {},
+            asShipped: false,
+            edition: defaultTestEdition(),
+        });
+
+        await makeManager({ settings: authorChoseDemoWithDlc() }).launch({ projectPath, runId: "run-1" });
+
+        // No variant stated at all, as an author's run with nothing chosen states none.
+        expect(compiled().appTag).toBeUndefined();
+        expect(compiled().includedDlc).toEqual([]);
+        // Said on the log a job keeps, right after the line about the content.
+        const assets = logged.findIndex(line => line.startsWith("assets: "));
+        expect(assets).toBeGreaterThanOrEqual(0);
+        expect(logged.slice(assets + 1, assets + 3)).toEqual(["variant: main, the release build", "DLC: none"]);
+    });
+
+    it("runs the build a headless line named, and says so", async () => {
+        const logged = projectWindow({
+            kind: "test",
+            testId: "narraleaf-studio:walkthrough",
+            parameters: {},
+            asShipped: false,
+            edition: { variant: { id: DEMO_ID, name: "Demo" }, dlc: [{ id: "voices", name: "Voice pack" }] },
+        });
+
+        // A profile that chose nothing: the line alone decides.
+        await makeManager().launch({ projectPath, runId: "run-1" });
+
+        expect(compiled().appTag).toEqual({ id: DEMO_ID, name: "Demo" });
+        expect(compiled().includedDlc).toEqual(["voices"]);
+        expect(logged).toContain('variant: "Demo" (--test-variant)');
+        expect(logged).toContain('DLC: "Voice pack" (--test-dlc)');
+    });
+
+    it("still reads the author's own choices for a run an author started, and logs nothing for a job", async () => {
+        const logged = projectWindow();
+
+        await makeManager({ settings: authorChoseDemoWithDlc() }).launch({ projectPath, runId: "run-1" });
+
+        expect(compiled().appTag).toEqual({ id: DEMO_ID, name: "Demo" });
+        expect(compiled().includedDlc).toEqual(["epilogue", "voices"]);
         expect(logged).toEqual([]);
     });
 });
