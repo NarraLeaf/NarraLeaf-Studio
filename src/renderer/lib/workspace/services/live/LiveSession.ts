@@ -76,6 +76,7 @@ import {
 import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import { sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     TeamLiveEvent,
@@ -1294,6 +1295,9 @@ export class LiveSession {
                 ui,
                 registries,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
+                hasSceneRuntimeName: (storyId, runtimeName, exceptSceneId) =>
+                    Object.values(this.deps.story.document(storyId)?.scenes ?? {}).some(scene =>
+                        scene.id !== exceptSceneId && sceneRuntimeName(scene) === runtimeName),
                 readChapter: (storyId, chapterId) =>
                     this.deps.story.document(storyId)?.chapters.find(chapter => chapter.id === chapterId) ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
