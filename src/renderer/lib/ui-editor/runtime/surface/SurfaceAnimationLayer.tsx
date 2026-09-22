@@ -76,8 +76,9 @@ type SurfaceAnimationLayerProps = {
      * switch nothing inside the layer can turn back on.
      *
      * Opt-in, because whether a press may fall through depends on what the host draws underneath:
-     * the app's page stack guards the game stage for the length of an exit (see `SurfaceStackBox`),
-     * and a frame inside a page has no such guard.
+     * only a host that keeps such a press from reaching something that would misread it should turn
+     * it on. The app's page stack guards the game stage for the length of an exit (see
+     * `SurfaceStackBox`), and a frame keeps it from becoming a press on the frame (`FramePageBox`).
      */
     inertWhileLeaving?: boolean;
     presentZIndex?: number;
@@ -91,6 +92,12 @@ type SurfaceAnimationLayerProps = {
     resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
     onPrepaintReady?: (key: string) => void;
     onBeforeExit?: (key: string) => void;
+    /**
+     * The layer was brought back before its exit finished, and is arriving again. Reported in the
+     * commit that brings it back, before anything on it can be pressed, so a host can stop saying
+     * the page is leaving from that moment rather than from when the return's enter animation ends.
+     */
+    onReturn?: (key: string) => void;
     onEnterComplete?: (key: string) => void;
     children: ReactNode;
 };
@@ -352,6 +359,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         resolveExit,
         onPrepaintReady,
         onBeforeExit,
+        onReturn,
         onEnterComplete,
         children,
     } = props;
@@ -398,6 +406,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
             if (beforeExitReportedRef.current === prepaintKey) {
                 beforeExitReportedRef.current = null;
                 enterCompleteReportedRef.current = null;
+                onReturn?.(prepaintKey);
             }
             return;
         }
@@ -406,7 +415,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         }
         beforeExitReportedRef.current = prepaintKey;
         onBeforeExit?.(prepaintKey);
-    }, [isPresent, onBeforeExit, prepaintKey]);
+    }, [isPresent, onBeforeExit, onReturn, prepaintKey]);
 
     /**
      * Report the layer painted - and again when it comes back from an exit it did not finish.

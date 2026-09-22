@@ -23,7 +23,6 @@ import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/type
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { bindWidgetEventDispatch } from "./widgetEventDispatch";
 import { uiDrawingAttributeValue } from "./surfaceMeasurement";
-import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
 import type { UIStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
@@ -162,7 +161,6 @@ export function EditorNodeWrapper({
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
-    const surfacePassive = useSurfacePassive();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const interactionDisabled = Boolean(
@@ -636,9 +634,10 @@ export function EditorNodeWrapper({
             width: normalizedWidth,
             height: normalizedHeight,
             opacity: motionControlsOpacity ? undefined : effectiveOpacity,
-            // A passive surface stays click-through all the way down. Setting it on the shell alone
-            // does nothing, because this very line is what takes the clicks back.
-            pointerEvents: (isRoot && !isComponentRoot) || surfacePassive ? "none" : "auto",
+            // A click stops where the picture is. A surface that must take no input at all is taken out
+            // of hit testing as a whole instead (`GameSurfaceRenderer`'s `passive`), because this
+            // line, and every other box that takes pointer events back, would undo it one level down.
+            pointerEvents: isRoot && !isComponentRoot ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
@@ -666,7 +665,6 @@ export function EditorNodeWrapper({
         placedEnteredOffsets.x,
         placedEnteredOffsets.y,
         styleOverrides,
-        surfacePassive,
         wrapperCursor,
     ]);
 

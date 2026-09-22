@@ -220,6 +220,23 @@ if (shellMode === "production" && !shellDebuggable
  */
 const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
 
+/**
+ * A test is driving this game, so it has to keep running when its window is not on screen.
+ *
+ * Chromium stops painting a window that is minimized, off-screen or covered by another window, and
+ * throttles its timers to one wake a second. A story waits on painted frames - to enter its first
+ * scene, to finish a transition - so a driven game that ended up behind the author's editor, or
+ * behind a window some other program opened, stood still while the test kept clicking at it, and
+ * the run failed a minute later for having stopped advancing. MEASURED: minimizing the window, or
+ * moving it off-screen, the moment it appeared failed the walkthrough every time, and an unattended
+ * batch failed about one run in thirty that way.
+ *
+ * Only for Studio's own test launches - `GameTestManager` sets the variable, and a shipped game
+ * never reads it. A player's hidden game should be throttled; nobody is looking at it and it has
+ * nothing to finish. A driven one does, and whether it is on top says nothing about the game.
+ */
+const testDriven = shellMode !== "production" && process.env.NARRALEAF_TEST_DRIVEN === "1";
+
 // Preview keeps saves next to the compiled app; a shipped game names its
 // per-user directory explicitly (see resolvePlayerDataDir).
 const previewUserDataDir = path.resolve(appDir, "..", "userData");
@@ -443,6 +460,16 @@ if (testNetworkBlocked) {
         "[GameRuntime] Network blocked for this run (NARRALEAF_TEST_NETWORK=blocked): "
         + "only nlgame:, file:, devtools:, data:/blob: and loopback will load.",
     );
+}
+
+if (testDriven) {
+    // Here for the same reason as the network switch above: Chromium reads these before it starts.
+    // A covered window is otherwise treated as hidden, and a hidden one loses its timers and its
+    // process priority. The window itself is told separately (`backgroundThrottling`), because a
+    // minimized window is hidden whatever these say.
+    app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+    app.commandLine.appendSwitch("disable-renderer-backgrounding");
+    app.commandLine.appendSwitch("disable-background-timer-throttling");
 }
 
 /**
@@ -970,6 +997,9 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             additionalArguments: [
                 buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
             ],
+            // A test's game keeps painting and keeping time when it is not on screen - see
+            // `testDriven`. Every other window keeps Chromium's default.
+            ...(testDriven ? { backgroundThrottling: false } : {}),
         },
     });
     win.setTitle(windowTitle);
