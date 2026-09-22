@@ -19,6 +19,7 @@ function declarationOf(module: UIWidgetModule, ownerPluginId: string): Contribut
         ownerPluginId,
         logicApi: module.logicApi,
         acceptsChildren: module.acceptsChildren === true,
+        ...(module.partSlots && module.partSlots.length > 0 ? { partSlots: module.partSlots } : {}),
     };
 }
 

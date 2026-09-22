@@ -2,7 +2,7 @@ import { type MouseEvent } from "react";
 import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
 import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Lock } from "lucide-react";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
+import { uiElementTypeAcceptsUserChildren } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import { useTranslation } from "@/lib/i18n";
@@ -236,7 +236,7 @@ export function OutlineRow({
                     readOnly={readOnly}
                 />
             ) : null}
-            {!hasChildren && uiElementTypeAcceptsChildren(element.type) ? (
+            {!hasChildren && uiElementTypeAcceptsUserChildren(element.type) ? (
                 <OutlineGapDropZone
                     parentId={element.id}
                     depth={depth + 1}
@@ -345,6 +345,11 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
     const visualChildren = getOutlineVisualChildren(parent);
     const gapIntent: OutlineGapIntent = parent.type === OUTLINE_ROOT_WIDGET_TYPE ? "root" : "child";
     const lastVisualIndex = visualChildren.length;
+    // A widget that holds only the parts it built - a slider, a switch, a plugin widget declaring
+    // part slots - offers no place to drop among them. Every such drop is refused by the move (see
+    // `planMoveElementsInSurface`), and a drop line that lights up where nothing can land is the
+    // outline promising what the document will not do.
+    const offersDrops = uiElementTypeAcceptsUserChildren(parent.type);
     return (
         <div
             className={`rounded-sm transition-colors duration-150 ease-out ${
@@ -352,16 +357,18 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
             }`}
             data-outline-subtree-parent-id={props.parentId}
         >
-            <OutlineGapDropZone
-                parentId={props.parentId}
-                depth={props.depth}
-                visualIndex={0}
-                intent={gapIntent}
-                terminalChildDrop={gapIntent === "child" && lastVisualIndex === 0}
-            />
+            {offersDrops ? (
+                <OutlineGapDropZone
+                    parentId={props.parentId}
+                    depth={props.depth}
+                    visualIndex={0}
+                    intent={gapIntent}
+                    terminalChildDrop={gapIntent === "child" && lastVisualIndex === 0}
+                />
+            ) : null}
             {visualChildren.map((childId, index) => {
                 const child = props.document.elements[childId];
-                const childCanOwnChildren = child != null && uiElementTypeAcceptsChildren(child.type);
+                const childCanOwnChildren = child != null && uiElementTypeAcceptsUserChildren(child.type);
                 const childHasVisibleChildDrop =
                     childCanOwnChildren && (child.childrenIds.length === 0 || !props.isCollapsed(child.id));
                 return (
@@ -383,13 +390,15 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
                                 readOnly={props.readOnly}
                             />
                         ) : null}
-                        <OutlineGapDropZone
-                            parentId={props.parentId}
-                            depth={props.depth}
-                            visualIndex={index + 1}
-                            intent={childHasVisibleChildDrop ? "sibling" : gapIntent}
-                            terminalChildDrop={gapIntent === "child" && index + 1 === lastVisualIndex}
-                        />
+                        {offersDrops ? (
+                            <OutlineGapDropZone
+                                parentId={props.parentId}
+                                depth={props.depth}
+                                visualIndex={index + 1}
+                                intent={childHasVisibleChildDrop ? "sibling" : gapIntent}
+                                terminalChildDrop={gapIntent === "child" && index + 1 === lastVisualIndex}
+                            />
+                        ) : null}
                     </div>
                 );
             })}
