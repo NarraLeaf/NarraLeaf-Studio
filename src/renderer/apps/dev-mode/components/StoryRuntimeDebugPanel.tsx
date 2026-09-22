@@ -577,9 +577,10 @@ function VariablesTab(props: {
                     value = variable.defaultValue;
                 }
             } else {
-                const stored = scopeBridge.persistenceGet(variable.storageKey);
-                live = stored !== undefined;
-                value = stored !== undefined ? stored : variable.defaultValue;
+                // The scope answers the default itself while nothing is stored; `live` is whether
+                // something has been.
+                live = scopeBridge.persistenceIsStored(variable.storageKey);
+                value = scopeBridge.persistenceGet(variable.storageKey);
             }
             return { variable, value, live };
         });

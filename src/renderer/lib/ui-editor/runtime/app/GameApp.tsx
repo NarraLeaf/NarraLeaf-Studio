@@ -1948,7 +1948,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             ? await collectGameProgressVariables(defs.saved, readSavedProgressValue)
             : {};
         const persistentVariables = core
-            ? await collectGameProgressVariables(defs.persistent, key => core.scopeBridge.persistenceGetAsync(key))
+            ? await collectGameProgressVariables(defs.persistent, key => core.scopeBridge.persistenceStoredAsync(key))
             : {};
         const anchorSceneId = currentSceneIdRef.current
             ?? (gameEnteredRef.current ? activeStoryRequestRef.current?.sceneId ?? null : null);
