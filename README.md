@@ -53,7 +53,7 @@ variant for one platform, in one format. The window never appears and never take
 | Flag | Default |
 | --- | --- |
 | `--build <project>` | required |
-| `--build-variant <id>` | `main`, the release variant |
+| `--build-variant <name>` | `main`, the release variant |
 | `--build-target <platform>` | the host platform |
 | `--build-format <format>` | the platform's first format |
 | `--build-arch <arch>` | the host's architecture for a host build, `x64` for a cross build |

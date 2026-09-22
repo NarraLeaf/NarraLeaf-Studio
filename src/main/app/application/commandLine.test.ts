@@ -21,7 +21,7 @@ const NO_EXPERIMENTAL = {
 const NO_BUILD = {
     requested: false,
     selector: null,
-    variantId: null,
+    variant: null,
     platform: null,
     format: null,
     arch: null,
@@ -363,7 +363,7 @@ describe("parseMainCommandLine", () => {
         expect(options.build).toEqual({
             requested: true,
             selector: "D:\games\demo",
-            variantId: "demo",
+            variant: "demo",
             platform: "windows",
             format: "nsis",
             arch: "arm64",

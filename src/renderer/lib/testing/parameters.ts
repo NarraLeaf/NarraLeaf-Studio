@@ -145,3 +145,51 @@ export function resolveTestParameterValues(
     }
     return values;
 }
+
+/**
+ * The shortest spelling of each row that no other row shares, for {@link TestParameterOption.name}.
+ *
+ * Each row offers its spellings shortest first - an ending's own name, then with its story, then
+ * with its scene as well - and keeps the first one that is unique, compared without regard to case,
+ * because that is how a command line matches them. Only the rows that collide are lengthened, so
+ * one "Bad End" shared by two stories costs those two a prefix and nobody else anything. Rows still
+ * alike at their longest are numbered in order, which only a project with two identically named
+ * endings in one scene ever sees.
+ */
+export function nameUniquely(candidates: readonly (readonly string[])[]): string[] {
+    const depth = candidates.map(() => 0);
+    const spell = (row: number) => candidates[row][Math.min(depth[row], candidates[row].length - 1)] ?? "";
+    for (;;) {
+        const names = candidates.map((_, row) => spell(row));
+        const counts = countFolded(names);
+        let lengthened = false;
+        names.forEach((name, row) => {
+            if (counts.get(fold(name))! > 1 && depth[row] < candidates[row].length - 1) {
+                depth[row] += 1;
+                lengthened = true;
+            }
+        });
+        if (!lengthened) {
+            break;
+        }
+    }
+    const seen = new Map<string, number>();
+    return candidates.map((_, row) => {
+        const name = spell(row);
+        const nth = (seen.get(fold(name)) ?? 0) + 1;
+        seen.set(fold(name), nth);
+        return nth === 1 ? name : `${name} (${nth})`;
+    });
+}
+
+function fold(name: string): string {
+    return name.trim().toLowerCase();
+}
+
+function countFolded(names: readonly string[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const name of names) {
+        counts.set(fold(name), (counts.get(fold(name)) ?? 0) + 1);
+    }
+    return counts;
+}
