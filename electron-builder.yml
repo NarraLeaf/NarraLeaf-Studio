@@ -260,6 +260,17 @@ mac:
       to: resources/codesign/darwin
     - from: ./resources/ffmpeg/darwin
       to: resources/ffmpeg/darwin
+    # Electron's own licence and Chromium's credits. On Windows and Linux electron-builder leaves
+    # both beside the executable (LICENSE renamed to LICENSE.electron.txt); on macOS it deletes
+    # them once the bundle is built (app-builder-lib electronMac.js), so nothing of either licence
+    # would reach a Mac. They go where THIRD-PARTY-NOTICES.txt goes above - Contents/Resources,
+    # process.resourcesPath. node_modules/electron is where electron-builder reads electronVersion
+    # from, so this is the release it downloads, and neither text differs by platform or arch.
+    # Games get the same two files from src/main/buildWorker/electronRuntimeFiles.ts.
+    - from: ./node_modules/electron/dist/LICENSE
+      to: LICENSE.electron.txt
+    - from: ./node_modules/electron/dist/LICENSES.chromium.html
+      to: LICENSES.chromium.html
 # The DMG window *is* the background image: dmg-builder measures the file with
 # `sips` and hands that size to dmgbuild as the window size, which also means
 # `dmg.window` is silently ignored whenever `background` is set (dmg-builder's
