@@ -1,7 +1,11 @@
 import path from "path";
-import fs from "fs/promises";
-import {Dirent, default as fsSync, Stats} from "fs";
+import type {Dirent, Stats} from "fs";
 import {randomBytes} from "crypto";
+// Unpatched on purpose. Everything that goes through `Fs` - the renderer's file-system facade, the
+// `app://fs` protocol, document storage, the build's measurements - reaches files an author owns,
+// and none of it reaches Studio's own archive. See unpatchedFs.ts for what the patched module does
+// to a file named like an archive.
+import {unpatchedFs as fsSync, unpatchedFsPromises as fs} from "./unpatchedFs";
 import mime from "mime-types";
 import { FsRequestResult, FsRejectError, FsRejectErrorCode } from "../types/os";
 import { ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
