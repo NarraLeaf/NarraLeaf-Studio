@@ -8,7 +8,7 @@ import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
 import { PluginRestartHint } from "./PluginRestartHint";
 import { PluginTaskLine } from "./PluginTaskLine";
-import type { PluginActivity } from "./useWorkspacePluginActivity";
+import { canReloadInWorkspace, type PluginActivity } from "./useWorkspacePluginActivity";
 
 export interface PluginDetailsPageProps {
     installed: PluginListItem | null;
@@ -67,11 +67,11 @@ export function PluginDetailsPage({
     const name = installed?.manifest.name ?? registryEntry?.name ?? pluginId;
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
+    // Every control on the row below has to be one that does something when it is pressed. Reload is
+    // the one with a state that made it look otherwise - see `canReloadInWorkspace`.
     const reloadable = canReload
         && Boolean(installed?.manifest.entries.studio)
-        && activity !== null
-        && activity !== "off"
-        && activity !== "runtimeOnly";
+        && canReloadInWorkspace(activity);
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-surface text-fg">

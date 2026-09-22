@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDependencyBanner, describeDependencyState } from "./dependencyStatusDisplay";
+import { describeDependencyBanner, describeDependencyState, isDependencyUnavailable } from "./dependencyStatusDisplay";
 
 const SWITCHED_OFF = { status: "satisfied", suppressed: false, installedEnabled: false } as const;
 const WITHHELD = { status: "incompatible", suppressed: true, installedEnabled: true } as const;
@@ -87,6 +87,52 @@ describe("describeDependencyBanner", () => {
     it("is a danger for a plugin that is installed and on and still contributes nothing", () => {
         expect(describeDependencyBanner([AWAITING_GRANT])?.tone).toBe("danger");
         expect(describeDependencyBanner([FAILED])?.tone).toBe("danger");
+    });
+});
+
+describe("isDependencyUnavailable", () => {
+    it("counts every state in which the plugin contributes nothing", () => {
+        expect(isDependencyUnavailable(MISSING)).toBe(true);
+        expect(isDependencyUnavailable(WITHHELD)).toBe(true);
+        expect(isDependencyUnavailable(SWITCHED_OFF)).toBe(true);
+        expect(isDependencyUnavailable(AWAITING_GRANT)).toBe(true);
+        expect(isDependencyUnavailable(FAILED)).toBe(true);
+    });
+
+    /**
+     * The gap this closes: the warning raised on open, and the counts that repeat it, were written
+     * from the version verdict and the switch alone. A plugin waiting for its permissions, or one
+     * that failed to start, is installed at a usable version with its switch on - so a project
+     * whose only trouble was one of those opened in silence, and the author met unknown node types
+     * with nothing on screen to explain them.
+     */
+    it("agrees with the banner, which calls those same rows a problem", () => {
+        for (const row of [MISSING, WITHHELD, SWITCHED_OFF, AWAITING_GRANT, FAILED]) {
+            expect(describeDependencyBanner([row])?.tone).toBe("danger");
+        }
+        for (const row of [READY, OUTDATED]) {
+            expect(isDependencyUnavailable(row)).toBe(false);
+            expect(describeDependencyBanner([row])?.tone ?? "warning").toBe("warning");
+        }
+    });
+
+    /**
+     * A warning is raised whenever a project opens, so the false positive costs more than the false
+     * negative: an outdated plugin loads and the project works, and a warning about it is one the
+     * author learns to close without reading.
+     */
+    it("does not count a plugin that merely loads at another version", () => {
+        expect(isDependencyUnavailable(OUTDATED)).toBe(false);
+        expect(isDependencyUnavailable({ status: "incompatible", suppressed: false, installedEnabled: true })).toBe(false);
+    });
+
+    it("counts a data-only dependency the same way: its data is there and nothing reads it", () => {
+        // Nothing is held back, since nothing loads for it either way, so `suppressed` is false.
+        expect(isDependencyUnavailable({ status: "missing", suppressed: false })).toBe(true);
+    });
+
+    it("says nothing before the first resolve, when there is no verdict yet", () => {
+        expect(isDependencyUnavailable({})).toBe(false);
     });
 });
 

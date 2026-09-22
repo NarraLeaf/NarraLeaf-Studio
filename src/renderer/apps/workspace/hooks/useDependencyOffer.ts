@@ -4,7 +4,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import { isUnmet } from "@/lib/workspace/project/dependencyRemedy";
+import { isDependencyUnavailable } from "@/lib/workspace/project/dependencyStatusDisplay";
 import { openPluginsPanel } from "../modules/plugins/openPluginsPanel";
 import { useWorkspace } from "../context";
 
@@ -16,11 +16,12 @@ const NAMES_LISTED = 4;
  * installs them.
  *
  * A warning rather than an error, and raised only for a dependency whose plugin contributes
- * *nothing* right now - absent, withheld for its version, or switched off. In that state the
- * author's own blueprint nodes, widgets and story rows are unknown types, and a build made from
- * the project is missing a piece of itself. A plugin that is merely older than the one the project
- * was authored against still loads and still works, so it raises nothing: a warning that appears
- * when there is nothing to do is one the author learns to close without reading.
+ * *nothing* right now - the same states Project ▸ App's banner writes a red sentence for, read
+ * through the one predicate both of them share. In that state the author's own blueprint nodes,
+ * widgets and story rows are unknown types, and a build made from the project is missing a piece of
+ * itself. A plugin that is merely older than the one the project was authored against still loads
+ * and still works, so it raises nothing: a warning that appears when there is nothing to do is one
+ * the author learns to close without reading.
  *
  * Nothing new runs at project open for this. The resolution is computed once by
  * `ProjectDependencyService` while the workspace starts, from the table already in the manifest;
@@ -54,7 +55,7 @@ export function useDependencyOffer() {
         const dependencies = context.services.get<ProjectDependencyService>(Services.ProjectDependency);
 
         const evaluate = () => {
-            const unmet = (dependencies.getResolution()?.entries ?? []).filter(isUnmet);
+            const unmet = (dependencies.getResolution()?.entries ?? []).filter(isDependencyUnavailable);
             const message = translateN("plugins.dependencies.unavailable", unmet.length, { count: unmet.length });
             const detail = unmet
                 .slice(0, NAMES_LISTED)

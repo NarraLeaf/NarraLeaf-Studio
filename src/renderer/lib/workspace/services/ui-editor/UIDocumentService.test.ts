@@ -162,6 +162,7 @@ function createHarness(options: { withLocalBlueprint?: boolean; withHistory?: bo
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
+        commandLineRun: false,
     });
 
     const initialDocument = (service as any).createEmptyDocument();

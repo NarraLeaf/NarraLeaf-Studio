@@ -71,4 +71,42 @@ describe("RuntimeIssueStrip", () => {
 
         expect(screen.getByRole("button", { name: REFUSAL })).toBeTruthy();
     });
+
+    /**
+     * What the tally is a tally OF.
+     *
+     * Dev Mode reports what the running game ran into; it does not run the project check. A strip
+     * that said a bare "0 errors" over a project the project check has a hundred errors to say about
+     * was read as a clean bill, so the string names the run and these pin that it is the string the
+     * strip reaches for - with the counts it actually counted.
+     */
+    it("tallies this run's own errors and warnings, and says that is what it counted", () => {
+        render(
+            <RuntimeIssueStrip
+                sessionError={null}
+                issues={Array.from({ length: 20 }, (_, index) => warning(`w${index}`, `Warning ${index}`))}
+                onDismiss={() => undefined}
+                onOpenIssues={() => undefined}
+            />,
+        );
+
+        expect(screen.getByText("devMode.issues.summary|errors=0,warnings=20")).toBeTruthy();
+    });
+
+    it("counts a mixed list by level", () => {
+        render(
+            <RuntimeIssueStrip
+                sessionError={null}
+                issues={[
+                    { id: "e", level: "error", message: "A node stopped", origin: "interface", location: null },
+                    warning("a", "An image could not be found"),
+                    warning("b", "Another one"),
+                ]}
+                onDismiss={() => undefined}
+                onOpenIssues={() => undefined}
+            />,
+        );
+
+        expect(screen.getByText("devMode.issues.summary|errors=1,warnings=2")).toBeTruthy();
+    });
 });

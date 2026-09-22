@@ -2,10 +2,10 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import {
-    aimPasteAtElement,
-    settlePasteTarget,
-    type UIEditorPasteTarget,
-} from "@/lib/ui-editor/tree/resolvePasteTarget";
+    aimAddAtElement,
+    settleAddTarget,
+    type UIEditorAddTarget,
+} from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -36,7 +36,7 @@ import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
-export type { UIEditorPasteTarget };
+export type { UIEditorAddTarget };
 
 function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceId: string, elementId: string): Blueprint | undefined {
     const bpId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
@@ -91,7 +91,7 @@ export function resolvePasteTargetAfterSelection(
     document: UIDocument,
     surfaceId: string,
     selection: UIElementSelection | null,
-): UIEditorPasteTarget | null {
+): UIEditorAddTarget | null {
     const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
     if (!effectiveRootId) {
         return null;
@@ -235,7 +235,7 @@ export function uiEditorCutSelection(
  * another project's, or from the duplicate gesture that never went near a clipboard at all.
  *
  * `aim` is where the gesture pointed; the payload lands at the nearest place from there that takes
- * it (`settlePasteTarget`). Every gesture used to hand its aim straight to the document, which
+ * it (`settleAddTarget`). Every gesture used to hand its aim straight to the document, which
  * refused it without a word whenever the aim was inside a widget that holds only its own parts - so
  * Ctrl+V with a Slider's handle selected, or Ctrl+D on the handle, did nothing at all.
  */
@@ -243,10 +243,10 @@ function applyClipboardPayload(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
-    aim: UIEditorPasteTarget,
+    aim: UIEditorAddTarget,
     payload: UIEditorClipboardPayload,
 ): boolean {
-    const target = settlePasteTarget(
+    const target = settleAddTarget(
         documentService.getDocument(),
         surfaceId,
         aim,
@@ -283,7 +283,7 @@ async function pasteFromClipboard(
     documentService: UIDocumentService,
     stateService: UIEditorStateService,
     surfaceId: string,
-    resolveTarget: () => UIEditorPasteTarget | null,
+    resolveTarget: () => UIEditorAddTarget | null,
 ): Promise<boolean> {
     const source = await resolveUiPasteSource(documentService);
     if (!source) {
@@ -317,7 +317,7 @@ export function uiEditorPaste(
 ): Promise<boolean> {
     void localBp;
     return pasteFromClipboard(documentService, stateService, surfaceId, () =>
-        aimPasteAtElement(documentService.getDocument(), surfaceId, input.hitElementId, input.primaryElementId));
+        aimAddAtElement(documentService.getDocument(), surfaceId, input.hitElementId, input.primaryElementId));
 }
 
 export function uiEditorPasteAfterSelection(

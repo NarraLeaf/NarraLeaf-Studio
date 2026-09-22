@@ -275,13 +275,21 @@ export class App extends BaseApp {
         // The tray comes first: the updater rebuilds the tray menu on every state change, and
         // its launch check is scheduled by `initialize()`.
         this.onReady(() => {
-            const tray = new TrayManager(this, {
-                openLauncher: () => this.revealLauncher(),
-                openUpdateSettings: () => this.revealSettings({ highlight: UPDATE_PANEL_SETTING_KEY }),
-            });
-            tray.initialize();
-            this.trayManager = tray;
+            // Not in a command-line run, which leaves nothing on the machine - an icon in an
+            // operator's notification area for the few seconds a job takes, offering a launcher
+            // and a Settings panel belonging to a process on its way out, least of all. See
+            // `startupExtras.ts`.
+            if (this.getStartupExtras().statusBarItem) {
+                const tray = new TrayManager(this, {
+                    openLauncher: () => this.revealLauncher(),
+                    openUpdateSettings: () => this.revealSettings({ highlight: UPDATE_PANEL_SETTING_KEY }),
+                });
+                tray.initialize();
+                this.trayManager = tray;
+            }
 
+            // Wired whatever the launch is; whether it checks for a newer Studio is its own
+            // question, and `startupExtras.ts` has the answer.
             this.updateManager.initialize();
 
             // After ready, because it listens for webContents being created and the first window is

@@ -95,9 +95,9 @@ export const plugins = {
          * warning leads to, so the screen confirms what brought the author to it rather than
          * restating it differently.
          *
-         * "Not available" covers all three of absent, withheld and switched off on purpose: it is
-         * the one thing true of every row the count includes, and each row then says which of the
-         * three it is.
+         * "Not available" covers all five of absent, withheld, waiting for its permissions, switched
+         * off and failed to start, on purpose: it is the one thing true of every row the count
+         * includes, and each row then says which of the five it is.
          */
         unavailable: {
             one: "{count} plugin this project needs is not available.",

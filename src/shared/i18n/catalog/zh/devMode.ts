@@ -11,7 +11,9 @@ export const devMode = {
     openInStudioFailed: "该项目没有打开的工作区窗口",
     issues: {
         title: "问题",
-        empty: "没有出错的地方",
+        // See the English catalog: both of these count only what the running game reported, and name
+        // the run so that neither reads as a verdict on the whole project.
+        empty: "本次运行没有出错的地方",
         sessionFailure: "会话启动失败",
         atLine: "第 {line} 行 · {scene}",
         inScene: "位于 {scene}",
@@ -33,7 +35,7 @@ export const devMode = {
         viaPlayHead: "播放到此处",
         stack: "调用栈",
         dismissAll: "全部关闭（{count}）",
-        summary: "{errors} 个错误 · {warnings} 个警告",
+        summary: "本次运行 {errors} 个错误 · {warnings} 个警告",
     },
     // See the English catalog: the panels are named for their subject, one word each.
     devtools: {

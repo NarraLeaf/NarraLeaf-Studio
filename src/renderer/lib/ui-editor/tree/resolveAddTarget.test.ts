@@ -6,7 +6,8 @@ import {
 } from "@shared/types/ui-editor/contributedWidgets";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { resolvePasteTargetAfterSelection } from "@/lib/ui-editor/commands/uiEditorCommands";
-import { aimPasteAtElement, pasteParentAccepts, settlePasteTarget } from "./resolvePasteTarget";
+import { resolveNearestInsertParentInSurface } from "./resolveInsertTargetParent";
+import { aimAddAtElement, parentTakesAddedElements, resolveNewElementParent, settleAddTarget } from "./resolveAddTarget";
 
 const METER = "probe.parts.meter";
 
@@ -73,13 +74,13 @@ function selection(id: string): UIElementSelection {
 /** Ctrl+V: aimed after the selection, then settled - what `uiEditorPasteAfterSelection` does. */
 function pasteAfter(doc: UIDocument, selectedId: string, pasted: UIElement[]) {
     const aim = resolvePasteTargetAfterSelection(doc, "page", selection(selectedId));
-    return aim ? settlePasteTarget(doc, "page", aim, pasted) : null;
+    return aim ? settleAddTarget(doc, "page", aim, pasted) : null;
 }
 
 /** The context menu's Paste: aimed at the element under the pointer, then settled. */
 function pasteOn(doc: UIDocument, hitId: string, pasted: UIElement[]) {
-    const aim = aimPasteAtElement(doc, "page", hitId, hitId);
-    return aim ? settlePasteTarget(doc, "page", aim, pasted) : null;
+    const aim = aimAddAtElement(doc, "page", hitId, hitId);
+    return aim ? settleAddTarget(doc, "page", aim, pasted) : null;
 }
 
 let removeSource: (() => void) | null = null;
@@ -123,7 +124,7 @@ describe("pasting while one of a widget's parts is selected", () => {
 
         doc.elements.meter.childrenIds = [];
         delete doc.elements.fill;
-        expect(settlePasteTarget(doc, "page", { parentId: "meter", beforeChildId: null }, [copiedFill]))
+        expect(settleAddTarget(doc, "page", { parentId: "meter", beforeChildId: null }, [copiedFill]))
             .toEqual({ parentId: "meter", beforeChildId: null });
     });
 
@@ -136,6 +137,48 @@ describe("pasting while one of a widget's parts is selected", () => {
     });
 });
 
+describe("inserting a new element while one of a widget's parts is selected", () => {
+    it("puts it in the widget's own parent, where a paste made with that selection lands", () => {
+        const doc = page();
+        for (const part of ["handle", "track", "thumb", "fill"]) {
+            expect(resolveNewElementParent(doc, "page", part)).toBe("root");
+            expect(pasteAfter(doc, part, [label])?.parentId).toBe("root");
+        }
+    });
+
+    it("puts it in the widget's own parent while the widget itself is selected", () => {
+        const doc = page();
+        expect(resolveNewElementParent(doc, "page", "slider")).toBe("root");
+        expect(resolveNewElementParent(doc, "page", "switch")).toBe("root");
+        expect(resolveNewElementParent(doc, "page", "meter")).toBe("root");
+    });
+
+    it("still goes into what an author put inside a part, and into an ordinary container", () => {
+        const doc = page();
+        // The grip is the author's own element, not a part: it is where they were working.
+        expect(resolveNewElementParent(doc, "page", "grip")).toBe("handle");
+        expect(resolveNewElementParent(doc, "page", "box")).toBe("box");
+        expect(resolveNewElementParent(doc, "page", "before")).toBe("root");
+        expect(resolveNewElementParent(doc, "page", null)).toBe("root");
+    });
+
+    it("goes into a part the outline's Insert Child names, which is the way in", () => {
+        const doc = page();
+        expect(resolveNearestInsertParentInSurface(doc, "page", "handle")).toBe("handle");
+        expect(resolveNearestInsertParentInSurface(doc, "page", "thumb")).toBe("thumb");
+        expect(resolveNearestInsertParentInSurface(doc, "page", "fill")).toBe("fill");
+    });
+
+    it("walks out of a linked component instance, which takes no new element at all", () => {
+        const doc = page();
+        doc.elements.box.extra = { componentLink: { componentId: "c", linked: true } };
+        doc.elements.box.childrenIds = ["inner"];
+        doc.elements.inner = element("inner", "nl.text", "box");
+        expect(resolveNewElementParent(doc, "page", "box")).toBe("root");
+        expect(resolveNewElementParent(doc, "page", "inner")).toBe("root");
+    });
+});
+
 describe("what a paste does not change", () => {
     it("pastes into a part through what an author put inside it", () => {
         const doc = page();
@@ -145,7 +188,7 @@ describe("what a paste does not change", () => {
 
     it("pastes into a part named as the parent, as Paste into Container does", () => {
         const doc = page();
-        expect(settlePasteTarget(doc, "page", { parentId: "handle", beforeChildId: null }, [label]))
+        expect(settleAddTarget(doc, "page", { parentId: "handle", beforeChildId: null }, [label]))
             .toEqual({ parentId: "handle", beforeChildId: null });
     });
 
@@ -165,25 +208,25 @@ describe("what a paste does not change", () => {
     });
 });
 
-describe("pasteParentAccepts", () => {
+describe("parentTakesAddedElements", () => {
     it("takes nothing into a widget with parts but its own parts, one to a slot", () => {
         const doc = page();
-        expect(pasteParentAccepts(doc, doc.elements.slider, [label])).toBe(false);
-        expect(pasteParentAccepts(doc, doc.elements.slider, [copiedHandle])).toBe(false);
-        expect(pasteParentAccepts(doc, doc.elements.slider, [])).toBe(false);
+        expect(parentTakesAddedElements(doc, doc.elements.slider, [label])).toBe(false);
+        expect(parentTakesAddedElements(doc, doc.elements.slider, [copiedHandle])).toBe(false);
+        expect(parentTakesAddedElements(doc, doc.elements.slider, [])).toBe(false);
 
         doc.elements.slider.childrenIds = ["track"];
-        expect(pasteParentAccepts(doc, doc.elements.slider, [copiedHandle])).toBe(true);
-        expect(pasteParentAccepts(doc, doc.elements.slider, [copiedHandle, copiedHandle])).toBe(false);
-        expect(pasteParentAccepts(doc, doc.elements.slider, [copiedHandle, label])).toBe(false);
+        expect(parentTakesAddedElements(doc, doc.elements.slider, [copiedHandle])).toBe(true);
+        expect(parentTakesAddedElements(doc, doc.elements.slider, [copiedHandle, copiedHandle])).toBe(false);
+        expect(parentTakesAddedElements(doc, doc.elements.slider, [copiedHandle, label])).toBe(false);
     });
 
     it("stops taking a plugin widget's parts as parts once its plugin is gone", () => {
         const doc = page();
         doc.elements.meter.childrenIds = [];
-        expect(pasteParentAccepts(doc, doc.elements.meter, [copiedFill])).toBe(true);
+        expect(parentTakesAddedElements(doc, doc.elements.meter, [copiedFill])).toBe(true);
         removeSource?.();
         removeSource = null;
-        expect(pasteParentAccepts(doc, doc.elements.meter, [copiedFill])).toBe(false);
+        expect(parentTakesAddedElements(doc, doc.elements.meter, [copiedFill])).toBe(false);
     });
 });
