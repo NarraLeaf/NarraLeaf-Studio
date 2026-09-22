@@ -3,8 +3,8 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { PluginAvatar } from "@/lib/plugins/ui/pluginPresentation";
-import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
-import { isUnmet, type DependencyRemedy, type DependencyRemedyStep } from "@/lib/workspace/project/dependencyRemedy";
+import { describeDependencyState, isDependencyUnavailable } from "@/lib/workspace/project/dependencyStatusDisplay";
+import type { DependencyRemedy, DependencyRemedyStep } from "@/lib/workspace/project/dependencyRemedy";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import type { DependencyRow, DependencyRowOutcome } from "./useProjectDependencyRows";
 
@@ -67,7 +67,7 @@ export function DependencyInstallScreen({
     onRun,
 }: DependencyInstallScreenProps) {
     const { t, tn } = useTranslation();
-    const unavailable = rows.filter(row => isUnmet(row.entry)).length;
+    const unavailable = rows.filter(row => isDependencyUnavailable(row.entry)).length;
 
     return (
         <>
