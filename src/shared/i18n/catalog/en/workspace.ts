@@ -1183,8 +1183,9 @@ export const workspace = {
                 moved: "Moved",
                 copied: "Copied",
             },
-            // Where a move or a copy came from. `{path}` is repository-relative, like the row itself.
-            changeFromPath: "from {path}",
+            // Where a move or a copy came from, in the row's tooltip. `{name}` is what the origin is
+            // called, named the way the row is - never its path, which for an asset is its id.
+            changeFrom: "from {name}",
             // The only change that stops a version from being submitted, which is why it is called out
             // and why it sorts to the top of the list rather than sitting wherever the path puts it.
             changeConflict: "Unresolved conflict",

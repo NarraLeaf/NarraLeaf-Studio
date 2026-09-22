@@ -4,7 +4,8 @@ import type { Translator } from "@shared/i18n";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { EmptyState } from "@/lib/components/elements";
-import { splitDocumentPath } from "@/lib/vcs/changeIndex";
+import { documentNameOf, NO_DOCUMENT_NAMES, renderDocumentName } from "@/lib/vcs/documentName";
+import { elideGeneratedIdentifiers, readableStoragePath } from "@/lib/vcs/identifierDisplay";
 import { SplitComparisonView } from "@/lib/vcs/compare/SplitComparisonView";
 import { useComparisonElements } from "@/lib/vcs/compare/useComparisonElements";
 import { useStoryScript } from "@/lib/vcs/compare/useStoryScript";
@@ -110,19 +111,22 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
                             {t("documentDiff.rows.loading")}
                         </p>
                     )
-                    : <EmptyState size="sm" description={diff.error ?? t("documentDiff.split.gone")} />}
+                    : <EmptyState
+                        size="sm"
+                        description={diff.error ? elideGeneratedIdentifiers(diff.error) : t("documentDiff.split.gone")}
+                    />}
             </div>
         );
     }
-
-    const { directory, name } = splitDocumentPath(payload.path);
 
     return (
         <div className="h-full" data-help-topic="versionChanges">
             <SplitComparisonView
                 entry={entry}
-                name={payload.name || name}
-                directory={directory}
+                // The row's own name, carried by the payload. A payload without one - nothing opens
+                // this tab that way - falls back to the naming layer, never to the file's name.
+                name={payload.name || renderDocumentName(documentNameOf(payload.path, NO_DOCUMENT_NAMES), t)}
+                path={readableStoragePath(payload.path)}
                 baseLabel={versions?.base ?? ""}
                 headLabel={versions?.head ?? ""}
                 rowAction={rowAction}

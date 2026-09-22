@@ -83,7 +83,7 @@ function view(changes: readonly DocumentChange[]) {
         <SplitComparisonView
             entry={entryOf(changes)}
             name="Chapter One"
-            directory="story"
+            path={null}
             baseLabel="#3"
             headLabel="#7"
         />,
@@ -143,7 +143,7 @@ describe("SplitComparisonView selection", () => {
             <SplitComparisonView
                 entry={entryOf(FIVE)}
                 name="Chapter One"
-                directory="story"
+                path={null}
                 baseLabel="#3"
                 headLabel="#7"
                 rowAction={(row, half) => (row.change.path[0] === "a"

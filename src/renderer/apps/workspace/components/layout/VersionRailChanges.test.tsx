@@ -162,3 +162,54 @@ describe("the rail's change section", () => {
             .toBe("editor/story/stories/new-chapter/storydoc.json");
     });
 });
+
+/**
+ * The rail listed a freshly imported picture as "Asset file (f5e8519a-fdee-…)" and put the sharded
+ * path of its bytes in the tooltip; a story's tooltip was its folder, which is its uuid. The
+ * interface never shows one, and these rows are where an author first meets a change.
+ */
+describe("the rail never draws an id", () => {
+    const PICTURE = "assets/content/f5/e8/519afdee48e6b06451136de15c8e";
+    const STORY = "editor/story/stories/71bb159f-1322-4539-b09f-9593a426a67d/storydoc.json";
+    const UUID = /[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i;
+
+    it("on a row, in its tooltip, or in where a move came from", () => {
+        const { container } = section([
+            change(PICTURE, { kind: "added" }),
+            change(STORY),
+            change("assets/content/11/11/1111111141118111111111111111", {
+                kind: "moved",
+                fromPath: "assets/content/22/22/2222222242228222222222222222",
+            }),
+        ]);
+
+        expect(rows(container)).toHaveLength(3);
+        for (const row of rows(container)) {
+            expect(row.textContent ?? "").not.toMatch(UUID);
+            expect(row.getAttribute("data-tip") ?? "").not.toMatch(UUID);
+            expect(row.getAttribute("data-tip") ?? "").not.toMatch(/[0-9a-f]{20,}/i);
+        }
+        // Where the move came from is still said, by name.
+        const moved = container.querySelector("[data-vcs-change-row='assets/content/11/11/1111111141118111111111111111']");
+        expect(moved?.getAttribute("data-tip"))
+            .toBe("workspace.shell.versionControl.changeFrom(documentDiff.name.assetContent)");
+    });
+
+    it("keeps the path in the tooltip where it is one an author could look for", () => {
+        const { container } = section([change("editor/brand.json")]);
+
+        expect(rows(container)[0].getAttribute("data-tip")).toBe("editor/brand.json");
+    });
+
+    it("numbers stand-ins that would read the same, instead of telling them apart by id", () => {
+        const { container } = section([
+            change("editor/story/stories/aaaaaaaa-1322-4539-b09f-9593a426a67d/storydoc.json"),
+            change("editor/story/stories/bbbbbbbb-1322-4539-b09f-9593a426a67d/storydoc.json"),
+        ]);
+
+        expect([...rows(container)].map(row => row.textContent)).toEqual([
+            "documentDiff.name.numbered(documentDiff.name.story,1)",
+            "documentDiff.name.numbered(documentDiff.name.story,2)",
+        ]);
+    });
+});
