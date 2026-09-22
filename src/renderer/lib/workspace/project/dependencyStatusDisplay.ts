@@ -166,6 +166,25 @@ const BANNER_KEYS: Record<Exclude<DependencyRowState, "ready">, PluralKey> = {
 const UNAVAILABLE: ReadonlySet<DependencyRowState> = new Set(["missing", "held", "needsAuthorization", "disabled", "failed"]);
 
 /**
+ * Whether the plugin this row names contributes nothing to the project as things stand.
+ *
+ * Deliberately narrower than "not satisfied": an outdated plugin loads, registers everything it
+ * contributes, and the project works, so counting it would raise a warning with nothing to do about
+ * it. What this asks is whether the author's own blueprint nodes, widgets and story rows have
+ * quietly become unknown types - which they have in all five of absent, held back for its version,
+ * waiting for its permissions, switched off, and failed to start.
+ *
+ * Derived from {@link classifyDependencyRow} rather than stated again, because the banner over the
+ * dependency list is derived from it too. The two used to be written separately and the shorter one
+ * left out the last two states, so a project whose only trouble was a plugin waiting for
+ * authorization opened without a word while the banner below called it a problem in red.
+ */
+export function isDependencyUnavailable(entry: DependencyStateInput): boolean {
+    const state = classifyDependencyRow(entry);
+    return state !== null && UNAVAILABLE.has(state);
+}
+
+/**
  * The banner over the dependency list, or null when every row is ready.
  *
  * One sentence per state the rows are in, each saying what the state is and where it is put right.
