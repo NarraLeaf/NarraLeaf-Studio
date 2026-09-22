@@ -5185,8 +5185,9 @@ function actionableActionTargetName(
  */
 /**
  * {@link reportMissingStageObject} for a character row, which has one more way to find nothing: the
- * character itself is gone from the project, and "not on stage" would send the author looking for an
- * entrance that could not help.
+ * character itself is gone from the project. It is the same judgement - the row acts on nothing on
+ * stage, and lint's `story/stage-object-missing` names the same rows - but the sentence says why, since
+ * "bring it on stage" is advice no entrance could follow, and the character has no name left to give.
  */
 function reportMissingCharacter(
     ctx: SceneCompileContext,
@@ -5194,7 +5195,7 @@ function reportMissingCharacter(
     payload: Extract<StoryActionPayload, { action: "character" }>,
 ): void {
     if (payload.characterId && !ctx.characterSummaries.has(payload.characterId)) {
-        diagnostic(ctx, "error", blockId, say("story.compile.character.missing"));
+        diagnostic(ctx, "error", blockId, say("story.compile.notOnStage.characterGone"));
         return;
     }
     reportMissingStageObject(ctx, blockId, "character", characterDiagnosticName(ctx, payload));

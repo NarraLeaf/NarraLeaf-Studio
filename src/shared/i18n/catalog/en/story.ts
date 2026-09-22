@@ -1251,6 +1251,7 @@ export const story = {
             video: "Video “{name}” is not on stage; an earlier row has to create it.",
             ambience: "Ambience effect “{name}” is not on stage; an earlier row has to create it.",
             character: "Character “{name}” is not on stage; an earlier row has to bring it on stage.",
+            characterGone: "The character this row acts on is no longer in this project, so it is not on stage.",
             target: "“{name}” is not on stage.",
         },
         character: {

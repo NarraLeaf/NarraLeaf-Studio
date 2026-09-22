@@ -1071,6 +1071,7 @@ export const story = {
             video: "视频“{name}”不在舞台上；需要由此前的行创建",
             ambience: "氛围特效“{name}”不在舞台上；需要由此前的行创建",
             character: "角色“{name}”不在舞台上；需要由此前的行让其登场",
+            characterGone: "该行操作的角色已不在本项目中，因此不在舞台上",
             target: "“{name}”不在舞台上",
         },
         character: {
