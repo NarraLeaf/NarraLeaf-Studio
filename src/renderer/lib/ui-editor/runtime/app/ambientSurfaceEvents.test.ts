@@ -34,6 +34,7 @@ import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/Widg
 import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { createRecordingCore } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
 import { blueprintDocumentOf, graphOf, type GraphNode } from "@/lib/ui-editor/runtime/testing/rowRuntimeTestKit";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { AppSurfaceLayerNavEntry } from "./AppSurfaceLayer";
 import {
     AmbientSurfaceTargets,
@@ -300,5 +301,45 @@ describe("the window and preference events reach every live surface", () => {
         const game = runningGame({ dialog: { live: false } });
 
         expect((await game.raise("windowFocusChanged", { isFocused: true })).heard).toEqual(["global: focus", "page: focus"]);
+    });
+});
+
+describe("the surfaces that register themselves", () => {
+    /** A drawing of a surface: only which scope it is and which drawing it is matter here. */
+    function drawing(runtimeScopeId: string, name: string) {
+        return {
+            surface: { id: runtimeScopeId } as UISurface,
+            hostAdapter: { name } as unknown as UIHostAdapter,
+            runtimeScopeId,
+        };
+    }
+    const names = (registered: AmbientSurfaceTargets) =>
+        registered.list().map(target => (target.hostAdapter as unknown as { name: string }).name);
+
+    it("lists a scope drawn twice once, through the drawing that came last, then through the one left", () => {
+        const registered = new AmbientSurfaceTargets();
+        const leaveCaller = registered.add(drawing("dialog", "caller's box"));
+        registered.add(drawing("quick-menu", "quick menu"));
+        const leaveCalled = registered.add(drawing("dialog", "called scene's box"));
+
+        // In the order the scopes came in, the dialogue first.
+        expect(names(registered)).toEqual(["called scene's box", "quick menu"]);
+
+        leaveCaller();
+        expect(names(registered)).toEqual(["called scene's box", "quick menu"]);
+
+        leaveCalled();
+        expect(names(registered)).toEqual(["quick menu"]);
+    });
+
+    it("falls back to the earlier drawing when the later one leaves first", () => {
+        const registered = new AmbientSurfaceTargets();
+        registered.add(drawing("dialog", "first"));
+        const leaveSecond = registered.add(drawing("dialog", "second"));
+
+        leaveSecond();
+        // Taking a drawing off twice takes nothing else off with it.
+        leaveSecond();
+        expect(names(registered)).toEqual(["first"]);
     });
 });
