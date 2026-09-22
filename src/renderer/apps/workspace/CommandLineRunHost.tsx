@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { DEFAULT_LOCALE } from "@shared/i18n";
-import type { CommandLineRunJob } from "@shared/types/commandLineRun";
+import { commandLinePluginFlag, type CommandLineRunJob } from "@shared/types/commandLineRun";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import { runCommandLineBuild } from "@/lib/workspace/build/runCommandLineBuild";
 import { guardUnattendedWindow } from "@/lib/workspace/commandLine/unattendedWindowGuards";
@@ -20,9 +20,10 @@ import { useWorkspace } from "./context";
  * is not an optimization - `useUpdateOffer` and `useRecoveryOffer` open dialogs, and a dialog in a
  * window nobody can see is a run that never ends.
  *
- * The plugins are started here, before the job, the way the editor starts them - see
- * `commandLinePlugins.ts`. Without them a project that uses a plugin's nodes reads as full of
- * unknown ones, and a sweep that passes in the Lint tab fails from the command line.
+ * The plugins are started here, before the job, the way the editor starts them, including any the
+ * line switched on for this run - see `commandLinePlugins.ts`. Without them a project that uses a
+ * plugin's nodes reads as full of unknown ones, and a sweep that passes in the Lint tab fails from
+ * the command line.
  *
  * The three jobs differ only in which function is called. Everything around that - the latch, the
  * plugins, the refusal of anything that would ask a question, the failure report, the window that
@@ -68,7 +69,11 @@ async function runJob(context: WorkspaceContext, job: CommandLineRunJob, recover
         return;
     }
 
-    const plugins = await startCommandLinePlugins(context, log, job.kind === "test-list" ? "warning" : "error");
+    const plugins = await startCommandLinePlugins(context, log, {
+        unmetLevel: job.kind === "test-list" ? "warning" : "error",
+        named: job.plugins,
+        flag: commandLinePluginFlag(job.kind),
+    });
     // The listing answers what this Studio and this profile have, and a plugin the project needs but
     // cannot have is part of that answer - so it is logged and the listing still printed. Every
     // other job answers about the project, which here is missing a piece of itself.

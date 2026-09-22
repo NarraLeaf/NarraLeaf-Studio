@@ -1,4 +1,4 @@
-import type { CommandLineRunLogLine } from "./commandLineRun";
+import type { CommandLineRunLogLine, CommandLineRunPlugin } from "./commandLineRun";
 import type { ExperimentalConditionId } from "./experimental";
 import type {
     BuildPreflightFinding,
@@ -207,6 +207,13 @@ export type CommandLineBuildReport = {
      * debuggable artifact has no contract at all.
      */
     experimental: CommandLineBuildReportExperimental;
+    /**
+     * The plugins the line named with `--build-plugin`, each by the name the plugin gives itself, in
+     * the order the line named them. `enabledForRun` says which of them the line switched on and
+     * which this profile already ran. Empty when the line named none, and when a name found no
+     * plugin to switch on - `error` says which.
+     */
+    plugins: CommandLineRunPlugin[];
     /** Everything the build reported about the project's configuration, blocking or not. */
     findings: BuildPreflightFinding[];
     artifacts: Array<{ path: string; bytes?: number }>;
