@@ -769,6 +769,15 @@ function NestedSurfaceInstance(props: {
         dispatchSurfaceTransitionEvent("beforeSurfaceExit");
     };
 
+    // Brought back before its exit finished: arriving again from this moment, as a page of the app
+    // stack does (see `SurfaceLifecycleOrchestrator.returned`), rather than still exiting until the
+    // return's enter animation ends.
+    const handleReturn = (runtimeScopeId: string) => {
+        if (runtimeScopeId === runtimeInput.runtimeScopeId) {
+            surfaceTransitionStateRef.current = { isEntering: true, isExiting: false };
+        }
+    };
+
     const handleEnterComplete = (runtimeScopeId: string) => {
         if (runtimeScopeId === runtimeInput.runtimeScopeId) {
             dispatchSurfaceTransitionEvent("afterSurfaceEnter");
@@ -875,6 +884,7 @@ function NestedSurfaceInstance(props: {
             resolveExit={resolveExit}
             onPrepaintReady={handlePrepaintReady}
             onBeforeExit={handleBeforeExit}
+            onReturn={handleReturn}
             onEnterComplete={handleEnterComplete}
         >
             <SurfaceBackgroundImageLayer surface={targetSurface} />

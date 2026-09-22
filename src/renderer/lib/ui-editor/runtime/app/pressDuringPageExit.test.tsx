@@ -35,6 +35,12 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
+import {
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+} from "@shared/types/blueprint/graph";
+import { resolveDataPinValue } from "@/lib/ui-editor/blueprint-nodes/built-in/graphParamResolvers";
+import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
@@ -43,7 +49,7 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { createRecordingCore, ensureAnimationFramePolyfill } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
 import { installResizeObserverStub } from "@/lib/ui-editor/runtime/testing/drawingLabFixture";
 import { blueprintDocumentOf } from "@/lib/ui-editor/runtime/testing/rowRuntimeTestKit";
-import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
+import { SurfaceLifecycleOrchestrator, type LifecycleCommand } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
 import { AppSurfaceLayer } from "./AppSurfaceLayer";
@@ -52,6 +58,43 @@ import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { AppNavEntry, HostAdapterBundle } from "./types";
 
 const NO_BLUEPRINTS = blueprintDocumentOf([]);
+
+/**
+ * The lifecycle orchestrator the app uses, noting every surface event it hands out, in order, as
+ * `<surfaceId>:<event>`. All of them are issued here - Surface Init and Surface Unmount for the
+ * lifecycle boundary, the enter and exit events for the animation layer - so this is the sequence a
+ * page's graphs hear.
+ */
+class RecordingOrchestrator extends SurfaceLifecycleOrchestrator {
+    constructor(private readonly log: string[]) {
+        super();
+    }
+
+    private note(commands: LifecycleCommand[]): LifecycleCommand[] {
+        for (const command of commands) {
+            if (command.kind === "dispatchSurfaceEvent") {
+                this.log.push(`${command.surfaceId}:${command.eventName}`);
+            }
+        }
+        return commands;
+    }
+
+    public override surfaceReady(scopeId: string, surfaceId: string): LifecycleCommand[] {
+        return this.note(super.surfaceReady(scopeId, surfaceId));
+    }
+
+    public override surfaceUnmounted(scopeId: string, surfaceId: string): LifecycleCommand[] {
+        return this.note(super.surfaceUnmounted(scopeId, surfaceId));
+    }
+
+    public override beforeExit(scopeId: string, surfaceId: string): LifecycleCommand[] {
+        return this.note(super.beforeExit(scopeId, surfaceId));
+    }
+
+    public override enterComplete(scopeId: string, surfaceId: string): LifecycleCommand[] {
+        return this.note(super.enterComplete(scopeId, surfaceId));
+    }
+}
 
 /**
  * A cross-fade, as a real project writes it (`exitBlocking` off), slowed down so a press made just
@@ -184,6 +227,7 @@ function createGame(options: { hiddenForGame?: ReadonlySet<string> } = {}) {
     const pages = new Map<string, RecordingPage>();
     const bundles = new Map<string, HostAdapterBundle>();
     const stage = { advances: 0 };
+    const lifecycle: string[] = [];
 
     const bundleFor = (entry: AppNavEntry): HostAdapterBundle => {
         const existing = bundles.get(entry.key);
@@ -247,7 +291,7 @@ function createGame(options: { hiddenForGame?: ReadonlySet<string> } = {}) {
             core: createRecordingCore([]),
             registry: new ElementRendererRegistry(BuiltinElementRenderers),
             widgetRuntimeStore: new WidgetRuntimeStateStore(),
-            lifecycleRef: { current: new SurfaceLifecycleOrchestrator() },
+            lifecycleRef: { current: new RecordingOrchestrator(lifecycle) },
             widgetPatchesByScopeRef: { current: {} as WidgetPatchesByScope },
         }));
         // Stable, as `GameApp`'s are: a leaving layer is drawn with the props it last had, callbacks
@@ -306,7 +350,11 @@ function createGame(options: { hiddenForGame?: ReadonlySet<string> } = {}) {
         return pages.get(entryKey)!;
     };
 
-    return { navigation, pageOf, stage, openPage, goBack, Game };
+    /** The lifecycle events this surface's graphs have heard, in order. */
+    const lifecycleOf = (surfaceId: string): string[] =>
+        lifecycle.filter(entry => entry.startsWith(`${surfaceId}:`)).map(entry => entry.slice(surfaceId.length + 1));
+
+    return { navigation, pageOf, stage, openPage, goBack, lifecycleOf, Game };
 }
 
 /** The page layer drawing `surfaceId`, found by the attribute the animation layer carries. */
@@ -405,6 +453,8 @@ async function settle(ms = 20): Promise<void> {
 beforeAll(() => {
     ensureAnimationFramePolyfill();
     installResizeObserverStub();
+    // The page's own reading nodes are asked below, and they answer from the registry.
+    registerCoreBlueprintNodes();
     // Without this, `act` does not flush effects and every press below would be made on a render that
     // never settled.
     (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -526,6 +576,71 @@ describe("a press while a page fades out in favour of another", () => {
 
         const titleEvents = game.pageOf("title").surfaceEvents;
         expect(titleEvents.filter(event => event === "beforeSurfaceExit")).toHaveLength(2);
+    });
+});
+
+/** What `Is Surface Exiting` and `Is Surface Entering` answer on this page right now. */
+function transitionAnswers(page: RecordingPage): { exiting: unknown; entering: unknown } {
+    const read = (type: string, port: string) =>
+        resolveDataPinValue({ nodes: { node: { type, params: {} } } }, "node", port, {}, undefined, 0, {
+            hostAdapter: page.adapter,
+        });
+    return {
+        exiting: read(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING, "isExiting"),
+        entering: read(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING, "isEntering"),
+    };
+}
+
+describe("a page brought back before it finished leaving", () => {
+    async function titleBroughtBack() {
+        const game = createGame();
+        game.navigation.reset(navEntry("title"));
+        const view = render(<game.Game />);
+        await waitFor(() => expect(game.pageOf("title").surfaceEvents).toContain("afterSurfaceEnter"), { timeout: 3000 });
+        await act(async () => {
+            void game.openPage("settings");
+        });
+        await waitFor(() => expect(isLeaving(layerOf(view.container, "title"))).toBe(true));
+        await settle();
+        const whileLeaving = transitionAnswers(game.pageOf("title"));
+        await act(async () => {
+            void game.goBack();
+        });
+        return { game, container: view.container, whileLeaving };
+    }
+
+    it("reads as arriving, not leaving, from the moment it is back", async () => {
+        const { game, container, whileLeaving } = await titleBroughtBack();
+        const title = game.pageOf("title");
+
+        // Back on screen and taking presses, its return's enter animation still playing.
+        expect(isLeaving(layerOf(container, "title"))).toBe(false);
+        expect(title.surfaceEvents.filter(event => event === "afterSurfaceEnter")).toHaveLength(1);
+        expect(whileLeaving).toEqual({ exiting: true, entering: false });
+        expect(transitionAnswers(title)).toEqual({ exiting: false, entering: true });
+
+        // And settled once that animation ends, which it announces as an arrival.
+        await waitFor(() => expect(title.surfaceEvents.filter(event => event === "afterSurfaceEnter")).toHaveLength(2), {
+            timeout: 3000,
+        });
+        expect(transitionAnswers(title)).toEqual({ exiting: false, entering: false });
+    });
+
+    it("tells each page's graphs each lifecycle event once", async () => {
+        // A production build: no StrictMode, which replays the effects of a layer the stack moves -
+        // in a development build the page left mid-fade hears Surface Unmount and Surface Init
+        // again, from a remount that never happened. Nothing an author runs is built that way.
+        const { game, container } = await titleBroughtBack();
+        await waitFor(() => expect(layerOf(container, "settings")).toBeNull(), { timeout: 3000 });
+        await settle(700);
+
+        expect(game.lifecycleOf("settings")).toEqual(["surfaceInit", "beforeSurfaceExit", "surfaceUnmount"]);
+        expect(game.lifecycleOf("title")).toEqual([
+            "surfaceInit",
+            "afterSurfaceEnter",
+            "beforeSurfaceExit",
+            "afterSurfaceEnter",
+        ]);
     });
 });
 

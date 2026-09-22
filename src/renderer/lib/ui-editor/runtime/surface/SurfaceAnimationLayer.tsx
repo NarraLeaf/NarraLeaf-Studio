@@ -91,6 +91,12 @@ type SurfaceAnimationLayerProps = {
     resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
     onPrepaintReady?: (key: string) => void;
     onBeforeExit?: (key: string) => void;
+    /**
+     * The layer was brought back before its exit finished, and is arriving again. Reported in the
+     * commit that brings it back, before anything on it can be pressed, so a host can stop saying
+     * the page is leaving from that moment rather than from when the return's enter animation ends.
+     */
+    onReturn?: (key: string) => void;
     onEnterComplete?: (key: string) => void;
     children: ReactNode;
 };
@@ -352,6 +358,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         resolveExit,
         onPrepaintReady,
         onBeforeExit,
+        onReturn,
         onEnterComplete,
         children,
     } = props;
@@ -398,6 +405,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
             if (beforeExitReportedRef.current === prepaintKey) {
                 beforeExitReportedRef.current = null;
                 enterCompleteReportedRef.current = null;
+                onReturn?.(prepaintKey);
             }
             return;
         }
@@ -406,7 +414,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         }
         beforeExitReportedRef.current = prepaintKey;
         onBeforeExit?.(prepaintKey);
-    }, [isPresent, onBeforeExit, prepaintKey]);
+    }, [isPresent, onBeforeExit, onReturn, prepaintKey]);
 
     /**
      * Report the layer painted - and again when it comes back from an exit it did not finish.
