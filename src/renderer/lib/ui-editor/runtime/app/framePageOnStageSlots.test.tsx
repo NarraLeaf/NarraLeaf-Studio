@@ -254,8 +254,12 @@ const blueprints: readonly Blueprint[] = [
             data: [["value", "value", "ret", "value"]],
         }),
     }),
+    // The dialogue slot's own graph hears a preference changing, as the page in it does.
+    blueprintOn("bp-dialog", { kind: "surfaceMain", surfaceId: DIALOG }, {
+        preference: logs({ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED }, "dialog:preference"),
+    }),
     // The frame on the dialogue slot hears its page's event, on the slot.
-    blueprintOn("bp-frame", { kind: "widgetMain", surfaceId: DIALOG, elementId: "frame" }, {
+    blueprintOn("bp-frame",{ kind: "widgetMain", surfaceId: DIALOG, elementId: "frame" }, {
         pageEvent: writesAndLogs({ type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT }, DIALOG, "slotStatus", "slot-heard", "frame:pageEvent"),
     }),
 ];
@@ -467,6 +471,47 @@ describe("a page embedded on the dialogue slot", () => {
         // And when the last drawing goes, the page goes with it - once.
         view.unmount();
         await waitFor(() => expect(game.count("embedded:unmount")).toBe(1));
+    });
+
+    it("hears a preference changing once while two drawings of the slot share it, and still once after one leaves", async () => {
+        const game = runningGame();
+        const changePreference = () => dispatchAmbientSurfaceEvent({
+            blueprintDocument: game.blueprintDocument,
+            persistentVariables: {},
+            document,
+            core: game.core,
+            globalHost: {
+                hostAdapter: game.ambientSurfaces.list()[0]!.hostAdapter,
+                runtimeScopeId: "global",
+            },
+            readTargets: () => game.ambientSurfaces.list(),
+        }, "gamePreferenceChanged", { key: "textSpeed" });
+        const view = render(
+            <>
+                <DialogDrawing options={game.options} label="leaving" />
+                <DialogDrawing options={game.options} label="staying" />
+            </>,
+        );
+        await waitFor(() => expect(textIn(within(view.container, "leaving"), "hello")).toContain("ready"));
+        await waitFor(() => expect(textIn(within(view.container, "staying"), "hello")).toContain("ready"));
+
+        // One slot scope and one page scope, drawn twice: each is one surface, so it hears it once.
+        await changePreference();
+        expect(game.count("dialog:preference")).toBe(1);
+        expect(game.count("embedded:preference")).toBe(1);
+
+        view.rerender(<DialogDrawing options={game.options} label="staying" />);
+        await act(async () => {
+            await new Promise(resolve => setTimeout(resolve, 20));
+        });
+        await changePreference();
+        expect(game.count("dialog:preference")).toBe(2);
+        expect(game.count("embedded:preference")).toBe(2);
+
+        // Gone with the last drawing.
+        view.unmount();
+        expect(game.ambientSurfaces.list()).toEqual([]);
+        expect(game.errors).toEqual([]);
     });
 
     it("opens again, widgets and all, in a box rebuilt after the last one left", async () => {

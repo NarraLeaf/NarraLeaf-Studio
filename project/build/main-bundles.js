@@ -1,5 +1,6 @@
 const path = require('path');
 const { rootDir } = require('./utils');
+const { thirdPartyNoticesPlugin } = require('./third-party-notices');
 
 /*
  * The main-process bundles, described once.
@@ -170,7 +171,7 @@ function mainProcessBundleOptions(name, { dev, outDir = path.join(rootDir, 'dist
         keepNames: bundle.keepNames,
         target: ['node18'],
         tsconfig: bundle.tsconfig,
-        plugins: [inlinedPackageGuard(outfile)],
+        plugins: [inlinedPackageGuard(outfile), thirdPartyNoticesPlugin()],
     };
 }
 

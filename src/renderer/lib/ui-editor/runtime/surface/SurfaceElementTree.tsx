@@ -1,10 +1,23 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+    createContext,
+    memo,
+    useCallback,
+    useContext,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+    type ReactNode,
+} from "react";
 import { AnimatePresence, useIsPresent, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
     type UIDocument,
     type UISurface,
+    type UISurfaceDesignSize,
     type UIElement,
     getUIComponentLink,
     isUIElementFlowLayoutChild,
@@ -52,6 +65,7 @@ import {
 } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { FramePageBox } from "@/lib/ui-editor/runtime/surface/FramePageBox";
+import { fitFramePage } from "@/lib/ui-editor/runtime/surface/framePageFit";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
@@ -439,6 +453,11 @@ function sameJson(previous: unknown, next: unknown): boolean {
 
 const NO_CHANGING_PAGES: ReadonlySet<string> = new Set();
 
+/** The design size of the page a frame's page box is sized for; see `NestedSurfaceRenderer`. */
+const FramePageBoxSizeContext = createContext<UISurfaceDesignSize | null>(null);
+
+const FILL_PAGE_CONTENT_STYLE: CSSProperties = { width: "100%", height: "100%" };
+
 function NestedSurfaceRenderer(props: {
     document: UIDocument;
     parentSurface: UISurface;
@@ -495,6 +514,21 @@ function NestedSurfaceRenderer(props: {
             : targetSurface && surfacePath.includes(targetSurface.id)
               ? "Page loop blocked"
               : null;
+    /**
+     * The page the box the frame's pages are drawn in is sized for.
+     *
+     * The frame's widget draws that box at the design size of the frame's page, fitted to the frame
+     * - and, while the frame is cleared and its last page plays out, at the size of the page it
+     * showed last (see `FrameRenderer`). Recorded during render, as the widget records it: the answer
+     * is the same however often a render repeats. Handed to the pages through a context rather than
+     * a prop because a page on its way out keeps the props it had when it started leaving, and the
+     * box can change size under it again before it has gone.
+     */
+    const pageBoxSurfaceRef = useRef<UISurface | null>(null);
+    if (targetSurface && !invalidLabel) {
+        pageBoxSurfaceRef.current = targetSurface;
+    }
+    const pageBox = pageBoxSurfaceRef.current?.designSize ?? null;
 
     const runtimeBaseInput = useMemo<Omit<NestedSurfaceRuntimeInput, "runtimeScopeId"> | null>(() => {
         if (invalidLabel || !targetSurface) {
@@ -678,27 +712,29 @@ function NestedSurfaceRenderer(props: {
 
     return (
         <FramePageBox changingPage={changingPageKeys.size > 0}>
-            <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
-                {visibleInputs.map((visibleInput, layerIndex) => (
-                    <NestedSurfaceInstance
-                        key={visibleInput.runtimeScopeId}
-                        runtimeInput={visibleInput}
-                        layerIndex={layerIndex}
-                        rendererRegistry={rendererRegistry}
-                        parentHostAdapter={parentHostAdapter}
-                        useAppearanceInspectorPreview={useAppearanceInspectorPreview}
-                        nestedSurfaceRuntime={nestedSurfaceRuntime}
-                        surfacePath={surfacePath}
-                        reducedMotion={reducedMotion}
-                        active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
-                        parentInteractive={parentInteractive}
-                        parentKeyboardInteractive={parentKeyboardInteractive}
-                        onPrepaintReady={handleLayerPrepaintReady}
-                        onEnterComplete={handleLayerEnterComplete}
-                        onChangingPage={reportChangingPage}
-                    />
-                ))}
-            </AnimatePresence>
+            <FramePageBoxSizeContext.Provider value={pageBox}>
+                <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
+                    {visibleInputs.map((visibleInput, layerIndex) => (
+                        <NestedSurfaceInstance
+                            key={visibleInput.runtimeScopeId}
+                            runtimeInput={visibleInput}
+                            layerIndex={layerIndex}
+                            rendererRegistry={rendererRegistry}
+                            parentHostAdapter={parentHostAdapter}
+                            useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                            nestedSurfaceRuntime={nestedSurfaceRuntime}
+                            surfacePath={surfacePath}
+                            reducedMotion={reducedMotion}
+                            active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
+                            parentInteractive={parentInteractive}
+                            parentKeyboardInteractive={parentKeyboardInteractive}
+                            onPrepaintReady={handleLayerPrepaintReady}
+                            onEnterComplete={handleLayerEnterComplete}
+                            onChangingPage={reportChangingPage}
+                        />
+                    ))}
+                </AnimatePresence>
+            </FramePageBoxSizeContext.Provider>
         </FramePageBox>
     );
 }
@@ -746,6 +782,7 @@ function NestedSurfaceInstance(props: {
     const { document, targetSurface } = runtimeInput;
     const [, setRuntimePatchRenderTick] = useState(0);
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const pageBox = useContext(FramePageBoxSizeContext);
     // Pointer input opens when the page is revealed, as its keys do - not when its enter animation
     // finishes, which dropped every press made on a page still fading in - and closes the moment the
     // presence group starts playing it out, whose last props would otherwise still say `active`.
@@ -899,13 +936,37 @@ function NestedSurfaceInstance(props: {
         reducedMotion,
         delays: animationDelays,
     }).exit;
+    // Every page the frame draws is placed in the frame's box itself, not after the one before it.
+    // During a change the page leaving and the page arriving are both drawn, and in flow the second
+    // of them sat just below the box, where the frame clips it: the leaving page vanished the moment
+    // the change began, and a page held until its replacement finished arriving hid that arrival
+    // until it jumped in at the end. Placed over each other, they play their animations in the
+    // order the layer's z-index gives them. At rest a frame draws one page, at the box's origin
+    // and at its own design size, where flow put it too.
+    const designSize = targetSurface.designSize;
+    // A page of another design size - on its way out of a frame now sized for the page after it -
+    // is fitted into the box the way the frame fits a page, rather than drawn at the box's scale,
+    // so it stays where it was in the frame for as long as it is still on screen.
+    const fit = pageBox && (pageBox.width !== designSize.width || pageBox.height !== designSize.height)
+        ? fitFramePage(designSize, pageBox)
+        : null;
     const surfaceStyle: CSSProperties = {
-        position: "relative",
-        width: targetSurface.designSize.width,
-        height: targetSurface.designSize.height,
+        position: "absolute",
+        left: fit?.left ?? 0,
+        top: fit?.top ?? 0,
+        width: fit?.width ?? designSize.width,
+        height: fit?.height ?? designSize.height,
         overflow: "hidden",
         backgroundColor: getSurfaceBackgroundColor(targetSurface),
     };
+    const contentStyle: CSSProperties = fit
+        ? {
+              width: designSize.width,
+              height: designSize.height,
+              transform: `scale(${fit.scale})`,
+              transformOrigin: "top left",
+          }
+        : FILL_PAGE_CONTENT_STYLE;
 
     return (
         <SurfaceAnimationLayer
@@ -916,7 +977,7 @@ function NestedSurfaceInstance(props: {
             surfaceId={targetSurface.id}
             surfaceKind={targetSurface.kind}
             style={surfaceStyle}
-            contentStyle={{ width: "100%", height: "100%" }}
+            contentStyle={contentStyle}
             presentZIndex={10 + layerIndex}
             exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
             exitHoldMs={timings.exitMs}

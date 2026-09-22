@@ -41,15 +41,34 @@ type SourceLine = {
     text: string;
 };
 
-/** Assignment prefixes that reach past `props`, which is where an unprefixed key goes. */
-const ASSIGN_TARGETS: Record<string, UiAssignTarget> = {
-    layout: "layout",
-    style: "style",
-    extra: "extra",
-};
+/**
+ * Assignment prefixes that name a bag. An unprefixed key goes to `props` too; `props.` is there for
+ * the prop whose name is also one of the words below, which would otherwise be read as that word.
+ */
+const ASSIGN_TARGETS = new Map<string, UiAssignTarget>([
+    ["props", "props"],
+    ["layout", "layout"],
+    ["style", "style"],
+    ["extra", "extra"],
+]);
 
-/** Keys of the element record itself, written without a prefix because they are not props. */
+/**
+ * Keys of the element record itself, written without a prefix because they are not props. The first
+ * segment decides, so `animation.enter = fade` is the element's own enter as well.
+ */
 const ELEMENT_KEYS = new Set(["animation", "assetVariants"]);
+
+/**
+ * How a prop's key is written so that it reads back as that prop.
+ *
+ * Almost always the key itself. A key whose first segment is an element key or a bag prefix is
+ * written `props.<key>` instead: the Page widget's `animation` is the one that exists, and written
+ * bare it would land on the element's own enter/exit record - a different record of the same shape.
+ */
+export function propAssignmentKey(key: string): string {
+    const head = key.split(".")[0];
+    return ELEMENT_KEYS.has(head) || ASSIGN_TARGETS.has(head) ? `props.${key}` : key;
+}
 
 export function parseUiFile(source: string): UiFile {
     const lines = readLines(source);
@@ -387,11 +406,11 @@ function readAssignment(line: SourceLine, tokens: string[]): UiAssignment {
     }
     const value = readJs(valueToken, line);
     const parts = key.split(".");
-    const prefix = ASSIGN_TARGETS[parts[0]];
+    const prefix = ASSIGN_TARGETS.get(parts[0]);
     if (prefix && parts.length > 1) {
         return assign(line, prefix, parts.slice(1), value);
     }
-    if (ELEMENT_KEYS.has(parts[0]) && parts.length === 1) {
+    if (ELEMENT_KEYS.has(parts[0])) {
         return assign(line, "element", parts, value);
     }
     return assign(line, "props", parts, value);

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    decideHeldProjectSession,
     decideProjectSessionClaim,
     parseProjectSessionLockRecord,
     PROJECT_SESSION_LOCK_STALE_MS,
+    type HeldProjectSessionContext,
     type ProjectSessionClaimContext,
     type ProjectSessionLockRecord,
 } from "./projectSessionLock";
@@ -138,6 +140,75 @@ describe("decideProjectSessionClaim", () => {
         const claim = decideProjectSessionClaim(record(), context());
         if (claim.kind !== "held") throw new Error("expected a holder");
         expect(Object.keys(claim.holder).sort()).toEqual(["hostname", "sameHost", "startedAt"]);
+    });
+});
+
+/**
+ * What a holder's heartbeat makes of the disk - above all when its own claim has gone, which is
+ * both what a cleared `.nlstudio/` looks like and what a takeover it slept through looks like once
+ * the Studio that took the project has closed it again.
+ */
+describe("decideHeldProjectSession", () => {
+    const OWN = record({ ...SELF, startedAt: new Date(NOW - 600_000).toISOString() });
+    /** A Studio that took the project over after this one claimed it. */
+    const TAKER = record({ hostname: SELF.hostname, pid: 7000, startedAt: new Date(NOW - 120_000).toISOString() });
+
+    function held(lastClaimAtOwnClaim: ProjectSessionLockRecord | null = OWN): HeldProjectSessionContext {
+        return { self: SELF, lastClaimAtOwnClaim };
+    }
+
+    it("renews a claim that is still its own", () => {
+        expect(decideHeldProjectSession({ ...OWN, heartbeat: new Date(NOW).toISOString() }, null, held()))
+            .toEqual({ kind: "own" });
+    });
+
+    it("gives the project up when another session's claim is where its own was", () => {
+        // The other Studio is still open: the takeover as it has always been seen.
+        expect(decideHeldProjectSession(TAKER, OWN, held())).toEqual({ kind: "taken-over", by: TAKER });
+    });
+
+    it("gives the project up when its claim is gone and another session has claimed the project since", () => {
+        // Taken over while this Studio slept, and closed there again before it woke: the other
+        // Studio's claim went with it, and only the record that it made one is left.
+        expect(decideHeldProjectSession(null, TAKER, held())).toEqual({ kind: "displaced", by: TAKER });
+    });
+
+    it("counts a claim from another machine the same way", () => {
+        const remote = record({ startedAt: new Date(NOW - 120_000).toISOString() });
+        expect(decideHeldProjectSession(null, remote, held())).toEqual({ kind: "displaced", by: remote });
+    });
+
+    it("claims the project again when its claim is gone and the last claim is its own", () => {
+        // Somebody deleted the lock by hand, or a sync client dropped it - nobody else was here.
+        expect(decideHeldProjectSession(null, OWN, held())).toEqual({ kind: "reclaim" });
+    });
+
+    it("claims the project again when the last-claim record is gone too", () => {
+        // `.nlstudio/` cleared out whole, or a project last opened before the record existed.
+        expect(decideHeldProjectSession(null, null, held())).toEqual({ kind: "reclaim" });
+    });
+
+    it("does not take its own last claim for somebody else's because the heartbeat moved", () => {
+        expect(decideHeldProjectSession(null, { ...OWN, heartbeat: new Date(NOW).toISOString() }, held()))
+            .toEqual({ kind: "reclaim" });
+    });
+
+    it("does not read a last claim that was already there when it claimed as somebody arriving since", () => {
+        // This session could not write its own last claim, so the record still names whoever opened
+        // the project before it - which says nothing about anybody after it.
+        const before = record({ startedAt: new Date(NOW - 86_400_000).toISOString() });
+        expect(decideHeldProjectSession(null, before, held(before))).toEqual({ kind: "reclaim" });
+    });
+
+    it("still sees a new claim when its own last claim was never written", () => {
+        const before = record({ startedAt: new Date(NOW - 86_400_000).toISOString() });
+        expect(decideHeldProjectSession(null, TAKER, held(before))).toEqual({ kind: "displaced", by: TAKER });
+    });
+
+    it("sees the same Studio claiming the project again as somebody arriving since", () => {
+        // The one that took it over closed it and opened it again - a second session all the same.
+        const again = { ...TAKER, startedAt: new Date(NOW - 30_000).toISOString() };
+        expect(decideHeldProjectSession(null, again, held(TAKER))).toEqual({ kind: "displaced", by: again });
     });
 });
 

@@ -650,7 +650,10 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             this.getEvents().emit("close", this);
             this.resolveCloseResult();
 
-            this.getApp().windowManager.unregisterWindow(this);
+            // Off every list now, but still reachable for the few channels that land a page's last
+            // writes: its `beforeunload` and `unload` handlers have not run yet. `closed` below
+            // forgets it for good.
+            this.getApp().windowManager.unregisterClosingWindow(this);
         });
 
         win.on("closed", () => {

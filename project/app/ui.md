@@ -225,8 +225,17 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   indented under it is inside it. The name is what the outline shows; the id is
   yours to choose and is what a blueprint refers to.
 - **`<key> = <value>`** sets a prop. A dotted key writes one key of one object:
-  `imageFill.assetId = art-1`. `layout.` / `style.` / `extra.` reach the element's
-  other bags, and `animation = {…}` its enter/exit record.
+  `imageFill.assetId = art-1`. The first segment decides where the line goes:
+  `layout.` / `style.` / `extra.` reach the element's other bags, `animation` is
+  the element's own enter/exit record (`animation = {…}`, or `animation.enter =
+  fade` for one field of it), and `props.` is a prop whatever it is called.
+- **`props.animation = {…}`** is a Page widget's (`nl.frame`) override of how the
+  page it shows enters and leaves inside it; unset, the page's own animation
+  plays. It needs the prefix because it is the same shape of record as the
+  element's own: written bare, `animation = {…}` on a Page widget is not an error,
+  it makes the widget itself fade in and out and leaves the page's animation
+  alone. `show` prints the override with the prefix, and `ui widget nl.frame`
+  lists it that way.
 - **`bind <prop> = blueprint <id>`** points a prop at a value blueprint;
   **`bind <prop> = field <fieldId>`** reads it from the list row the element is
   being drawn for. `ui widget <type>` lists which props accept either. One more

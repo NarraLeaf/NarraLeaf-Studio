@@ -9,6 +9,17 @@ export abstract class IPCHandler<T extends IPCEventType> {
     abstract readonly name: T;
     abstract readonly type: IPCEvents[T]["type"];
     readonly requiredApiCapabilities?: readonly ApiCapability[];
+    /**
+     * Whether this channel still answers a window that has started closing.
+     *
+     * Off for almost everything, and it should stay that way: a window on its way out has no
+     * business opening dialogs, starting work or taking grants. What it does still have is a page
+     * that is running its `beforeunload` and `unload` handlers - Chromium dispatches those after
+     * the window's `close`, by which point the window is already off every list - and those
+     * handlers are a game's last chance to write out what it owes. A write refused there is simply
+     * lost, so the channels that exist to land such a write turn this on, and only those.
+     */
+    readonly servesClosingWindow?: boolean;
     public abstract handle(window: WindowProxy, data: IPCEvents[T]["data"]): Promise<RequestStatus<EventResponse<T>>> | RequestStatus<EventResponse<T>>;
 
     /**

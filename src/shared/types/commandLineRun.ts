@@ -17,8 +17,19 @@ import type { GameBuildArtifactSize, GameBuildRequest } from "./gameBuild";
  * sentence.
  */
 
-/** What the window opened by a command-line launch is there to do. */
-export type CommandLineRunJob =
+/**
+ * What the window opened by a command-line launch is there to do.
+ *
+ * `plugins` is the same for every job: the plugins the line switched on for this run with
+ * `--build-plugin`, `--test-plugin` or `--lint-plugin`, already found in the profile's list by the
+ * main process. The main process is what makes them load - the plugin list it answers with has them
+ * on for as long as the process lives, and never writes that down - so the workspace needs these
+ * only to say so on its log and to hold each one to starting. See `utils/commandLinePlugins.ts`.
+ */
+export type CommandLineRunJob = CommandLineRunTask & { plugins: CommandLineRunPlugin[] };
+
+/** The part of a {@link CommandLineRunJob} that differs from one job to the next. */
+export type CommandLineRunTask =
     /** `--build`: one variant, one platform, one format. See `commandLineBuild.ts`. */
     | { kind: "build"; request: GameBuildRequest }
     /**
@@ -55,6 +66,34 @@ export type CommandLineRunJob =
     | { kind: "test-list" }
     /** `--lint`: the whole rule registry over the whole project. */
     | { kind: "lint" };
+
+/**
+ * A plugin a command line named to be switched on for its run.
+ *
+ * Found by name or manifest id in the profile's plugin list before any window opens. Written into the
+ * report beside the rest of what the line asked for, so the id travels with the name: it is the
+ * manifest id the plugin's publisher chose (`narraleaf.gallery`), not a generated one.
+ */
+export type CommandLineRunPlugin = {
+    id: string;
+    /** As the plugin names itself: what the log and the report say. */
+    name: string;
+    version: string;
+    /**
+     * Whether the line changed anything about it. False for a plugin this profile already runs,
+     * which the line may still name - a job states what it needs rather than what the profile it
+     * happens to run in lacks - and which is held to starting all the same.
+     */
+    enabledForRun: boolean;
+};
+
+/**
+ * The flag that names a plugin for a job of this kind: every command-line flag carries its job's
+ * prefix, and a sentence about a plugin the line named has to name the flag the line used.
+ */
+export function commandLinePluginFlag(kind: CommandLineRunTask["kind"]): string {
+    return kind === "build" ? "--build-plugin" : kind === "lint" ? "--lint-plugin" : "--test-plugin";
+}
 
 /** A variant or a DLC, as the project names it and as the compile addresses it. */
 export type CommandLineEditionPart = { id: string; name: string };
