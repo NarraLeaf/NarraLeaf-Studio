@@ -3,6 +3,7 @@ import path from "path";
 import type { App } from "@/app/app";
 import type { AppWindow } from "./managers/window/appWindow";
 import { WindowAppType } from "@shared/types/window";
+import type { AppEventToken } from "@shared/types/app";
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import type { BuildPreflightCode, BuildPreflightFinding } from "@shared/types/gameBuild";
 import { currentGameBuildPlatform, type GameBuildPlatform } from "@shared/types/gameBuild";
@@ -29,6 +30,7 @@ import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
 import { findCommandLineVariant, namesReleaseVariant } from "./utils/commandLineVariant";
 import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
+import { COMMAND_LINE_RUN_SILENCE_MS, getCommandLineRunEnd } from "./commandLineRunEnd";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 
 /**
@@ -139,16 +141,6 @@ const UNSIGNED_FINDING_CODES: readonly BuildPreflightCode[] = ["unsigned", "unsi
  */
 const SIGNABLE_PLATFORMS: readonly GameBuildPlatform[] = ["windows", "macos", "android", "ios"];
 
-/**
- * How long the workspace may say nothing at all before the run gives up on it.
- *
- * An idle deadline rather than a total one, and reset by every line the build writes: a real build
- * of a large project takes as long as it takes - a first cross-build downloads an Electron runtime -
- * and a total deadline would cancel exactly the runs that most needed to finish. What this catches
- * is the other shape: a window that opened, said nothing, and is never going to.
- */
-const WORKSPACE_SILENCE_TIMEOUT_MS = 15 * 60 * 1000;
-
 export class CommandLineBuildRun {
     private readonly log: CommandLineRunLogLine[] = [];
     private readonly startedAt = Date.now();
@@ -191,6 +183,10 @@ export class CommandLineBuildRun {
         // Resolved first, so that even a line this method refuses in its next statement leaves the
         // report file the caller is going to look for.
         this.reportPath = options.reportPath ? path.resolve(process.cwd(), options.reportPath) : null;
+        // From here on a failure outside this run's own flow - a fatal error in the main process, a
+        // window that asks something, the watchdog - ends the build through this run's own finish,
+        // with its log and its report. See `commandLineRunEnd.ts`.
+        getCommandLineRunEnd()?.attach(sentence => this.finish("studio-failed", sentence));
 
         if (options.error) {
             return this.finish("invocation", options.error);
@@ -251,6 +247,7 @@ export class CommandLineBuildRun {
 
         // Before the checks as well: they read which plugins are on - a plugin's required build
         // fields, what the game will pack - and a plugin this run switches on has to count.
+        getCommandLineRunEnd()?.waitingOn("the plugins this line names to be found");
         const plugins = await enableCommandLinePlugins(this.app.pluginManager, options.plugins, "--build-plugin");
         if (!plugins.ok) {
             return this.finish("studio-failed", plugins.reason);
@@ -267,6 +264,7 @@ export class CommandLineBuildRun {
             + ` for ${planned.plan.platform} (${planned.plan.format}${planned.plan.arch ? `, ${planned.plan.arch}` : ""})`);
         this.emit("info", `output folder: ${planned.plan.outputDir}`);
 
+        getCommandLineRunEnd()?.waitingOn("the build checks");
         const refusal = await this.runPreflight(planned.plan);
         if (refusal) {
             return this.finish(refusal.outcome, refusal.reason);
@@ -442,12 +440,15 @@ export class CommandLineBuildRun {
     private async runInWorkspace(plan: CommandLineBuildPlan): Promise<void> {
         const projectPath = this.projectPath!;
         let workspace: AppWindow<WindowAppType.Workspace>;
+        const end = getCommandLineRunEnd();
         try {
-            await this.app.ensureLauncher({ deferShow: true });
+            end?.waitingOn("the window the project is opened from to load");
+            await this.app.ensureLauncher({ unattended: true });
             const launcher = this.app.findLauncherWindow();
             if (!launcher) {
                 return this.finish("studio-failed", "Studio could not prepare a window to open the project from.");
             }
+            end?.waitingOn("the project's workspace window to load");
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
                 commandLineRun: { kind: "build", request: plan.request, plugins: this.plugins },
@@ -455,17 +456,22 @@ export class CommandLineBuildRun {
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
         }
+        end?.waitingOn("the workspace to report");
+        const silenceMs = COMMAND_LINE_RUN_SILENCE_MS.build;
 
         await new Promise<void>(resolve => {
             let settled = false;
             let deadline: ReturnType<typeof setTimeout>;
+            // Assigned by the subscription below, which can settle the run before it returns: what
+            // the page said before the run was listening is handed over as the run subscribes.
+            let token: AppEventToken | null = null;
             const settle = (run: () => Promise<void>) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 clearTimeout(deadline);
-                token.cancel();
+                token?.cancel();
                 void run().then(resolve, resolve);
             };
             const armDeadline = () => {
@@ -473,13 +479,13 @@ export class CommandLineBuildRun {
                 deadline = setTimeout(() => {
                     settle(() => this.finish(
                         "studio-failed",
-                        `The workspace said nothing for ${Math.round(WORKSPACE_SILENCE_TIMEOUT_MS / 60000)} minutes, so the build was abandoned.`,
+                        `The workspace said nothing for ${Math.round(silenceMs / 60000)} minutes, so the build was abandoned.`,
                     ));
-                }, WORKSPACE_SILENCE_TIMEOUT_MS);
+                }, silenceMs);
             };
             armDeadline();
 
-            const token = workspace.onCommandLineRunEvent(event => {
+            token = workspace.onCommandLineRunEvent(event => {
                 armDeadline();
                 if (event.kind === "log") {
                     const { kind: _kind, ...line } = event;
@@ -488,6 +494,9 @@ export class CommandLineBuildRun {
                 }
                 settle(() => this.finishFromWorkspace(event));
             });
+            if (settled) {
+                token.cancel();
+            }
 
             // "closed", not "close": a page process that died is `destroy()`ed rather than closed,
             // and that is exactly the case this is here to catch.
@@ -558,6 +567,10 @@ export class CommandLineBuildRun {
         }
         this.finished = true;
         const exitCode = COMMAND_LINE_BUILD_EXIT_CODES[outcome];
+        // The outcome is decided, and only the teardown is left - which is bounded, so a process
+        // still alive well past its bound exits with this code rather than waiting on it.
+        const end = getCommandLineRunEnd();
+        end?.finishing(exitCode, this.app.getShutdownDeadlineMs());
         // Unless the build has just said it. A refusing check writes its own sentence to the console
         // and the same sentence reaches this as the failure, so printing it here again reads as two
         // problems where there is one.
@@ -613,8 +626,11 @@ export class CommandLineBuildRun {
             log: this.log,
         };
 
+        end?.waitingOn("the report to be written");
         await this.writeReport(report);
+        end?.waitingOn("the open project to be put down");
         await this.app.drainForShutdown();
+        end?.waitingOn("standard output to drain");
         await flushStandardOutput();
         this.app.electronApp.exit(exitCode);
     }
@@ -670,6 +686,8 @@ export class CommandLineBuildRun {
      */
     private record(line: CommandLineRunLogLine): void {
         this.log.push(line);
+        // Every line is progress, to the watchdog as to the run's own deadline.
+        getCommandLineRunEnd()?.progress();
         const source = line.source ? `${line.source}: ` : "";
         process.stdout.write(`[${line.level}] ${source}${line.message}\n`);
     }

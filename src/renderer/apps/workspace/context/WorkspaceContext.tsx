@@ -151,6 +151,9 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         };
 
         const initWorkspace = async () => {
+            // Read out of the props below, and kept here for the failure branch: a command-line run's
+            // window has no error screen anybody will read.
+            let job: CommandLineRunJob | null = null;
             try {
                 await enqueueWorkspaceInit(async () => {
                     // Create workspace context
@@ -170,7 +173,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     // Before the recovery branch, so a window that is both is at least honest about
                     // it: recovery wins - a project somebody is here to repair is not one to build,
                     // test or sweep - and the run is told so when the job never starts.
-                    const job = props.commandLineRun ?? null;
+                    job = props.commandLineRun ?? null;
                     setCommandLineRun(job);
                     if (props.recovery) {
                         setRecovery(true);
@@ -288,6 +291,18 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                 });
             } catch (err) {
                 console.error("Failed to initialize workspace:", err);
+                // The error screen below is what an author reads to find out why. A command-line
+                // run's window renders no screen at all, and the load result alone ends the run on
+                // "could not open this project" - so the run is told the reason first, and ends on
+                // the sentence the screen would have shown.
+                if (job) {
+                    getInterface().workspace.reportCommandLineRun({
+                        kind: "finished",
+                        ok: false,
+                        refusal: "environment",
+                        error: `The workspace could not open this project: ${err instanceof Error ? err.message : String(err)}`,
+                    });
+                }
                 // Tells a pending replace-launch to keep its opener: this window failed to
                 // become a workspace (e.g. the folder is not a project).
                 getInterface().workspace.reportLoadResult(false);

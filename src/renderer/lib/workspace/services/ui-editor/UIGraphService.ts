@@ -12,6 +12,7 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { createInitialBlueprintDocument, repairGlobalMainIfMissing } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument, BlueprintDocumentValidationError } from "./blueprint/documentValidation";
+import { dropDisplacedEmptyBlueprints } from "./blueprint/ownerRecords";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -322,6 +323,9 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const migrated = migrateBlueprintDocumentToLatest(document.blueprintDocument);
         const repaired = repairGlobalMainIfMissing(migrated, () => uuidService.generate());
+        // Written by a paste before a slot gave up the blueprint it was pointed away from; kept
+        // until the document is next saved, and harmless to drop again on every load until then.
+        dropDisplacedEmptyBlueprints(repaired);
         try {
             assertValidBlueprintDocument(repaired);
         } catch (e) {

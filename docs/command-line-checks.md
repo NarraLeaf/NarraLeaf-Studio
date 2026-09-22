@@ -71,8 +71,10 @@ need three tables.
 
 `studio-failed` also covers a profile that cannot run the project: a plugin the project declares is
 not installed, switched off, or will not start ([Plugins](#plugins)), or something in the run asked
-a question nobody was there to answer ([Nothing is asked](#nothing-is-asked)). Both are a machine to
-look at, not a project to change.
+a question nobody was there to answer ([Nothing is asked](#nothing-is-asked)). And it covers Studio
+itself failing, from the moment the process starts: a profile folder it cannot use, an internal
+error, a run that stops making progress ([When Studio itself fails](#when-studio-itself-fails)). All
+of them are a machine to look at, not a project to change.
 
 `refused` is the one worth reading carefully. A windowed test on a frozen workspace, or one asked
 for while another run holds the slot, is refused — that is the host declining for a reason that may
@@ -315,7 +317,16 @@ of the two is either unreadable or unusable.
 Electron keys its single-instance lock on the profile directory, so a second Studio on the same
 profile is refused and exits. A check refuses with `studio-failed` rather than handing over to the
 running Studio, for the reason a build does: the run would happen inside somebody's session, against
-a project they have open, while this process reported a result it has no way to know about.
+a project they have open, while this process reported a result it has no way to know about. The
+refusal is written to the report like any other outcome:
+
+```text
+[error] Lint: Another Studio is already running on this profile, so this check was not started. Pass --lint-user-data-dir to give it a profile of its own.
+[error] Lint: studio-failed (exit 4)
+```
+
+A packaged Studio holds this lock; a development checkout does not take it at all, so two runs from
+a checkout on one profile both start.
 
 `--test-user-data-dir` / `--lint-user-data-dir` give the run a profile of its own and, with it, a
 lock of its own. A dedicated agent does not need one. A machine that is both an agent and somebody's
@@ -497,3 +508,37 @@ that could not ask what the person at a screen would have been asked has not ans
 it was run for. A permission a plugin was already granted in this profile is not asked again, so it
 does not stop the run; one it has never been granted has to be granted once, in Studio, with the
 profile the run uses.
+
+## When Studio itself fails
+
+Studio has its own ways to fail that have nothing to do with the project, and at a screen each of
+them ends in front of a person: an error box when it cannot start, a "has to close" box offering a
+restart, a crash screen with a Reload button. A run has nobody to read any of them - on a build agent
+a box like that is a job that never ends. So in a run none of them appears. From the first moment
+of the process, each ends the run with `studio-failed` (exit 4), on a line saying what the box would
+have said, and the report is written as it is for every other outcome:
+
+```text
+[error] Lint: Studio could not start: the profile folder /tmp/ci-profile (--lint-user-data-dir) could not be created: EACCES: permission denied, mkdir '/tmp/ci-profile'
+[error] Lint: studio-failed (exit 4)
+```
+
+- **A profile Studio cannot use** - a `--test-user-data-dir` / `--lint-user-data-dir` that cannot
+  be created, or a settings file in it that cannot be read. The line names the folder or the file.
+- **An internal error in Studio**, which at a screen is the box offering to restart:
+  `Studio stopped on an internal error: <the error>. The full error is in <profile>/logs/main.log.`
+- **The workspace failing** - it could not open the project, its page stopped, or it put up its
+  crash screen. The line is what the workspace would have shown, for example
+  `The workspace could not open this project: <why>`.
+- **Studio being asked to quit** before the run reported a result. An ordinary quit exits 0, which a
+  job would read as a pass.
+- **A run that stops making progress.** Every line the run writes counts as progress, as it does
+  for the thirty-minute silence deadline. From the moment the process starts until it exits, a run
+  that says nothing and moves no further for that deadline plus a minute is ended, naming what it
+  was waiting on: `Studio made no progress for 31 minutes while it was waiting for the project's
+  workspace window to load, so the run was abandoned.` Once the run has its answer, a process that
+  is still alive well after its teardown should have finished exits with the answer's own code.
+
+A lint sweep of a large asset library, or a walkthrough of a long story, can go a long time between
+lines, which is why this waits as long as the run's own deadline and then a minute more: it is there
+for the stretches that deadline does not watch, never to cut a slow run short.
