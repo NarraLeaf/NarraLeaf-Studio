@@ -130,13 +130,20 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         return next;
     }
 
+    /**
+     * Declare a voice language. Its refusals are thrown as the sentences the panel shows - it prints
+     * `error.message` as it is - naming a language by its display name, as its row does.
+     */
     public async addLocale(entry: VoiceLocaleEntry): Promise<VoiceConfiguration> {
         if (!isValidLocaleCode(entry.code)) {
-            throw new RendererError(`Invalid locale code: ${entry.code}`);
+            throw new RendererError(translate("workspace.voice.panel.invalidCode"));
         }
         return this.updateConfiguration(config => {
-            if (config.voicedLocales.some(locale => locale.code === entry.code)) {
-                throw new RendererError(`Voice language already exists: ${entry.code}`);
+            const existing = config.voicedLocales.find(locale => locale.code === entry.code);
+            if (existing) {
+                throw new RendererError(translate("workspace.voice.panel.alreadyAdded", {
+                    name: existing.displayName || existing.code,
+                }));
             }
             const displayName = entry.displayName.trim() || entry.code;
             return { ...config, voicedLocales: [...config.voicedLocales, { ...entry, displayName }] };
@@ -582,12 +589,16 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         return this.getConfiguration().voicedLocales.find(entry => entry.code === locale)?.displayName || locale;
     }
 
+    /**
+     * Refuse a voice language the project does not declare. Reached by a panel acting on a row the
+     * list has since dropped, so it is worded for the author.
+     */
     private assertKnownLocale(locale: string): void {
         if (!isValidLocaleCode(locale)) {
-            throw new RendererError(`Invalid locale code: ${locale}`);
+            throw new RendererError(translate("workspace.voice.panel.invalidCode"));
         }
         if (!this.getConfiguration().voicedLocales.some(entry => entry.code === locale)) {
-            throw new RendererError(`Unknown voice language: ${locale}`);
+            throw new RendererError(translate("workspace.voice.panel.languageGone"));
         }
     }
 
@@ -614,7 +625,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
      */
     private getDocumentPath(locale: string): string {
         if (!isValidLocaleCode(locale)) {
-            throw new RendererError(`Invalid locale code: ${locale}`);
+            throw new RendererError(translate("workspace.voice.panel.invalidCode"));
         }
         return voiceDocumentSpec.pathFor({ locale });
     }

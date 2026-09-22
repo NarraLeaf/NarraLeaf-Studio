@@ -43,6 +43,7 @@ import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -312,7 +313,10 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         try {
             const result = await assetsService.fetch(asset);
             if (!result.success) {
-                uiService?.showNotification(result.error || t("workspace.voice.table.clipMissing"), "warning");
+                // By the clip's name and why, as every asset preview words a read that failed. The
+                // read's own message is English and names the clip's storage path.
+                console.warn("[voice] could not read the take", result.error);
+                uiService?.showNotification(describeAssetReadFailure(asset.id, asset.name, result.code, t), "warning");
                 return;
             }
             const blob = new Blob([new Uint8Array((result.data as { data: Uint8Array }).data)]);
@@ -763,7 +767,11 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                             const next = event.target.value.trim();
                                             const current = config?.cast[group.characterId!]?.[locale] ?? "";
                                             if (next !== current) {
-                                                void voiceService?.setCastName(group.characterId!, locale, next);
+                                                // The project file's write reports nothing itself (see
+                                                // `ProjectFileWriteError`): this is the one place that can
+                                                // say the name was not kept.
+                                                void voiceService?.setCastName(group.characterId!, locale, next)
+                                                    .catch(error => uiService?.showError(error instanceof Error ? error : String(error)));
                                             }
                                         }}
                                         onKeyDown={event => {

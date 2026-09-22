@@ -27,6 +27,7 @@ import { LocalAssetsManager, type CreateLocalAssetFromBytesOptions, type CreateL
 import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import type { ExpandImportPathsResult } from "../assets/importPathExpansion";
+import type { AssetImportStatus, RefusableStatus } from "../assets/assetImportRefusal";
 import { Asset, AssetExtras, AssetGroup, AssetsMap, AssetSource } from "../assets/types";
 import { VideoService } from "../assets/VideoService";
 import { Service } from "../Service";
@@ -312,6 +313,13 @@ interface AssetsEvents {
     /** Which files are on their way in has changed, or one of them has got further. */
     transfers: readonly AssetTransfer[];
 }
+
+/**
+ * The `code` of a replacement a live session would not carry. Its `error` is already the author's
+ * sentence, unlike every other failure of {@link AssetsService.replaceAssetContent}, whose `error` is
+ * for the log and whose `refusal` is what gets worded.
+ */
+export const REPLACE_REFUSED_IN_SESSION = "REPLACE_REFUSED_IN_SESSION";
 
 const THUMBNAIL_DIMENSION = 160;
 
@@ -709,6 +717,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         if (!bytes.ok) {
             return {
                 success: false,
+                code: REPLACE_REFUSED_IN_SESSION,
                 error: translate(
                     bytes.problem.kind === "quota"
                         ? "assets.live.replaceRefusedQuota"
@@ -1654,7 +1663,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getLocalAssetsManager().fetch(asset as Asset<T, AssetSource.Local>);
     }
 
-    public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
+    public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<AssetImportStatus<T>[]>> {
         return this.transactionResult(() => this.getLocalAssetsManager().importLocalAssets(type));
     }
 
@@ -2496,7 +2505,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async replaceAssetContent<T extends AssetType>(
         asset: Asset<T, AssetSource>,
         sourcePath: string,
-    ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+    ): Promise<RefusableStatus<Asset<T, AssetSource>>> {
         if (asset.source !== AssetSource.Local) {
             return { success: false, error: "Replacing the contents of a remote asset is not supported" };
         }
@@ -2504,7 +2513,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const written = await this.getLocalAssetsManager()
             .writeAssetContentFromPath(asset as Asset<T, AssetSource.Local>, sourcePath);
         if (!written.success || !written.data) {
-            return { success: false, error: written.error };
+            // The refusal travels with it: it is what the surface that asked words for the author.
+            return { success: false, error: written.error, refusal: written.refusal };
         }
 
         try {
@@ -2630,7 +2640,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         type: T,
         paths: string[],
         options?: ImportFromPathsOptions,
-    ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
+    ): Promise<RequestStatus<AssetImportStatus<T>[]>> {
         // ⚠ Inside a transaction so that a directory of forty files is ONE operation. The importer
         // loops, and forty operations would be forty things for every other screen in the room to
         // draw and forty presses to take back.
