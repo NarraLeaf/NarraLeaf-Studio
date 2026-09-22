@@ -13,6 +13,8 @@
  * bundle, and the game app runs the scheduler off it.
  */
 
+import type { BlueprintImageAsset } from "./blueprint/valueTypes";
+
 export type AutoSaveConfiguration = {
     /** Write an autosave on a timer while a game is running. */
     enabled: boolean;
@@ -229,6 +231,15 @@ export type AutoSaveEntry = {
     timestamp: number;
     /** When this slot was first written, epoch milliseconds. */
     createdAt: number;
+    /**
+     * The picture stored with this slot, addressed the way `Get Save Preview` addresses it; null
+     * when the record holds none.
+     *
+     * The same answer as that node's, from the same bytes, rather than a second one: the entry is
+     * read out of the record anyway, so carrying the picture along costs nothing and spares a list
+     * of slots a per-row graph call whose only job would be to ask again.
+     */
+    preview: BlueprintImageAsset | null;
     /** Whatever the writer attached as user metadata (null when none). */
     metadata: unknown;
 };

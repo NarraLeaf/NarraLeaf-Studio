@@ -57,6 +57,7 @@ import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/run
 import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
+import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import {
     clearCharacterAvatarAssets,
     registerCharacterAvatarAssets,
@@ -629,6 +630,25 @@ export function GameApp(props: GameAppProps): ReactNode {
         return bundle.storyLibrary?.characters.find(entry => entry.name === sourceName)?.id ?? null;
     }, [bundle.storyLibrary]);
     /**
+     * The speaking character's dialog avatar, from the same authored name.
+     *
+     * The backlog's picture per line. Joined on the source name for the reason above - that is what
+     * a history entry records - and resolved through the one function `Get Character` also asks, so
+     * the face a row shows and the face a graph reads are the same face.
+     */
+    const resolveSpeakerAvatar = useCallback((sourceName: string): BlueprintImageAsset | null => {
+        const summary = bundle.storyLibrary?.characters.find(entry => entry.name === sourceName);
+        return toBlueprintImageAsset(resolveDefaultCharacterAvatarAssetId(summary));
+    }, [bundle.storyLibrary]);
+    /**
+     * Read through a ref, because the callbacks that ask are built once per host: see
+     * `LiveGameUiCallbackDeps.resolveSpeakerAvatar`.
+     */
+    const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
+    useEffect(() => {
+        resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
+    }, [resolveSpeakerAvatar]);
+    /**
      * Mirror the project's character table into blueprint global state, so `Get Character` can
      * answer without the graph reaching into the bundle.
      *
@@ -648,7 +668,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 id: entry.id,
                 name: entry.name,
                 color: entry.color,
-                avatarAssetId: entry.defaultAvatarAssetId,
+                avatarAssetId: resolveDefaultCharacterAvatarAssetId(entry),
             });
             return info ? [info] : [];
         });
@@ -2174,6 +2194,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         choiceMenus,
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
+        resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
     }), [requireActiveLiveGame]);
 
     /**
@@ -3390,6 +3411,15 @@ export function GameApp(props: GameAppProps): ReactNode {
                 slot: parseAutoSaveSlotIndex(id) ?? 0,
                 timestamp: Number.isFinite(updatedAt) ? updatedAt : 0,
                 createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+                // Registered exactly as `Get Save Preview` registers it, from the record this loop
+                // has already read: the id it mints is what the image widget resolves, and a slot
+                // whose record carries no capture keeps a null rather than an id that resolves to
+                // nothing.
+                preview: toBlueprintImageAsset(
+                    record.metadata.capture
+                        ? registerDevModeSavePreviewImage(id, record.metadata.capture)
+                        : null,
+                ),
                 metadata: record.metadata.user ?? null,
             };
         }));

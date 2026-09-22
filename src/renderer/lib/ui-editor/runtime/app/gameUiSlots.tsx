@@ -2,6 +2,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame, type PreloadStrategy } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { RUNTIME_PREFERENCE_DEFAULTS } from "@shared/types/preference";
+import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type {
     BlueprintGameHistoryEntry,
     BlueprintGameNotification,
@@ -199,6 +200,15 @@ export type LiveGameUiCallbackDeps = {
     currentDialogNametagRef: MutableRefObject<string | null>;
     /** The engine dialog boxes the custom dialog surfaces have mounted (see `DialogClickTargets`). */
     dialogClickTargets: DialogClickTargets;
+    /**
+     * The picture that stands for a speaker, by the source name the engine records on a backlog line.
+     *
+     * Read lazily, like `getLiveGame`: the character table arrives with the bundle and these
+     * callbacks are built once per host, so a resolver captured by value would answer from whichever
+     * table happened to be mounted when the host was built. Absent on a host with no character table
+     * - the story preview, a bundle that carries none - and every backlog row then has no picture.
+     */
+    resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null;
 };
 
 /**
@@ -280,8 +290,17 @@ function liveGameHistoryControls(liveGame: LiveGame): {
  * Shared by the two halves of the timeline - `getHistory()` behind the play head and `getFuture()`
  * ahead of it - because an entry is the same entry whichever side of the head it sits on, and a
  * backlog screen binds both lists to one item template.
+ *
+ * The avatar is resolved here rather than read off the entry: the engine records the speaker's name
+ * and nothing about their picture, and the name it records is the source name - the same one
+ * `resolveSpeakerCharacterId` joins the character table on for the live line. A host with no table
+ * to join against passes no resolver, and every row reads as having no picture, which is what a
+ * backlog showed before this field existed.
  */
-function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
+function toBlueprintHistoryEntries(
+    raw: unknown,
+    resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null,
+): BlueprintGameHistoryEntry[] {
     if (!Array.isArray(raw)) {
         return [];
     }
@@ -293,11 +312,13 @@ function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
         const element = (record.element ?? {}) as Record<string, unknown>;
         const isMenu = element.type === "menu";
         const text = element.text == null ? "" : String(element.text);
+        const character = !isMenu && element.character != null ? String(element.character) : null;
         return [{
             id: String(record.token ?? ""),
             type: isMenu ? "menu" : "say",
             text,
-            character: !isMenu && element.character != null ? String(element.character) : null,
+            character,
+            avatar: character ? resolveSpeakerAvatar?.(character) ?? null : null,
             voice: !isMenu && element.voice != null ? String(element.voice) : null,
             // The replayable handle. Present from engine 0.24.0 on; an entry from an older
             // save simply has none, and a backlog replay button hides itself for that line.
@@ -345,7 +366,14 @@ export async function fastForwardToNextChoice(
  * no React state — so hosts can build them once per session.
  */
 export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGameUiCallbacks {
-    const { requireLiveGame, getLiveGame, choiceMenus, currentDialogNametagRef, dialogClickTargets } = deps;
+    const {
+        requireLiveGame,
+        getLiveGame,
+        choiceMenus,
+        currentDialogNametagRef,
+        dialogClickTargets,
+        resolveSpeakerAvatar,
+    } = deps;
 
     return {
         onGetNametag: (): string | null => {
@@ -371,13 +399,16 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onGetHistory: (): BlueprintGameHistoryEntry[] => {
-            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.());
+            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar);
         },
 
         onGetFuture: (): BlueprintGameHistoryEntry[] => {
             const liveGame = getLiveGame();
             const getFuture = liveGame ? liveGameHistoryControls(liveGame).getFuture : undefined;
-            return toBlueprintHistoryEntries(getFuture ? getFuture.call(liveGame) : undefined);
+            return toBlueprintHistoryEntries(
+                getFuture ? getFuture.call(liveGame) : undefined,
+                resolveSpeakerAvatar,
+            );
         },
 
         onRestoreHistory: async (id?: string): Promise<void> => {

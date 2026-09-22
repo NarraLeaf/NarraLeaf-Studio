@@ -352,6 +352,15 @@ declare module "@narraleaf/script" {
     	timestamp: number;
     	/** When this slot was first written, epoch milliseconds. */
     	createdAt: number;
+    	/**
+    	 * The picture stored with this slot, addressed the way \`Get Save Preview\` addresses it; null
+    	 * when the record holds none.
+    	 *
+    	 * The same answer as that node's, from the same bytes, rather than a second one: the entry is
+    	 * read out of the record anyway, so carrying the picture along costs nothing and spares a list
+    	 * of slots a per-row graph call whose only job would be to ask again.
+    	 */
+    	preview: BlueprintImageAsset | null;
     	/** Whatever the writer attached as user metadata (null when none). */
     	metadata: unknown;
     };
@@ -1393,6 +1402,16 @@ declare module "@narraleaf/script" {
     	text: string;
     	/** Speaker nametag for a say entry; null for menu entries or narration. */
     	character: string | null;
+    	/**
+    	 * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
+    	 * speaker this build has no character for.
+    	 *
+    	 * The character's own picture rather than the differential they wore on this line. Which
+    	 * differential that was is stage state, and a line already read is off the stage - the engine
+    	 * records who spoke and what they said, and nothing that survives a load records what they were
+    	 * wearing while they said it.
+    	 */
+    	avatar: BlueprintImageAsset | null;
     	/** Resolved voice clip URL for a say entry; null when absent. Not addressable - see \`voiceId\`. */
     	voice: string | null;
     	/**

@@ -38,6 +38,8 @@ import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReade
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { mapCharacterStoreEntriesToSummaries } from "@shared/utils/characterSummaries";
+import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
+import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -137,6 +139,9 @@ export function useStoryPreviewGameUi(input: {
      * The blueprint-facing character table, read straight off the character service rather than off
      * the summaries above. The summary shape is the story compiler's, and it carries only what the
      * *engine* needs; the accent colour is editor data the compiler has no use for.
+     *
+     * The avatar is the one field that does come off a summary: which picture stands for a character
+     * is `resolveDefaultCharacterAvatarAssetId`'s answer, and it needs the appearance to give it.
      */
     const characterTable = useMemo((): BlueprintCharacterInfo[] => {
         if (!context || !enabled) {
@@ -144,15 +149,30 @@ export function useStoryPreviewGameUi(input: {
         }
         const characterService = context.services.get<CharacterService>(Services.Character);
         return characterService.listCharacter().flatMap(character => {
+            const id = character.profile.getId();
             const info = toBlueprintCharacterInfo({
-                id: character.profile.getId(),
+                id,
                 name: character.profile.getName(),
                 color: character.profile.getColor(),
-                avatarAssetId: character.profile.getDefaultAvatarAssetId(),
+                avatarAssetId: resolveDefaultCharacterAvatarAssetId(
+                    characters.find(summary => summary.id === id),
+                ),
             });
             return info ? [info] : [];
         });
-    }, [context, enabled]);
+    }, [characters, context, enabled]);
+
+    /**
+     * The backlog's picture per line, by the source name a history entry records. Parity with the
+     * Dev Mode host, resolved from the same summaries the table above uses.
+     */
+    const resolveSpeakerAvatar = useCallback((sourceName: string): BlueprintImageAsset | null => {
+        return toBlueprintImageAsset(
+            resolveDefaultCharacterAvatarAssetId(characters.find(entry => entry.name === sourceName)),
+        );
+    }, [characters]);
+    const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
+    resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
 
     // Snapshot the uidoc/blueprints into a synthetic bundle when the preview opens.
     const bundle = useMemo((): DevModeBundle | null => {
@@ -234,6 +254,7 @@ export function useStoryPreviewGameUi(input: {
             choiceMenus,
             currentDialogNametagRef,
             dialogClickTargets,
+            resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
         });
         const notAvailable = (operation: string) => async (): Promise<never> => {
             throw new Error(`${operation} is not available in the story preview`);

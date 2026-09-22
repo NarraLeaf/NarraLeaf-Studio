@@ -2027,6 +2027,16 @@ export type BlueprintGameHistoryEntry = {
     text: string;
     /** Speaker nametag for a say entry; null for menu entries or narration. */
     character: string | null;
+    /**
+     * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
+     * speaker this build has no character for.
+     *
+     * The character's own picture rather than the differential they wore on this line. Which
+     * differential that was is stage state, and a line already read is off the stage - the engine
+     * records who spoke and what they said, and nothing that survives a load records what they were
+     * wearing while they said it.
+     */
+    avatar: BlueprintImageAsset | null;
     /** Resolved voice clip URL for a say entry; null when absent. Not addressable - see `voiceId`. */
     voice: string | null;
     /**
@@ -2064,6 +2074,7 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
             type: record.type === "menu" ? "menu" : "say",
             text: record.text == null ? "" : String(record.text),
             character: normalizeNullableHistoryString(record.character),
+            avatar: normalizeBlueprintImageAssetValue(record.avatar),
             voice: normalizeNullableHistoryString(record.voice),
             voiceId: normalizeNullableHistoryString(record.voiceId),
             selected: normalizeNullableHistoryString(record.selected),
@@ -2097,6 +2108,7 @@ function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
             slot: Number.isFinite(Number(record.slot)) ? Math.trunc(Number(record.slot)) : 0,
             timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
             createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
+            preview: normalizeBlueprintImageAssetValue(record.preview),
             metadata: normalizeJsonValue(record.metadata),
         });
     }

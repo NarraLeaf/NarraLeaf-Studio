@@ -8,7 +8,7 @@ import {
 import { AutoSaveScheduler } from "./autoSaveScheduler";
 
 function entry(slot: number, timestamp: number): AutoSaveEntry {
-    return { id: autoSaveSlotId(slot), slot, timestamp, createdAt: timestamp, metadata: null };
+    return { id: autoSaveSlotId(slot), slot, timestamp, createdAt: timestamp, preview: null, metadata: null };
 }
 
 function harness(overrides?: {

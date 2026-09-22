@@ -89,6 +89,13 @@ export type GameAppSaveRecord = {
         /** ISO timestamps written by the store; absent on records it could not stamp. */
         createdAt?: string;
         updatedAt?: string;
+        /**
+         * The slot's picture as a data URL, absent when the write asked for none or the capture
+         * failed. The same bytes {@link GameAppSaveStore.readPreview} hands back - declared here
+         * because a caller that already holds the record should not read it a second time to see
+         * whether there is one.
+         */
+        capture?: string;
         /** What produced the save; absent on records written before the stamp existed. */
         compatibility?: SaveCompatibilityStamp;
         /** Seconds of play behind the save; absent on records written before playtime was tracked. */

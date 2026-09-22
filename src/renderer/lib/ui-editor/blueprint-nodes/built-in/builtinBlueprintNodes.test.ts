@@ -2989,8 +2989,8 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterAutoSave.afterAutoSave).toBe("continued");
 
         const autoSaves: AutoSaveEntry[] = [
-            { id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, metadata: { chapter: 2 } },
-            { id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, metadata: null },
+            { id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, preview: null, metadata: { chapter: 2 } },
+            { id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, preview: null, metadata: null },
         ];
         const localsFromAutoList: Record<string, unknown> = {};
         await executeGraph({
