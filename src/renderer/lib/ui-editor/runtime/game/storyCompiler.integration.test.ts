@@ -814,7 +814,7 @@ describe("compileStudioStoryToNlr", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "mask", message: "Mask effect has no image asset." },
+            { level: "warning", blockId: "mask", message: "This mask effect has no image." },
         ]);
     });
 
@@ -958,7 +958,7 @@ describe("compileStudioStoryToNlr", () => {
             });
 
             expect(compiled.diagnostics).toEqual([
-                { level: "warning", blockId: "say", message: "Inline event: character image source not found for char-ghost." },
+                { level: "warning", blockId: "say", message: "The character of this row is no longer in this project." },
             ]);
             // The event is dropped, but the surrounding line still compiles.
             const words = sayWords(compiled);
@@ -1370,8 +1370,8 @@ describe("compileStudioStoryToNlr", () => {
         // The undeclared reference is caught - as an ERROR, because whether a variable is declared is
         // a fact about the document. The declared one passes validation and only trips the separate
         // "needs host persistence" gate, which is a fact about the HOST and stays a warning.
-        expect(compiled.diagnostics).toContainEqual({ level: "error", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
-        expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toContain("require Dev Mode host persistence");
+        expect(compiled.diagnostics).toContainEqual({ level: "error", blockId: "set-ghost", message: "The persistent variable this row assigns is no longer declared; the assignment was skipped." });
+        expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toBe("Persistent variables cannot be written here; the assignment was skipped.");
         expect(compiled.diagnostics.some(d => d.blockId === "set-declared" && d.message.includes("not found"))).toBe(false);
     });
 
@@ -1382,7 +1382,7 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
         expect(compiled.diagnostics).toContainEqual({
             level: "error",
-            message: `Two scenes share the name "${document.scenes["scene-1"].runtimeName}"; their scene-local variables would collide. Rename one.`,
+            message: `The scenes “${document.scenes["scene-1"].name}” and “${document.scenes["scene-2"].name}” keep their scene variables under one name, so each overwrites the other's.`,
         });
     });
 
@@ -1574,7 +1574,7 @@ describe("compileStudioStoryToNlr", () => {
             {
                 level: "error",
                 blockId: "bg",
-                message: "Transition \"maskFade\" is not available; the change was played as a cut. Choose a transition on this row.",
+                message: "Transition “maskFade” is not available; the change was played as a cut. Choose a transition on this row.",
             },
         ]);
         expect(findTransition(compiled)).toBeUndefined();
@@ -1590,7 +1590,7 @@ describe("compileStudioStoryToNlr", () => {
             {
                 level: "error",
                 blockId: "bg",
-                message: "Transition \"custom\" is not available; the change was played as a cut. Choose a transition on this row.",
+                message: "Transition “custom” is not available; the change was played as a cut. Choose a transition on this row.",
             },
         ]);
         expect(findTransition(compiled)).toBeUndefined();
@@ -2622,8 +2622,8 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(typeOf("dupe")).toBeUndefined();
         expect(typeOf("nowhere")).toBeUndefined();
         expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "dupe", message: 'Label "start" is declared more than once in this scene.' },
-            { level: "error", blockId: "nowhere", message: "Go to target label not found in this scene: elsewhere" },
+            { level: "error", blockId: "dupe", message: "Label “start” is declared more than once in this scene." },
+            { level: "error", blockId: "nowhere", message: "Label “elsewhere” is not in this scene." },
         ]);
     });
 
@@ -2654,7 +2654,7 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(typeOf("exact")?.type).toBe("control:jump");
         expect(typeOf("miscased")).toBeUndefined();
         expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "miscased", message: "Go to target label not found in this scene: START" },
+            { level: "error", blockId: "miscased", message: "Label “START” is not in this scene." },
         ]);
     });
 
@@ -2807,7 +2807,7 @@ describe("compileStudioStoryToNlr voice", () => {
         });
         expect(noHost.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
         expect(noHost.diagnostics).toEqual([
-            { level: "warning", blockId: "create", message: 'Ambience effect "snow" needs its weather produced, which this compile cannot do.' },
+            { level: "warning", blockId: "create", message: "Ambience effect “snow” needs its weather produced, which is not possible here." },
         ]);
 
         const failedBake = await compileStudioStoryToNlr({
@@ -2818,7 +2818,7 @@ describe("compileStudioStoryToNlr voice", () => {
         });
         expect(failedBake.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
         expect(failedBake.diagnostics).toEqual([
-            { level: "warning", blockId: "create", message: 'Weather for ambience effect "snow" could not be produced.' },
+            { level: "warning", blockId: "create", message: "The weather for ambience effect “snow” could not be produced." },
         ]);
     });
 
@@ -2914,7 +2914,7 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.diagnostics).toContainEqual({
             level: "warning",
             blockId: undefined,
-            message: 'Persistent variable "Score" is declared in both the variable registry and a story row; references are ambiguous.',
+            message: "The persistent variable “Score” is declared both in the project's variables and by a story row; references to it are ambiguous.",
         });
     });
 
@@ -3061,7 +3061,7 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.diagnostics).toContainEqual({
             level: "warning",
             blockId: undefined,
-            message: 'Saved variable "Gold" is declared in both the variable registry and a story row; references are ambiguous.',
+            message: "The saved variable “Gold” is declared both in the project's variables and by a story row; references to it are ambiguous.",
         });
     });
 });
@@ -3672,7 +3672,7 @@ describe("puppet characters", () => {
         });
 
         expect(compiled.sceneElements?.["scene-1"]?.puppets.size).toBe(0);
-        expect(compiled.diagnostics.some(entry => /no model asset/.test(entry.message))).toBe(true);
+        expect(compiled.diagnostics.some(entry => /has no model\./.test(entry.message))).toBe(true);
     });
 
     it("reports a puppet that names no runtime", async () => {
@@ -4206,7 +4206,7 @@ describe("story audio", () => {
 
             // The handle is created once and holds the first row's bus, so the second row's track
             // cannot be honoured. Two intents, one outcome - said out loud rather than dropped.
-            expect(compiled.diagnostics.some(entry => /already playing on the "Ambience" track/.test(entry.message))).toBe(true);
+            expect(compiled.diagnostics.some(entry => /already playing on the track “Ambience”/.test(entry.message))).toBe(true);
             expect((compiled.sceneElements?.["scene-1"].sounds.get("rain") as any).config.type).toBe("t_amb");
         });
 
@@ -4542,7 +4542,7 @@ describe("break", () => {
         // An error, not a warning: the engine's own answer to a stray breakLoop arrives at play time,
         // on the player's screen, so the production build has to refuse it here.
         expect(outside.diagnostics).toEqual([
-            { level: "error", blockId: "brk", message: "Break is not inside a repeat group; there is no loop for it to leave." },
+            { level: "error", blockId: "brk", message: "This break is not inside a repeat; there is no loop for it to leave." },
         ]);
     });
 });
@@ -4687,7 +4687,7 @@ describe("diagnostics carry their origin row", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "show", message: "Character image source not found for Nattou." },
+            { level: "warning", blockId: "show", message: "“Nattou” has no poses, so nothing is drawn." },
         ]);
     });
 
@@ -4712,7 +4712,9 @@ describe("diagnostics carry their origin row", () => {
 
         expect(compiled.diagnostics).toHaveLength(1);
         expect(compiled.diagnostics[0]?.blockId).toBe("show");
-        expect(compiled.diagnostics[0]?.message).toBe("Character image source not found for narrator.");
+        // The character is not in the project at all, which is what the row is told - by no name,
+        // since the only one left is the id.
+        expect(compiled.diagnostics[0]?.message).toBe("The character of this row is no longer in this project.");
         // The specific regression this guards: the id used to be interpolated straight in.
         expect(compiled.diagnostics[0]?.message).not.toContain("6f1b9d0e");
     });
@@ -4857,9 +4859,9 @@ describe("stage object references", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "show", message: "Image \"poster\" is not on stage; an earlier row has to create it." },
-            { level: "error", blockId: "vol", message: "Sound \"piano\" is not playing; an earlier /sound row has to start it." },
-            { level: "error", blockId: "fade", message: "Layer \"foreground\" is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "show", message: "Image “poster” is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "vol", message: "Sound “piano” is not playing; an earlier sound row has to start it." },
+            { level: "error", blockId: "fade", message: "Layer “foreground” is not on stage; an earlier row has to create it." },
         ]);
         // The rows compiled to nothing at all: no statements, and no blank objects left on stage.
         expect(compiledRows(compiled)).toEqual([]);
@@ -4927,7 +4929,7 @@ describe("stage object references", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "quieter", message: "No background music is set before this row; /bgm has to run first." },
+            { level: "warning", blockId: "quieter", message: "No background music is set before this row; a BGM row has to run first." },
         ]);
     });
 
@@ -5002,7 +5004,7 @@ describe("stage object references", () => {
             const compiled = await compile({ exit: characterRow("exit", "exit", "char-alice") }, ALICE);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "exit", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "exit", message: "Character “Alice” is not on stage; an earlier row has to bring it on stage." },
             ]);
             // The row that used to build a blank portrait and hide it now builds nothing at all.
             expect(compiledRows(compiled)).toEqual([]);
@@ -5014,7 +5016,7 @@ describe("stage object references", () => {
             const compiled = await compile({ face: characterRow("face", "expression", "char-alice") }, ALICE);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "face", message: "Character “Alice” is not on stage; an earlier row has to bring it on stage." },
             ]);
             expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
         });
@@ -5044,7 +5046,7 @@ describe("stage object references", () => {
             }, ALICE);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "face", message: "Character “Alice” is not on stage; an earlier row has to bring it on stage." },
             ]);
         });
 
@@ -5095,7 +5097,7 @@ describe("stage object references", () => {
             const compiled = await compile({ motion: characterRow("motion", "setMotion", "char-doll") }, DOLL);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "motion", message: "Character \"Doll\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "motion", message: "Character “Doll” is not on stage; an earlier row has to bring it on stage." },
             ]);
             expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(0);
         });
@@ -5254,7 +5256,7 @@ describe("a layered character a row-precise launch pre-poses", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "sad", message: "Bob is on stage as a single image, so its appearance tags cannot change here." },
+            { level: "warning", blockId: "sad", message: "“Bob” is on stage as a single image, so its appearance tags cannot change here." },
         ]);
         expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
     });

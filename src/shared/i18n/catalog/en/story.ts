@@ -1141,7 +1141,8 @@ export const story = {
             videoSkipped: "Videos are not previewed.",
             ambienceSkipped: "Ambience effects are not previewed.",
             storyActionSkipped: "Story Action Blueprint effects are not simulated in the preview.",
-            displayableNotFound: "Displayable target not found: {target}",
+            // `{target}` is the name the author gave the object, never a stage key - see `compile.unnamed`.
+            displayableNotFound: "“{target}” is not on stage.",
             displayableUnnamed: "(empty)",
             persistentAssignmentSkipped: "Persistent-variable assignments are not applied in the preview.",
             assignmentUnresolved: "Expression `{expression}` did not resolve; the assignment was skipped in the preview.",
@@ -1149,10 +1150,159 @@ export const story = {
             persistentReadEmpty: "Persistent variables read as empty in the preview.",
             sceneVisitUntracked: "Scene visits are not tracked in the preview; `visited({name})` reads as false.",
             choicePickUntracked: "Choice picks are not tracked in the preview; `picked({name})` reads as false.",
-            presetNotFoldable: "{preset} transforms cannot be folded into character show yet.",
-            animationNotFound: "Story animation not found: {animationId}",
-            animationIdMissing: "Animation transform is missing animationId.",
+            // `{preset}` is the effect's own label from the transform inspector (`Circle reveal`).
+            presetNotFoldable: "An entrance cannot apply {preset}; use a separate transform row.",
+            // Never the animation's id: a Story Motion the project no longer holds has no name left.
+            animationNotFound: "The animation this row plays is no longer in this project.",
+            animationIdMissing: "This animation transform names no animation.",
         },
+    },
+    /**
+     * What the story compiler reports while it builds a story for play. Each one reaches Dev Mode's
+     * Issues panel under the row it is about (and the story console of a preview), so it is stated in
+     * the author's terms: a character, a pose, a variable or an asset by the name the author gave it,
+     * and never by an id - an id with nothing behind it names nothing an author can find.
+     */
+    compile: {
+        // A reference to an asset that did not resolve. `{owner}` is one of the `owner` phrases and
+        // names what holds the reference. Three sentences because an author does three different
+        // things about them - re-point the field, replace the file, fix what feeds it - the same split
+        // as `devMode.issues.asset*`. The value asked for is never printed.
+        asset: {
+            missing: "{owner} refers to an asset that is no longer in this project.",
+            unreadable: "{owner} refers to an asset that could not be read.",
+            unreadableNamed: "{owner} refers to “{asset}”, which could not be read.",
+            notAsset: "{owner} is set to a value that is not an asset.",
+        },
+        // The subject of an `asset` sentence, capitalised because it opens one.
+        owner: {
+            row: "This row",
+            pose: "The pose “{pose}” of “{character}”",
+            layer: "The layer “{layer}” of “{character}”",
+            layerTag: "The “{tag}” image of the layer “{layer}” of “{character}”",
+            avatar: "The dialog avatar of “{character}”",
+            model: "The model of “{character}”",
+            sceneBackground: "The background of the scene “{scene}”",
+            sceneMusic: "The music of the scene “{scene}”",
+            voice: "The {language} voice recording of this line",
+            inlineSound: "The sound effect inside this line",
+        },
+        // Stands in for a name the document does not have (or has only as an id).
+        unnamed: "(unnamed)",
+        unnamedCharacter: "Unnamed character",
+        variable: {
+            persistentCollision: "The persistent variable “{name}” is declared both in the project's variables and by a story row; references to it are ambiguous.",
+            savedCollision: "The saved variable “{name}” is declared both in the project's variables and by a story row; references to it are ambiguous.",
+            sceneMissingInText: "A scene variable shown in this line is no longer declared; it was left out.",
+            savedMissingInText: "A saved variable shown in this line is no longer declared; it was left out.",
+            persistentMissingInText: "A persistent variable shown in this line is no longer declared; it was left out.",
+            sceneMissingAssignment: "The scene variable this row assigns is no longer declared; the assignment was skipped.",
+            savedMissingAssignment: "The saved variable this row assigns is no longer declared; the assignment was skipped.",
+            persistentMissingAssignment: "The persistent variable this row assigns is no longer declared; the assignment was skipped.",
+            sceneMissingCondition: "The scene variable this condition tests is no longer declared; it evaluates false.",
+            savedMissingCondition: "The saved variable this condition tests is no longer declared; it evaluates false.",
+            persistentMissingCondition: "The persistent variable this condition tests is no longer declared; it evaluates false.",
+            persistenceUnavailableInText: "Persistent variables cannot be read here; the value was left out.",
+            persistenceUnavailableAssignment: "Persistent variables cannot be written here; the assignment was skipped.",
+        },
+        expression: {
+            inTextUnresolved: "The value `{expression}` in this line did not resolve; it was left out.",
+            assignmentUnresolved: "Expression `{expression}` did not resolve; the assignment was skipped.",
+            conditionUnresolved: "Condition `{expression}` did not resolve; it evaluates false.",
+            callNeedsBlueprints: "Expression calls `{name}()`, which needs the project's blueprints; the expression was skipped.",
+        },
+        blueprint: {
+            textNeedsBlueprints: "A blueprint value in this line needs the project's blueprints; it was left out.",
+            actionNeedsBlueprints: "This story action blueprint needs the project's blueprints; the row was skipped.",
+            conditionNeedsBlueprints: "This blueprint condition needs the project's blueprints; it evaluates false.",
+            missing: "The story action blueprint of this row is no longer in this project; the row was skipped.",
+            // `{file}` is the author's own script file, `{name}` the blueprint's name.
+            asyncValue: "“{name}” is evaluated where the story cannot wait, so {file} has to return a value rather than a promise.",
+            noDefaultExportSkipped: "{file} has no default export for “{name}” to run; the row was skipped.",
+            noDefaultExportEmpty: "{file} has no default export for “{name}” to run; nothing was evaluated.",
+        },
+        flow: {
+            missingRow: "A row this scene refers to is missing from the story.",
+            pluginInjectionOutsideScene: "A plugin's compile step addressed a row that is not in this scene.",
+            optionOutsideMenu: "This option is not inside a menu.",
+            branchOutsideCondition: "This branch is not inside a condition.",
+            jumpTargetMissing: "The scene this jump goes to is no longer in this story.",
+            jumpTargetEmpty: "This jump names no scene.",
+            previewHoldsAtJump: "The preview stops before this jump instead of leaving the scene.",
+            previewHoldsAtBreak: "The preview stops at this break; a break only acts inside its loop.",
+            menuEmpty: "This menu has no options.",
+            conditionEmpty: "This condition has no branch.",
+            labelUnnamed: "This label has no name.",
+            labelDuplicate: "Label “{name}” is declared more than once in this scene.",
+            gotoEmpty: "This go-to names no label.",
+            gotoMissing: "Label “{name}” is not in this scene.",
+            breakOutsideLoop: "This break is not inside a repeat; there is no loop for it to leave.",
+            repeatUntilUnusable: "This repeat-until has no usable condition; the group was skipped.",
+            // Two scenes whose scene variables share one namespace. The name that collides is internal
+            // and survives a rename, so the sentence names both scenes by what the author called them.
+            sharedSceneVariables: "The scenes “{first}” and “{second}” keep their scene variables under one name, so each overwrites the other's.",
+        },
+        // A row that acts on a stage object no earlier row put there. The remedy follows what the row
+        // acts on: nothing in Studio creates a character, an earlier row brings one on stage.
+        notOnStage: {
+            image: "Image “{name}” is not on stage; an earlier row has to create it.",
+            text: "Text “{name}” is not on stage; an earlier row has to create it.",
+            layer: "Layer “{name}” is not on stage; an earlier row has to create it.",
+            video: "Video “{name}” is not on stage; an earlier row has to create it.",
+            ambience: "Ambience effect “{name}” is not on stage; an earlier row has to create it.",
+            character: "Character “{name}” is not on stage; an earlier row has to bring it on stage.",
+            target: "“{name}” is not on stage.",
+        },
+        character: {
+            missing: "The character of this row is no longer in this project.",
+            noPoses: "“{character}” has no poses, so nothing is drawn.",
+            poseMissing: "The pose this row selects is no longer among the poses of “{character}”.",
+            poseNoImage: "The pose “{pose}” of “{character}” has no image.",
+            noImage: "No image resolves for “{character}”.",
+            singleImage: "“{character}” is on stage as a single image, so its appearance tags cannot change here.",
+            noTagSelected: "This appearance change for “{character}” selects no tag; nothing changes.",
+            noRuntimeMotion: "“{character}” is not drawn by a runtime, so it has no motion to set.",
+            noRuntimeSkin: "“{character}” is not drawn by a runtime, so it has no skin to set.",
+            noRuntimeParams: "“{character}” is not drawn by a runtime, so it has no parameters to set.",
+            puppetNoModel: "“{character}” has no model.",
+            puppetNoRuntime: "“{character}” names no runtime; nothing draws it.",
+            inlineNoCharacter: "An appearance change inside this line names no character; it was skipped.",
+            inlineSingleImage: "An appearance change for “{character}” inside this line was skipped: the character is on stage as a single image, so its appearance tags cannot change.",
+            inlineNotOnStage: "An appearance change for “{character}” inside this line was skipped: the character is not on stage. Show it before this line; a character shown under a custom stage name cannot be changed from inside a line.",
+        },
+        media: {
+            backgroundEmpty: "This background has no image or color.",
+            imageNoSource: "Image “{name}” has no asset or color.",
+            videoNoAsset: "Video “{name}” has no asset.",
+            soundNoAsset: "Sound “{name}” has no asset.",
+            soundNotPlaying: "Sound “{name}” is not playing; an earlier sound row has to start it.",
+            musicNotPlaying: "No background music is set before this row; a BGM row has to run first.",
+            trackConflict: "“{name}” is already playing on the track “{existing}”, so this row's track “{requested}” is ignored. Use a different sound name, or set the track on the row that starts it.",
+            removedTrack: "(removed track)",
+            ambienceClipConflict: "Ambience effect “{name}” already plays a different clip; this row uses the first one.",
+            ambienceNoClip: "Ambience effect “{name}” has no clip.",
+            weatherUnavailable: "Ambience effect “{name}” needs its weather produced, which is not possible here.",
+            weatherFailed: "The weather for ambience effect “{name}” could not be produced.",
+            assetSetWithoutLanguage: "An asset set was resolved without a language; the stage may show the member for another language.",
+        },
+        camera: {
+            noTransform: "This camera row has no transform.",
+            unknownLens: "Camera lens “{preset}” is not a known effect.",
+            unknownLook: "Camera look “{preset}” is not a known grade.",
+        },
+        transform: {
+            loopNoReveal: "A looping transform cannot carry a clip reveal; the reveal is ignored.",
+            loopNotInterpolable: "A looping transform can only animate channels that interpolate; the rest of this row does not change.",
+            loopEmpty: "This looping transform states nothing to animate.",
+            loopUnsupported: "This engine version cannot play looping transforms. Update narraleaf-react to 0.32.0 or newer.",
+            filterConflict: "This transform sets the CSS filter channel more than once; only one reaches the stage.",
+            maskNoImage: "This mask effect has no image.",
+            maskOnEntrance: "An entrance cannot apply a mask; use a separate transform row.",
+            revealTargetOnly: "{effect} only applies to stage objects.",
+            ruleNoImage: "This rule transition names no rule image; the change was played as a cut.",
+            transitionUnavailable: "Transition “{kind}” is not available; the change was played as a cut. Choose a transition on this row.",
+        },
+        positionalElementNames: "This engine version names stage elements by position, so saves do not survive edits to the story.",
     },
     blueprintCard: {
         openAria: "Open story action blueprint",

@@ -37,7 +37,7 @@ import type { MaskPattern } from "narraleaf-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import { weatherRefIdentity } from "@shared/weather/bakeKey";
 import type { WeatherSeedRef } from "@shared/weather/model";
-import type { DevModeCharacterSummary } from "@shared/types/devMode";
+import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseEntry, resolveTagSelection } from "@shared/utils/characterVariant";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
@@ -189,6 +189,14 @@ import {
     STORY_VISITED_SCENES_KEY,
     type StoryVisitedContent,
 } from "./storyVisited";
+// Every diagnostic is worded here, in the language of the window the compile runs in: Studio's own
+// language in Dev Mode and the scene preview, the machine's in a packaged game (the runtime bundle
+// aliases this module to its shim). An author reads these in the Issues panel, so they are never the
+// compiler's own English and never carry an id.
+import { translate } from "@/lib/i18n";
+import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import { authoredNameOrNull } from "@shared/utils/generatedId";
+import { classifyAssetFailure } from "../assetResolution";
 
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
@@ -249,7 +257,7 @@ function pushPersistentNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiag
             diagnostics,
             "warning",
             undefined,
-            `Persistent variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
+            say("story.compile.variable.persistentCollision", { name: collision.name }),
         );
     }
 }
@@ -266,7 +274,7 @@ function pushSavedNameCollisionDiagnostics(diagnostics: NlrStoryCompileDiagnosti
             diagnostics,
             "warning",
             undefined,
-            `Saved variable "${collision.name}" is declared in both the variable registry and a story row; references are ambiguous.`,
+            say("story.compile.variable.savedCollision", { name: collision.name }),
         );
     }
 }
@@ -361,20 +369,31 @@ export type StoryVoiceRuntime = GameVoiceBundle & {
 async function buildVoiceMapsByLocale(input: {
     voice: StoryVoiceRuntime;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** The story being compiled, whose lines a failed take is reported against. */
+    document: StoryDocument;
 }): Promise<Record<string, Record<string, string>>> {
     const byLocale: Record<string, Record<string, string>> = {};
+    // The voice tables are the project's, every story's lines in one. A take that does not resolve is
+    // reported under the line that speaks it, and only for lines of this story: another story's line
+    // is reported when that story is played, where the report can say which line it is.
+    const rowByUnit = rowByTextId(input.document);
+    const languageName = (code: string): string =>
+        authoredNameOrNull(input.voice.voicedLocales.find(entry => entry.code === code)?.displayName) ?? code;
     for (const [locale, table] of Object.entries(input.voice.tables)) {
         const map: Record<string, string> = {};
         for (const [unitId, assetId] of Object.entries(table)) {
+            const row = rowByUnit.get(unitId);
             const url = await resolveAssetUrlCached({
                 assetId,
                 assetType: "audio",
-                blockId: `voice:${locale}:${unitId}`,
+                blockId: row ?? `voice:${locale}:${unitId}`,
                 resolveAssetUrl: input.resolveAssetUrl,
                 assetUrlCache: input.assetUrlCache,
                 diagnostics: input.diagnostics,
+                owner: say("story.compile.owner.voice", { language: languageName(locale) }),
+                ...(row ? {} : { silent: true }),
             });
             if (url) {
                 map[unitId] = url;
@@ -410,6 +429,25 @@ function voiceConfigForLine(ctx: SceneCompileContext, textId: string): { voiceId
 }
 
 /** Which character speaks each voice unit, so a take can be routed to that character's bus. */
+/**
+ * The row that owns each localizable text of a document - a voice unit is keyed by its line's text id,
+ * and a failed take is reported under the line that speaks it.
+ */
+function rowByTextId(document: StoryDocument): Map<string, string> {
+    const rows = new Map<string, string>();
+    for (const scene of Object.values(document.scenes ?? {})) {
+        for (const block of Object.values(scene.blocks ?? {})) {
+            const payload = block.payload as { text?: { textId?: unknown }; prompt?: { textId?: unknown } } | undefined;
+            for (const textId of [payload?.text?.textId, payload?.prompt?.textId]) {
+                if (typeof textId === "string" && textId && !rows.has(textId)) {
+                    rows.set(textId, block.id);
+                }
+            }
+        }
+    }
+    return rows;
+}
+
 function speakerByTextId(document: StoryDocument): Map<string, string> {
     const speakers = new Map<string, string>();
     for (const scene of Object.values(document.scenes ?? {})) {
@@ -729,6 +767,8 @@ export type StagePreviewCompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: CompileInput["resolveAssetUrl"];
+    /** See {@link CompileInput.assetNames}. */
+    assetNames?: CompileInput["assetNames"];
     /**
      * Optional here for the same reason it is optional on {@link CompileInput}, and usually absent.
      *
@@ -882,7 +922,7 @@ type SceneCompileContext = {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     /** Absent when the host compiles for something other than playback; see {@link CompileInput}. */
     resolveWeatherClip: CompileInput["resolveWeatherClip"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
@@ -978,6 +1018,16 @@ type CompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * The project's `assetId -> name` table (a Dev Mode bundle's `storyLibrary.assetNames`), for the
+     * sentence a reference that did not resolve becomes.
+     *
+     * It is what tells "no longer in this project" from "could not be read", and what lets the second
+     * name the asset - the same classification a widget's missing picture gets (`assetResolution`).
+     * Absent (a packaged game ships without the table) every well-formed id that fails reads as no
+     * longer in the project, which is the honest reading without it.
+     */
+    assetNames?: Readonly<Record<string, string>>;
     /**
      * The clip a weather seed describes, as a URL this host's engine can fetch.
      *
@@ -1139,7 +1189,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             diagnostics,
             "warning",
             undefined,
-            "This engine names elements by position, so saves will not survive edits to the script.",
+            say("story.compile.positionalElementNames"),
         );
     }
     const actionIdBindings: NlrActionIdBinding[] = [];
@@ -1151,7 +1201,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const avatarBoundCharacterIds = new Set<string>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
-    const assetUrlCache = new Map<string, string | null>();
+    const assetUrlCache = new AssetUrlCache(input.assetNames);
     /**
      * How many actions a row has already produced.
      *
@@ -1169,7 +1219,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     };
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
     const voiceUrlsByLocale = input.voice
-        ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics })
+        ? await buildVoiceMapsByLocale({ voice: input.voice, resolveAssetUrl, assetUrlCache, diagnostics, document: input.document })
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     // Built here rather than beside the variable tables further down: a scene's own background and
@@ -1428,7 +1478,7 @@ async function buildLaunchEntryScene(params: {
     persistentVariables: PersistentVariableRuntimeTable;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     localization?: SceneLocalizationResolver;
     voicedUnitIds?: ReadonlySet<string>;
     nextActionIndex: (blockId: string) => number;
@@ -1447,8 +1497,9 @@ async function buildLaunchEntryScene(params: {
             assetType: "image",
             blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
             resolveAssetUrl,
-                assetUrlCache,
+            assetUrlCache,
             diagnostics,
+            owner: say("story.compile.owner.sceneBackground", { scene: sceneDisplayName(scene) }),
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({
@@ -1694,7 +1745,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const elementIdBindings: string[] = [];
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
-    const assetUrlCache = new Map<string, string | null>();
+    const assetUrlCache = new AssetUrlCache(input.assetNames);
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
     /**
      * How many actions a row has already produced.
@@ -1733,8 +1784,9 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
             assetType: "image",
             blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
             resolveAssetUrl,
-                assetUrlCache,
+            assetUrlCache,
             diagnostics,
+            owner: say("story.compile.owner.sceneBackground", { scene: sceneDisplayName(scene) }),
         })
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
@@ -2067,7 +2119,7 @@ async function createNlrScenes(input: {
     /** For the sets a scene's own two asset fields may name. Absent in a project with no languages. */
     localization?: SceneLocalizationResolver;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Where the ids stamped on each scene's own elements are recorded. */
     elementIdBindings: string[];
@@ -2199,21 +2251,29 @@ async function createNlrScenes(input: {
     // (`DevTools.getNamespaceName`), so a collision is a real data hazard, not cosmetic.
     // Document order decides WHICH of the two colliding scenes gets blamed - the later one, as with
     // duplicate labels. Reading the record would hand that verdict to whichever id sorts lower.
-    const namesSeen = new Set<string>();
+    // The first scene with each runtime name, so a collision can name both scenes. The runtime name
+    // is not shown anywhere an author looks, and a scene keeps it through a rename, so the two display
+    // names are the only way to say which scenes are meant.
+    const namesSeen = new Map<string, StoryScene>();
     // The one image a scene's first painted frame cannot do without, per scene. Collected here
     // because this is where it is resolved, and needed by the warm order, which is built later.
     const initialBackgroundUrls: Record<string, string> = {};
     for (const scene of listScenesInDocumentOrder(input.document)) {
         const runtimeName = scene.runtimeName || scene.name || scene.id;
-        if (namesSeen.has(runtimeName)) {
+        const first = namesSeen.get(runtimeName);
+        if (first) {
             pushDiagnostic(
                 input.diagnostics,
                 "error",
                 undefined,
-                `Two scenes share the name "${runtimeName}"; their scene-local variables would collide. Rename one.`,
+                say("story.compile.flow.sharedSceneVariables", {
+                    first: sceneDisplayName(first),
+                    second: sceneDisplayName(scene),
+                }),
             );
+        } else {
+            namesSeen.set(runtimeName, scene);
         }
-        namesSeen.add(runtimeName);
         const background = await resolveSceneInitialBackground({
             scene,
             resolveAssetUrl: input.resolveAssetUrl,
@@ -2275,7 +2335,7 @@ async function createNlrScenes(input: {
 async function resolveSceneInitialBackground(input: {
     scene: StoryScene;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
     localization?: SceneLocalizationResolver;
@@ -2297,6 +2357,7 @@ async function resolveSceneInitialBackground(input: {
         resolveAssetUrl: input.resolveAssetUrl,
         assetUrlCache: input.assetUrlCache,
         diagnostics: input.diagnostics,
+        owner: say("story.compile.owner.sceneBackground", { scene: sceneDisplayName(input.scene) }),
     });
 }
 
@@ -2317,7 +2378,7 @@ async function resolveSceneBackgroundMusic(input: {
     audioClips?: Record<string, AudioClipRegion>;
     audioTracks: readonly ProjectAudioTrack[];
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
     /** Present once the story has been assembled; a scene naming a set needs it to pick a member. */
     localization?: SceneLocalizationResolver;
@@ -2341,6 +2402,7 @@ async function resolveSceneBackgroundMusic(input: {
         resolveAssetUrl: input.resolveAssetUrl,
         assetUrlCache: input.assetUrlCache,
         diagnostics: input.diagnostics,
+        owner: say("story.compile.owner.sceneMusic", { scene: sceneDisplayName(input.scene) }),
     });
     if (!url) {
         return null;
@@ -2604,7 +2666,7 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
         inject: (blockId: string, injection) => {
             if (!ctx.scene.blocks[blockId]) {
                 // Silently ignoring it would make a pass's own bug look like the feature not working.
-                diagnostic(ctx, "warning", undefined, `Compile pass injected into a row that is not in this scene: ${blockId}`);
+                diagnostic(ctx, "warning", undefined, say("story.compile.flow.pluginInjectionOutsideScene"));
                 return;
             }
             const entry = injections.get(blockId) ?? { before: [], after: [] };
@@ -2662,7 +2724,7 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
 async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
     const block = ctx.scene.blocks[blockId];
     if (!block) {
-        diagnostic(ctx, "warning", undefined, `Missing block: ${blockId}`);
+        diagnostic(ctx, "warning", undefined, say("story.compile.flow.missingRow"));
         return [];
     }
 
@@ -2678,7 +2740,7 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             return compileChoice(ctx, block);
         }
         if (block.payload.action === "choiceOption") {
-            diagnostic(ctx, "warning", block.id, "Choice option is outside of a choice container.");
+            diagnostic(ctx, "warning", block.id, say("story.compile.flow.optionOutsideMenu"));
             return compileBlockList(ctx, block.childrenIds);
         }
         const own = await compileNodeAction(ctx, block);
@@ -2698,7 +2760,7 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             return compileCondition(ctx, block);
         }
         if (block.payload.control === "conditionBranch") {
-            diagnostic(ctx, "warning", block.id, "Condition branch is outside of a condition container.");
+            diagnostic(ctx, "warning", block.id, say("story.compile.flow.branchOutsideCondition"));
             return compileBlockList(ctx, block.childrenIds);
         }
         if (block.payload.control === "label" || block.payload.control === "goto") {
@@ -2736,7 +2798,9 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
         }
         const target = ctx.allScenes[block.payload.targetSceneId];
         if (!target) {
-            diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
+            diagnostic(ctx, "error", block.id, say(block.payload.targetSceneId
+                ? "story.compile.flow.jumpTargetMissing"
+                : "story.compile.flow.jumpTargetEmpty"));
             return [];
         }
         const transition = await createTransition(block.payload.transition, ctx, block.id);
@@ -2788,7 +2852,7 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
 async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block: StoryBlock): Promise<NlrStatement[]> {
     if (block.kind === "jump") {
         // Jumping would leave the previewed scene; hold at the pre-jump state instead.
-        diagnostic(ctx, "warning", block.id, "Preview holds before the jump instead of leaving the scene.");
+        diagnostic(ctx, "warning", block.id, say("story.compile.flow.previewHoldsAtJump"));
         return [];
     }
     if (block.kind === "nodeAction") {
@@ -2817,7 +2881,7 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
         if (block.payload.control === "break") {
             // The preview compiles this row on its own, without the loop it belongs to. Emitting
             // `breakLoop()` there is an engine error at play time, so the preview holds instead.
-            diagnostic(ctx, "warning", block.id, "Preview holds at the break; it needs its loop to do anything.");
+            diagnostic(ctx, "warning", block.id, say("story.compile.flow.previewHoldsAtBreak"));
             return [];
         }
         if (block.payload.control === "cut") {
@@ -3059,18 +3123,19 @@ async function compileEventRun(
 ): Promise<TextEvent | null> {
     let sound: Sound | undefined;
     if (event.sound?.assetId) {
-        const url = await resolveAsset(ctx, event.sound.assetId, "audio", blockId);
+        // A sound that does not resolve is reported by the resolver, as the sound inside this line.
+        const url = await resolveAsset(ctx, event.sound.assetId, "audio", blockId, {
+            owner: say("story.compile.owner.inlineSound"),
+        });
         if (url) {
             sound = Sound.sound(url);
-        } else {
-            diagnostic(ctx, "warning", blockId, "Inline event: sound asset not found; sound skipped.");
         }
     }
 
     if (event.expression) {
         const { characterId, pose, tags } = event.expression;
         if (!characterId) {
-            diagnostic(ctx, "warning", blockId, "Inline event: expression has no character; expression skipped.");
+            diagnostic(ctx, "warning", blockId, say("story.compile.character.inlineNoCharacter"));
         } else {
             // A layered character switches by tag, which `TextEventAppearance` accepts alongside a
             // src — and the tags stay partial here for the same reason a `/face` row's do.
@@ -3093,14 +3158,22 @@ async function compileEventRun(
                 if (image && Array.isArray(src) && !acceptsAppearanceTags(image)) {
                     // Same mismatch a `/face` row can hit, and the engine's answer is the same throw -
                     // here at reveal time rather than during construction. See {@link acceptsAppearanceTags}.
-                    diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is on stage as a single image, so its appearance tags cannot change; expression skipped.`);
+                    diagnostic(ctx, "warning", blockId, say("story.compile.character.inlineSingleImage", {
+                        character: characterNameById(ctx, characterId),
+                    }));
                 } else if (image) {
                     return TextEvent.expression(image, src, sound ? { sound } : undefined);
                 } else {
-                    diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
+                    diagnostic(ctx, "warning", blockId, say("story.compile.character.inlineNotOnStage", {
+                        character: characterNameById(ctx, characterId),
+                    }));
                 }
             } else {
-                diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
+                // An asset that did not come has been reported by the resolver already, naming the pose.
+                const miss = characterImageMiss(ctx, characterId, pose);
+                if (miss) {
+                    diagnostic(ctx, "warning", blockId, miss);
+                }
             }
         }
     }
@@ -3159,7 +3232,7 @@ function buildInterpolationWord(
 ): unknown | null {
     if (interp.kind === "blueprint") {
         if (!ctx.blueprintDocument) {
-            diagnostic(ctx, "warning", blockId, "Blueprint text interpolation needs the project blueprint document; interpolation skipped.");
+            diagnostic(ctx, "warning", blockId, say("story.compile.blueprint.textNeedsBlueprints"));
             return null;
         }
         // Inline blueprints are restricted to synchronous nodes, so the "On Call" Return Value can be
@@ -3177,7 +3250,7 @@ function buildInterpolationWord(
     if (interp.kind === "expression") {
         const { expression } = interp;
         if (!isStoryExpressionEvaluable(expression.ast)) {
-            diagnostic(ctx, "warning", blockId, `Inline expression \`${expression.source}\` did not resolve; interpolation skipped.`);
+            diagnostic(ctx, "warning", blockId, say("story.compile.expression.inTextUnresolved", { expression: expression.source }));
             return null;
         }
         const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
@@ -3193,7 +3266,7 @@ function buildInterpolationWord(
     if (target.scope === "scene") {
         const def = ctx.sceneVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Scene variable not found; interpolation skipped.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.sceneMissingInText"));
             return null;
         }
         return applyInterpolationWordMarks(ctx.nlrScene.local.toWord(def.storageKey as any), marks);
@@ -3201,7 +3274,7 @@ function buildInterpolationWord(
     if (target.scope === "saved") {
         const def = ctx.savedVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Saved variable not found; interpolation skipped.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.savedMissingInText"));
             return null;
         }
         return applyInterpolationWordMarks(ctx.savedPersistent.toWord(def.storageKey as any), marks);
@@ -3209,12 +3282,12 @@ function buildInterpolationWord(
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously, which
     // answers the declared default while nothing has stored a value.
     if (!ctx.persistentKeys.has(target.variableId)) {
-        diagnostic(ctx, "error", blockId, "Persistent variable not found; interpolation skipped.");
+        diagnostic(ctx, "error", blockId, say("story.compile.variable.persistentMissingInText"));
         return null;
     }
     const persistence = ctx.persistence;
     if (!persistence) {
-        diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.variable.persistenceUnavailableInText"));
         return null;
     }
     const storageKey = target.variableId;
@@ -3239,7 +3312,11 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             ? await resolveAsset(ctx, payload.assetId, "image", block.id)
             : payload.color;
         if (!src) {
-            diagnostic(ctx, "warning", block.id, "Background has no image or color.");
+            // An image that did not resolve has been reported by the resolver; this is the row that
+            // names neither an image nor a color.
+            if (!payload.assetId) {
+                diagnostic(ctx, "warning", block.id, say("story.compile.media.backgroundEmpty"));
+            }
             return [];
         }
         return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, await createTransition(payload.transition, ctx, block.id) as any), block)];
@@ -3260,7 +3337,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
 
     if (payload.action === "blueprint") {
         if (!ctx.blueprintDocument) {
-            diagnostic(ctx, "warning", block.id, "Story Action Blueprint needs the project blueprint document; the action was skipped.");
+            diagnostic(ctx, "warning", block.id, say("story.compile.blueprint.actionNeedsBlueprints"));
             return [];
         }
         const script = compileStoryActionBlueprintToScript(
@@ -3292,8 +3369,8 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     if (payload.action === "displayable") {
         const target = resolveDisplayableActionTarget(ctx, payload.target);
         if (!target) {
-            const label = resolveDisplayableTargetRef(ctx.scene, payload.target).label || "(empty)";
-            diagnostic(ctx, "error", block.id, `Displayable target not found: ${label}`);
+            const label = objectLabel(resolveDisplayableTargetRef(ctx.scene, payload.target).label);
+            diagnostic(ctx, "error", block.id, say("story.compile.notOnStage.target", { name: label }));
             return [];
         }
         if (payload.operation === "bringToFront") {
@@ -3402,7 +3479,7 @@ async function compileCameraAction(
         // Every authoring path writes a ref, even an empty one, so a row without one states nothing
         // this Studio can read - and a camera row that compiles to no statement is invisible on
         // stage: the scene plays straight past it and the shot the author asked for never happens.
-        diagnostic(ctx, "warning", block.id, "Camera row is missing its transform.");
+        diagnostic(ctx, "warning", block.id, say("story.compile.camera.noTransform"));
         return [];
     }
     if (transform.mode === "animation") {
@@ -3435,7 +3512,7 @@ function cameraLensGesture(
 ): Transform | null {
     const steps = resolveStoryCameraLensSteps(lens);
     if (!steps) {
-        diagnostic(ctx, "warning", blockId, `Camera lens "${lens.preset}" is not a known effect.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.camera.unknownLens", { preset: lens.preset }));
         return null;
     }
     const sequences = steps.map(step => ({
@@ -3491,8 +3568,12 @@ async function compileCharacterStageAction(
     // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
     // authored against the wrong character rather than being a no-op worth swallowing.
     if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
-        const channel = payload.operation === "setMotion" ? "motion" : payload.operation === "setSkin" ? "skin" : "parameters";
-        diagnostic(ctx, "warning", block.id, `${characterDiagnosticName(ctx, payload)} is not drawn by a runtime, so it has no ${channel} to set.`);
+        const key = payload.operation === "setMotion"
+            ? "story.compile.character.noRuntimeMotion"
+            : payload.operation === "setSkin"
+                ? "story.compile.character.noRuntimeSkin"
+                : "story.compile.character.noRuntimeParams";
+        diagnostic(ctx, "warning", block.id, say(key, { character: characterDiagnosticName(ctx, payload) }));
         return statements;
     }
 
@@ -3545,7 +3626,9 @@ async function compileCharacterStageAction(
         // character on stage as a flat image (an `enter` with its own asset override, or an `/image`
         // row sharing the stage name), so the diagnostic names the row that cannot act.
         if (!acceptsAppearanceTags(image)) {
-            diagnostic(ctx, "warning", block.id, `${characterDiagnosticName(ctx, payload)} is on stage as a single image, so its appearance tags cannot change here.`);
+            diagnostic(ctx, "warning", block.id, say("story.compile.character.singleImage", {
+                character: characterDiagnosticName(ctx, payload),
+            }));
             return statements;
         }
         await bindCharacterPortrait(ctx, payload.characterId, image);
@@ -3560,7 +3643,9 @@ async function compileCharacterStageAction(
             return statements;
         }
         if (tags.length === 0) {
-            diagnostic(ctx, "warning", block.id, `Expression for ${characterDiagnosticName(ctx, payload)} selects no tag; nothing changes.`);
+            diagnostic(ctx, "warning", block.id, say("story.compile.character.noTagSelected", {
+                character: characterDiagnosticName(ctx, payload),
+            }));
             return statements;
         }
         const chain = image.char(tags as never, await createTransition(payload.transition, ctx, block.id) as any);
@@ -3572,7 +3657,12 @@ async function compileCharacterStageAction(
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
         : await resolveCharacterImageUrl(ctx, payload.characterId, payload.pose, block.id);
     if (!src) {
-        diagnostic(ctx, "warning", block.id, `Character image source not found for ${characterDiagnosticName(ctx, payload)}.`);
+        // An asset that did not come - the row's own override, or the pose's - has been reported by
+        // the resolver on this row already. What is left to say is why there was nothing to ask for.
+        const miss = payload.assetId ? null : characterImageMiss(ctx, payload.characterId, payload.pose);
+        if (miss) {
+            diagnostic(ctx, "warning", block.id, miss);
+        }
         return statements;
     }
 
@@ -3638,7 +3728,7 @@ async function compileCharacterPuppetAction(
     const entranceDefaults = characterEntranceDefaults(ctx, payload.characterId);
     const preposed = stagedCharacterElement(ctx, name) instanceof Image;
     const puppet = declaresStageObject(payload) || preposed
-        ? await getPuppetElement(ctx, name, appearance, block.id, entranceDefaults)
+        ? await getPuppetElement(ctx, name, characterDiagnosticName(ctx, payload), appearance, block.id, entranceDefaults)
         : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
         return [];
@@ -3693,6 +3783,8 @@ async function compileCharacterPuppetAction(
 async function getPuppetElement(
     ctx: SceneCompileContext,
     objectName: string,
+    /** What the author calls the character, for the sentences below - `objectName` can be its id. */
+    characterName: string,
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
     blockId: string,
     entranceDefaults: StoryTransformProps | undefined,
@@ -3703,19 +3795,21 @@ async function getPuppetElement(
         return existing;
     }
     if (!appearance.assetId) {
-        diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" has no model asset.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.character.puppetNoModel", { character: characterName }));
         return null;
     }
     if (!appearance.backend) {
-        diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" names no runtime; nothing will draw it.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.character.puppetNoRuntime", { character: characterName }));
         return null;
     }
     // The bundle's entry file. Studio resolves the asset and stops there: which siblings a model
     // pulls in is knowable only after parsing this one, and the engine does that arithmetic itself
     // (`PuppetMountContext.resolveSibling`) against exactly this URL.
-    const bundleUrl = await resolveAsset(ctx, appearance.assetId, "model", blockId);
+    // A model that does not resolve is reported by the resolver, as this character's model.
+    const bundleUrl = await resolveAsset(ctx, appearance.assetId, "model", blockId, {
+        owner: say("story.compile.owner.model", { character: characterName }),
+    });
     if (!bundleUrl) {
-        diagnostic(ctx, "warning", blockId, `Puppet model not found for ${objectName}.`);
         return null;
     }
     const src = appearance.entry ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
@@ -3794,7 +3888,9 @@ async function bindPuppetAvatar(ctx: SceneCompileContext, characterId: string | 
         return;
     }
     ctx.avatarBoundCharacterIds.add(summary.id);
-    const url = await resolveAsset(ctx, assetId, "image", `avatar:${summary.id}`);
+    const url = await resolveAsset(ctx, assetId, "image", `avatar:${summary.id}`, {
+        owner: say("story.compile.owner.avatar", { character: characterNameById(ctx, summary.id) }),
+    });
     if (url) {
         ctx.avatarAssetIdByUrl.set(url, assetId);
         getCharacter(ctx, summary.id).setAvatar(url);
@@ -4018,14 +4114,14 @@ function reportTrackConflict(
     if (!existing || existing === requested) {
         return;
     }
-    const nameOf = (id: string): string => ctx.audioTracks.find(track => track.id === id)?.name ?? id;
-    diagnostic(
-        ctx,
-        "warning",
-        blockId,
-        `"${name}" is already playing on the "${nameOf(existing)}" track, so this row's "${nameOf(requested)}" `
-        + "is ignored. Use a different sound name, or set the track on the row that starts it.",
-    );
+    // A track id is not a name, and a track removed since the row was written has no name left.
+    const nameOf = (id: string): string => authoredNameOrNull(ctx.audioTracks.find(track => track.id === id)?.name)
+        ?? say("story.compile.media.removedTrack");
+    diagnostic(ctx, "warning", blockId, say("story.compile.media.trackConflict", {
+        name: objectLabel(name),
+        existing: nameOf(existing),
+        requested: nameOf(requested),
+    }));
 }
 
 async function compileImageAction(
@@ -4056,8 +4152,9 @@ async function compileImageAction(
             ? await createTransition(payload.transition, ctx, block.id)
             : undefined;
         statements.push(recordStatement(ctx, image.char(src as any, transition as any), block));
-    } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
-        diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
+    } else if ((payload.operation === "create" || payload.operation === "setSource") && !src && !payload.assetId) {
+        // An asset that did not resolve has been reported by the resolver; this is a row naming neither.
+        diagnostic(ctx, "warning", block.id, say("story.compile.media.imageNoSource", { name: objectLabel(payload.objectName) }));
     }
 
     // A create row DECLARES: it names the object, gives it a source and puts it where it starts, and
@@ -4250,12 +4347,12 @@ async function getVfx(
         // two answers to one question, and it is reported rather than resolved: silently keeping
         // the first would leave a row whose clip never plays and nothing to say why.
         if (payload.operation === "create" && source && ctx.vfxAssetIds.get(name) !== source) {
-            diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" already plays a different clip; this row reuses the first one.`);
+            diagnostic(ctx, "warning", blockId, say("story.compile.media.ambienceClipConflict", { name: objectLabel(name) }));
         }
         return existing;
     }
     if (!source) {
-        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" has no clip.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.media.ambienceNoClip", { name: objectLabel(name) }));
         return null;
     }
     const url = payload.seed
@@ -4328,12 +4425,12 @@ async function resolveWeatherClip(
         // The host asked for a graph rather than something playable (save anchors, the content
         // audit). Said out loud so a compile that quietly lost an overlay is never mistaken for one
         // that never had it.
-        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" needs its weather produced, which this compile cannot do.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.media.weatherUnavailable", { name: objectLabel(name) }));
         return null;
     }
     const url = await ctx.resolveWeatherClip(ref);
     if (!url) {
-        diagnostic(ctx, "warning", blockId, `Weather for ambience effect "${name}" could not be produced.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.media.weatherFailed", { name: objectLabel(name) }));
         return null;
     }
     return url;
@@ -4349,7 +4446,7 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
         .filter((child): child is Extract<StoryBlock, { kind: "nodeAction" }> => child?.kind === "nodeAction" && child.payload.action === "choiceOption" && !child.disabled);
 
     if (choiceBlocks.length === 0) {
-        diagnostic(ctx, "warning", block.id, "Choice has no options.");
+        diagnostic(ctx, "warning", block.id, say("story.compile.flow.menuEmpty"));
         return [];
     }
 
@@ -4391,7 +4488,7 @@ async function compileCondition(ctx: SceneCompileContext, block: Extract<StoryBl
 
     const firstBranch = branches.find(branch => branch.payload.control === "conditionBranch" && branch.payload.branch !== "else");
     if (!firstBranch || firstBranch.payload.control !== "conditionBranch") {
-        diagnostic(ctx, "warning", block.id, "Condition has no if branch.");
+        diagnostic(ctx, "warning", block.id, say("story.compile.flow.conditionEmpty"));
         return [];
     }
 
@@ -4437,12 +4534,12 @@ function compileLabelControl(
     if (payload.control === "label") {
         const name = payload.name.trim();
         if (!name) {
-            diagnostic(ctx, "error", block.id, "Label has no name.");
+            diagnostic(ctx, "error", block.id, say("story.compile.flow.labelUnnamed"));
             return [];
         }
         // The first declaration is the one that stands, so only the later rows are faulted.
         if (duplicateSceneLabels(ctx.scene).some(duplicate => duplicate.blockId === block.id)) {
-            diagnostic(ctx, "error", block.id, `Label "${name}" is declared more than once in this scene.`);
+            diagnostic(ctx, "error", block.id, say("story.compile.flow.labelDuplicate", { name }));
             return [];
         }
         return [recordStatement(ctx, Control.label(name), block)];
@@ -4450,13 +4547,13 @@ function compileLabelControl(
 
     const target = payload.targetLabel.trim();
     if (!target) {
-        diagnostic(ctx, "error", block.id, "Go to has no target label.");
+        diagnostic(ctx, "error", block.id, say("story.compile.flow.gotoEmpty"));
         return [];
     }
     // Exactly, case included - the engine matches a jump against a plain `Map` of declared names, so
     // a `/goto start` left behind by a label renamed `Start` IS a broken jump and has to be said so.
     if (!sceneLabelNames(ctx.scene).includes(target)) {
-        diagnostic(ctx, "error", block.id, `Go to target label not found in this scene: ${target}`);
+        diagnostic(ctx, "error", block.id, say("story.compile.flow.gotoMissing", { name: target }));
         return [];
     }
     return [recordStatement(ctx, Control.jump(target), block)];
@@ -4550,7 +4647,7 @@ function compileBreak(ctx: SceneCompileContext, block: Extract<StoryBlock, { kin
         parentId = parent.parentId;
     }
     if (!insideLoop) {
-        diagnostic(ctx, "error", block.id, "Break is not inside a repeat group; there is no loop for it to leave.");
+        diagnostic(ctx, "error", block.id, say("story.compile.flow.breakOutsideLoop"));
         return [];
     }
     return [recordStatement(ctx, Control.breakLoop(), block)];
@@ -4677,7 +4774,7 @@ async function compileControlGroup(ctx: SceneCompileContext, block: Extract<Stor
         // become true is a loop that never ends. Refusing to emit the group is the only answer that
         // is not "spin until the ceiling catches you".
         if (!until || until === falseCondition) {
-            diagnostic(ctx, "error", block.id, "Repeat-until loop has no usable condition; the group was skipped.");
+            diagnostic(ctx, "error", block.id, say("story.compile.flow.repeatUntilUnusable"));
             return [];
         }
         // The `Lambda` arm of `NlrCondition` is an empty class - structurally `{}`, so it neither
@@ -4912,7 +5009,7 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return existing;
     }
     if (!assetId) {
-        diagnostic(ctx, "warning", blockId, `Video "${name}" has no asset.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.media.videoNoAsset", { name: objectLabel(name) }));
         return null;
     }
     const url = await resolveAsset(ctx, assetId, "video", blockId);
@@ -4954,7 +5051,7 @@ async function getSound(
     if (!assetId) {
         // The music channel's own "nothing to address yet" reading lives on the control path now,
         // where the rows that ask for it are; a `/sound` row with no clip is just a row with no clip.
-        diagnostic(ctx, "warning", blockId, `Sound "${name}" has no asset.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.media.soundNoAsset", { name: objectLabel(name) }));
         return null;
     }
     const url = await resolveAsset(ctx, assetId, "audio", blockId);
@@ -5086,17 +5183,33 @@ function actionableActionTargetName(
  * to create it names a step they will not find. One shape with one varying clause, so the two
  * remedies cannot grow into two messages.
  */
+/**
+ * {@link reportMissingStageObject} for a character row, which has one more way to find nothing: the
+ * character itself is gone from the project, and "not on stage" would send the author looking for an
+ * entrance that could not help.
+ */
+function reportMissingCharacter(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+): void {
+    if (payload.characterId && !ctx.characterSummaries.has(payload.characterId)) {
+        diagnostic(ctx, "error", blockId, say("story.compile.character.missing"));
+        return;
+    }
+    reportMissingStageObject(ctx, blockId, "character", characterDiagnosticName(ctx, payload));
+}
+
 function reportMissingStageObject(
     ctx: SceneCompileContext,
     blockId: string,
-    noun: string,
+    kind: "image" | "text" | "layer" | "video" | "ambience" | "character",
     label: string,
-    remedy: "create" | "enter" = "create",
 ): void {
-    const clause = remedy === "enter"
-        ? "an earlier row has to bring it on stage"
-        : "an earlier row has to create it";
-    diagnostic(ctx, "error", blockId, `${noun} "${label}" is not on stage; ${clause}.`);
+    // A character's name comes from `characterDiagnosticName`, which is already author-facing; every
+    // other label is a reference's, and can be the stage key.
+    const name = kind === "character" ? label : objectLabel(label);
+    diagnostic(ctx, "error", blockId, say(`story.compile.notOnStage.${kind}` as const, { name }));
 }
 
 /**
@@ -5119,7 +5232,7 @@ function findStageImage(
         }
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Image", label);
+    reportMissingStageObject(ctx, blockId, "image", label);
     return null;
 }
 
@@ -5153,7 +5266,7 @@ function findStageCharacterImage(
     if (existing instanceof Image) {
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Character", characterDiagnosticName(ctx, payload), "enter");
+    reportMissingCharacter(ctx, blockId, payload);
     return null;
 }
 
@@ -5168,7 +5281,7 @@ function findStageCharacterPuppet(
     if (existing instanceof Puppet) {
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Character", characterDiagnosticName(ctx, payload), "enter");
+    reportMissingCharacter(ctx, blockId, payload);
     return null;
 }
 
@@ -5187,7 +5300,7 @@ function findStageText(
         }
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Text", label);
+    reportMissingStageObject(ctx, blockId, "text", label);
     return null;
 }
 
@@ -5213,7 +5326,7 @@ function findStageLayer(
     if (existing) {
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Layer", resolved.name || name);
+    reportMissingStageObject(ctx, blockId, "layer", resolved.name || name);
     return null;
 }
 
@@ -5228,7 +5341,7 @@ function findStageVideo(
     if (existing) {
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Video", label);
+    reportMissingStageObject(ctx, blockId, "video", label);
     return null;
 }
 
@@ -5243,7 +5356,7 @@ function findStageVfx(
     if (existing) {
         return existing;
     }
-    reportMissingStageObject(ctx, blockId, "Ambience effect", label);
+    reportMissingStageObject(ctx, blockId, "ambience", label);
     return null;
 }
 
@@ -5270,10 +5383,10 @@ function findPlayingSound(
         return existing;
     }
     if (name === BGM_SOUND_NAME) {
-        diagnostic(ctx, "warning", blockId, "No background music is set before this row; /bgm has to run first.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.media.musicNotPlaying"));
         return null;
     }
-    diagnostic(ctx, "error", blockId, `Sound "${label}" is not playing; an earlier /sound row has to start it.`);
+    diagnostic(ctx, "error", blockId, say("story.compile.media.soundNotPlaying", { name: objectLabel(label) }));
     return null;
 }
 
@@ -5353,19 +5466,19 @@ function buildLoopTransform(
         return createAnimationTransform(ref, ctx, blockId, "none");
     }
     if (ref.clipReveal) {
-        diagnostic(ctx, "warning", blockId, "A looping transform cannot carry a clip reveal; the reveal is ignored.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.transform.loopNoReveal"));
     }
     const to = foldStoryTransformLook(ref.to, resolveStoryCameraLook, preset =>
-        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+        diagnostic(ctx, "warning", blockId, say("story.compile.camera.unknownLook", { preset })));
     const { cut, tween } = splitStoryTransformChange(ref.from, to);
     if (!isEmptyStoryTransformProps(cut)) {
         // Named, not swallowed: these are the channels that cannot be interpolated (a mask, a blend
         // mode, a raw filter chain), so inside a loop they would sit at one value for ever while the
         // author watched for a change that could never come.
-        diagnostic(ctx, "warning", blockId, "A looping transform can only animate channels that interpolate; the rest of this row will not change.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.transform.loopNotInterpolable"));
     }
     if (isEmptyStoryTransformProps(tween)) {
-        diagnostic(ctx, "warning", blockId, "A looping transform states nothing to animate.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.transform.loopEmpty"));
         return null;
     }
     // No repeat config on the Transform itself: `Displayable.loop` forces `repeat: Infinity` and reads
@@ -5409,7 +5522,7 @@ function supportsLoop(target: any, ctx: SceneCompileContext, blockId: string): b
     if (typeof target?.loop === "function" && typeof target?.stopLoop === "function") {
         return true;
     }
-    diagnostic(ctx, "error", blockId, "This engine cannot play looping transforms. Update narraleaf-react to 0.32.0 or newer.");
+    diagnostic(ctx, "error", blockId, say("story.compile.transform.loopUnsupported"));
     return false;
 }
 
@@ -5437,7 +5550,7 @@ async function emitTransformProps(
     }
     for (const conflict of storyTransformPropsConflicts(ref.to)) {
         if (conflict === "filterBoth") {
-            diagnostic(ctx, "warning", blockId, "A transform names more than one writer of the CSS filter channel; only one can reach the stage.");
+            diagnostic(ctx, "warning", blockId, say("story.compile.transform.filterConflict"));
         }
     }
     const timing = timingOf(ref);
@@ -5453,7 +5566,7 @@ async function emitTransformProps(
         bag = { ...bag, lens: undefined, ...(ref.to.lens === null ? neutralStoryCameraLensProps() : {}) };
     }
     const to = foldStoryTransformLook(bag, resolveStoryCameraLook, preset =>
-        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+        diagnostic(ctx, "warning", blockId, say("story.compile.camera.unknownLook", { preset })));
     const { cut, tween } = splitStoryTransformChange(ref.from, to);
     // **Getting to a grade is a separate problem from being on one, and only the library can say
     // which of its own routes is safe.** `filterRaw` is discrete to everyone else - a chain nothing
@@ -5546,7 +5659,7 @@ async function emitCutProps(
             // A mask channel with no image is not "clear the mask" - `null` says that. It is a row the
             // author opened and did not finish, and silently doing nothing would look like a mask that
             // failed to load.
-            diagnostic(ctx, "warning", blockId, "Mask effect has no image asset.");
+            diagnostic(ctx, "warning", blockId, say("story.compile.transform.maskNoImage"));
         } else {
             const src = await resolveAsset(ctx, cut.maskAssetId, "image", blockId);
             if (src) {
@@ -5619,7 +5732,9 @@ function emitClipReveal(
     const base = transformOptions(timing);
     if (reveal.kind === "wipe") {
         if (typeof chain.wipe !== "function") {
-            diagnostic(ctx, "warning", blockId, "Wipe applies to displayable targets only.");
+            diagnostic(ctx, "warning", blockId, say("story.compile.transform.revealTargetOnly", {
+                effect: translate("storyInspector.displayableOperation.wipe"),
+            }));
             return chain;
         }
         return chain.wipe({
@@ -5630,7 +5745,11 @@ function emitClipReveal(
     }
     const call = reveal.kind === "circleReveal" ? chain.circleReveal : chain.circleClose;
     if (typeof call !== "function") {
-        diagnostic(ctx, "warning", blockId, "Circle reveal applies to displayable targets only.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.transform.revealTargetOnly", {
+            effect: translate(reveal.kind === "circleClose"
+                ? "storyInspector.displayableOperation.circleClose"
+                : "storyInspector.displayableOperation.circleReveal"),
+        }));
         return chain;
     }
     return call.call(chain, {
@@ -5756,7 +5875,7 @@ function createShowTransform(transform: StoryTransformRef | undefined, ctx: Scen
     // there is no previous state to cut away from. A mask asset cannot be resolved from here (this is
     // sync, and the entrance is one statement by construction), so a bag carrying one says so.
     if (transform?.to?.maskAssetId) {
-        diagnostic(ctx, "warning", blockId, "A mask cannot be applied by an entrance; use a separate transform row.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.transform.maskOnEntrance"));
     }
     return buildTransform({
         opacity: 1,
@@ -5778,12 +5897,12 @@ function createAnimationTransform(
 ): Transform | null {
     const animationId = transform.animationId?.trim();
     if (!animationId) {
-        diagnostic(ctx, "warning", blockId, "Animation transform is missing animationId.");
+        diagnostic(ctx, "warning", blockId, say("story.preview.diagnostics.animationIdMissing"));
         return null;
     }
     const asset = ctx.animations.get(animationId);
     if (!asset) {
-        diagnostic(ctx, "error", blockId, `Story animation not found: ${animationId}`);
+        diagnostic(ctx, "error", blockId, say("story.preview.diagnostics.animationNotFound"));
         return null;
     }
 
@@ -5877,7 +5996,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
             // with no picture is a row the author has not finished: reported, and played as a cut,
             // rather than guessed at with some other engine that would look deliberate.
             if (!transition.ruleAssetId) {
-                diagnostic(ctx, "warning", blockId, "Rule transition names no rule image; the change was played as a cut.");
+                diagnostic(ctx, "warning", blockId, say("story.compile.transform.ruleNoImage"));
                 return undefined;
             }
             const rule = await resolveAsset(ctx, transition.ruleAssetId, "image", blockId);
@@ -5949,7 +6068,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
  * sees while writing.
  */
 function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, kind: string): undefined {
-    diagnostic(ctx, "error", blockId, `Transition "${kind}" is not available; the change was played as a cut. Choose a transition on this row.`);
+    diagnostic(ctx, "error", blockId, say("story.compile.transform.transitionUnavailable", { kind }));
     return undefined;
 }
 
@@ -6030,7 +6149,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     if (ref.scope === "scene") {
         const def = ctx.sceneVariables[ref.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Scene variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.sceneMissingAssignment"));
             return null;
         }
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.nlrScene.local), key: def.storageKey };
@@ -6038,7 +6157,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     if (ref.scope === "saved") {
         const def = ctx.savedVariables[ref.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Saved variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.savedMissingAssignment"));
             return null;
         }
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.savedPersistent), key: def.storageKey };
@@ -6047,11 +6166,11 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     // author must fix regardless of whether Dev Mode host persistence is up (same diagnostic
     // as a missing scene/saved variable).
     if (!ctx.persistentKeys.has(ref.variableId)) {
-        diagnostic(ctx, "error", blockId, "Persistent variable not found; the assignment was skipped.");
+        diagnostic(ctx, "error", blockId, say("story.compile.variable.persistentMissingAssignment"));
         return null;
     }
     if (!ctx.persistence) {
-        diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.variable.persistenceUnavailableAssignment"));
         return null;
     }
     return { kind: "host", key: ref.variableId };
@@ -6089,7 +6208,7 @@ function buildExpressionEnv(
     const invocations = new Map<string, CompileStoryActionScriptInput>();
     for (const call of collectStoryExpressionInvocations(expr)) {
         if (!ctx.blueprintDocument) {
-            diagnostic(ctx, "warning", blockId, `Expression calls \`${call.name}()\`, which needs the project blueprint document; the expression was skipped.`);
+            diagnostic(ctx, "warning", blockId, say("story.compile.expression.callNeedsBlueprints", { name: call.name }));
             return null;
         }
         invocations.set(
@@ -6147,7 +6266,7 @@ function setVariable(
     if (target.scope === "scene") {
         const def = ctx.sceneVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Scene variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.sceneMissingAssignment"));
             return null;
         }
         return ctx.nlrScene.local.set(def.storageKey, value as any);
@@ -6155,7 +6274,7 @@ function setVariable(
     if (target.scope === "saved") {
         const def = ctx.savedVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Saved variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.savedMissingAssignment"));
             return null;
         }
         return ctx.savedPersistent.set(def.storageKey, value as any);
@@ -6163,12 +6282,12 @@ function setVariable(
     // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
     // an undeclared persistent target faults regardless of host availability.
     if (!ctx.persistentKeys.has(target.variableId)) {
-        diagnostic(ctx, "error", blockId, "Persistent variable not found; the assignment was skipped.");
+        diagnostic(ctx, "error", blockId, say("story.compile.variable.persistentMissingAssignment"));
         return null;
     }
     const persistence = ctx.persistence;
     if (!persistence) {
-        diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
+        diagnostic(ctx, "warning", blockId, say("story.compile.variable.persistenceUnavailableAssignment"));
         return null;
     }
     const storageKey = target.variableId;
@@ -6192,7 +6311,7 @@ function setVariableFromExpression(
     blockId: string,
 ): NlrStatement | null {
     if (!isStoryExpressionEvaluable(expression.ast)) {
-        diagnostic(ctx, "warning", blockId, `Expression \`${expression.source}\` did not resolve; the assignment was skipped.`);
+        diagnostic(ctx, "warning", blockId, say("story.compile.expression.assignmentUnresolved", { expression: expression.source }));
         return null;
     }
     const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
@@ -6219,7 +6338,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     if (condition.kind === "expression") {
         const { expression } = condition;
         if (!isStoryExpressionEvaluable(expression.ast)) {
-            diagnostic(ctx, "warning", blockId, `Condition \`${expression.source}\` did not resolve; it evaluates false.`);
+            diagnostic(ctx, "warning", blockId, say("story.compile.expression.conditionUnresolved", { expression: expression.source }));
             return falseCondition;
         }
         const envFor = buildExpressionEnv(ctx, expression.ast, blockId);
@@ -6232,7 +6351,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     }
     if (condition.kind === "blueprint") {
         if (!ctx.blueprintDocument) {
-            diagnostic(ctx, "warning", blockId, "Blueprint condition needs the project blueprint document; condition evaluates false.");
+            diagnostic(ctx, "warning", blockId, say("story.compile.blueprint.conditionNeedsBlueprints"));
             return falseCondition;
         }
         // The condition blueprint's "On Call" graph is synchronous (async nodes disallowed while
@@ -6251,7 +6370,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     const target = condition.target;
     if (target.scope === "persistent") {
         if (!ctx.persistentKeys.has(target.variableId)) {
-            diagnostic(ctx, "error", blockId, "Persistent variable not found; condition evaluates false.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.persistentMissingCondition"));
             return falseCondition;
         }
         return persistentCondition(ctx, target.variableId, condition.operator, condition.value);
@@ -6261,7 +6380,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     if (target.scope === "scene") {
         const def = ctx.sceneVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Scene variable not found; condition evaluates false.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.sceneMissingCondition"));
             return falseCondition;
         }
         persistent = ctx.nlrScene.local as Persistent<any>;
@@ -6269,7 +6388,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     } else {
         const def = ctx.savedVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "error", blockId, "Saved variable not found; condition evaluates false.");
+            diagnostic(ctx, "error", blockId, say("story.compile.variable.savedMissingCondition"));
             return falseCondition;
         }
         persistent = ctx.savedPersistent as Persistent<any>;
@@ -6370,7 +6489,12 @@ async function resolveCharacterImageUrl(
     }
     const appearance = ctx.characterSummaries.get(characterId)?.appearance;
     const entry = resolvePoseEntry(appearance, pose);
-    return entry?.assetId ? resolveAsset(ctx, entry.assetId, "image", blockId, entry.assetVariants) : null;
+    return entry?.assetId
+        ? resolveAsset(ctx, entry.assetId, "image", blockId, {
+            variants: entry.assetVariants,
+            owner: poseOwner(ctx, characterId, entry),
+        })
+        : null;
 }
 
 /**
@@ -6402,7 +6526,13 @@ async function resolveCharacterLayeredSrc(
         if (layer.hidden) continue;
         if (!layer.axisId) {
             const url = layer.assetId
-                ? await resolveAsset(ctx, layer.assetId, "image", blockId, layer.assetVariants)
+                ? await resolveAsset(ctx, layer.assetId, "image", blockId, {
+                    variants: layer.assetVariants,
+                    owner: say("story.compile.owner.layer", {
+                        character: characterNameById(ctx, characterId),
+                        layer: objectLabel(layer.name),
+                    }),
+                })
                 : null;
             if (url) {
                 layers.push(url);
@@ -6415,7 +6545,14 @@ async function resolveCharacterLayeredSrc(
         for (const tag of axis.tags) {
             const assetId = layer.options?.[tag.id] ?? null;
             variants[tag.id] = assetId
-                ? await resolveAsset(ctx, assetId, "image", blockId, layer.assetVariants)
+                ? await resolveAsset(ctx, assetId, "image", blockId, {
+                    variants: layer.assetVariants,
+                    owner: say("story.compile.owner.layerTag", {
+                        character: characterNameById(ctx, characterId),
+                        layer: objectLabel(layer.name),
+                        tag: objectLabel(tag.name),
+                    }),
+                })
                 : null;
         }
         layers.push(variants);
@@ -6457,6 +6594,7 @@ async function compileCharacterAvatars(
     // them should point at the character, and `resolveSnapshotImageSource` already sets the
     // precedent of passing a non-block label here.
     const blockId = `avatar:${summary.id}`;
+    const avatarOwner = say("story.compile.owner.avatar", { character: characterNameById(ctx, summary.id) });
     const byKey = new Map<string, string>();
     const poseByUrl = new Map<string, string>();
 
@@ -6475,7 +6613,10 @@ async function compileCharacterAvatars(
     const avatarUrls = await Promise.all(avatarKeys.map(async key => {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
         const url = assetId
-            ? await resolveAsset(ctx, assetId, "image", blockId, avatarTable?.[key]?.assetVariants)
+            ? await resolveAsset(ctx, assetId, "image", blockId, {
+                variants: avatarTable?.[key]?.assetVariants,
+                owner: avatarOwner,
+            })
             : null;
         return { key, assetId, url };
     }));
@@ -6489,7 +6630,10 @@ async function compileCharacterAvatars(
     if (summary.appearance.kind === "preset") {
         for (const pose of summary.appearance.poses) {
             const url = pose.assetId
-                ? await resolveAsset(ctx, pose.assetId, "image", blockId, pose.assetVariants)
+                ? await resolveAsset(ctx, pose.assetId, "image", blockId, {
+                    variants: pose.assetVariants,
+                    owner: poseOwner(ctx, summary.id, pose),
+                })
                 : null;
             // Two poses sharing one sprite are indistinguishable at runtime - the engine reports a
             // src, not a pose. First wins; their avatars would have to picture the same thing anyway.
@@ -6501,7 +6645,10 @@ async function compileCharacterAvatars(
 
     const defaultAvatarAssetId = summary.defaultAvatarAssetId?.trim();
     const fallback = defaultAvatarAssetId
-        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId, summary.assetVariants)
+        ? await resolveAsset(ctx, defaultAvatarAssetId, "image", blockId, {
+            variants: summary.assetVariants,
+            owner: avatarOwner,
+        })
         : null;
     if (fallback && defaultAvatarAssetId) {
         ctx.avatarAssetIdByUrl.set(fallback, defaultAvatarAssetId);
@@ -6601,7 +6748,7 @@ async function bindOffstageDefaultAvatars(params: {
     avatarBoundCharacterIds: Set<string>;
     avatarAssetIdByUrl: Map<string, string>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
 }): Promise<void> {
     for (const [key, character] of params.characters) {
@@ -6620,6 +6767,9 @@ async function bindOffstageDefaultAvatars(params: {
             resolveAssetUrl: params.resolveAssetUrl,
             assetUrlCache: params.assetUrlCache,
             diagnostics: params.diagnostics,
+            owner: say("story.compile.owner.avatar", {
+                character: authoredNameOrNull(summary.name) ?? say("story.compile.unnamedCharacter"),
+            }),
         });
         if (url) {
             params.avatarAssetIdByUrl.set(url, assetId);
@@ -6684,7 +6834,7 @@ function resolveVariantReference(input: {
             diagnostics,
             "warning",
             blockId,
-            `Asset set ${assetId} was resolved without a language; the stage may show the wrong one.`,
+            say("story.compile.media.assetSetWithoutLanguage"),
         );
         return fallback;
     }
@@ -6701,8 +6851,13 @@ async function resolveAsset(
     assetId: string,
     assetType: StoryAssetKind,
     blockId: string,
-    variants?: StoryAssetVariants,
+    options?: {
+        variants?: StoryAssetVariants;
+        /** What holds the reference, for the failure sentence; see {@link resolveAssetUrlCached}. */
+        owner?: string;
+    },
 ): Promise<string | null> {
+    const variants = options?.variants;
     const url = await resolveAssetUrlCached({
         assetId: variants
             ? resolveVariantReference({
@@ -6718,6 +6873,7 @@ async function resolveAsset(
         resolveAssetUrl: ctx.resolveAssetUrl,
         assetUrlCache: ctx.assetUrlCache,
         diagnostics: ctx.diagnostics,
+        ...(options?.owner ? { owner: options.owner } : {}),
     });
     recordWarmedAsset(ctx, blockId, assetType, url);
     return url;
@@ -6849,37 +7005,97 @@ function recordWarmedVideoElement(
     }
 }
 
+/**
+ * Every answer the host's resolver gave this compile, keyed `type:assetId`, and what has been said
+ * about the ones that failed.
+ *
+ * A `Map` so the places that walk the answers (the warm order, the avatar inverse) read it as they
+ * always did. The two extra fields are compile-wide for the same reason the answers are: a character's
+ * pose is asked for by its avatar table and by every row that shows it, across every scene.
+ */
+class AssetUrlCache extends Map<string, string | null> {
+    /** `[block, type:assetId, owner]` of each failure already reported - see {@link resolveAssetUrlCached}. */
+    public readonly reported = new Set<string>();
+
+    public constructor(
+        /** The project's asset names, which is what tells "gone" from "unreadable"; see `CompileInput.assetNames`. */
+        public readonly assetNames: Readonly<Record<string, string>> | undefined,
+    ) {
+        super();
+    }
+}
+
+/**
+ * A reference that did not resolve, as the sentence an author reads.
+ *
+ * Classified the way a widget's missing picture is (`classifyAssetFailure`), so a pose and an image
+ * widget pointing at the same deleted asset are described alike - and never with the id asked for,
+ * which for a missing asset names nothing. `owner` says what holds the reference: a pose of a named
+ * character rather than "this row" wherever the compiler knows it.
+ */
+function describeStoryAssetFailure(
+    requested: string,
+    owner: string,
+    assetNames: Readonly<Record<string, string>> | undefined,
+): string {
+    const { kind, assetName } = classifyAssetFailure({ requested, stage: "resolve" }, assetNames);
+    switch (kind) {
+        case "missing":
+            return translate("story.compile.asset.missing", { owner });
+        case "notAsset":
+            return translate("story.compile.asset.notAsset", { owner });
+        case "unreadable":
+            return assetName
+                ? translate("story.compile.asset.unreadableNamed", { owner, asset: assetName })
+                : translate("story.compile.asset.unreadable", { owner });
+    }
+}
+
+/**
+ * The URL an asset reference resolves to, asked of the host once per compile.
+ *
+ * A failure is reported once for each place that needed the asset - each row, and each character's
+ * avatar table - even when the answer came out of the cache. The row is where the author reads the
+ * failure (the Issues panel puts it under that line), and a report tied to whichever row happened to
+ * ask first would leave every later row that shows the same missing pose blank with nothing under it.
+ */
 async function resolveAssetUrlCached(input: {
     assetId: string;
     assetType: StoryAssetKind;
     blockId: string;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
-    assetUrlCache: Map<string, string | null>;
+    assetUrlCache: AssetUrlCache;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** What holds the reference, as a `story.compile.owner.*` phrase. The row when absent. */
+    owner?: string;
+    /** Resolve without reporting a failure - for a reference this compile cannot place for the author. */
+    silent?: boolean;
 }): Promise<string | null> {
     const { assetId, assetType, blockId, resolveAssetUrl, assetUrlCache, diagnostics } = input;
     const cacheKey = `${assetType}:${assetId}`;
+    let url: string | null;
     if (assetUrlCache.has(cacheKey)) {
-        return assetUrlCache.get(cacheKey) ?? null;
-    }
-    try {
-        const resolved = await resolveAssetUrl(assetId, assetType);
-        const url = typeof resolved === "string" && resolved.trim() ? resolved : null;
-        assetUrlCache.set(cacheKey, url);
-        if (!url) {
-            pushDiagnostic(diagnostics, "warning", blockId, `Asset could not be resolved: ${assetId}`);
+        url = assetUrlCache.get(cacheKey) ?? null;
+    } else {
+        try {
+            const resolved = await resolveAssetUrl(assetId, assetType);
+            url = typeof resolved === "string" && resolved.trim() ? resolved : null;
+        } catch {
+            // The host's own reason ("Asset not found: <id>") is for its log; what the author is told
+            // is classified from the reference itself, below.
+            url = null;
         }
-        return url;
-    } catch (error) {
-        pushDiagnostic(
-            diagnostics,
-            "warning",
-            blockId,
-            `Asset resolver failed for ${assetId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        assetUrlCache.set(cacheKey, null);
-        return null;
+        assetUrlCache.set(cacheKey, url);
     }
+    if (!url && !input.silent) {
+        const owner = input.owner ?? translate("story.compile.owner.row");
+        const reportKey = JSON.stringify([blockId, cacheKey, owner]);
+        if (!assetUrlCache.reported.has(reportKey)) {
+            assetUrlCache.reported.add(reportKey);
+            pushDiagnostic(diagnostics, "warning", blockId, describeStoryAssetFailure(assetId, owner, assetUrlCache.assetNames));
+        }
+    }
+    return url;
 }
 
 function recordStatement(
@@ -7010,15 +7226,94 @@ function characterDiagnosticName(
     ctx: SceneCompileContext,
     payload: Extract<StoryActionPayload, { action: "character" }>,
 ): string {
-    const summaryName = payload.characterId ? ctx.characterSummaries.get(payload.characterId)?.name?.trim() : "";
+    const summaryName = payload.characterId
+        ? authoredNameOrNull(ctx.characterSummaries.get(payload.characterId)?.name)
+        : null;
     if (summaryName) {
         return summaryName;
     }
-    const explicitName = payload.objectName?.trim();
+    const explicitName = authoredNameOrNull(payload.objectName);
     if (explicitName && explicitName !== "character") {
         return explicitName;
     }
-    return "this character";
+    return translate("story.compile.unnamedCharacter");
+}
+
+/** {@link characterDiagnosticName} for a place that has only the character's id. */
+function characterNameById(ctx: SceneCompileContext, characterId: string | undefined): string {
+    const name = characterId ? authoredNameOrNull(ctx.characterSummaries.get(characterId)?.name) : null;
+    return name ?? translate("story.compile.unnamedCharacter");
+}
+
+/**
+ * A stage object's name as the author wrote it, for a sentence.
+ *
+ * The label a reference resolves to falls back to the stage KEY when the declaring row typed no name,
+ * and a key is an id for an unnamed sound (its asset) or character. So a label is checked before it is
+ * quoted, and a generated id reads as "(unnamed)".
+ */
+function objectLabel(label: string | undefined): string {
+    return authoredNameOrNull(label) ?? translate("story.compile.unnamed");
+}
+
+/** The scene's name for a sentence - never its id, which `runtimeName` falls back to. */
+function sceneDisplayName(scene: Pick<StoryScene, "name" | "runtimeName">): string {
+    return authoredNameOrNull(scene.name) ?? authoredNameOrNull(scene.runtimeName) ?? translate("story.compile.unnamed");
+}
+
+/** A catalog sentence for a diagnostic. Every message in this file is one. */
+function say(key: TranslationKey, params?: InterpolationParams): string {
+    return translate(key, params);
+}
+
+/**
+ * Why a character row has no picture to draw, for the reasons that are not an asset failing to
+ * resolve - that one is reported by the resolver itself, on the same row and naming the same pose.
+ * Null when the answer is exactly that (the pose names an asset and it did not come).
+ */
+function characterImageMiss(
+    ctx: SceneCompileContext,
+    characterId: string | undefined,
+    poseId: string | undefined,
+): string | null {
+    const summary = characterId ? ctx.characterSummaries.get(characterId) : undefined;
+    if (!summary) {
+        return say("story.compile.character.missing");
+    }
+    const character = characterNameById(ctx, characterId);
+    const appearance = summary.appearance;
+    if (appearance.kind !== "preset") {
+        return say("story.compile.character.noImage", { character });
+    }
+    if (appearance.poses.length === 0) {
+        return say("story.compile.character.noPoses", { character });
+    }
+    const pose = resolvePoseEntry(appearance, poseId);
+    if (!pose) {
+        return say("story.compile.character.poseMissing", { character });
+    }
+    if (!pose.assetId) {
+        return say("story.compile.character.poseNoImage", { character, pose: poseDisplayName(appearance, pose) });
+    }
+    return null;
+}
+
+/** A pose's name, or the number the character editor gives an unnamed one. */
+function poseDisplayName(
+    appearance: Extract<CharacterAppearanceSummary, { kind: "preset" }>,
+    pose: { id: string; name: string },
+): string {
+    return authoredNameOrNull(pose.name)
+        ?? translate("characters.editor.defaultPoseName", { n: String(appearance.poses.indexOf(pose as never) + 1) });
+}
+
+/** "The pose “Smile” of “Alice”" - the subject of a sentence about what that pose refers to. */
+function poseOwner(ctx: SceneCompileContext, characterId: string, pose: { id: string; name: string }): string {
+    const appearance = ctx.characterSummaries.get(characterId)?.appearance;
+    return say("story.compile.owner.pose", {
+        character: characterNameById(ctx, characterId),
+        pose: appearance?.kind === "preset" ? poseDisplayName(appearance, pose) : objectLabel(pose.name),
+    });
 }
 
 function pushDiagnostic(

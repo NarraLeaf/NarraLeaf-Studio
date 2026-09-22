@@ -30,6 +30,7 @@ import { compareStoryCondition, evaluateStoryExpression, isTruthy } from "@share
 import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { withCharacterEntranceDefaults } from "@shared/story/characterEntrance";
 import { translate } from "@/lib/i18n";
+import { authoredNameOrNull } from "@shared/utils/generatedId";
 import {
     getCharacterStageObjectName,
     getPresetPosition,
@@ -959,8 +960,12 @@ class SnapshotWalker {
         const key = this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name);
         const record = this.displayables.get(key);
         if (!record) {
+            // The label, then the key - and neither when it is an id (an unnamed character keys on its
+            // character id), because an id names nothing the author can find.
             this.diagnostic(blockId, translate("story.preview.diagnostics.displayableNotFound", {
-                target: resolved.label || resolved.name || translate("story.preview.diagnostics.displayableUnnamed"),
+                target: authoredNameOrNull(resolved.label)
+                    ?? authoredNameOrNull(resolved.name)
+                    ?? translate("story.preview.diagnostics.displayableUnnamed"),
             }));
             return null;
         }
