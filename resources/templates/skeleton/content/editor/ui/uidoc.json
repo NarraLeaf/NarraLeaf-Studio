@@ -7841,6 +7841,7 @@
       "name": "Entry",
       "parentId": "5aab5352-98e9-4d9e-af03-1938fa5b5032",
       "childrenIds": [
+        "3c6c0b9a-9bcd-5ce5-93df-b9b0ad523272",
         "0185d569-9ab3-460a-9f35-107e559c105c",
         "465a62e7-7bbc-475d-8002-929ada7ee70b",
         "795ee5ba-6640-4f54-8961-3ea7d2f0b4c7"
@@ -52405,13 +52406,15 @@
       "name": "Auto save",
       "parentId": "3d379905-7bf0-4070-b528-d2098ce9034e",
       "childrenIds": [
+        "d4771f97-73c9-5c29-83d4-095eaecfc5b1",
+        "d45b6f98-3237-51bc-a668-56b9cb41b01c",
         "03222618-e5d6-40bb-84c9-19ccc7730e7e",
         "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275"
       ],
       "layout": {
         "x": 0,
         "y": 0,
-        "width": 344,
+        "width": 460,
         "height": 116,
         "visible": true,
         "opacity": 1
@@ -52783,9 +52786,9 @@
       "parentId": "f4d2f822-fd4f-4f62-924d-0cfb8a945a23",
       "childrenIds": [],
       "layout": {
-        "x": 18,
+        "x": 222,
         "y": 16,
-        "width": 308,
+        "width": 220,
         "height": 28,
         "visible": true,
         "opacity": 1
@@ -52978,9 +52981,9 @@
       "parentId": "f4d2f822-fd4f-4f62-924d-0cfb8a945a23",
       "childrenIds": [],
       "layout": {
-        "x": 18,
+        "x": 222,
         "y": 52,
-        "width": 308,
+        "width": 220,
         "height": 24,
         "visible": true,
         "opacity": 1
@@ -58824,6 +58827,97 @@
           "mode": "contain"
         }
       }
+    },
+    "3c6c0b9a-9bcd-5ce5-93df-b9b0ad523272": {
+      "id": "3c6c0b9a-9bcd-5ce5-93df-b9b0ad523272",
+      "type": "nl.image",
+      "name": "Avatar",
+      "parentId": "e1e45cc5-f9bf-48da-b126-555dcc1abcf6",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 28,
+        "width": 48,
+        "height": 48,
+        "visible": true
+      },
+      "props": {
+        "fillType": "image",
+        "fillVisible": true,
+        "borderRadius": 6,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "imageFill": {
+          "mode": "cover"
+        }
+      },
+      "valueBindings": {
+        "imageFill.assetId": {
+          "kind": "listItemField",
+          "fieldId": "avatar"
+        }
+      }
+    },
+    "d4771f97-73c9-5c29-83d4-095eaecfc5b1": {
+      "id": "d4771f97-73c9-5c29-83d4-095eaecfc5b1",
+      "type": "nl.container",
+      "name": "Auto thumbnail plate",
+      "parentId": "f4d2f822-fd4f-4f62-924d-0cfb8a945a23",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 206,
+        "height": 116,
+        "visible": true
+      },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "nlbrand:surface.sunken",
+        "fillType": "color",
+        "fillVisible": true,
+        "borderRadiusLinked": false,
+        "borderRadiusTL": 4,
+        "borderRadiusBL": 4,
+        "borderRadiusTR": 0,
+        "borderRadiusBR": 0,
+        "borderWidth": 0,
+        "borderStyle": "none"
+      }
+    },
+    "d45b6f98-3237-51bc-a668-56b9cb41b01c": {
+      "id": "d45b6f98-3237-51bc-a668-56b9cb41b01c",
+      "type": "nl.image",
+      "name": "Auto thumbnail",
+      "parentId": "f4d2f822-fd4f-4f62-924d-0cfb8a945a23",
+      "childrenIds": [],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 206,
+        "height": 116,
+        "visible": true
+      },
+      "props": {
+        "fillType": "image",
+        "fillVisible": true,
+        "borderRadiusLinked": false,
+        "borderRadiusTL": 4,
+        "borderRadiusBL": 4,
+        "borderRadiusTR": 0,
+        "borderRadiusBR": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "imageFill": {
+          "mode": "cover"
+        }
+      },
+      "valueBindings": {
+        "imageFill.assetId": {
+          "kind": "listItemField",
+          "fieldId": "preview"
+        }
+      }
     }
   },
   "actions": {
@@ -58884,7 +58978,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-21T23:31:01.594Z"
+    "updatedAt": "2026-09-22T22:48:41.426Z"
   },
   "structs": {
     "extra.galleryEntry": {
