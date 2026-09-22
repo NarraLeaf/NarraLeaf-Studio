@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
     findEmptyTestSelect,
+    nameUniquely,
     resolveTestParameters,
     resolveTestParameterValues,
 } from "./parameters";
@@ -143,5 +144,33 @@ describe("resolveTestParameterValues", () => {
 
     it("resolves a test that declares nothing to an empty set", () => {
         expect(resolveTestParameterValues([], { ending: "true" })).toEqual({});
+    });
+});
+
+/**
+ * The names a command line calls options by. Each has to pick out exactly one row, and each should
+ * be as short as the project lets it be - a line naming an ending nobody else shares should not have
+ * to spell out its story and scene.
+ */
+describe("nameUniquely", () => {
+    it("keeps each row's shortest spelling when nothing shares it", () => {
+        expect(nameUniquely([["Good End", "Main / Good End"], ["Bad End", "Main / Bad End"]]))
+            .toEqual(["Good End", "Bad End"]);
+    });
+
+    it("lengthens only the rows that collide, compared without regard to case", () => {
+        expect(nameUniquely([
+            ["Bad End", "Main / Bad End", "Main / Roof / Bad End"],
+            ["bad end", "Epilogue / bad end", "Epilogue / Pier / bad end"],
+            ["Good End", "Main / Good End"],
+        ])).toEqual(["Main / Bad End", "Epilogue / bad end", "Good End"]);
+    });
+
+    it("goes as far as the longest spelling, then numbers what is still alike", () => {
+        expect(nameUniquely([
+            ["Bad End", "Main / Bad End", "Main / Roof / Bad End"],
+            ["Bad End", "Main / Bad End", "Main / Pier / Bad End"],
+            ["Bad End", "Main / Bad End", "Main / Pier / Bad End"],
+        ])).toEqual(["Main / Roof / Bad End", "Main / Pier / Bad End", "Main / Pier / Bad End (2)"]);
     });
 });
