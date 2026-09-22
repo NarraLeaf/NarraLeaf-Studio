@@ -1,11 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { PluginStoreReading } from "@shared/utils/pluginStorage";
+import {
+    blueprint as kitBlueprint,
+    document as kitDocument,
+    element as kitElement,
+    graph as kitGraph,
+    interfaceOf as kitInterface,
+} from "@/lib/workspace/services/references/assetNameTestKit";
 import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
 import { Services } from "@/lib/workspace/services/services";
+import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { TEST_PROTOCOL_VERSION, type TestFinding, type TestProgress, type TestRunContext } from "../types";
 import type { BuiltInTestHost } from "./index";
 import { createReachableEndingsTest } from "./reachableEndings";
@@ -118,6 +128,9 @@ function startStoryDocument(params: Record<string, unknown>): BlueprintDocument 
     } as BlueprintDocument;
 }
 
+const TITLE_OWNER: BlueprintOwnerRef = { kind: "globalMain" };
+const LIST_OWNER: BlueprintOwnerRef = { kind: "widgetMain", surfaceId: "extra", elementId: "list" };
+
 // ---------------------------------------------------------------------------
 // Workspace stand-ins
 // ---------------------------------------------------------------------------
@@ -125,18 +138,31 @@ function startStoryDocument(params: Record<string, unknown>): BlueprintDocument 
 type FixtureStory = { id: string; name: string; document: StoryDocument };
 
 /**
- * A service registry with only the two services this test reads.
+ * A service registry with only the services this test reads: the stories and the graphs, and the
+ * three more that say where a wired `Start Game` begins - the interface, the variable registry and
+ * the plugins' stores.
  *
- * Deliberately throws for anything else: a built-in that quietly grew a third dependency should
+ * Deliberately throws for anything else: a built-in that quietly grew another dependency should
  * fail here rather than in a workspace, where the extra reach is what nobody notices.
  */
 function fixtureHost(options: {
     stories: FixtureStory[];
     blueprintDocument?: BlueprintDocument | null;
     unreadableStoryId?: string;
+    uiDocument?: UIDocument;
+    pluginStores?: PluginStoreReading[];
 }): BuiltInTestHost {
     const services = {
         get: (id: string) => {
+            if (id === Services.UIDocument) {
+                return { getDocument: () => options.uiDocument ?? { surfaces: [], elements: {}, components: [] } };
+            }
+            if (id === Services.VariableRegistry) {
+                return { listEntries: () => [] };
+            }
+            if (id === Services.ServiceAssets) {
+                return { readPluginStores: async () => options.pluginStores ?? [] };
+            }
             if (id === Services.Story) {
                 return {
                     getLibraryIndex: () => ({
@@ -397,7 +423,7 @@ describe("narraleaf-studio:reachable-endings", () => {
         });
     });
 
-    it("skips when a Start Story node decides its scene while the game runs", async () => {
+    it("skips when a Start Game puts its scene together while the game runs, naming the node", async () => {
         // The guard `story/unreachable-scene` takes, and mandatory for the same reason: entries that
         // cannot be read make every path look like it runs out.
         const { verdict, findings } = await run(fixtureHost({
@@ -405,14 +431,105 @@ describe("narraleaf-studio:reachable-endings", () => {
                 forkScene("b"),
                 scene("b", "Away", [endingBlock("end-away", "Away")]),
             ], "a")),
-            blueprintDocument: startStoryDocument({ storyId: "story-1", sceneId: "" }),
+            blueprintDocument: kitDocument(kitBlueprint("bp-title", "Title screen", TITLE_OWNER, {
+                go: kitGraph(
+                    [
+                        { id: "join", type: "blueprint.string.concat", params: { a: "chapter-", b: "3" } },
+                        { id: "play", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params: { storyId: "story-1" } },
+                    ],
+                    [["join", "result", "play", "sceneId"]],
+                ),
+            })),
         }));
 
         expect(verdict).toEqual({
             status: "skipped",
-            summary: { key: "test.builtin.reachableEndings.skipped.undecidableEntry" },
+            summary: { key: "test.builtin.reachableEndings.skipped.undecidableEntry", params: { blueprint: "Title screen" } },
         });
-        expect(findings).toEqual([]);
+        // One finding per node that stopped the run, and a click lands on the node that assembles.
+        expect(findings).toEqual([{
+            severity: "info",
+            message: {
+                key: "test.entryPoint.assembled",
+                params: { blueprint: "Title screen", target: "scene", origin: "Concat" },
+            },
+            target: {
+                kind: "blueprint",
+                blueprintId: "bp-title",
+                ownerKey: ownerRefToIndexKey(TITLE_OWNER),
+                focusNodeId: "join",
+                focusEventId: "go",
+            },
+        }]);
+    });
+
+    it("takes a Start Game with no scene picked as starting nothing", async () => {
+        // It throws when it runs, so it can begin nowhere; declining over it would let one
+        // half-made button switch the check off for the whole project.
+        const { verdict } = await run(fixtureHost({
+            stories: oneStory(document([
+                forkScene("b"),
+                scene("b", "Away", [endingBlock("end-away", "Away")]),
+            ], "a")),
+            blueprintDocument: startStoryDocument({ storyId: "story-1", sceneId: "" }),
+        }));
+
+        expect(verdict.status).toBe("failed");
+    });
+
+    it("walks from every scene a recollection screen can replay", async () => {
+        // `z` is reached by nothing in the story - only by the Gallery's catalogue, through the row
+        // a player clicks. It stops without an ending, and a replay of it is a real run.
+        const stories = oneStory(document([
+            scene("a", "One", [jumpBlock("j1", "b")]),
+            scene("b", "Epilogue", [endingBlock("end-true", "True End")]),
+            scene("z", "Memory", [emptyBlock("z-1")]),
+        ], "a"));
+        const recollection = {
+            stories,
+            uiDocument: kitInterface({ id: "extra", name: "Extra", rootElementId: "root" }, [
+                kitElement("root", "nl.container", null, { childrenIds: ["list"] }),
+                kitElement("list", "nl.list", "root"),
+            ]),
+            blueprintDocument: kitDocument(kitBlueprint("bp-list", "Recollection", LIST_OWNER, {
+                fill: kitGraph(
+                    [
+                        { id: "init", type: "blueprint.event.head.init" },
+                        { id: "entries", type: "narraleaf.gallery.getEntries", params: { galleryKind: "scene" } },
+                        { id: "self", type: "blueprint.element.ref", params: { surfaceId: "extra", elementId: "list", elementType: "nl.list" } },
+                        { id: "fill", type: "blueprint.element.list.setItems" },
+                    ],
+                    [["init", "then", "entries", "in"], ["self", "element", "fill", "list"], ["entries", "entries", "fill", "items"]],
+                ),
+                open: kitGraph(
+                    [
+                        { id: "click", type: "blueprint.event.head.itemClick" },
+                        { id: "rowStory", type: "blueprint.list.getItemField", params: { field: "storyId" } },
+                        { id: "rowScene", type: "blueprint.list.getItemField", params: { field: "sceneId" } },
+                        { id: "play", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY },
+                    ],
+                    [["click", "then", "play", "in"], ["rowStory", "value", "play", "storyId"], ["rowScene", "value", "play", "sceneId"]],
+                ),
+            })),
+        };
+
+        const empty = await run(fixtureHost({ ...recollection, pluginStores: [] }));
+        expect(empty.verdict.status).toBe("passed");
+
+        const listed = await run(fixtureHost({
+            ...recollection,
+            pluginStores: [{
+                pluginId: "narraleaf.gallery",
+                namespace: "narraleaf.gallery.items",
+                data: { items: [{ id: "narraleaf.gallery.m1", kind: "scene", scene: { storyId: "story-1", sceneId: "z" } }] },
+            }],
+        }));
+        expect(listed.verdict.status).toBe("failed");
+        expect(listed.findings).toEqual([expect.objectContaining({
+            severity: "error",
+            message: { key: "test.builtin.reachableEndings.finding.pathRunsOut" },
+            target: expect.objectContaining({ sceneId: "z", blockId: "z-1" }),
+        })]);
     });
 
     it("takes a Start Story node's scene as an entry point of its own", async () => {

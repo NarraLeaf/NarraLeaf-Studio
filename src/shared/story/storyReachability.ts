@@ -44,6 +44,11 @@ import {
  * story's entry (`StoryDocument.entrySceneId`), and every scene a blueprint's `Start Story` node
  * names. What happens when neither exists is the caller's to decide - see {@link StoryEntryFallback},
  * where the two policies are spelled out and why they differ.
+ *
+ * A node names its scene either on itself (the picker) or through its pins, from a value the graph
+ * hands it - a recollection list replays whichever row the player clicked. This module reads only
+ * the first. A caller that can follow a wired value to where the project wrote it down passes a
+ * {@link StartStoryTargetReader}; without one, every such node is undecidable.
  */
 
 /**
@@ -122,6 +127,42 @@ export type StoryEntryFallback =
 /** The two `Start Story` targets that decide which scene play begins at. */
 const START_STORY_TARGET_PINS = ["storyId", "sceneId"] as const;
 
+/** One `Start Story` node, by where it sits. */
+export type StartStoryNodeRef = {
+    blueprintId: string;
+    graphKind: "event" | "function" | "macro";
+    graphId: string;
+    nodeId: string;
+};
+
+/** A stable key for {@link StartStoryNodeRef}, for callers that keep answers per node. */
+export function startStoryNodeKey(ref: StartStoryNodeRef): string {
+    // A separator no id can contain, so two different nodes cannot collide into one key.
+    return [ref.blueprintId, ref.graphKind, ref.graphId, ref.nodeId].join("\u0000");
+}
+
+/**
+ * Every story and every scene a node's two targets can hold when it runs, each read from where the
+ * project writes it down.
+ *
+ * Two independent lists rather than pairs: the node takes one value from each, and the scan pairs
+ * them against the documents. A scene id only one story has pairs with that story alone, so the
+ * cross product costs nothing in precision.
+ */
+export type StartStoryTargetReading = {
+    storyIds: readonly string[];
+    sceneIds: readonly string[];
+};
+
+/**
+ * Reads the targets of a node whose picker does not settle them - a blank param, or a wired pin.
+ *
+ * Answers null when the value cannot be read: it is put together while the game runs, or it comes
+ * from somewhere the reader does not follow. The node is then undecidable, exactly as it is when no
+ * reader is passed at all - a reader can only ever settle a node, never unsettle one.
+ */
+export type StartStoryTargetReader = (node: StartStoryNodeRef) => StartStoryTargetReading | null;
+
 /**
  * Every scene a `Start Story` node can begin play at, and every node whose target cannot be read.
  *
@@ -129,20 +170,47 @@ const START_STORY_TARGET_PINS = ["storyId", "sceneId"] as const;
  * that have not read the story documents yet pass a predicate that accepts everything; the seed
  * filter in {@link reachableSceneIds} drops a phantom id later anyway.
  *
- * **A target is undecidable when the param is blank OR the pin is wired.** The param is the
- * inspector's picker and the pin is a value only the running game has, and at execution time the pin
- * wins (see `resolveStartStoryTarget`). So a node carrying a stale picked scene *and* a wired
- * `sceneId` starts a scene this scan cannot name, however confident the stored param looks - which
- * is exactly the shape a data-driven launcher has, a recollection list that replays whichever row
- * the player clicked.
+ * **Without a reader, a target is undecidable when the param is blank OR the pin is wired.** The
+ * param is the inspector's picker and the pin is a value only the running game has, and at execution
+ * time a non-empty pin wins (see `resolveStartStoryTarget`). So a node carrying a stale picked scene
+ * *and* a wired `sceneId` starts a scene the picker cannot name, however confident the stored param
+ * looks - which is exactly the shape a data-driven launcher has, a recollection list that replays
+ * whichever row the player clicked.
+ *
+ * **With a reader**, such a node is asked about instead, and every pairing of a story and a scene it
+ * answers that a document has becomes an entry. The build sweep passes none: what it removes from a
+ * package is decided in the main process, which holds loaded blueprints and nothing to follow a
+ * wired value through, and the renderer's answer about the same package has to be the same answer.
  */
 export function scanStoryEntryPoints(
     carriers: Iterable<BlueprintGraphCarrier>,
     storyHasScene: (storyId: string, sceneId: string) => boolean,
+    readTarget?: StartStoryTargetReader,
 ): StoryEntryPointScan {
     const byStory = new Map<string, Set<StorySceneId>>();
     const sites: StoryEntrySite[] = [];
     const undecidable: UndecidableStoryEntry[] = [];
+
+    const enter = (carrier: BlueprintGraphCarrier, nodeId: string, storyId: string, sceneId: string): void => {
+        if (!storyHasScene(storyId, sceneId)) {
+            return;
+        }
+        const scenes = byStory.get(storyId);
+        if (scenes) {
+            scenes.add(sceneId);
+        } else {
+            byStory.set(storyId, new Set([sceneId]));
+        }
+        sites.push({
+            storyId,
+            sceneId,
+            blueprintId: carrier.blueprintId,
+            ...(carrier.blueprintName === undefined ? {} : { blueprintName: carrier.blueprintName }),
+            graphKind: carrier.graphKind,
+            graphId: carrier.graphId,
+            nodeId,
+        });
+    };
 
     for (const carrier of carriers) {
         for (const node of Object.values(carrier.graph.nodes ?? {})) {
@@ -150,7 +218,17 @@ export function scanStoryEntryPoints(
                 continue;
             }
             const missing = START_STORY_TARGET_PINS.filter(pin => !isTargetDecided(carrier.graph, node, pin));
-            if (missing.length > 0) {
+            if (missing.length === 0) {
+                enter(carrier, node.id, nodeStringParam(node, "storyId"), nodeStringParam(node, "sceneId"));
+                continue;
+            }
+            const reading = readTarget?.({
+                blueprintId: carrier.blueprintId,
+                graphKind: carrier.graphKind,
+                graphId: carrier.graphId,
+                nodeId: node.id,
+            });
+            if (!reading) {
                 undecidable.push({
                     blueprintId: carrier.blueprintId,
                     ...(carrier.blueprintName === undefined ? {} : { blueprintName: carrier.blueprintName }),
@@ -161,26 +239,13 @@ export function scanStoryEntryPoints(
                 });
                 continue;
             }
-            const storyId = nodeStringParam(node, "storyId");
-            const sceneId = nodeStringParam(node, "sceneId");
-            if (!storyHasScene(storyId, sceneId)) {
-                continue;
+            // Deduplicated first: a list whose rows all replay the same story would otherwise walk
+            // the same pairing once per row.
+            for (const storyId of new Set(reading.storyIds.map(id => id.trim()).filter(Boolean))) {
+                for (const sceneId of new Set(reading.sceneIds.map(id => id.trim()).filter(Boolean))) {
+                    enter(carrier, node.id, storyId, sceneId);
+                }
             }
-            const scenes = byStory.get(storyId);
-            if (scenes) {
-                scenes.add(sceneId);
-            } else {
-                byStory.set(storyId, new Set([sceneId]));
-            }
-            sites.push({
-                storyId,
-                sceneId,
-                blueprintId: carrier.blueprintId,
-                ...(carrier.blueprintName === undefined ? {} : { blueprintName: carrier.blueprintName }),
-                graphKind: carrier.graphKind,
-                graphId: carrier.graphId,
-                nodeId: node.id,
-            });
         }
     }
 
@@ -204,14 +269,18 @@ export function scanStoryEntryPoints(
  * `undecidable` is what a caller has to look at first. A `Start Story` node whose target only the
  * running game knows means no reachability claim can be made at all, and a check that reported
  * everything as unreachable because it could not find the entry is one an author switches off.
+ * `readTarget` is how a caller that can follow a wired target settles such a node; see
+ * {@link scanStoryEntryPoints}.
  */
 export function scanProjectStoryEntryPoints(
     stories: readonly { id: string; document: StoryDocument }[],
     blueprintDocument: BlueprintDocument | null | undefined,
+    readTarget?: StartStoryTargetReader,
 ): StoryEntryPointScan {
     const scan = scanStoryEntryPoints(
         blueprintDocumentGraphCarriers(blueprintDocument),
         (storyId, sceneId) => Boolean(stories.find(story => story.id === storyId)?.document.scenes[sceneId]),
+        readTarget,
     );
     for (const entry of stories) {
         const entrySceneId = entry.document.entrySceneId;

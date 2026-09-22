@@ -14,6 +14,7 @@ import type { AssetType } from "../workspace/services/assets/assetTypes";
 import type { AssetReference, ReferenceIndexResult } from "../workspace/services/references/referenceModel";
 import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
 import type { NetworkPluginAllowlistEntry } from "@shared/types/networkAllowlist";
+import type { PluginStoreReading } from "@shared/utils/pluginStorage";
 
 /**
  * The snapshot every lint rule reads.
@@ -173,6 +174,14 @@ export type LintContext = {
     storiesComplete: boolean;
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
+    /**
+     * Every store a plugin keeps in the project, or null when they were not read.
+     *
+     * Here because where play can begin depends on it: a recollection screen's `Start Game` takes its
+     * scene from the Gallery's catalogue, which is one of these. Null is not empty - a rule reading
+     * null cannot say what such a node starts, while one reading `[]` knows the plugin holds nothing.
+     */
+    pluginStores: readonly PluginStoreReading[] | null;
     assets: readonly LintAssetEntry[];
     /**
      * The sets the project declares.

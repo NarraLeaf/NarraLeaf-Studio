@@ -36,6 +36,7 @@ import { CharacterService } from "./CharacterService";
 import { ConsoleService } from "./ConsoleService";
 import { FileSystemService } from "./FileSystem";
 import { ProjectService } from "./ProjectService";
+import type { ServiceAssetsService } from "./ServiceAssetsService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { ReferenceService } from "../references/ReferenceService";
 import { StoryService } from "../story/StoryService";
@@ -196,6 +197,7 @@ export class LintService extends Service<LintService> implements ILintService {
             storiesComplete,
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),
+            pluginStores: await this.readPluginStores(),
             assets,
             // Read off the service rather than derived from the library: a set is a declaration
             // about the library, and deriving one from the other is what the rule is checking.
@@ -230,6 +232,16 @@ export class LintService extends Service<LintService> implements ILintService {
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
             io: this.createIo(assetsService, await this.mayProbeMedia()),
         };
+    }
+
+    /** The plugins' stores, or null - "not read" rather than "none" - when they cannot be had. */
+    private async readPluginStores(): Promise<LintContext["pluginStores"]> {
+        try {
+            return await this.getContext().services.get<ServiceAssetsService>(Services.ServiceAssets).readPluginStores();
+        } catch (error) {
+            console.warn("[LintService] plugin stores could not be read", error);
+            return null;
+        }
     }
 
     /**
