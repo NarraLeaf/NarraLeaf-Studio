@@ -8,6 +8,7 @@ import {
     describeProfileInUse,
     endCommandLineRunOnFailure,
     installCommandLineRunEnd,
+    readCommandLineRunIdentity,
 } from '@/app/application/commandLineRunEnd';
 
 // Before anything that can fail. A `--build`, `--test` or `--lint` launch has nobody at the screen,
@@ -77,6 +78,25 @@ function confirmQuitDuringUpdate(instance: App): boolean {
     }
 }
 
+/**
+ * Whether a launch meant for a person has reached a process that is a command-line run, which then
+ * ignores it and says so in its log.
+ *
+ * A second launch on the same profile, a document macOS hands over, a Dock click: each reaches the
+ * Studio already running on the profile, and each is answered by opening a window - the home screen,
+ * a project. In a command-line run that is a window on an operator's desktop, belonging to a process
+ * that is about to exit with its run, and answering it would be a person working in a Studio that
+ * vanishes under them. The run is not theirs to open things in; the launch that reached it has
+ * already exited, having handed its request over.
+ */
+function ignoredByCommandLineRun(instance: App, what: string): boolean {
+    if (!commandLineRun) {
+        return false;
+    }
+    instance.logger.warn(`[App] Ignored ${what}: this Studio is a command-line run and opens no window for it.`);
+    return true;
+}
+
 const app = createApp();
 if (app) {
     start(app);
@@ -130,6 +150,9 @@ function start(app: App): void {
     // preventDefault() because the default is to do nothing useful and log that the app has no handler.
     app.electronApp.on('open-file', (event, filePath) => {
         event.preventDefault();
+        if (ignoredByCommandLineRun(app, 'a document macOS handed over')) {
+            return;
+        }
         void app.openLaunchPaths([filePath]).catch((error) => {
             app.logger.error('Failed to open the file macOS handed over:', error);
         });
@@ -167,6 +190,17 @@ function start(app: App): void {
         // double-clicked project with the launcher would look exactly like the association being
         // broken.
         app.electronApp.on('second-instance', (_event, argv, workingDirectory) => {
+            if (ignoredByCommandLineRun(app, 'another launch of Studio on this profile')) {
+                return;
+            }
+            // The other way round: the launch that just lost the lock was a command-line run, which
+            // has refused itself with exit 4 and asked for nothing. Answering it with the home screen
+            // would pull this Studio's launcher in front of whoever is using it, for a run that was
+            // never meant for them.
+            if (readCommandLineRunIdentity(argv, workingDirectory)) {
+                app.logger.info('[App] A command-line run was refused this profile, which this Studio holds; nothing to open.');
+                return;
+            }
             void app.openLaunchPaths(argv, workingDirectory)
                 .then((opened) => {
                     if (!opened) {
@@ -182,6 +216,9 @@ function start(app: App): void {
         // finds nothing to come back to is the same gesture as a tray click; what the rest do, and why,
         // is in `handleReopen`.
         app.electronApp.on('activate', (_event, hasVisibleWindows) => {
+            if (ignoredByCommandLineRun(app, 'a click on the Dock icon')) {
+                return;
+            }
             app.handleReopen(hasVisibleWindows);
         });
 
