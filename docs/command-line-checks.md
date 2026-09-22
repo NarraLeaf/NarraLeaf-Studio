@@ -28,13 +28,16 @@ would report a verdict about something the caller did not ask about.
 | `--test-id` | The id of a registered test | — (required unless `--test-list`) |
 | `--test-list` | — | reports the registry instead of running anything |
 | `--test-parameter` | `id=value`, repeatable | each parameter's own default |
+| `--test-as-shipped` | — (or `=true` / `=false`) | loose files; see [below](#loose-files-or-the-shipped-form) |
 | `--test-report` | Where to write the JSON report | no report file |
 | `--test-user-data-dir` | A profile folder for this run | the machine's own profile |
 | `--lint` | A project folder, or the name of a recently-opened project | — (required for a sweep) |
 | `--lint-report` | Where to write the JSON report | no report file |
 | `--lint-user-data-dir` | A profile folder for this run | the machine's own profile |
 
-Every value-taking flag accepts both `--flag value` and `--flag=value`.
+Every value-taking flag accepts both `--flag value` and `--flag=value`. `--test-list` and
+`--test-as-shipped` take no separate value; the second also accepts `=true` or `=false` for a job
+that states it from a variable.
 
 A companion flag given without `--test` or `--lint` is refused rather than ignored, exactly as a
 `--build-*` flag without `--build` is: the alternative is a launch that opens the editor while the
@@ -107,6 +110,60 @@ something nobody asked for.
 Parameters the line does not name fall to the test's own default, which is what the picker would
 have started on.
 
+### Loose files or the shipped form
+
+A project with asset protection on ships its content sealed in a protected store. A game a test
+launches does not have to: by default it runs the project's content as loose files, and
+`--test-as-shipped` makes it hold that content the way the release build does.
+
+```sh
+narraleaf-studio --test /srv/projects/my-game --test-id=walkthrough --test-as-shipped
+```
+
+Loose is the default because sealing is paid on every run. A store is written whole — it has no way
+to replace one entry, and a story edit changes the pack inside it — so a sealed run seals every
+asset again, every time. On a real-size project that was measured at around 14 seconds for the first
+sealed run and 6 seconds after, against under 2 seconds loose.
+
+It is still worth a job asking for, because the sealed form behaves differently by construction, and
+only a shipped build otherwise ever meets it: an asset has no file path on disk, a runtime file
+outside the store's allowed names cannot be read, and there is no manifest, so everything resolves
+by id. A nightly job that runs the walkthrough both ways covers the path the players get.
+
+**The line is the only thing asked.** Studio's **Preview as shipped** setting is not read by a
+command-line run at all, whichever way it is set on the machine the run happens on. That setting is
+the habit of an author at that machine; a run with nobody at the screen has no habit to inherit, and
+the same line has to exercise the same path on a build agent that never set it and on a developer's
+machine that did. Nothing is written back either — neither to the machine's settings nor to the
+project.
+
+The run says which path it took. When the test launches its game, the log carries one line about the
+content, and the next line carries how long the compile took, which is the step whose cost depends
+on the path:
+
+```text
+[info] Test: assets: sealed in a protected store, as this project's release build holds them (--test-as-shipped)
+[verbose] Test: game compiled: 11 asset(s) in 0.5 s
+```
+
+```text
+[info] Test: assets: loose files; this project's release build seals them, which --test-as-shipped would test
+[verbose] Test: game compiled: 11 asset(s) in 0.4 s
+```
+
+Two cases where the flag changes nothing, and the log says so rather than leaving a job to believe
+the sealed path ran:
+
+- **A project with asset protection off** ships loose files, so loose files are the shipped form:
+  `assets: loose files - asset protection is off, so that is how this project ships and
+  --test-as-shipped has nothing to seal`.
+- **A headless test** launches no game at all, so there is no content to hold either way. The run
+  ends with a warning naming the test.
+
+`--lint` has no counterpart and needs none. A lint sweep reads the project; it never compiles or
+launches the game, so there is no content form for it to choose. `--test-as-shipped` beside `--lint`
+is refused as a bad invocation, as every other `--test` flag is.
+
 ### What counts as a pass
 
 Only `passed` exits 0. The other four are not one bucket:
@@ -175,9 +232,12 @@ a project they have open, while this process reported a result it has no way to 
 lock of its own. A dedicated agent does not need one. A machine that is both an agent and somebody's
 computer does.
 
-Unlike a build, a check reads nothing else out of the profile — no signing vault, no packager
-mirrors — so there is no `--test-setting` to put anything back and no reason for one. What a scratch
-profile does change is the plugin list, and with it the test registry: see above.
+Unlike a build, a check needs nothing else out of the profile — no signing vault, no packager
+mirrors — so there is no `--test-setting` to put anything back. What a scratch profile does change is
+the plugin list, and with it the test registry: see above. It also changes the two run habits a
+test's game still takes from the profile it runs in — which build variant a run is, and which DLC it
+has installed — and a scratch profile has neither, so its game is the release edition with no DLC.
+Whether that game is sealed is not one of them: that is `--test-as-shipped`, and nothing else.
 
 ## Trust
 

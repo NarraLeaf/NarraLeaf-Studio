@@ -235,7 +235,7 @@ runtime entry 在三个游戏执行环境加载，共用同一个 loader（`src/
 
 Dev Mode 的 suppression 与 workspace 一致：主进程读取项目 `.nlproj` 的依赖表，用共享的 `resolveDependencies` 解析——hard 依赖缺失或主版本不兼容的插件不会在该项目的 Dev Mode 会话中执行。解析失败不阻断会话（best-effort）。
 
-加载时机在游戏 boot 之前：Dev Mode 由 `useDevModeRuntimePlugins()` 门控 `GameAppHost.ready`；独立 runtime 由 `GameRuntimeApp` 的 `useRuntimePlugins()` 与资源预载共同门控。所有 runtime plugin 注册完成后 NLR/blueprint 才开始执行，保证插件节点在首个蓝图触发前可解析。
+加载时机在游戏 boot 之前：Dev Mode 由 `useDevModeRuntimePlugins()` 门控 `GameAppHost.ready`；独立 runtime 由 `GameRuntimeApp` 的 `useRuntimePlugins()` 与资产预载共同门控。所有 runtime plugin 注册完成后 NLR/blueprint 才开始执行，保证插件节点在首个蓝图触发前可解析。
 
 runtime entry 必须默认导出 `defineRuntimePlugin({ setup })`：
 

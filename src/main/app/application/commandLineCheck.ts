@@ -59,8 +59,15 @@ import { readProjectConfigFromDir } from "./utils/projectConfigFile";
  * lock on that directory. Acted on long before this file - `BaseApp.setupUserDataDir` - because
  * everything else reads through it.
  *
- * Unlike a build, a check reads nothing else out of the profile: no signing vault, no packager
- * mirrors. So there is no `--test-setting` to put anything back, and there is no reason for one.
+ * Unlike a build, a check needs nothing else out of the profile: no signing vault, no packager
+ * mirrors. So there is no `--test-setting` to put anything back.
+ *
+ * ## The shipped form
+ *
+ * `--test-as-shipped` travels on the job, and the main process reads it back off the window's props
+ * when the test launches its game (`GameTestManager`). It is the whole of that run's answer: the
+ * machine's "Preview as shipped" setting is an author's habit and is not consulted - see
+ * `runSealing.ts`. A lint sweep never compiles or launches the game, so it has no counterpart.
  */
 
 /**
@@ -80,6 +87,8 @@ export class CommandLineCheckRun {
     private projectPath: string | null = null;
     private projectName: string | undefined;
     private check: "test" | "lint" = "lint";
+    /** What the workspace was opened to do, once the line has been read far enough to say. */
+    private job: CommandLineRunJob | null = null;
     private finished = false;
 
     constructor(
@@ -111,7 +120,7 @@ export class CommandLineCheckRun {
                 `Missing --${options.kind} value: expected a project path or a recent project's name`,
             );
         }
-        if (options.kind === "lint" && (options.testId !== null || options.list || options.parameters.length > 0)) {
+        if (options.kind === "lint" && (options.testId !== null || options.list || options.parameters.length > 0 || options.asShipped)) {
             return this.finish("invocation", "The --test flags were given with --lint, which runs no test");
         }
         if (options.kind === "test" && !options.list && !options.testId) {
@@ -140,9 +149,10 @@ export class CommandLineCheckRun {
             ? { kind: "lint" }
             : options.list
                 ? { kind: "test-list" }
-                : { kind: "test", testId: options.testId!, parameters: parameters.values };
+                : { kind: "test", testId: options.testId!, parameters: parameters.values, asShipped: options.asShipped };
 
         this.emit("info", describeJob(job, this.projectName ?? path.basename(resolution.projectPath)));
+        this.job = job;
         return this.runInWorkspace(job);
     }
 
@@ -230,6 +240,16 @@ export class CommandLineCheckRun {
         if (event.tests) {
             this.printTestListing(event.tests);
             return this.finish("success", null, event);
+        }
+        // The game this test launched said which form its content took, on the log, when it was
+        // compiled (see `GameTestManager`). A headless test launches no game at all, so it never
+        // will - and a line that asked for the shipped form and heard nothing back would leave the
+        // job believing the sealed path had been exercised.
+        if (this.job?.kind === "test" && this.job.asShipped && event.test?.presentation === "headless") {
+            this.emit(
+                "warning",
+                `--test-as-shipped: ${event.test.testId} is headless and launches no game, so no content was sealed`,
+            );
         }
         if (event.ok) {
             this.emit("success", event.test ? `${event.test.title} passed` : "no blocking findings");
@@ -455,7 +475,8 @@ function describeJob(job: CommandLineRunJob, projectName: string): string {
             const parameters = Object.entries(job.parameters)
                 .map(([id, value]) => `${id}=${value}`)
                 .join(" ");
-            return `running ${job.testId} against ${projectName}${parameters ? ` with ${parameters}` : ""}`;
+            return `running ${job.testId} against ${projectName}${parameters ? ` with ${parameters}` : ""}`
+                + (job.asShipped ? ", with its content as shipped" : "");
         }
         default:
             return `running against ${projectName}`;
