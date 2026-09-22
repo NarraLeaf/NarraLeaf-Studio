@@ -95,7 +95,6 @@ import {
     type ShippedAssetReportEntry,
 } from "@shared/types/gameBuild";
 import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
-import { GAME_RUNTIME_PROTOCOL } from "@shared/types/gameRuntime";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -697,14 +696,17 @@ export async function compileGameRuntimeArtifact(
         ...(input.packaging ? { packaging: true } : {}),
         ...(input.includedDlc ? { includedDlc: input.includedDlc } : {}),
         // The author's compiled scripts go into the app dir beside everything else the page loads,
-        // and are named by the runtime's own scheme: `<scheme>://runtime/<path>` is served from the
-        // store when the build is sealed and from the loose app dir otherwise, which is the same
-        // door every other runtime file goes through. A `file:` URL - Dev Mode's answer - would be
-        // refused by the shipped page's policy, and a blob by every host's.
+        // and are named relative to that page. The runtime resolves the name against the document
+        // before importing it (`scriptRuntime.ts`), so one name reaches the file in every shell that
+        // serves this pack: `<scheme>://runtime/scripts/...` on the desktop, served from the store
+        // when the build is sealed and from the app dir otherwise, and the site's own `scripts/`
+        // directory in a web export and inside both mobile shells. The pack's scheme spelled out
+        // here instead is a URL no browser can import, which left every script dead in a web
+        // export. A `file:` URL - Dev Mode's answer - is refused by the shipped page's policy, and a
+        // blob by every host's.
         scriptOutput: {
             directory: path.join(appDir, COMPILED_SCRIPTS_DIR),
-            toUrl: filePath =>
-                `${GAME_RUNTIME_PROTOCOL}://runtime/${COMPILED_SCRIPTS_DIR}/${encodeURIComponent(path.basename(filePath))}`,
+            toUrl: filePath => `${COMPILED_SCRIPTS_DIR}/${encodeURIComponent(path.basename(filePath))}`,
         },
         // The declarations, not the count. A pack that merely carries a plugin can still drop a
         // scene; one that carries a plugin able to start a story cannot.
@@ -814,9 +816,13 @@ export async function compileGameRuntimeArtifact(
 
     // The author's compiled scripts, into the store when the build is sealed. They were written
     // loose into the app dir by the assembly above, before a store existed to write into; a sealed
-    // runtime serves `<scheme>://runtime/scripts/...` from the store, so the loose copy is not
-    // what it would read. Every file under the directory rather than the bundle's list: two
-    // blueprints on one script share one file, and the directory is the set of files there are.
+    // runtime serves `<scheme>://runtime/scripts/...` from the store. Every file under the
+    // directory rather than the bundle's list: two layers on one script share one file, and the
+    // directory is the set of files there are.
+    //
+    // Then the loose copy goes, the way a plugin's runtime entry never has one in a sealed build.
+    // Left in place it shipped the author's code as plain text beside the store that was meant to
+    // hold it - a protected build whose scripts anyone could read with a text editor.
     if (target.kind === "sealed") {
         const scriptsDir = path.join(appDir, COMPILED_SCRIPTS_DIR);
         const names = await fs.readdir(scriptsDir).catch(() => [] as string[]);
@@ -826,6 +832,7 @@ export async function compileGameRuntimeArtifact(
                 await fs.readFile(path.join(scriptsDir, name)),
             );
         }
+        await fs.rm(scriptsDir, { recursive: true, force: true });
     }
 
     // The marker is written either way, but on a sealed artifact it reaches only half as far: the

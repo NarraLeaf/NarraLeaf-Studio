@@ -23,6 +23,7 @@ import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { listScriptCompileFailures } from "../devMode/pipeline/scriptCompiler";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
@@ -423,6 +424,12 @@ export class PreviewManager {
                 session,
                 `artifact compile finished: ${path.relative(normalizedProjectPath, artifact.appDir)} (${artifact.copiedAssetCount} asset(s))`,
             );
+            // A preview runs with a script that did not compile, the way Dev Mode does - it is where
+            // the author fixes one - but not in silence: the packaged runtime has no issue list, so
+            // without this line the layer would simply do nothing on screen.
+            for (const message of listScriptCompileFailures(artifact.pack?.bundle?.ui?.scripts)) {
+                this.emitWorkspaceConsoleLog(session, { level: "error", source: "Preview", message });
+            }
 
             session.status = "launching";
             // The last point at which a cancel is free. Everything from the spawn below to

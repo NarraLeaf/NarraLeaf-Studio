@@ -134,6 +134,18 @@ describe("compiling script blueprints", () => {
         expect(await compiledText(compiled[layerKey("bp-fine")].url)).toContain("onAppBoot");
     });
 
+    it("says where the file failed, in the compiler's own words and nothing else", async () => {
+        // This line is the whole of what a refused build tells its author, so it carries the
+        // position and not esbuild's "Build failed with N errors" preamble around it.
+        await writeScript("scripts/broken.ts", "export function onAppBoot( {");
+
+        const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/broken.ts" }), outputDir());
+
+        const message = compiled[layerKey("bp-1")].diagnostics?.[0].message ?? "";
+        expect(message).toMatch(/^scripts\/broken\.ts could not be compiled: scripts\/broken\.ts:1:\d+: \S/);
+        expect(message).not.toContain("Build failed with");
+    });
+
     it("reports a missing file rather than throwing", async () => {
         const compiled = await compileProjectScripts(projectPath, documentWith({ "bp-1": "scripts/gone.ts" }), outputDir());
         expect(compiled[layerKey("bp-1")].url).toBeUndefined();

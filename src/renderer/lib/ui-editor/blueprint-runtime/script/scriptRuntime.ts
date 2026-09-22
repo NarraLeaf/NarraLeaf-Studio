@@ -99,14 +99,38 @@ export async function mountCompiledScripts(
  * the first thing tried here and the policy refused every script - worth stating, because the
  * refusal names the blob URL and so names nothing an author would recognise.
  *
+ * A packaged game names its scripts relative to its own page (`scripts/<file>.js`), because the
+ * page is served from a different place by every shell that runs a pack - the runtime's scheme on
+ * the desktop, the author's web host, a WebView's asset loader. So the name is resolved against the
+ * document here rather than left to `import()`, whose base for a relative specifier is the calling
+ * script's URL and not the page's. Dev Mode's `file:` URLs are absolute and come through unchanged.
+ *
  * The query is cache-busting. Dev Mode reloads on every save and rewrites the file in place, and a
  * second import of the same URL answers from the module map with the previous revision's code - so
  * the author's edit would appear not to have taken.
  */
 async function importAsModule(url: string): Promise<Record<string, unknown>> {
-    const versioned = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
-    state().urls.push(url);
+    const resolved = resolveScriptModuleUrl(url, typeof document === "undefined" ? undefined : document.baseURI);
+    const versioned = `${resolved}${resolved.includes("?") ? "&" : "?"}v=${Date.now()}`;
+    state().urls.push(resolved);
     return (await import(/* @vite-ignore */ versioned)) as Record<string, unknown>;
+}
+
+/**
+ * The URL a compiled script is imported from: the bundle's name for it, resolved against the page.
+ *
+ * An absolute URL is returned as it is. With no page to resolve against, a relative name is returned
+ * as it is too, and the import that follows fails with that name in its message.
+ */
+export function resolveScriptModuleUrl(url: string, baseUri: string | undefined): string {
+    if (!baseUri) {
+        return url;
+    }
+    try {
+        return new URL(url, baseUri).href;
+    } catch {
+        return url;
+    }
 }
 
 /** Drop every mounted script, so a session's modules do not outlive it. */

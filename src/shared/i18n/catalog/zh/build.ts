@@ -427,6 +427,12 @@ export const build = {
         one: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
         other: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
     },
+    // 发行包构建中有脚本未能编译。由主进程写出，是构建失败信息的第一行；其后逐个文件跟着编译器
+    // 自己的那一行（带文件、行号与列号）。
+    scriptsNotCompiled: {
+        one: "有 {count} 个脚本无法编译",
+        other: "有 {count} 个脚本无法编译",
+    },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本项目",
     contentCoverageSummary: {
