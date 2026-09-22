@@ -371,6 +371,7 @@ export const workspace = {
         liveBlockedMerge: "マージを完了するとライブセッションを開始・参加できる",
         liveBlockedRecovery: "リカバリモードではライブセッションを利用できない",
         liveBlockedSession: "このワークスペースはすでにライブセッションに参加している",
+        liveBlockedTakenOver: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
         // ルームの中でこのウィンドウがどちら側か。参加していないときに人数を出す位置に置く。
         liveHost: "ホスト",
         liveGuest: "ゲスト",
@@ -513,6 +514,11 @@ export const workspace = {
         projectLockedTitle: "このプロジェクトは別の NarraLeaf Studio で開かれている",
         projectLockedHere: "この端末で {time} から開かれており、閉じると再試行できる",
         projectLockedElsewhere: "{host} で {time} から開かれており、そちらを閉じると再試行できる",
+        // 同じプロジェクトを、このウィンドウで開いている間に別の Studio が引き継いだ場合。以後ここでの変更は書き込まれない。
+        // 時刻は引き継がれた時点。
+        projectTakenOverTitle: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
+        projectTakenOverHere: "この端末で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
+        projectTakenOverElsewhere: "{host} で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
         openLauncher: "ランチャーを開く",
         panelRenderError: "このパネルで描画のエラーが起きた",
         mainEditorRegion: "メインのエディタ",

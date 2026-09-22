@@ -6,6 +6,16 @@ import { ErrorScreen } from "./ErrorScreen";
 interface ProjectLockedScreenProps {
     holder: ProjectSessionHolder;
     onRetry?: () => void;
+    /**
+     * Whether this window had the project and lost it, rather than being turned away at the door.
+     *
+     * Another Studio took the project over while this one's heartbeat stood still, and this window
+     * stopped writing the moment it found out. The screen is the same one - the project is the
+     * other Studio's, and the ways out are the same two - but it says "now", and it says that
+     * nothing typed here is saved any more, because this author was working in this window a
+     * moment ago and may not have noticed it stop.
+     */
+    takenOver?: boolean;
 }
 
 /**
@@ -24,21 +34,26 @@ interface ProjectLockedScreenProps {
  * process id is not something they can act on, and the digest beside it is an identifier, which the
  * interface never shows.
  */
-export function ProjectLockedScreen({ holder, onRetry }: ProjectLockedScreenProps) {
+export function ProjectLockedScreen({ holder, onRetry, takenOver = false }: ProjectLockedScreenProps) {
     const { t } = useTranslation();
 
     const error = React.useMemo(() => {
         const since = formatHeldSince(holder.startedAt);
+        if (takenOver) {
+            return new Error(holder.sameHost
+                ? t("workspace.shell.projectTakenOverHere", { time: since })
+                : t("workspace.shell.projectTakenOverElsewhere", { host: holder.hostname, time: since }));
+        }
         return new Error(holder.sameHost
             ? t("workspace.shell.projectLockedHere", { time: since })
             : t("workspace.shell.projectLockedElsewhere", { host: holder.hostname, time: since }));
-    }, [holder, t]);
+    }, [holder, t, takenOver]);
 
     return (
         <ErrorScreen
             error={error}
             onRetry={onRetry}
-            title={t("workspace.shell.projectLockedTitle")}
+            title={t(takenOver ? "workspace.shell.projectTakenOverTitle" : "workspace.shell.projectLockedTitle")}
             allowRecovery={false}
             showStackTrace={false}
         />

@@ -25,6 +25,7 @@ import { TeamManager } from "./application/managers/team/TeamManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import type { VcsServerSession } from "@shared/types/vcs";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import { readProjectConfigFromDir } from "./application/utils/projectConfigFile";
 import { findProjectConfigFileName } from "@shared/utils/nlproj";
 import {
@@ -248,6 +249,7 @@ export class App extends BaseApp {
         this.projectSessionLockManager = new ProjectSessionLockManager({
             userDataDir: this.getUserDataDir(),
             logger: this.logger,
+            onTakenOver: (projectPath, holder) => this.handleProjectTakenOver(projectPath, holder),
         });
         // Everything is read through a function rather than captured: this constructor runs before
         // Electron is ready, and `getCacheRootDir` has no answer until it is.
@@ -1272,6 +1274,8 @@ export class App extends BaseApp {
             enabled: this.globalState.get("versionControl.checkpointOnClose") !== false,
             projectPath: typeof projectPath === "string" ? projectPath : null,
             workspaceLoaded: window.hasLoadedWorkspace(),
+            heldElsewhere: typeof projectPath === "string"
+                && this.projectSessionLockManager.heldElsewhere(projectPath) !== null,
         });
     }
 
@@ -1378,6 +1382,48 @@ export class App extends BaseApp {
                 this.logger.warn(`[Runtime] Could not stop a runtime for "${projectPath}":`, result.reason);
             }
         }
+    }
+
+    /**
+     * Another NarraLeaf Studio has taken over a project this one held: stop everything of this
+     * Studio's that could still write it.
+     *
+     * The lock manager finds this out on a heartbeat - the other Studio judged this one gone,
+     * because its heartbeat stood still for the whole staleness window, and opened the project.
+     * This Studio's workspace is still up with every document in memory, and each of them is a
+     * whole file it would write back over whatever the other one saves. So the window is told to
+     * stop writing at once, and not asked to flush first: anything it still owes the disk is owed
+     * to a project that is no longer this Studio's to write.
+     *
+     * The project's runtimes go too. Dev Mode, the preview and a test's game each write into the
+     * project folder, and each would go on doing it beside the Studio that has the project now; the
+     * refusals that keep new ones from starting are already in place (the lock manager records the
+     * project as held elsewhere before it calls this). So does this Studio's hold on the version
+     * control repository: Lore's lock on it is exclusive, and while this process keeps it every
+     * version control call the other Studio makes is refused as a repository somebody else has.
+     * A frozen workspace makes no calls of its own that would take it back - its interval
+     * checkpoint stands down while frozen, and its close no longer check points (see
+     * {@link wantsCheckpointOnClose}).
+     *
+     * No dialog and nothing on any other window: the workspace that lost the project is the one
+     * that says so, on the screen it replaces its editor with.
+     */
+    private handleProjectTakenOver(projectPath: string, holder: ProjectSessionHolder): void {
+        const key = normalizeProjectPath(projectPath);
+        for (const window of this.liveWorkspaceWindows()) {
+            if (normalizeProjectPath(window.getProps().projectPath) !== key) {
+                continue;
+            }
+            try {
+                window.sendIpcEvent(IPCEventType.workspaceSessionTakenOver, { holder });
+            } catch (error) {
+                this.logger.warn(`[Project] Could not tell the workspace on "${projectPath}" to stop writing:`, error);
+            }
+        }
+        void this.stopProjectRuntimes(projectPath);
+        void this.vcsManager.closeProject(projectPath).catch(error => {
+            this.logger.warn(`[Vcs] Could not let go of the repository for "${projectPath}" after it was taken over:`, error);
+        });
     }
 
     /**

@@ -55,6 +55,7 @@ import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import type {
     TeamCallOutcome,
     TeamConnection,
@@ -287,6 +288,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
         acquireSessionLock: () =>
             ipcClient.invoke(IPCEventType.workspaceAcquireSessionLock, {}),
+        onSessionTakenOver: (handler: (holder: ProjectSessionHolder) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceSessionTakenOver, data => handler(data.holder)),
         openProjectFolder: () =>
             ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>

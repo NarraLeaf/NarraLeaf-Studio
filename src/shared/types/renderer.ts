@@ -1,5 +1,5 @@
 import type { ProjectTrustRecord } from "./projectTrust";
-import type { ProjectSessionLockOutcome } from "./projectSession";
+import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
@@ -347,6 +347,11 @@ export interface RendererPreloadedInterface {
          * project - not a normalised document, not an auto-save, not a checkpoint.
          */
         acquireSessionLock(): Promise<RequestStatus<ProjectSessionLockOutcome>>;
+        /**
+         * Another NarraLeaf Studio has taken this window's project over. From receipt, nothing this
+         * window holds may be written - see `workspace.sessionTakenOver`.
+         */
+        onSessionTakenOver(handler: (holder: ProjectSessionHolder) => void): AppEventToken;
         /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
         liveIntentTaken(): Promise<RequestStatus<void>>;
         /**
