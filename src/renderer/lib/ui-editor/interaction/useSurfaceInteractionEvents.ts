@@ -15,10 +15,8 @@ import {
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
-import {
-    buildLayoutPatchForNewElementFromSurfaceRect,
-    resolveInsertTargetParent,
-} from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { buildLayoutPatchForNewElementFromSurfaceRect } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import {
     collectSnapGuideLines,
     splitSnapLinesToAxes,
@@ -170,22 +168,19 @@ export function useSurfaceInteractionEvents({
             updateInsertPreview(null);
 
             const doc = documentService.getDocument();
-            const target = resolveInsertTargetParent(doc, surfaceId, {
-                hitElementId: null,
-                primaryElementId: state.primaryElementId,
-            });
-            if (!target) {
+            const parentId = resolveNewElementParent(doc, surfaceId, state.primaryElementId);
+            if (!parentId) {
                 return;
             }
-            const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(doc, target.parentId, {
+            const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(doc, parentId, {
                 x,
                 y,
                 width,
                 height,
             });
             const element = state.componentId
-                ? documentService.createComponentInstance(target.parentId, state.componentId, layoutPatch)
-                : documentService.createElement(target.parentId, state.nodeType, layoutPatch);
+                ? documentService.createComponentInstance(parentId, state.componentId, layoutPatch)
+                : documentService.createElement(parentId, state.nodeType, layoutPatch);
 
             stateService.setUIElementSelection({
                 editor: "ui",

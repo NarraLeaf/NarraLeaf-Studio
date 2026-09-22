@@ -28,7 +28,8 @@ import { SCRIPT_EVENT_HEADS } from "@/lib/ui-editor/blueprint-runtime/script/scr
 import { mountCompiledScripts, unmountCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/script/scriptRuntime";
 import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import { resolveInsertTargetParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveNearestInsertParentInSurface } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { renderStarterScript } from "@/lib/workspace/services/ui-editor/blueprint/blueprintFactories";
 import { widgetMainOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
@@ -362,10 +363,13 @@ describe("a plugin widget that declares part slots", () => {
         // Dragged onto it in the layer outline.
         expect(planMoveElementsInSurface(page, "page", ["label"], "meter", null)).toEqual({ ok: false, reason: "invalid_target" });
         // Drawn with the insert tool while it is selected: the new widget goes beside it instead.
-        expect(resolveInsertTargetParent(page, "page", { hitElementId: null, primaryElementId: "meter" }))
-            .toEqual({ parentId: "root", source: "primary" });
-        expect(resolveInsertTargetParent(pageWithMeter(), "page", { hitElementId: "fill", primaryElementId: null }))
-            .toEqual({ parentId: "fill", source: "hit" });
+        expect(resolveNewElementParent(page, "page", "meter")).toBe("root");
+        // And beside it while its part is selected, where a paste also lands: the part is a container,
+        // but it is the size of what the widget draws and clips what it holds, so a rectangle drawn on
+        // the canvas would leave an element nobody can see.
+        expect(resolveNewElementParent(pageWithMeter(), "page", "fill")).toBe("root");
+        // Naming the part as the destination still puts it in - the outline's Insert Child on the part.
+        expect(resolveNearestInsertParentInSurface(pageWithMeter(), "page", "fill")).toBe("fill");
     });
 
     it("keeps its part from being dragged out of it", () => {

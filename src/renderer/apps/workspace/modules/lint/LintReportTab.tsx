@@ -33,6 +33,7 @@ import {
     lintRuleDescriptionKey,
     lintRuleTitleKey,
     lintSeverityLabelKey,
+    showGroupsWholeForHits,
     unfoldGroupsWithHits,
     type LintGroupMode,
     type LintSeverityFilter,
@@ -74,6 +75,10 @@ const GROUP_MODE_OPTIONS: SelectOption[] = [
  *  - **Every row leads with where it is.** Scene and row number first, message second: within one
  *    rule's group the sentences are near-identical copies, so the locator is the column the reader
  *    is actually scanning, and the row number is the one the scene editor's gutter prints.
+ *  - **A very long group opens short.** One rule can be almost the whole report - a measured
+ *    project had 9070 of its 9084 warnings from `voice/missing` - and every group after it was then
+ *    nine thousand rows down. Each group opens at its first findings with a row that opens the
+ *    rest; nothing is hidden, since the heading carries the whole count.
  *  - **Severity is said once per group, not once per row.** It is resolved per rule, so under a
  *    "By rule" heading every entry shares the heading's colour and a repeated word beside each of
  *    them was pure noise. Where a group really does mix severities the word comes back (see
@@ -103,6 +108,14 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
     const [severityFilter, setSeverityFilter] = useState<LintSeverityFilter>("all");
     const [groupMode, setGroupMode] = useState<LintGroupMode>("rule");
     const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(() => new Set());
+    /**
+     * The groups the reader has asked to see whole, past the preview the report opens them at.
+     *
+     * Separate from the folds and cleared when a group is folded: folding is how a rule is put
+     * aside, and unfolding it should put the reader back where the report started rather than at
+     * nine thousand rows they opened once.
+     */
+    const [wholeKeys, setWholeKeys] = useState<ReadonlySet<string>>(() => new Set());
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -183,7 +196,19 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
         return unfoldGroupsWithHits(groups, collapsedKeys, entry => matcher.test(entryHaystack(entry)));
     }, [collapsedKeys, findQuery.matcher, groups, entryHaystack]);
 
-    const rows = useMemo(() => flattenLintGroups(groups, effectiveCollapsed), [groups, effectiveCollapsed]);
+    /** The same view over the previews: a hit below one opens that group, and only that group. */
+    const effectiveWhole = useMemo(() => {
+        const matcher = findQuery.matcher;
+        if (!matcher) {
+            return wholeKeys;
+        }
+        return showGroupsWholeForHits(groups, wholeKeys, entry => matcher.test(entryHaystack(entry)));
+    }, [wholeKeys, findQuery.matcher, groups, entryHaystack]);
+
+    const rows = useMemo(
+        () => flattenLintGroups(groups, effectiveCollapsed, effectiveWhole),
+        [groups, effectiveCollapsed, effectiveWhole],
+    );
 
     const findItemText = useCallback((index: number): string | null => {
         const row = rows[index];
@@ -249,12 +274,35 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
             }
             return next;
         });
+        // Folding a group forgets that it was open past its preview: unfolding it later should show
+        // the report's own opening again, not the nine thousand rows of one press minutes ago.
+        setWholeKeys(previous => {
+            if (!previous.has(key)) {
+                return previous;
+            }
+            const next = new Set(previous);
+            next.delete(key);
+            return next;
+        });
     }, []);
 
-    /** One group still open means the button folds; everything folded means it unfolds. */
+    /** Show the rest of one group, past the preview the report opened it at. */
+    const showGroupWhole = useCallback((key: string) => {
+        setWholeKeys(previous => new Set(previous).add(key));
+    }, []);
+
+    /**
+     * One group still open means the button folds; everything folded means it unfolds.
+     *
+     * It folds and unfolds GROUPS. A group's preview is its own control - one press that laid out
+     * every finding of every rule would be the wall of rows the preview exists to keep off the
+     * report - so folding everything drops the previews the reader had opened and unfolding
+     * everything leaves each group at its opening again.
+     */
     const allCollapsed = groups.length > 0 && groups.every(group => collapsedKeys.has(group.key));
     const toggleAll = useCallback(() => {
         setCollapsedKeys(allCollapsed ? new Set() : new Set(groups.map(group => group.key)));
+        setWholeKeys(previous => (previous.size === 0 ? previous : new Set()));
     }, [allCollapsed, groups]);
 
     const rerunFrozenOut = freeze.frozen && !isFreezeExemptCommand(LINT_PROJECT_COMMAND_ID);
@@ -372,6 +420,11 @@ export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComp
                                             collapsed={effectiveCollapsed.has(row.group.key)}
                                             onToggle={() => toggleGroup(row.group.key)}
                                         />
+                                    ) : row.kind === "more" ? (
+                                        <LintShowWholeGroupRow
+                                            count={row.group.entries.length}
+                                            onShow={() => showGroupWhole(row.group.key)}
+                                        />
                                     ) : (
                                         <LintEntryRow
                                             entry={row.entry}
@@ -433,6 +486,27 @@ function LintGroupRow({
                 {title}
             </span>
             <span className="shrink-0 text-2xs text-fg-subtle">{count}</span>
+        </button>
+    );
+}
+
+/**
+ * The last row of a group the report opened short.
+ *
+ * It says the group's whole count rather than how many are left over, because that is the number on
+ * the heading above it and a reader comparing two different numbers for one group has been given a
+ * puzzle instead of a list. Indented to the message column, so it reads as belonging to the group
+ * it ends rather than as a finding of its own.
+ */
+function LintShowWholeGroupRow({ count, onShow }: { count: number; onShow: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <button
+            type="button"
+            className="flex w-full cursor-default items-baseline gap-2 rounded-md px-2 py-0.5 text-left text-2xs text-fg-subtle hover:bg-fill-subtle hover:text-fg-muted"
+            onClick={onShow}
+        >
+            {t("lint.report.showAll", { count })}
         </button>
     );
 }

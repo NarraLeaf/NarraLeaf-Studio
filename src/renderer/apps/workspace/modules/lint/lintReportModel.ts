@@ -23,6 +23,9 @@ import {
  *  - **Group order is worst-severity-first, then by title.** Not registry order and not category
  *    order: the reader is looking for what is broken, and a report that opened on `story/empty-scene`
  *    because "story" sorts before "variables" buries the errors under the notes.
+ *  - **A group opens short when it is very long.** One rule can be the whole report - 9070 of a
+ *    measured project's 9084 warnings were `voice/missing` - and a group that opened whole put
+ *    every group after it out of reach of the scrollbar. See {@link LINT_GROUP_PREVIEW_LIMIT}.
  *  - **A row's identity is its locator, not its sentence.** Twelve missing translations produce
  *    twelve copies of one message; what tells them apart is where each one is - scene and row - and
  *    what the row says. Hence {@link lintEntryLocator}, and hence the locator being a column of its
@@ -60,10 +63,39 @@ export type LintEntryGroup = {
     entries: LintReportEntry[];
 };
 
-/** One rendered line: a group heading, or an entry under it. */
+/**
+ * One rendered line: a group heading, an entry under it, or the row that opens the rest of a group.
+ *
+ * `more` is the tail of a group the report opened short - see {@link LINT_GROUP_PREVIEW_LIMIT}. It
+ * carries no count of its own: the heading above it already says how many findings the group holds,
+ * and two numbers that have to agree are one number too many.
+ */
 export type LintReportRow =
     | { kind: "group"; key: string; group: LintEntryGroup }
-    | { kind: "entry"; key: string; group: LintEntryGroup; entry: LintReportEntry };
+    | { kind: "entry"; key: string; group: LintEntryGroup; entry: LintReportEntry }
+    | { kind: "more"; key: string; group: LintEntryGroup };
+
+/**
+ * How many of a group's findings the report opens with.
+ *
+ * One rule can be the whole report: a real project measured 9084 warnings of which 9070 were
+ * `voice/missing`, 99.8% from one rule, and the fourteen findings the other rules had to make were
+ * on the far side of nine thousand rows of the same sentence. Grouping alone did not fix that -
+ * every group opened whole, so the groups after the loud one were unreachable by scrolling.
+ *
+ * So a group opens showing enough of itself to be recognised and says, on its last row, that there
+ * is more. Nothing is hidden: the count on the heading is the whole count, the rest is one press
+ * away, and the severity filter and the find both still see every finding.
+ */
+export const LINT_GROUP_PREVIEW_LIMIT = 20;
+
+/**
+ * The smallest tail worth folding away.
+ *
+ * A row that opens four more rows costs a row and a press to save three, so a group only a little
+ * over the limit is shown whole instead.
+ */
+export const LINT_GROUP_PREVIEW_SLACK = 5;
 
 export type LintGroupLabels = {
     ruleTitle: (ruleId: LintRuleId) => string;
@@ -266,17 +298,6 @@ export function groupLintEntries(
 }
 
 /**
- * Groups → one flat row list, which is what the windowed list measures and scrolls.
- *
- * Headings are rows rather than sticky containers because a virtualiser can only window one flat
- * sequence; a nested list of scrollers would either window nothing or window each group separately,
- * and a report of four thousand findings is exactly the case this exists for.
- *
- * A collapsed group keeps its heading and drops its entries. That is the one control that makes a
- * real report readable: `localization/missing` alone is one finding per line per target locale, and
- * folding it away is how the other nine rules become visible at all.
- */
-/**
  * The folds a reader would see while a find is running: theirs, minus every group holding a hit.
  *
  * Folding is how a reader puts a rule aside, and a find that inherited it would answer "no results"
@@ -304,9 +325,69 @@ export function unfoldGroupsWithHits(
     return opened ?? collapsed;
 }
 
+/**
+ * How many of a group's findings are on the list: all of them, or the preview.
+ *
+ * `whole` holds the groups the reader has asked to see in full. A group inside the limit is never
+ * cut, so the answer for most groups in most reports is "all of them" and the report reads exactly
+ * as it did before one rule grew to nine thousand findings.
+ */
+export function lintGroupShownCount(group: LintEntryGroup, whole?: ReadonlySet<string>): number {
+    if (whole?.has(group.key) || group.entries.length <= LINT_GROUP_PREVIEW_LIMIT + LINT_GROUP_PREVIEW_SLACK) {
+        return group.entries.length;
+    }
+    return LINT_GROUP_PREVIEW_LIMIT;
+}
+
+/**
+ * The groups a reader would see in full while a find is running: theirs, plus every group whose
+ * only hits are below the preview.
+ *
+ * The sibling of {@link unfoldGroupsWithHits}, and for the same reason: a hit the report is not
+ * drawing is a hit the find would report and then fail to scroll to. A group whose hits are all
+ * inside the preview is left short - the hits are already on the list, and opening nine thousand
+ * rows to show a row that was never hidden is not what the reader asked for.
+ *
+ * Returns the given set unchanged when nothing opens, so a memo over it keeps its identity.
+ */
+export function showGroupsWholeForHits(
+    groups: readonly LintEntryGroup[],
+    whole: ReadonlySet<string>,
+    holdsHit: (entry: LintReportEntry) => boolean,
+): ReadonlySet<string> {
+    let opened: Set<string> | null = null;
+    for (const group of groups) {
+        const shown = lintGroupShownCount(group, whole);
+        if (shown === group.entries.length) {
+            continue;
+        }
+        for (let index = shown; index < group.entries.length; index += 1) {
+            if (holdsHit(group.entries[index])) {
+                opened = opened ?? new Set(whole);
+                opened.add(group.key);
+                break;
+            }
+        }
+    }
+    return opened ?? whole;
+}
+
+/**
+ * Groups → one flat row list, which is what the windowed list measures and scrolls.
+ *
+ * Headings are rows rather than sticky containers because a virtualiser can only window one flat
+ * sequence; a nested list of scrollers would either window nothing or window each group separately,
+ * and a report of four thousand findings is exactly the case this exists for.
+ *
+ * A collapsed group keeps its heading and drops its entries; a group over the preview limit keeps
+ * its heading, its first findings and a row that opens the rest. Between them they are what makes a
+ * real report readable: `localization/missing` alone is one finding per line per target locale, and
+ * one rule has been measured at 99.8% of a project's warnings.
+ */
 export function flattenLintGroups(
     groups: readonly LintEntryGroup[],
     collapsed?: ReadonlySet<string>,
+    whole?: ReadonlySet<string>,
 ): LintReportRow[] {
     const rows: LintReportRow[] = [];
     for (const group of groups) {
@@ -314,9 +395,13 @@ export function flattenLintGroups(
         if (collapsed?.has(group.key)) {
             continue;
         }
-        group.entries.forEach((entry, index) => {
-            rows.push({ kind: "entry", key: `e:${group.key}:${index}`, group, entry });
-        });
+        const shown = lintGroupShownCount(group, whole);
+        for (let index = 0; index < shown; index += 1) {
+            rows.push({ kind: "entry", key: `e:${group.key}:${index}`, group, entry: group.entries[index] });
+        }
+        if (shown < group.entries.length) {
+            rows.push({ kind: "more", key: `m:${group.key}`, group });
+        }
     }
     return rows;
 }

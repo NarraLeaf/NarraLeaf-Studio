@@ -31,6 +31,7 @@ import {
 } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
+import { tallyLintFindingsByRule } from "@/lib/lint/ruleTally";
 export { nonRedundantLintLocation };
 import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
@@ -1590,7 +1591,7 @@ export class BuildService extends Service<BuildService> {
         });
     }
 
-    /** Every finding on the build channel at the level its severity maps to, then one summary. */
+    /** Every finding on the build channel at the level its severity maps to, then a count per rule, then one summary. */
     private logLintReport(consoleService: ConsoleService | null, report: LintReport): void {
         if (!consoleService) {
             return;
@@ -1610,6 +1611,23 @@ export class BuildService extends Service<BuildService> {
             consoleService.log(BUILD_CONSOLE_CHANNEL, "info", `+${suppressed} more`, {
                 source: BUILD_CONSOLE_SOURCE,
             });
+        }
+        // What the cap cut off, as a count per rule. The first two hundred findings of a sweep that
+        // is 99.8% one rule are two hundred copies of one sentence, and without this the console
+        // says nothing at all about the rules underneath it.
+        const tally = tallyLintFindingsByRule(report.entries);
+        if (tally.length > 0) {
+            consoleService.log(BUILD_CONSOLE_CHANNEL, "info", translate("lint.console.byRule"), {
+                source: BUILD_CONSOLE_SOURCE,
+            });
+            for (const rule of tally) {
+                consoleService.log(
+                    BUILD_CONSOLE_CHANNEL,
+                    LINT_CONSOLE_LEVELS[rule.severity],
+                    translate("lint.console.ruleCount", { rule: rule.ruleId, count: rule.count }),
+                    { source: BUILD_CONSOLE_SOURCE },
+                );
+            }
         }
         consoleService.log(
             BUILD_CONSOLE_CHANNEL,

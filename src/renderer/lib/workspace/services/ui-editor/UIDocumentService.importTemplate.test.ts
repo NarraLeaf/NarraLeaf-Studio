@@ -60,6 +60,7 @@ function createHarness() {
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
+        commandLineRun: false,
     });
     (service as any).document = (service as any).createEmptyDocument();
     return { service, blueprintDocument };
