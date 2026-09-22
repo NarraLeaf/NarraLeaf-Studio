@@ -1,10 +1,9 @@
-import { getInterface } from "@/lib/app/bridge";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import type { LiveAssetBytePart, LiveAssetBytes } from "@shared/live/ops";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
-import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
+import { ASSET_CATEGORY_TYPES, AssetCategory, AssetData, AssetType, isBundleAssetType } from "../assetTypes";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
 import { bundleListingFingerprint, detectModelBundleEntry } from "@shared/utils/modelBundle";
 import { Asset, AssetCreateErrorCode, AssetSource } from "../types";
@@ -90,42 +89,6 @@ export class LocalAssetsManager {
 
     async init(): Promise<this> {
         return this;
-    }
-
-    public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<AssetImportStatus<T>[]>> {
-        // A bundle is authored as a folder, so it is picked as one. Going through `selectFile` with
-        // an extension filter is exactly the behaviour that would import a model as 18 loose assets.
-        if (isBundleAssetType(type)) {
-            const directories = await getInterface().fs.selectDirectory(true);
-            if (!directories.success || !directories.data.ok) {
-                return {
-                    success: false,
-                    error: `Failed to select folders: ${directories.error || (`[${(directories.data as FsRequestResult<string[], false>)?.error.code}] ${(directories.data as FsRequestResult<string[], false>)?.error.message}`)}`,
-                };
-            }
-            return this.importFromPaths(type, directories.data.data);
-        }
-
-        const assetExtensions = AssetExtensions[type];
-        const files = await getInterface().fs.selectFile(assetExtensions, true);
-        if (!files.success || !files.data.ok) {
-            return {
-                success: false,
-                error: `Failed to select files: ${files.error || (`[${(files.data as FsRequestResult<string[], false>)?.error.code}] ${(files.data as FsRequestResult<string[], false>)?.error.message}`)}`,
-            };
-        }
-
-        const results: AssetImportStatus<T>[] = [];
-        for (const file of files.data.data) {
-            results.push(await this.importLocalAsset(type, file));
-        }
-
-        this.assetsService.markDirty(type);
-
-        return {
-            success: true,
-            data: results,
-        };
     }
 
     public async fetch<T extends AssetType>(asset: Asset<T, AssetSource.Local>): Promise<RequestStatus<AssetData<T>>> {

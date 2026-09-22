@@ -39,6 +39,19 @@ import type { ProjectSessionHolder } from "@shared/types/projectSession";
  * The heartbeat interval is far shorter than the staleness window on purpose: a live Studio that
  * misses a write - a disk that stalled, a sync client holding the file - has several more attempts
  * before anybody would take its project away.
+ *
+ * A stale heartbeat from a process that is still running on this machine gets one more heartbeat
+ * period before the takeover (see `ProjectSessionLockManager`), because that Studio is the one
+ * most likely to be about to speak: a computer waking from sleep resumes every process on it with
+ * a heartbeat as old as the sleep.
+ *
+ * ## Being taken over
+ *
+ * The holder is not told; it finds out. Its next heartbeat reads somebody else's record where its
+ * own was, stops heartbeating that project, and tells the project's workspace to stop writing -
+ * the workspace freezes for good and says the project is now open in another Studio. A holder that
+ * is running notices within one heartbeat period; one that was suspended notices on its first
+ * heartbeat after it resumes.
  */
 
 /** Where the claim lives, relative to the project directory. */
@@ -84,8 +97,16 @@ export type ProjectSessionClaim =
     | { kind: "free" }
     /** This process wrote the record that is there. */
     | { kind: "own" }
-    /** Somebody's record is there, and there is reason to believe nobody is behind it. */
-    | { kind: "stale"; reason: string }
+    /**
+     * Somebody's record is there, and there is reason to believe nobody is behind it.
+     *
+     * `holderRunning` is set when the only evidence is the heartbeat and the process the record
+     * names is still running on this machine. That Studio may be merely late rather than gone -
+     * the moment a computer wakes from sleep, every process on it has a heartbeat minutes old and
+     * is about to write a new one - so the caller looks again one heartbeat later before taking
+     * the project away from it.
+     */
+    | { kind: "stale"; reason: string; holderRunning: boolean }
     /** Another session holds it, and is still saying so. */
     | { kind: "held"; holder: ProjectSessionHolder };
 
@@ -123,8 +144,9 @@ export function decideProjectSessionClaim(
         return { kind: "own" };
     }
 
-    if (sameHost && !context.isProcessAlive(record.pid)) {
-        return { kind: "stale", reason: "the process that held it is no longer running" };
+    const holderRunning = sameHost && context.isProcessAlive(record.pid);
+    if (sameHost && !holderRunning) {
+        return { kind: "stale", reason: "the process that held it is no longer running", holderRunning: false };
     }
 
     const heartbeatAge = context.now - Date.parse(record.heartbeat);
@@ -134,6 +156,9 @@ export function decideProjectSessionClaim(
         return {
             kind: "stale",
             reason: `it has not been refreshed for ${Math.round(heartbeatAge / 1000)}s`,
+            // Only knowable here. A process id from another machine says nothing about this one,
+            // so a remote holder is judged on its heartbeat alone, as it always was.
+            holderRunning,
         };
     }
 

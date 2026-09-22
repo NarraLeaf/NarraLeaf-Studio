@@ -24,7 +24,7 @@ import {
     SplitSquareVertical,
 } from "lucide-react";
 import type { EditorComponentProps } from "../types";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
 import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
 import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
@@ -32,7 +32,11 @@ import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import {
+    LocalizationService,
+    type LocalizationUnitPatch,
+} from "@/lib/workspace/services/localization/LocalizationService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import {
     deriveUnitState,
     extractCharacterTranslationRows,
@@ -145,7 +149,32 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
         [context, isInitialized],
     );
+    const projectService = useMemo(
+        () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
+        [context, isInitialized],
+    );
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
+
+    /**
+     * Whether this table's language is still in the project's list.
+     *
+     * Removing it from the panel closes this tab, but the list can change without the panel: a
+     * collaborator removes it, a restored version does not have it, the manifest is changed on disk.
+     * A table left taking edits then wrote each one into nothing - the service threw, nobody caught
+     * it, and the text the translator typed was gone without a word. Read off the project's manifest
+     * events, which every one of those paths raises.
+     */
+    const [localeInProject, setLocaleInProject] = useState(true);
+    useEffect(() => {
+        if (!localizationService || !projectService || !locale) {
+            return;
+        }
+        const read = () => {
+            setLocaleInProject(localizationService.getConfiguration().locales.some(entry => entry.code === locale));
+        };
+        read();
+        return projectService.onConfigChanged(read);
+    }, [localizationService, projectService, locale]);
 
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
     const [characters, setCharacters] = useState<{ id: string; name: string }[]>([]);
@@ -343,9 +372,10 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
         };
     }, [storyService, localizationService, uiDocumentService, sourceValue, speakerNameFor, characters, uiDocumentRevision, t]);
 
-    // Translation document for this locale.
+    // Translation document for this locale. Read again when the language comes back to the list,
+    // since what is on disk then is what the table shows.
     useEffect(() => {
-        if (!localizationService || !locale) {
+        if (!localizationService || !locale || !localeInProject) {
             setLocDocument(null);
             return;
         }
@@ -364,7 +394,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
             disposed = true;
             unsubscribe();
         };
-    }, [localizationService, locale]);
+    }, [localizationService, locale, localeInProject]);
 
     // Flush pending translation writes when the tab goes to the background.
     useEffect(() => {
@@ -627,17 +657,46 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
      */
     useLocalizationKeyClaimHold({ service: liveService, name: focusedKeyName });
 
+    /**
+     * The last refusal said to the author, so a run of keystrokes refused for one reason is said once.
+     * Cleared by the next edit that lands.
+     */
+    const refusedEditRef = useRef<string | null>(null);
+
+    /**
+     * Write one edit, and say so when the library will not take it.
+     *
+     * The service refuses an edit to a language that has left the list and to one whose file could
+     * not be read, in the author's words. It used to be thrown out of an event handler, which only
+     * reaches the log - so the translator went on typing into a table that kept none of it.
+     */
+    const writeUnit = useCallback((row: TranslationTableRow, patch: LocalizationUnitPatch) => {
+        if (!localizationService) {
+            return;
+        }
+        try {
+            localizationService.updateUnit(locale, row.unitId, row.sourceText, patch);
+            refusedEditRef.current = null;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (refusedEditRef.current !== message) {
+                refusedEditRef.current = message;
+                uiService?.showError(error instanceof Error ? error : message);
+            }
+        }
+    }, [localizationService, locale, uiService]);
+
     const handleTargetChange = useCallback((row: TranslationTableRow, target: string) => {
-        localizationService?.updateUnit(locale, row.unitId, row.sourceText, { target });
-    }, [localizationService, locale]);
+        writeUnit(row, { target });
+    }, [writeUnit]);
 
     const handleApprove = useCallback((row: TranslationTableRow) => {
-        localizationService?.updateUnit(locale, row.unitId, row.sourceText, { status: "reviewed" });
-    }, [localizationService, locale]);
+        writeUnit(row, { status: "reviewed" });
+    }, [writeUnit]);
 
     const handleReturn = useCallback((row: TranslationTableRow) => {
-        localizationService?.updateUnit(locale, row.unitId, row.sourceText, { status: "translated" });
-    }, [localizationService, locale]);
+        writeUnit(row, { status: "translated" });
+    }, [writeUnit]);
 
     /** Inline edit of a named key's source text; the key's note is preserved. */
     const handleKeySourceChange = useCallback((row: TranslationTableRow, sourceText: string) => {
@@ -716,6 +775,20 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
 
     if (!locale) {
         return null;
+    }
+
+    // The language left the list while this table was open. Nothing is shown that could be typed
+    // into; the file stays on disk, which is what the second line says.
+    if (!localeInProject) {
+        return (
+            <div className="flex h-full min-h-0 flex-col items-center justify-center bg-surface">
+                <EmptyState
+                    icon={<Languages className="h-6 w-6" />}
+                    title={t("workspace.localization.panel.languageGone")}
+                    description={t("workspace.localization.panel.removeConfirmDetail")}
+                />
+            </div>
+        );
     }
 
     // "All caught up" only makes sense on the unreviewed pass; the other

@@ -22,6 +22,7 @@ import {
     type AutoSaveConfiguration,
     type AutoSaveEntry,
 } from "@shared/types/saves";
+import { needsRunningGame } from "./runtimeRefusals";
 
 export type AutoSaveLogLevel = "info" | "warning" | "error";
 
@@ -81,13 +82,13 @@ export class AutoSaveScheduler {
      */
     public async writeNow(): Promise<void> {
         if (this.disposed) {
-            throw new Error("Auto Save: the game app is gone");
+            throw needsRunningGame("blueprint.node.autoSave");
         }
         // Let an in-flight scheduled write finish first rather than racing it
         // into the same slot; its failure is not this caller's problem.
         await this.inFlight?.catch(() => undefined);
         if (!this.deps.isPlaying()) {
-            throw new Error("Auto Save: no game is running");
+            throw needsRunningGame("blueprint.node.autoSave");
         }
         await this.runWrite({ rethrow: true });
     }

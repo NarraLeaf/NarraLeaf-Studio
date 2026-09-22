@@ -2121,7 +2121,7 @@ describe("invokeBlueprintFnCall", () => {
                 hostAdapter: { host: "player" },
                 debug: new DebugBridge(),
             }),
-        ).rejects.toThrow(/does not exist/);
+        ).rejects.toThrow(/no longer exists/);
     });
 
     it("guards against runaway recursion depth", async () => {
@@ -2136,7 +2136,7 @@ describe("invokeBlueprintFnCall", () => {
                 hostAdapter: { host: "player" },
                 debug: new DebugBridge(),
             }),
-        ).rejects.toThrow(/depth/);
+        ).rejects.toThrow(/deeper than/);
     });
 
     it("awaits latent fn bodies before resolving with returns", async () => {

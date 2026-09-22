@@ -7,6 +7,7 @@ import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
 } from "@shared/types/blueprint/graph";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -37,13 +38,22 @@ export const broadcastBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const runtime = ctx.hostAdapter.blueprintRuntime;
             if (!runtime?.dispatchBroadcastEvent) {
-                throw new BlueprintGraphExecutionError("Broadcast runtime is unavailable", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.sendBroadcast") }),
+                    ctx.node.id,
+                );
             }
             const eventName = String(
                 resolveNodeInput(ctx, "event") ?? "",
             ).trim();
             if (!eventName) {
-                throw new BlueprintGraphExecutionError("Missing broadcast event name", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.sendBroadcast"),
+                        pin: translate("blueprint.port.event"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const data = resolveNodeInput(ctx, "data");
             await runtime.dispatchBroadcastEvent(eventName, data, ctx.executionOwner?.elementId);

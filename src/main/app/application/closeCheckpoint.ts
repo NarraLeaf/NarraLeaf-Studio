@@ -13,6 +13,11 @@ export interface CloseCheckpointFacts {
      * `AppWindow.hasLoadedWorkspace`.
      */
     workspaceLoaded: boolean;
+    /**
+     * Whether another NarraLeaf Studio has this project now - it took it over while this window
+     * held it. The working tree is the other Studio's from that moment, and so is recording it.
+     */
+    heldElsewhere: boolean;
 }
 
 /**
@@ -36,6 +41,12 @@ export interface CloseCheckpointFacts {
  */
 export function shouldCheckpointOnClose(facts: CloseCheckpointFacts): boolean {
     if (!facts.enabled || !facts.workspaceLoaded) {
+        return false;
+    }
+    // A checkpoint here would record whatever the other Studio had half-saved, into history,
+    // under this window's close - and this window's own last edits were never written, because it
+    // stopped writing when the project was taken over. Nothing of this session is left to record.
+    if (facts.heldElsewhere) {
         return false;
     }
     return typeof facts.projectPath === "string" && facts.projectPath.length > 0;

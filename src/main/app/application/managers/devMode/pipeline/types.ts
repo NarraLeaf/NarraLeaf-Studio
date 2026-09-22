@@ -89,8 +89,9 @@ export type DevModeBundleLoadContext = {
      * either of them prints is written in - a single translated sentence inside an English frame
      * reads as a fault rather than as a courtesy.
      *
-     * Two failures use it: the blueprint variant refusal, which only a package can produce, and a
-     * project document written by a newer Studio, which any host can meet.
+     * Three failures use it: the blueprint variant refusal and a script that did not compile, which
+     * only a package can produce, and a project document written by a newer Studio, which any host
+     * can meet.
      */
     locale?: LocaleCode;
     /**
@@ -125,7 +126,8 @@ export type DevModeBundleLoadContext = {
      * A host has to say, because a script only reaches a page through a URL that host serves - no
      * Content-Security-Policy here admits `blob:` or `data:`. Absent means Dev Mode's answer: under
      * the project's own `.nlstudio/`, named as `file:` URLs, which the Dev Mode document admits. A
-     * build names the pack's own scheme instead, and writes where the pack is being assembled.
+     * pack writes where it is being assembled and names each file relative to the page that loads
+     * it, which is what lets one name work for every shell that serves a pack.
      */
     scriptOutput?: { directory: string; toUrl: (filePath: string) => string };
 };

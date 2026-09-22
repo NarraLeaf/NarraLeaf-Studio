@@ -110,7 +110,7 @@ describe("where a reload puts the author back", () => {
 
         expect(target).toEqual({ kind: "entry", reason: "sceneMissing" });
         expect(storyResumeNotice(target)).toBe(
-            "The scene you were on no longer exists; restarted from the beginning.",
+            "The scene being played no longer exists; the story started from the beginning.",
         );
     });
 
@@ -229,7 +229,7 @@ describe("the row a relaunch restarts from", () => {
         });
 
         expect(resolved.startBlockId).toBeUndefined();
-        expect(resolved.notice).toContain("restarted from the start of the scene");
+        expect(resolved.notice).toBe("The row this run started from no longer exists; the scene started from its first row.");
     });
 
     it("asks nothing of a relaunch that named no row", () => {

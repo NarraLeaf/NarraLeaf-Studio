@@ -41,7 +41,9 @@ import {
     normalizeBlueprintCharacterInfo,
     type BlueprintCharacterInfo,
 } from "@shared/types/blueprint/characterInfo";
+import { translate } from "@/lib/i18n";
 import { truncateDebugEventMessage } from "./DebugBridge";
+import { widgetKindName } from "../blueprint-nodes/widgetKindName";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
@@ -1251,12 +1253,25 @@ function readDocumentElement(document: UIDocument, address: string): UIElement |
     return undefined;
 }
 
-function requireDocumentElement(document: UIDocument, elementId: string, label: string): UIElement {
+function requireDocumentElement(document: UIDocument, elementId: string): UIElement {
     const element = readDocumentElement(document, elementId);
     if (!element) {
-        throw new Error(`${label}: element not found: ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.elementNotFound"));
     }
     return element;
+}
+
+/** A widget as an author knows it, for an error: its own name, never its id. */
+function elementLabel(element: UIElement): string {
+    return element.name?.trim() || translate("blueprint.runtimeError.unnamedWidget");
+}
+
+/** The error for a widget that is not of the type a call needs, naming both in the author's terms. */
+function widgetWrongKind(element: UIElement, expectedType: string): Error {
+    return new Error(translate("blueprint.runtimeError.widgetWrongKind", {
+        element: elementLabel(element),
+        kind: widgetKindName(expectedType),
+    }));
 }
 
 function readPatchedDocumentElement(
@@ -1283,7 +1298,7 @@ function readPatchedElementLayout(
     runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): UIElement["layout"] {
-    const element = requireDocumentElement(document, elementId, "displayable");
+    const element = requireDocumentElement(document, elementId);
     return {
         ...element.layout,
         ...(runtimePatches?.get(elementId)?.layout ?? {}),
@@ -1295,7 +1310,7 @@ function readDisplayableSurfaceTopLeft(
     runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): { x: number; y: number } {
-    requireDocumentElement(document, elementId, "displayable");
+    requireDocumentElement(document, elementId);
     return getElementSurfaceTopLeftEx(id => readPatchedDocumentElement(document, runtimePatches, id), elementId);
 }
 
@@ -1304,7 +1319,7 @@ function readDisplayableParentSurfaceTopLeft(
     runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): { x: number; y: number } {
-    const element = requireDocumentElement(document, elementId, "displayable");
+    const element = requireDocumentElement(document, elementId);
     if (!element.parentId) {
         return { x: 0, y: 0 };
     }
@@ -1312,23 +1327,23 @@ function readDisplayableParentSurfaceTopLeft(
 }
 
 function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
-    const el = requireDocumentElement(document, elementId, "setVariant");
+    const el = requireDocumentElement(document, elementId);
     if (!isAppearanceCapableElementType(el.type)) {
-        throw new Error(`setVariant: element type does not support appearance variants: ${el.type}`);
+        throw new Error(translate("blueprint.runtimeError.noVariants", { element: elementLabel(el) }));
     }
     if (variantId === null) {
         return;
     }
     const rawAppearance = (el.props as Record<string, unknown> | undefined)?.appearance;
     if (!rawAppearance || typeof rawAppearance !== "object") {
-        throw new Error(`setVariant: element has no appearance model: ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.noVariants", { element: elementLabel(el) }));
     }
     const variants = (rawAppearance as { variants?: { id: string }[] }).variants;
     if (!Array.isArray(variants) || variants.length === 0) {
-        throw new Error(`setVariant: element has no appearance variants: ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.noVariants", { element: elementLabel(el) }));
     }
     if (!variants.some(v => v.id === variantId)) {
-        throw new Error(`setVariant: unknown variant id "${variantId}" for element ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.unknownVariant", { element: elementLabel(el) }));
     }
 }
 
@@ -1422,75 +1437,75 @@ function sleepMs(durationMs: number): Promise<void> {
 }
 
 function assertTextElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "text");
+    const el = requireDocumentElement(document, elementId);
     // Text specialisations included: they store the same props, so every text call reads and
     // writes the same fields on them.
     if (!isWidgetTypeOf(el.type, "nl.text")) {
-        throw new Error(`text: element is not a Text widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.text");
     }
     return el;
 }
 
 function assertSliderElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "slider");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.slider") {
-        throw new Error(`slider: element is not a Slider widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.slider");
     }
     return el;
 }
 
 function assertSwitchElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "switch");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.switch") {
-        throw new Error(`switch: element is not a Switch widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.switch");
     }
     return el;
 }
 
 function assertTextInputElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "textInput");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.textInput") {
-        throw new Error(`textInput: element is not a Text Input widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.textInput");
     }
     return el;
 }
 
 function assertListElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "list");
+    const el = requireDocumentElement(document, elementId);
     if (!isListLikeWidgetType(el.type)) {
-        throw new Error(`list: element is not a List widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.list");
     }
     return el;
 }
 
 function assertButtonElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "button");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.button") {
-        throw new Error(`button: element is not a Button widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.button");
     }
     return el;
 }
 
 function assertContainerElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "container");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.container") {
-        throw new Error(`container: element is not a Container widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.container");
     }
     return el;
 }
 
 function assertImageElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "image");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.image") {
-        throw new Error(`image: element is not an Image widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.image");
     }
     return el;
 }
 
 function assertFrameElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "frame");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.frame") {
-        throw new Error(`frame: element is not a Frame widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.frame");
     }
     return el;
 }
@@ -1593,14 +1608,14 @@ function readListProperties(
     const items = widgetRuntimeStore.getListItems(scopedKey)
         ?? readListItemsFallback(document, scope, stateScopeId, pageProps, elementId);
     const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
-        getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
+        getListProps(requireDocumentElement(document, elementId)).selectedIndex;
     return {
         items,
         selectedIndex,
         scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
         struct: resolveUIStruct(
             document,
-            getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
+            getListProps(requireDocumentElement(document, elementId)).itemStructId,
         ),
     };
 }
@@ -1789,7 +1804,7 @@ function readCommonProperties(
     scopedKey: string,
     elementId: string,
 ): BlueprintWidgetCommonProperties {
-    const el = requireDocumentElement(document, elementId, "widget");
+    const el = requireDocumentElement(document, elementId);
     const patch = runtimePatches.get(elementId);
     const props = (el.props ?? {}) as Record<string, unknown>;
     return {
@@ -2401,18 +2416,21 @@ function elementIdFromScopedWidgetRuntimeKey(scopedKey: string): string {
     return separatorIndex >= 0 ? scopedKey.slice(separatorIndex + 1) : scopedKey;
 }
 
-function normalizeGameSaveId(operation: string, id: string): string {
+function normalizeGameSaveId(id: string): string {
     const safe = String(id ?? "").trim();
     if (!safe) {
-        throw new Error(`${operation}: save id is required`);
+        throw new Error(translate("blueprint.runtimeError.noSave"));
     }
     return safe;
 }
 
 function normalizeSentenceCps(cps: unknown): number {
     const value = typeof cps === "number" ? cps : Number(cps);
-    if (!Number.isFinite(value) || value <= 0) {
-        throw new Error("setSentenceSpeed: CPS must be a positive number");
+    if (!Number.isFinite(value)) {
+        throw new Error(translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.cps") }));
+    }
+    if (value <= 0) {
+        throw new Error(translate("blueprint.runtimeError.valueAbove", { name: translate("blueprint.port.cps"), min: "0" }));
     }
     return value;
 }
@@ -2449,22 +2467,27 @@ const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
 function normalizeGamePreferenceKey(key: unknown): BlueprintGamePreferenceKey {
     const safeKey = String(key ?? "").trim() as BlueprintGamePreferenceKey;
     if (!GAME_PREFERENCE_KEYS.has(safeKey)) {
-        throw new Error(`game preference key is not supported: ${String(key ?? "")}`);
+        throw new Error(translate("blueprint.runtimeError.preferenceUnknown", { key: String(key ?? "") }));
     }
     return safeKey;
 }
 
-function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePreferenceKey, value: unknown): number {
+/**
+ * The preference errors below name the key as it was asked for. Only a script reaches them with a
+ * bad value - a preference node checks its own pin first and names the pin - and the key is the
+ * word that script's author typed.
+ */
+function normalizeGamePreferenceNumber(key: BlueprintGamePreferenceKey, value: unknown): number {
     const safeValue = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(safeValue)) {
-        throw new Error(`${operation}: ${key} must be a finite number`);
+        throw new Error(translate("blueprint.runtimeError.valueNotNumber", { name: key }));
     }
     switch (key) {
         case "gameSpeed":
         case "cps":
         case "skipInterval":
             if (safeValue <= 0) {
-                throw new Error(`${operation}: ${key} must be a positive number`);
+                throw new Error(translate("blueprint.runtimeError.valueAbove", { name: key, min: "0" }));
             }
             break;
         case "voiceVolume":
@@ -2476,7 +2499,7 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
         case "autoForwardDelay":
         case "textRevealDuration":
             if (safeValue < 0) {
-                throw new Error(`${operation}: ${key} must be zero or greater`);
+                throw new Error(translate("blueprint.runtimeError.valueAtLeast", { name: key, min: "0" }));
             }
             break;
         default:
@@ -2486,7 +2509,6 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
 }
 
 function normalizeGamePreferenceValue(
-    operation: string,
     key: BlueprintGamePreferenceKey,
     value: unknown,
 ): BlueprintGamePreferenceValue {
@@ -2498,13 +2520,13 @@ function normalizeGamePreferenceValue(
         case "skipping":
         case "showDialog":
             if (typeof value !== "boolean") {
-                throw new Error(`${operation}: ${key} must be a boolean`);
+                throw new Error(translate("blueprint.runtimeError.valueNotBoolean", { name: key }));
             }
             return value;
         case "voiceEndMode": {
             const mode = String(value ?? "").trim();
             if (mode !== "fade" && mode !== "stop" && mode !== "none") {
-                throw new Error(`${operation}: voiceEndMode must be "fade", "stop", or "none"`);
+                throw new Error(translate("blueprint.runtimeError.voiceEndModeInvalid", { name: key }));
             }
             return mode;
         }
@@ -2519,9 +2541,9 @@ function normalizeGamePreferenceValue(
         case "skipInterval":
         case "autoForwardDelay":
         case "textRevealDuration":
-            return normalizeGamePreferenceNumber(operation, key, value);
+            return normalizeGamePreferenceNumber(key, value);
         default:
-            throw new Error(`${operation}: ${key} is not supported`);
+            throw new Error(translate("blueprint.runtimeError.preferenceUnknown", { key: String(key) }));
     }
 }
 
@@ -2881,7 +2903,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const target = document.surfaces.find(s => s.id === targetSurfaceId);
                 if (!target) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`openSurface: surface not found: ${targetSurfaceId}`);
+                    throw new Error(translate("blueprint.runtimeError.pageNotFound"));
                 }
                 await onOpenSurface(targetSurfaceId, normalizeJsonRecord(props));
                 emitHostCall(emit, cap, "return");
@@ -2918,7 +2940,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onQuitApplication) {
-                        throw new Error("quitApplication: application runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsWindow"));
                     }
                     await onQuitApplication();
                 } finally {
@@ -2930,7 +2952,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onGetFullscreen) {
-                        throw new Error("getFullscreen: application window is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsWindow"));
                     }
                     return (await onGetFullscreen()) === true;
                 } finally {
@@ -2942,7 +2964,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onSetFullscreen) {
-                        throw new Error("setFullscreen: application window is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsWindow"));
                     }
                     await onSetFullscreen(fullscreen === true);
                 } finally {
@@ -3078,16 +3100,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const targetSurfaceId = String(surfaceId ?? "").trim();
                     if (!targetSurfaceId) {
-                        throw new Error("Show Layer: no page selected");
+                        throw new Error(translate("blueprint.runtimeError.noPage"));
                     }
-                    // Named ahead of the host call and by id: an author picked a page that has since
-                    // been deleted or renamed, and the id is the only thing that ties the failure
-                    // back to the node they have to fix.
+                    // Checked ahead of the host call: an author picked a page that has since been
+                    // deleted. The failure is reported against the node that asked, which is
+                    // where it is fixed; the id itself means nothing to the author.
                     if (!document.surfaces.some(surface => surface.id === targetSurfaceId)) {
-                        throw new Error(`Show Layer: page not found: ${targetSurfaceId}`);
+                        throw new Error(translate("blueprint.runtimeError.pageNotFound"));
                     }
                     if (!onShowLayer) {
-                        throw new Error("Show Layer: this preview has no layer stack");
+                        throw new Error(translate("blueprint.runtimeError.needsLayers"));
                     }
                     const group = typeof showOptions?.group === "string" && showOptions.group.trim()
                         ? showOptions.group.trim()
@@ -3143,7 +3165,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         emit({
                             type: "devtools.log",
                             level: "warn",
-                            message: "Close This Layer: this page is not a layer, so nothing was closed",
+                            message: translate("blueprint.runtimeError.notALayer", {
+                                node: translate("blueprint.node.closeThisLayer"),
+                            }),
                         });
                     }
                 } finally {
@@ -3164,7 +3188,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 if (!readDocumentElement(document, elementId)) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`setVisible: element not found: ${elementId}`);
+                    throw new Error(translate("blueprint.runtimeError.elementNotFound"));
                 }
                 const previous = readCommonProperties(
                     document,
@@ -3184,7 +3208,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 if (!readDocumentElement(document, elementId)) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`setEnabled: element not found: ${elementId}`);
+                    throw new Error(translate("blueprint.runtimeError.elementNotFound"));
                 }
                 const previous = readCommonProperties(
                     document,
@@ -3636,7 +3660,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // Existence is still checked against the document: a measurement for an id no
                     // surface holds would be a silent null indistinguishable from "not painted yet",
                     // and the two want different things from the author.
-                    requireDocumentElement(document, elementId, "measuredRect");
+                    requireDocumentElement(document, elementId);
                     // The address, not the element: the drawing it names is the copy to measure.
                     return measureElementSurfaceRect(
                         elementId,
@@ -4087,13 +4111,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const sceneId = String(request?.sceneId ?? "").trim();
                     const startBlockId = String(request?.startBlockId ?? "").trim();
                     if (!storyId) {
-                        throw new Error("startStory: storyId is required");
+                        throw new Error(translate("blueprint.runtimeError.pickStory", { node: translate("blueprint.node.startGame") }));
                     }
                     if (!sceneId) {
-                        throw new Error("startStory: sceneId is required");
+                        throw new Error(translate("blueprint.runtimeError.pickScene", { node: translate("blueprint.node.startGame") }));
                     }
                     if (!onStartStory) {
-                        throw new Error("startStory: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.startGame") }));
                     }
                     // `startBlockId` is forwarded rather than dropped: the node has always carried
                     // a `From Row` pin and the request has always had somewhere to put it, so a
@@ -4121,9 +4145,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.readSaveGame";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("readSaveGame", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onReadSaveGame) {
-                        throw new Error("readSaveGame: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return (await onReadSaveGame(saveId)) ?? null;
                 } finally {
@@ -4154,10 +4178,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const targetSurfaceId = String(surfaceId ?? "").trim();
                     if (!targetSurfaceId) {
-                        throw new Error("quit: surfaceId is required");
+                        throw new Error(translate("blueprint.runtimeError.pickPage", { node: translate("blueprint.node.quitGame") }));
                     }
                     if (!onQuitGame) {
-                        throw new Error("quit: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.quitGame") }));
                     }
                     await onQuitGame(targetSurfaceId);
                 } finally {
@@ -4168,9 +4192,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.writeSave";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("writeSave", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onWriteSave) {
-                        throw new Error("writeSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     await onWriteSave(saveId, normalizeJsonValue(metadata), screenshot === true);
                 } finally {
@@ -4181,9 +4205,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.loadSave";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("loadSave", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onLoadSave) {
-                        throw new Error("loadSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     // Anything other than an explicit false is a load: a host wired before this
                     // returned a value at all resolves undefined, and its saves did apply.
@@ -4196,9 +4220,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.deleteSave";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("deleteSave", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onDeleteSave) {
-                        throw new Error("deleteSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     await onDeleteSave(saveId);
                 } finally {
@@ -4210,7 +4234,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onListSaveIds) {
-                        throw new Error("listSaveIds: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     const ids = await onListSaveIds();
                     return [...ids].map(id => String(id));
@@ -4222,9 +4246,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveMetadata";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveMetadata", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveMetadata) {
-                        throw new Error("getSaveMetadata: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeJsonValue(await onGetSaveMetadata(saveId));
                 } finally {
@@ -4258,9 +4282,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSavePlaytime";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSavePlaytime", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSavePlaytime) {
-                        throw new Error("getSavePlaytime: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordPlaytime(await onGetSavePlaytime(saveId));
                 } finally {
@@ -4271,9 +4295,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveTimes";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveTimes", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveTimes) {
-                        throw new Error("getSaveTimes: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
                 } finally {
@@ -4284,9 +4308,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveLine";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveLine", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveLine) {
-                        throw new Error("getSaveLine: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordLine(await onGetSaveLine(saveId));
                 } finally {
@@ -4297,9 +4321,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveStory";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveStory", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveStory) {
-                        throw new Error("getSaveStory: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordStory(await onGetSaveStory(saveId));
                 } finally {
@@ -4310,9 +4334,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSavePreview";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSavePreview", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSavePreview) {
-                        throw new Error("getSavePreview: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
                 } finally {
@@ -4324,7 +4348,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onWriteAutoSave) {
-                        throw new Error("writeAutoSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     await onWriteAutoSave();
                 } finally {
@@ -4336,7 +4360,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onListAutoSaves) {
-                        throw new Error("listAutoSaves: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeAutoSaveEntries(await onListAutoSaves());
                 } finally {
@@ -4348,7 +4372,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onGetHistory) {
-                        throw new Error("getHistory: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.getHistory") }));
                     }
                     return normalizeBlueprintGameHistory(await onGetHistory());
                 } finally {
@@ -4360,7 +4384,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onGetFuture) {
-                        throw new Error("getFuture: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.getFutureHistory") }));
                     }
                     return normalizeBlueprintGameHistory(await onGetFuture());
                 } finally {
@@ -4372,7 +4396,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onRestoreHistory) {
-                        throw new Error("restoreHistory: game runtime is not available");
+                        // One capability, two nodes: an entry to go back to is Restore From
+                        // History, none is Undo Last History Entry.
+                        throw new Error(translate("blueprint.runtimeError.needsGame", {
+                            node: translate(String(id ?? "").trim()
+                                ? "blueprint.node.restoreFromHistory"
+                                : "blueprint.node.undoLastHistoryEntry"),
+                        }));
                     }
                     const safeId = String(id ?? "").trim();
                     await onRestoreHistory(safeId ? safeId : undefined);
@@ -4385,7 +4415,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onRedoHistory) {
-                        throw new Error("redoHistory: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.redoNextHistoryEntry") }));
                     }
                     await onRedoHistory();
                 } finally {
@@ -4615,7 +4645,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         // Not the bargain `isSceneVisited` and the read take. Those answer while a
                         // title screen lays out; this one is a button doing what the player asked,
                         // and a write with nothing to write into has to say so.
-                        throw new Error("Set Saved Var: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.setSavedVar") }));
                     }
                     onSetSavedVariable(variableId, value);
                 } finally {
@@ -4685,7 +4715,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onSelectChoice) {
-                        throw new Error("choose: choice runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.selectChoice") }));
                     }
                     await onSelectChoice(index);
                 } finally {
@@ -4697,7 +4727,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onNext) {
-                        throw new Error("next: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.next") }));
                     }
                     await onNext();
                 } finally {
@@ -4709,7 +4739,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onSkip) {
-                        throw new Error("skip: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.skip") }));
                     }
                     await onSkip();
                 } finally {
@@ -4721,7 +4751,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onShowDialog) {
-                        throw new Error("showDialog: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.showDialog") }));
                     }
                     await onShowDialog();
                 } finally {
@@ -4733,7 +4763,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onHideDialog) {
-                        throw new Error("hideDialog: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.hideDialog") }));
                     }
                     await onHideDialog();
                 } finally {
@@ -4745,7 +4775,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onToggleDialogDisplay) {
-                        throw new Error("toggleDialogDisplay: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.toggleDialogDisplay") }));
                     }
                     await onToggleDialogDisplay();
                 } finally {
@@ -4758,7 +4788,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const safeCps = normalizeSentenceCps(cps);
                     if (!onSetSentenceSpeed) {
-                        throw new Error("setSentenceSpeed: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.setSentenceSpeed") }));
                     }
                     await onSetSentenceSpeed(safeCps);
                 } finally {
@@ -4771,10 +4801,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const safeKey = normalizeGamePreferenceKey(key);
                     if (!onGetGamePreference) {
-                        throw new Error("getPreference: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGameAny"));
                     }
                     return normalizeGamePreferenceValue(
-                        "getPreference",
                         safeKey,
                         onGetGamePreference(safeKey),
                     );
@@ -4787,9 +4816,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const safeKey = normalizeGamePreferenceKey(key);
-                    const safeValue = normalizeGamePreferenceValue("setPreference", safeKey, value);
+                    const safeValue = normalizeGamePreferenceValue(safeKey, value);
                     if (!onSetGamePreference) {
-                        throw new Error("setPreference: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGameAny"));
                     }
                     await onSetGamePreference(safeKey, safeValue);
                 } finally {
@@ -4966,7 +4995,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "pointer.moveToElementCenter";
                 emitHostCall(emit, cap, "call");
                 try {
-                    requireDocumentElement(document, elementId, "movePointerToElement");
+                    requireDocumentElement(document, elementId);
                     // Measured by address: the button in the row the graph is running in, not the
                     // first copy of it the page happens to hold.
                     const measured = measureElementSurfaceRect(

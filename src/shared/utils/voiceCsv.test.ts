@@ -14,7 +14,8 @@ describe("voice CSV round-trip", () => {
         expect(csv.split("\r\n")[0]).toBe("filename,unit_id,character,scene,line,status,note");
         const parsed = parseVoiceCsv(csv);
         expect(parsed.problems).toEqual([]);
-        expect(parsed.rows).toEqual(rows);
+        // Each row read back knows where it sat, as a spreadsheet numbers it: the header is row 1.
+        expect(parsed.rows).toEqual(rows.map((row, index) => ({ ...row, row: index + 2 })));
     });
 
     it("survives a UTF-8 BOM and reordered/extra columns", () => {

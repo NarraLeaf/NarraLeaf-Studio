@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { REMOTE_ASSET_MAX_BYTES } from "@shared/constants/remoteAsset";
-import { fetchRemoteAsset, parseRemoteAssetUrl } from "./remoteAssetFetcher";
+import { REMOTE_ASSET_FETCH_TIMEOUT_MS, REMOTE_ASSET_MAX_BYTES } from "@shared/constants/remoteAsset";
+import { RemoteAssetFetchErrorCode } from "@shared/types/remoteAsset";
+import { fetchRemoteAsset, parseRemoteAssetUrl, RemoteAssetFetchError } from "./remoteAssetFetcher";
 
 /**
  * The fetcher is a boundary, so these are boundary tests: what it refuses, what it asks for, and
@@ -102,5 +103,68 @@ describe("fetchRemoteAsset", () => {
         respondWith(new Uint8Array([1]), { status: 404 });
 
         await expect(fetchRemoteAsset("https://example.test/gone.png")).rejects.toThrow(/404/);
+    });
+});
+
+/**
+ * The code each refusal carries is what the author's sentence is chosen from - the message is the
+ * log's, in English with the status line in it - so every refusal has to carry one, and the right one.
+ */
+describe("fetchRemoteAsset refusal codes", () => {
+    async function codeOf(promise: Promise<unknown>): Promise<unknown> {
+        try {
+            await promise;
+        } catch (error) {
+            expect(error).toBeInstanceOf(RemoteAssetFetchError);
+            return (error as RemoteAssetFetchError).code;
+        }
+        throw new Error("expected the fetch to be refused");
+    }
+
+    it.each([
+        [404, RemoteAssetFetchErrorCode.NotFound],
+        [410, RemoteAssetFetchErrorCode.NotFound],
+        [401, RemoteAssetFetchErrorCode.AccessDenied],
+        [403, RemoteAssetFetchErrorCode.AccessDenied],
+        [500, RemoteAssetFetchErrorCode.ServerError],
+        [503, RemoteAssetFetchErrorCode.ServerError],
+        [429, RemoteAssetFetchErrorCode.Refused],
+        [400, RemoteAssetFetchErrorCode.Refused],
+    ])("answers %i with %s", async (status, code) => {
+        respondWith(new Uint8Array([1]), { status });
+        expect(await codeOf(fetchRemoteAsset("https://example.test/a.png"))).toBe(code);
+    });
+
+    it("codes an address that is not a URL, and one that is not http", async () => {
+        expect(await codeOf(fetchRemoteAsset("not a url"))).toBe(RemoteAssetFetchErrorCode.InvalidUrl);
+        expect(await codeOf(fetchRemoteAsset("file:///C:/x.png"))).toBe(RemoteAssetFetchErrorCode.UnsupportedScheme);
+    });
+
+    it("codes a request that got no answer as unreachable", async () => {
+        globalThis.fetch = vi.fn(async () => {
+            throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND example.test") });
+        }) as unknown as typeof globalThis.fetch;
+        expect(await codeOf(fetchRemoteAsset("https://example.test/a.png"))).toBe(RemoteAssetFetchErrorCode.Unreachable);
+    });
+
+    it("codes a server that never answers as a timeout", async () => {
+        vi.useFakeTimers();
+        try {
+            globalThis.fetch = vi.fn((_url: string, init: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+                init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+            })) as unknown as typeof globalThis.fetch;
+            const pending = codeOf(fetchRemoteAsset("https://example.test/slow.png"));
+            await vi.advanceTimersByTimeAsync(REMOTE_ASSET_FETCH_TIMEOUT_MS + 1);
+            expect(await pending).toBe(RemoteAssetFetchErrorCode.Timeout);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("codes a file over the ceiling as too large", async () => {
+        respondWith(new Uint8Array([1]), {
+            headers: { "content-length": String(REMOTE_ASSET_MAX_BYTES + 1) },
+        });
+        expect(await codeOf(fetchRemoteAsset("https://example.test/huge.bin"))).toBe(RemoteAssetFetchErrorCode.TooLarge);
     });
 });

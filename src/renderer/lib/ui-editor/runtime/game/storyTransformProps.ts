@@ -16,6 +16,14 @@ import { foldStoryTransformLook, storyTransformPropsToNlr } from "@shared/story/
 import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
+
+/** The transform inspector's own label for each clip reveal, so a diagnostic names the effect the author picked. */
+const CLIP_REVEAL_LABEL_KEYS: Readonly<Record<NonNullable<StoryTransformRef["clipReveal"]>["kind"], TranslationKey>> = {
+    wipe: "storyInspector.displayableOperation.wipe",
+    circleReveal: "storyInspector.displayableOperation.circleReveal",
+    circleClose: "storyInspector.displayableOperation.circleClose",
+};
 
 /**
  * Pure transform-ref → props math shared by the NLR story compiler (building live Transforms)
@@ -67,7 +75,9 @@ export function getInlineTransformProps(
         // that needs settled props up front - a character's entrance, the editor's stage snapshot -
         // still cannot fold one. It is now an explicit field rather than a preset that silently folded
         // to nothing, but the answer it gets is the same one.
-        onDiagnostic?.(translate("story.preview.diagnostics.presetNotFoldable", { preset: transform.clipReveal.kind }));
+        onDiagnostic?.(translate("story.preview.diagnostics.presetNotFoldable", {
+            preset: translate(CLIP_REVEAL_LABEL_KEYS[transform.clipReveal.kind]),
+        }));
     }
     // A named grade is folded to the chain it stands for: `@shared` cannot reach the library, and a
     // settled preview has to show the CSS the row will actually put on stage. A name the library lost
@@ -223,7 +233,7 @@ export function storyTransformRefFinalProps(
         const asset = animationId ? animations.get(animationId) : undefined;
         if (!asset) {
             onDiagnostic?.(animationId
-                ? translate("story.preview.diagnostics.animationNotFound", { animationId })
+                ? translate("story.preview.diagnostics.animationNotFound")
                 : translate("story.preview.diagnostics.animationIdMissing"));
             return visibility === "none" ? {} : { opacity: visibility === "show" ? 1 : 0 };
         }

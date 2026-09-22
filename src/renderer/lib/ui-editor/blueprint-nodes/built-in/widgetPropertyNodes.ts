@@ -42,7 +42,9 @@ import {
 } from "@shared/types/blueprint/graph";
 import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type { ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSurfaceOptions";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
@@ -130,22 +132,22 @@ function resolveTargetElementId(
     if (mode === "self") {
         const elementId = ctx.executionOwner?.elementId;
         if (!elementId) {
-            throw new BlueprintGraphExecutionError(`${target.label} node requires a widget execution owner`, ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
         }
         return addressWidgetFromExecution(ctx, elementId);
     }
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
-        throw new BlueprintGraphExecutionError(`${target.label} Element node requires an Element input`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     if (ref.elementType !== target.elementType) {
         throw new BlueprintGraphExecutionError(
-            `${target.label} Element node expected ${target.elementType}, got ${ref.elementType}`,
+            translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(target.elementType) }),
             ctx.node.id,
         );
     }
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-        throw new BlueprintGraphExecutionError(`${target.label} Element node can only target the current Surface`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
     }
     return addressWidgetFromExecution(ctx, ref.elementId);
 }

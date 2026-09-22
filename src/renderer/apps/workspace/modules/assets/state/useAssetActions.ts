@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Asset, AssetGroup, AssetSource } from '@/lib/workspace/services/assets/types';
 import { REMOTE_ASSET_ALLOWED_PROTOCOLS } from '@shared/constants/remoteAsset';
-import type { RequestStatus } from '@shared/types/ipcEvents';
+import type { RefusableStatus } from '@/lib/workspace/services/assets/assetImportRefusal';
 import {
     ASSET_CATEGORY_EXTENSIONS,
     ASSET_CATEGORY_TYPES,
@@ -720,36 +720,43 @@ export function useAssetActions({
 
         try {
             await withAssetsService(async (assetsService) => {
-                let result: RequestStatus<Asset<AssetType, AssetSource.Remote>> = {
-                    success: false,
-                    error: t("assets.unknownError"),
-                };
+                let result: RefusableStatus<Asset<AssetType, AssetSource.Remote>> = { success: false };
                 await assetsService.transaction(async (svc) => {
                     result = await svc.importRemoteAsset(category, trimmed, groupId);
                 });
                 importQueue?.progress({ completed: 1, total: 1 });
-                importQueue?.finish(result.success ? [] : [{ path: trimmed, error: result.error }]);
+                // The refusal worded here, as a local file's is: the importer's own `error` is
+                // English, quotes the server's status line, and can name the snapshot's storage path.
+                let reason: string | null = null;
+                if (!result.success) {
+                    console.warn(`[assets] could not import ${trimmed}`, result.error);
+                    reason = describeAssetImportRefusal(result.refusal, t);
+                }
+                importQueue?.finish(result.success ? [] : [{ path: trimmed, ...(reason ? { error: reason } : {}) }]);
                 reportedVerdict = true;
 
                 if (!result.success && !importQueue) {
                     context.services.get<UIService>(Services.UI).showAlert(
                         t("assets.import.remoteFailedTitle"),
-                        result.error || t("assets.unknownError")
+                        reason ?? t("assets.unknownError"),
                     );
                 }
             });
 
             onActionComplete();
         } catch (error) {
+            // What threw is a service's or the platform's sentence, for the log.
             console.error("Failed to import remote asset", error);
-            const message = error instanceof Error ? error.message : t("assets.unknownError");
             // Only if the run never reached a verdict. Then the strip is told the URL is outstanding,
             // and it keeps the address, which is the only thing standing between a failure and
             // typing it back in.
             if (!reportedVerdict) {
-                importQueue?.finish([{ path: trimmed, error: message }]);
+                importQueue?.finish([{ path: trimmed }]);
             }
-            context.services.get<UIService>(Services.UI).showAlert(t("assets.import.remoteFailedTitle"), message);
+            context.services.get<UIService>(Services.UI).showAlert(
+                t("assets.import.remoteFailedTitle"),
+                t("assets.unknownError"),
+            );
         } finally {
             notifyLoading(false);
         }

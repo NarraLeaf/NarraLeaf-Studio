@@ -115,6 +115,13 @@ export const wizard = {
             generic: "このファイルは展開できなかった",
             notAProjectTitle: "これは NarraLeaf Studio のプロジェクトではない",
             notAProject: "展開は終わったが、中に Studio のプロジェクトファイルがない。展開した中身は {path} にある",
+            notAPackage: "このファイルは NarraLeaf Studio のプロジェクトパッケージではない",
+            newerVersion: "このパッケージは新しいバージョンの NarraLeaf Studio で作られている。Studio を更新してから読み込む",
+            damaged: "パッケージが壊れているか、途中で切れている",
+            packageMissing: "パッケージファイルがもう存在しない",
+            packageUnreadable: "Studio にパッケージファイルの読み取り権限がない",
+            folderProtected: "選んだフォルダは Studio 自身の保存領域の中にある。別のフォルダを選ぶ",
+            diskFull: "ディスクの空き容量が足りない",
         },
     },
     // クローンの流れの最初のページ。短いのは意図的で、プロジェクトについての残りは
