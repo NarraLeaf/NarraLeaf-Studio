@@ -22,8 +22,8 @@ import {
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import {
     useWidgetRuntimeElementKey,
-    useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    useWidgetRuntimeStoreValue,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
@@ -140,9 +140,8 @@ export function SwitchRenderer(props: WidgetRendererProps) {
     const [pendingChecked, setPendingChecked] = useState<boolean | null>(null);
     const runtimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
-    const snapshot = useWidgetRuntimeSnapshot();
     const authoredProps = getSwitchProps(element);
-    const runtimeProps = runtimeStore?.getSwitchProperties(runtimeElementKey);
+    const runtimeProps = useWidgetRuntimeStoreValue(store => store.getSwitchProperties(runtimeElementKey));
     const switchProps = getSwitchProps({
         ...element,
         props: {
@@ -150,7 +149,6 @@ export function SwitchRenderer(props: WidgetRendererProps) {
             ...(runtimeProps ?? {}),
         },
     });
-    void snapshot;
 
     const checked = switchProps.checked;
     const checkedRef = useRef(checked);
