@@ -2270,14 +2270,17 @@ async function createNlrScenes(input: {
         const runtimeName = sceneRuntimeName(scene);
         const first = namesSeen.get(runtimeName);
         if (first) {
+            const firstName = sceneDisplayName(first);
+            const secondName = sceneDisplayName(scene);
+            // Two scenes with one title - the commonest way to have made this pair - are named once:
+            // "the scenes “Chapter 1” and “Chapter 1”" reads as a mistake in the sentence.
             pushDiagnostic(
                 input.diagnostics,
                 "error",
                 undefined,
-                say("story.compile.flow.sharedSceneVariables", {
-                    first: sceneDisplayName(first),
-                    second: sceneDisplayName(scene),
-                }),
+                firstName === secondName
+                    ? say("story.compile.flow.sharedSceneVariablesSameName", { name: firstName })
+                    : say("story.compile.flow.sharedSceneVariables", { first: firstName, second: secondName }),
             );
         } else {
             namesSeen.set(runtimeName, scene);

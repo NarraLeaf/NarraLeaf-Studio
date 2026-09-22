@@ -1400,6 +1400,21 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
+    it("names two colliding scenes once when the author gave them one title", async () => {
+        // The pair a project made before internal names were minted unique most often holds: two
+        // scenes both called "Chapter 1". Naming the title twice would read as a fault in the sentence.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        for (const id of ["scene-1", "scene-2"] as const) {
+            document.scenes[id].name = "Chapter 1";
+            document.scenes[id].runtimeName = "chapter_1";
+        }
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "error",
+            message: "The two scenes named “Chapter 1” keep their scene variables under one name, so each overwrites the other's.",
+        });
+    });
+
     it("says nothing about two scenes whose display names match but whose runtime names do not", async () => {
         // What Studio makes of a second "Chapter 1" now: the same title, its own namespace.
         const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
