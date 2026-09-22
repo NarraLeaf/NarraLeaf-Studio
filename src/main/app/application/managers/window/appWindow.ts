@@ -425,7 +425,12 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     /** The renderer's half of a headless run; see `WorkspaceCommandLineRunHandler`. */
     public reportCommandLineRunEvent(event: CommandLineRunEvent): void {
         if (this.commandLineRunListeners.length === 0) {
-            this.pendingCommandLineRunEvents.push(event);
+            // Kept only for a window that was opened to do a run, which is the only one anybody will
+            // subscribe to - and only so many, since what matters is the first few things it said.
+            const opensRun = Boolean((this.props as { commandLineRun?: unknown } | undefined)?.commandLineRun);
+            if (opensRun && this.pendingCommandLineRunEvents.length < 100) {
+                this.pendingCommandLineRunEvents.push(event);
+            }
             return;
         }
         for (const listener of [...this.commandLineRunListeners]) {
