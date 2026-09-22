@@ -45,6 +45,17 @@ describe("project session gate", () => {
         expect(message).not.toMatch(/\d{3,}/);
     });
 
+    it("does not send the author to close a Studio that has already let the project go", () => {
+        // Taken over while this Studio slept, and closed there again before it woke: the other
+        // Studio's claim is gone, and the way back is to open the project here again.
+        const message = projectHeldElsewhereMessage("Dev Mode", { ...HERE, released: true });
+        expect(message).toBe(
+            "Dev Mode is unavailable: this project was opened in another NarraLeaf Studio on this computer. "
+            + "Open the project here again.",
+        );
+        expect(message).not.toContain("Close it there");
+    });
+
     it("puts the refusal in the log as well as the workspace console", () => {
         // The window this usually protects is on its error screen, with no console on show.
         emitWorkspaceConsoleLog.mockClear();

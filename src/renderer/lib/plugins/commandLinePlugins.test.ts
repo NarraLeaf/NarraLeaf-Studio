@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { DependencyResolutionEntry, ProjectPluginDependency } from "@shared/types/pluginDependencies";
-import { findUnmetPluginDependencies, type InstalledPluginState } from "./commandLinePlugins";
+import {
+    describeUnmetPlugins,
+    findFailedNamedPlugins,
+    findUnmetPluginDependencies,
+    type InstalledPluginState,
+} from "./commandLinePlugins";
 
 /**
  * Which of a project's declared plugins a command-line run cannot use, and how the log says so.
@@ -56,14 +61,38 @@ describe("findUnmetPluginDependencies", () => {
         expect(unmet).toEqual([{ plugin: '"Gallery" 3.1.0', state: "is not installed in this profile" }]);
     });
 
-    it("says a plugin the profile has switched off is switched off", () => {
+    it("says a plugin the profile has switched off is switched off, and how to switch it on for the run", () => {
         const unmet = findUnmetPluginDependencies(
             [entry({ installedEnabled: false })],
             [installed({ enabled: false, status: "disabled" })],
             {},
         );
 
-        expect(unmet).toEqual([{ plugin: '"Gallery" 3.1.0', state: "is switched off in this profile" }]);
+        expect(unmet).toEqual([{ plugin: '"Gallery" 3.1.0', state: "is switched off in this profile", switchOn: "Gallery" }]);
+    });
+
+    it("offers no switch for a plugin switched off because it was never granted, which the flag refuses", () => {
+        const unmet = findUnmetPluginDependencies(
+            [entry({ installedEnabled: false })],
+            [installed({ enabled: false, status: "needsAuthorization" })],
+            {},
+        );
+
+        expect(unmet[0].state).toBe("is switched off in this profile");
+        expect(unmet[0].switchOn).toBeUndefined();
+    });
+
+    it("offers the id when another installed plugin shares the name, as the flag would ask for", () => {
+        const unmet = findUnmetPluginDependencies(
+            [entry({ installedEnabled: false })],
+            [
+                installed({ enabled: false, status: "disabled" }),
+                installed({ pluginId: "acme.gallery", manifest: { name: "gallery", version: "1.0.0", entries: {} } } as never),
+            ],
+            {},
+        );
+
+        expect(unmet[0].switchOn).toBe("narraleaf.gallery");
     });
 
     it("says a plugin at another major version is held back, and which version is installed", () => {
@@ -101,5 +130,62 @@ describe("findUnmetPluginDependencies", () => {
             [],
             {},
         )[0].plugin).toBe('"narraleaf.gallery" 3.1.0');
+    });
+});
+
+/**
+ * A plugin the line switched on with `--lint-plugin` (or its siblings) is held to starting: a job
+ * that asked for it and got a run without it would be answered about something it did not ask about.
+ */
+describe("findFailedNamedPlugins", () => {
+    const STATS = { id: "acme.stats", name: "Stats", version: "1.2.0", enabledForRun: true };
+
+    it("names a plugin the line named that failed to start, by its name and installed version", () => {
+        expect(findFailedNamedPlugins([STATS], [], { "acme.stats": "setup threw" }))
+            .toEqual([{ plugin: '"Stats" 1.2.0', state: "could not start: setup threw" }]);
+    });
+
+    it("holds a plugin the profile already ran to starting as well, since the line asked for it", () => {
+        expect(findFailedNamedPlugins([{ ...STATS, enabledForRun: false }], [], { "acme.stats": "setup threw" }))
+            .toHaveLength(1);
+    });
+
+    it("says nothing about one that started, or one with nothing to start in the editor", () => {
+        expect(findFailedNamedPlugins([STATS], [], {})).toEqual([]);
+    });
+
+    it("leaves a plugin the project declares to the declared list, so it is not named twice", () => {
+        const declaredStats = entry({ dependency: { ...GALLERY, id: "acme.stats", name: "Stats" } });
+
+        expect(findFailedNamedPlugins([STATS], [declaredStats], { "acme.stats": "setup threw" })).toEqual([]);
+    });
+});
+
+/**
+ * The run's closing sentence ends on the line that fixes it, where a flag would: in the throwaway
+ * profile a job runs in, a switched-off built-in is the usual reason for exit 4.
+ */
+describe("describeUnmetPlugins", () => {
+    it("ends on the flag that switches the plugin on for this run", () => {
+        expect(describeUnmetPlugins(
+            [{ plugin: '"Gallery" 3.1.0', state: "is switched off in this profile", switchOn: "Gallery" }],
+            "--lint-plugin",
+        )).toBe('This profile cannot run a plugin this project needs: "Gallery" 3.1.0. Install or switch it on in'
+            + " Studio's plugin list with this profile, or run with a profile that has it."
+            + " To switch it on for this run only, add --lint-plugin=Gallery.");
+    });
+
+    it("quotes a name with a space, and names only the ones a flag can switch on", () => {
+        const sentence = describeUnmetPlugins([
+            { plugin: '"Menu Bar" 1.0.0', state: "is switched off in this profile", switchOn: "Menu Bar" },
+            { plugin: '"Stats" 1.2.0', state: "is not installed in this profile" },
+        ], "--build-plugin");
+
+        expect(sentence).toMatch(/ To switch the ones switched off on for this run only, add --build-plugin="Menu Bar"\.$/);
+    });
+
+    it("says nothing about a flag when none would help", () => {
+        expect(describeUnmetPlugins([{ plugin: '"Stats" 1.2.0', state: "is not installed in this profile" }], "--lint-plugin"))
+            .not.toContain("--lint-plugin");
     });
 });

@@ -13,6 +13,13 @@ export interface ProjectSessionHolder {
     startedAt: string;
     /** Whether that machine is this one. */
     sameHost: boolean;
+    /**
+     * Set when that session has let go of the project again: this Studio held it, the other one
+     * took it over and has since closed it, and all that is left of its claim is the record that it
+     * made one. The project may be free now, which is why a window told this does not say the
+     * project "is open" anywhere.
+     */
+    released?: true;
 }
 
 /** The answer to "may this window edit this project". */
