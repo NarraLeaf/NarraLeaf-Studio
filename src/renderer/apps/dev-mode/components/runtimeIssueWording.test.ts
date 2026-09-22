@@ -206,6 +206,23 @@ describe("the runtime issue catalog", () => {
         }
     });
 
+    /**
+     * The two sentences that speak for the whole list have to say what they are speaking for.
+     *
+     * Dev Mode reports what the running game ran into and deliberately does not run the project
+     * check. A bare "Nothing has failed" and a bare "0 errors" were therefore read as a clean
+     * project on a project whose check had a hundred errors to say about it, and the author was
+     * looking at the window they were playing in. Each language names the run in its own words, so
+     * the guard is a table rather than one substring.
+     */
+    it.each(LOCALES)("says the tally and the empty list are about this run, in %s", locale => {
+        const runWord: Record<Locale, string> = { en: "in this run", zh: "本次运行", ja: "今回の実行" };
+        const { t } = createTranslator(locale);
+        for (const key of ["devMode.issues.empty", "devMode.issues.summary"] as TranslationKey[]) {
+            expect(t(key, { errors: 0, warnings: 20 }), key).toContain(runWord[locale]);
+        }
+    });
+
     it("gives every family key a translation in zh and ja", () => {
         const en: [string, string][] = [];
         leaves(CATALOGS.en, "", en);

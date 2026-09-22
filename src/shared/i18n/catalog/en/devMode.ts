@@ -12,7 +12,13 @@ export const devMode = {
     issues: {
         // One word, like every other panel in the drawer.
         title: "Issues",
-        empty: "Nothing has failed",
+        // This list and this tally hold the failures THE RUNNING GAME reported, and say so. Dev Mode
+        // does not run the project check and is not meant to: a bare "Nothing has failed" or a bare
+        // "0 errors" is read as a clean project, which is a verdict nothing here is in a position to
+        // give - a project whose check has a hundred errors to say about can play a scene without
+        // reporting one. "This run" is exactly what is counted: the list is emptied every time the
+        // bundle reloads, because the rows it points into have been replaced.
+        empty: "Nothing has failed in this run",
         // The heading over a launch/reload failure, which happened before there was a story to point
         // into. It says what the message is about, since unlike every other entry it has no location.
         sessionFailure: "Session failed to start",
@@ -50,7 +56,8 @@ export const devMode = {
         viaPlayHead: "where playback was",
         stack: "Stack",
         dismissAll: "Dismiss all ({count})",
-        summary: "{errors} errors · {warnings} warnings",
+        // See `empty` above for why the run is named.
+        summary: "{errors} errors · {warnings} warnings in this run",
     },
     // The drawer's panels are named for their SUBJECT, one word each: Story, Interface, Debugger.
     // They are parallel on purpose - "Story Runtime" and "Blueprint DevTools" beside each other read
