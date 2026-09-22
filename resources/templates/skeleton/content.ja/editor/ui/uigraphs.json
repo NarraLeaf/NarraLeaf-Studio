@@ -15747,11 +15747,13 @@
                       }
                     }
                   },
-                  "showing": {
-                    "id": "showing",
-                    "type": "blueprint.local.get",
+                  "viewer": {
+                    "id": "viewer",
+                    "type": "blueprint.element.ref",
                     "params": {
-                      "variableId": "5107c0a1-0000-4000-8000-000000000410"
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
+                      "elementType": "nl.container"
                     },
                     "meta": {
                       "editorLayout": {
@@ -15760,10 +15762,12 @@
                       }
                     }
                   },
-                  "idle": {
-                    "id": "idle",
-                    "type": "blueprint.collection.arrayIsEmpty",
-                    "params": {},
+                  "showing": {
+                    "id": "showing",
+                    "type": "blueprint.element.displayable.getProperty",
+                    "params": {
+                      "property": "visible"
+                    },
                     "meta": {
                       "editorLayout": {
                         "x": 280,
@@ -15782,67 +15786,6 @@
                       }
                     }
                   },
-                  "nClear": {
-                    "id": "nClear",
-                    "type": "blueprint.page.clear",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 560,
-                        "y": -120
-                      }
-                    }
-                  },
-                  "n2": {
-                    "id": "n2",
-                    "type": "blueprint.page.back",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 840,
-                        "y": -120
-                      }
-                    }
-                  },
-                  "none": {
-                    "id": "none",
-                    "type": "blueprint.data.jsonMakeArray",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 560,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "forget": {
-                    "id": "forget",
-                    "type": "blueprint.local.set",
-                    "params": {
-                      "variableId": "5107c0a1-0000-4000-8000-000000000410"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 560,
-                        "y": 120
-                      }
-                    }
-                  },
-                  "viewer": {
-                    "id": "viewer",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                      "elementId": "5107c0a1-0000-4000-8000-000000000400",
-                      "elementType": "nl.container"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 840,
-                        "y": 260
-                      }
-                    }
-                  },
                   "close": {
                     "id": "close",
                     "type": "blueprint.element.displayable.setProperty",
@@ -15850,6 +15793,28 @@
                       "property": "visible",
                       "value": false
                     },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": -120
+                      }
+                    }
+                  },
+                  "nClear": {
+                    "id": "nClear",
+                    "type": "blueprint.page.clear",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 120
+                      }
+                    }
+                  },
+                  "n2": {
+                    "id": "n2",
+                    "type": "blueprint.page.back",
+                    "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 840,
@@ -15871,18 +15836,18 @@
                   },
                   {
                     "from": {
-                      "nodeId": "showing",
-                      "port": "value"
+                      "nodeId": "viewer",
+                      "port": "element"
                     },
                     "to": {
-                      "nodeId": "idle",
-                      "port": "array"
+                      "nodeId": "showing",
+                      "port": "element"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "idle",
-                      "port": "result"
+                      "nodeId": "showing",
+                      "port": "value"
                     },
                     "to": {
                       "nodeId": "gate",
@@ -15893,46 +15858,6 @@
                     "from": {
                       "nodeId": "gate",
                       "port": "true"
-                    },
-                    "to": {
-                      "nodeId": "nClear",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "nClear",
-                      "port": "next"
-                    },
-                    "to": {
-                      "nodeId": "n2",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "gate",
-                      "port": "false"
-                    },
-                    "to": {
-                      "nodeId": "forget",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "none",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "forget",
-                      "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "forget",
-                      "port": "next"
                     },
                     "to": {
                       "nodeId": "close",
@@ -15948,6 +15873,26 @@
                       "nodeId": "close",
                       "port": "element"
                     }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "gate",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "nClear",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "nClear",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "n2",
+                      "port": "in"
+                    }
                   }
                 ],
                 "meta": {
@@ -15961,10 +15906,25 @@
         },
         "members": {
           "variables": {
-            "5107c0a1-0000-4000-8000-000000000410": {
-              "id": "5107c0a1-0000-4000-8000-000000000410",
-              "name": "ビューアーの画像",
-              "valueType": "array"
+            "5107c0a1-0000-4000-8000-000000000411": {
+              "id": "5107c0a1-0000-4000-8000-000000000411",
+              "name": "ビューアーのイラスト",
+              "valueType": "string"
+            },
+            "5107c0a1-0000-4000-8000-000000000412": {
+              "id": "5107c0a1-0000-4000-8000-000000000412",
+              "name": "ビューアーの差分数",
+              "valueType": "integer"
+            },
+            "5107c0a1-0000-4000-8000-000000000413": {
+              "id": "5107c0a1-0000-4000-8000-000000000413",
+              "name": "ビューアーの最初の差分",
+              "valueType": "integer"
+            },
+            "5107c0a1-0000-4000-8000-000000000414": {
+              "id": "5107c0a1-0000-4000-8000-000000000414",
+              "name": "ビューアーの表示中の差分",
+              "valueType": "integer"
             }
           },
           "fields": {},
@@ -24008,15 +23968,10 @@
                       }
                     }
                   },
-                  "pictures": {
-                    "id": "pictures",
+                  "variants": {
+                    "id": "variants",
                     "type": "narraleaf.gallery.getVariants",
-                    "params": {
-                      "onlyUnlocked": true,
-                      "__inlineLiteralPins": [
-                        "onlyUnlocked"
-                      ]
-                    },
+                    "params": {},
                     "meta": {
                       "editorLayout": {
                         "x": 840,
@@ -24024,13 +23979,41 @@
                       }
                     }
                   },
-                  "all": {
-                    "id": "all",
-                    "type": "blueprint.data.memo",
-                    "params": {},
+                  "keepArtwork": {
+                    "id": "keepArtwork",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000411"
+                    },
                     "meta": {
                       "editorLayout": {
                         "x": 1120,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "artworkAgain": {
+                    "id": "artworkAgain",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "id"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "keepCount": {
+                    "id": "keepCount",
+                    "type": "blueprint.local.set",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000412"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
                         "y": 0
                       }
                     }
@@ -24043,7 +24026,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1120,
+                        "x": 1400,
                         "y": 400
                       }
                     }
@@ -24059,53 +24042,30 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1400,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "from": {
-                    "id": "from",
-                    "type": "blueprint.data.memo",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1400,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "fromShown": {
-                    "id": "fromShown",
-                    "type": "blueprint.collection.arraySlice",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
                         "x": 1680,
                         "y": 260
                       }
                     }
                   },
-                  "beforeShown": {
-                    "id": "beforeShown",
-                    "type": "blueprint.collection.arraySlice",
+                  "keepFirst": {
+                    "id": "keepFirst",
+                    "type": "blueprint.local.set",
                     "params": {
-                      "start": 0,
-                      "__inlineLiteralPins": [
-                        "start"
-                      ]
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000413"
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 1680,
-                        "y": 440
+                        "y": 0
                       }
                     }
                   },
-                  "order": {
-                    "id": "order",
-                    "type": "blueprint.collection.arrayConcat",
-                    "params": {},
+                  "first": {
+                    "id": "first",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000413"
+                    },
                     "meta": {
                       "editorLayout": {
                         "x": 1960,
@@ -24113,15 +24073,54 @@
                       }
                     }
                   },
-                  "keep": {
-                    "id": "keep",
+                  "keepShown": {
+                    "id": "keepShown",
                     "type": "blueprint.local.set",
                     "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000414"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1680,
+                        "x": 1960,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "picture": {
+                    "id": "picture",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "image"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
+                        "y": 260
+                      }
+                    }
+                  },
+                  "artRef": {
+                    "id": "artRef",
+                    "type": "blueprint.element.ref",
+                    "params": {
+                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
+                      "elementId": "5107c0a1-0000-4000-8000-000000000402",
+                      "elementType": "nl.image"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "show": {
+                    "id": "show",
+                    "type": "blueprint.element.image.setImageAsset",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 2240,
                         "y": 0
                       }
                     }
@@ -24136,7 +24135,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 2240,
+                        "x": 2520,
                         "y": 260
                       }
                     }
@@ -24150,7 +24149,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 2240,
+                        "x": 2520,
                         "y": 0
                       }
                     }
@@ -24193,7 +24192,7 @@
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "pictures",
+                      "nodeId": "variants",
                       "port": "in"
                     }
                   },
@@ -24203,44 +24202,64 @@
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "pictures",
+                      "nodeId": "variants",
                       "port": "artworkId"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "pictures",
+                      "nodeId": "variants",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "all",
+                      "nodeId": "keepArtwork",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "pictures",
-                      "port": "entries"
+                      "nodeId": "artworkAgain",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "all",
+                      "nodeId": "keepArtwork",
                       "port": "value"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "all",
+                      "nodeId": "keepArtwork",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "from",
+                      "nodeId": "keepCount",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "all",
-                      "port": "result"
+                      "nodeId": "variants",
+                      "port": "count"
+                    },
+                    "to": {
+                      "nodeId": "keepCount",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "keepCount",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "keepFirst",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "variants",
+                      "port": "entries"
                     },
                     "to": {
                       "nodeId": "shownAt",
@@ -24263,103 +24282,63 @@
                       "port": "index"
                     },
                     "to": {
-                      "nodeId": "from",
+                      "nodeId": "keepFirst",
                       "port": "value"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "from",
+                      "nodeId": "keepFirst",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "keep",
+                      "nodeId": "keepShown",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "all",
-                      "port": "result"
+                      "nodeId": "first",
+                      "port": "value"
                     },
                     "to": {
-                      "nodeId": "fromShown",
-                      "port": "array"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "from",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "fromShown",
-                      "port": "start"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "pictures",
-                      "port": "count"
-                    },
-                    "to": {
-                      "nodeId": "fromShown",
-                      "port": "end"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "all",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "beforeShown",
-                      "port": "array"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "from",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "beforeShown",
-                      "port": "end"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "fromShown",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "order",
-                      "port": "a"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "beforeShown",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "order",
-                      "port": "b"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "order",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "keep",
+                      "nodeId": "keepShown",
                       "port": "value"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "keep",
+                      "nodeId": "keepShown",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "artRef",
+                      "port": "element"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "picture",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "asset"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "show",
                       "port": "next"
                     },
                     "to": {
@@ -26251,11 +26230,11 @@
                       }
                     }
                   },
-                  "showing": {
-                    "id": "showing",
+                  "count": {
+                    "id": "count",
                     "type": "blueprint.local.get",
                     "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000412"
                     },
                     "meta": {
                       "editorLayout": {
@@ -26264,27 +26243,18 @@
                       }
                     }
                   },
-                  "rest": {
-                    "id": "rest",
-                    "type": "blueprint.collection.arrayRemoveAt",
+                  "walk": {
+                    "id": "walk",
+                    "type": "blueprint.flow.forLoop",
                     "params": {
-                      "index": 0,
+                      "start": 1,
+                      "step": 1,
+                      "maxIterations": 1000,
                       "__inlineLiteralPins": [
-                        "index"
+                        "start",
+                        "step",
+                        "maxIterations"
                       ]
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "drop": {
-                    "id": "drop",
-                    "type": "blueprint.local.set",
-                    "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
                     },
                     "meta": {
                       "editorLayout": {
@@ -26293,23 +26263,95 @@
                       }
                     }
                   },
-                  "left": {
-                    "id": "left",
-                    "type": "blueprint.local.get",
+                  "step": {
+                    "id": "step",
+                    "type": "blueprint.local.set",
                     "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000414"
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 560,
-                        "y": 260
+                        "y": 0
                       }
                     }
                   },
-                  "done": {
-                    "id": "done",
-                    "type": "blueprint.collection.arrayIsEmpty",
+                  "here": {
+                    "id": "here",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000414"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 280,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "ahead": {
+                    "id": "ahead",
+                    "type": "blueprint.math.increment",
                     "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "variants": {
+                    "id": "variants",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000412"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 560,
+                        "y": 540
+                      }
+                    }
+                  },
+                  "wrap": {
+                    "id": "wrap",
+                    "type": "blueprint.math.modulo",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "whole": {
+                    "id": "whole",
+                    "type": "blueprint.data.toInteger",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 540
+                      }
+                    }
+                  },
+                  "home": {
+                    "id": "home",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 840,
+                        "y": 0
+                      }
+                    }
+                  },
+                  "at": {
+                    "id": "at",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000414"
+                    },
                     "meta": {
                       "editorLayout": {
                         "x": 840,
@@ -26317,14 +26359,27 @@
                       }
                     }
                   },
-                  "gate": {
-                    "id": "gate",
-                    "type": "if",
+                  "first": {
+                    "id": "first",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000413"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 400
+                      }
+                    }
+                  },
+                  "back": {
+                    "id": "back",
+                    "type": "blueprint.math.equal",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 560,
-                        "y": 0
+                        "x": 1120,
+                        "y": 260
                       }
                     }
                   },
@@ -26338,7 +26393,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 840,
+                        "x": 1400,
                         "y": -260
                       }
                     }
@@ -26352,64 +26407,81 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1120,
+                        "x": 1680,
                         "y": -120
                       }
                     }
                   },
-                  "queue": {
-                    "id": "queue",
+                  "artwork": {
+                    "id": "artwork",
                     "type": "blueprint.local.get",
                     "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 840,
-                        "y": 400
-                      }
-                    }
-                  },
-                  "next": {
-                    "id": "next",
-                    "type": "blueprint.collection.arraySlice",
-                    "params": {
-                      "start": 0,
-                      "end": 1,
-                      "__inlineLiteralPins": [
-                        "start",
-                        "end"
-                      ]
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000411"
                     },
                     "meta": {
                       "editorLayout": {
                         "x": 1120,
-                        "y": 400
+                        "y": 540
                       }
                     }
                   },
-                  "pictureRef": {
-                    "id": "pictureRef",
+                  "position": {
+                    "id": "position",
+                    "type": "blueprint.local.get",
+                    "params": {
+                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000414"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1120,
+                        "y": 680
+                      }
+                    }
+                  },
+                  "look": {
+                    "id": "look",
+                    "type": "narraleaf.gallery.getVariant",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1400,
+                        "y": 120
+                      }
+                    }
+                  },
+                  "seen": {
+                    "id": "seen",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1680,
+                        "y": 120
+                      }
+                    }
+                  },
+                  "artRef": {
+                    "id": "artRef",
                     "type": "blueprint.element.ref",
                     "params": {
                       "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                      "elementId": "5107c0a1-0000-4000-8000-000000000401",
-                      "elementType": "nl.list"
+                      "elementId": "5107c0a1-0000-4000-8000-000000000402",
+                      "elementType": "nl.image"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 1120,
-                        "y": 260
+                        "x": 1680,
+                        "y": 400
                       }
                     }
                   },
                   "show": {
                     "id": "show",
-                    "type": "blueprint.element.list.setItems",
+                    "type": "blueprint.element.image.setImageAsset",
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 1400,
+                        "x": 1960,
                         "y": 120
                       }
                     }
@@ -26422,63 +26494,123 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "drop",
+                      "nodeId": "walk",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "showing",
+                      "nodeId": "count",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "rest",
-                      "port": "array"
+                      "nodeId": "walk",
+                      "port": "end"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "rest",
+                      "nodeId": "walk",
+                      "port": "loop"
+                    },
+                    "to": {
+                      "nodeId": "step",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "here",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "ahead",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "ahead",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "drop",
+                      "nodeId": "wrap",
+                      "port": "a"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "variants",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "wrap",
+                      "port": "b"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "wrap",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "whole",
                       "port": "value"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "drop",
+                      "nodeId": "whole",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "step",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "step",
                       "port": "next"
                     },
                     "to": {
-                      "nodeId": "gate",
+                      "nodeId": "home",
                       "port": "in"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "left",
+                      "nodeId": "at",
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "done",
-                      "port": "array"
+                      "nodeId": "back",
+                      "port": "a"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "done",
+                      "nodeId": "first",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "back",
+                      "port": "b"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "back",
                       "port": "result"
                     },
                     "to": {
-                      "nodeId": "gate",
+                      "nodeId": "home",
                       "port": "condition"
                     }
                   },
                   {
                     "from": {
-                      "nodeId": "gate",
+                      "nodeId": "home",
                       "port": "true"
                     },
                     "to": {
@@ -26498,8 +26630,58 @@
                   },
                   {
                     "from": {
-                      "nodeId": "gate",
+                      "nodeId": "home",
                       "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "look",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "artwork",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "look",
+                      "port": "artworkId"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "position",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "look",
+                      "port": "index"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "look",
+                      "port": "next"
+                    },
+                    "to": {
+                      "nodeId": "seen",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "look",
+                      "port": "unlocked"
+                    },
+                    "to": {
+                      "nodeId": "seen",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "seen",
+                      "port": "true"
                     },
                     "to": {
                       "nodeId": "show",
@@ -26508,32 +26690,42 @@
                   },
                   {
                     "from": {
-                      "nodeId": "queue",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "next",
-                      "port": "array"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "next",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "show",
-                      "port": "items"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "pictureRef",
+                      "nodeId": "artRef",
                       "port": "element"
                     },
                     "to": {
                       "nodeId": "show",
-                      "port": "list"
+                      "port": "element"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "look",
+                      "port": "image"
+                    },
+                    "to": {
+                      "nodeId": "show",
+                      "port": "asset"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "seen",
+                      "port": "false"
+                    },
+                    "to": {
+                      "nodeId": "walk",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "walk",
+                      "port": "completed"
+                    },
+                    "to": {
+                      "nodeId": "close",
+                      "port": "in"
                     }
                   }
                 ],
@@ -26558,30 +26750,6 @@
                       }
                     }
                   },
-                  "none": {
-                    "id": "none",
-                    "type": "blueprint.data.jsonMakeArray",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "forget": {
-                    "id": "forget",
-                    "type": "blueprint.local.set",
-                    "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 0
-                      }
-                    }
-                  },
                   "selfRef": {
                     "id": "selfRef",
                     "type": "blueprint.element.ref",
@@ -26592,7 +26760,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 280,
+                        "x": 0,
                         "y": 260
                       }
                     }
@@ -26606,7 +26774,7 @@
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 560,
+                        "x": 280,
                         "y": 0
                       }
                     }
@@ -26619,26 +26787,6 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "forget",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "none",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "forget",
-                      "port": "value"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "forget",
-                      "port": "next"
-                    },
-                    "to": {
                       "nodeId": "close",
                       "port": "in"
                     }
@@ -26651,151 +26799,6 @@
                     "to": {
                       "nodeId": "close",
                       "port": "element"
-                    }
-                  }
-                ],
-                "meta": {
-                  "graphKind": "event"
-                }
-              }
-            }
-          },
-          "functionIds": [],
-          "functions": {}
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "0eaeedae-9657-4664-a951-2bd253b589e1": {
-        "id": "0eaeedae-9657-4664-a951-2bd253b589e1",
-        "name": "画像",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "5107c0a1-0000-4000-8000-000000000401"
-        },
-        "graphs": {
-          "eventIds": [
-            "f98afaff-834f-4275-8fb7-fa19c9ac39e6"
-          ],
-          "events": {
-            "f98afaff-834f-4275-8fb7-fa19c9ac39e6": {
-              "id": "f98afaff-834f-4275-8fb7-fa19c9ac39e6",
-              "name": "リストを埋める",
-              "graph": {
-                "nodes": {
-                  "n1": {
-                    "id": "n1",
-                    "type": "blueprint.event.head.init",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 0,
-                        "y": 0
-                      }
-                    }
-                  },
-                  "queue": {
-                    "id": "queue",
-                    "type": "blueprint.local.get",
-                    "params": {
-                      "variableId": "bp:345f6964-93df-4b65-945a-ff92f3540ccc:5107c0a1-0000-4000-8000-000000000410"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 280,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "head": {
-                    "id": "head",
-                    "type": "blueprint.collection.arraySlice",
-                    "params": {
-                      "start": 0,
-                      "end": 1,
-                      "__inlineLiteralPins": [
-                        "start",
-                        "end"
-                      ]
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 560,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "selfRef": {
-                    "id": "selfRef",
-                    "type": "blueprint.element.ref",
-                    "params": {
-                      "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                      "elementId": "5107c0a1-0000-4000-8000-000000000401",
-                      "elementType": "nl.list"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 560,
-                        "y": 400
-                      }
-                    }
-                  },
-                  "fill": {
-                    "id": "fill",
-                    "type": "blueprint.element.list.setItems",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 560,
-                        "y": 0
-                      }
-                    }
-                  }
-                },
-                "edges": [
-                  {
-                    "from": {
-                      "nodeId": "n1",
-                      "port": "then"
-                    },
-                    "to": {
-                      "nodeId": "fill",
-                      "port": "in"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "queue",
-                      "port": "value"
-                    },
-                    "to": {
-                      "nodeId": "head",
-                      "port": "array"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "head",
-                      "port": "result"
-                    },
-                    "to": {
-                      "nodeId": "fill",
-                      "port": "items"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "selfRef",
-                      "port": "element"
-                    },
-                    "to": {
-                      "nodeId": "fill",
-                      "port": "list"
                     }
                   }
                 ],
@@ -27509,15 +27512,12 @@
       },
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000400": {
         "blueprintId": "feaa6f24-fc87-4c21-9893-cc8f6e65be68"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5107c0a1-0000-4000-8000-000000000401": {
-        "blueprintId": "0eaeedae-9657-4664-a951-2bd253b589e1"
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-21T05:40:18.996Z"
+    "updatedAt": "2026-09-21T23:31:04.000Z"
   }
 }

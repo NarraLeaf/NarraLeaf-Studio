@@ -347,7 +347,15 @@ Four things to know before using it:
   replaces its element tree entire, including elements the file does not mention -
   `ui.element_dropped` and `ui.orphaned_blueprint` name them first. Blocks the
   file does not contain are left alone, so a file may be one surface out of
-  twelve. Structs and actions are merged by id rather than replaced.
+  twelve. Structs and actions are merged by id rather than replaced. A blueprint
+  hanging off a dropped element is `blueprint remove`'s to take away, before the
+  apply.
+- **An item shape goes with the last list that named it.** That is the editor's
+  own rule: a struct no list names is invisible to an author, and left in the
+  table it would be picked up again, under its old name, the next time somebody
+  declares the same fields. So a shape the apply stops naming is dropped and the
+  summary says so. A shape the file itself declares is kept whether or not
+  anything names it yet, and one nothing named before the apply is left alone.
 - **Close the project in Studio first.** Nothing reloads this file on its own,
   and a running Studio will write its own copy over yours on the next save.
 - **The document must already be at the current interface schema version.**

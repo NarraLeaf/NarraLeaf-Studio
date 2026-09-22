@@ -206,7 +206,7 @@ function checkDropped(
                 message: `Applying this drops "${element.name}" from "${ownerName}", and `
                     + `${attached.map(item => `"${item.name}"`).join(", ")} hangs off it.`,
                 hint: "The blueprint stays in uigraphs.json with an owner nothing points at. Keep the element, "
-                    + "or remove the blueprint with `blueprint` first.",
+                    + "or take the blueprint away first: `blueprint remove --blueprint <id> --project <dir> --write`.",
             });
             continue;
         }
