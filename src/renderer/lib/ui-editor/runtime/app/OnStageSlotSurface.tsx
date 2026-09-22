@@ -11,8 +11,9 @@ import {
  * player's RootLayout for the whole session). The surface shell is click-through
  * (`surfacePointerEvents: "none"`): empty areas keep stage/dialog interaction working, while
  * rendered elements re-enable pointer events themselves via their node wrappers. NLR's RootLayout
- * host forces `pointer-events: auto` on all descendants through a universal-selector CSS rule, so
- * the click-through must be applied as an inline style on the shell (see GameSurfaceRenderer).
+ * host sets `pointer-events: auto` on every descendant through a universal-selector CSS rule, so
+ * the click-through is applied as an inline style on the shell, which takes precedence over that
+ * rule (see GameSurfaceRenderer).
  * A full-surface interactive container would still block stage clicks — documented caveat.
  */
 export function OnStageSlotSurface(props: {
