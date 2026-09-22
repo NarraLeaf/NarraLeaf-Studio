@@ -153,8 +153,9 @@ describe("PluginDetailsPage - which actions it offers", () => {
 
     it("offers a failed plugin that is switched off the switch alone", () => {
         // Enable clears the recorded failure on its way past, so it is the way back already; a retry
-        // beside it would be the same press under another name.
-        open({ installed: plugin({ status: "error", enabled: false }), activity: "off" });
+        // beside it would be the same press under another name. The record reads `disabled` once the
+        // author has switched it off, the failure staying on it as the reason the last load ended.
+        open({ installed: plugin({ status: "disabled", enabled: false, lastError: "setup threw" }), activity: "off" });
         expect(screen.getByText("common.enable")).toBeTruthy();
         expect(screen.queryByText(RETRY)).toBeNull();
     });

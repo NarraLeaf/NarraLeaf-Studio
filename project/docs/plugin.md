@@ -126,13 +126,15 @@ Launcher 看到的是 `PluginListItem`，它在 record 基础上增加 `status`�
 | 状态 | 条件 |
 | --- | --- |
 | `enabled` | 已启用，且 `grantedManifestVersion === manifest.version`，且没有 `lastError`。 |
-| `disabled` | 未启用，已完成当前版本授权，且没有 `lastError`。 |
+| `disabled` | 未启用，且已完成当前版本授权。记录里可能仍留着上一次加载失败的 `lastError`。 |
 | `needsAuthorization` | 当前 manifest 版本没有授权。 |
-| `error` | 最近一次 workspace 加载失败，错误保存在 `lastError`。 |
+| `error` | **已启用**，且最近一次 workspace 加载失败，错误保存在 `lastError`。 |
 
-状态优先级是 `error` > `needsAuthorization` > `enabled` > `disabled`。如果插件加载失败，即使 `enabled` 仍为 true，也会以 `error` 展示，并且不会再次进入 workspace descriptor，直到 `lastError` 被清空。
+状态优先级是 `error` > `needsAuthorization` > `enabled` > `disabled`，其中 **`error` 只在插件仍处于启用状态时报出**。插件加载失败时 `enabled` 仍为 true，于是以 `error` 展示，并且不会再次进入 workspace descriptor，直到 `lastError` 被清空。
 
-清空 `lastError` 的是 `setPluginEnabled(id, true)`（授权与重新安装同理）。因此界面上的开关按记录的 `enabled` 给出，而不是按 `status`——`error` 挡在 `enabled`/`disabled` 前面，曾让加载失败的插件在任何界面上都没有开关可拨，内建插件因此无路可走。插件面板另外给已启用而加载失败的插件一个「重试」：它做的就是再启用一次并在本窗口重新载入，判定收在 `renderer/lib/plugins/ui/pluginRecordActions.ts`。
+作者把一个失败的插件关掉之后，`lastError` 按下面一段的规则留着，但状态词变成 `disabled`——**拨了开关就要看得见开关拨动了**。这一条早先写作无条件的 `error` 优先，于是插件列表说「错误」而项目依赖表的 `classifyDependencyRow`（先判 `installedEnabled === false`）对同一个插件说「已禁用」，两块屏幕对同一行给两种说法。错误文本本身没有丢：详情页照旧显示记录里的 `lastError`。
+
+清空 `lastError` 的是 `setPluginEnabled(id, true)`（授权与重新安装同理）；`setPluginEnabled(id, false)` 特意保留它。因此界面上的开关按记录的 `enabled` 给出，而不是按 `status`——`error` 挡在 `enabled`/`disabled` 前面，曾让加载失败的插件在任何界面上都没有开关可拨，内建插件因此无路可走。插件面板另外给已启用而加载失败的插件一个「重试」：它做的就是再启用一次并在本窗口重新载入，判定收在 `renderer/lib/plugins/ui/pluginRecordActions.ts`。
 
 ## 授权模型
 

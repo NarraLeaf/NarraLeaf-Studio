@@ -71,6 +71,22 @@ describe("findUnmetPluginDependencies", () => {
         expect(unmet).toEqual([{ plugin: '"Gallery" 3.1.0', state: "is switched off in this profile", switchOn: "Gallery" }]);
     });
 
+    /**
+     * The same record the plugin list now writes "disabled" beside: switched off by the author, with
+     * the reason its last load failed still on it. While that record read `error`, this run wrote
+     * the state and withheld the flag that fixes it - the flag switches the plugin on for the run
+     * and gives it a fresh start, which is exactly what this machine needs.
+     */
+    it("names the flag for a plugin switched off after a failure, which the flag does start", () => {
+        const unmet = findUnmetPluginDependencies(
+            [entry({ installedEnabled: false })],
+            [installed({ enabled: false, status: "disabled", lastError: "setup threw" })],
+            {},
+        );
+
+        expect(unmet).toEqual([{ plugin: '"Gallery" 3.1.0', state: "is switched off in this profile", switchOn: "Gallery" }]);
+    });
+
     it("offers no switch for a plugin switched off because it was never granted, which the flag refuses", () => {
         const unmet = findUnmetPluginDependencies(
             [entry({ installedEnabled: false })],

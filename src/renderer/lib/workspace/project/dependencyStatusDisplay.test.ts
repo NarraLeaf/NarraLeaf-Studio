@@ -31,7 +31,13 @@ describe("describeDependencyState - the plugin's own state", () => {
     });
 
     it("writes the switch for a plugin switched off after it failed", () => {
+        // Both halves of that record, because the plugin list used to send the other one. It reported
+        // a remembered failure ahead of the switch, so this row said "switched off" about a plugin it
+        // called "error" - one plugin, two screens, two answers. The record now says `disabled` as
+        // well, and this row is unmoved either way.
         expect(describeDependencyState({ ...FAILED, installedEnabled: false })?.labelKey)
+            .toBe("project.dependencies.status.disabled");
+        expect(describeDependencyState({ ...FAILED, installedEnabled: false, installedStatus: "disabled" })?.labelKey)
             .toBe("project.dependencies.status.disabled");
     });
 

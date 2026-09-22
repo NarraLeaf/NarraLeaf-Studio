@@ -545,10 +545,13 @@ export class PluginManager {
                     lastError: builtIn ? null : previous?.lastError ?? null,
                 };
             } catch (error) {
+                // A package that will not read is a failure, not a choice: the record keeps whatever
+                // the author set the switch to and carries the reason instead. The failure is what
+                // holds the plugin back - a record with one on it serves no descriptor - so writing
+                // the switch off as well only made the list say the author had turned it off.
                 if (existing) {
                     nextRecords[existing.pluginId] = {
                         ...existing,
-                        enabled: false,
                         lastError: error instanceof Error ? error.message : String(error),
                     };
                 }
@@ -814,11 +817,25 @@ export class PluginManager {
         this.setRecords(records);
     }
 
+    /**
+     * A record as every surface reads it, with the one field nothing stores: `status`.
+     *
+     * A recorded failure is reported only while the plugin is switched on. Switching one off keeps
+     * its `lastError` on purpose - the details page goes on showing what went wrong, and switching
+     * the plugin on again is what forgets it - but the word beside its name is then the switch the
+     * author just pressed, not the failure that came before it. It used to be the failure, and the
+     * project's dependency table read the same record as switched off, so one plugin had two states
+     * depending on which screen the author was looking at and neither said the switch had taken.
+     *
+     * The grant still comes first when nothing has failed, as it does in the dependency table:
+     * a plugin whose permissions were never approved is switched off as a consequence of that, and
+     * what the plugin list offers for it is the authorization rather than the switch.
+     */
     private toListItem(stored: PluginInstallRecord): PluginListItem {
         const record = this.commandLineRunPlugins.has(stored.pluginId)
             ? { ...stored, enabled: true, lastError: this.commandLineRunErrors.get(stored.pluginId) ?? null }
             : stored;
-        const status = record.lastError
+        const status = record.enabled && record.lastError
             ? "error"
             : this.needsAuthorization(record)
               ? "needsAuthorization"

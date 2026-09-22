@@ -44,7 +44,11 @@ describe("pluginRecordActions", () => {
     it("offers a way to try a failed plugin again, and only while it is switched on", () => {
         expect(pluginRecordActions(plugin({ status: "error", enabled: true }), true).retry).toBe(true);
         // Switched off, Enable is the way back: it clears the recorded failure on its way past, so a
-        // second control beside it would be the same press under another name.
+        // second control beside it would be the same press under another name. That is the record as
+        // the main process writes it - a failure is reported only while the plugin is switched on -
+        // and the status word is checked as well, for a list read a moment before the switch.
+        expect(pluginRecordActions(plugin({ status: "disabled", enabled: false, lastError: "setup threw" }), true).retry)
+            .toBe(false);
         expect(pluginRecordActions(plugin({ status: "error", enabled: false }), true).retry).toBe(false);
     });
 
