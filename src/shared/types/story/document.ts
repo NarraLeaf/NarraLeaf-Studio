@@ -330,6 +330,12 @@ export type StoryChapter = {
 export type StoryScene = {
     id: StorySceneId;
     name: string;
+    /**
+     * The name the engine knows this scene by, which is what its scene variables are stored under
+     * (`local:<runtimeName>`, in the game and in every save). Chosen once, when the scene is made,
+     * unique within the story, and never changed by a rename - see `mintSceneRuntimeName`. Read it
+     * through `sceneRuntimeName`, which answers for a document that left it empty.
+     */
     runtimeName: string;
     description?: string;
     defaultBackgroundAssetId?: string;
