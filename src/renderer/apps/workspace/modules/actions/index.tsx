@@ -21,6 +21,7 @@ import { Separator } from "../../registry/types";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import { openBuildDialog } from "./BuildDialog";
 import { translate, translateN } from "@/lib/i18n";
+import { describePackageExportFailure } from "@/lib/workspace/project/packageExportFailure";
 
 /**
  * Global toolbar actions
@@ -151,7 +152,10 @@ export const fileActionGroup: ModuleActionGroup = {
                     const projectPath = context.project.getConfig().projectPath;
                     const result = await getInterface().workspace.exportProjectPackage(projectPath);
                     if (!result.success) {
-                        uiService.showNotification(result.error || translate("actions.export.failed"), "error");
+                        // Main's message names the export folder and the project file that failed;
+                        // it is the log's, and the author is told why from the code.
+                        console.warn("[export] the project package could not be written", result.error);
+                        uiService.showNotification(describePackageExportFailure(result.code, translate), "error");
                         return;
                     }
                     if (result.data.canceled) {

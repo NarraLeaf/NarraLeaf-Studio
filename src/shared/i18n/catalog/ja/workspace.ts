@@ -860,6 +860,12 @@ export const workspace = {
                 unplayableContainer: "NarraLeaf では {container} ファイルを開けない。変換したファイルをローカルから読み込む",
                 unplayableFormat: "NarraLeaf ではこのファイルの形式を開けない。変換したファイルをローカルから読み込む",
                 unplayableNoStreams: "ファイルに NarraLeaf で再生できる音声も映像もない",
+                // サインインページ、同意画面、成功として返されたエラーページ。
+                webPage: "このアドレスが返したのはファイルではなくウェブページ",
+                // テキストや文書、または読み込み先の区分のどの形式にも当たらないバイト列。
+                unrecognizedImage: "このアドレスが返した内容は NarraLeaf が認識できる画像形式ではない",
+                unrecognizedMedia: "このアドレスが返した内容は NarraLeaf が認識できる音声・動画形式ではない",
+                unrecognizedFont: "このアドレスが返した内容は NarraLeaf が認識できるフォント形式ではない",
             },
             // 翻訳ファイルや収録台本で飛ばした項目。残りは読み込む。位置はファイル自身の数え方で、
             // 表の行、JSON 配列の項目、PO ファイルの行。

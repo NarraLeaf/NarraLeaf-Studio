@@ -19,6 +19,7 @@ import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_TYPES, AssetCategory, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
 import type { AssetImportRefusal, RefusableStatus, RemoteUnplayableCause } from "../assetImportRefusal";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
+import { remoteSnapshotRefusal } from "./remoteSnapshotRefusal";
 import { Asset, AssetResolveMeta, AssetSource } from "../types";
 import type { AssetContentDigest } from "./LocalAssetsManager";
 
@@ -94,7 +95,7 @@ export class RemoteAssetsManager {
         const id = this.getUuidService().generate();
         const name = this.resolveUniqueName(type, trimmed, fetched.data);
 
-        const written = await this.writeSnapshot(type, id, name, fetched.data.bytes);
+        const written = await this.writeSnapshot(type, id, name, fetched.data);
         if (!written.success || !written.data) {
             return { success: false, error: written.error, refusal: written.refusal };
         }
@@ -230,7 +231,7 @@ export class RemoteAssetsManager {
             };
         }
 
-        const written = await this.writeSnapshot(asset.type, asset.id, asset.name, fetched.data.bytes);
+        const written = await this.writeSnapshot(asset.type, asset.id, asset.name, fetched.data);
         if (!written.success || !written.data) {
             return { success: false, error: written.error, refusal: written.refusal };
         }
@@ -300,11 +301,13 @@ export class RemoteAssetsManager {
     }
 
     /**
-     * Write bytes to the asset's content shard and return their digest.
+     * Write fetched bytes to the asset's content shard and return their digest.
      *
-     * Format-gated with the same validator imports pass. It matters more here than for a local
-     * import: a URL that has quietly become a login page answers 200 with HTML, and without this the
-     * project would gain an "image" that no consumer can decode.
+     * Format-gated more strictly than a local import (see {@link remoteSnapshotRefusal}): a URL that
+     * has quietly become a sign-in page answers 200 with HTML under whatever name the address ends
+     * in, and the local importer's rule - pass bytes it does not recognise - would let that in as an
+     * "image" no consumer can decode. Here the page is refused, and so are media bytes that carry no
+     * signature of their kind.
      *
      * Playability-gated too, which the local import path is *not* - see {@link refuseUnplayable}.
      * Both callers go through here, so an import and a refresh answer the question the same way; the
@@ -314,8 +317,9 @@ export class RemoteAssetsManager {
         type: T,
         assetId: string,
         name: string,
-        bytes: Uint8Array,
+        fetched: RemoteAssetBytes,
     ): Promise<RefusableStatus<AssetContentDigest>> {
+        const { bytes } = fetched;
         if (!isValidAssetStorageId(assetId)) {
             return { success: false, error: `Invalid asset id: ${assetId}` };
         }
@@ -324,9 +328,11 @@ export class RemoteAssetsManager {
         }
 
         const destPath = this.getSnapshotPath(assetId);
-        const validation = await this.assetsService.getFileFormatValidator().validateFileFormat(type, name, bytes);
-        if (!validation.success) {
-            return refuse(validation.error || "File format validation failed", validation.refusal);
+        const validator = this.assetsService.getFileFormatValidator();
+        const validation = await validator.validateFileFormat(type, name, bytes);
+        const refused = remoteSnapshotRefusal(type, fetched, validation, validator);
+        if (refused) {
+            return refuse(refused.error, refused.refusal);
         }
 
         const unplayable = await this.refuseUnplayable(type, name, bytes);

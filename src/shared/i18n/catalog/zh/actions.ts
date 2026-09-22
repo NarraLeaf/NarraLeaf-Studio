@@ -84,7 +84,18 @@ export const actions = {
     },
     export: {
         chooseFolder: "选择导出项目包的存放文件夹",
-        failed: "导出项目失败",
+        failed: "无法导出项目",
+        failedWithReason: "{headline}；{reason}",
+        // 导出失败的原因，按主进程给的码措辞。读的是项目、写的是所选文件夹，每句只说其中一边。
+        reason: {
+            folderProtected: "所选文件夹位于 Studio 自身的存储目录中；请选择其他文件夹",
+            folderReadOnly: "Studio 没有写入所选文件夹的权限",
+            folderMissing: "所选文件夹已不存在",
+            diskFull: "磁盘空间不足",
+            projectUnreadable: "Studio 没有读取项目中部分文件的权限",
+            projectFileBusy: "项目中有文件正被其他程序占用",
+            projectChanged: "导出期间项目中有文件被移动或删除；请重新导出",
+        },
         success: {
             one: "已导出包含 {count} 个文件的项目包",
             other: "已导出包含 {count} 个文件的项目包",

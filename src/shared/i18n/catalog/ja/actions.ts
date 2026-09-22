@@ -82,6 +82,18 @@ export const actions = {
     export: {
         chooseFolder: "書き出したプロジェクトパッケージを置くフォルダを選ぶ",
         failed: "プロジェクトを書き出せなかった",
+        failedWithReason: "{headline}。{reason}",
+        // 書き出しに失敗した理由。メインプロセスが返したコードから文言を選ぶ。読むのはプロジェクト、
+        // 書くのは選んだフォルダで、各文はどちらか一方について述べる。
+        reason: {
+            folderProtected: "選んだフォルダは Studio 自身の保存領域の中にある。別のフォルダを選ぶ",
+            folderReadOnly: "Studio に選んだフォルダへの書き込み権限がない",
+            folderMissing: "選んだフォルダがもう存在しない",
+            diskFull: "ディスクの空き容量が足りない",
+            projectUnreadable: "Studio にプロジェクト内の一部のファイルの読み取り権限がない",
+            projectFileBusy: "プロジェクト内のファイルが別のプログラムで使用中",
+            projectChanged: "書き出し中にプロジェクト内のファイルが移動または削除された。もう一度書き出す",
+        },
         success: {
             other: "ファイル {count} 件を含むプロジェクトパッケージを書き出した",
         },
