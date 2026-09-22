@@ -64,7 +64,7 @@ const BUILDER_CALL = "buildGameHostApiOptions(";
  */
 const GAME_HOST_FILES: Readonly<Record<string, string>> = {
     "the page and layer host": path.join(HERE, "hostAdapterBundles.ts"),
-    "the nested-frame host": path.join(HERE, "GameApp.tsx"),
+    "the nested-frame host": path.join(HERE, "nestedSurfaceHost.ts"),
     "the Game UI slot host": path.join(HERE, "StageSlotSurfaceShell.tsx"),
 };
 
