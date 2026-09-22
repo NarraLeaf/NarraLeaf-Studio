@@ -148,7 +148,6 @@ import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";
 import {
     type GameRuntimeArtifactCompileResult,
@@ -855,12 +854,6 @@ export class GameBuildManager {
             variant,
             appTagDocument.pluginConfig ?? {},
         ));
-        if (desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig)) {
-            const key = await this.resolveEncryptionKey(normalizedProjectPath, projectConfig).catch(() => undefined);
-            if (!key) {
-                findings.push({ code: "encryption-key-unavailable", severity: "error", section: "content" });
-            }
-        }
         if (targets.some(target => target.platform === "web") && this.encryptAssetsEnabled(projectConfig)) {
             findings.push({ code: "web-unprotected", severity: "warning", section: "content" });
         }
@@ -1193,8 +1186,7 @@ export class GameBuildManager {
         // how an asset is named inside the payload. A patch whose entries were
         // named the other way would carry every asset under a name nothing asks
         // for, and would apply cleanly while changing nothing.
-        const encryptionKey = await this.resolveEncryptionKey(projectPath, projectConfig);
-        this.ensureNotCancelled(session);
+        const protectAssets = this.encryptAssetsEnabled(projectConfig);
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
         // The same re-encoding the build applied. Without it every optimized image
@@ -1228,7 +1220,7 @@ export class GameBuildManager {
                 distribution,
                 projectConfig,
                 assetReplacements,
-                ...(encryptionKey ? { encryptionKey } : {}),
+                protectAssets,
             })
             : null;
         const baselineAppDir = request.baselineAppDir || builtBaseline;
@@ -1258,7 +1250,7 @@ export class GameBuildManager {
             // updated is exactly what the DLC adds. An ordinary patch gets the base game's alone.
             includedDlc: dlc ? [dlc.id] : [],
             locale: getMainLocale(this.app),
-            ...(encryptionKey ? { encryptionKey } : {}),
+            protectAssets,
             appId: identity.appId,
             productName: identity.productName,
             ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1387,7 +1379,7 @@ export class GameBuildManager {
             identity: { appId: string; productName: string; identifier?: string };
             projectConfig: ProjectConfigData | null;
             assetReplacements: Record<string, OptimizedAssetFile>;
-            encryptionKey?: string;
+            protectAssets: boolean;
             /** The payload this build produced - what a player has before installing any of these. */
             baselineAppDir: string;
             outputDir: string;
@@ -1439,7 +1431,7 @@ export class GameBuildManager {
                 // what this DLC adds.
                 includedDlc: [dlc.id],
                 locale: getMainLocale(this.app),
-                ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+                protectAssets: options.protectAssets,
                 appId: identity.appId,
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1504,7 +1496,7 @@ export class GameBuildManager {
             distribution: { key: string; titleId: string };
             projectConfig: ProjectConfigData | null;
             assetReplacements: Record<string, OptimizedAssetFile>;
-            encryptionKey?: string;
+            protectAssets: boolean;
         },
     ): Promise<string> {
         const { appTag, identity } = options;
@@ -1533,7 +1525,7 @@ export class GameBuildManager {
             // the game without it, and that is the only thing worth comparing against.
             includedDlc: [],
             locale: getMainLocale(this.app),
-            ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+            protectAssets: options.protectAssets,
             appId: identity.appId,
             productName: identity.productName,
             ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -1989,10 +1981,8 @@ export class GameBuildManager {
         // over HTTP by nature), and the mobile packages keep that same site in a container whose
         // key ships inside them, which is a format rather than a protection. Both are reported to
         // the author below rather than quietly built as if they were covered.
-        const encryptionKey = desktopTargets.length > 0
-            ? await this.resolveEncryptionKey(projectPath, projectConfig)
-            : undefined;
-        if (encryptionKey) {
+        const protectAssets = desktopTargets.length > 0 && this.encryptAssetsEnabled(projectConfig);
+        if (protectAssets) {
             this.emit(session, { level: "info", source: "Build", message: "asset protection enabled; sealing pack" });
         }
         // The project's own key, folded against the identity this build ships under
@@ -2074,7 +2064,7 @@ export class GameBuildManager {
                 // The compile can refuse this build (a blueprint whose variant test does not come out
                 // a constant), and that sentence is the author's to read.
                 locale: getMainLocale(this.app),
-                encryptionKey,
+                protectAssets,
                 appId: identity.appId,
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
@@ -2249,7 +2239,7 @@ export class GameBuildManager {
             ...(thirdPartyNotices.desktop ? { thirdPartyNoticesFile: thirdPartyNotices.desktop } : {}),
             ...(electronMirror ? { electronMirror } : {}),
             ...(binariesMirror ? { electronBuilderBinariesMirror: binariesMirror } : {}),
-            asarUnpack: buildAsarUnpackPatterns(Boolean(encryptionKey)),
+            asarUnpack: buildAsarUnpackPatterns(protectAssets),
             electronLanguages: electronLanguagesForGame(projectConfig?.app),
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
             targets: await Promise.all(desktopTargets.map(async target => ({
@@ -2264,7 +2254,7 @@ export class GameBuildManager {
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
                     debuggable,
-                    Boolean(encryptionKey),
+                    protectAssets,
                 ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
@@ -2312,7 +2302,7 @@ export class GameBuildManager {
                 identity,
                 projectConfig,
                 assetReplacements,
-                ...(encryptionKey ? { encryptionKey } : {}),
+                protectAssets,
                 baselineAppDir: desktopArtifact.appDir,
                 outputDir,
                 // The same revision the game itself carries. A DLC is a separate download a player
@@ -3747,17 +3737,6 @@ export class GameBuildManager {
             });
             return { files: {}, track: NO_ASSET_COMPRESSION };
         }
-    }
-
-    /** Same key resolution Preview uses: production ships the identical protection path. */
-    private async resolveEncryptionKey(
-        projectPath: string,
-        projectConfig: ProjectConfigData | null,
-    ): Promise<string | undefined> {
-        if (!this.encryptAssetsEnabled(projectConfig)) {
-            return undefined;
-        }
-        return resolvePackEncryptionKey(this.app.getUserDataDir(), projectPath);
     }
 
     /**

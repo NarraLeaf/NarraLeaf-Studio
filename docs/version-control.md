@@ -81,7 +81,7 @@ Studio 的版本控制以 [Epic Games Lore](https://github.com/EpicGames/lore) �
 快照**进版本库**，所以校验不需要装 SDK。升级 Lore 时重跑提取脚本，`upstream.json` 的 diff
 **就是升级报告**。
 
-**关键：lorelib 是普通共享库（.dll/.dylib/.so），不是 N-API addon。** 它不随 Electron ABI 变化，Electron 升级不需要重编——这比 [`@narraleaf/encryption`](../src/main/app/application/managers/security/packKeyService.ts) 的 node-gyp 路线省心得多。唯一 ABI 绑定的是 `koffi`，它自带各 ABI 的 prebuilt。
+**关键：lorelib 是普通共享库（.dll/.dylib/.so），不是 N-API addon。** 它不随 Electron ABI 变化，Electron 升级不需要重编——这比 [`@narraleaf/bindings`](../src/main/buildWorker/codecBinary.ts) 的 node-gyp 路线省心得多。唯一 ABI 绑定的是 `koffi`，它自带各 ABI 的 prebuilt。
 
 已验证：Electron 38.8.6 / Node 22.22.0 / ABI 139 下 SDK 直接加载并完成 storagePut→storageGet 往返，零额外配置。
 

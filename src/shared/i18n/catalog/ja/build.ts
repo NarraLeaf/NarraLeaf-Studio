@@ -313,7 +313,6 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} の {sidecar} プログラムは、実行できない状態のまま {platform} の成果物に入る。"
             + "{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
-        "encryption-key-unavailable": "アセットの保護が有効だが、その鍵を読めなかった",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
         "mobile-unprotected": "Android と iOS のパッケージにアセットの保護は効かない",
         "progress-carry-unsupported":

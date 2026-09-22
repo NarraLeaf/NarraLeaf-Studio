@@ -11,8 +11,7 @@ import type {
  * main process because, with asset protection on, sealing the pack drives the
  * native codec through many seconds of synchronous CPU (~250 ms/MB) that would
  * otherwise freeze the Studio window. Everything crosses as structured-clone
- * plain data; the opaque pack key rides inside `input` exactly as the in-process
- * call received it and never leaves the machine.
+ * plain data, exactly as the in-process call would receive it.
  */
 
 export type CompileWorkerStartMessage = {

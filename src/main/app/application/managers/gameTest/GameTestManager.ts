@@ -36,7 +36,6 @@ import {
     resolvePreviewRunnerBinaryForApp,
 } from "../preview/PreviewManager";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { resolveRunSealing, runSealingLogLine, type RunSealingChoice } from "../../utils/runSealing";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -505,7 +504,6 @@ export class GameTestManager {
             const sealing = await resolveRunSealing({
                 projectPath: session.projectPath,
                 choice: this.sealingChoiceFor(session),
-                resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), session.projectPath),
             });
             const sealingLine = runSealingLogLine(sealing);
             if (sealingLine) {
@@ -513,7 +511,6 @@ export class GameTestManager {
                 // the game a job asked for by name, and it should not read as noise beside the rest.
                 this.emitConsole(session, sealing.by === "command-line" ? "info" : "verbose", sealingLine);
             }
-            const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(session);
 
             const edition = await this.editionFor(session);
@@ -549,7 +546,7 @@ export class GameTestManager {
                 // "preview" and not "production": a test needs the control server, which a shipped
                 // pack deliberately does not have.
                 mode: "preview",
-                encryptionKey,
+                protectAssets: sealing.kind === "sealed",
                 platformKeys: [hostSidecarPlatformKey()],
                 hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
