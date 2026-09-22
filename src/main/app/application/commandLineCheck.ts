@@ -380,9 +380,10 @@ export class CommandLineCheckRun {
                 test.title,
                 test.available ? "" : `- unavailable: ${test.unavailableReason ?? "no reason given"}`,
             ].filter(Boolean).join("  "));
-            // A line of its own per parameter, and per accepted value under it. A `select` whose
-            // values are generated ids is exactly the case a one-line summary cannot serve: the
-            // line has to carry the id, and only the label beside it says which one to carry.
+            // A line of its own per parameter, and per accepted value under it, with the label beside
+            // it: the value is what the line carries, and the label is what says which row it is.
+            // Where a test stores generated ids, the workspace has already put each row's name in
+            // the value's place, so nothing printed here is an id.
             for (const parameter of test.parameters) {
                 this.emit("info", `    --test-parameter ${parameter.id}=<value>   ${parameter.label}`);
                 if (!parameter.options) {
