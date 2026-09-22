@@ -14,7 +14,7 @@ import { blueprintNodeRegistry, isBlueprintNodeAllowedInGraphContext } from "@/l
 import { buildBlueprintGraphContext } from "@/lib/ui-editor/blueprint-nodes/graphContext";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import type { RuntimePluginGame } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
-import { resolveInsertTargetParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { planMoveElementsInSurface } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -117,8 +117,7 @@ describe("a plugin widget that declares it holds children", () => {
         register({ type: BOX, acceptsChildren: true });
         // The insert tool puts a new widget in the selected element when that element takes one,
         // and walks up to the page otherwise.
-        expect(resolveInsertTargetParent(pageWithBox(), "page", { hitElementId: null, primaryElementId: "box" }))
-            .toEqual({ parentId: "box", source: "primary" });
+        expect(resolveNewElementParent(pageWithBox(), "page", "box")).toBe("box");
     });
 
     it("receives an element dropped on it in the layer outline", () => {

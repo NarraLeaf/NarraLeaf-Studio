@@ -67,7 +67,7 @@ import {
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { pasteParentAccepts } from "@/lib/ui-editor/tree/resolvePasteTarget";
+import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
     cloneWidgetMainBlueprintForPaste,
@@ -3571,8 +3571,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
         const target = component?.elements[targetParentId];
-        // The same answer a page gives (`pasteParentAccepts`), asked of the definition's own elements.
-        if (!component || !target || !pasteParentAccepts(
+        // The same answer a page gives (`parentTakesAddedElements`), asked of the definition's own elements.
+        if (!component || !target || !parentTakesAddedElements(
             { ...document, elements: component.elements },
             target,
             payload.topLevelElementIds.map(id => payload.elements[id]),
@@ -3931,7 +3931,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const allowed = collectSubtreeElementIds(document, effectiveRootId);
         const target = document.elements[targetParentId];
         const pastedTops = payload.topLevelElementIds.map(id => payload.elements[id]);
-        if (!target || !allowed.has(targetParentId) || !pasteParentAccepts(document, target, pastedTops)) {
+        if (!target || !allowed.has(targetParentId) || !parentTakesAddedElements(document, target, pastedTops)) {
             return { ok: false, reason: "invalid_target" };
         }
         if (beforeChildId != null) {
