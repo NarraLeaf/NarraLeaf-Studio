@@ -26,6 +26,7 @@ const BASE: BuildCommandLineOptions = {
     userDataDir: null,
     signingPath: null,
     settings: [],
+    plugins: [],
     allowUnsigned: false,
     error: null,
 };

@@ -498,6 +498,10 @@ export const workspace = {
         projectTakenOverTitle: "该项目现已在另一个 NarraLeaf Studio 中打开",
         projectTakenOverHere: "本机自 {time} 起打开，此窗口中的更改不再保存，关闭后可重试",
         projectTakenOverElsewhere: "{host} 自 {time} 起打开，此窗口中的更改不再保存，在该设备上关闭后可重试",
+        // 同样被接管，但发现时对方已经关闭了该项目。时间是对方打开的时刻。
+        projectDisplacedTitle: "该项目曾在另一个 NarraLeaf Studio 中打开",
+        projectDisplacedHere: "本机于 {time} 打开，此窗口中的更改不再保存，重试可重新打开该项目",
+        projectDisplacedElsewhere: "{host} 于 {time} 打开，此窗口中的更改不再保存，重试可重新打开该项目",
         openLauncher: "打开启动器",
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
