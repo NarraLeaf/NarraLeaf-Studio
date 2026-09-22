@@ -1,6 +1,12 @@
 import crypto from "crypto";
 import type { LocaleCode } from "@shared/i18n";
-import fs from "fs/promises";
+// Two modules on purpose. `studioArchiveFs` is the patched one, and it reads only what Studio ships:
+// the runtime bundle, which a packaged Studio keeps inside its own app.asar where only the patched
+// module can reach it, and the koffi addon from Studio's own dependencies. Everything else here - the
+// author's project and the app directory the compile writes - goes through `fs`, which is unpatched:
+// see unpatchedFs.ts for what the patch does to an author's file named like an archive.
+import studioArchiveFs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import { createRequire } from "module";
 import path from "path";
 import { unpackAsarPath } from "../../../../../utils/asarPath";
@@ -809,7 +815,7 @@ export async function compileGameRuntimeArtifact(
         for (const fileName of SEALED_SHELL_FILES) {
             await target.writer.add(
                 gameRuntimeBundleRuntimeEntry(fileName),
-                await fs.readFile(path.join(input.runtimeDistDir, fileName)),
+                await studioArchiveFs.readFile(path.join(input.runtimeDistDir, fileName)),
             );
         }
     }
@@ -1147,7 +1153,7 @@ async function assertRuntimeDistReady(
     const missing: string[] = [];
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         try {
-            await fs.access(path.join(runtimeDistDir, fileName));
+            await studioArchiveFs.access(path.join(runtimeDistDir, fileName));
         } catch {
             missing.push(fileName);
         }
@@ -1165,6 +1171,7 @@ async function assertRuntimeDistReady(
     try {
         manifest = await readJson<{ mode?: unknown; engineVersion?: unknown }>(
             path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME),
+            studioArchiveFs,
         );
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
@@ -1289,7 +1296,7 @@ async function copyRuntimeFiles(
         // preload is opened by Electron in a sandboxed context that cannot load it this way, and the
         // renderer three go into the store (above). See mainProcessBytecode.ts.
         if (fileName === "main.js" && reseedGuard) {
-            const source = reseedGuardMaskTable(await fs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
+            const source = reseedGuardMaskTable(await studioArchiveFs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
             if (bytecodeMain) {
                 await fs.writeFile(path.join(appDir, MAIN_BYTECODE_FILENAME), compileMainToBytecode(source));
                 await fs.writeFile(path.join(appDir, fileName), renderMainBytecodeBootstrap(), "utf8");
@@ -1298,7 +1305,7 @@ async function copyRuntimeFiles(
             }
             continue;
         }
-        await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
+        await studioArchiveFs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {
         // Sourcemaps are a preview-session debugging aid; shipped games leave
@@ -1424,12 +1431,12 @@ async function copyKoffiPackage(destinationDir: string, platformKey: string | un
     for (const directory of directories) {
         const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
         try {
-            await fs.access(prebuild);
+            await studioArchiveFs.access(prebuild);
         } catch {
             continue;
         }
         await fs.mkdir(path.join(targetRoot, "build", "koffi", directory), { recursive: true });
-        await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
+        await studioArchiveFs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
         copied.push(directory);
     }
     if (copied.length === 0) {
@@ -1443,9 +1450,10 @@ async function copyKoffiPackage(destinationDir: string, platformKey: string | un
     }
 }
 
+/** One of Studio's own shipped files, if this install has it. Both callers read Studio's own files. */
 async function copyOptionalFile(sourcePath: string, targetPath: string): Promise<void> {
     try {
-        await fs.copyFile(sourcePath, targetPath);
+        await studioArchiveFs.copyFile(sourcePath, targetPath);
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
             return;
@@ -2797,8 +2805,8 @@ async function readOptionalJson<T>(filePath: string): Promise<T | null> {
     }
 }
 
-async function readJson<T>(filePath: string): Promise<T> {
-    const raw = await fs.readFile(filePath, "utf-8");
+async function readJson<T>(filePath: string, files: Pick<typeof fs, "readFile"> = fs): Promise<T> {
+    const raw = await files.readFile(filePath, "utf-8");
     try {
         return JSON.parse(raw) as T;
     } catch (error) {

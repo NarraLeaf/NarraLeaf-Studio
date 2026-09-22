@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
 import {
     DEFAULT_PLUGIN_REGISTRY_URL,
