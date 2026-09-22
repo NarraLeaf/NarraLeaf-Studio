@@ -472,6 +472,15 @@ describe("GameTestManager.launch spawn environment", () => {
         const openEnv = (vi.mocked(spawn).mock.calls[0][2] as { env: Record<string, string> }).env;
         expect(openEnv.NARRALEAF_TEST_NETWORK).toBeUndefined();
     });
+
+    it("tells every game it launches that a test is driving it", async () => {
+        // The runtime keeps a driven window painting when it is minimized or covered. Without it a
+        // walkthrough whose game ended up behind another window stood still until the idle deadline
+        // failed it - about one unattended run in thirty, and every run whose window was minimized.
+        await makeManager().launch({ projectPath, runId: "run-1" });
+        const env = (vi.mocked(spawn).mock.calls[0][2] as { env: Record<string, string> }).env;
+        expect(env.NARRALEAF_TEST_DRIVEN).toBe("1");
+    });
 });
 
 /**

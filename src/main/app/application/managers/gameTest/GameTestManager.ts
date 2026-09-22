@@ -100,6 +100,19 @@ const CONTROL_EVENT_FRAME = "test:event";
 const NETWORK_BLOCKED_ENV_VAR = "NARRALEAF_TEST_NETWORK";
 
 /**
+ * Set on every game a test launches: this window is being driven, not watched.
+ *
+ * Read by the game runtime, which then keeps the window running at full speed when it is not on
+ * screen. Chromium stops painting and throttles timers in a window that is minimized, off-screen or
+ * covered by another one, and a story waits on painted frames to enter its first scene and finish
+ * every transition - so a test's game that ended up behind the author's editor, or behind any window
+ * another program opened, stopped where it stood while the test went on clicking at it and failed a
+ * minute later for "no longer advancing". The window is the harness's, not a player's, and whether
+ * it is on top says nothing about the game.
+ */
+const TEST_DRIVEN_ENV_VAR = "NARRALEAF_TEST_DRIVEN";
+
+/**
  * A test's game session runs the main app surface, which is what Run > Preview launches too.
  *
  * `GameTestLaunchRequest` deliberately carries no entry: a test asks for "this project's game", and
@@ -565,6 +578,7 @@ export class GameTestManager {
                 env: {
                     ...process.env,
                     NARRALEAF_STUDIO_PREVIEW: "1",
+                    [TEST_DRIVEN_ENV_VAR]: "1",
                     // Honoured by the game runtime, not here. Setting it is main's entire share of
                     // the no-network test: the game must fail the way a player's would.
                     ...(request.network === "blocked" ? { [NETWORK_BLOCKED_ENV_VAR]: "blocked" } : {}),
