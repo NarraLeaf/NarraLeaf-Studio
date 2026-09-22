@@ -1,11 +1,17 @@
 import { EventEmitter } from "events";
+import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { spawn } from "child_process";
 import { WebSocketServer } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CommandLineRunEvent, CommandLineRunJob } from "@shared/types/commandLineRun";
 import type { GameTestEventPayload } from "@shared/types/gameTest";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "../../utils/previewAsShipped";
+import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
@@ -29,6 +35,11 @@ vi.mock("../preview/compiler/compileGameRuntimeArtifactInWorker", () => ({
 vi.mock("child_process", async importOriginal => ({
     ...(await importOriginal<typeof import("child_process")>()),
     spawn: vi.fn(),
+}));
+// The key comes out of a native binding and, on first use, writes a machine secret into the profile.
+// What is under test is whether a run asks for it at all.
+vi.mock("../security/packKeyService", () => ({
+    resolvePackEncryptionKey: vi.fn(),
 }));
 vi.mock("chokidar", () => ({
     default: { watch: () => ({ on: () => undefined, close: () => Promise.resolve() }) },
@@ -165,15 +176,24 @@ function captureEvents() {
                 payloads.push(data as GameTestEventPayload);
             }
         },
+        // A window an author is at: opened for no headless job.
+        getProps: () => ({}),
     } as never);
     return payloads;
 }
 
-const makeManager = () => new GameTestManager({
+/**
+ * A manager over a stand-in app.
+ *
+ * `previewAsShippedFor` is the one project this machine's "Preview as shipped" setting is on for;
+ * absent, the profile never touched it - which is what a build agent's profile looks like.
+ */
+const makeManager = (options: { previewAsShippedFor?: string } = {}) => new GameTestManager({
     logger: { error: () => undefined },
     // A trusting ledger: these cases are about what the manager does once it is allowed to
     // start, not about who may start it. The refusal has its own tests.
     projectTrustManager: { isTrusted: () => true },
+    getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     isPackaged: () => false,
     pluginManager: {
         listPlugins: async () => [],
@@ -183,7 +203,11 @@ const makeManager = () => new GameTestManager({
     getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
     getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
     // Every host resolves which edition it is running as; this profile picked none.
-    getGlobalState: () => ({ get: () => undefined }),
+    getGlobalState: () => ({
+        get: (key: string) => key === PREVIEW_AS_SHIPPED_SETTINGS_KEY && options.previewAsShippedFor
+            ? { [normalizeProjectPath(options.previewAsShippedFor)]: true }
+            : undefined,
+    }),
     getAppInfo: () => ({ version: "0.0.0-test" }),
 } as unknown as ConstructorParameters<typeof GameTestManager>[0]);
 
@@ -532,5 +556,128 @@ describe("GameTestManager's held control channel", () => {
         await vi.waitFor(() => expect(events.some(payload => payload.event.kind === "exit")).toBe(true));
         const exit = events.find(payload => payload.event.kind === "exit");
         expect(exit?.event).toEqual({ kind: "exit", exit: { reason: "crashed", code: 0, signal: null } });
+    });
+});
+
+/**
+ * Which path a test's game takes for its content, and who decided.
+ *
+ * A run an author starts asks the machine's "Preview as shipped" setting. A headless `--test` run
+ * asks its own line and nothing else: a build agent never set the setting, so reading it would mean
+ * CI never exercised the sealed path that only shipping takes, and a developer's machine did, so the
+ * same line would test something different there. What the headless run chose is read off the
+ * window's props, which main wrote when it opened the window.
+ */
+describe("GameTestManager: how a test's game holds its content", () => {
+    const PROJECT_NAME = "Sealed Corridor";
+    const KEY = "the-pack-key";
+    let projectPath = "";
+    let children: (EventEmitter & Record<string, unknown>)[] = [];
+
+    function fakeChild() {
+        const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        child.pid = 4242;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = vi.fn(() => true);
+        children.push(child);
+        return child;
+    }
+
+    /** The project's window, opened for `commandLineRun` or for an author when it is absent. */
+    function projectWindow(commandLineRun?: CommandLineRunJob) {
+        const logged: Extract<CommandLineRunEvent, { kind: "log" }>[] = [];
+        vi.mocked(findWorkspaceWindow).mockReturnValue({
+            sendIpcEvent: () => undefined,
+            getProps: () => ({ projectPath, ...(commandLineRun ? { commandLineRun } : {}) }),
+            reportCommandLineRunEvent: (event: CommandLineRunEvent) => {
+                if (event.kind === "log") {
+                    logged.push(event);
+                }
+            },
+        } as never);
+        return logged;
+    }
+
+    const headlessTest = (asShipped: boolean): CommandLineRunJob => ({
+        kind: "test",
+        testId: "narraleaf-studio:walkthrough",
+        parameters: {},
+        asShipped,
+    });
+
+    /** What the compile was handed, which is where "sealed" and "loose" part ways. */
+    const compiledWithKey = () => vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls[0][1].encryptionKey;
+
+    beforeEach(async () => {
+        projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-game-test-sealing-"));
+        await fs.writeFile(
+            path.join(projectPath, getProjectConfigFileName(PROJECT_NAME)),
+            encodeProjectConfig({ name: PROJECT_NAME, app: { security: { encryptAssets: true } } } as never),
+        );
+        children = [];
+        vi.mocked(spawn).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        vi.mocked(resolvePackEncryptionKey).mockReset();
+        vi.mocked(resolvePackEncryptionKey).mockResolvedValue(KEY);
+        vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue(
+            { appDir: path.join(os.tmpdir(), "app"), copiedAssetCount: 12 } as never,
+        );
+    });
+
+    afterEach(async () => {
+        for (const child of children) {
+            child.exitCode = 0;
+            child.emit("exit", 0, null);
+        }
+        await fs.rm(projectPath, { recursive: true, force: true });
+    });
+
+    it("seals a headless run that asked for the shipped form, on a machine that never set the setting", async () => {
+        const logged = projectWindow(headlessTest(true));
+
+        await makeManager().launch({ projectPath, runId: "run-1" });
+
+        expect(compiledWithKey()).toBe(KEY);
+        // On the command-line log, where a job reads it, and not as verbose noise.
+        expect(logged).toContainEqual(expect.objectContaining({
+            level: "info",
+            source: "Test",
+            message: "assets: sealed in a protected store, as this project's release build holds them (--test-as-shipped)",
+        }));
+        // With the compile's time, which is where the two paths differ by cost.
+        expect(logged.map(line => line.message))
+            .toContainEqual(expect.stringMatching(/^game compiled: 12 asset\(s\) in \d+\.\d s$/));
+    });
+
+    it("runs a headless run loose by default, even on a machine whose setting says to seal", async () => {
+        const logged = projectWindow(headlessTest(false));
+
+        await makeManager({ previewAsShippedFor: projectPath }).launch({ projectPath, runId: "run-1" });
+
+        expect(compiledWithKey()).toBeUndefined();
+        // A run that is not sealing has no business deriving the key, which reads and on first use
+        // writes the machine secret.
+        expect(resolvePackEncryptionKey).not.toHaveBeenCalled();
+        expect(logged.map(line => line.message)).toContain(
+            "assets: loose files; this project's release build seals them, which --test-as-shipped would test",
+        );
+    });
+
+    it("still asks the machine's setting for a run an author started, and keeps it off the command-line log", async () => {
+        const logged = projectWindow();
+
+        await makeManager({ previewAsShippedFor: projectPath }).launch({ projectPath, runId: "run-1" });
+        expect(compiledWithKey()).toBe(KEY);
+
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockClear();
+        await makeManager().launch({ projectPath, runId: "run-2" });
+        expect(compiledWithKey()).toBeUndefined();
+
+        // No headless job, so nobody is reading a command-line log.
+        expect(logged).toEqual([]);
     });
 });

@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
@@ -166,6 +167,13 @@ export class PreviewManager {
         const distrusted = refuseDistrustedOperation(this.app, projectPath, "preview");
         if (distrusted) {
             return Promise.reject(new Error(distrusted));
+        }
+        // Another Studio has this project, and this one's workspace for it is on the error screen.
+        // A preview would still compile and run - from disk, into `.nlstudio/preview`, which is the
+        // other Studio's to write. See `projectSessionGate`.
+        const heldElsewhere = refuseProjectHeldElsewhere(this.app, projectPath, "preview");
+        if (heldElsewhere) {
+            return Promise.reject(new Error(heldElsewhere));
         }
         const frozen = getWorkspaceFreeze(projectPath);
         if (frozen !== null && refusesOperations(frozen)) {
@@ -356,7 +364,7 @@ export class PreviewManager {
             }
             const sealing = await resolveRunSealing({
                 projectPath: normalizedProjectPath,
-                settings: this.app.getGlobalState(),
+                choice: { by: "preview-setting", settings: this.app.getGlobalState() },
                 resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), normalizedProjectPath),
             });
             const sealingLine = runSealingLogLine(sealing);

@@ -1359,36 +1359,8 @@ describe("built-in blueprint nodes", () => {
         });
         expect(localsFromStored.captured).toBe(42);
 
-        delete store["settings.volume"];
-        const localsFromDefault: Record<string, unknown> = {};
-        await executeGraph({
-            graph: {
-                id: "getDefault",
-                entries: { main: { start: { nodeId: "get", port: "in" } } },
-                nodes: {
-                    get: {
-                        id: "get",
-                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
-                        params: { persistentVariableId: "volume" },
-                    },
-                    capture: {
-                        id: "capture",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "captured" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "get", port: "next" }, to: { nodeId: "capture", port: "in" } },
-                    { from: { nodeId: "get", port: "value" }, to: { nodeId: "capture", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "get", port: "in" } },
-            hostAdapter: createPersistenceHostAdapter(store),
-            blueprintLocals: localsFromDefault,
-            persistentVariables,
-        });
-        expect(localsFromDefault.captured).toBe(7);
-        expect(store["settings.volume"]).toBeUndefined();
+        // What an unwritten variable reads as is the persistence scope's answer, not this node's:
+        // `persistentDefaultOnFirstRead.test.ts` runs the node against the real host for that.
 
         await executeGraph({
             graph: {

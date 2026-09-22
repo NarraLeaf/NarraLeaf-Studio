@@ -34,6 +34,7 @@ import {
 } from "./catalog";
 import { checkBlueprintSource, checkProjectDocument, formatDiagnostics } from "./check";
 import { readAssetNameContext } from "./project";
+import { planBlueprintRemoval, removeBlueprint, type RemovalElement } from "./remove";
 import { printBlueprint, printBlueprints } from "./dsl/print";
 import {
     applyBlueprints,
@@ -75,6 +76,8 @@ const USAGE = `blueprint - query the node catalogue, write blueprints as text, c
   check [file.bp]             Check a text file, or the whole project when given no file.
   apply <file.bp>             Compile a text file into the project. Needs --project.
                               Writes nothing without --write.
+  remove                      Take one blueprint out of a project. Needs --project.
+                              --blueprint <name|id>. Writes nothing without --write.
 
 Common flags
   --project <dir>             Project directory (the one holding editor/ui/uigraphs.json).
@@ -129,6 +132,7 @@ const COMMANDS: Record<string, CommandSpec> = {
     },
     check: { flags: { project: "string" }, run: commandCheck },
     apply: { flags: { project: "string", write: "boolean" }, run: commandApply },
+    remove: { flags: { project: "string", blueprint: "string", write: "boolean" }, run: commandRemove },
 };
 
 export function runCli(argv: readonly string[], io: CliIo): number {
@@ -519,6 +523,51 @@ function commandApply(args: Args, io: CliIo): number {
     writeUiGraphs(file);
     io.out(
         `Wrote ${file.filePath}: ${what || "no change"}.\n`
+            + "Studio does not reload this file on its own - if the project is open, close and reopen it, "
+            + "and do not write while it is open or the next save will overwrite this.",
+    );
+    return 0;
+}
+
+function commandRemove(args: Args, io: CliIo): number {
+    const wanted = stringFlag(args, "blueprint");
+    if (!wanted) {
+        throw new UsageError("Which blueprint? `blueprint remove --blueprint <name|id> --project <dir> --write`.");
+    }
+    const projectDir = requireProject(args);
+    const file = readUiGraphs(projectDir);
+    // A removal names one blueprint exactly or not at all. `show` widens a part of a name to every
+    // blueprint it is part of, which is the right answer to "print it" and the wrong one to "delete it".
+    const matched = Object.values(file.blueprintDocument.blueprints)
+        .filter(item => item.id === wanted || item.name === wanted);
+    if (matched.length !== 1) {
+        io.err(
+            matched.length === 0
+                ? `No blueprint has the id or the whole name "${wanted}". Run \`blueprint list --project <dir>\`.`
+                : `${matched.length} blueprints are called "${wanted}": `
+                      + `${matched.map(item => `${item.id} (${ownerRefToIndexKey(item.owner)})`).join(", ")}. `
+                      + "Name one by its id.",
+        );
+        return 2;
+    }
+    const blueprint = matched[0];
+    const elements = readUiDocumentTargets(projectDir).raw as Readonly<Record<string, RemovalElement>>;
+    const plan = planBlueprintRemoval(file.blueprintDocument, blueprint, elements);
+    if (plan.refusals.length > 0) {
+        io.err(plan.refusals.map(reason => `error  blueprint.remove_refused  ${reason}`).join("\n"));
+        io.err("Nothing was written.");
+        return 1;
+    }
+    const what = `remove "${blueprint.name}" (${ownerRefToIndexKey(blueprint.owner)})`;
+    if (args.flags.write !== true) {
+        io.out(`Would ${what} from ${file.filePath}. Pass --write to do it.`);
+        return 0;
+    }
+    assertWritableSchema(file);
+    removeBlueprint(file.blueprintDocument, blueprint, plan);
+    writeUiGraphs(file);
+    io.out(
+        `Wrote ${file.filePath}: ${what}.\n`
             + "Studio does not reload this file on its own - if the project is open, close and reopen it, "
             + "and do not write while it is open or the next save will overwrite this.",
     );

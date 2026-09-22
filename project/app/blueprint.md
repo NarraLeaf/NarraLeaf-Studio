@@ -283,6 +283,32 @@ Three things to know before using it:
   registry as it runs, so it cannot happen here; `apply` refuses and says to
   open the project in Studio once.
 
+## Removing
+
+```sh
+node project/app/blueprint.js remove --project D:/path/to/project --blueprint <id>           # dry run
+node project/app/blueprint.js remove --project D:/path/to/project --blueprint <id> --write
+```
+
+`apply` can empty a blueprint but not take it away, and `ui apply` can drop the
+element a blueprint hangs off but, owning only the interface document, leaves the
+blueprint behind with an owner nothing points at. `remove` is the other half: the
+blueprint goes, and so does the owner entry that pointed at it. Run it before the
+`ui apply` that drops the element, and that apply has nothing to warn about.
+
+- **One blueprint, named exactly.** `--blueprint` takes an id or a whole name;
+  unlike `show`, part of a name is not enough, and a name several blueprints share
+  lists them with their ids and removes none.
+- **Only the kinds Studio drops by itself.** A widget's, a component element's and
+  a value binding's blueprint go when the thing they hang off goes, so removing one
+  here leaves a document the editor could also have left. The game's blueprint and
+  a surface's are made for every project and every surface, and a story action's is
+  run by a story row this tool cannot see, so those are refused.
+- **Nothing may still name it.** Another blueprint reading one of its variables or
+  calling one of its Fns, or a prop bound to it as a value blueprint, is a refusal
+  that says where - removing it under any of them would leave a node that reads
+  nothing, or a prop that shows nothing, with no error anywhere.
+
 ## Where this lives
 
 The wrapper is `project/app/blueprint.js`; the commands are TypeScript under

@@ -208,6 +208,7 @@ export const widgets = {
         missingPage: "ページが見つからない",
         targetNotPage: "対象がページではない",
         pageLoopBlocked: "ページの循環を止めた",
+        leadsBackHere: "ここに戻ってくる",
         previewUnavailable: "ページのプレビューを出せない",
         pageRootMissing: "ページのルートがない",
     },

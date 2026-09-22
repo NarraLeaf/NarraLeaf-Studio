@@ -355,7 +355,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 `blueprint.game.save.getPreview` - Get Save Preview
 
-读取指定本地存档 metadata 中的截图预览，并在当前 Dev Mode 会话内生成临时 `ImageAsset`。该图片不会导入项目资源库；可直接传给 `nl.image` 的 `Set Image Asset` 或图片相关 Blueprint Value。
+读取指定本地存档 metadata 中的截图预览，并在当前 Dev Mode 会话内生成临时 `ImageAsset`。该图片不会导入项目资产库；可直接传给 `nl.image` 的 `Set Image Asset` 或图片相关 Blueprint Value。
 
 - `in` - 执行入口
 - `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖

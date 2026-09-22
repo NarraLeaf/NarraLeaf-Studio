@@ -105,6 +105,7 @@ function fakeApp(): App {
         findWorkspaceForProject: () => undefined,
         getGlobalState: () => ({ get: () => undefined }),
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         launchDevMode: async () => {
             const window = fakeWindow();
             launchedWindows.push(window);

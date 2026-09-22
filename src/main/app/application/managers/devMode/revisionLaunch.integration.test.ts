@@ -130,6 +130,7 @@ function fakeApp(): App {
         // The project here is made by the test rather than imported, and a project nothing has
         // recorded an arrival for is trusted - so this says what the real ledger would.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         launchDevMode: async () => {
             const window = fakeWindow();
             launchedWindows.push(window);

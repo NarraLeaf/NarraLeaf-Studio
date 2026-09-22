@@ -124,6 +124,7 @@ describe("GameBuildManager.start fail-fast guards", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         hasExperimentalCondition: () => false,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
@@ -150,6 +151,7 @@ describe("GameBuildManager.start while the workspace is frozen", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         hasExperimentalCondition: () => false,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;

@@ -26,8 +26,15 @@ export type CommandLineRunJob =
      *
      * The values are the raw strings the line carried. What each one means is decided against the
      * test's own declarations in the workspace, which is the only side that has them.
+     *
+     * `asShipped` is `--test-as-shipped`: a game this test launches holds its content the way the
+     * project's release build does - sealed, for a project with asset protection on - rather than as
+     * loose files. Read by the main process off this job (`GameTestManager`), never by the renderer,
+     * and it replaces the machine's "Preview as shipped" setting for the run rather than adding to it:
+     * a run with nobody at the screen has no interactive preference to inherit, and a line that
+     * answered differently on two machines would not be a line a job could rely on.
      */
-    | { kind: "test"; testId: string; parameters: Record<string, string> }
+    | { kind: "test"; testId: string; parameters: Record<string, string>; asShipped: boolean }
     /**
      * `--test-list`: what the registry holds, rather than a run.
      *

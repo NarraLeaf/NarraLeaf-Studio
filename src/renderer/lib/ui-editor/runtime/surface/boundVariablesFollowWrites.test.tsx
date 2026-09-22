@@ -44,6 +44,7 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
+import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
 import { createBlueprintFnRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -322,9 +323,9 @@ let runCount = 0;
  */
 function runningGame() {
     runCount += 1;
-    const scope = new ScopeStoreBridge();
-    // A game seeds every declared persistent variable with its default before anything reads it.
-    void scope.persistenceSet(SETTING_KEY, "off");
+    // The scope a game builds: nothing stored, and each declared persistent variable reading as its
+    // default until something writes it.
+    const scope = new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults(bundle) });
     const debug = new DebugBridge();
     const errors: string[] = [];
     debug.subscribeEvents(event => {

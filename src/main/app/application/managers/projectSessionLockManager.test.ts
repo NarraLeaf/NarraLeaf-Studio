@@ -306,3 +306,135 @@ describe("ProjectSessionLockManager", () => {
         locks.dispose();
     });
 });
+
+/**
+ * Whether this Studio was turned away from a project - the question the runtimes ask before they
+ * start (see `projectSessionGate`).
+ *
+ * It exists because the window that was turned away stays up on its error screen, named after the
+ * project, and a Dev Mode started from it came up black: every asset is resolved through the
+ * project's workspace, and that workspace never started.
+ */
+describe("ProjectSessionLockManager.heldElsewhere", () => {
+    it("remembers who has a project it was refused", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        await writeLock(project, otherSession(time.now()));
+
+        const locks = manager({ now: time.now });
+        await locks.acquire(project);
+
+        expect(locks.heldElsewhere(project)).toEqual({
+            hostname: "studio-two",
+            startedAt: new Date(time.now()).toISOString(),
+            sameHost: false,
+        });
+        locks.dispose();
+    });
+
+    it("says the other Studio is on this computer when it is", async () => {
+        const project = await scratchProject();
+        await writeLock(project, otherSession(Date.parse("2026-09-01T10:00:00.000Z"), { hostname: "studio-one", pid: 7000 }));
+
+        const locks = manager({ alive: new Set([4242, 7000]) });
+        await locks.acquire(project);
+
+        expect(locks.heldElsewhere(project)?.sameHost).toBe(true);
+        locks.dispose();
+    });
+
+    it("answers for the project however its path is spelled", async () => {
+        const project = await scratchProject();
+        await writeLock(project, otherSession(Date.parse("2026-09-01T10:00:00.000Z")));
+
+        const locks = manager();
+        await locks.acquire(project);
+
+        // The runtimes ask with the window's own spelling, which need not be the one opened with.
+        const alternative = project.replace(/\\/g, "/");
+        if (process.platform === "win32" || alternative === project) {
+            expect(locks.heldElsewhere(alternative)).not.toBeNull();
+        }
+        locks.dispose();
+    });
+
+    it("forgets the refusal when a later claim gets in", async () => {
+        // Retry on the error screen, after the other Studio has closed the project.
+        const project = await scratchProject();
+        await writeLock(project, otherSession(Date.parse("2026-09-01T10:00:00.000Z")));
+
+        const locks = manager();
+        await locks.acquire(project);
+        expect(locks.heldElsewhere(project)).not.toBeNull();
+
+        await fs.rm(lockPathOf(project));
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+
+        expect(locks.heldElsewhere(project)).toBeNull();
+        expect(locks.holds(project)).toBe(true);
+        locks.dispose();
+    });
+
+    it("keeps refusing after the other Studio has gone, until this one claims again", async () => {
+        // The window that was turned away is still on its error screen: its workspace has not
+        // started, so nothing that needs one may start beside it just because the lock is free now.
+        const project = await scratchProject();
+        await writeLock(project, otherSession(Date.parse("2026-09-01T10:00:00.000Z")));
+
+        const locks = manager();
+        await locks.acquire(project);
+        await fs.rm(lockPathOf(project));
+
+        expect(locks.heldElsewhere(project)).not.toBeNull();
+        locks.dispose();
+    });
+
+    it("forgets the refusal when the project's last window closes", async () => {
+        const project = await scratchProject();
+        await writeLock(project, otherSession(Date.parse("2026-09-01T10:00:00.000Z")));
+
+        const locks = manager();
+        await locks.acquire(project);
+        await locks.release(project);
+
+        expect(locks.heldElsewhere(project)).toBeNull();
+        // And the other Studio's claim is still exactly where it was.
+        expect((await readLock(project))?.pid).toBe(9001);
+        locks.dispose();
+    });
+
+    it("is not held elsewhere when this Studio holds it", async () => {
+        const project = await scratchProject();
+        const locks = manager();
+        await locks.acquire(project);
+
+        expect(locks.heldElsewhere(project)).toBeNull();
+        locks.dispose();
+    });
+
+    it("is not held elsewhere when the claim was taken over from a Studio that is gone", async () => {
+        const project = await scratchProject();
+        // Same machine, fresh heartbeat, but the process behind it has died: a crash, a kill.
+        await writeLock(project, otherSession(Date.parse("2026-09-01T10:00:00.000Z"), { hostname: "studio-one", pid: 7000 }));
+
+        const locks = manager({ alive: new Set([4242]) });
+        await expect(locks.acquire(project)).resolves.toEqual({ ok: true });
+
+        expect(locks.heldElsewhere(project)).toBeNull();
+        locks.dispose();
+    });
+
+    it("does not refuse a project it opened without a claim", async () => {
+        // A read-only volume opens with nobody holding the project, and must still run.
+        const locks = manager();
+        const missing = path.join(os.tmpdir(), "nl-session-lock-absent", "\0invalid");
+        await locks.acquire(missing);
+
+        expect(locks.heldElsewhere(missing)).toBeNull();
+        locks.dispose();
+    });
+
+    it("has nothing to say about a project it was never asked for", () => {
+        expect(manager().heldElsewhere(path.join(os.tmpdir(), "never-opened"))).toBeNull();
+    });
+});

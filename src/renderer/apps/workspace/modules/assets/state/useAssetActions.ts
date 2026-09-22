@@ -26,7 +26,6 @@ import { getInterface } from '@/lib/app/bridge';
 import { useTranslation } from '@/lib/i18n';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
 import { assetLibraryFreezeScope } from '../assetLiveSession';
-import type { Translator } from '@shared/i18n';
 import {
     assetSelectionKey,
     resolveAssetActionTargets,
@@ -53,6 +52,8 @@ import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
 import { describeAssetExportFailure } from './assetExportFailure';
 import { describeFolderEditFailure, isReportedLibraryWrite } from './assetActionFailure';
+import { describeAssetImportRefusal, summarizeImportFailures } from '@/lib/workspace/assets/importFailure';
+import { extname } from '@shared/utils/path';
 
 export type { ContextMenuTargetState };
 
@@ -144,19 +145,6 @@ function parseFileUriList(dataTransfer?: DataTransfer): string[] {
                 return [];
             }
         });
-}
-
-function summarizeImportFailures(errors: Array<string | undefined>, t: Translator["t"]): string {
-    const messages = errors.filter((message): message is string => typeof message === "string" && message.length > 0);
-    if (messages.length === 0) {
-        return t("assets.unknownError");
-    }
-
-    const visibleMessages = messages.slice(0, 3);
-    const remaining = messages.length - visibleMessages.length;
-    return remaining > 0
-        ? `${visibleMessages.join("\n")}\n${t("assets.import.moreFailures", { count: remaining })}`
-        : visibleMessages.join("\n");
 }
 
 /**
@@ -389,19 +377,27 @@ export function useAssetActions({
                         });
 
                         if (!result.success) {
-                            // This bucket fell over, so every file in it is still outstanding.
-                            failures.push(...bucket.paths.map(path => ({ path, error: result.error })));
-                            uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
+                            // This bucket fell over, so every file in it is still outstanding. Its
+                            // sentence is the importer's - English, naming paths - so it goes to the log.
+                            console.warn("[assets] an import batch failed", result.error);
+                            failures.push(...bucket.paths.map(path => ({ path })));
+                            uiService.showAlert(t("assets.import.failedTitle"), t("assets.unknownError"));
                             completed += bucket.paths.length;
                             continue;
                         }
 
                         // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets
-                        // a failure be named by file rather than by a bare error string.
+                        // a failure be named by file. Its reason is the refusal, worded here: the
+                        // importer's own `error` is English and names the asset's storage path.
                         const perFile = result.data ?? [];
-                        failures.push(...perFile.flatMap((assetResult, index) =>
-                            assetResult.success ? [] : [{ path: bucket.paths[index], error: assetResult.error }]
-                        ));
+                        failures.push(...perFile.flatMap((assetResult, index) => {
+                            if (assetResult.success) {
+                                return [];
+                            }
+                            console.warn(`[assets] could not import ${bucket.paths[index]}`, assetResult.error);
+                            const reason = describeAssetImportRefusal(assetResult.refusal, t);
+                            return [{ path: bucket.paths[index], ...(reason ? { error: reason } : {}) }];
+                        }));
                         for (const [index, assetResult] of perFile.entries()) {
                             if (!assetResult.success || !assetResult.data) {
                                 continue;
@@ -418,8 +414,10 @@ export function useAssetActions({
                                 if (!entryResult.success) {
                                     // Named as a failure of that file. The folder is in the library,
                                     // but nothing records which file in it draws, and a model that
-                                    // will not draw is not an import that worked.
-                                    failures.push({ path: bucket.paths[index], error: entryResult.error });
+                                    // will not draw is not an import that worked. Nothing here is the
+                                    // author's to act on, so it is listed by name and logged.
+                                    console.warn(`[assets] could not record the entry of ${asset.name}`, entryResult.error);
+                                    failures.push({ path: bucket.paths[index] });
                                 }
                             }
                         }
@@ -427,11 +425,17 @@ export function useAssetActions({
                     }
 
                     // Anything the bucketing could not place (dropped onto a section that does not take
-                    // it) never reached an importer, and is reported rather than silently swallowed.
+                    // it) never reached an importer, and is reported rather than silently swallowed -
+                    // as the extension this section does not take, which is what placed nothing.
                     const attempted = new Set(buckets.flatMap(bucket => bucket.paths));
                     failures.push(...paths
                         .filter(path => !attempted.has(path))
-                        .map(path => ({ path, error: t("assets.import.noMatchingFiles") })));
+                        .map(path => {
+                            // A file with no extension at all is listed by name alone.
+                            const ext = extname(path).slice(1).toLowerCase();
+                            const reason = ext ? describeAssetImportRefusal({ kind: "wrongType", ext }, t) : null;
+                            return reason ? { path, error: reason } : { path };
+                        }));
 
                     importQueue?.finish(failures);
                     reportedPerFile = true;
@@ -458,7 +462,10 @@ export function useAssetActions({
                     if (failures.length > 0 && !importQueue) {
                         uiService.showAlert(
                             importedAssets.length > 0 ? t("assets.import.someFailedTitle") : t("assets.import.failedTitle"),
-                            summarizeImportFailures(failures.map(failure => failure.error), t)
+                            summarizeImportFailures(
+                                failures.map(failure => ({ path: failure.path, reason: failure.error ?? null })),
+                                t,
+                            ),
                         );
                     }
                 });
@@ -468,7 +475,9 @@ export function useAssetActions({
             onActionComplete();
         } catch (error) {
             console.error("Failed to import assets", error);
-            const message = error instanceof Error ? error.message : t("assets.unknownError");
+            // What threw is a service's or the platform's sentence, for the log. Nothing in it is the
+            // author's to act on, and it can name the asset's storage path.
+            const message = t("assets.unknownError");
             // Only when no file ever got a verdict of its own. `finish` replaces the strip's list
             // outright, and the moves, the scratch sweep and `onActionComplete` all run after the
             // per-file one has already been handed over - so blaming every path from here would
@@ -479,7 +488,7 @@ export function useAssetActions({
                 // leaves the strip a retry instead of a progress bar that never moves again. The
                 // files that failed to convert are carried through as well; they never had an
                 // importer to be turned away by.
-                importQueue?.finish([...preFailures, ...paths.map(path => ({ path, error: message }))]);
+                importQueue?.finish([...preFailures, ...paths.map(path => ({ path }))]);
             }
             uiService.showAlert(t("assets.import.failedTitle"), message);
         } finally {
@@ -495,12 +504,11 @@ export function useAssetActions({
         if (files && files.length > 0) {
             const fileArray = Array.from(files);
             const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
-            if (!grantResult.success) {
-                uiService.showAlert(t("assets.import.unableTitle"), grantResult.error || t("assets.import.fileAccessFailed"));
-                return;
-            }
-            if (!grantResult.data.ok) {
-                uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
+            // Either way it is the one sentence: the grant's own message is the platform's English and
+            // names the dropped paths, and there is nothing in it for the author to act on.
+            if (!grantResult.success || !grantResult.data.ok) {
+                console.warn("[assets] could not be granted the dropped files", grantResult);
+                uiService.showAlert(t("assets.import.unableTitle"), t("assets.import.fileAccessFailed"));
                 return;
             }
 
@@ -587,11 +595,9 @@ export function useAssetActions({
                     return;
                 }
             } catch (error) {
+                // What threw is the probe's or the platform's English; it stays in the log.
                 console.error("Failed to check the files before importing", error);
-                uiService.showAlert(
-                    t("assets.import.unableTitle"),
-                    error instanceof Error ? error.message : t("assets.unknownError"),
-                );
+                uiService.showAlert(t("assets.import.unableTitle"), t("assets.unknownError"));
                 return;
             } finally {
                 notifyLoading(false);

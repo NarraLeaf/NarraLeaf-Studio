@@ -1729,7 +1729,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             out[node.id] = {
                 [BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE]: listBlueprintSetFramePageTargetOptions({
-                    document: currentDocument,
+                    // The project's document, not a component editor's view of one definition: where
+                    // a page leads is read off the pages, whose elements that view does not carry.
+                    document: blueprintDocumentService.getPageDocument(),
                     owner: bp.owner,
                     ir: activeIr,
                     nodeId: node.id,

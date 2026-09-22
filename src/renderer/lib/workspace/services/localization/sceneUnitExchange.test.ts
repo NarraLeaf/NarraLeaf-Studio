@@ -145,7 +145,7 @@ describe("scene name translation units", () => {
             rows: exported,
         });
         const parsed = parseTranslationExchange("csv", csv);
-        expect(parsed.errors).toEqual([]);
+        expect(parsed.problems).toEqual([]);
         expect(parsed.rows.map(row => row.unitId)).toEqual(exported.map(row => row.unitId));
         expect(parsed.rows.map(row => row.source)).toEqual([
             "The corridor",
