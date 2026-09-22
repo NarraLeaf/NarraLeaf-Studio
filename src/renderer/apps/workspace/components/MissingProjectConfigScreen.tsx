@@ -9,8 +9,9 @@ interface MissingProjectConfigScreenProps {
 
 export function MissingProjectConfigScreen({ projectPath }: MissingProjectConfigScreenProps) {
     const { t } = useTranslation();
+    // The exit that brings the launcher up - see the same button on `ErrorScreen`.
     const handleOpenLauncher = () => {
-        void getInterface().workspace.close();
+        void getInterface().workspace.returnToLauncher();
     };
 
     return (

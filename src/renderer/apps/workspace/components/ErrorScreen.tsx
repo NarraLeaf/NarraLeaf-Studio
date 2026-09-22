@@ -169,8 +169,12 @@ export function ErrorScreen({ error, onRetry, title, allowRecovery = true, showS
         }
     };
 
+    // The exit that brings the launcher up, which is what the button says. A plain close is a
+    // different request since the two were split: it hands the decision to the last-window
+    // handling, so on the only window left it closed this one and left Studio running in the tray
+    // with nothing on screen at all.
     const handleOpenLauncher = () => {
-        void getInterface().workspace.close();
+        void getInterface().workspace.returnToLauncher();
     };
 
     /**

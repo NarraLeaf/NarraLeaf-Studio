@@ -27,10 +27,17 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
+const workspaceBridge = vi.hoisted(() => ({
+    close: vi.fn(),
+    returnToLauncher: vi.fn(),
+    openRecent: vi.fn(),
+    setRecoveryMode: vi.fn(),
+}));
+
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         getWindowProps: vi.fn().mockResolvedValue({ success: true, data: { projectPath: "D:/games/demo" } }),
-        workspace: { close: vi.fn(), openRecent: vi.fn(), setRecoveryMode: vi.fn() },
+        workspace: workspaceBridge,
         app: { exportDiagnostics: vi.fn() },
         selectFolder: vi.fn(),
     }),
@@ -77,6 +84,17 @@ describe("ProjectLockedScreen", () => {
         // Recovery mode reloads the window into a shell that never reaches the claim, so offering
         // it here would be offering a way into a project a second Studio is editing.
         expect(screen.queryByText("workspace.recovery.enter")).toBeNull();
+    });
+
+    it("goes back to the launcher from the launcher button, rather than only closing the window", () => {
+        // A plain close on the last window leaves Studio running in the tray with nothing on
+        // screen, which is not what a button called "Open launcher" promises.
+        render(<ProjectLockedScreen holder={ELSEWHERE} onRetry={() => undefined} />);
+
+        screen.getByText("workspace.shell.openLauncher").click();
+
+        expect(workspaceBridge.returnToLauncher).toHaveBeenCalledTimes(1);
+        expect(workspaceBridge.close).not.toHaveBeenCalled();
     });
 
     it("shows no stack trace, because nothing here failed", () => {
