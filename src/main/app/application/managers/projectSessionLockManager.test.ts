@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import {
     PROJECT_SESSION_HEARTBEAT_MS,
+    PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH,
     PROJECT_SESSION_LOCK_RELATIVE_PATH,
     PROJECT_SESSION_LOCK_STALE_MS,
     parseProjectSessionLockRecord,
@@ -557,6 +558,227 @@ describe("ProjectSessionLockManager when a held project is taken over", () => {
 
         expect(locks.holds(kept)).toBe(true);
         expect(Date.parse((await readLock(kept))?.heartbeat ?? "")).toBe(time.now());
+        locks.dispose();
+    });
+});
+
+/**
+ * A holder whose claim is simply gone from the disk.
+ *
+ * Two very different things leave exactly that behind. Somebody cleared `.nlstudio/` or a sync
+ * client dropped the file, and nobody else was ever here - the holder should write its claim again
+ * and carry on. Or another Studio took the project over while this one was suspended, edited and
+ * saved, and closed the project again, which removes its claim on the way out - and a holder that
+ * wrote its claim back and carried on would save its stale documents over everything the other
+ * Studio saved. The last-claim record every claim leaves behind is what tells them apart.
+ */
+describe("ProjectSessionLockManager when a held project's claim has gone", () => {
+    function lastClaimPathOf(projectPath: string): string {
+        return path.join(projectPath, PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH);
+    }
+
+    async function readLastClaim(projectPath: string): Promise<ProjectSessionLockRecord | null> {
+        try {
+            return parseProjectSessionLockRecord(await fs.readFile(lastClaimPathOf(projectPath), "utf-8"));
+        } catch {
+            return null;
+        }
+    }
+
+    /** Another Studio on this machine, under another profile, reading the same clock. */
+    function secondStudio(time: ReturnType<typeof clock>) {
+        return manager({ now: time.now, pid: 5555, userDataDir: "C:/profiles/other", alive: new Set([4242, 5555]) });
+    }
+
+    it("records every claim where the claim's own removal cannot take it", async () => {
+        const project = await scratchProject();
+        const locks = manager();
+        await locks.acquire(project);
+        const claimed = await readLock(project);
+
+        expect(await readLastClaim(project)).toEqual(claimed);
+        await locks.release(project);
+        // The lock goes on release; the record that it was taken does not.
+        expect(await readLock(project)).toBeNull();
+        expect(await readLastClaim(project)).toEqual(claimed);
+        locks.dispose();
+    });
+
+    it("stops writing when the Studio that took the project over has closed it again", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const first = manager({ now: time.now, alive: new Set([4242, 5555]), onTakenOver });
+        await first.acquire(project);
+
+        // The first Studio is suspended: its heartbeat stands still past the window, and the second
+        // one - which sees its process still running - looks once more and takes the project.
+        time.advance(PROJECT_SESSION_LOCK_STALE_MS + 30_000);
+        const second = secondStudio(time);
+        await expect(second.acquire(project)).resolves.toEqual({ ok: true });
+        const taken = await readLock(project);
+
+        // It edits, saves and closes the project, all before the first Studio's next heartbeat.
+        await second.release(project);
+        expect(await readLock(project)).toBeNull();
+
+        time.advance(PROJECT_SESSION_HEARTBEAT_MS);
+        await first.beat();
+
+        expect(onTakenOver).toHaveBeenCalledTimes(1);
+        expect(onTakenOver.mock.calls[0][1]).toEqual({
+            hostname: "studio-one",
+            startedAt: taken?.startedAt,
+            sameHost: true,
+            released: true,
+        });
+        expect(first.holds(project)).toBe(false);
+        expect(first.heldElsewhere(project)).toMatchObject({ released: true });
+        // Nothing of the first Studio's is written back: the project is free for whoever opens it next.
+        expect(await readLock(project)).toBeNull();
+        expect((await readLastClaim(project))?.pid).toBe(5555);
+        first.dispose();
+        second.dispose();
+    });
+
+    it("stops writing when another Studio opened and closed the project while the lock was missing", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const first = manager({ now: time.now, onTakenOver });
+        await first.acquire(project);
+
+        // The lock goes, and a second Studio walks into what looks like a free project - and out
+        // again - inside one heartbeat period.
+        await fs.rm(lockPathOf(project));
+        const second = secondStudio(time);
+        await second.acquire(project);
+        await second.release(project);
+
+        await first.beat();
+
+        expect(onTakenOver).toHaveBeenCalledTimes(1);
+        expect(onTakenOver.mock.calls[0][1]).toMatchObject({ released: true });
+        expect(await readLock(project)).toBeNull();
+        first.dispose();
+        second.dispose();
+    });
+
+    it("reports it once, however many heartbeats find it", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const first = manager({ now: time.now, onTakenOver });
+        await first.acquire(project);
+
+        await fs.rm(lockPathOf(project));
+        const second = secondStudio(time);
+        await second.acquire(project);
+        await second.release(project);
+
+        await Promise.all([first.beat(), first.beat()]);
+        await first.beat();
+
+        expect(onTakenOver).toHaveBeenCalledTimes(1);
+        first.dispose();
+        second.dispose();
+    });
+
+    it("opens the project again on Retry, once nobody has it", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const first = manager({ now: time.now });
+        await first.acquire(project);
+        await fs.rm(lockPathOf(project));
+        const second = secondStudio(time);
+        await second.acquire(project);
+        await second.release(project);
+        await first.beat();
+
+        // Retry reloads the window, whose startup claims afresh - and reads the project from disk.
+        await expect(first.acquire(project)).resolves.toEqual({ ok: true });
+        expect(first.heldElsewhere(project)).toBeNull();
+        expect((await readLastClaim(project))?.pid).toBe(4242);
+        first.dispose();
+        second.dispose();
+    });
+
+    it("writes its claim back and carries on when nobody else has been here", async () => {
+        // Deleted by hand, or dropped by a sync client.
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const locks = manager({ now: time.now, onTakenOver });
+        await locks.acquire(project);
+        const claimed = await readLock(project);
+
+        await fs.rm(lockPathOf(project));
+        time.advance(PROJECT_SESSION_HEARTBEAT_MS);
+        await locks.beat();
+
+        expect(onTakenOver).not.toHaveBeenCalled();
+        expect(locks.holds(project)).toBe(true);
+        expect(locks.heldElsewhere(project)).toBeNull();
+        // The same claim as before, with the heartbeat moved on.
+        const back = await readLock(project);
+        expect(back).toMatchObject({ pid: 4242, startedAt: claimed?.startedAt });
+        expect(Date.parse(back?.heartbeat ?? "")).toBe(time.now());
+        locks.dispose();
+    });
+
+    it("writes both back when `.nlstudio/` was cleared out whole", async () => {
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const locks = manager({ now: time.now, onTakenOver });
+        await locks.acquire(project);
+
+        await fs.rm(path.join(project, ".nlstudio"), { recursive: true, force: true });
+        await locks.beat();
+
+        expect(onTakenOver).not.toHaveBeenCalled();
+        expect((await readLock(project))?.pid).toBe(4242);
+        // So the next missing claim is judged against this session, not against nothing.
+        expect((await readLastClaim(project))?.pid).toBe(4242);
+        locks.dispose();
+    });
+
+    it("is refused, not a claim over the top, when another Studio took the missing lock first", async () => {
+        // The second Studio found the file missing too, and got its claim in before this heartbeat.
+        const project = await scratchProject();
+        const time = clock(Date.parse("2026-09-01T10:00:00.000Z"));
+        const onTakenOver = vi.fn();
+        const first = manager({ now: time.now, onTakenOver });
+        await first.acquire(project);
+
+        await fs.rm(lockPathOf(project));
+        const second = secondStudio(time);
+        await second.acquire(project);
+        await first.beat();
+
+        expect(onTakenOver).toHaveBeenCalledTimes(1);
+        // Still open there, so the window says so.
+        expect(onTakenOver.mock.calls[0][1].released).toBeUndefined();
+        expect((await readLock(project))?.pid).toBe(5555);
+        first.dispose();
+        second.dispose();
+    });
+
+    it("does not take a lock it could not read for a lock that is gone", async () => {
+        // A read that fails is a missed heartbeat, not a missing claim: whatever is at that path is
+        // left alone, and nothing is decided about the project.
+        const project = await scratchProject();
+        const onTakenOver = vi.fn();
+        const locks = manager({ onTakenOver });
+        await locks.acquire(project);
+
+        await fs.rm(lockPathOf(project));
+        await fs.mkdir(lockPathOf(project));
+        await locks.beat();
+
+        expect(onTakenOver).not.toHaveBeenCalled();
+        expect(locks.holds(project)).toBe(true);
+        expect((await fs.stat(lockPathOf(project))).isDirectory()).toBe(true);
         locks.dispose();
     });
 });
