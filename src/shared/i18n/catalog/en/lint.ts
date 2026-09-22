@@ -517,6 +517,9 @@ export const lint = {
         expand: "Expand",
         collapseAll: "Collapse all",
         expandAll: "Expand all",
+        // The last row of a rule that has far more findings than the report opens with. It names the
+        // rule's whole count, which is the number already on the heading above it.
+        showAll: "Show all {count}",
         // The gutter number of the row, spoken. Screen readers get "line 12"; the column itself is
         // bare digits, because that is what the scene editor's own gutter shows and the reader is
         // matching one against the other.
@@ -534,6 +537,15 @@ export const lint = {
         // order a reader scans in. No severity slot: the console prints the level in its own column
         // beside every line, and this used to repeat it inside the sentence.
         finding: "{location} {message} ({rule})",
+        // The shape of the sweep, printed after the findings and beside the summary - the end of a
+        // long log is the part an operator reads. A console cannot fold a rule away the way the
+        // report tab can, and a sweep is routinely one rule repeated thousands of times, so without
+        // these two lines the count of every other rule is unreadable in the stream.
+        byRule: "Findings by rule",
+        // The rule id, not its title: the id is the row in Project ▸ Project that retunes it, and
+        // it is what the finding lines above print too. No severity in the sentence - the console
+        // prints the level of every line in its own column, and this line carries the rule's.
+        ruleCount: "{rule}: {count}",
     },
     build: {
         // Printed on the build channel when the sweep begins, because it is the longest thing
