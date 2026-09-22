@@ -328,8 +328,16 @@ export type TestAvailability =
  * `value` is what the test reads and what is remembered on disk; `label` is what the author picks
  * from. They are separate because the label is a display string that follows the editor language
  * while the value has to survive a language switch and a Studio upgrade unchanged.
+ *
+ * `name` is what a command line calls the row, for a list whose values are generated ids. A value is
+ * the right thing to remember and the wrong thing to type: `--test-list` would have to print it, and
+ * no id belongs in front of a person. With a name, `--test-list` prints the name in the value's
+ * place and `--test-parameter` takes it (matched without regard to case); the value never leaves the
+ * workspace. Unique among the rows, written in words the author already knows the row by, and not a
+ * translated string - a line has to mean the same thing whatever language Studio is in. A list whose
+ * values are already words needs none.
  */
-export type TestParameterOption = { value: string; label: TestText };
+export type TestParameterOption = { value: string; label: TestText; name?: string };
 
 /** A parameter the author answers by picking from a list. */
 export type TestSelectParameterDefinition = {

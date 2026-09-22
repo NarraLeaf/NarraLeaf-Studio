@@ -96,12 +96,14 @@ export type CommandLineTestParameterListing = {
      *
      * Both halves, because neither is enough on its own. The line has to carry `value` - a label
      * follows the editor's language, and a command written against one would stop working when
-     * somebody changed it - while `label` is the only thing that says which of them is which. Some
-     * of these values are generated ids, and a listing that printed those alone would be a lookup
-     * table nobody can look anything up in.
+     * somebody changed it - while `label` is the only thing that says which of them is which.
+     *
+     * `value` is what the line writes, which is not always what the test stores. A list whose stored
+     * values are generated ids (the walkthrough's endings) names each option instead, and `value` is
+     * that name: no id is printed, in the listing or in this report.
      */
     options?: Array<{ value: string; label: string }>;
-    /** What the run uses when the line names no value for it. */
+    /** What the run uses when the line names no value for it, spelled as `options[].value` is. */
     defaultValue?: string;
 };
 

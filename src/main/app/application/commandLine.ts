@@ -60,8 +60,12 @@ export interface BuildCommandLineOptions {
      * Resolved by `resolveStartupProject`, exactly as `--project`'s value is.
      */
     selector: string | null;
-    /** `--build-variant`: which build variant to produce. Null means the release variant. */
-    variantId: string | null;
+    /**
+     * `--build-variant`: which build variant to produce, by the name its author gave it, as typed.
+     * Null means the release variant, `main`. Found in the project's own list before any window
+     * opens - see `utils/commandLineVariant.ts`.
+     */
+    variant: string | null;
     /** `--build-target`: one platform. Null means the host's own. */
     platform: string | null;
     /** `--build-format`: one format of that platform. Null means the platform's first. */
@@ -325,12 +329,12 @@ function takeValue(value: string | undefined): string | null {
  * a value, how they report a missing one, or whether their value is mistaken for a path to open.
  * {@link VALUE_TAKING_FLAGS} is built from these keys for that last reason.
  */
-type BuildValueField = "selector" | "variantId" | "platform" | "format" | "arch" | "outputDir"
+type BuildValueField = "selector" | "variant" | "platform" | "format" | "arch" | "outputDir"
     | "reportPath" | "userDataDir" | "signingPath";
 
 const BUILD_VALUE_FLAGS = {
     "--build": "selector",
-    "--build-variant": "variantId",
+    "--build-variant": "variant",
     "--build-target": "platform",
     "--build-format": "format",
     "--build-arch": "arch",
@@ -398,7 +402,7 @@ const BUILD_ALLOW_UNSIGNED_FLAG = "--build-allow-unsigned";
 /** What each build flag says it wants, for the "missing value" message. */
 const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag | BuildListFlag, string> = {
     "--build": "a project path or a recent project's name",
-    "--build-variant": "a build variant id",
+    "--build-variant": "a build variant's name",
     "--build-target": "a platform",
     "--build-format": "a format",
     "--build-arch": "an architecture",
@@ -632,7 +636,7 @@ function isAppScriptArgument(argument: string | undefined): boolean {
 
 /** Whether anything but `--build` itself asked for something about a build. */
 function hasBuildCompanionFlag(build: BuildCommandLineOptions): boolean {
-    return build.variantId !== null
+    return build.variant !== null
         || build.platform !== null
         || build.format !== null
         || build.arch !== null
@@ -660,7 +664,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const build: BuildCommandLineOptions = {
         requested: false,
         selector: null,
-        variantId: null,
+        variant: null,
         platform: null,
         format: null,
         arch: null,
