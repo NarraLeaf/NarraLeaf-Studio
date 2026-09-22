@@ -507,8 +507,9 @@ export class CommandLineBuildRun {
             return this.finish("success", null, event);
         }
         // Before either half is asked about: a build this profile could not have made whole - a
-        // plugin the project declares that is not running here, a dialog nobody could answer - never
-        // reached the checks, and is a machine to look at rather than a project to change.
+        // plugin the project declares that is not running here - or one that stopped on a question
+        // nobody was there to answer is a machine to look at rather than a project to change,
+        // whichever half it was in.
         if (event.refusal === "environment") {
             return this.finish("studio-failed", event.error ?? "Studio could not run this build here.", event);
         }
