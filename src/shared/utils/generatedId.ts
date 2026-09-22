@@ -17,6 +17,22 @@ export function containsGeneratedId(text: string): boolean {
     return UUID_ANYWHERE.test(text) || HEX_RUN_ANYWHERE.test(text);
 }
 
+const UUID_EVERYWHERE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const HEX_RUN_EVERYWHERE = /(^|[^0-9a-z])[0-9a-f]{32,}(?=$|[^0-9a-z])/gi;
+
+/**
+ * `text` with every generated id in it replaced by an ellipsis.
+ *
+ * For a sentence Studio did not write - an engine's error, a plugin's, an author's own script - on its
+ * way to an interface that must not show an id. Studio's own sentences never need it: they are worded
+ * without ids in the first place, and a guard test holds them to that.
+ */
+export function scrubGeneratedIds(text: string): string {
+    return text
+        .replace(UUID_EVERYWHERE, "…")
+        .replace(HEX_RUN_EVERYWHERE, (_match, lead: string) => `${lead}…`);
+}
+
 /**
  * `value` when it is something an author could have written, otherwise null: empty, blank, or
  * carrying a generated id. The caller supplies the wording for "unnamed".

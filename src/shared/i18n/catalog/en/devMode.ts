@@ -21,6 +21,8 @@ export const devMode = {
         // A Game UI blueprint failed. It has no story row - the author was drawing an interface, not
         // writing a scene - so the place it names is the surface they drew.
         onSurface: "On {surface}",
+        // A surface the document no longer has: said as gone, never by its id.
+        onSurfaceGone: "On a page no longer in this project",
         // The third kind of place a report has: a plugin, for something true of the session rather
         // than of a row or a drawing.
         onPlugin: "Plugin {plugin}",

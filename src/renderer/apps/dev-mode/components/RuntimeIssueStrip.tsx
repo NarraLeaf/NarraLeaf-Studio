@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
-import { countRuntimeIssues, type LocatedRuntimeIssue } from "./runtimeIssueModel";
+import { countRuntimeIssues, surfacePlaceHeading, type LocatedRuntimeIssue } from "./runtimeIssueModel";
 import { RUNTIME_ISSUE_TONE } from "./runtimeIssueTone";
 
 export type RuntimeIssueStripProps = {
@@ -81,7 +81,7 @@ export function RuntimeIssueStrip(props: RuntimeIssueStripProps): ReactNode {
             : newest.surface
               // A Game UI failure has a place too, and it is the one that identifies it: several
               // surfaces can fail with the same sentence, and only the surface name tells them apart.
-              ? t("devMode.issues.onSurface", { surface: newest.surface.surfaceName })
+              ? surfacePlaceHeading(newest.surface, t)
               : null;
         headline = where ? `${where} · ${newest.message}` : newest.message;
     }

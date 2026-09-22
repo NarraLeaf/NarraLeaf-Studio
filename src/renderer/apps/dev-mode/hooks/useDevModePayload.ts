@@ -10,6 +10,7 @@ import { WindowAppType } from "@shared/types/window";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { scrubGeneratedIds } from "@shared/utils/generatedId";
 
 /**
  * A story the main process has asked this window to start, in place of whatever it is playing.
@@ -133,9 +134,12 @@ export function useDevModePayload(): UseDevModePayloadResult {
             setState(prev => ({ ...prev, launchRequest: { ...request, afterRevision: prev.bundle?.revision ?? null } }));
         });
         const errorToken = getInterface().devMode.onControlError(({ message }) => {
+            // What the main process could not assemble, in its own words: shown under the window's
+            // "session failed to start", with any generated id taken out - the interface never shows
+            // one. The Workspace console keeps the full text.
             setState(prev => ({
                 ...prev,
-                sessionError: message,
+                sessionError: scrubGeneratedIds(message),
             }));
         });
         return () => {
