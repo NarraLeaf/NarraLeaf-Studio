@@ -7,8 +7,10 @@ import {
     findProjectConfigFileName,
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
-import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
+import { ProjectPackageExportErrorCode, ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
 import {
+    classifyPackFailure,
+    ProjectPackageExportError,
     ProjectPackageImportError,
     readProjectPackageInto,
     writeProjectPackage,
@@ -33,8 +35,8 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
         window: AppWindow,
         { projectPath }: IPCEvents[IPCEventType.workspaceExportProjectPackage]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceExportProjectPackage]["response"]>> {
+        const projectRoot = path.resolve(projectPath);
         try {
-            const projectRoot = path.resolve(projectPath);
             if (!await window.app.storageManager.isPathAllowed(window, projectRoot, "read")) {
                 return this.failed(`File system access is not allowed for project: ${projectRoot}`);
             }
@@ -54,7 +56,10 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
 
             const exportDir = path.resolve(selection.filePaths[0]);
             if (await window.app.storageManager.isPathProtected(exportDir)) {
-                return this.failed("Selected export folder is inside protected Studio storage.");
+                return this.failed(new ProjectPackageExportError(
+                    ProjectPackageExportErrorCode.FolderProtected,
+                    "Selected export folder is inside protected Studio storage.",
+                ));
             }
             window.app.storageManager.grantFileSystemAccess(
                 window,
@@ -85,7 +90,9 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
                 skippedCount: written.skippedCount,
             });
         } catch (error) {
-            return this.failed(error);
+            // Reading the project's configuration happens before the dialog, and a refusal there is
+            // the project's; `writeProjectPackage` has already coded everything after it.
+            return this.failed(classifyPackFailure(error, projectRoot));
         }
     }
 }
@@ -194,9 +201,10 @@ export class ProjectWizardSelectPackageHandler extends IPCHandler<IPCEventType.p
  *
  * Two consequences are handled here. The folder has to be empty for the unpack to start, so the
  * row is only written when it is - recording first must never mark something the author already
- * had at that path. And an unpack that fails before writing anything takes its row with it, so the
+ * had at that path. And an unpack that fails takes back what it wrote, and with it the row, so the
  * settings list does not show a project waiting for a decision that no folder exists to receive;
- * one that fails part-way keeps it, because a half-written tree is still somebody else's tree.
+ * one whose writing could not all be taken back keeps it, because a half-written tree is still
+ * somebody else's tree.
  */
 async function unpackAsArrival(
     trust: ProjectTrustManager,

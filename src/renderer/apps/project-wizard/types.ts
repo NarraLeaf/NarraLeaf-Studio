@@ -206,7 +206,8 @@ export type ImportStatus = "idle" | "unpacking";
  * cleanly can still contain something Studio cannot open, and the files are on disk either way.
  */
 export type ImportFailure =
-    | { kind: "failed"; message: string }
+    /** `leftBehind`: the folder still holds part of what the failed attempt unpacked. */
+    | { kind: "failed"; message: string; leftBehind: boolean }
     | { kind: "notAProject"; destination: string };
 
 /**
