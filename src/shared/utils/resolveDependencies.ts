@@ -5,6 +5,7 @@ import type {
     ProjectDependencyTable,
     ProjectPluginDependency,
 } from "../types/pluginDependencies";
+import type { PluginStatus } from "../types/plugins";
 import { classifyCompatibility } from "./semver";
 
 /** The subset of an installed plugin the resolver needs. Derived from PluginListItem. */
@@ -12,6 +13,8 @@ export interface InstalledPluginInfo {
     id: string;
     version: string;
     enabled: boolean;
+    /** Carried onto the entry as `installedStatus` when given; the verdict never reads it. */
+    status?: PluginStatus;
 }
 
 /**
@@ -64,6 +67,7 @@ export function resolveDependencies(
             dependency,
             installedVersion: match.version,
             installedEnabled: match.enabled,
+            ...(match.status ? { installedStatus: match.status } : {}),
             status,
             suppressed: isHeldBack(dependency, match.version),
         };

@@ -9,6 +9,8 @@
  * by scanning the project's actual plugin usage, never hand-authored.
  */
 
+import type { PluginStatus } from "./plugins";
+
 export const PROJECT_DEPENDENCY_SCHEMA_VERSION = 1;
 
 /** The extension points a project can depend on a plugin through. */
@@ -58,6 +60,12 @@ export interface DependencyResolutionEntry {
     installedVersion?: string;
     /** True when the installed plugin is enabled and eligible to load. */
     installedEnabled?: boolean;
+    /**
+     * The installed plugin's own state, where the resolver was told it. The two states in which a
+     * plugin is installed, switched on and at a usable version and still contributes nothing -
+     * waiting for its permissions to be approved, and failed to load - are only visible here.
+     */
+    installedStatus?: PluginStatus;
     status: DependencyStatus;
     /** True when this dependency causes the plugin to be suppressed for the project. */
     suppressed: boolean;

@@ -1,15 +1,15 @@
 /**
  * How a plugin dependency's status is written and coloured, shared by every surface that shows one.
  *
- * Two surfaces show this today - Project ▸ App's dependency list and the build dialog's Content
- * section - and they are describing the same fact about the same table. Kept here rather than in
- * either of them because the failure mode of two copies is not a broken build but a quiet one: the
- * same plugin reading "incompatible" in one place and "outdated" in the other, with nothing to say
- * which is true.
+ * Three surfaces show this today - Project ▸ App's dependency list, the build dialog's Content
+ * section and the Plugins panel's dependency screen - and they are describing the same fact about
+ * the same table. Kept here rather than in any of them because the failure mode of two copies is not
+ * a broken build but a quiet one: the same plugin reading "incompatible" in one place and "outdated"
+ * in the other, with nothing to say which is true.
  */
 
 import type { DependencyResolutionEntry, DependencyStatus } from "@shared/types/pluginDependencies";
-import type { TranslationKey } from "@shared/i18n";
+import type { PluralKey, TranslationKey } from "@shared/i18n";
 
 /**
  * Colour for the word, and only for the word.
@@ -42,30 +42,38 @@ export interface DependencyStateDisplay {
 
 /** The part of a resolution entry a row needs to write its state. */
 export type DependencyStateInput = Pick<DependencyResolutionEntry, "installedEnabled">
-    & Partial<Pick<DependencyResolutionEntry, "status" | "suppressed">>;
+    & Partial<Pick<DependencyResolutionEntry, "status" | "suppressed" | "installedStatus">>;
 
 /**
- * The state word for one plugin, or null when the row needs none.
+ * Every state a dependency row can be in, in the order in which each one hides the next: a plugin
+ * that is not installed is not also switched off, and one Studio holds back for its version would
+ * not load if it were on.
  *
- * A satisfied plugin that is loaded needs no word beside it: the row already names it and its
- * version, and "Ready" on every line is a column of noise that hides the one line that is not.
- *
- * Three of the four cases are about versions; the switched-off one is not, and it is the reason
- * this decision is a function rather than a table lookup. A plugin the author switched off is
- * installed, compatible, and contributes nothing - its nodes, widgets and actions are unknown
- * types in this project exactly as if it were absent - so the row has to say so instead of
- * reading "Ready".
- *
- * The two words come from the Plugins panel rather than from here, because that panel already
- * names both facts and an author reads the pair together: `disabled` is what it writes beside the
- * switch, and `suppressed` is what it writes for the plugin Studio withheld from this project.
- * This table used to spend the switch's word on the version verdict, so the one thing the author
- * had actually done was the one thing neither panel said.
+ * - `missing` - not installed here.
+ * - `held` - installed at a different major from the one the project was made with, so Studio holds
+ *   it back from the project until the author's Rescan.
+ * - `needsAuthorization` - installed, and its permissions were never approved. Ahead of `disabled`,
+ *   because a plugin whose grant was declined is switched off as well, and what the Plugins panel
+ *   shows and offers for it is the authorization.
+ * - `disabled` - the author switched it off.
+ * - `failed` - switched on, and it failed to load.
+ * - `outdated` / `incompatible` - loads, at a version older than the project's, or at another major
+ *   for a data-only dependency that nothing holds back.
+ * - `ready` - nothing to say.
  */
-export function describeDependencyState(entry: DependencyStateInput): DependencyStateDisplay | null {
-    const { status, suppressed, installedEnabled } = entry;
-    // Before the first resolve there is no verdict to write - the table names what the project
-    // depends on, and nothing more.
+export type DependencyRowState =
+    | "missing"
+    | "held"
+    | "needsAuthorization"
+    | "disabled"
+    | "failed"
+    | "outdated"
+    | "incompatible"
+    | "ready";
+
+/** Which state a row is in - see {@link DependencyRowState}. Null before the first resolve. */
+export function classifyDependencyRow(entry: DependencyStateInput): DependencyRowState | null {
+    const { status, suppressed, installedEnabled, installedStatus } = entry;
     if (!status) {
         return null;
     }
@@ -73,17 +81,115 @@ export function describeDependencyState(entry: DependencyStateInput): Dependency
     // nothing here for Studio to have withheld, and "Off for this project" sends the author to look
     // for a switch that does not exist. What they need to know is that the plugin is not installed.
     if (status === "missing") {
-        return { labelKey: "project.dependencies.status.missing", className: DEPENDENCY_STATUS_TEXT_STYLES.missing };
+        return "missing";
     }
     if (suppressed) {
-        return { labelKey: "project.dependencies.status.suppressed", className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
+        return "held";
+    }
+    if (installedStatus === "needsAuthorization") {
+        return "needsAuthorization";
     }
     if (installedEnabled === false) {
-        // Nothing loads, which is what `missing` looks like from inside the project.
-        return { labelKey: "project.dependencies.status.disabled", className: "text-danger" };
+        return "disabled";
     }
-    if (status !== "satisfied") {
-        return { labelKey: DEPENDENCY_STATUS_LABEL_KEYS[status], className: DEPENDENCY_STATUS_TEXT_STYLES[status] };
+    if (installedStatus === "error") {
+        return "failed";
     }
-    return null;
+    if (status === "outdated" || status === "incompatible") {
+        return status;
+    }
+    return "ready";
+}
+
+/**
+ * The state word for one plugin, or null when the row needs none.
+ *
+ * A satisfied plugin that is loaded needs no word beside it: the row already names it and its
+ * version, and "Ready" on every line is a column of noise that hides the one line that is not.
+ *
+ * The words for the plugin's own state come from the Plugins panel rather than from here, because
+ * that panel already names each fact and an author reads the two together: `disabled` is what it
+ * writes beside the switch, `suppressed` is what it writes for the plugin Studio withheld from this
+ * project, and waiting for authorization and failing to load are its status and its activity words.
+ * This table used to spend the switch's word on the version verdict, so the one thing the author
+ * had actually done was the one thing neither panel said.
+ */
+export function describeDependencyState(entry: DependencyStateInput): DependencyStateDisplay | null {
+    switch (classifyDependencyRow(entry)) {
+        case null:
+        case "ready":
+            return null;
+        case "missing":
+            return { labelKey: DEPENDENCY_STATUS_LABEL_KEYS.missing, className: DEPENDENCY_STATUS_TEXT_STYLES.missing };
+        case "held":
+            return { labelKey: "project.dependencies.status.suppressed", className: "text-danger" };
+        case "needsAuthorization":
+            return { labelKey: "plugins.status.needsAuthorization", className: "text-warning" };
+        case "disabled":
+            // Nothing loads, which is what `missing` looks like from inside the project.
+            return { labelKey: "project.dependencies.status.disabled", className: "text-danger" };
+        case "failed":
+            return { labelKey: "plugins.workspace.activity.failed", className: "text-danger" };
+        case "outdated":
+            return { labelKey: DEPENDENCY_STATUS_LABEL_KEYS.outdated, className: DEPENDENCY_STATUS_TEXT_STYLES.outdated };
+        case "incompatible":
+            return {
+                labelKey: DEPENDENCY_STATUS_LABEL_KEYS.incompatible,
+                className: DEPENDENCY_STATUS_TEXT_STYLES.incompatible,
+            };
+    }
+}
+
+/** One sentence of the banner above the dependency list: a state, and how many rows are in it. */
+export interface DependencyBannerLine {
+    key: PluralKey;
+    count: number;
+}
+
+export interface DependencyBanner {
+    /** Danger while any plugin the project uses contributes nothing; a warning otherwise. */
+    tone: "danger" | "warning";
+    lines: DependencyBannerLine[];
+}
+
+const BANNER_KEYS: Record<Exclude<DependencyRowState, "ready">, PluralKey> = {
+    missing: "project.dependencies.banner.missing",
+    held: "project.dependencies.banner.held",
+    needsAuthorization: "project.dependencies.banner.needsAuthorization",
+    disabled: "project.dependencies.banner.disabled",
+    failed: "project.dependencies.banner.failed",
+    outdated: "project.dependencies.banner.outdated",
+    incompatible: "project.dependencies.banner.incompatible",
+};
+
+/** The states in which the plugin contributes nothing to the project. */
+const UNAVAILABLE: ReadonlySet<DependencyRowState> = new Set(["missing", "held", "needsAuthorization", "disabled", "failed"]);
+
+/**
+ * The banner over the dependency list, or null when every row is ready.
+ *
+ * One sentence per state the rows are in, each saying what the state is and where it is put right.
+ * It used to be one of two fixed sentences picked by the resolution's overall verdict, and the red
+ * one said "installed version incompatible" for a plugin that was not installed at all - the
+ * verdict is `blocked` for any hard dependency that is withheld, and an absent one is withheld too.
+ * A banner that names a cause has to name the one the rows below it are actually in.
+ */
+export function describeDependencyBanner(entries: readonly DependencyStateInput[]): DependencyBanner | null {
+    const counts = new Map<DependencyRowState, number>();
+    for (const entry of entries) {
+        const state = classifyDependencyRow(entry);
+        if (state && state !== "ready") {
+            counts.set(state, (counts.get(state) ?? 0) + 1);
+        }
+    }
+    if (counts.size === 0) {
+        return null;
+    }
+    const order = Object.keys(BANNER_KEYS) as Exclude<DependencyRowState, "ready">[];
+    return {
+        tone: [...counts.keys()].some(state => UNAVAILABLE.has(state)) ? "danger" : "warning",
+        lines: order
+            .filter(state => counts.has(state))
+            .map(state => ({ key: BANNER_KEYS[state], count: counts.get(state)! })),
+    };
 }

@@ -59,6 +59,7 @@ import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectD
 import { rescanProjectDependencies } from "@/lib/plugins/rescanDependencies";
 import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import type {
+    DependencyResolutionEntry,
     DependencyStatus,
     ProjectDependencyResolution,
     ProjectDependencyTable,
@@ -186,6 +187,8 @@ export type BuildPluginEntry = {
     suppressed?: boolean;
     /** False when the plugin is installed here but switched off, so it contributes nothing. */
     installedEnabled?: boolean;
+    /** The installed plugin's own state: waiting for its permissions, or failed to load. */
+    installedStatus?: DependencyResolutionEntry["installedStatus"];
 };
 
 /**
@@ -208,6 +211,7 @@ export function buildPluginEntries(
             status: entry.status,
             suppressed: entry.suppressed,
             installedEnabled: entry.installedEnabled,
+            ...(entry.installedStatus ? { installedStatus: entry.installedStatus } : {}),
         }));
     }
     return (table?.plugins ?? []).map(plugin => ({

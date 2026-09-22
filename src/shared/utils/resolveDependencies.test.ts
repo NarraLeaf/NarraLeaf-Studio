@@ -41,6 +41,16 @@ describe("resolveDependencies", () => {
         expect(result.overall).toBe("blocked");
     });
 
+    it("carries the installed plugin's own state onto the entry without letting it decide the verdict", () => {
+        const result = resolveDependencies(
+            table([dep({ id: "a.b" })]),
+            installed([{ id: "a.b", status: "needsAuthorization" }]),
+        );
+        expect(result.entries[0].installedStatus).toBe("needsAuthorization");
+        expect(result.entries[0].status).toBe("satisfied");
+        expect(result.entries[0].suppressed).toBe(false);
+    });
+
     it("does not suppress a soft dependency even when incompatible", () => {
         const result = resolveDependencies(table([dep({ id: "a.b", hard: false, authoredVersion: "1.0.0" })]), installed([{ id: "a.b", version: "2.0.0" }]));
         expect(result.entries[0].status).toBe("incompatible");

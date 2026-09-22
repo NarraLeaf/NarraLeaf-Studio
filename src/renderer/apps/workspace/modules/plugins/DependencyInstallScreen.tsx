@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
-import { PluginAvatar, statusText } from "@/lib/plugins/ui/pluginPresentation";
+import { PluginAvatar } from "@/lib/plugins/ui/pluginPresentation";
 import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import { isUnmet, type DependencyRemedy, type DependencyRemedyStep } from "@/lib/workspace/project/dependencyRemedy";
 import type { TranslationKey, Translator } from "@shared/i18n";
@@ -161,10 +161,10 @@ function DependencyScreenRow({
     const { entry, remedy, name, installed, registryEntry } = row;
     const { dependency } = entry;
 
+    // The same word Project ▸ App writes for this row, including the two states the version verdict
+    // cannot see - waiting for authorization, and failed to load - which the entry carries from the
+    // installed list this panel holds.
     const state = describeDependencyState(entry);
-    // A word about the plugin itself, for the states the version verdict cannot see: waiting for
-    // authorization, and failed. Taken from the Plugins panel, which already names both.
-    const pluginState = !state && installed && installed.status !== "enabled" ? installed.status : null;
 
     // What is installed is stated only when something is: the state word beside the name already
     // says a plugin is missing, and saying it twice on one row reads as two different facts.
@@ -201,13 +201,6 @@ function DependencyScreenRow({
                         {state ? (
                             <span className={`shrink-0 text-2xs font-medium ${state.className}`} data-dependency-state>
                                 {t(state.labelKey)}
-                            </span>
-                        ) : pluginState ? (
-                            <span
-                                className={`shrink-0 text-2xs font-medium ${pluginState === "error" ? "text-danger" : "text-warning"}`}
-                                data-dependency-state
-                            >
-                                {statusText(pluginState, t)}
                             </span>
                         ) : null}
                     </div>

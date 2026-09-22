@@ -32,6 +32,8 @@ export interface InstalledPlugin {
     builtIn: boolean;
     name?: string;
     publisher?: string;
+    /** For the resolution's rows, which name a plugin waiting for its permissions or failed to load. */
+    status?: PluginListItem["status"];
 }
 
 /** A single instance of a plugin-owned type/namespace referenced by the project. */
@@ -468,6 +470,7 @@ function toInstalledPlugin(plugin: PluginListItem): InstalledPlugin {
         builtIn: plugin.builtIn,
         name: plugin.manifest.name,
         publisher: plugin.manifest.publisher,
+        status: plugin.status,
     };
 }
 

@@ -13,7 +13,7 @@ import type {
     DependencyResolutionEntry,
     ProjectDependencyResolution,
 } from "@shared/types/pluginDependencies";
-import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
+import { describeDependencyBanner, describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -100,9 +100,7 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
                 </Button>
             )}
         >
-            {resolution && resolution.overall !== "ok" ? (
-                <OverallBanner overall={resolution.overall} />
-            ) : null}
+            <DependencyBannerStrip entries={entries} />
 
             {entries.length === 0 ? (
                 <div className="rounded-md border border-edge bg-fill-subtle p-4 text-center text-2xs text-fg-subtle">
@@ -119,20 +117,25 @@ export function ProjectDependenciesSection(_props: ProjectSectionProps) {
     );
 }
 
-function OverallBanner({ overall }: { overall: "warnings" | "blocked" }) {
-    const { t } = useTranslation();
-    const blocked = overall === "blocked";
+/** One sentence per state the rows are in, each naming where it is put right - see `describeDependencyBanner`. */
+function DependencyBannerStrip({ entries }: { entries: readonly DependencyResolutionEntry[] }) {
+    const { tn } = useTranslation();
+    const banner = describeDependencyBanner(entries);
+    if (!banner) {
+        return null;
+    }
     return (
         <div
-            className={`rounded-md border p-2.5 text-2xs leading-relaxed ${
-                blocked
+            className={`grid gap-1 rounded-md border p-2.5 text-2xs leading-relaxed ${
+                banner.tone === "danger"
                     ? "border-danger/30 bg-danger/10 text-danger"
                     : "border-warning/30 bg-warning/10 text-warning"
             }`}
+            data-dependency-banner={banner.tone}
         >
-            {blocked
-                ? t("project.dependencies.banner.blocked")
-                : t("project.dependencies.banner.warnings")}
+            {banner.lines.map(line => (
+                <p key={line.key}>{tn(line.key, line.count, { count: line.count })}</p>
+            ))}
         </div>
     );
 }

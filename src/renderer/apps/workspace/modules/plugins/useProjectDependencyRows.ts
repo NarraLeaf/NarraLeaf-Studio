@@ -122,6 +122,7 @@ export function useProjectDependencyRows(
             id: plugin.pluginId,
             version: plugin.manifest.version,
             enabled: plugin.enabled,
+            status: plugin.status,
         }))).entries;
     }, [catalog.plugins, resolved]);
 
