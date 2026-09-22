@@ -198,7 +198,7 @@ describe("process memory", () => {
 
     it("is said in the prompt as what it reads", () => {
         expect(describePluginInstallPermissions([runtime("process.memory")])).toEqual([
-            "In your game: read how much memory the game’s processes are using",
+            "In your game: read how much of the computer’s memory the game is using",
         ]);
     });
 

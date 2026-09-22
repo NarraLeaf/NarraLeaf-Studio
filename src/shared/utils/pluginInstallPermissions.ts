@@ -97,7 +97,7 @@ function describeRuntimeCapability(capability: PluginRuntimeCapability): string 
         case "diagnostics":
             return "read what the game’s image and audio caches are holding";
         case "process.memory":
-            return "read how much memory the game’s processes are using";
+            return "read how much of the computer’s memory the game is using";
         default:
             return capability;
     }
