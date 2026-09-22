@@ -58,6 +58,8 @@ import {
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { createCrashSequence, type CrashSaveOutcome, type CrashSequence } from "./crashSequence";
 import { describeFatalErrorForCommandLine, endCommandLineRunOnFailure } from "./commandLineRunEnd";
+import { decideStartupExtras, type StartupExtras } from "./startupExtras";
+import { markSessionRunning } from "./sessionMarker";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
 import { getMainTranslator } from "./i18n";
@@ -897,6 +899,37 @@ export class BaseApp {
     }
 
     /**
+     * Whether this launch is a command-line run - `--build`, `--test` or `--lint`.
+     *
+     * The one question everything Studio starts *for the person in front of it* has to ask before
+     * it starts: a run is a tool, and a tool does the job it was given, says what happened and
+     * leaves nothing behind. No status-bar item flashing up on an operator's screen for the seconds
+     * it lasts, no request the line never asked for, nothing written into a profile that was only
+     * lent to it.
+     *
+     * Deliberately the same `requested` the parser answers `--build`/`--test`/`--lint` with, so this
+     * can never disagree with `commandLineRunEnd.ts` about what kind of launch this is - including on
+     * a line that named a run and then got something else wrong. It is the run's own knowledge of
+     * being unattended rather than a second flag saying so, for the reason `AppWindow.isUnattended`
+     * reads the same thing: a second way to say it is a second way to get it wrong.
+     */
+    public isCommandLineRun(): boolean {
+        return this.commandLine.build.requested || this.commandLine.check.requested;
+    }
+
+    /**
+     * What this launch starts at boot besides the thing it was launched to do - the status-bar
+     * item, the update check, the crash handler, the session marker, the development conveniences.
+     *
+     * Answered from {@link decideStartupExtras}, which is where the list and the reasoning live.
+     * Computed on each call rather than held, because the two facts it reads are fixed for the
+     * life of the process and this is asked six times in all.
+     */
+    public getStartupExtras(): StartupExtras {
+        return decideStartupExtras({ commandLineRun: this.isCommandLineRun(), devMode: this.isDevMode() });
+    }
+
+    /**
      * What the command line asked experimental mode for, before anything decided whether it could
      * be honoured.
      *
@@ -949,8 +982,10 @@ export class BaseApp {
             this.logger.warn("[Logging] Could not redirect Electron's log path:", error);
         }
         // Collect native crash dumps next to the log. Never uploaded - this is for the user handing
-        // us a folder, not telemetry.
-        crashReporter.start({ uploadToServer: false });
+        // us a folder, not telemetry. Not started by a command-line run; see `startupExtras.ts`.
+        if (this.getStartupExtras().nativeCrashDumps) {
+            crashReporter.start({ uploadToServer: false });
+        }
     }
 
     /**
@@ -975,42 +1010,33 @@ export class BaseApp {
     }
 
     /**
-     * Leave a file behind for as long as this session is running, and find out whether the last
-     * one managed to remove its own.
-     *
-     * The failures worth knowing about are the ones that write nothing: a process killed by the
-     * system, a native fault below JavaScript, a machine that lost power. All of them leave a log
-     * that simply stops, which reads the same as a clean quit. This is the one line that tells the
-     * two apart, and it is in the log every support bundle carries.
-     *
-     * Best-effort throughout. A profile directory that cannot be written is a problem for other
-     * reasons, and none of them are made better by refusing to start.
+     * Leave a file behind for as long as this session is running, so the next launch can tell a
+     * session that died apart from one that quit. The whole of it, including why a command-line
+     * run leaves none, is in `sessionMarker.ts`.
      */
     private markSessionRunning(): void {
-        const marker = path.join(this.getUserDataDir(), "session.running");
-        try {
-            if (fs.existsSync(marker)) {
-                this.logger.warn(
-                    "[Crash] The previous session did not shut down cleanly."
-                    + " Anything it had not written to disk was lost.",
-                );
-            }
-            fs.mkdirSync(path.dirname(marker), { recursive: true });
-            fs.writeFileSync(marker, new Date().toISOString(), "utf-8");
-        } catch (error) {
-            this.logger.warn("[Crash] Could not record the session marker:", error);
-            return;
-        }
-
-        // `will-quit` rather than `before-quit`: the latter fires on quits that are still
-        // cancellable, and removing the marker there would call a cancelled quit a clean exit.
-        this.electronApp.on("will-quit", () => {
-            try {
-                fs.rmSync(marker, { force: true });
-            } catch (error) {
-                this.logger.warn("[Crash] Could not clear the session marker:", error);
-            }
-        });
+        markSessionRunning(
+            { userDataDir: this.getUserDataDir(), wanted: this.getStartupExtras().sessionMarker },
+            {
+                exists: file => fs.existsSync(file),
+                write: (file, text) => {
+                    fs.mkdirSync(path.dirname(file), { recursive: true });
+                    fs.writeFileSync(file, text, "utf-8");
+                },
+                remove: file => fs.rmSync(file, { force: true }),
+                warn: (message, error) => {
+                    if (error === undefined) {
+                        this.logger.warn(message);
+                    } else {
+                        this.logger.warn(message, error);
+                    }
+                },
+                onWillQuit: handler => {
+                    this.electronApp.on("will-quit", handler);
+                },
+                now: () => new Date(),
+            },
+        );
     }
 
     /**
@@ -1094,7 +1120,7 @@ export class BaseApp {
      * Must happen before `ready`, which is why it is in the constructor beside `configureCdp`.
      */
     private configureHeadlessBuild(): void {
-        if (!this.commandLine.build.requested && !this.commandLine.check.requested) {
+        if (!this.isCommandLineRun()) {
             return;
         }
         this.electronApp.disableHardwareAcceleration();
@@ -1182,7 +1208,13 @@ export class BaseApp {
 
         if (this.isDevMode()) {
             this.logger.info("App is running in development mode");
+        }
+        // Both are conveniences for somebody sitting in front of a checkout, and a command-line run
+        // from a checkout is still a tool; see `startupExtras.ts`.
+        if (this.getStartupExtras().developmentReloadSocket) {
             void this.setupDevReloadSocket();
+        }
+        if (this.getStartupExtras().developmentDebugServer) {
             this.startDebugServer();
         }
 

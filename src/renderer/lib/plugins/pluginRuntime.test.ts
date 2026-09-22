@@ -366,6 +366,7 @@ describe("createPluginApp disposal", () => {
         const liveWorkspace = Workspace.create({
             project: { resolve: (...p: string[]) => p.join("/") } as any,
             services: { get: () => "DEFAULT_FACADE_FS", getAll: () => [] } as any,
+            commandLineRun: false,
         });
         registered.onClick(liveWorkspace);
 

@@ -179,6 +179,16 @@ import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 interface WorkspaceContext {
     project: Porject;
     services: ServiceRegistry;
+    /**
+     * Whether this window was opened to answer a command line - `--build`, `--test` or `--lint` -
+     * rather than for somebody to work in.
+     *
+     * Read from the window's props when the context is built, so a service knows it before its own
+     * `init` runs. Everything a workspace does *because an author is here* has to ask: a run is a
+     * machine passing through, and what it records about the person whose profile it borrowed is a
+     * fiction nobody can correct afterwards.
+     */
+    commandLineRun: boolean;
 }
 
 interface IService {

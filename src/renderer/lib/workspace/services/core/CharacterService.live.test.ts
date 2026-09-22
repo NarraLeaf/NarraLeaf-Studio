@@ -44,6 +44,7 @@ function createHarness() {
                 }
             },
         } as never,
+        commandLineRun: false,
     };
     history.setContext(context);
     service.setContext(context);
