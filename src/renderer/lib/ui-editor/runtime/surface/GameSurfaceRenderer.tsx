@@ -88,9 +88,9 @@ export type GameSurfaceRendererProps = {
     /**
      * When "none", the surface shell/scaler divs are click-through so empty areas do not block
      * whatever renders behind them. Widget elements re-enable pointer events themselves via their
-     * node wrappers. Used by the On-Stage slot, whose NLR RootLayout host forces
-     * `pointer-events: auto` on all descendants via a universal-selector CSS rule that only an
-     * inline style can override.
+     * node wrappers. Used by the On-Stage slot, whose NLR RootLayout host sets
+     * `pointer-events: auto` on every descendant through a universal-selector CSS rule - so the
+     * value is written as an inline style on the shell, which takes precedence over that rule.
      */
     surfacePointerEvents?: CSSProperties["pointerEvents"];
     /**

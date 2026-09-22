@@ -533,9 +533,13 @@ export function SearchPanel() {
                                                 onClick={() => applyPlan(planForEdit(edit))}
                                                 aria-label={t("workspace.shell.search.replaceRow")}
                                                 {...freeze.writes(false, t("workspace.shell.search.replaceRow"))}
-                                                // Centered with `my-auto` between pinned edges rather
-                                                // than a translate: narraleaf-react injects a v4
-                                                // utility table that kills v3 `transform` classes.
+                                                // Centred on the row by pinning both edges
+                                                // (`inset-y-0`) and letting `my-auto` split the
+                                                // leftover height, rather than `top-1/2` and a
+                                                // translate back. Centring by margin is a layout
+                                                // fact rather than a displacement, so the button
+                                                // sits right whatever its height turns out to be,
+                                                // and its `transform` is left free.
                                                 className="absolute inset-y-0 right-2 my-auto opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                                             >
                                                 <Replace className="h-3.5 w-3.5" />

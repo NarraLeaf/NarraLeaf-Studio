@@ -299,9 +299,9 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 {onRevision && (
                     /* Vertical because 48px has no room for `#12` horizontally, and the label is the
                        other half of the indicator - a tint alone does not say WHICH version.
-                       `writingMode` inline rather than as a utility class: narraleaf-react injects a
-                       Tailwind v4 sheet over this app, and betting on a generated utility here has
-                       burned us before. */
+                       `writingMode` is written as an inline style: nothing else in Studio's own
+                       chrome sets text sideways, so a utility class for it would exist for this one
+                       span. */
                     <span
                         className="text-2xs tabular-nums text-primary"
                         style={{ writingMode: "vertical-rl" }}

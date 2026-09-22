@@ -138,10 +138,11 @@ function NotificationItem({
             onMouseLeave={() => setHovered(false)}
             className={cn(
                 "flex w-full items-start gap-3 rounded-lg p-3",
-                // Per-side widths rather than `border` + `border-l-2`: the engine
-                // (narraleaf-react) ships a compiled Tailwind v4 sheet that the
-                // workspace window injects after its own, and its `.border` rule
-                // lands last and resets all four widths to 1px.
+                // The left edge is twice as thick as the other three: it is the stripe
+                // that carries the card's type colour (see TYPE_ACCENT). Each side's
+                // width is named on its own rather than a blanket `border` that a
+                // `border-l-2` then has to override - one declaration per edge, with
+                // nothing to undo.
                 "border-y border-r border-l-2 border-edge bg-surface-overlay",
                 // A light shadow rather than a dramatic one. The card is opaque and bordered
                 // already, so the shadow only has to lift it off what is behind it; a heavy one
