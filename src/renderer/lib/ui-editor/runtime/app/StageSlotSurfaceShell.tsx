@@ -32,6 +32,7 @@ import {
 } from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
 import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
+import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
 
 /**
@@ -329,6 +330,28 @@ export function StageSlotSurfaceBody(props: {
         };
     }, [core, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
 
+    /**
+     * What a page placed in a Page widget on this surface runs on: the same runtime the game's pages
+     * and layers hand theirs, built from the capabilities this surface was given - a choice menu's
+     * own `Select Choice` included - so the embedded page shares the slot's host rather than getting
+     * a smaller one. Without it the page is drawn and none of its graphs run.
+     */
+    const { host, startStory, setWidgetPatchesByScope } = options;
+    const nestedSurfaceRuntime = useMemo(() => {
+        if (!core) {
+            return undefined;
+        }
+        return createNestedSurfaceHost({
+            core,
+            capabilities: host,
+            bundle,
+            startStory,
+            widgetPatches: { setByScope: setWidgetPatchesByScope, byScopeRef: widgetPatchesByScopeRef },
+            lifecycleRef,
+            ambientSurfaces,
+        });
+    }, [ambientSurfaces, bundle, core, host, lifecycleRef, setWidgetPatchesByScope, startStory, widgetPatchesByScopeRef]);
+
     return (
         <SurfaceLifecycleBoundary
             core={core}
@@ -350,6 +373,7 @@ export function StageSlotSurfaceBody(props: {
                     hostAdapter={hostAdapter}
                     blueprintBindingContext={bindingContext}
                     getWidgetRuntimePatches={getWidgetRuntimePatches}
+                    nestedSurfaceRuntime={nestedSurfaceRuntime}
                     surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}
