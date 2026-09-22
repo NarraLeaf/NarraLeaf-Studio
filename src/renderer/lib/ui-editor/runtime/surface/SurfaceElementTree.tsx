@@ -51,6 +51,7 @@ import {
     ElementAnimationPresence,
 } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
+import { FramePageBox } from "@/lib/ui-editor/runtime/surface/FramePageBox";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
@@ -436,6 +437,8 @@ function sameJson(previous: unknown, next: unknown): boolean {
     }
 }
 
+const NO_CHANGING_PAGES: ReadonlySet<string> = new Set();
+
 function NestedSurfaceRenderer(props: {
     document: UIDocument;
     parentSurface: UISurface;
@@ -548,6 +551,26 @@ function NestedSurfaceRenderer(props: {
     const pendingWaitInputRef = useRef<NestedSurfaceRuntimeInput | null>(null);
     const pendingUnderlayReadyKeyRef = useRef<string | null>(null);
     const pendingRemoveAfterEnterKeyRef = useRef<string | null>(null);
+    /**
+     * The pages still drawn that are no longer the frame's page: on their way out, or held on screen
+     * while the page replacing them arrives. While there are any, the frame is changing page, and a
+     * press nothing on the arriving page takes goes no further than the frame (see `FramePageBox`).
+     */
+    const [changingPageKeys, setChangingPageKeys] = useState<ReadonlySet<string>>(NO_CHANGING_PAGES);
+    const reportChangingPage = useCallback((runtimeScopeId: string, changing: boolean) => {
+        setChangingPageKeys(previous => {
+            if (previous.has(runtimeScopeId) === changing) {
+                return previous;
+            }
+            const next = new Set(previous);
+            if (changing) {
+                next.add(runtimeScopeId);
+            } else {
+                next.delete(runtimeScopeId);
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         visibleInputsRef.current = visibleInputs;
@@ -654,26 +677,29 @@ function NestedSurfaceRenderer(props: {
     }
 
     return (
-        <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
-            {visibleInputs.map((visibleInput, layerIndex) => (
-                <NestedSurfaceInstance
-                    key={visibleInput.runtimeScopeId}
-                    runtimeInput={visibleInput}
-                    layerIndex={layerIndex}
-                    rendererRegistry={rendererRegistry}
-                    parentHostAdapter={parentHostAdapter}
-                    useAppearanceInspectorPreview={useAppearanceInspectorPreview}
-                    nestedSurfaceRuntime={nestedSurfaceRuntime}
-                    surfacePath={surfacePath}
-                    reducedMotion={reducedMotion}
-                    active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
-                    parentInteractive={parentInteractive}
-                    parentKeyboardInteractive={parentKeyboardInteractive}
-                    onPrepaintReady={handleLayerPrepaintReady}
-                    onEnterComplete={handleLayerEnterComplete}
-                />
-            ))}
-        </AnimatePresence>
+        <FramePageBox changingPage={changingPageKeys.size > 0}>
+            <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
+                {visibleInputs.map((visibleInput, layerIndex) => (
+                    <NestedSurfaceInstance
+                        key={visibleInput.runtimeScopeId}
+                        runtimeInput={visibleInput}
+                        layerIndex={layerIndex}
+                        rendererRegistry={rendererRegistry}
+                        parentHostAdapter={parentHostAdapter}
+                        useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                        nestedSurfaceRuntime={nestedSurfaceRuntime}
+                        surfacePath={surfacePath}
+                        reducedMotion={reducedMotion}
+                        active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
+                        parentInteractive={parentInteractive}
+                        parentKeyboardInteractive={parentKeyboardInteractive}
+                        onPrepaintReady={handleLayerPrepaintReady}
+                        onEnterComplete={handleLayerEnterComplete}
+                        onChangingPage={reportChangingPage}
+                    />
+                ))}
+            </AnimatePresence>
+        </FramePageBox>
     );
 }
 
@@ -691,6 +717,8 @@ function NestedSurfaceInstance(props: {
     parentKeyboardInteractive: boolean;
     onPrepaintReady: (runtimeScopeId: string) => void;
     onEnterComplete: (runtimeScopeId: string) => void;
+    /** Tells the frame whether this page is drawn without being the frame's page any more. */
+    onChangingPage: (runtimeScopeId: string, changing: boolean) => void;
 }) {
     const {
         runtimeInput,
@@ -706,6 +734,7 @@ function NestedSurfaceInstance(props: {
         parentKeyboardInteractive,
         onPrepaintReady,
         onEnterComplete,
+        onChangingPage,
     } = props;
     const [, setBindingTick] = useState(0);
     const [prepaintReady, setPrepaintReady] = useState(false);
@@ -724,6 +753,17 @@ function NestedSurfaceInstance(props: {
     const isPresent = useIsPresent();
     const effectiveInteractive = parentInteractive && active && prepaintReady && isPresent;
     const effectiveKeyboardInteractive = parentKeyboardInteractive && active && prepaintReady;
+    // Drawn without being the frame's page: leaving, or held on screen while its replacement arrives.
+    // A layout effect so the frame stops handing presses on in the same commit that takes this page
+    // out of input, leaving no moment between the two in which a press could slip through.
+    const changingPage = !active || !isPresent;
+    useLayoutEffect(() => {
+        if (!changingPage) {
+            return undefined;
+        }
+        onChangingPage(runtimeInput.runtimeScopeId, true);
+        return () => onChangingPage(runtimeInput.runtimeScopeId, false);
+    }, [changingPage, onChangingPage, runtimeInput.runtimeScopeId]);
     const hostAdapter = useMemo(() => {
         const getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
         const nestedHostAdapter = nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput);
@@ -881,6 +921,9 @@ function NestedSurfaceInstance(props: {
             exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
             exitHoldMs={timings.exitMs}
             interactive={effectiveInteractive}
+            // A page on its way out takes no press, so one made over it reaches whatever is drawn
+            // beneath: the page arriving in its place, or else the frame's page box, which keeps it.
+            inertWhileLeaving
             resolveExit={resolveExit}
             onPrepaintReady={handlePrepaintReady}
             onBeforeExit={handleBeforeExit}

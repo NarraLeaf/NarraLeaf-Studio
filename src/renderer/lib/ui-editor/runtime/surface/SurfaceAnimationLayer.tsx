@@ -76,8 +76,9 @@ type SurfaceAnimationLayerProps = {
      * switch nothing inside the layer can turn back on.
      *
      * Opt-in, because whether a press may fall through depends on what the host draws underneath:
-     * the app's page stack guards the game stage for the length of an exit (see `SurfaceStackBox`),
-     * and a frame inside a page has no such guard.
+     * only a host that keeps such a press from reaching something that would misread it should turn
+     * it on. The app's page stack guards the game stage for the length of an exit (see
+     * `SurfaceStackBox`), and a frame keeps it from becoming a press on the frame (`FramePageBox`).
      */
     inertWhileLeaving?: boolean;
     presentZIndex?: number;
