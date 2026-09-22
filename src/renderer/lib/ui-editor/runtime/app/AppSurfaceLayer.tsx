@@ -299,6 +299,15 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         ],
     );
 
+    const handleReturn = useCallback(
+        (entryKey: string) => {
+            if (entryKey === entry.key) {
+                runTransitionCommands(lifecycleRef.current.returned(hostAdapterBundle.runtimeScopeId));
+            }
+        },
+        [entry.key, hostAdapterBundle.runtimeScopeId, lifecycleRef, runTransitionCommands],
+    );
+
     const handleEnterComplete = useCallback(
         (entryKey: string) => {
             if (entryKey === entry.key) {
@@ -352,6 +361,7 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             inertWhileLeaving
             onPrepaintReady={onPrepaintReady}
             onBeforeExit={handleBeforeExit}
+            onReturn={handleReturn}
             onEnterComplete={handleEnterComplete}
         >
             <SurfaceLifecycleBoundary

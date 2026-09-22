@@ -33,8 +33,18 @@ export type CommandLineRunJob =
      * and it replaces the machine's "Preview as shipped" setting for the run rather than adding to it:
      * a run with nobody at the screen has no interactive preference to inherit, and a line that
      * answered differently on two machines would not be a line a job could rely on.
+     *
+     * `edition` is `--test-variant` and `--test-dlc`, already resolved against the project, for the
+     * same reason and by the same reader: which build a test's game is replaces the machine's
+     * "Run as" and "Run with DLC" choices for the run rather than falling back on them.
      */
-    | { kind: "test"; testId: string; parameters: Record<string, string>; asShipped: boolean }
+    | {
+        kind: "test";
+        testId: string;
+        parameters: Record<string, string>;
+        asShipped: boolean;
+        edition: CommandLineTestEdition;
+    }
     /**
      * `--test-list`: what the registry holds, rather than a run.
      *
@@ -45,6 +55,27 @@ export type CommandLineRunJob =
     | { kind: "test-list" }
     /** `--lint`: the whole rule registry over the whole project. */
     | { kind: "lint" };
+
+/** A variant or a DLC, as the project names it and as the compile addresses it. */
+export type CommandLineEditionPart = { id: string; name: string };
+
+/**
+ * Which build of the project a headless test's game is: one variant, and the DLC installed beside it.
+ *
+ * Resolved by the main process from the names on the line before any window opens, so a name the
+ * project does not have is a bad invocation that costs a second rather than a failed launch that
+ * costs a compile. Carried as ids *and* names because the two readers want one each: the compile
+ * addresses a variant and a DLC by id, and the log a job keeps says which build ran in the words its
+ * author knows it by.
+ *
+ * The default - nothing named - is the release build (`main`) with no DLC: the game a player who
+ * bought only the game has, and the same answer on every machine the line runs on.
+ */
+export type CommandLineTestEdition = {
+    variant: CommandLineEditionPart;
+    /** In the project's own order, whatever order the line named them in. */
+    dlc: CommandLineEditionPart[];
+};
 
 /** One line of a run's log, as the console recorded it. */
 export type CommandLineRunLogLine = {

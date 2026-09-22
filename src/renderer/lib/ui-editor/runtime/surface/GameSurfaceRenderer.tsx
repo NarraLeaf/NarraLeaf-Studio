@@ -49,7 +49,6 @@ import type {
 } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
-import { SurfacePassiveContext } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { getSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
@@ -95,9 +94,22 @@ export type GameSurfaceRendererProps = {
      */
     surfacePointerEvents?: CSSProperties["pointerEvents"];
     /**
-     * The surface is display-only: no widget inside it takes pointer events. Distinct from
-     * `surfacePointerEvents`, which only makes the shell click-through and is defeated by the first
-     * full-size container. See {@link SurfacePassiveContext}.
+     * The surface is display-only: nothing inside it takes pointer input, and a press anywhere over
+     * it goes to whatever is drawn behind. The notification slot is one - toasts are something the
+     * game says, not something the player operates, and the slot floats over the stage for the whole
+     * session - and a version-history preview is the other.
+     *
+     * The shell is made `inert`, because that is the one switch nothing inside it can turn back on.
+     * `pointer-events: none` on an ancestor does not survive a descendant setting it back to `auto`,
+     * and the element tree does that at every level on purpose, so a click stops where the picture
+     * is: every widget wrapper, the box a free-layout container lays its children out in, each list
+     * row, a frame's page. Turning it off in each of those had to be remembered in each of them, and
+     * was not - a passive slot holding one full-size free container took every press on the stage,
+     * and the dialogue under it never advanced. Keys are unaffected: widgets hear them from the
+     * window, not from focus.
+     *
+     * Distinct from `surfacePointerEvents`, which only makes the shell's empty areas click-through and
+     * leaves every widget on the surface taking presses as usual.
      */
     passive?: boolean;
     /**
@@ -511,16 +523,14 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     }
 
     return (
-        // A surface out of input is passive as well as inert. Widget wrappers set `pointer-events:
-        // auto` on themselves, so making only the shell click-through would leave every widget on it
-        // still blocking whatever is behind - which is the opposite of what "none" says.
-        <SurfacePassiveContext.Provider value={passive}>
         <div
             ref={shellRef}
             className="ui-editor-surface"
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
             style={shellStyle}
+            // Display-only, all the way down: see `passive`.
+            inert={passive}
             onClick={laneInteractive ? handleSurfaceClick : undefined}
             onDoubleClick={laneInteractive ? handleSurfaceDoubleClick : undefined}
             onAuxClick={laneInteractive ? handleSurfaceAuxClick : undefined}
@@ -548,6 +558,5 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                 />
             </div>
         </div>
-        </SurfacePassiveContext.Provider>
     );
 }

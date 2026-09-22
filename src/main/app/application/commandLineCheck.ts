@@ -14,12 +14,23 @@ import type {
     CommandLineRunEvent,
     CommandLineRunJob,
     CommandLineRunLogLine,
+    CommandLineTestEdition,
 } from "@shared/types/commandLineRun";
+import type { ProjectAppTag } from "@shared/types/appTag";
+import type { ProjectDlc } from "@shared/types/dlc";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { CheckCommandLineOptions } from "./commandLine";
 import type { CommandLineBuildProjectLookup } from "./commandLineBuild";
 import { resolveStartupProject } from "./startupProject";
+import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
+import { readProjectDlcFromDir } from "./utils/dlcFile";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
+import {
+    defaultTestEdition,
+    describeTestEdition,
+    isDefaultTestEdition,
+    resolveTestEdition,
+} from "./utils/testEdition";
 
 /**
  * `narraleaf-studio --test <project>` and `--lint <project>`: one check, no interface, an exit code.
@@ -68,6 +79,15 @@ import { readProjectConfigFromDir } from "./utils/projectConfigFile";
  * when the test launches its game (`GameTestManager`). It is the whole of that run's answer: the
  * machine's "Preview as shipped" setting is an author's habit and is not consulted - see
  * `runSealing.ts`. A lint sweep never compiles or launches the game, so it has no counterpart.
+ *
+ * ## Which build the game is
+ *
+ * `--test-variant` and `--test-dlc` are the same decision about the other two things a test's game
+ * used to take from the machine - the "Run as" variant and the "Run with DLC" choices - and they are
+ * resolved here, against the project's own documents, before the workspace opens: a name the
+ * project does not have is a mistyped line, and it should cost a second rather than a compile. What
+ * travels on the job is the resolved build, and a line that names neither runs the release variant
+ * with no DLC on every machine. See `utils/testEdition.ts`.
  */
 
 /**
@@ -120,7 +140,8 @@ export class CommandLineCheckRun {
                 `Missing --${options.kind} value: expected a project path or a recent project's name`,
             );
         }
-        if (options.kind === "lint" && (options.testId !== null || options.list || options.parameters.length > 0 || options.asShipped)) {
+        if (options.kind === "lint" && (options.testId !== null || options.list || options.parameters.length > 0
+            || options.asShipped || options.variant !== null || options.dlc.length > 0)) {
             return this.finish("invocation", "The --test flags were given with --lint, which runs no test");
         }
         if (options.kind === "test" && !options.list && !options.testId) {
@@ -145,15 +166,70 @@ export class CommandLineCheckRun {
         this.projectPath = resolution.projectPath;
         this.projectName = (await readProjectConfigFromDir(resolution.projectPath).catch(() => null))?.name;
 
-        const job: CommandLineRunJob = options.kind === "lint"
-            ? { kind: "lint" }
-            : options.list
-                ? { kind: "test-list" }
-                : { kind: "test", testId: options.testId!, parameters: parameters.values, asShipped: options.asShipped };
+        let job: CommandLineRunJob;
+        if (options.kind === "lint") {
+            job = { kind: "lint" };
+        } else if (options.list) {
+            job = { kind: "test-list" };
+        } else {
+            const edition = await this.resolveEdition(options);
+            if (!edition.ok) {
+                return this.finish(edition.outcome, edition.reason);
+            }
+            job = {
+                kind: "test",
+                testId: options.testId!,
+                parameters: parameters.values,
+                asShipped: options.asShipped,
+                edition: edition.edition,
+            };
+        }
 
         this.emit("info", describeJob(job, this.projectName ?? path.basename(resolution.projectPath)));
         this.job = job;
         return this.runInWorkspace(job);
+    }
+
+    /**
+     * The build a test's game is, from `--test-variant` and `--test-dlc`.
+     *
+     * The documents are read only when the line named something: a line that names neither runs the
+     * release variant with no DLC, which needs neither document and must not be refused because one
+     * of them is broken. A document that is there and cannot be read is not the line's mistake, so
+     * it is not refused as one - the run cannot say which build was meant, and says why.
+     */
+    private async resolveEdition(options: CheckCommandLineOptions): Promise<
+        | { ok: true; edition: CommandLineTestEdition }
+        | { ok: false; outcome: CommandLineCheckOutcome; reason: string }
+    > {
+        if (options.variant === null && options.dlc.length === 0) {
+            return { ok: true, edition: defaultTestEdition() };
+        }
+        const projectPath = this.projectPath!;
+        let variants: ProjectAppTag[];
+        let dlcs: ProjectDlc[];
+        try {
+            // The variants even for a line that names only DLC: a DLC is refused when it attaches to
+            // another variant, and the refusal names that variant.
+            variants = await readProjectAppTagsFromDir(projectPath);
+            dlcs = options.dlc.length > 0 ? await readProjectDlcFromDir(projectPath) : [];
+        } catch (error) {
+            return {
+                ok: false,
+                outcome: "studio-failed",
+                reason: "Could not read the project's build variants and DLC to find the ones this line names: "
+                    + describeError(error),
+            };
+        }
+        const resolved = resolveTestEdition({
+            variantName: options.variant,
+            dlcNames: options.dlc,
+            variants,
+            dlcs,
+        });
+        return resolved.ok
+            ? resolved
+            : { ok: false, outcome: "invocation", reason: resolved.reason };
     }
 
     /**
@@ -249,6 +325,16 @@ export class CommandLineCheckRun {
             this.emit(
                 "warning",
                 `--test-as-shipped: ${event.test.testId} is headless and launches no game, so no content was sealed`,
+            );
+        }
+        // The same for which build the game is. A headless test reads the project's documents as
+        // they stand - every story, every row - so a variant or DLC the line named changed nothing
+        // it looked at, and the job should not believe that build was the one checked.
+        if (this.job?.kind === "test" && !isDefaultTestEdition(this.job.edition) && event.test?.presentation === "headless") {
+            this.emit(
+                "warning",
+                `--test-variant / --test-dlc: ${event.test.testId} is headless and launches no game,`
+                    + " so it read the project as a whole rather than the build the line named",
             );
         }
         if (event.ok) {
@@ -475,7 +561,9 @@ function describeJob(job: CommandLineRunJob, projectName: string): string {
             const parameters = Object.entries(job.parameters)
                 .map(([id, value]) => `${id}=${value}`)
                 .join(" ");
+            const edition = describeTestEdition(job.edition);
             return `running ${job.testId} against ${projectName}${parameters ? ` with ${parameters}` : ""}`
+                + (edition ? `, ${edition}` : "")
                 + (job.asShipped ? ", with its content as shipped" : "");
         }
         default:
