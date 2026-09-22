@@ -14,6 +14,7 @@ import { resolveTestParameterValue, testParameterId, type ResolvedTestParameter 
 import {
     TEST_TERMINAL_STATUSES,
     type RegisteredTest,
+    type TestParameterOption,
     type TestParameterValue,
     type TestRunRecord,
 } from "./types";
@@ -100,8 +101,11 @@ export async function listCommandLineTests(context: WorkspaceContext): Promise<v
     getInterface().workspace.reportCommandLineRun({ kind: "finished", ok: true, tests });
 }
 
-function describeParameter(parameter: ResolvedTestParameter): CommandLineTestParameterListing {
+export function describeParameter(parameter: ResolvedTestParameter): CommandLineTestParameterListing {
     const fallback = resolveTestParameterValue(parameter, undefined);
+    const fallbackOption = parameter.kind === "select"
+        ? parameter.options.find(option => option.value === fallback)
+        : undefined;
     return {
         id: testParameterId(parameter),
         kind: parameter.kind,
@@ -109,24 +113,40 @@ function describeParameter(parameter: ResolvedTestParameter): CommandLineTestPar
         ...(parameter.kind === "select"
             ? {
                 options: parameter.options.map(option => ({
-                    value: option.value,
+                    value: lineSpelling(option),
                     label: formatTestText(option.label),
                 })),
             }
             : {}),
-        ...(fallback === undefined ? {} : { defaultValue: String(fallback) }),
+        ...(fallback === undefined
+            ? {}
+            : { defaultValue: fallbackOption ? lineSpelling(fallbackOption) : String(fallback) }),
     };
+}
+
+/**
+ * What a line writes for one option: its name where the test gave it one, its value where it did
+ * not. A named option's value is a stored id, and never leaves the workspace - see
+ * `TestParameterOption.name`.
+ */
+function lineSpelling(option: TestParameterOption): string {
+    return option.name ?? option.value;
 }
 
 /**
  * What a `--test-parameter` string means for one declared parameter, or why it means nothing.
  *
  * The boolean spellings are the ones a shell script writes without thinking about it. A `select` is
- * matched against the option *values* rather than the labels: a label is a display string that
- * follows the editor language, and a line written against one would stop working when somebody
- * changed Studio's language.
+ * matched against what `--test-list` prints for each option - its name where it has one, compared
+ * without regard to case, and its value where it has none - never against the labels: a label is a
+ * display string that follows the editor language, and a line written against one would stop working
+ * when somebody changed Studio's language.
+ *
+ * A named option's stored value is refused rather than quietly accepted, and the refusal says the
+ * name. That value is a generated id no surface shows; a line that depended on it would be a line
+ * nobody could have written from what Studio tells them.
  */
-function coerceParameter(
+export function coerceParameter(
     parameter: ResolvedTestParameter,
     raw: string,
 ): { ok: true; value: TestParameterValue } | { ok: false; reason: string } {
@@ -141,10 +161,24 @@ function coerceParameter(
         }
         return { ok: false, reason: `--test-parameter ${id}: expected true or false, got "${raw}"` };
     }
-    if (parameter.options.some(option => option.value === raw)) {
-        return { ok: true, value: raw };
+    const wanted = raw.trim().toLowerCase();
+    const named = parameter.options.find(option => option.name !== undefined
+        && option.name.trim().toLowerCase() === wanted);
+    if (named) {
+        return { ok: true, value: named.value };
     }
-    const accepted = parameter.options.map(option => option.value).join(", ");
+    const byValue = parameter.options.find(option => option.value === raw);
+    if (byValue?.name !== undefined) {
+        return {
+            ok: false,
+            reason: `--test-parameter ${id}: that is the id Studio stores for "${byValue.name}", not what a line calls it.`
+                + ` Write it as ${id}=${byValue.name}.`,
+        };
+    }
+    if (byValue) {
+        return { ok: true, value: byValue.value };
+    }
+    const accepted = parameter.options.map(lineSpelling).join(", ");
     return {
         ok: false,
         reason: `--test-parameter ${id}: "${raw}" is not one this project offers.`
