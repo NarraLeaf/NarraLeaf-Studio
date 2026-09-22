@@ -60,6 +60,7 @@ const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
 };
 
 function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Configuration {
+    const extraFiles = extraFilesFor(config);
     return {
         // Each platform's options are gated on the target's own platform, not
         // just on the block being present: a stray block would otherwise put a
@@ -79,10 +80,11 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         ...(target.iconPath ? { icon: target.iconPath } : {}),
         ...(config.copyright ? { copyright: config.copyright } : {}),
         // `to` is the app's content root, which is next to the executable on Windows and Linux and
-        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in.
-        ...(config.copyrightFile
-            ? { extraFiles: [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] }
-            : {}),
+        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in. On
+        // Windows and Linux that is also where electron-builder leaves Electron's own
+        // LICENSE.electron.txt and LICENSES.chromium.html, which is why the third-party notice is
+        // there too.
+        ...(extraFiles.length > 0 ? { extraFiles } : {}),
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
         // and mobile outputs, and the fast setting only pays off on a build nobody ships.
@@ -113,6 +115,14 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         npmRebuild: false,
         publish: null,
     };
+}
+
+/** The notices shipped beside the executable, outside the asar where a player can open them. */
+function extraFilesFor(config: GameBuildWorkerConfig): Array<{ from: string; to: string }> {
+    return [
+        ...(config.copyrightFile ? [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] : []),
+        ...(config.thirdPartyNoticesFile ? [{ from: config.thirdPartyNoticesFile, to: "THIRD-PARTY-NOTICES.txt" }] : []),
+    ];
 }
 
 /** The `win` block, when this target is a Windows one carrying Authenticode options. */

@@ -148,6 +148,7 @@ export class PluginManager {
         entry: string;
         entryPath: string;
         installPath: string;
+        builtIn: boolean;
     }>> {
         await this.initialize();
         return Object.values(this.getRecords())
@@ -162,6 +163,8 @@ export class PluginManager {
                     // Sidecar `include` paths are package-relative, so the pack
                     // compiler needs the package root, not just the entry file.
                     installPath,
+                    // A game build names a built-in plugin's bundled packages in its notice.
+                    builtIn: record.builtIn,
                 };
             });
     }

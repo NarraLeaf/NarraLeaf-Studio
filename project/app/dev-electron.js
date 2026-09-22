@@ -36,6 +36,7 @@ const chokidar = require('chokidar');
 const { WebSocketServer } = require('ws');
 const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
+const { thirdPartyNoticesPlugin } = require('../build/third-party-notices');
 const {
     buildBuiltInPlugins,
     sourceRoot: builtInPluginsSourceRoot,
@@ -413,7 +414,7 @@ function broadcastReload(target = 'all') {
                 '.woff': 'file',
                 '.woff2': 'file',
             },
-            plugins: [postcssPlugin()],
+            plugins: [postcssPlugin(), thirdPartyNoticesPlugin()],
         }, () => {
             // Only broadcast reloads after the app has started
             console.log(`[renderer:${appName}] rebuilt.`);
