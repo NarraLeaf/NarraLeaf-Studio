@@ -98,6 +98,7 @@ export const pluginPermission = {
             menu: "Provide the game's menu bar",
             storyCompile: "Take part in compiling stories, and add actions to lines it did not write",
             diagnostics: "Read how much memory the game’s caches are using",
+            processMemory: "Read how much memory the game’s processes are using",
         },
     },
     button: {

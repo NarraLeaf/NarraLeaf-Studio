@@ -12,6 +12,7 @@ import type {
     GameProgressImportResult,
 } from "./gameProgress";
 import type { GameMenuModel } from "./gameMenu";
+import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -1075,6 +1076,14 @@ export type GameRuntimePreloadBridge = {
      * Studio's own menu on it - which is why the capability is checked and not assumed.
      */
     menu?: GameRuntimeMenuBridge;
+    /**
+     * What this game's processes hold in memory, as the operating system counts it - see
+     * `@shared/types/gameProcessMemory` for why the main process is the one that has to answer.
+     *
+     * Absent on the web export, which is one tab of somebody else's browser and has no processes of
+     * its own to count; `app.game.process` then does not exist for plugins there.
+     */
+    processMemory?: () => Promise<GameProcessMemoryReading>;
 };
 
 declare global {

@@ -631,6 +631,16 @@ function buildCapabilityDomains(
         }
     }
 
+    if (declared.has("process.memory")) {
+        const backend = host.process;
+        if (!backend) {
+            // The web export: one tab of somebody else's browser, with no processes of its own.
+            unavailable("process.memory");
+        } else {
+            domains.process = { memory: () => backend.memory() };
+        }
+    }
+
     if (declared.has("menu")) {
         const backend = host.menu;
         if (!backend) {

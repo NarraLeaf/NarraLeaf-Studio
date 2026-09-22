@@ -193,6 +193,21 @@ describe("plugin install permission copy — sidecar", () => {
     });
 });
 
+describe("process memory", () => {
+    const runtime = (capability: "diagnostics" | "process.memory") => ({ kind: "runtime", capability }) as const;
+
+    it("is said in the prompt as what it reads", () => {
+        expect(describePluginInstallPermissions([runtime("process.memory")])).toEqual([
+            "In your game: read how much memory the game’s processes are using",
+        ]);
+    });
+
+    it("is not covered by a grant of diagnostics, so an update that starts asking is asked again", () => {
+        expect(isPermissionSubset([runtime("diagnostics"), runtime("process.memory")], [runtime("diagnostics")])).toBe(false);
+        expect(isPermissionSubset([runtime("process.memory")], [runtime("process.memory")])).toBe(true);
+    });
+});
+
 describe("plugin install permission copy — externalLink", () => {
     it("names every pattern rather than counting them", () => {
         expect(describePluginInstallPermissions([

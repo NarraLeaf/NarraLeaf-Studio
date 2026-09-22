@@ -199,6 +199,25 @@ export const PluginRuntimeCapability = {
      * throwing.
      */
     Diagnostics: "diagnostics",
+    /**
+     * `app.game.process.memory()` — read how much memory the game's processes hold, as the
+     * operating system counts it.
+     *
+     * Its own capability rather than a member of `diagnostics`, because what it reports is not the
+     * game's: `diagnostics` describes the engine's caches, which are the game's own bookkeeping,
+     * while this is the player's machine - how much of its memory every process of the game is
+     * holding, the main process and the GPU process included. An author who approved the first did
+     * not approve the second, and a plugin that already holds `diagnostics` must not gain this by
+     * an update without being asked again - which is what a capability of its own guarantees.
+     *
+     * Read-only, and numbers only: sizes and what each process is for, never a path, an id or a
+     * command line. Nothing is sent anywhere by the host; what a plugin does with a reading is
+     * visible in the code the author installed.
+     *
+     * Absent where there are no processes to count - the web export - and narrowed in Dev Mode to
+     * the window's own renderer, since everything around it is Studio's.
+     */
+    ProcessMemory: "process.memory",
 } as const;
 
 export type PluginRuntimeCapability = typeof PluginRuntimeCapability[keyof typeof PluginRuntimeCapability];
@@ -212,8 +231,9 @@ export const PLUGIN_RUNTIME_CAPABILITIES: readonly PluginRuntimeCapability[] =
  * **Empty, and that is a reading of the list above rather than an omission.** Go through them: a
  * store holds the plugin's own keys, events observe what the game already did, state reads and
  * writes story variables, saves list and load slots the game itself compiled, an overlay draws on
- * top, assets resolve packaged URLs, locale reads the language, and diagnostics reports what the
- * caches weigh. None of them takes a scene, and none of them starts one.
+ * top, assets resolve packaged URLs, locale reads the language, diagnostics reports what the
+ * caches weigh, and process memory what the processes weigh. None of them takes a scene, and none
+ * of them starts one.
  *
  * This replaced "does the package carry any plugin at all", which was the whole feature's undoing:
  * the built-in Gallery ships in every package and declares `store` + `events`, so every project had

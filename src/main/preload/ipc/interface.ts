@@ -19,6 +19,7 @@ import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/stat
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type {
     BuildPreflightFinding,
@@ -453,6 +454,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModeFullscreenChanged, handler),
         getWindowFocused: () =>
             ipcClient.invoke(IPCEventType.devModeWindowFocusGet, {}) as Promise<RequestStatus<{ isFocused: boolean }>>,
+        readProcessMemory: () =>
+            ipcClient.invoke(IPCEventType.devModeProcessMemory, {}) as Promise<RequestStatus<{
+                reading: GameProcessMemoryReading;
+            }>>,
         onWindowFocusChanged: (handler: (payload: { isFocused: boolean }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeWindowFocusChanged, handler),
         saveScreenshot: (projectRef: DevModeSaveProjectRef) =>

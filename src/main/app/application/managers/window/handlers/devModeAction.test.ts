@@ -4,7 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Enough of Electron for the module graph behind these handlers to load. None of them reaches it:
 // what they do is decide which window to hand a message to.
 vi.mock("electron", () => ({
-    app: { getPath: () => "" },
+    app: {
+        getPath: () => "",
+        // Studio's own processes as a Dev Mode window would find them: the main process, the GPU
+        // process, the workspace's renderer and this window's. Kilobytes, as Electron reports them.
+        getAppMetrics: () => [
+            { pid: 1, type: "Browser", memory: { workingSetSize: 200_000, peakWorkingSetSize: 210_000 } },
+            { pid: 2, type: "GPU", memory: { workingSetSize: 300_000, peakWorkingSetSize: 320_000 } },
+            { pid: 3, type: "Tab", memory: { workingSetSize: 900_000, peakWorkingSetSize: 950_000 } },
+            { pid: 4, type: "Tab", memory: { workingSetSize: 250_000, peakWorkingSetSize: 260_000 } },
+        ],
+    },
     dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
     net: { request: vi.fn() },
     session: { defaultSession: undefined },
@@ -21,6 +31,7 @@ const {
     DevModeLaunchHandler,
     DevModeOpenBlueprintInWorkspaceHandler,
     DevModeOpenStoryRowInWorkspaceHandler,
+    DevModeProcessMemoryHandler,
     DevModeReloadHandler,
     DevModeStopHandler,
 } = await import("./devModeAction");
@@ -424,4 +435,47 @@ describe("the Dev Mode session controls take their project from the window", () 
             expect(control.manager(driver)).toHaveBeenCalledWith(mine);
         });
     }
+});
+
+/**
+ * `app.game.process.memory()` in Dev Mode: the window's own renderer and nothing of Studio's.
+ *
+ * The packaged game counts every process it has, because every process it has is the game. Here
+ * every process but one is Studio's - its main process, its GPU process, the workspace beside the
+ * window - and a reading that counted them would be a reading of Studio.
+ */
+describe("process memory for a Dev Mode window", () => {
+    function windowOfType(windowType: string, pid: number): AppWindowLike {
+        return {
+            getWindowType: () => windowType,
+            win: { isDestroyed: () => false, webContents: { getOSProcessId: () => pid } },
+        } as unknown as AppWindowLike;
+    }
+
+    it("is the asking window's renderer alone", () => {
+        const result = new DevModeProcessMemoryHandler().handle(windowOfType(WindowAppType.DevMode, 4));
+
+        expect(result).toEqual({
+            success: true,
+            data: {
+                reading: {
+                    scope: "window",
+                    processes: [{
+                        kind: "renderer",
+                        current: true,
+                        workingSetBytes: 250_000 * 1024,
+                        peakWorkingSetBytes: 260_000 * 1024,
+                    }],
+                    workingSetBytes: 250_000 * 1024,
+                    privateBytes: null,
+                },
+            },
+        });
+    });
+
+    it("is refused to a window that runs no game", () => {
+        const result = new DevModeProcessMemoryHandler().handle(windowOfType(WindowAppType.Workspace, 3));
+
+        expect(result.success).toBe(false);
+    });
 });

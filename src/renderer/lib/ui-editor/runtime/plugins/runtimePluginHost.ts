@@ -17,6 +17,7 @@
 
 import type { ReactElement } from "react";
 import type { GameMenuSpec } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type {
     BlueprintOpenExternalRequest,
     BlueprintOpenExternalResult,
@@ -165,6 +166,15 @@ export type RuntimePluginDiagnosticsBackend = {
     imageCache(): RuntimePluginImageCacheStats | null;
 };
 
+/**
+ * The process backend: what the game's processes hold in memory, read by the process that can see
+ * them. Present only on a shell that has processes to count, which is what makes `app.game.process`
+ * absent on the web export rather than present and empty.
+ */
+export type RuntimePluginProcessBackend = {
+    memory(): Promise<GameProcessMemoryReading>;
+};
+
 export type RuntimePluginHost = {
     store?: RuntimePluginStoreBackend;
     events?: RuntimePluginEventBackend;
@@ -177,4 +187,5 @@ export type RuntimePluginHost = {
     navigation?: RuntimePluginNavigationBackend;
     menu?: RuntimePluginMenuBackend;
     diagnostics?: RuntimePluginDiagnosticsBackend;
+    process?: RuntimePluginProcessBackend;
 };

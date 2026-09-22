@@ -311,6 +311,7 @@ export enum IPCEventType {
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
     devModeWindowFocusGet = "devMode.window.focusGet",
+    devModeProcessMemory = "devMode.processMemory.read",
     devModeWindowFocusChanged = "devMode.window.focusChanged",
     devModeScreenshotSave = "devMode.screenshot.save",
     devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
@@ -2818,6 +2819,22 @@ export type IPCDevModeEvents = {
         data: {},
         response: {
             isFocused: boolean;
+        };
+    };
+    /**
+     * What the asking Dev Mode window's own renderer process holds in memory, for a runtime plugin
+     * granted `process.memory`.
+     *
+     * The window's process only, and the reason is the whole design: every other process around it
+     * is Studio's, so the packaged game's "every process of the app" would count Studio. Refused
+     * for any other kind of window, which has no game in it to measure.
+     */
+    [IPCEventType.devModeProcessMemory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            reading: import("./gameProcessMemory").GameProcessMemoryReading;
         };
     };
     [IPCEventType.devModeWindowFocusChanged]: {

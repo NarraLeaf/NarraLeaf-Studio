@@ -29,6 +29,7 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type {
     BuildPreflightFinding,
@@ -653,6 +654,11 @@ export interface RendererPreloadedInterface {
          */
         getWindowFocused(): Promise<RequestStatus<{ isFocused: boolean }>>;
         onWindowFocusChanged(handler: (payload: { isFocused: boolean }) => void): AppEventToken;
+        /**
+         * What this window's own renderer process holds in memory, for a runtime plugin granted
+         * `process.memory`. The window's process only: everything around it is Studio's.
+         */
+        readProcessMemory(): Promise<RequestStatus<{ reading: GameProcessMemoryReading }>>;
         /** Capture this window and write the picture into the project's Dev Mode data. */
         saveScreenshot(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<BlueprintScreenshotResult>>;
         openScreenshotsFolder(

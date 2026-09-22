@@ -1,5 +1,6 @@
 import path from "path";
-import { screen, shell, type BrowserWindow } from "electron";
+import { app, screen, shell, type BrowserWindow } from "electron";
+import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
 import { AppHost, AppProtocol, UserDataNamespace } from "@shared/types/constants";
 import type {
     BlueprintOpenScreenshotsResult,
@@ -112,6 +113,29 @@ export class DevModeWindowFocusGetHandler extends IPCHandler<IPCEventType.devMod
 
     public handle(window: AppWindow): RequestStatus<{ isFocused: boolean }> {
         return this.success({ isFocused: window.win.isFocused() });
+    }
+}
+
+/**
+ * What the Dev Mode window's own renderer holds in memory, for `app.game.process.memory()`.
+ *
+ * Narrowed to the calling window's process, where the packaged game counts every process it has:
+ * the processes around this window are Studio's, shared with everything else Studio has open, and
+ * a reading that included them would be a reading of Studio. The window has to be a Dev Mode one -
+ * no other window runs a game - so a caller that is not is told no rather than handed its own size.
+ */
+export class DevModeProcessMemoryHandler extends IPCHandler<IPCEventType.devModeProcessMemory> {
+    readonly name = IPCEventType.devModeProcessMemory;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<IPCEvents[IPCEventType.devModeProcessMemory]["response"]> {
+        if (window.getWindowType() !== WindowAppType.DevMode || window.win.isDestroyed()) {
+            return this.failed("Process memory is only reported to a Dev Mode window.");
+        }
+        const pid = window.win.webContents.getOSProcessId();
+        return this.success({
+            reading: summarizeGameProcessMemory(app.getAppMetrics(), { currentPid: pid, onlyPid: pid }),
+        });
     }
 }
 

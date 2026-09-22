@@ -120,6 +120,7 @@ import {
 } from "@shared/utils/runtimeStartupArguments";
 import { silenceRuntimeConsole } from "./runtimeConsole";
 import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
+import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
 
 /**
  * When this process was created, as the operating system recorded it - the zero of the game's
@@ -1893,6 +1894,12 @@ function registerRuntimeIpc(): void {
         applyGameMenu(normalizeGameMenuModel(model));
     });
     ipcMain.handle("runtime:window:isFocused", () => mainWindow?.isFocused() === true);
+    // What the game's processes hold in memory, for a plugin granted `process.memory`. Every process
+    // this app has - the game is all of them - with the page's own marked. Nothing here is decided by
+    // the renderer: the list is the operating system's, read the moment it is asked for.
+    ipcMain.handle("runtime:processMemory:read", () => summarizeGameProcessMemory(app.getAppMetrics(), {
+        currentPid: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getOSProcessId() : null,
+    }));
     /*
      * The Save Screenshot family.
      *
