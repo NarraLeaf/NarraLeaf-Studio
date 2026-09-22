@@ -53,6 +53,7 @@ import {
 } from "@shared/story/migrateStoryDocument";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
+import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
@@ -1179,17 +1180,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     public createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene {
         const now = new Date().toISOString();
+        const document = this.getStoryDocument(storyId);
         const scene = createStorySceneModel({
             id: this.getUuidService().generate(),
             name: this.cleanName(input.name, "New Scene"),
-            runtimeName: this.toRuntimeName(input.name),
+            runtimeName: this.mintRuntimeName(document, input.name),
             now,
         });
         // Where the scene is filed, resolved here rather than inside the mutation. A session states
         // the destination it settled on, never the rule it settled by: the fallback chapter's id is
         // minted on this machine, and every other machine minting its own would file the scene in a
         // chapter nobody else has.
-        const document = this.getStoryDocument(storyId);
         const existing = input.chapterId
             ? document.chapters.find(item => item.id === input.chapterId)
             : document.chapters[0];
@@ -1277,8 +1278,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!scene) {
                 return;
             }
+            // The internal name the scene compiled under a moment ago, pinned before the display
+            // name moves. A scene stored with an empty one compiles under its display name, so
+            // letting the rename through unpinned would move its variables - see
+            // `sceneRuntimeName`. Every machine in a session derives the same pin from the same
+            // record, which is why this one may be worked out on the receiving side.
+            scene.runtimeName = sceneRuntimeName(scene);
             scene.name = trimmed;
-            scene.runtimeName = scene.runtimeName || this.toRuntimeName(trimmed);
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
             changed = true;
         });
@@ -1662,7 +1668,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         // would be answering a question the sender already answered.
         const fields: LiveSceneFields = {
             name: nextName,
-            runtimeName: hasNameChange ? (current.runtimeName || this.toRuntimeName(nextName)) : current.runtimeName,
+            // Pinned to what the scene compiles under now, never derived from the new name: a rename
+            // must not move the scene's variables. See `applySceneName`.
+            runtimeName: hasNameChange ? sceneRuntimeName(current) : current.runtimeName,
             ...(hasDescriptionChange
                 ? { description: nextDescription }
                 : current.description === undefined ? {} : { description: current.description }),
@@ -2150,7 +2158,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const created = createStorySceneModel({
             id: this.getUuidService().generate(),
             name: this.cleanName(name, "New Scene"),
-            runtimeName: this.toRuntimeName(name),
+            runtimeName: this.mintRuntimeName(document, name),
             now,
         });
         const jumpBlock: StoryBlock | null = plan.needsJump
@@ -2804,13 +2812,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return trimmed || undefined;
     }
 
-    private toRuntimeName(name: string): string {
-        const normalized = name
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "");
-        return normalized || `scene_${this.getUuidService().generate(true)}`;
+    /**
+     * The internal name for a scene about to join `document`, unique among the scenes already in it.
+     * Called only where a scene is made; see {@link mintSceneRuntimeName} for why never on a rename.
+     */
+    private mintRuntimeName(document: StoryDocument, name: string): string {
+        return mintSceneRuntimeName(name, document, () => `scene_${this.getUuidService().generate(true)}`);
     }
 
     private getFileSystem(): FileSystemService {

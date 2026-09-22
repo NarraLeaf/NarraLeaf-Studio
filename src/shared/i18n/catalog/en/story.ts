@@ -1241,6 +1241,8 @@ export const story = {
             // Two scenes whose scene variables share one namespace. The name that collides is internal
             // and survives a rename, so the sentence names both scenes by what the author called them.
             sharedSceneVariables: "The scenes “{first}” and “{second}” keep their scene variables under one name, so each overwrites the other's.",
+            // The same, for the pair it is most often about: two scenes the author gave one title.
+            sharedSceneVariablesSameName: "The two scenes named “{name}” keep their scene variables under one name, so each overwrites the other's.",
         },
         // A row that acts on a stage object no earlier row put there. The remedy follows what the row
         // acts on: nothing in Studio creates a character, an earlier row brings one on stage.

@@ -69,6 +69,10 @@ const REFUSALS: AssetImportRefusal[] = [
     { kind: "remoteUnplayable", cause: { kind: "container", container: "avi" } },
     { kind: "remoteUnplayable", cause: { kind: "container", container: null } },
     { kind: "remoteUnplayable", cause: { kind: "noStreams" } },
+    { kind: "remotePage" },
+    { kind: "remoteUnrecognized", expected: "image" },
+    { kind: "remoteUnrecognized", expected: "media" },
+    { kind: "remoteUnrecognized", expected: "font" },
 ];
 
 /**
@@ -175,6 +179,16 @@ describe("the wording of a failed import", () => {
         i18nStore.setLocale("en");
         expect(describeAssetImportRefusal({ kind: "remoteUnplayable", cause: { kind: "codecs", codecs: ["hevc"] } }, t))
             .toBe("NarraLeaf cannot play HEVC. Convert the file and import the converted copy from disk.");
+    });
+
+    it("says an address that answered with a web page, or with something that is not the media asked for", () => {
+        i18nStore.setLocale("zh");
+        expect(describeAssetImportRefusal({ kind: "remotePage" }, t)).toBe("该地址返回的是网页，而不是文件");
+        expect(describeAssetImportRefusal({ kind: "remoteUnrecognized", expected: "image" }, t))
+            .toBe("该地址返回的内容不是 NarraLeaf 可识别的图片格式");
+        i18nStore.setLocale("en");
+        expect(describeAssetImportRefusal({ kind: "remoteUnrecognized", expected: "media" }, t))
+            .toBe("The address did not return sound or video in a format NarraLeaf recognizes.");
     });
 
     it("lists skipped recording-script rows by where they sit, and counts the rest", () => {

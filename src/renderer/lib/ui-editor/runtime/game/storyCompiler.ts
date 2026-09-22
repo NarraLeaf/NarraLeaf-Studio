@@ -96,6 +96,7 @@ import {
     layerActionTargetRef,
     listScenesInDocumentOrder,
     sceneLabelNames,
+    sceneRuntimeName,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     sceneVariableDefs,
@@ -1522,7 +1523,7 @@ async function buildLaunchEntryScene(params: {
         ...(params.localization ? { localization: params.localization } : {}),
     });
     const launchScene = new Scene(
-        scene.runtimeName || scene.name || scene.id,
+        sceneRuntimeName(scene),
         {
             ...(backgroundSrc ? { background: backgroundSrc } : {}),
             ...(launchMusic ? { backgroundMusic: launchMusic.sound, backgroundMusicFade: launchMusic.fadeMs } : {}),
@@ -1791,7 +1792,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         : snapshot.background?.color
             ?? await resolveSceneInitialBackground({ scene, resolveAssetUrl, assetUrlCache, diagnostics });
     const previewScene = new Scene(
-        scene.runtimeName || scene.name || scene.id,
+        sceneRuntimeName(scene),
         backgroundSrc ? { background: backgroundSrc } : undefined,
     );
 
@@ -2254,22 +2255,32 @@ async function createNlrScenes(input: {
     // The first scene with each runtime name, so a collision can name both scenes. The runtime name
     // is not shown anywhere an author looks, and a scene keeps it through a rename, so the two display
     // names are the only way to say which scenes are meant.
+    //
+    // Studio no longer makes a colliding pair - a scene's name is minted unique within its story
+    // (`mintSceneRuntimeName`) - so what this finds is a document that already had one, or two
+    // branches that each made the same scene and were merged. The sentence offers no remedy because
+    // there is none that spares saves: moving either scene to a new name strands the variables every
+    // save made inside it holds under the old one - loaded, the scene reads a namespace the save never
+    // wrote, and the engine throws on the first read (`Namespace local:… is not initialized`).
     const namesSeen = new Map<string, StoryScene>();
     // The one image a scene's first painted frame cannot do without, per scene. Collected here
     // because this is where it is resolved, and needed by the warm order, which is built later.
     const initialBackgroundUrls: Record<string, string> = {};
     for (const scene of listScenesInDocumentOrder(input.document)) {
-        const runtimeName = scene.runtimeName || scene.name || scene.id;
+        const runtimeName = sceneRuntimeName(scene);
         const first = namesSeen.get(runtimeName);
         if (first) {
+            const firstName = sceneDisplayName(first);
+            const secondName = sceneDisplayName(scene);
+            // Two scenes with one title - the commonest way to have made this pair - are named once:
+            // "the scenes “Chapter 1” and “Chapter 1”" reads as a mistake in the sentence.
             pushDiagnostic(
                 input.diagnostics,
                 "error",
                 undefined,
-                say("story.compile.flow.sharedSceneVariables", {
-                    first: sceneDisplayName(first),
-                    second: sceneDisplayName(scene),
-                }),
+                firstName === secondName
+                    ? say("story.compile.flow.sharedSceneVariablesSameName", { name: firstName })
+                    : say("story.compile.flow.sharedSceneVariables", { first: firstName, second: secondName }),
             );
         } else {
             namesSeen.set(runtimeName, scene);
