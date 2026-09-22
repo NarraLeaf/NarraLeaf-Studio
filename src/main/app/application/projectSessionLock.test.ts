@@ -75,7 +75,7 @@ describe("decideProjectSessionClaim", () => {
         // A crash or a kill leaves the record behind with a fresh heartbeat; the missing process is
         // the stronger evidence, and nobody should wait two minutes for a Studio that is not there.
         const claim = decideProjectSessionClaim(record({ hostname: SELF.hostname, pid: 7000 }), context());
-        expect(claim.kind).toBe("stale");
+        expect(claim).toMatchObject({ kind: "stale", holderRunning: false });
     });
 
     it("does not read another machine's process id against this machine's processes", () => {
@@ -100,6 +100,26 @@ describe("decideProjectSessionClaim", () => {
             context([SELF.pid, 7000]),
         );
         expect(claim.kind).toBe("stale");
+    });
+
+    it("says when the silent holder's process is still running here, so the takeover can look again first", () => {
+        // A Studio on this machine whose heartbeat is old but whose process runs is the one that may
+        // merely be late - every process on a computer that has just woken is. The manager waits one
+        // heartbeat for it before acting on this answer.
+        const claim = decideProjectSessionClaim(
+            record({ hostname: SELF.hostname, pid: 7000, heartbeat: new Date(NOW - PROJECT_SESSION_LOCK_STALE_MS - 5_000).toISOString() }),
+            context([SELF.pid, 7000]),
+        );
+        expect(claim).toMatchObject({ kind: "stale", holderRunning: true });
+    });
+
+    it("never says another machine's holder is running, because nothing here can know", () => {
+        const claim = decideProjectSessionClaim(
+            record({ pid: SELF.pid, heartbeat: new Date(NOW - PROJECT_SESSION_LOCK_STALE_MS - 5_000).toISOString() }),
+            // The remote record's pid happens to be running here - which says nothing about it.
+            context([SELF.pid]),
+        );
+        expect(claim).toMatchObject({ kind: "stale", holderRunning: false });
     });
 
     it("does not take a project away because the holder's clock runs ahead", () => {

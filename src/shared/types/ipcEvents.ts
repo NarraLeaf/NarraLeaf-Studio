@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
-import type { ProjectSessionLockOutcome } from "./projectSession";
+import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -261,6 +261,7 @@ export enum IPCEventType {
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
     workspaceAcquireSessionLock = "workspace.acquireSessionLock",
+    workspaceSessionTakenOver = "workspace.sessionTakenOver",
     projectTrustQuery = "projectTrust.query",
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
@@ -550,8 +551,12 @@ export type BlueprintPersistenceProjectRef = {
  *
  * `live-session` is the one kind main does **not** refuse operations for; the reasoning and the
  * predicate that says so are in `main/.../utils/workspaceFreeze.ts`.
+ *
+ * `taken-over` is the one kind main starts rather than learns about: its own heartbeat finds the
+ * project claimed by another Studio and tells the window (`workspaceSessionTakenOver`), and the
+ * window reports it back like any other freeze.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session" | "taken-over";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -2416,6 +2421,27 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: Record<string, never>,
         response: ProjectSessionLockOutcome;
+    };
+    /**
+     * Main telling a workspace that another NarraLeaf Studio has taken its project over.
+     *
+     * Sent when this Studio's own heartbeat finds somebody else's claim where its own used to be -
+     * the other Studio judged this one gone (its heartbeat stood still for the whole staleness
+     * window: a suspended process, a debugger stopped at a breakpoint, a disk that would not take
+     * the write) and opened the project. From that moment the project is the other Studio's to
+     * write, and this window has to stop at once: its in-memory documents are whole files that
+     * would each be written back over whatever the other one saved.
+     *
+     * A message, not a request: the window stops writing on receipt, and main has nothing to wait
+     * for. The project is the window's own; `holder` is the same three facts the lock screen shows.
+     */
+    [IPCEventType.workspaceSessionTakenOver]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            holder: ProjectSessionHolder;
+        };
+        response: never;
     };
     /**
      * Whether this project may cause effects, asked of the only process that can answer.

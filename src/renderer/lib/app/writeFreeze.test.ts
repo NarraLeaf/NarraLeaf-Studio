@@ -6,6 +6,7 @@ import {
     getProjectWriteFreeze,
     holdDerivedProjectWrites,
     isFrozenProjectData,
+    isTakenOver,
     observeProjectWriteFreeze,
     observeRefusedWrites,
     refuseFrozenWrite,
@@ -395,5 +396,113 @@ describe("holdDerivedProjectWrites", () => {
         expect(refuseFrozenWrite(`${PROJECT}/${LOCALIZATION}`)).not.toBeNull();
 
         release();
+    });
+});
+
+/**
+ * The freeze main arms when another NarraLeaf Studio has taken the project over.
+ *
+ * Two things are different from every other freeze, and both are what make it safe. It covers the
+ * whole project folder rather than what the repository stores, because the editor state in there is
+ * the other Studio's now. And nothing inside the window lifts it - not a thaw, and not a freeze for
+ * some other reason arriving on top - because every one of those would make something writable
+ * again in a window that no longer has the project.
+ */
+describe("taken-over freeze", () => {
+    const HOLDER = { hostname: "studio-two", startedAt: "2026-09-21T09:14:00.000Z", sameHost: false };
+    const takenOver = { projectPath: PROJECT, reason: { kind: "taken-over" as const, holder: HOLDER } };
+
+    afterEach(() => {
+        // The one way out, and the one the window takes when it opens another project.
+        thawForeignProjectWrites("D:/projects/somewhere-else");
+    });
+
+    it("refuses every write inside the project, editor state included, and says so", () => {
+        const refusals: RefusedWrite[] = [];
+        const stop = observeRefusedWrites(refusal => refusals.push(refusal));
+        freezeProjectWrites(takenOver);
+
+        for (const relative of [
+            "project.json",
+            "editor/story/stories/s1/storydoc.json",
+            "assets/content/ab/cd/sprite.png",
+            // Everything the other freezes leave alone - the other Studio's editor state now.
+            ".nlstudio/services/panel_state.json",
+            "editor/cache/thumbnail/ab/cd/asset-1.png",
+            "dist/game.exe",
+        ]) {
+            expect(refuseFrozenWrite(`${PROJECT}/${relative}`), relative).not.toBeNull();
+        }
+        expect(refusals).toHaveLength(6);
+        expect(refusals.every(refusal => refusal.reason.kind === "taken-over")).toBe(true);
+        stop();
+    });
+
+    it("leaves writes outside the project alone", () => {
+        freezeProjectWrites(takenOver);
+
+        // An export to the desktop, a keystore in the profile: not the other Studio's business.
+        expect(refuseFrozenWrite("D:/Users/author/Desktop/logs.txt")).toBeNull();
+        expect(refuseFrozenWrite("D:/projects/my-game-2/project.json")).toBeNull();
+    });
+
+    it("is not lifted by a thaw", () => {
+        freezeProjectWrites(takenOver);
+
+        thawProjectWrites();
+
+        expect(isTakenOver(getProjectWriteFreeze())).toBe(true);
+        expect(refuseFrozenWrite(`${PROJECT}/project.json`)).not.toBeNull();
+    });
+
+    it("is not replaced by a freeze for any other reason on the same project", () => {
+        freezeProjectWrites(takenOver);
+
+        for (const reason of [
+            { kind: "manual" as const },
+            { kind: "merge" as const },
+            // The one that would do the most harm: a partial freeze leaves its story writable.
+            { kind: "live-session" as const, session: "room-1", writable: ["editor/story/stories/s1/storydoc.json"] },
+        ]) {
+            freezeProjectWrites({ projectPath: PROJECT, reason });
+            expect(getProjectWriteFreeze()?.reason.kind).toBe("taken-over");
+        }
+        expect(refuseFrozenWrite(`${PROJECT}/editor/story/stories/s1/storydoc.json`)).not.toBeNull();
+    });
+
+    it("takes over from whatever freeze was armed before it", () => {
+        // A window browsing a past version, or in a live session, is still a window writing this
+        // project in the other Studio's eyes; the takeover replaces whatever it was doing.
+        freezeProjectWrites({
+            projectPath: PROJECT,
+            reason: { kind: "live-session", session: "room-1", writable: ["editor/story/stories/s1/storydoc.json"] },
+        });
+
+        freezeProjectWrites(takenOver);
+
+        expect(refuseFrozenWrite(`${PROJECT}/editor/story/stories/s1/storydoc.json`)).not.toBeNull();
+    });
+
+    it("keeps its place through the workspace starting up on the same project", () => {
+        // `WorkspaceFreezeService` clears freezes left by another project when it initialises. A
+        // takeover that landed mid-startup names this very project and has to survive that.
+        freezeProjectWrites(takenOver);
+
+        // Spelled the way main hands a path over, which is not how the renderer spells it.
+        thawForeignProjectWrites("D:\\projects\\my-game\\");
+
+        expect(isTakenOver(getProjectWriteFreeze())).toBe(true);
+    });
+
+    it("goes when the window moves on to another project", () => {
+        freezeProjectWrites(takenOver);
+
+        thawForeignProjectWrites("D:/projects/another-game");
+
+        expect(getProjectWriteFreeze()).toBeNull();
+    });
+
+    it("allows nothing, whatever the path", () => {
+        expect(freezeAllowsWrite(takenOver.reason, "editor/story/stories/s1/storydoc.json")).toBe(false);
     });
 });

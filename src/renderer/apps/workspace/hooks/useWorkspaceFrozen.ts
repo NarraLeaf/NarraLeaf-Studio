@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { Services } from "@/lib/workspace/services/services";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
-import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
+import {
+    getProjectWriteFreeze,
+    observeProjectWriteFreeze,
+    type WorkspaceFreeze,
+    type WorkspaceFreezeReason,
+} from "@/lib/app/writeFreeze";
 import { useWorkspace } from "../context";
 
 /**
@@ -78,4 +84,28 @@ export function useWorkspaceFreeze(): WorkspaceFreezeReason | null {
     }, [context]);
 
     return reason;
+}
+
+/**
+ * The other Studio, when another NarraLeaf Studio has taken this window's project over; null
+ * otherwise.
+ *
+ * The one freeze question asked of the latch itself rather than of `WorkspaceFreezeService`, because
+ * it is asked above the workspace: the screen it decides replaces the editor, and a takeover can
+ * arrive while the workspace is still starting, before there is a service to ask. The latch is this
+ * window's - a window is one project, and the takeover is armed with this window's own path.
+ */
+export function useProjectTakenOver(): ProjectSessionHolder | null {
+    const [holder, setHolder] = useState<ProjectSessionHolder | null>(() => takenOverBy(getProjectWriteFreeze()));
+
+    useEffect(() => {
+        setHolder(takenOverBy(getProjectWriteFreeze()));
+        return observeProjectWriteFreeze(freeze => setHolder(takenOverBy(freeze)));
+    }, []);
+
+    return holder;
+}
+
+function takenOverBy(freeze: WorkspaceFreeze | null): ProjectSessionHolder | null {
+    return freeze?.reason.kind === "taken-over" ? freeze.reason.holder : null;
 }
