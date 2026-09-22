@@ -171,7 +171,7 @@ describe("compileStagePreviewToNlr", () => {
         const compiled = await compilePreview(document, "jump");
         expect(compiled.actionIdBindings).toEqual([]);
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "jump", message: "Preview holds before the jump instead of leaving the scene." },
+            { level: "warning", blockId: "jump", message: "The preview stops before this jump instead of leaving the scene." },
         ]);
     });
 

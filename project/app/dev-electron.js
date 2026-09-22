@@ -41,6 +41,7 @@ const {
     sourceRoot: builtInPluginsSourceRoot,
 } = require('../build/builtin-plugins');
 const { buildRuntime } = require('../build/build-runtime');
+const { mainProcessBundleOptions } = require('../build/main-bundles');
 
 const forwardedElectronArgs = process.argv.slice(2);
 
@@ -270,24 +271,15 @@ function broadcastReload(target = 'all') {
     // together at the end; tryStartElectronOnce() already gates Electron on the
     // completion flags, so finishing order does not matter.
 
+    // What each main-process bundle is - its entry, its tsconfig, and which packages stay a real
+    // require - comes from main-bundles.js, the list build-main.js reads too. This file used to
+    // carry a copy of every one of those lists, and the copies drifted: a package a bundle must not
+    // inline was named in one script and not the other, and the difference only showed as a feature
+    // that worked in one kind of build.
+    const devBundle = name => mainProcessBundleOptions(name, { dev: true, outDir: path.join(distDir, 'main') });
+
     // Build & watch main process
-    const mainEntry = path.join(rootDir, 'src', 'main', 'index.ts');
-    const buildMainProcess = () => watchBuild({
-        entryPoints: [mainEntry],
-        outfile: path.join(distDir, 'main', 'index.js'),
-        platform: 'node',
-        bundle: true,
-        format: 'cjs',
-        // esbuild is external for the same reason as koffi: it locates its platform
-        // binary by a path relative to its own lib/main.js, and refuses to run at all
-        // when that file has been inlined somewhere else ("The esbuild JavaScript API
-        // cannot be bundled"). It is a *runtime* dependency here — the Live2D runtime
-        // installer bundles the author's Cubism SDK on their machine. Keep this list in
-        // sync with build-main.js, which has carried the entry since that feature landed.
-        external: ['electron', 'esbuild', '@narraleaf/bindings', 'koffi'],
-        sourcemap: true,
-        target: ['node18'],
-    }, () => {
+    const buildMainProcess = () => watchBuild(devBundle('main'), () => {
         // Mark initial main build done; subsequent builds restart Electron
         if (!initialMainBuilt) {
             initialMainBuilt = true;
@@ -313,20 +305,7 @@ function broadcastReload(target = 'all') {
     });
 
     /** Build & watch the game build worker (forked by utilityProcess). */
-    const buildGameBuildWorker = () => watchBuild({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
-        outfile: path.join(distDir, 'main', 'buildWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // electron-builder reads template files relative to itself at runtime;
-        // 7zip-bin resolves its 7za binary relative to its own __dirname;
-        // @narraleaf/bindings loads a platform-specific native addon by path.
-        // All break if inlined, so keep this list in sync with build-main.js.
-        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/bindings'],
-        sourcemap: true,
-        target: ['node18'],
-    }, () => {
+    const buildGameBuildWorker = () => watchBuild(devBundle('buildWorker'), () => {
         // No Electron restart: the worker is spawned fresh per build.
         console.log('[buildWorker] built.');
     });
@@ -338,17 +317,7 @@ function broadcastReload(target = 'all') {
      * "PSD worker exited before answering" — the same shape of hole the
      * compile worker below documents.
      */
-    const buildPsdImportWorker = () => watchBuild({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'psdWorker.ts')],
-        outfile: path.join(distDir, 'main', 'psdWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // ag-psd is pure JS and bundles fine; keep this list in sync with build-main.js.
-        external: ['electron'],
-        sourcemap: true,
-        target: ['node18'],
-    }, () => {
+    const buildPsdImportWorker = () => watchBuild(devBundle('psdWorker'), () => {
         // No Electron restart: the worker is spawned fresh per job.
         console.log('[psdWorker] built.');
     });
@@ -359,17 +328,7 @@ function broadcastReload(target = 'all') {
      * fails with "the weather worker stopped before it produced a clip" - the third instance of the
      * hole the two blocks around this one already document.
      */
-    const buildWeatherBakeWorker = () => watchBuild({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'weatherWorker.ts')],
-        outfile: path.join(distDir, 'main', 'weatherWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // Nothing native in here; keep this list in sync with build-main.js.
-        external: ['electron'],
-        sourcemap: true,
-        target: ['node18'],
-    }, () => {
+    const buildWeatherBakeWorker = () => watchBuild(devBundle('weatherWorker'), () => {
         // No Electron restart: the worker is spawned fresh per bake.
         console.log('[weatherWorker] built.');
     });
@@ -380,24 +339,7 @@ function broadcastReload(target = 'all') {
      * leaves dist/main/compileWorker.js missing and every preview launch fails
      * with "Artifact compile worker exited unexpectedly (code 1)".
      */
-    const buildArtifactCompileWorker = () => watchBuild({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],
-        outfile: path.join(distDir, 'main', 'compileWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // @narraleaf/bindings and koffi both resolve their own binaries by path
-        // at runtime; 7zip-bin computes the path to its 7za executable from its
-        // own __dirname, so bundled it points at the bundle directory and the
-        // extractor the content codec's toolchain unpack needs is not there.
-        // That last one is corrected in code now, by
-        // src/main/buildWorker/sevenZipBinary.ts, so this entry is a tidiness
-        // rather than the thing that makes the unpack work.
-        // Keep this list in sync with build-main.js.
-        external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
-        sourcemap: true,
-        target: ['node18'],
-    }, () => {
+    const buildArtifactCompileWorker = () => watchBuild(devBundle('compileWorker'), () => {
         // No Electron restart: the worker is spawned fresh per compile.
         console.log('[compileWorker] built.');
     });
@@ -411,17 +353,7 @@ function broadcastReload(target = 'all') {
      * contentAudit.js" before it wrote anything. Bundled against the RENDERER tsconfig, like its
      * production twin: it runs the story compiler, which resolves "@/" the renderer's way.
      */
-    const buildContentAudit = () => watchBuild({
-        entryPoints: [path.join(rootDir, 'src', 'renderer', 'lib', 'build', 'contentAuditEntry.ts')],
-        outfile: path.join(distDir, 'main', 'contentAudit.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        external: ['electron', '@narraleaf/bindings', 'koffi'],
-        sourcemap: true,
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'renderer', 'tsconfig.json'),
-    }, () => {
+    const buildContentAudit = () => watchBuild(devBundle('contentAudit'), () => {
         // No Electron restart: the compile worker requires it fresh on every audit.
         console.log('[contentAudit] built.');
     });
@@ -435,16 +367,7 @@ function broadcastReload(target = 'all') {
             tryStartElectronOnce();
             return;
         }
-        await watchBuild({
-            entryPoints: [preloadEntry],
-            outfile: path.join(distDir, 'main', 'preload.js'),
-            platform: 'node',
-            format: 'cjs',
-            bundle: true,
-            external: ['electron'],
-            sourcemap: true,
-            target: ['node18'],
-        }, () => {
+        await watchBuild(devBundle('preload'), () => {
             if (!initialPreloadBuilt) {
                 initialPreloadBuilt = true;
                 console.log('[preload] initial build complete.');

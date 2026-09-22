@@ -98,6 +98,13 @@ export const wizard = {
             generic: "无法解包该文件",
             notAProjectTitle: "这不是 NarraLeaf Studio 项目",
             notAProject: "解包完成，但其中没有 Studio 项目文件；已解包的内容位于 {path}",
+            notAPackage: "该文件不是 NarraLeaf Studio 项目包",
+            newerVersion: "该项目包由更新版本的 NarraLeaf Studio 创建；请更新 Studio 后再导入",
+            damaged: "项目包已损坏或不完整",
+            packageMissing: "该项目包文件已不存在",
+            packageUnreadable: "Studio 没有读取该项目包文件的权限",
+            folderProtected: "所选文件夹位于 Studio 自身的存储目录中；请选择其他文件夹",
+            diskFull: "磁盘空间不足",
         },
     },
     source: {

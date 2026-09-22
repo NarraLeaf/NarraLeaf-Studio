@@ -33,6 +33,8 @@ import {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE as AUDIO_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK as SOUND_PARAM_TRACK,
 } from "./audioTrackParams";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -248,10 +250,16 @@ function resolveTrackId(ctx: SoundExecuteCtx): string | null {
  * A transport node's target handle. Required: pausing "whatever is playing" is
  * not expressible, because the host may hold several clips at once.
  */
-function requireHandle(ctx: SoundExecuteCtx, nodeLabel: string) {
+function requireHandle(ctx: SoundExecuteCtx, nodeTitleKey: TranslationKey) {
     const handle = normalizeBlueprintSoundHandle(readPin(ctx, "handle"));
     if (!handle) {
-        throw new BlueprintGraphExecutionError(`${nodeLabel}: wire a sound Handle`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.inputEmpty", {
+                node: translate(nodeTitleKey),
+                pin: translate("blueprint.port.handle"),
+            }),
+            ctx.node.id,
+        );
     }
     return handle;
 }
@@ -287,7 +295,10 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const assetId = resolveAssetId(ctx);
             if (!assetId) {
-                throw new BlueprintGraphExecutionError("Play Sound: pick a clip or wire an Asset Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickClip", { node: translate("blueprint.node.playSound") }),
+                    ctx.node.id,
+                );
             }
             // Every override is passed as "unset" when its pin is unwired, so the host resolves the
             // track's own default rather than this node inventing one. A hard-coded `loop: false`
@@ -333,7 +344,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.pause(requireHandle(ctx, "Pause Sound"));
+            await requireHostApi(ctx).sound.pause(requireHandle(ctx, "blueprint.node.pauseSound"));
             return { nextPort: "next" };
         },
     },
@@ -347,7 +358,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.resume(requireHandle(ctx, "Resume Sound"));
+            await requireHostApi(ctx).sound.resume(requireHandle(ctx, "blueprint.node.resumeSound"));
             return { nextPort: "next" };
         },
     },
@@ -369,7 +380,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, handleIn, volumeIn, fadeIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.setVolume(
-                requireHandle(ctx, "Set Sound Volume"),
+                requireHandle(ctx, "blueprint.node.setSoundVolume"),
                 readOptionalNumber(readPin(ctx, "volume")) ?? 1,
                 readSecondsAsMs(ctx, "fade"),
             );
@@ -387,7 +398,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, handleIn, timeIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.seek(
-                requireHandle(ctx, "Seek Sound"),
+                requireHandle(ctx, "blueprint.node.seekSound"),
                 readSecondsAsMs(ctx, "time"),
             );
             return { nextPort: "next" };
@@ -406,7 +417,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 nextPort: "next",
                 outputValues: {
-                    isPlaying: requireHostApi(ctx).sound.isPlaying(requireHandle(ctx, "Is Sound Playing")),
+                    isPlaying: requireHostApi(ctx).sound.isPlaying(requireHandle(ctx, "blueprint.node.isSoundPlaying")),
                 },
             };
         },

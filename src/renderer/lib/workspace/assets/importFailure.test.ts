@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { FsRejectErrorCode } from "@shared/types/os";
+import { RemoteAssetFetchErrorCode } from "@shared/types/remoteAsset";
 import type { ExchangeProblem } from "@shared/utils/exchangeProblem";
 import { parseTranslationExchange } from "@shared/utils/localizationExchange";
 import { parseVoiceCsv } from "@shared/utils/voiceCsv";
@@ -12,6 +13,7 @@ import {
     fileLevelProblem,
     importReadFailureReason,
     summarizeImportFailures,
+    summarizeSkippedEntries,
 } from "./importFailure";
 
 /**
@@ -37,6 +39,8 @@ const PROBLEMS: ExchangeProblem[] = [
     { code: "notEntry" },
     { code: "notEntry", at: { entry: 2 } },
     { code: "unreadableLine", at: { line: 12 } },
+    { code: "noTake" },
+    { code: "noTake", at: { row: 9 } },
 ];
 
 /** Every way the importer can turn a file away. */
@@ -57,6 +61,14 @@ const REFUSALS: AssetImportRefusal[] = [
     { kind: "notAFolder" },
     { kind: "emptyFolder" },
     { kind: "copyIncomplete" },
+    { kind: "projectNotAccepting" },
+    ...Object.values(RemoteAssetFetchErrorCode).map(code => ({ kind: "remoteFetch" as const, code })),
+    { kind: "remoteNoContent" },
+    { kind: "remoteBundle" },
+    { kind: "remoteUnplayable", cause: { kind: "codecs", codecs: ["hevc"] } },
+    { kind: "remoteUnplayable", cause: { kind: "container", container: "avi" } },
+    { kind: "remoteUnplayable", cause: { kind: "container", container: null } },
+    { kind: "remoteUnplayable", cause: { kind: "noStreams" } },
 ];
 
 /**
@@ -67,6 +79,8 @@ const REFUSALS: AssetImportRefusal[] = [
 const ALLOWED_LATIN = new Set([
     "NarraLeaf", "Studio", "ID", "unit_id", "unit", "id", "XLIFF", "JSON", "CSV", "PO",
     "txt", "avi", "mp4", "webm", "tiff", "png", "webp", "ttc", "ttf", "otf", "JPEG",
+    // A remote asset's: the address kinds, the size unit, and the format names a probe reports.
+    "URL", "http", "https", "MB", "HEVC", "AVI",
 ]);
 
 function strayLatin(text: string): string[] {
@@ -74,7 +88,7 @@ function strayLatin(text: string): string[] {
 }
 
 /** A path, a storage id, an `app://` grant, or a reader's own English. */
-const LEAKS = /[A-Z]:[\\/]|app:\/\/|[0-9a-f]{8}-|content[\\/]|EACCES|Failed to|Missing required|root element|Unreadable line/;
+const LEAKS = /[A-Z]:[\\/]|app:\/\/|[0-9a-f]{8}-|content[\\/]|EACCES|Failed to|Missing required|root element|Unreadable line|Request failed|404|https?:\/\//;
 
 const t = translate;
 
@@ -146,6 +160,37 @@ describe("the wording of a failed import", () => {
             .toEqual({ code: "notFormat", format: "xliff" });
         // Only skipped entries and no rows (a CSV whose every row lacks an id): still "nothing to import".
         expect(fileLevelProblem([{ code: "missingId", at: { row: 2 } }])).toEqual({ code: "noRows" });
+    });
+
+    it("says why a URL could not be fetched from the code main answered with", () => {
+        i18nStore.setLocale("zh");
+        expect(describeAssetImportRefusal({ kind: "remoteFetch", code: RemoteAssetFetchErrorCode.NotFound }, t))
+            .toBe("服务器上没有该地址的文件");
+        expect(describeAssetImportRefusal({ kind: "remoteFetch", code: RemoteAssetFetchErrorCode.Timeout }, t))
+            .toBe("服务器在 30 秒内没有响应");
+        expect(describeAssetImportRefusal({ kind: "remoteFetch", code: RemoteAssetFetchErrorCode.TooLarge }, t))
+            .toBe("文件超过远程资产的上限 256 MB");
+        expect(describeAssetImportRefusal({ kind: "remoteFetch", code: RemoteAssetFetchErrorCode.Distrusted }, t))
+            .toBe(translate("workspace.shell.distrust.unavailable"));
+        i18nStore.setLocale("en");
+        expect(describeAssetImportRefusal({ kind: "remoteUnplayable", cause: { kind: "codecs", codecs: ["hevc"] } }, t))
+            .toBe("NarraLeaf cannot play HEVC. Convert the file and import the converted copy from disk.");
+    });
+
+    it("lists skipped recording-script rows by where they sit, and counts the rest", () => {
+        i18nStore.setLocale("zh");
+        const problems: ExchangeProblem[] = [
+            { code: "missingId", at: { row: 3 } },
+            ...[5, 6, 7, 8, 9, 10].map(row => ({ code: "noTake" as const, at: { row } })),
+        ];
+        expect(summarizeSkippedEntries(problems, t).split("\n")).toEqual([
+            "第 3 行缺少 ID",
+            "第 5 行对应的对白尚未配音，其备注与状态未应用",
+            "第 6 行对应的对白尚未配音，其备注与状态未应用",
+            "第 7 行对应的对白尚未配音，其备注与状态未应用",
+            "第 8 行对应的对白尚未配音，其备注与状态未应用",
+            translate("assets.import.moreFailures", { count: 2 }),
+        ]);
     });
 
     it("lists a few failed files and counts the rest", () => {

@@ -221,8 +221,16 @@ export class LocalizationService extends Service<LocalizationService> implements
      * Remove a language from the configuration. The translation file on disk is
      * intentionally kept (non-destructive) - re-adding the language restores its
      * translations. The source language cannot be removed while others exist.
+     *
+     * Edits still waiting for the auto-save are written first. "Re-adding restores the translations"
+     * is only true if the file holds the last lines typed before the removal, and dropping the cached
+     * document used to drop them with it. A write that fails stays owed: the save-status surface has
+     * said so, and the document is kept until the retry lands.
      */
     public async removeLocale(code: string): Promise<LocalizationConfiguration> {
+        await this.flushPendingChanges().catch(error => {
+            console.warn("[LocalizationService] could not save before removing a language", error);
+        });
         const config = await this.updateConfiguration(config => {
             if (isSourceLocked(config, code)) {
                 throw new RendererError(translate("workspace.localization.panel.sourceLocked", {
@@ -243,8 +251,9 @@ export class LocalizationService extends Service<LocalizationService> implements
                 locales,
             };
         });
-        this.documents.delete(code);
-        this.dirtyLocales.delete(code);
+        if (!this.dirtyLocales.has(code)) {
+            this.documents.delete(code);
+        }
         return config;
     }
 
@@ -897,12 +906,26 @@ export class LocalizationService extends Service<LocalizationService> implements
         }
     }
 
+    /**
+     * The language's document, or the refusal an author sees when it is not in memory.
+     *
+     * Two ways to get here, and the table and the import both print what is thrown: the language
+     * has left the list (removed here, by a collaborator, or by a restored version), or its file
+     * could not be read - the save-status surface has said so already.
+     */
     private requireLoadedDocument(locale: string): LocalizationDocument {
-        const document = this.documents.get(locale);
-        if (!document) {
-            throw new RendererError(`Translations not loaded: ${locale}`);
+        // Asked first: a removed language's document can still be held while its last save is owed,
+        // and an edit to it then would be written into a language the project no longer has.
+        if (!this.getConfiguration().locales.some(entry => entry.code === locale)) {
+            throw new RendererError(translate("workspace.localization.panel.languageGone"));
         }
-        return document;
+        const document = this.documents.get(locale);
+        if (document) {
+            return document;
+        }
+        throw new RendererError(translate("workspace.shell.save.refusedUnreadable", {
+            name: translate("workspace.shell.save.stores.localization"),
+        }));
     }
 
     /**

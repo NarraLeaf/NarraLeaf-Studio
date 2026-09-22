@@ -13,6 +13,7 @@ import {
 } from "./script/scriptRuntime";
 import type { ScriptEventId } from "./script/scriptEvents";
 import { parseScriptLayerKey } from "@shared/blueprint/blueprintLayers";
+import { translate } from "@/lib/i18n";
 
 /**
  * Something wrong with one script layer, in words that name the author's file.
@@ -78,7 +79,7 @@ export async function mountBlueprintCompiledScripts(
             onIssue?.({
                 scriptRef,
                 blueprintId: parseScriptLayerKey(layerKey)?.blueprintId ?? layerKey,
-                message: `${scriptRef} could not be loaded: ${message}`,
+                message: translate("blueprint.runtimeError.scriptLoadFailed", { file: scriptRef, detail: message }),
             });
         },
         loadModule,
@@ -136,9 +137,15 @@ function reportScriptsWithNothingToCall(
         onIssue({
             scriptRef: entry.scriptRef,
             blueprintId,
+            // The file and the export names are the author's own words, carried as they are; the
+            // sentence around them is in the author's language.
             message: exported.length > 0
-                ? `${entry.scriptRef} exports ${exported.join(", ")}, none of which this slot calls. It calls: ${names}.`
-                : `${entry.scriptRef} exports no handler this slot calls. It calls: ${names}.`,
+                ? translate("blueprint.runtimeError.scriptExportsUncalled", {
+                    file: entry.scriptRef,
+                    exported: exported.join(", "),
+                    names,
+                })
+                : translate("blueprint.runtimeError.scriptExportsNoHandler", { file: entry.scriptRef, names }),
         });
     }
 }

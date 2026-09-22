@@ -2,172 +2,45 @@ const path = require('path');
 const fs = require('fs');
 const esbuild = require('esbuild');
 const { rootDir, isDev } = require('./utils');
+const { MAIN_PROCESS_BUNDLES, mainProcessBundleOptions } = require('./main-bundles');
+
+/*
+ * The main process and the workers it forks. What each bundle is - its entry, and which packages
+ * stay a real require - lives in main-bundles.js, which `yarn dev` reads as well; see the header
+ * there for why that list must not be written out twice.
+ */
+
+/** What each bundle is called in this script's log. */
+const LOG_LABELS = {
+    main: 'main process',
+    buildWorker: 'game build worker',
+    psdWorker: 'PSD import worker',
+    weatherWorker: 'weather bake worker',
+    compileWorker: 'artifact compile worker',
+    contentAudit: 'content audit',
+    preload: 'preload script',
+};
 
 (async () => {
     console.log(`[build-main] Mode: ${isDev() ? 'development' : 'production'}`);
 
-    const entry = path.join(rootDir, 'src', 'main', 'index.ts');
-    if (!fs.existsSync(entry)) {
-        console.error('[build-main] Entry "src/main/index.ts" not found.');
-        process.exit(1);
+    for (const name of Object.keys(MAIN_PROCESS_BUNDLES)) {
+        const entry = path.join(rootDir, MAIN_PROCESS_BUNDLES[name].entry);
+        if (!fs.existsSync(entry)) {
+            console.error(`[build-main] Entry "${MAIN_PROCESS_BUNDLES[name].entry}" not found.`);
+            process.exit(1);
+        }
     }
+    fs.mkdirSync(path.join(rootDir, 'dist', 'main'), { recursive: true });
 
-    const outDir = path.join(rootDir, 'dist', 'main');
-    fs.mkdirSync(outDir, { recursive: true });
-
-    await esbuild.build({
-        entryPoints: [entry],
-        outfile: path.join(outDir, 'index.js'),
-        platform: 'node', // Electron main runs in Node context
-        format: 'cjs',
-        bundle: true,
-        // @narraleaf/bindings is kept external (required from node_modules, not bundled).
-        // koffi likewise: it resolves its own .node addon by path at runtime, which
-        // bundling breaks. lorelib itself is loaded through a computed require of the
-        // @lore-vcs/sdk-<platform> package, which esbuild cannot follow and therefore
-        // leaves alone - see vcs/lore/library.ts.
-        //   esbuild is external for the same reason as koffi -- it spawns its own
-        // platform binary from @esbuild/<platform>, resolved by path -- and it is a
-        // *runtime* dependency, not just this script's: the Live2D puppet runtime
-        // installer bundles the author's Cubism SDK on their machine, because the
-        // Cubism Framework ships as TypeScript and nobody may publish a prebuilt
-        // adapter. See managers/puppet/live2dRuntimeBuild.ts.
-        //   electron-updater is external because it is the one dependency that reads its own
-        // installed layout: it resolves `app-update.yml` next to the running app and hands the
-        // downloaded installer to the OS. Bundling it would work until one of those paths did
-        // not, and the failure would only show up on a real update - the one code path nobody
-        // exercises before shipping. asarUnpack already puts node_modules on disk as real files.
-        external: ['electron', 'esbuild', '@narraleaf/bindings', 'koffi', 'electron-updater'],
-        sourcemap: isDev(),
-        minify: !isDev(),
-        keepNames: true,
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
-    });
-
-    console.log('[build-main] Bundling game build worker…');
-    await esbuild.build({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'buildWorker.ts')],
-        outfile: path.join(outDir, 'buildWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // electron-builder stays a real node_modules require: its module tree
-        // reads template/resource files relative to itself at runtime. 7zip-bin
-        // (already in electron-builder's closure) resolves its bundled 7za.exe
-        // relative to its own __dirname; Studio's own callers go through
-        // sevenZipBinary.ts instead, but electron-builder reads the package
-        // directly and has no such correction, so it stays external for its sake.
-        // @narraleaf/bindings is a native addon: it loads a platform-specific
-        // binary by path, so it must resolve from node_modules, not be bundled
-        // (same reason the artifact compile worker keeps it external).
-        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/bindings'],
-        sourcemap: isDev(),
-        minify: !isDev(),
-        keepNames: true,
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
-    });
-
-    console.log('[build-main] Bundling PSD import worker…');
-    await esbuild.build({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'psdWorker.ts')],
-        outfile: path.join(outDir, 'psdWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // ag-psd is pure JS and bundles fine; electron stays external as everywhere else.
-        external: ['electron'],
-        sourcemap: isDev(),
-        minify: !isDev(),
-        keepNames: true,
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
-    });
-
-    console.log('[build-main] Bundling weather bake worker…');
-    await esbuild.build({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'weatherWorker.ts')],
-        outfile: path.join(outDir, 'weatherWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // Nothing native here: the bake draws frames in plain JS and pipes them to the bundled
-        // ffmpeg. electron stays external as everywhere else - the worker only needs its parent port.
-        external: ['electron'],
-        sourcemap: isDev(),
-        minify: !isDev(),
-        keepNames: true,
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
-    });
-
-    console.log('[build-main] Bundling artifact compile worker…');
-    await esbuild.build({
-        entryPoints: [path.join(rootDir, 'src', 'main', 'buildWorker', 'compileWorker.ts')],
-        outfile: path.join(outDir, 'compileWorker.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        // Same externals as the main bundle: @narraleaf/bindings is a native
-        // addon whose computed-require sidecars resolve by path at runtime, and koffi
-        // loads its own binary by path — bundling either breaks resolution.
-        //
-        // 7zip-bin for a third version of the same reason, and it is the one that
-        // was found the hard way: it computes the path to its executable from its
-        // own __dirname, so bundled it points at wherever the bundle happens to
-        // live and the extractor is simply not there.
-        //   Keeping it out of the bundle is no longer what makes that work.
-        // src/main/buildWorker/sevenZipBinary.ts rebuilds the path from where the
-        // package resolves to, so a bundle that inlines it still finds the
-        // executable - which is what the main bundle above does. The entry stays
-        // because there is no reason to inline a module that is only read for one
-        // string, not because the list is load-bearing.
-        external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
-        sourcemap: isDev(),
-        minify: !isDev(),
-        keepNames: true,
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
-    });
-
-    // The shipped-content audit. Built apart from every other bundle here because it runs the story
-    // compiler, which lives in the renderer tree and resolves its own imports through the renderer's
-    // "@/" alias -- the opposite of what the main tsconfig means by it. The compile worker loads this
-    // by path for that reason; the two alias maps cannot coexist in one bundle.
-    console.log('[build-main] Bundling content audit…');
-    await esbuild.build({
-        entryPoints: [path.join(rootDir, 'src', 'renderer', 'lib', 'build', 'contentAuditEntry.ts')],
-        outfile: path.join(outDir, 'contentAudit.js'),
-        platform: 'node',
-        format: 'cjs',
-        bundle: true,
-        external: ['electron', '@narraleaf/bindings', 'koffi'],
-        sourcemap: isDev(),
-        minify: !isDev(),
-        target: ['node18'],
-        tsconfig: path.join(rootDir, 'src', 'renderer', 'tsconfig.json'),
-    });
-
-    const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
-    if (!fs.existsSync(preloadEntry)) {
-        console.warn('[build-main] Preload entry "src/main/preload/preload.ts" not found. Skipping preload build.');
-    } else {
-        console.log('[build-main] Bundling preload script…');
-        await esbuild.build({
-            entryPoints: [preloadEntry],
-            outfile: path.join(outDir, 'preload.js'),
-            platform: 'node',
-            format: 'cjs',
-            bundle: true,
-            external: ['electron', 'esbuild'],
-            sourcemap: isDev(),
-            minify: !isDev(),
-            keepNames: true,
-            target: ['node18'],
-            tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
-        });
+    for (const name of Object.keys(MAIN_PROCESS_BUNDLES)) {
+        console.log(`[build-main] Bundling ${LOG_LABELS[name] ?? name}…`);
+        await esbuild.build(mainProcessBundleOptions(name, { dev: isDev() }));
     }
 
     console.log('[build-main] Main process built successfully.');
-})();
+})().catch(error => {
+    // esbuild has already printed each error with its location; this only makes the exit loud.
+    console.error(`[build-main] ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+});

@@ -11,6 +11,7 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { behaviorNodeRegistry, executeGraph } from "@/lib/ui-editor/behavior-graph";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
+import { translate } from "@/lib/i18n";
 import { blueprintNodeRegistry, isBlueprintNodeAllowedInBlueprintValueGraph } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
@@ -33,6 +34,10 @@ export type BlueprintValueEvaluationResult = {
 
 const DEFAULT_VALUE_MAX_STEPS = 512;
 
+/**
+ * Why a Blueprint Value graph cannot be run, one sentence per offending node, already in the
+ * author's language - the first of them is what the evaluation fails with.
+ */
 export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined): string[] {
     registerCoreBlueprintNodes();
     const errors: string[] = [];
@@ -46,11 +51,11 @@ export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined
             if (behaviorNodeRegistry.get(node.type)) {
                 continue;
             }
-            errors.push(`Node ${node.id} uses unknown type ${node.type}`);
+            errors.push(translate("blueprint.runtimeError.valueNodeUnavailable"));
             continue;
         }
         if (!isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
-            errors.push(`Node ${node.id} (${def.displayName}) is not allowed in Blueprint Value`);
+            errors.push(translate("blueprint.runtimeError.valueNodeNotAllowed"));
         }
     }
     return errors;
@@ -128,6 +133,7 @@ export async function evaluateBlueprintValue(input: {
     for (const { eventGraph, headIds } of matching) {
         const safetyErrors = validateBlueprintValueGraphSafe(eventGraph.graph);
         if (safetyErrors.length > 0) {
+            // Already translated by the check above.
             throw new BlueprintGraphExecutionError(safetyErrors[0]!, headIds[0]);
         }
         const graph = adaptBlueprintGraphIr(eventGraph.graph, buildBlueprintRunGraphId("blueprintValue", input.blueprintId, eventGraph.id));

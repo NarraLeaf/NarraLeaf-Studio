@@ -78,7 +78,9 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import { UI_DISPLAYABLE_WIDGET_TYPES } from "@shared/types/ui-editor/displayableWidgets";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type {
     BlueprintTextProperties,
     BlueprintTextPropertiesPatch,
@@ -427,13 +429,16 @@ function writeAnimationTokenOutput(
 function resolveElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], expectedElementType: string): string {
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
-        throw new BlueprintGraphExecutionError("Element node requires a bound element input", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     if (ref.elementType !== expectedElementType) {
-        throw new BlueprintGraphExecutionError(`Element node expected ${expectedElementType}, got ${ref.elementType}`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(expectedElementType) }),
+            ctx.node.id,
+        );
     }
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-        throw new BlueprintGraphExecutionError("Element node can only target the current Surface", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
     }
     return addressWidgetFromExecution(ctx, ref.elementId);
 }
@@ -446,19 +451,19 @@ function resolveDisplayableTargetElementId(
     if (target === "self") {
         const elementId = ctx.executionOwner?.elementId;
         if (!elementId) {
-            throw new BlueprintGraphExecutionError("Displayable node requires a widget execution owner", ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
         }
         return addressWidgetFromExecution(ctx, elementId);
     }
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
-        throw new BlueprintGraphExecutionError("Displayable Element node requires an Element input", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     if (!allowedElementTypes.includes(ref.elementType)) {
-        throw new BlueprintGraphExecutionError(`Displayable Element node cannot target ${ref.elementType}`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementUnsupported"), ctx.node.id);
     }
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-        throw new BlueprintGraphExecutionError("Displayable Element node can only target the current Surface", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
     }
     return addressWidgetFromExecution(ctx, ref.elementId);
 }

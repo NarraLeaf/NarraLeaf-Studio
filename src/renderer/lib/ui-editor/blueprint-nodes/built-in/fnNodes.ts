@@ -19,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_FN_RETURN,
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BehaviorGraphValueTracking } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { BlueprintNodeDef } from "../types";
@@ -150,11 +151,17 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const runtime = ctx.hostAdapter.blueprintRuntime;
             if (!runtime?.invokeBlueprintFn) {
-                throw new BlueprintGraphExecutionError("Fn runtime is unavailable", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.callFn") }),
+                    ctx.node.id,
+                );
             }
             const fnRef = String(ctx.params[BLUEPRINT_NODE_PARAM_FN_REF] ?? "").trim();
             if (!fnRef) {
-                throw new BlueprintGraphExecutionError("Pick a function to call", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickFunction", { node: translate("blueprint.node.callFn") }),
+                    ctx.node.id,
+                );
             }
             const snapshot = readBlueprintFnSignatureSnapshot(ctx.params);
             const args: Record<string, unknown> = {};

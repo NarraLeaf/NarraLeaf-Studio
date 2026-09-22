@@ -68,6 +68,8 @@ import {
 } from "@shared/utils/localizationExchange";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
+import { getLocalizationEditorTabId } from "./localizationEditorTabId";
+import { closeEditorTabsWhere } from "../../registry/closeEditorTabsWhere";
 import { TranslationExportForm } from "./TranslationExportForm";
 import { LanguageSettingsForm, type FallbackCandidate } from "./LanguageSettingsForm";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
@@ -346,6 +348,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         }
         try {
             await localizationService.removeLocale(code);
+            // The language's table goes with it, as a deleted story's editors do: it would otherwise
+            // stay on screen taking edits for a language the project no longer has.
+            closeEditorTabsWhere(uiService, tabId => tabId === getLocalizationEditorTabId(code));
         } catch (error) {
             uiService.showError(error instanceof Error ? error : String(error));
         }

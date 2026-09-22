@@ -49,6 +49,7 @@ import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
 import type { DebugBridge } from "./DebugBridge";
 import { truncateDebugEventMessage } from "./DebugBridge";
+import { translate } from "@/lib/i18n";
 import {
     componentWidgetMainOwnerKey,
     widgetMainOwnerKey,
@@ -218,7 +219,7 @@ function buildDispatchScriptContext(input: {
     if (!hostApi) {
         // Every path that reaches here has a running game behind it; a host without an API is the
         // editor preview, which does not dispatch.
-        throw new BlueprintGraphExecutionError("Host API unavailable (use Dev Mode)", input.blueprint.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.needsHostScript"), input.blueprint.id);
     }
     return buildGameScriptContext({
         self: input.self,
@@ -1672,12 +1673,14 @@ export async function invokeBlueprintFnCall(options: {
 
     // Plain errors: the GraphExecutor wraps them with the Call Fn node id in the caller graph.
     if (depth >= MAX_BLUEPRINT_FN_CALL_DEPTH) {
-        throw new Error(`Fn call depth exceeded ${MAX_BLUEPRINT_FN_CALL_DEPTH} (recursive call?)`);
+        throw new Error(translate("blueprint.runtimeError.fnDepth", { depth: String(MAX_BLUEPRINT_FN_CALL_DEPTH) }));
     }
 
     const decl = findBlueprintFnByRef(blueprintDocument, fnRef);
     if (!decl) {
-        throw new Error(`Fn does not exist: ${fnRef}`);
+        // Not by its ref: that is the fn's id, and the author knows the function by a name this
+        // lookup has just failed to find.
+        throw new Error(translate("blueprint.runtimeError.fnMissing"));
     }
     // Asked of the shared predicate rather than restated here. It was restated here, and the copy
     // drifted the moment component definitions could declare a Fn: the editor offered the call and
@@ -1690,7 +1693,7 @@ export async function invokeBlueprintFnCall(options: {
         ? { kind: "componentWidgetMain", componentId: options.callerComponentId, elementId: "" }
         : { kind: "widgetMain", surfaceId: surfaceId ?? "", elementId: "" };
     if (!isBlueprintFnVisibleToOwner(decl.owner, callerOwner)) {
-        throw new Error(`Fn "${decl.name}" is not available in this scope`);
+        throw new Error(translate("blueprint.runtimeError.fnOutOfScope", { name: decl.name }));
     }
 
     const declElementId =

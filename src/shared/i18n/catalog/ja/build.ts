@@ -468,6 +468,13 @@ export const build = {
     contentComputedPinSummary: {
         other: "ビルドを中止した：実行時に組み立てられるアセット名が {count} 件ある。詳細はコンソール。",
     },
+    /**
+     * パッケージのビルドでスクリプトがコンパイルできなかったとき。メインプロセスが書く、ビルド失敗の
+     * 1 行目。その後にファイルごとのコンパイラ自身の行（ファイル・行・列つき）が続く。
+     */
+    scriptsNotCompiled: {
+        other: "コンパイルできないスクリプトが {count} 件ある",
+    },
     /** ドキュメント 1 件ではなく索引全体が欠けているときに `{location}` に入る言葉。 */
     contentCoverageWholeProject: "プロジェクト",
     contentCoverageSummary: {

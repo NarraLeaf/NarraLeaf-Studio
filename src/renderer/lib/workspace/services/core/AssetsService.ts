@@ -1663,15 +1663,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getLocalAssetsManager().fetch(asset as Asset<T, AssetSource.Local>);
     }
 
-    public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<AssetImportStatus<T>[]>> {
-        return this.transactionResult(() => this.getLocalAssetsManager().importLocalAssets(type));
-    }
-
+    /**
+     * Fetch a URL and keep what it serves as a new asset. A refusal carries the reason the author is
+     * told (see `describeAssetImportRefusal`); its `error` is the log's.
+     */
     public async importRemoteAsset(
         category: AssetCategory,
         url: string,
         groupId?: string,
-    ): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>> {
+    ): Promise<RefusableStatus<Asset<AssetType, AssetSource.Remote>>> {
         return this.getRemoteAssetsManager().importRemoteAsset(category, url, groupId);
     }
 
@@ -1686,10 +1686,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     public async refreshRemoteAsset<T extends AssetType>(
         asset: Asset<T, AssetSource.Remote>,
-    ): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>> {
+    ): Promise<RefusableStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>> {
         const refreshed = await this.getRemoteAssetsManager().refresh(asset);
         if (!refreshed.success || !refreshed.data) {
-            return { success: false, error: refreshed.error };
+            return { success: false, error: refreshed.error, refusal: refreshed.refusal };
         }
 
         const { changed, digest, meta } = refreshed.data;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, SUPPORTED_LOCALES } from "@shared/i18n";
 import { FsRejectErrorCode } from "@shared/types/os";
-import { freezeProjectWrites, refuseFrozenWrite, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { freezeProjectWrites, refuseFrozenWrite, thawForeignProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
 import type { FsWriteOutcome } from "../core/FileSystem";
 import { Services, type WorkspaceContext } from "../services";
 import { DebouncedSaver } from "./DebouncedSaver";
@@ -253,6 +253,24 @@ describe("SaveStatusService while the workspace is frozen", () => {
 
         expect(refuseFrozenWrite(`${PROJECT}/editor/story/stories/s1/storydoc.json`)).toBeNull();
         expect(showSticky).not.toHaveBeenCalled();
+    });
+
+    it("adds no notice over the screen a takeover puts up, and still logs every refusal", async () => {
+        // The screen that replaces the editor is the one account of it. A toast saying a save "did
+        // not happen" would repeat that in a smaller voice - and point at a freeze the author could
+        // leave, which this one is not.
+        const { showSticky, log } = await makeHarness();
+        freezeProjectWrites({
+            projectPath: PROJECT,
+            reason: { kind: "taken-over", holder: { hostname: "studio-two", startedAt: "2026-09-21T09:14:00.000Z", sameHost: false } },
+        });
+
+        refuseFrozenWrite(`${PROJECT}/editor/story/index.json`);
+        refuseFrozenWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+
+        expect(showSticky).not.toHaveBeenCalled();
+        expect(log).toHaveBeenCalledTimes(2);
+        thawForeignProjectWrites("D:/projects/somewhere-else");
     });
 
     it("takes the notice down when the workspace thaws", async () => {

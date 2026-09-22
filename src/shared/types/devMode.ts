@@ -358,15 +358,17 @@ export type DevModeBundle = {
          */
         savedVariables: SavedVariableRuntimeTable;
         /**
-         * The author's compiled script blueprints, by blueprint id.
+         * The author's compiled scripts, by script-layer key (`scriptLayerKey`).
          *
          * A URL rather than the module text, because every host has a Content-Security-Policy and
          * none of them admits a script from `blob:` or `data:` - the shipped runtime's `script-src`
          * carries neither those nor `unsafe-eval`. What each host does admit is a URL it serves, so
-         * a compiled script is written to disk and named here, exactly as a plugin's entry is.
+         * a compiled script is written to disk and named here, exactly as a plugin's entry is. Dev
+         * Mode names it with an absolute `file:` URL; a pack names it relative to its own page.
          *
-         * An entry with no `url` failed to compile and carries the reason; its blueprint simply does
-         * not listen, and the rest of the game runs.
+         * An entry with no `url` failed to compile and carries the reason; its layer does not listen.
+         * Only Dev Mode, a preview or a test run carries one of those - a package build refuses
+         * instead of shipping it.
          */
         scripts?: Record<string, { scriptRef: string; url?: string; diagnostics?: BlueprintDiagnostic[] }>;
         /**

@@ -11,7 +11,8 @@ import {
     decodeProjectPackageIndex,
     readProjectPackageVersion,
 } from "@shared/utils/projectPackage";
-import { readProjectPackageInto, writeProjectPackage } from "./projectPackageFile";
+import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
+import { classifyUnpackFailure, readProjectPackageInto, writeProjectPackage } from "./projectPackageFile";
 
 const roots: string[] = [];
 
@@ -255,5 +256,85 @@ describe("reading a project package", () => {
         expect(result.fileCount).toBe(2);
         expect(await listFiles(target)).toEqual(["Old.nlproj", "assets/one.bin"]);
         expect(await fs.readFile(path.join(target, "Old.nlproj"), "utf-8")).toBe("config");
+    });
+});
+
+/**
+ * The code each unpack failure carries is what the wizard words it from; the message is the log's
+ * and names paths. So every failure an author can act on has to arrive with one, and the right one.
+ */
+describe("the code an unpack failure carries", () => {
+    async function codeOf(promise: Promise<unknown>): Promise<unknown> {
+        try {
+            await promise;
+        } catch (error) {
+            return (error as { code?: unknown }).code;
+        }
+        throw new Error("expected the unpack to fail");
+    }
+
+    it("codes a folder that already holds something", async () => {
+        const { packagePath } = await exportSample();
+        const target = await scratch("import");
+        await fs.writeFile(path.join(target, "in-the-way.txt"), "x");
+
+        expect(await codeOf(readProjectPackageInto(packagePath, target))).toBe(ProjectPackageImportErrorCode.FolderNotEmpty);
+    });
+
+    it("codes a truncated package, and one whose entry escapes the folder, as damaged", async () => {
+        const { packagePath } = await exportSample();
+        const bytes = await fs.readFile(packagePath);
+        const cut = path.join(await scratch("cut"), "Demo.nlspkg");
+        await fs.writeFile(cut, bytes.subarray(0, bytes.length - 64));
+        expect(await codeOf(readProjectPackageInto(cut, await scratch("import")))).toBe(ProjectPackageImportErrorCode.Damaged);
+
+        const hostile = path.join(await scratch("hostile"), "Demo.nlspkg");
+        const body = Buffer.from("owned");
+        const index = msgpack.encode({
+            format: PROJECT_PACKAGE_FORMAT,
+            version: PROJECT_PACKAGE_FORMAT_VERSION,
+            createdAt: "",
+            projectName: "Hostile",
+            directories: [],
+            files: [{ path: "../escaped.txt", size: body.length }],
+        });
+        const trailer = Buffer.alloc(4);
+        trailer.writeUInt32LE(index.length, 0);
+        await fs.writeFile(hostile, Buffer.concat([
+            Buffer.from([0x4e, 0x4c, 0x53, 0x50, 0x4b, 0x47, 0x00, PROJECT_PACKAGE_FORMAT_VERSION]),
+            body,
+            Buffer.from(index),
+            trailer,
+        ]));
+        expect(await codeOf(readProjectPackageInto(hostile, await scratch("import")))).toBe(ProjectPackageImportErrorCode.Damaged);
+    });
+
+    it("tells a file that is not a package from a package made by a newer Studio", async () => {
+        const junk = path.join(await scratch("junk"), "notes.txt");
+        await fs.writeFile(junk, "hello there, not a package");
+        expect(await codeOf(readProjectPackageInto(junk, await scratch("import")))).toBe(ProjectPackageImportErrorCode.NotAPackage);
+
+        const newer = path.join(await scratch("newer"), "Future.nlspkg");
+        await fs.writeFile(newer, Buffer.from([0x4e, 0x4c, 0x53, 0x50, 0x4b, 0x47, 0x00, PROJECT_PACKAGE_FORMAT_VERSION + 1, 1, 2, 3, 4]));
+        expect(await codeOf(readProjectPackageInto(newer, await scratch("import")))).toBe(ProjectPackageImportErrorCode.NewerVersion);
+    });
+
+    it("codes a package that is no longer where it was picked", async () => {
+        const gone = path.join(await scratch("gone"), "Demo.nlspkg");
+        expect(await codeOf(readProjectPackageInto(gone, await scratch("import")))).toBe(ProjectPackageImportErrorCode.PackageMissing);
+    });
+
+    it("says which side a refused read or write was on, by the path the disk named", () => {
+        const packagePath = path.resolve("pkg", "Demo.nlspkg");
+        const denied = (on: string, code = "EACCES") => Object.assign(new Error(`${code}: ${on}`), { code, path: on });
+
+        expect((classifyUnpackFailure(denied(packagePath), packagePath) as { code?: unknown }).code)
+            .toBe(ProjectPackageImportErrorCode.PackageUnreadable);
+        expect((classifyUnpackFailure(denied(path.resolve("folder", "a.png")), packagePath) as { code?: unknown }).code)
+            .toBe(ProjectPackageImportErrorCode.FolderReadOnly);
+        expect((classifyUnpackFailure(denied(path.resolve("folder", "a.png"), "ENOSPC"), packagePath) as { code?: unknown }).code)
+            .toBe(ProjectPackageImportErrorCode.DiskFull);
+        // A disk failure nobody can act on keeps its errno, which the wizard has no sentence for.
+        expect((classifyUnpackFailure(denied(packagePath, "EIO"), packagePath) as { code?: unknown }).code).toBe("EIO");
     });
 });

@@ -113,7 +113,7 @@ describe("a script that will not run says so", () => {
             {},
         );
         expect(messages).toHaveLength(1);
-        expect(messages[0]).toContain("scripts/title.ts could not be loaded");
+        expect(messages[0]).toContain("“scripts/title.ts” could not be loaded");
     });
 
     it("names the handler the author wrote and the ones this slot calls", async () => {
@@ -127,7 +127,7 @@ describe("a script that will not run says so", () => {
             { "file:///a.mjs": { onValueChanged: () => undefined } },
         );
         expect(messages).toHaveLength(1);
-        expect(messages[0]).toContain("scripts/volume.ts exports onValueChanged");
+        expect(messages[0]).toContain("“scripts/volume.ts” exports onValueChanged");
         expect(messages[0]).toContain("onSliderValueChanged");
     });
 

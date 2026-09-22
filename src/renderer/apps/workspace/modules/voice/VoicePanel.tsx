@@ -52,6 +52,8 @@ import { parseVoiceCsv, serializeVoiceCsv } from "@shared/utils/voiceCsv";
 import { matchKeyForFilename, VOICE_NAME_TOKENS } from "@shared/utils/voiceNaming";
 import { readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import { createVoiceEditorTab } from "./openVoiceEditorTab";
+import { getVoiceEditorTabId } from "./voiceEditorTabId";
+import { closeEditorTabsWhere } from "../../registry/closeEditorTabsWhere";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { basename } from "@shared/utils/path";
 import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
@@ -63,7 +65,14 @@ import {
     fileLevelProblem,
     importReadFailureReason,
     summarizeImportFailures,
+    summarizeSkippedEntries,
 } from "@/lib/workspace/assets/importFailure";
+import type { ExchangeProblem } from "@shared/utils/exchangeProblem";
+
+/** Where a skipped recording-script row sits, for listing them in file order; unplaced ones last. */
+function skippedRowOf(problem: ExchangeProblem): number {
+    return "at" in problem && problem.at && "row" in problem.at ? problem.at.row : Number.MAX_SAFE_INTEGER;
+}
 
 /** Audio containers offered in the batch-import file picker. */
 const AUDIO_IMPORT_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba"];
@@ -93,7 +102,7 @@ const NAMING_TOKEN_HINT = VOICE_NAME_TOKENS.filter(token => token !== "unitId").
 export function VoicePanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     // Adding and removing a voice language write `.nlproj`, and importing audio writes the asset
     // library; no partial freeze exempts either. Auditioning, switching locale and exporting a
     // recording script write nothing at all.
@@ -296,6 +305,8 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         }
         try {
             await voiceService.removeLocale(code);
+            // The language's voice table goes with it, as the translation table does.
+            closeEditorTabsWhere(uiService, tabId => tabId === getVoiceEditorTabId(code));
         } catch (error) {
             uiService.showError(error instanceof Error ? error : String(error));
         }
@@ -485,14 +496,26 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                 ));
             }
             await voiceService.loadDocument(code);
-            const summary = voiceService.applyImportedRows(code, parsed.rows);
+            const { skipped: unapplied, ...summary } = voiceService.applyImportedRows(code, parsed.rows);
             await voiceService.flushPendingChanges();
             uiService?.showNotification(t("workspace.voice.panel.importScriptSummary", summary), "success");
+            // The rows that went nowhere, by their row in the file and why: the ones with no ID the
+            // parser passed over, and the ones whose note or approval had no take to attach to. The
+            // summary only counted the second kind, and never mentioned the first at all.
+            const skipped = [...parsed.problems, ...unapplied]
+                .sort((a, b) => skippedRowOf(a) - skippedRowOf(b));
+            if (skipped.length > 0) {
+                uiService?.showNotification(
+                    tn("workspace.voice.panel.importScriptSkipped", skipped.length),
+                    "warning",
+                    { detail: summarizeSkippedEntries(skipped, t) },
+                );
+            }
             setRefreshTick(tick => tick + 1);
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [voiceService, context, scriptFreeze.frozen, uiService, t]);
+    }, [voiceService, context, scriptFreeze.frozen, uiService, t, tn]);
 
     /**
      * Take a booth's folder of clips into the library and link each one to the line it belongs to.

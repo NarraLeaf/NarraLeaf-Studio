@@ -111,6 +111,6 @@ describe("Move Mouse To Element", () => {
         });
 
         // Reported by the node and again by the dispatcher that caught it, as every node error is.
-        expect(new Set(page.errors)).toEqual(new Set(["Move Mouse To Element can only target the current Surface"]));
+        expect(new Set(page.errors)).toEqual(new Set(["This node can only act on elements of its own page or component."]));
     });
 });

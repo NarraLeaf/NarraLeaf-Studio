@@ -105,6 +105,10 @@ async function everyRefusal(): Promise<string[]> {
         await refusal(async () => (await translations()).setKey("menu.start", { sourceText: "Start" })),
         await refusal(async () => (await voice()).addLocale({ code: "ja", displayName: "Japanese" })),
         await refusal(async () => (await voice()).loadDocument("fr")),
+        // An edit from a table whose language has left the list, and from one whose file never loaded.
+        await refusal(async () => (await translations()).updateUnit("fr", "u-1", "Hello", { target: "Bonjour" })),
+        await refusal(async () => (await translations()).updateUnit("ja", "u-1", "Hello", { target: "こんにちは" })),
+        await refusal(async () => (await voice()).updateUnit("fr", "u-1", "Hello", { note: "softer" })),
     ];
 }
 
@@ -126,7 +130,7 @@ describe("a refused edit to the language list", () => {
         for (const locale of ["zh", "ja"] as const) {
             i18nStore.setLocale(locale);
             const messages = await everyRefusal();
-            expect(messages).toHaveLength(12);
+            expect(messages).toHaveLength(15);
             for (const message of messages) {
                 expect(message, message).not.toMatch(LEAKS);
                 expect(strayLatin(message), message).toEqual([]);
@@ -162,7 +166,33 @@ describe("a refused edit to the language list", () => {
             "The localization could not be read. Changes are not saved.",
             "日本語 is already in the voice language list.",
             "This voice language is no longer in the list.",
+            "This language is no longer in the language list.",
+            "The localization could not be read. Changes are not saved.",
+            "This voice language is no longer in the list.",
         ]);
+    });
+
+    /**
+     * The removal keeps the file so that adding the language back restores it - which holds only if
+     * the file has the last lines typed before the removal. Dropping the cached document used to drop
+     * whatever the auto-save had not written yet.
+     */
+    it("writes a removed language's pending edits before it leaves the list", async () => {
+        for (const make of [translations, voice]) {
+            const service = await make();
+            const order: string[] = [];
+            vi.spyOn(service, "flushPendingChanges").mockImplementation(async () => {
+                order.push("save");
+            });
+            const update = service.updateConfiguration.bind(service) as (...args: unknown[]) => Promise<unknown>;
+            vi.spyOn(service, "updateConfiguration").mockImplementation((async (...args: unknown[]) => {
+                order.push("remove");
+                return update(...args);
+            }) as never);
+
+            await service.removeLocale("ja");
+            expect(order).toEqual(["save", "remove"]);
+        }
     });
 
     it("tells the panel ahead of time which removal will be refused", () => {

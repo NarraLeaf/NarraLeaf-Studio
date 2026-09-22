@@ -7,6 +7,7 @@
  */
 
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import { needsRunningGame } from "./runtimeRefusals";
 
 /**
  * Whether the surface stack may draw.
@@ -45,6 +46,41 @@ export type StoryStartGate = (
  * wide, since the title screen is up seconds before the story behind it is warm, and Start Game is
  * on the title screen.
  */
+/**
+ * Mount the environment a menu stands on in the background, published where a boot is.
+ *
+ * A menu needs a game environment although nothing is being played on it: its buttons' sounds play
+ * through it, a volume slider moves its mixer, and Load and Continue read a save into it. The boot
+ * mounts one before the first page; a quit tears the run's one down and needs another under the
+ * page it lands on. Published as `pendingBoot`, so a Start pressed meanwhile waits for it and then
+ * enters the scene it warmed instead of mounting a second environment beside it.
+ *
+ * The published promise never rejects, which is the gate's contract for `pendingBoot`. A mount that
+ * was superseded - by a hot reload, or by another quit - is not a failure: whatever superseded it
+ * owns the environment now. Anything else is reported, and the gate is released either way.
+ */
+export function publishMenuEnvironmentMount(input: {
+    mount: () => Promise<void>;
+    pendingBoot: { current: Promise<void> | null };
+    isSuperseded: (error: unknown) => boolean;
+    onSuperseded: (error: unknown) => void;
+    onFailure: (error: unknown) => void;
+}): Promise<void> {
+    const pending = (async () => {
+        try {
+            await input.mount();
+        } catch (error) {
+            if (input.isSuperseded(error)) {
+                input.onSuperseded(error);
+                return;
+            }
+            input.onFailure(error);
+        }
+    })();
+    input.pendingBoot.current = pending;
+    return pending;
+}
+
 export function createStoryStartGate(input: {
     /** The boot in flight, or null when none is. Never rejects: the boot reports its own failures. */
     pendingBoot: { readonly current: Promise<void> | null };
@@ -76,7 +112,7 @@ export function createStoryStartGate(input: {
             await input.pendingBoot.current;
             const start = input.start.current;
             if (!start) {
-                throw new Error("Start Game: runtime is not ready");
+                throw needsRunningGame("blueprint.node.startGame");
             }
             await start(request, options);
         })();

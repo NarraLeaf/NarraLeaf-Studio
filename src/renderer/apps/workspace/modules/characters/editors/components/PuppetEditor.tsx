@@ -7,6 +7,12 @@ import { useTranslation } from "@/lib/i18n";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import {
+    collectImportFailures,
+    describeImportFailure,
+    summarizeImportFailures,
+} from "@/lib/workspace/assets/importFailure";
 import { CharacterAppearance } from "@/lib/workspace/services/character/CharacterAppearance";
 import type { PuppetDefaultState } from "@/lib/workspace/services/character/types";
 import {
@@ -223,23 +229,50 @@ export function PuppetEditor(props: { appearance: CharacterAppearance }) {
      * folder of textures and motions - hundreds of megabytes is ordinary - and the button being grey
      * is not enough on its own: a session can begin while this inspector is on screen, and the click
      * that follows would otherwise copy the whole bundle in before the library refused it.
+     *
+     * A folder that does not become a model is said, by its name and why, in the words the asset
+     * panel's import strip uses. It used to say nothing at all: the row stayed as it was and the
+     * reason was a console line.
      */
     const importModel = useCallback(async () => {
         if (!context || freeze.frozen) return;
+        const uiService = context.services.get<UIService>(Services.UI);
         const picked = await getInterface().fs.selectDirectory(true);
-        if (!picked.success || !picked.data.ok || picked.data.data.length === 0) {
+        if (!picked.success || !picked.data.ok) {
+            console.warn("[puppet] the folder dialog failed", picked);
+            uiService.showNotification(t("workspace.shell.fileDialogFailed"), "error");
+            return;
+        }
+        const paths = picked.data.data;
+        if (paths.length === 0) {
             return;
         }
         const assetsService = context.services.get<AssetsService>(Services.Assets);
-        const imported = await assetsService.importFromPaths(MODEL_ASSET_TYPE, picked.data.data);
-        const first = imported.success ? imported.data.find(entry => entry.success) : undefined;
+        const imported = await assetsService.importFromPaths(MODEL_ASSET_TYPE, paths);
+        if (!imported.success) {
+            // The run fell over as a whole; its sentence is the importer's, for the log.
+            console.warn("[puppet] the model import failed", imported.error);
+            uiService.showNotification(t("assets.import.failedTitle"), "error");
+            return;
+        }
+        const first = imported.data.find(entry => entry.success);
         if (first?.success) {
             // Selected as well as imported: the author asked for a model for *this* character, and
             // making them then find it in a picker would be the same gap one step later.
             appearance.setPuppetAsset(first.data.id);
         }
+        const failures = collectImportFailures(paths, imported.data, t);
+        if (failures.length > 0) {
+            uiService.showNotification(
+                failures.length === 1
+                    ? describeImportFailure(failures[0].path, failures[0].reason, t)
+                    : t(first ? "assets.import.someFailedTitle" : "assets.import.failedTitle"),
+                first ? "warning" : "error",
+                failures.length > 1 ? { detail: summarizeImportFailures(failures, t) } : undefined,
+            );
+        }
         setDiskVersion(version => version + 1);
-    }, [appearance, context, freeze.frozen]);
+    }, [appearance, context, freeze.frozen, t]);
 
     const onInstalled = useCallback((backend: string) => {
         // A runtime that registers a different name than its folder is filed under the registered one,

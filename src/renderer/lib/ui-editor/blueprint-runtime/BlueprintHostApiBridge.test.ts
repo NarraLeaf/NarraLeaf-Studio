@@ -422,7 +422,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         await expect(hostApi.game.setPreference("voiceEndMode", "hold" as BlueprintGamePreferenceValue)).rejects.toThrow(/voiceEndMode/);
         await expect(hostApi.game.setPreference("skipInterval", 0)).rejects.toThrow(/skipInterval/);
         await expect(hostApi.game.setPreference("autoForward", 1 as BlueprintGamePreferenceValue)).rejects.toThrow(/autoForward/);
-        expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(/not supported/);
+        expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(/is not a game preference/);
         expect(preferenceWrites).toEqual([{ key: "skipDelay", value: 0 }]);
     });
 

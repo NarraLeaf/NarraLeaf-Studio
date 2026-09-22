@@ -325,7 +325,7 @@ describe("Blueprint Value evaluator", () => {
 
         expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(1);
         await expect(evalValue(valueDocument(graph), hostAdapter(undefined, () => { setTextCalls += 1; }))).rejects.toThrow(
-            /not allowed in Blueprint Value/,
+            /not allowed in a Blueprint Value/,
         );
         expect(setTextCalls).toBe(0);
     });
@@ -386,7 +386,7 @@ describe("Blueprint Value and nodes the host did not define", () => {
         const graph = pluginValueGraph("acme.value.undeclared");
 
         expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(1);
-        await expect(evalValue(valueDocument(graph))).rejects.toThrow(/not allowed in Blueprint Value/);
+        await expect(evalValue(valueDocument(graph))).rejects.toThrow(/not allowed in a Blueprint Value/);
     });
 
     /**
@@ -413,6 +413,6 @@ describe("Blueprint Value and nodes the host did not define", () => {
         const graph = pluginValueGraph("acme.nothing.knows.this");
 
         expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(1);
-        expect(validateBlueprintValueGraphSafe(graph)[0]).toMatch(/unknown type/);
+        expect(validateBlueprintValueGraphSafe(graph)[0]).toMatch(/is not available/);
     });
 });
