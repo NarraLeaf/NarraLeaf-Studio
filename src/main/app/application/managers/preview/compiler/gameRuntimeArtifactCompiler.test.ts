@@ -328,6 +328,80 @@ describe("game runtime artifact compiler", () => {
         )).resolves.toBe("sibling bytes");
     });
 
+    /*
+     * A backend folder is usually a checkout or an unzipped release, and a Mac user's has a Finder
+     * `.DS_Store` in every folder they opened. Whole-directory copying must not mean shipping those.
+     */
+    it("leaves host litter out of a puppet runtime, and says what it left", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const backendDir = path.join(projectPath, "runtimes", "puppet", "demo-backend");
+        for (const [relative, content] of Object.entries({
+            "index.js": "export default {};",
+            "shaders/blit.glsl": "void main() {}",
+            ".DS_Store": "finder",
+            "shaders/Thumbs.db": "explorer",
+            "shaders/._blit.glsl": "appledouble",
+            ".git/HEAD": "ref: refs/heads/main",
+            ".index.js.swp": "vim",
+        })) {
+            await fs.mkdir(path.dirname(path.join(backendDir, relative)), { recursive: true });
+            await fs.writeFile(path.join(backendDir, relative), content, "utf-8");
+        }
+        // What unzipping a backend archived on a Mac leaves beside it: not a backend at all.
+        const macosx = path.join(projectPath, "runtimes", "puppet", "__MACOSX", "demo-backend");
+        await fs.mkdir(macosx, { recursive: true });
+        await fs.writeFile(path.join(macosx, "._index.js"), "appledouble", "utf-8");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47333));
+
+        expect(result.pack.puppetRuntimes).toEqual([{
+            name: "demo-backend",
+            entryRelativePath: "puppet/demo-backend/index.js",
+            files: ["shaders/blit.glsl"],
+        }]);
+        expect(await relativeFiles(path.join(result.appDir, "puppet", "demo-backend")))
+            .toEqual(["index.js", "shaders/blit.glsl"]);
+        const notice = result.notices.find(line => line.includes('puppet runtime "demo-backend"'));
+        expect(notice).toBeDefined();
+        for (const left of [".DS_Store", ".git", ".index.js.swp", "shaders/Thumbs.db", "shaders/._blit.glsl"]) {
+            expect(notice).toContain(left);
+        }
+    });
+
+    it("leaves host litter out of a model bundle, and says what it left", async () => {
+        const MODEL = "3c1d0a70-0000-4000-8000-00000000000c";
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeModelBundle(projectPath, MODEL, "Hiyori.model3.json", {
+            "Hiyori.model3.json": '{"FileReferences":{"Textures":["textures/body.png"]}}',
+            "textures/body.png": "texture bytes",
+            ".DS_Store": "finder",
+            "textures/desktop.ini": "explorer",
+            "textures/body.png~": "backup",
+        });
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47334));
+
+        const keys = Object.keys(result.pack.assets.items).filter(key => key.startsWith(`${MODEL}/`)).sort();
+        expect(keys).toEqual([`${MODEL}/Hiyori.model3.json`, `${MODEL}/textures/body.png`]);
+        expect(await relativeFiles(path.join(result.appDir, "assets", MODEL)))
+            .toEqual(["Hiyori.model3.json", "textures/body.png"]);
+        const notice = result.notices.find(line => line.includes('model "Hiyori.model3.json"'));
+        expect(notice).toBeDefined();
+        for (const left of [".DS_Store", "textures/desktop.ini", "textures/body.png~"]) {
+            expect(notice).toContain(left);
+        }
+    });
+
     it("omits the puppet runtime list when the project installed none", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -1823,6 +1897,11 @@ async function listFilesRecursively(root: string): Promise<string[]> {
         }
     }
     return found;
+}
+
+/** {@link listFilesRecursively}, relative to `root`, `/`-separated and sorted. */
+async function relativeFiles(root: string): Promise<string[]> {
+    return (await listFilesRecursively(root)).map(file => path.relative(root, file).replace(/\\/g, "/")).sort();
 }
 
 /** A real UUID v4: the story reader refuses any id that is not one, exactly as the packer does. */
