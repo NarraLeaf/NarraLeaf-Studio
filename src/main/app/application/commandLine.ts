@@ -156,6 +156,22 @@ export interface CheckCommandLineOptions {
      * written whole on every run) and the sealed path is a question a job asks on purpose.
      */
     asShipped: boolean;
+    /**
+     * `--test-variant=<name>`: the build variant a game the test launches is assembled as, by the
+     * name its author gave it. Null means the release variant, `main`.
+     *
+     * Like {@link asShipped}, the line is the only thing asked: the machine's "Run as" choice is the
+     * habit of an author at that machine, so a job that relied on it would test one build on a
+     * developer's machine and another on an agent. The name is kept as typed - whether the project
+     * has a variant by it is decided against the project's own document, before any window opens.
+     */
+    variant: string | null;
+    /**
+     * `--test-dlc=<name>[,<name>]`, repeatable: the DLC installed beside that game, by name or id.
+     * Empty means none, which is what a player who bought only the game has - and, for the same
+     * reason as above, the machine's "Run with DLC" choices are never read in its place.
+     */
+    dlc: string[];
     /** `--test-report` / `--lint-report`: where to write the JSON report. */
     reportPath: string | null;
     /** `--test-user-data-dir` / `--lint-user-data-dir`: the profile this launch runs against. */
@@ -473,6 +489,58 @@ function readAsShippedFlag(
         : { value, error: null };
 }
 
+/** `--test-variant=<name>`. See {@link readEditionFlag}. */
+const CHECK_VARIANT_FLAG = "--test-variant";
+
+/** `--test-dlc=<name>[,<name>]`, repeatable. See {@link readEditionFlag}. */
+const CHECK_DLC_FLAG = "--test-dlc";
+
+type CheckEditionFlag = typeof CHECK_VARIANT_FLAG | typeof CHECK_DLC_FLAG;
+
+/**
+ * Read one argument as `--test-variant` or `--test-dlc`, or answer null when it is neither.
+ *
+ * **Only the `--flag=value` form.** Every other check flag also takes its value as the next
+ * argument, and these two deliberately do not: their values are names an author typed, and on
+ * Windows a separate argument shaped like `scheme:rest` - a variant called "Demo: Next Fest" -
+ * kills the launch before Studio runs a line, with no output and no report. A path or a test id can
+ * be told apart from that shape; a free-text name cannot. So the separated form is refused with the
+ * spelling that works, and the next argument is left where it is rather than taken as the value.
+ *
+ * A DLC list is split on commas, so a DLC whose name has one is named by its id, which cannot.
+ */
+function readEditionFlag(
+    arg: string,
+    next: string | undefined,
+): { flag: CheckEditionFlag; values: string[]; error: string | null } | null {
+    const flag = arg === CHECK_VARIANT_FLAG || arg.startsWith(`${CHECK_VARIANT_FLAG}=`)
+        ? CHECK_VARIANT_FLAG
+        : arg === CHECK_DLC_FLAG || arg.startsWith(`${CHECK_DLC_FLAG}=`)
+            ? CHECK_DLC_FLAG
+            : null;
+    if (!flag) {
+        return null;
+    }
+    const wanted = flag === CHECK_VARIANT_FLAG ? "<name>" : "<name>[,<name>]";
+    if (arg === flag) {
+        const separate = takeValue(next);
+        return {
+            flag,
+            values: [],
+            error: separate === null
+                ? `Missing ${flag} value: write ${flag}=${wanted}`
+                : `${flag} takes its value after an equals sign: write ${flag}=${separate.includes(" ") ? `"${separate}"` : separate}`,
+        };
+    }
+    const raw = arg.slice(flag.length + 1);
+    const values = flag === CHECK_DLC_FLAG
+        ? raw.split(",").map(value => value.trim()).filter(Boolean)
+        : [raw.trim()].filter(Boolean);
+    return values.length === 0
+        ? { flag, values, error: `Missing ${flag} value: write ${flag}=${wanted}` }
+        : { flag, values, error: null };
+}
+
 /** What each check flag says it wants, for the "missing value" message. */
 const CHECK_VALUE_DESCRIPTIONS: Record<CheckValueFlag | typeof CHECK_PARAMETER_FLAG, string> = {
     "--test": "a project path or a recent project's name",
@@ -521,16 +589,17 @@ function readCheckFlag(
 /**
  * Whether anything but `--test`/`--lint` themselves asked for something about a check.
  *
- * `asShippedNamed` rather than `check.asShipped`: `--test-as-shipped=false` names the flag as much
- * as the bare form does, and leaves the field exactly as it would be had the flag never appeared.
+ * `testFlagNamed` rather than the fields those flags fill: `--test-as-shipped=false` names the flag
+ * as much as the bare form does, and a refused `--test-variant Demo` names one as much as a
+ * well-formed one - and both leave their field exactly as it would be had the flag never appeared.
  */
-function hasCheckCompanionFlag(check: CheckCommandLineOptions, asShippedNamed: boolean): boolean {
+function hasCheckCompanionFlag(check: CheckCommandLineOptions, testFlagNamed: boolean): boolean {
     return check.testId !== null
         || check.list
         || check.parameters.length > 0
         || check.reportPath !== null
         || check.userDataDir !== null
-        || asShippedNamed;
+        || testFlagNamed;
 }
 
 /**
@@ -612,6 +681,8 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         list: false,
         parameters: [],
         asShipped: false,
+        variant: null,
+        dlc: [],
         reportPath: null,
         userDataDir: null,
         error: null,
@@ -619,8 +690,11 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const checkFlagErrors = new Map<string, string>();
     /** Both checks named on one line: kept so the refusal survives whichever was read last. */
     let bothChecksNamed = false;
-    /** `--test-as-shipped` appeared in either form. See {@link hasCheckCompanionFlag}. */
-    let asShippedNamed = false;
+    /**
+     * `--test-as-shipped`, `--test-variant` or `--test-dlc` appeared, in any form, well-formed or
+     * not. See {@link hasCheckCompanionFlag}.
+     */
+    let testFlagNamed = false;
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -689,7 +763,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         // check nothing asked for, refused below with the others.
         const asShippedFlag = readAsShippedFlag(arg, argv[i + 1]);
         if (asShippedFlag) {
-            asShippedNamed = true;
+            testFlagNamed = true;
             if (check.kind === "lint") {
                 bothChecksNamed = true;
             }
@@ -699,6 +773,28 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             } else {
                 check.asShipped = asShippedFlag.value;
                 checkFlagErrors.delete(CHECK_AS_SHIPPED_FLAG);
+            }
+            continue;
+        }
+
+        // Test flags as well, for the reason `--test-as-shipped` is: which build a test's game is
+        // means nothing to a sweep. The variant is the last one given, as a value flag's is; DLC
+        // accumulate, because two `--test-dlc` flags name two DLC.
+        const editionFlag = readEditionFlag(arg, argv[i + 1]);
+        if (editionFlag) {
+            testFlagNamed = true;
+            if (check.kind === "lint") {
+                bothChecksNamed = true;
+            }
+            check.kind ??= "test";
+            if (editionFlag.error !== null) {
+                checkFlagErrors.set(editionFlag.flag, editionFlag.error);
+            } else if (editionFlag.flag === CHECK_VARIANT_FLAG) {
+                check.variant = editionFlag.values[0];
+                checkFlagErrors.delete(editionFlag.flag);
+            } else {
+                check.dlc.push(...editionFlag.values.filter(value => !check.dlc.includes(value)));
+                checkFlagErrors.delete(editionFlag.flag);
             }
             continue;
         }
@@ -860,15 +956,19 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     }
 
     // The same three refusals for the checks, in the same order and for the same reasons.
-    const orderedCheckFlags: Array<CheckValueFlag | typeof CHECK_PARAMETER_FLAG | typeof CHECK_AS_SHIPPED_FLAG> = [
+    const orderedCheckFlags: Array<
+        CheckValueFlag | typeof CHECK_PARAMETER_FLAG | typeof CHECK_AS_SHIPPED_FLAG | CheckEditionFlag
+    > = [
         ...(Object.keys(CHECK_VALUE_FLAGS) as CheckValueFlag[]),
         CHECK_PARAMETER_FLAG,
         CHECK_AS_SHIPPED_FLAG,
+        CHECK_VARIANT_FLAG,
+        CHECK_DLC_FLAG,
     ];
     check.error = orderedCheckFlags
         .map(flag => checkFlagErrors.get(flag))
         .find((message): message is string => message !== undefined) ?? null;
-    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check, asShippedNamed))) {
+    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check, testFlagNamed))) {
         check.requested = true;
         check.error ??= "Missing --test or --lint: the check flags name a check nothing asked for";
     }
