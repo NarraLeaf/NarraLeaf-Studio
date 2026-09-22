@@ -126,6 +126,23 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         setPlugins(result.data.plugins);
     }, [t]);
 
+    /**
+     * Start the plugin in whatever window this surface has, and keep the list honest about it.
+     *
+     * A plugin that throws while starting has that failure written to its record by the loader, so
+     * the copy read a moment earlier - before the attempt - now describes a plugin that is not
+     * running as though it were. Re-reading on the way out is what stops a surface offering the
+     * actions of a record the main process has since stopped serving.
+     */
+    const activateAndReport = useCallback(async (pluginId: string) => {
+        try {
+            await hooksRef.current?.afterActivate?.(pluginId);
+        } catch (error) {
+            await refresh();
+            throw error;
+        }
+    }, [refresh]);
+
     const refreshRegistry = useCallback(async () => {
         setRegistryLoading(true);
         setRegistryError(null);
@@ -201,12 +218,12 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         }
         await refresh();
         if (result.data.plugin.status === "enabled") {
-            await hooksRef.current?.afterActivate?.(result.data.plugin.pluginId);
+            await activateAndReport(result.data.plugin.pluginId);
         }
         hooksRef.current?.onLocalInstalled?.(result.data.plugin.pluginId);
         hooksRef.current?.onChanged?.(result.data.plugin.pluginId);
         setTask({ status: "success", message: t("plugins.task.installed") });
-    }), [refresh, runTask, t]);
+    }), [activateAndReport, refresh, runTask, t]);
 
     const applyApprove = useCallback(async (pluginId: string): Promise<boolean> => {
         const result = await getInterface().plugins.approve(pluginId);
@@ -215,11 +232,11 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         }
         await refresh();
         if (result.data.approved) {
-            await hooksRef.current?.afterActivate?.(pluginId);
+            await activateAndReport(pluginId);
             hooksRef.current?.onChanged?.(pluginId);
         }
         return result.data.approved;
-    }, [refresh, t]);
+    }, [activateAndReport, refresh, t]);
 
     const approve = useCallback((pluginId: string) => void runTask(t("plugins.task.authorizing"), async () => {
         const approved = await applyApprove(pluginId);
@@ -246,10 +263,10 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         }
         await refresh();
         if (enabled) {
-            await hooksRef.current?.afterActivate?.(pluginId);
+            await activateAndReport(pluginId);
         }
         hooksRef.current?.onChanged?.(pluginId);
-    }, [refresh, t]);
+    }, [activateAndReport, refresh, t]);
 
     const setEnabled = useCallback((pluginId: string, enabled: boolean) => void runTask(
         enabled ? t("plugins.task.enabling") : t("plugins.task.disabling"),
@@ -295,7 +312,7 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         await refresh();
         if (result.data.plugin.status !== "needsAuthorization") {
             if (result.data.plugin.status === "enabled") {
-                await hooksRef.current?.afterActivate?.(pluginId);
+                await activateAndReport(pluginId);
             }
             hooksRef.current?.onChanged?.(pluginId);
             return "installed";
@@ -306,11 +323,11 @@ export function usePluginCatalog(hooks?: PluginCatalogHooks): PluginCatalog {
         }
         await refresh();
         if (approval.data.approved) {
-            await hooksRef.current?.afterActivate?.(pluginId);
+            await activateAndReport(pluginId);
         }
         hooksRef.current?.onChanged?.(pluginId);
         return approval.data.approved ? "installed" : "notAuthorized";
-    }, [refresh, t]);
+    }, [activateAndReport, refresh, t]);
 
     const installFromStore = useCallback((pluginId: string) => void runTask(t("plugins.task.downloading"), async () => {
         const outcome = await applyInstallFromStore(pluginId);

@@ -151,17 +151,13 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
      * switch meaning what it says: the author who wanted the plugin off would otherwise have to
      * press Disable first, and stopping there leaves a plugin off because they appeared to say so.
      *
-     * The list is re-read whichever way it went. A second failure writes the new reason back to the
-     * record, and a panel still holding the copy taken before the attempt would show the plugin as
-     * running and offer a reload the loader would refuse.
+     * A second failure is reported as one: the catalog re-reads the list whichever way the start
+     * went, so the plugin goes back to reading as failed rather than as the record described it a
+     * moment before the attempt.
      */
     const retry = useCallback((pluginId: string) => {
         void catalog.runTask(t("plugins.task.starting"), async () => {
-            try {
-                await catalog.apply.setEnabled(pluginId, true);
-            } finally {
-                await catalog.refresh();
-            }
+            await catalog.apply.setEnabled(pluginId, true);
             catalog.setTask({ status: "success", message: t("plugins.task.started") });
         });
     }, [catalog, t]);
