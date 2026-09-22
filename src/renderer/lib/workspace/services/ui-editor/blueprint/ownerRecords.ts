@@ -1,5 +1,5 @@
-import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { decodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
+import type { Blueprint, BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { decodeBlueprintOwnerKey, encodeBlueprintOwnerKey } from "@shared/blueprint/ownerKey";
 
 /** The blueprint this slot runs, or undefined when the slot has none. */
 export function getSlotBlueprintId(doc: BlueprintDocument, ownerKey: string): string | undefined {
@@ -46,4 +46,36 @@ export function setPrivateOwnerBlueprint(doc: BlueprintDocument, ownerKey: strin
         delete doc.blueprints[displaced];
     }
     doc.ownerRecords[ownerKey] = { blueprintId };
+}
+
+/**
+ * Drop the empty blueprints a document was saved with after its slot had moved on to another one.
+ *
+ * Until {@link setPrivateOwnerBlueprint} gave the displaced blueprint up, every paste, duplicate and
+ * component write left one behind - the empty blueprint the lifecycle sweep had just given the new
+ * element - and the next save wrote it out. Such a document fails validation, and on load that is a
+ * project that does not open. Nothing can reach these blueprints (a slot names one, and it names
+ * another), so dropping them changes nothing that runs. Only empty ones go: a displaced blueprint
+ * that holds anything is left where it is, for the load to report as it always has.
+ */
+export function dropDisplacedEmptyBlueprints(doc: BlueprintDocument): string[] {
+    const dropped: string[] = [];
+    for (const blueprint of Object.values(doc.blueprints)) {
+        const slot = doc.ownerRecords[encodeBlueprintOwnerKey(blueprint.owner)];
+        if (slot && slot.blueprintId !== blueprint.id && isEmptyBlueprint(blueprint)) {
+            delete doc.blueprints[blueprint.id];
+            dropped.push(blueprint.id);
+        }
+    }
+    return dropped;
+}
+
+function isEmptyBlueprint(blueprint: Blueprint): boolean {
+    const isEmpty = (table: object | undefined) => Object.keys(table ?? {}).length === 0;
+    return isEmpty(blueprint.graphs?.events)
+        && isEmpty(blueprint.graphs?.functions)
+        && isEmpty(blueprint.bindings)
+        && isEmpty(blueprint.members?.variables)
+        && isEmpty(blueprint.members?.fields)
+        && isEmpty(blueprint.members?.functions);
 }
