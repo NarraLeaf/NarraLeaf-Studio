@@ -62,6 +62,7 @@ import {
     writeSupportBinary,
     type CodecPlacement,
 } from "../../../../../buildWorker/codecBinary";
+import { buildFatMachO, machOKind, thinMachOArch, type MachOArch } from "../../../../../buildWorker/fatMachO";
 import { ensureZigToolchain } from "../../../../../buildWorker/zigToolchain";
 import { compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "../../../../../buildWorker/mainProcessBytecode";
 import {
@@ -1366,10 +1367,7 @@ async function copyRuntimeFiles(
  * from the unpacked tree both, with one line in the packager log and no error. `systemCursor.ts`
  * knows to look here when the bare specifier does not resolve.
  *
- * Only the prebuild for the target is copied. The package carries eighteen of them and weighs 24 MB;
- * a game needs exactly one, and shipping the rest would put an ARM Linux binary inside every Windows
- * installer. A target with no prebuild copies nothing and the game degrades to "this host cannot
- * move the cursor", which is honest and is what the build console already warned about.
+ * Which prebuilds go into it, and in what form, is set out at copyKoffiPackage.
  */
 const KOFFI_PACKAGE_FILES = ["package.json", "index.js", "indirect.js"] as const;
 /** Kept in step with `SHIPPED_KOFFI_DIRECTORY` in `@shared/utils/systemCursor`. */
@@ -1386,7 +1384,8 @@ const SHIPPED_KOFFI_DIR_NAME = "koffi";
  * unmovable, on all three platforms, with nothing anywhere saying why. Hence a table and a test
  * rather than string surgery.
  *
- * A macOS universal build needs both slices, which is why this answers a list.
+ * A macOS universal build needs both directories, which is why this answers a list - and each of
+ * them gets one universal image made of both prebuilds; see copyKoffiPackage.
  */
 const KOFFI_PLATFORM_DIRECTORIES: Readonly<Record<string, string>> = {
     windows: "win32",
@@ -1423,13 +1422,22 @@ export function koffiPrebuildDirectories(platformKey: string | undefined): strin
  * the way `bindings.js`/`vendor.js` ship for the addon.
  *
  * Only the prebuilds for the target are copied. The package carries eighteen of them and weighs
- * 24 MB; a game needs one (two for a universal macOS build), and shipping the rest would put an ARM
- * Linux binary inside every Windows installer.
+ * 24 MB; a game needs one, and shipping the rest would put an ARM Linux binary inside every Windows
+ * installer.
+ *
+ * A universal macOS build is the exception, and it gets one universal image rather than the two
+ * prebuilds. koffi loads `darwin_<process.arch>`, so the package needs both directories; but the
+ * package is packed once per architecture and merged afterwards, and a thin image that is the same
+ * in both halves is one the merge refuses, since it cannot be right for both machines. The two
+ * prebuilds made into one universal image, written into each directory, are already universal in
+ * both halves: the merge leaves them alone, and whichever directory koffi opens, the loader picks
+ * the slice for the machine it is on. The cost is the image twice over, about 3 MB.
  *
  * A target koffi has no prebuild for is not an error - the game degrades to "this host cannot move
  * the cursor", which the build console already warned about for non-desktop targets. It does say so
  * on the compile log, because the previous version of this said nothing and that is how it shipped
- * broken.
+ * broken. A universal build missing either prebuild ships neither: half of one would be the thin
+ * image the merge refuses.
  */
 async function copyKoffiPackage(destinationDir: string, platformKey: string | undefined): Promise<void> {
     const directories = koffiPrebuildDirectories(platformKey);
@@ -1445,28 +1453,48 @@ async function copyKoffiPackage(destinationDir: string, platformKey: string | un
         console.warn("[Compile] koffi is not resolvable from this installation", error);
         return;
     }
-    const targetRoot = path.join(destinationDir, SHIPPED_KOFFI_DIR_NAME);
-    const copied: string[] = [];
+    const prebuildPath = (directory: string): string => path.join(packageRoot, "build", "koffi", directory, "koffi.node");
+    const missing: string[] = [];
     for (const directory of directories) {
-        const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
         try {
-            await studioArchiveFs.access(prebuild);
+            await studioArchiveFs.access(prebuildPath(directory));
         } catch {
-            continue;
+            missing.push(directory);
         }
-        await fs.mkdir(path.join(targetRoot, "build", "koffi", directory), { recursive: true });
-        await studioArchiveFs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
-        copied.push(directory);
     }
-    if (copied.length === 0) {
-        console.warn(
-            `[Compile] koffi ships no prebuild for ${directories.join(", ")}; the game cannot move the cursor`,
-        );
+    if (missing.length > 0) {
+        console.warn(`[Compile] koffi ships no prebuild for ${missing.join(", ")}; the game cannot move the cursor`);
         return;
+    }
+    const targetRoot = path.join(destinationDir, SHIPPED_KOFFI_DIR_NAME);
+    const shippedPath = (directory: string): string => path.join(targetRoot, "build", "koffi", directory, "koffi.node");
+    if (directories.length === 1) {
+        const [directory] = directories;
+        await fs.mkdir(path.dirname(shippedPath(directory)), { recursive: true });
+        await studioArchiveFs.copyFile(prebuildPath(directory), shippedPath(directory));
+    } else {
+        const universal = buildFatMachO(await Promise.all(directories.map(async directory => ({
+            name: `koffi's ${directory} prebuild`,
+            arch: koffiDirectoryArch(directory),
+            image: await studioArchiveFs.readFile(prebuildPath(directory)),
+        }))));
+        for (const directory of directories) {
+            await fs.mkdir(path.dirname(shippedPath(directory)), { recursive: true });
+            await fs.writeFile(shippedPath(directory), universal);
+        }
     }
     for (const fileName of KOFFI_PACKAGE_FILES) {
         await copyOptionalFile(path.join(packageRoot, fileName), path.join(targetRoot, fileName));
     }
+}
+
+/** The architecture a koffi prebuild directory is for, of the two a universal build is made of. */
+function koffiDirectoryArch(directory: string): MachOArch {
+    const arch = directory.slice(directory.lastIndexOf("_") + 1);
+    if (arch !== "x64" && arch !== "arm64") {
+        throw new Error(`koffi's ${directory} prebuild cannot be part of a universal macOS image`);
+    }
+    return arch;
 }
 
 /** One of Studio's own shipped files, if this install has it. Both callers read Studio's own files. */
@@ -2467,6 +2495,9 @@ async function copyPluginSidecars(input: {
                     `${error instanceof Error ? error.message : String(error)}`,
                 );
             }
+            if (runningPlatformKeysFor(platformKey).length > 1) {
+                await assertServesEveryMachine(targetPath, `${where}: "${include}"`);
+            }
         }
         entries.push({
             id: sidecar.id,
@@ -2485,6 +2516,33 @@ async function copyPluginSidecars(input: {
         });
     }
     return entries;
+}
+
+/**
+ * Refuse machine code that runs on only one of the machines a universal package serves.
+ *
+ * A `macos-universal` target is one file set for both kinds of Mac, so its executables and
+ * libraries have to be universal images as well. A thin one would be the same thin image in both
+ * halves of the package, which the universal merge refuses only after both halves are packed, in a
+ * sentence that names neither the plugin nor the sidecar - and which could only ever have run on one
+ * kind of Mac. Anything that is not a thin Mach-O image (a universal one, a script, data) passes.
+ */
+async function assertServesEveryMachine(file: string, label: string): Promise<void> {
+    const handle = await fs.open(file, "r");
+    const head = Buffer.alloc(8);
+    try {
+        await handle.read(head, 0, head.length, 0);
+    } finally {
+        await handle.close();
+    }
+    if (machOKind(head) === "thin") {
+        const arch = thinMachOArch(head);
+        throw new Error(
+            `${label} is ${arch === "other" ? "a single-architecture" : `an ${arch}-only`} Mach-O image, and a `
+            + "macos-universal sidecar runs on both kinds of Mac: ship a universal binary for that target "
+            + "(lipo -create the x64 and arm64 builds)",
+        );
+    }
 }
 
 /**

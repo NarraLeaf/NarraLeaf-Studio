@@ -3,6 +3,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { createRequire } from "module";
 import { fileURLToPath } from "url";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +37,7 @@ import type {
 } from "@shared/types/plugins";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
 import { buildDependencySourcePath } from "../../../../../buildWorker/pluginBuildDependencies";
+import { buildFatMachO } from "../../../../../buildWorker/fatMachO";
 import {
     compileGameRuntimeArtifact,
     type GameRuntimeArtifactCompileInput,
@@ -512,6 +514,104 @@ describe("game runtime artifact compiler", () => {
             shutdownTimeoutMs: 3000,
             restart: { maxRetries: 3, backoffMs: 1000 },
         }]);
+    });
+
+    /*
+     * A universal Mac build is packed once per architecture and merged afterwards, and the merge
+     * refuses a thin image that is the same in both halves. koffi's two prebuilds are exactly that
+     * when copied as they are, which is how universal builds failed; one universal image made of
+     * both, in each directory koffi looks in, is universal in both halves and needs no exemption.
+     */
+    it("gives a universal Mac build one universal koffi image in each directory koffi looks in", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(
+            packagedCompileInput(projectPath, runtimeDistDir, ["macos-universal", "macos-arm64"]),
+        );
+
+        const koffiRoot = path.dirname(createRequire(__filename).resolve("koffi/package.json"));
+        const prebuild = (directory: string) => fs.readFile(path.join(koffiRoot, "build", "koffi", directory, "koffi.node"));
+        const staged = (platformKey: string, directory: string) => path.join(
+            result.appDir, "platform", platformKey, "koffi", "build", "koffi", directory, "koffi.node");
+
+        const forIntel = await fs.readFile(staged("macos-universal", "darwin_x64"));
+        const forAppleSilicon = await fs.readFile(staged("macos-universal", "darwin_arm64"));
+        expect(forIntel.equals(forAppleSilicon)).toBe(true);
+        expect(forIntel.readUInt32BE(0)).toBe(0xcafebabe);
+        expect(forIntel.readUInt32BE(4)).toBe(2);
+        for (const [index, directory] of ["darwin_x64", "darwin_arm64"].entries()) {
+            const offset = forIntel.readUInt32BE(8 + 20 * index + 8);
+            const size = forIntel.readUInt32BE(8 + 20 * index + 12);
+            expect(forIntel.subarray(offset, offset + size).equals(await prebuild(directory)), directory).toBe(true);
+        }
+        await expect(fs.access(path.join(result.appDir, "platform", "macos-universal", "koffi", "index.js")))
+            .resolves.toBeUndefined();
+
+        // A one-architecture package in the same build keeps koffi's own prebuild, as it is, and only that.
+        expect((await fs.readFile(staged("macos-arm64", "darwin_arm64"))).equals(await prebuild("darwin_arm64")))
+            .toBe(true);
+        await expect(fs.access(staged("macos-arm64", "darwin_x64"))).rejects.toThrow();
+    });
+
+    /*
+     * The same merge, reached through a plugin: a sidecar declared for macos-universal is copied into
+     * both halves as it is, so a thin executable there fails the build late, in a sentence that names
+     * neither plugin nor sidecar. It is refused at the copy instead, by name.
+     */
+    it("refuses a single-architecture executable in a universal Mac sidecar, and ships a universal one", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const thin = (cpuType: number) => {
+            const image = Buffer.alloc(64);
+            image.writeUInt32LE(0xfeedfacf, 0);
+            image.writeUInt32LE(cpuType, 4);
+            return image;
+        };
+        const universal = buildFatMachO([
+            { name: "x64", arch: "x64", image: thin(0x01000007) },
+            { name: "arm64", arch: "arm64", image: thin(0x0100000c) },
+        ]);
+        const sidecarTarget = { "macos-universal": { entry: "bin/start.sh", include: ["bin/start.sh", "bin/tool"] } };
+
+        const thinManifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool": thin(0x0100000c), "bin/start.sh": "#!/bin/sh" },
+            entry: "unused",
+            include: [],
+            targets: sidecarTarget,
+        });
+        await expect(compileGameRuntimeArtifact({
+            ...packagedCompileInput(projectPath, runtimeDistDir, ["macos-universal"]),
+            runtimePlugins: [pluginSource(thinManifest, pluginInstallDir)],
+        })).rejects.toThrow(
+            `Sidecar "${SIDECAR_ID}" of plugin "${SIDECAR_PLUGIN_ID}" (macos-universal): "bin/tool" is an arm64-only Mach-O image`,
+        );
+
+        await fs.rm(pluginInstallDir, { recursive: true, force: true });
+        const universalManifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool": universal, "bin/start.sh": "#!/bin/sh" },
+            entry: "unused",
+            include: [],
+            targets: sidecarTarget,
+        });
+        const result = await compileGameRuntimeArtifact({
+            ...packagedCompileInput(projectPath, runtimeDistDir, ["macos-universal"]),
+            runtimePlugins: [pluginSource(universalManifest, pluginInstallDir)],
+        });
+        const shipped = await fs.readFile(path.join(
+            result.appDir, "platform", "macos-universal", "sidecars", SIDECAR_PLUGIN_ID, SIDECAR_ID, "bin", "tool"));
+        expect(shipped.equals(universal)).toBe(true);
     });
 
     it("refuses to ship a sidecar file that does not match its declared digest", async () => {
@@ -1564,7 +1664,8 @@ function pluginSource(manifest: NormalizedPluginManifestV2, installDir: string):
  */
 async function writeSidecarPlugin(input: {
     installDir: string;
-    files: Record<string, string>;
+    /** Text, or bytes for a file whose first bytes are the point of the test. */
+    files: Record<string, string | Buffer>;
     entry: string;
     include: string[];
     sha256?: Record<string, string>;
@@ -1581,7 +1682,10 @@ async function writeSidecarPlugin(input: {
         await fs.writeFile(filePath, content, "utf-8");
     }
     const declared = input.sha256 ?? Object.fromEntries(
-        Object.entries(input.files).map(([relativePath, content]) => [relativePath, sha256OfText(content)]),
+        Object.entries(input.files).map(([relativePath, content]) => [
+            relativePath,
+            typeof content === "string" ? sha256OfText(content) : crypto.createHash("sha256").update(content).digest("hex"),
+        ]),
     );
     return {
         manifestVersion: 2,
@@ -1699,6 +1803,24 @@ function previewCompileInput(
             controlPort,
             controlToken: "token",
         },
+    };
+}
+
+/** A shipped build's compile, staging a payload per target the way the build worker asks for it. */
+function packagedCompileInput(
+    projectPath: string,
+    runtimeDistDir: string,
+    platformKeys: string[],
+): GameRuntimeArtifactCompileInput {
+    return {
+        projectPath,
+        runtimeDistDir,
+        runtimeVersion: "0.0.1-test",
+        entry: { kind: "surface", surfaceId: "surface-main" },
+        outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+        mode: "production",
+        packaging: true,
+        platformKeys,
     };
 }
 
