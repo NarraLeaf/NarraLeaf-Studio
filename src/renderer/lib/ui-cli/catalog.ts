@@ -28,6 +28,7 @@ import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { cliPluginOwnerOf, listCliPluginWidgetModules } from "./plugins";
 import { nearest } from "./text";
 
 export type WidgetPropDoc = {
@@ -57,6 +58,8 @@ export type WidgetSummary = {
     /** Stage slots the palette restricts this type to; empty means any. */
     stageSlots: string[];
     extends?: string;
+    /** The plugin a widget type comes from, when `--plugin` loaded one that contributes it. */
+    plugin?: string;
     acceptsUserChildren: boolean;
     operable: boolean;
     supportsPrivateBlueprint: boolean;
@@ -155,15 +158,18 @@ function paletteEntry(type: string): InsertPaletteConfigEntry | undefined {
     // Widened to the declared entry type: the config is `as const`, so each element is its own
     // literal type and the union has no common `placement` to read.
     const config: readonly InsertPaletteConfigEntry[] = DEFAULT_INSERT_PALETTE_CONFIG;
-    return config.find(entry => entry.type === type);
+    // A plugin's widget is not in the config; the editor lists every one in the palette's overflow
+    // menu (`listPluginInsertPaletteEntries`), on any surface.
+    return config.find(entry => entry.type === type) ?? (cliPluginOwnerOf(type) ? { type, placement: "overflow" } : undefined);
 }
 
+/** Studio's widgets, and those of any plugin this run was handed with `--plugin`. */
 export function listWidgetModules(): UIWidgetModule[] {
-    return BuiltinWidgetModules;
+    return [...BuiltinWidgetModules, ...listCliPluginWidgetModules()];
 }
 
 export function findWidgetModule(type: string): UIWidgetModule | undefined {
-    return BuiltinWidgetModules.find(module => module.type === type);
+    return listWidgetModules().find(module => module.type === type);
 }
 
 /**
@@ -207,6 +213,7 @@ export function summariseWidget(module: UIWidgetModule): WidgetSummary {
         surfaceKinds: [...(entry?.surfaceKinds ?? [])],
         stageSlots: [...(entry?.stageSlots ?? [])],
         extends: module.extends ?? getWidgetTypeParent(module.type),
+        ...(cliPluginOwnerOf(module.type) ? { plugin: cliPluginOwnerOf(module.type) } : {}),
         acceptsUserChildren: uiElementTypeAcceptsUserChildren(module.type),
         operable: logic?.operable === true,
         supportsPrivateBlueprint: logic?.supportsPrivateBlueprint === true,
@@ -324,7 +331,7 @@ export const WIDGET_STAGE_SLOTS = UI_STAGE_SLOT_IDS;
 
 /** Widget types spelled close to `type`, for a message that ends the search rather than starting one. */
 export function nearestWidgetTypes(type: string, limit = 5): string[] {
-    return nearest(type, BuiltinWidgetModules.map(module => module.type), limit);
+    return nearest(type, listWidgetModules().map(module => module.type), limit);
 }
 
 export type WidgetQuery = {
@@ -339,7 +346,7 @@ export type WidgetQuery = {
 
 export function queryWidgets(query: WidgetQuery): WidgetSummary[] {
     const words = (query.search ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return BuiltinWidgetModules.map(summariseWidget).filter(widget => {
+    return listWidgetModules().map(summariseWidget).filter(widget => {
         if (query.insertableOnly && widget.palette === "internal") {
             return false;
         }
@@ -404,6 +411,9 @@ export function formatWidgetDetail(detail: WidgetDetail): string {
     lines.push(`  palette    ${where}`);
     if (detail.extends) {
         lines.push(`  extends    ${detail.extends}`);
+    }
+    if (detail.plugin) {
+        lines.push(`  plugin     ${detail.plugin} (loaded with --plugin)`);
     }
     lines.push(
         `  children   ${

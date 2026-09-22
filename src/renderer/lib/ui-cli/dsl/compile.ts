@@ -20,6 +20,10 @@ import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/str
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
 import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import {
+    CONTRIBUTED_WIDGET_PART_SLOT_KEY,
+    getContributedWidgetPartSlots,
+} from "@shared/types/ui-editor/contributedWidgets";
+import {
     getUIStructuralChildSlot,
     uiElementTypeAcceptsChildren,
     uiElementTypeAcceptsUserChildren,
@@ -367,7 +371,13 @@ class CompileContext {
                 "ui.unknown_widget_type",
                 `No widget type "${node.type}".`,
                 node.line,
-                near.length > 0 ? `Close by: ${near.join(", ")}.` : "Run `ui widgets` for the catalogue.",
+                near.length > 0
+                    ? `Close by: ${near.join(", ")}.`
+                    : node.type.startsWith("nl.")
+                        ? "Run `ui widgets` for the catalogue."
+                        // Studio's own types are all `nl.`; anything else is a plugin's, and this tool
+                        // knows a plugin's widgets only when it is handed the plugin.
+                        : "A plugin's widget is known here when the plugin is passed with `--plugin <dir>`.",
             );
         } else if (detail) {
             this.checkPlacement(node, detail, context);
@@ -465,8 +475,9 @@ class CompileContext {
         }
         if (!this.knownTypes.has(node.type)) {
             // Already reported as unknown, and nothing here can say what it holds: a plugin's widget
-            // declares that for itself, and this tool does not load plugins. "Takes no children" on
-            // a plugin container would be a second error, and a false one.
+            // declares that for itself, and without `--plugin` this tool has not read the
+            // declaration. "Takes no children" on a plugin container would be a second error, and a
+            // false one. With the plugin loaded its type is known and the rules below read its answer.
             return;
         }
         if (!uiElementTypeAcceptsChildren(node.type)) {
@@ -485,14 +496,20 @@ class CompileContext {
         for (let i = 0; i < element.childrenIds.length; i += 1) {
             const child = pool[element.childrenIds[i]];
             if (child && getUIStructuralChildSlot(node.type, child.extra) == null) {
+                // A plugin's widget names its slots in its declaration, and every one of its parts
+                // says which it fills under one key - so the hint can be the whole answer.
+                const pluginSlots = getContributedWidgetPartSlots(node.type);
                 this.report(
                     "error",
                     "ui.not_a_part",
                     `${node.type} holds only the parts it builds for itself, and "${child.name ?? child.type}" `
-                        + "carries no slot marker.",
+                        + (pluginSlots.length > 0 ? "fills none of its part slots." : "carries no slot marker."),
                     node.children[i]?.line,
-                    `Run \`ui widget ${node.type}\` for the parts it owns and the slot each one claims; a part `
-                        + "written by hand needs the same `extra` key.",
+                    pluginSlots.length > 0
+                        ? `Its slots are ${pluginSlots.join(", ")}; a part says which it fills with `
+                            + `\`extra.${CONTRIBUTED_WIDGET_PART_SLOT_KEY} = <slot>\`. Anything else goes beside it, not in it.`
+                        : `Run \`ui widget ${node.type}\` for the parts it owns and the slot each one claims; a part `
+                            + "written by hand needs the same `extra` key.",
                 );
             }
         }
