@@ -61,6 +61,20 @@ describe("lintLocationLabel", () => {
         expect(lintLocationLabel({ kind: "blueprint", blueprintId: "b1" }, "")).toBe("b1");
         expect(lintLocationLabel({ kind: "character", characterId: "c1", characterName: "" }, "")).toBe("c1");
     });
+
+    it("names a widget inside a component by the component's name and its own, and never by an id", () => {
+        const location: LintLocation = {
+            kind: "component",
+            componentId: "3f0c2d9e-8b1a-4c55-9d2e-7a6b5c4d3e2f",
+            componentName: "Card",
+            elementId: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
+            elementName: "Window",
+        };
+
+        expect(lintLocationLabel(location, "My Game")).toBe("Card / Window");
+        expect(lintLocationLabel({ ...location, elementName: undefined }, "My Game")).toBe("Card");
+        expect(lintLocationLabel({ ...location, componentName: "", elementName: undefined }, "My Game")).toBe("");
+    });
 });
 
 describe("lintLocationKey", () => {
@@ -81,6 +95,8 @@ describe("lintLocationKey", () => {
             lintLocationKey(storyLocation("x")),
             lintLocationKey({ kind: "blueprint", blueprintId: "x" }),
             lintLocationKey({ kind: "character", characterId: "x", characterName: "x" }),
+            lintLocationKey({ kind: "surface", surfaceId: "x", surfaceName: "x" }),
+            lintLocationKey({ kind: "component", componentId: "x", componentName: "x" }),
         ];
         expect(new Set(keys).size).toBe(keys.length);
     });

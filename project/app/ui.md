@@ -286,6 +286,25 @@ all - the shipped skeleton had exactly this on two texts of its Confirm page, an
 nothing caught it because every check asked the blueprint who owned it rather
 than asking the element what it pointed at.
 
+Two more are errors for the same reason Studio's project lint makes them errors
+(`ui/frame-target-missing` and `ui/frame-loop`, answered by the same shared
+model): a Page widget that does not draw the page it names.
+
+- **`ui.frame_target_missing`** - the page is not in the document.
+- **`ui.frame_loop`** - the page leads back to the widget, so drawing it would
+  draw the widget again inside itself and the game shows "Page loop blocked"
+  instead. A page leads back when it is the widget's own page, when it places
+  the component the widget is in, or when a Page widget or a component placed on
+  it does, at any depth. So a card whose Page widget names the page the card is
+  placed on is refused, and so is the same card in a list row or inside another
+  component.
+
+A Page widget inside a component definition is checked where it is written, and
+named by the component (`"Card / Window" in component "Card"`). Checking a file
+reports these for every block the file writes, and for any the file would create
+elsewhere - placing a card on a page is written on the page, while the widget
+that then leads back sits in the card.
+
 Three findings are notes rather than refusals, deliberately:
 
 - **`ui.unknown_prop`** - see the note on the prop table above. Reported once per

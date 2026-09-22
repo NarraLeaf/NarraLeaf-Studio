@@ -2,7 +2,7 @@ import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
 } from "@shared/types/blueprint/graph";
-import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import type { UIComponentDefinition, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import {
     isOperableWidgetType,
@@ -10,7 +10,13 @@ import {
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
 import { uiTextUnitId } from "../../ui-editor/runtime/localization/GameLocalizationContext";
-import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import {
+    buildUIFrameGraph,
+    getUIFrameWidgetProps,
+    listUIFrameSites,
+    UI_FRAME_ELEMENT_TYPE,
+    type UIFrameSite,
+} from "@shared/types/ui-editor/frame";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
@@ -39,11 +45,14 @@ import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
  *  - **A null document is not an empty one.** `ctx.uiDocument` / `ctx.blueprintDocument` are `null`
  *    when the service could not be read, and a rule that treated that as "the project has no
  *    graphs" would report every page in the project as unreachable off one failed read.
- *  - **Only what a surface holds is swept.** A component *definition* is not a page: its elements
- *    have no surface to file a finding under, and one definition placed on four pages would report
- *    the same defect from a location the report cannot navigate to. Component instances are skipped
- *    for the mirror-image reason - their wiring lives in the definition, where this sweep is not
- *    looking, so judging them would be judging evidence it does not have.
+ *  - **Only what a surface holds is swept - except by the Page widget rules.** A component
+ *    *definition* is not a page, and one definition placed on four pages would report the same
+ *    defect four times from places the author did not write it. Component instances are skipped for
+ *    the mirror-image reason - their wiring lives in the definition, where this sweep is not
+ *    looking, so judging them would be judging evidence it does not have. The Page widget rules
+ *    sweep definitions too, and file what they find under the definition, once
+ *    (`componentLocation`): a Page widget in a card draws a page wherever the card is placed, and a
+ *    card's Page widget naming the page the card sits on is exactly the loop those rules exist for.
  *  - **Runtime semantics decide what counts as wired, not the inspector.** A click travels: an
  *    element with no listener hands the event to its parent (`isPointerPositionElementEvent`), a
  *    list row's clicks belong to the list, and an `On Element Click` head anywhere in the project
@@ -86,6 +95,39 @@ export function surfaceLocation(surface: UISurface, element?: UIElement): LintLo
 
 export function surfaceTarget(surface: UISurface): SearchJumpTarget {
     return { kind: "uiSurface", surfaceId: surface.id };
+}
+
+/** A widget inside a component definition, filed under the definition by its name. */
+function componentLocation(component: UIComponentDefinition, element?: UIElement): LintLocation {
+    const name = element?.name?.trim();
+    return {
+        kind: "component",
+        componentId: component.id,
+        componentName: component.name.trim(),
+        ...(element ? { elementId: element.id } : {}),
+        ...(name ? { elementName: name } : {}),
+    };
+}
+
+function componentTarget(component: UIComponentDefinition): SearchJumpTarget {
+    return { kind: "uiComponent", componentId: component.id };
+}
+
+/** Where a Page widget's finding is filed and what opening it opens, or null for a host that is gone. */
+function frameSiteLocation(
+    document: UIDocument,
+    site: UIFrameSite,
+): { location: LintLocation; target: SearchJumpTarget } | null {
+    if (site.host.kind === "surface") {
+        const surfaceId = site.host.surfaceId;
+        const surface = document.surfaces.find(candidate => candidate.id === surfaceId);
+        return surface ? { location: surfaceLocation(surface, site.element), target: surfaceTarget(surface) } : null;
+    }
+    const componentId = site.host.componentId;
+    const component = (document.components ?? []).find(candidate => candidate.id === componentId);
+    return component
+        ? { location: componentLocation(component, site.element), target: componentTarget(component) }
+        : null;
 }
 
 /**
@@ -656,6 +698,10 @@ function runComponentMissing(ctx: LintContext): LintFinding[] {
  *
  * A frame with no target at all is a frame the author has not finished placing, not a broken one -
  * it is skipped, so a page under construction is never reported.
+ *
+ * A Page widget inside a component definition is swept too, and reported once under the definition:
+ * it draws the page it names wherever the component is placed, so a missing one is a hole in every
+ * page that places it.
  */
 function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
     const document = ctx.uiDocument;
@@ -664,19 +710,66 @@ function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
     }
     const known = new Set((document.surfaces ?? []).map(surface => surface.id));
     const findings: LintFinding[] = [];
-    for (const site of listSurfaceElements(document)) {
-        if (site.element.type !== UI_FRAME_ELEMENT_TYPE) {
-            continue;
-        }
+    for (const site of listUIFrameSites(document)) {
         const target = getUIFrameWidgetProps(site.element).targetSurfaceId;
         if (!target || known.has(target)) {
+            continue;
+        }
+        const filed = frameSiteLocation(document, site);
+        if (!filed) {
             continue;
         }
         findings.push({
             ruleId: "ui/frame-target-missing",
             messageKey: "lint.rule.uiFrameTargetMissing.message",
-            location: surfaceLocation(site.surface, site.element),
-            target: surfaceTarget(site.surface),
+            ...filed,
+        });
+    }
+    return findings;
+}
+
+/**
+ * A Page widget embedding a page that leads back to it.
+ *
+ * Drawing that page would draw the widget again inside it, without end; what the game draws instead
+ * is a "Page loop blocked" placeholder where the page was meant to be. "Leads back" counts every way
+ * one tree draws another: a Page widget naming a page, and a component placed on the way - so a card
+ * whose Page widget names the page the card is placed on is caught, and so is the same card placed in
+ * a list row, or inside another component.
+ *
+ * Every widget on a loop is reported, each where it is, rather than one per loop: which of them the
+ * game blocks depends on which page the player opens first, and any one of them is where the loop can
+ * be broken. A widget in a component definition is reported once under the definition, however many
+ * times the component is placed.
+ *
+ * The inspector's page picker does not let one be picked, so this is what a document reaches by
+ * other routes - a paste, a script, a page restructured under a widget that already named it, or a
+ * project from before the picker could see through components.
+ */
+function runFrameLoop(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const graph = buildUIFrameGraph(document);
+    const findings: LintFinding[] = [];
+    for (const site of listUIFrameSites(document)) {
+        const reason = graph.targetInvalidReason({
+            host: site.host,
+            frameElementId: site.element.id,
+            targetSurfaceId: getUIFrameWidgetProps(site.element).targetSurfaceId,
+        });
+        if (reason !== "self" && reason !== "cycle") {
+            continue;
+        }
+        const filed = frameSiteLocation(document, site);
+        if (!filed) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/frame-loop",
+            messageKey: "lint.rule.uiFrameLoop.message",
+            ...filed,
         });
     }
     return findings;
@@ -884,6 +977,15 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "error",
         slug: "uiFrameTargetMissing",
         run: ctx => runFrameTargetMissing(ctx),
+    },
+    {
+        id: "ui/frame-loop",
+        category: "ui",
+        // An error, like the missing page beside it: the game draws a "Page loop blocked" placeholder
+        // where the author placed a page, which is the game diverging from the page they built.
+        defaultSeverity: "error",
+        slug: "uiFrameLoop",
+        run: ctx => runFrameLoop(ctx),
     },
     {
         id: "ui/list-item-field-missing",
