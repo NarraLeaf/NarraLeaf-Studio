@@ -498,6 +498,10 @@ export const workspace = {
         projectTakenOverTitle: "该项目现已在另一个 NarraLeaf Studio 中打开",
         projectTakenOverHere: "本机自 {time} 起打开，此窗口中的更改不再保存，关闭后可重试",
         projectTakenOverElsewhere: "{host} 自 {time} 起打开，此窗口中的更改不再保存，在该设备上关闭后可重试",
+        // 同样被接管，但发现时对方已经关闭了该项目。时间是对方打开的时刻。
+        projectDisplacedTitle: "该项目曾在另一个 NarraLeaf Studio 中打开",
+        projectDisplacedHere: "本机于 {time} 打开，此窗口中的更改不再保存，重试可重新打开该项目",
+        projectDisplacedElsewhere: "{host} 于 {time} 打开，此窗口中的更改不再保存，重试可重新打开该项目",
         openLauncher: "打开启动器",
         panelRenderError: "此面板渲染时出错",
         mainEditorRegion: "主编辑器",
@@ -819,6 +823,12 @@ export const workspace = {
                 unplayableContainer: "NarraLeaf 无法打开 {container} 文件；请转换文件后从本地导入",
                 unplayableFormat: "NarraLeaf 无法打开该文件的格式；请转换文件后从本地导入",
                 unplayableNoStreams: "文件中没有 NarraLeaf 可播放的声音或画面",
+                // 登录页、同意页，或以成功状态返回的错误页。
+                webPage: "该地址返回的是网页，而不是文件",
+                // 文本或文档，或与导入分类中任何格式都不符的字节。
+                unrecognizedImage: "该地址返回的内容不是 NarraLeaf 可识别的图片格式",
+                unrecognizedMedia: "该地址返回的内容不是 NarraLeaf 可识别的音频或视频格式",
+                unrecognizedFont: "该地址返回的内容不是 NarraLeaf 可识别的字体格式",
             },
             // 翻译文件或录音本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
             // JSON 数组的项、PO 文件的行。

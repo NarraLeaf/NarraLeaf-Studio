@@ -10,11 +10,14 @@ import {
     type CommandLineCheckReport,
     type CommandLineTestListing,
 } from "@shared/types/commandLineCheck";
-import type {
-    CommandLineRunEvent,
-    CommandLineRunJob,
-    CommandLineRunLogLine,
-    CommandLineTestEdition,
+import {
+    commandLinePluginFlag,
+    type CommandLineRunEvent,
+    type CommandLineRunJob,
+    type CommandLineRunLogLine,
+    type CommandLineRunPlugin,
+    type CommandLineRunTask,
+    type CommandLineTestEdition,
 } from "@shared/types/commandLineRun";
 import type { ProjectAppTag } from "@shared/types/appTag";
 import type { ProjectDlc } from "@shared/types/dlc";
@@ -25,6 +28,7 @@ import { resolveStartupProject } from "./startupProject";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
 import { readProjectDlcFromDir } from "./utils/dlcFile";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
+import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
 import {
     defaultTestEdition,
     describeTestEdition,
@@ -88,6 +92,14 @@ import {
  * project does not have is a mistyped line, and it should cost a second rather than a compile. What
  * travels on the job is the resolved build, and a line that names neither runs the release variant
  * with no DLC on every machine. See `utils/testEdition.ts`.
+ *
+ * ## Plugins the profile does not run
+ *
+ * The workspace loads the plugins the profile has switched on, as the editor does, and a project
+ * that declares one it cannot have ends the run with exit 4. `--test-plugin` / `--lint-plugin` switch
+ * one on for this run only - found by name in the profile's list here, before the workspace opens,
+ * and held in memory by the plugin manager so nothing is written to the profile. See
+ * `utils/commandLinePlugins.ts`.
  */
 
 /**
@@ -109,6 +121,8 @@ export class CommandLineCheckRun {
     private check: "test" | "lint" = "lint";
     /** What the workspace was opened to do, once the line has been read far enough to say. */
     private job: CommandLineRunJob | null = null;
+    /** The plugins the line switched on for this run, once they were found. For the report. */
+    private plugins: CommandLineRunPlugin[] = [];
     private finished = false;
 
     constructor(
@@ -166,17 +180,17 @@ export class CommandLineCheckRun {
         this.projectPath = resolution.projectPath;
         this.projectName = (await readProjectConfigFromDir(resolution.projectPath).catch(() => null))?.name;
 
-        let job: CommandLineRunJob;
+        let task: CommandLineRunTask;
         if (options.kind === "lint") {
-            job = { kind: "lint" };
+            task = { kind: "lint" };
         } else if (options.list) {
-            job = { kind: "test-list" };
+            task = { kind: "test-list" };
         } else {
             const edition = await this.resolveEdition(options);
             if (!edition.ok) {
                 return this.finish(edition.outcome, edition.reason);
             }
-            job = {
+            task = {
                 kind: "test",
                 testId: options.testId!,
                 parameters: parameters.values,
@@ -184,6 +198,25 @@ export class CommandLineCheckRun {
                 edition: edition.edition,
             };
         }
+
+        // After everything the line could have got wrong, so a mistyped flag is still exit 2 on a
+        // line that also names a plugin this profile lacks - and before the workspace opens, which is
+        // where the plugins it loads are decided.
+        const plugins = await enableCommandLinePlugins(
+            this.app.pluginManager,
+            options.plugins,
+            commandLinePluginFlag(options.kind),
+        );
+        if (!plugins.ok) {
+            return this.finish("studio-failed", plugins.reason);
+        }
+        this.plugins = plugins.plugins;
+        if (plugins.plugins.some(plugin => plugin.enabledForRun)) {
+            // What switching a plugin on in the plugin list does next, for a plugin that brings a
+            // language of its own.
+            await this.app.refreshPluginLocales();
+        }
+        const job: CommandLineRunJob = { ...task, plugins: plugins.plugins };
 
         this.emit("info", describeJob(job, this.projectName ?? path.basename(resolution.projectPath)));
         this.job = job;
@@ -347,7 +380,9 @@ export class CommandLineCheckRun {
             ? "invocation"
             : event.refusal === "unavailable"
                 ? "refused"
-                : event.test
+                : event.refusal === "environment"
+                    ? "studio-failed"
+                    : event.test
                     ? outcomeForTestStatus(event.test.status)
                     // A lint sweep that finished and did not pass is the project failing the check.
                     // Anything that produced nothing and named no refusal is Studio failing to
@@ -378,9 +413,10 @@ export class CommandLineCheckRun {
                 test.title,
                 test.available ? "" : `- unavailable: ${test.unavailableReason ?? "no reason given"}`,
             ].filter(Boolean).join("  "));
-            // A line of its own per parameter, and per accepted value under it. A `select` whose
-            // values are generated ids is exactly the case a one-line summary cannot serve: the
-            // line has to carry the id, and only the label beside it says which one to carry.
+            // A line of its own per parameter, and per accepted value under it, with the label beside
+            // it: the value is what the line carries, and the label is what says which row it is.
+            // Where a test stores generated ids, the workspace has already put each row's name in
+            // the value's place, so nothing printed here is an id.
             for (const parameter of test.parameters) {
                 this.emit("info", `    --test-parameter ${parameter.id}=<value>   ${parameter.label}`);
                 if (!parameter.options) {
@@ -436,6 +472,7 @@ export class CommandLineCheckRun {
             ...(event?.test ? { test: event.test } : {}),
             ...(event?.lint ? { lint: event.lint } : {}),
             ...(event?.tests ? { tests: event.tests } : {}),
+            plugins: this.plugins,
             error,
             log: this.log,
         };

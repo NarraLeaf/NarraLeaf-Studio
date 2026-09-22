@@ -85,6 +85,18 @@ export class PluginManager {
     /** Staged copies a swap is filling right now, so cleanup leaves them alone. */
     private readonly stagingInFlight = new Set<string>();
     private initialized: Promise<void> | null = null;
+    /**
+     * Plugins a command-line run switched on for itself (`--lint-plugin` and its siblings), and the
+     * load errors each reported during it.
+     *
+     * In memory and nowhere else, for as long as the process - which is the run - lives. A run must
+     * not change the profile it runs in: a job pointed at a developer's own profile that switched
+     * Gallery on there would leave it on in their editor, and a failure recorded against it would hold
+     * it back there until they switched it off and on. So every reader sees these as switched on,
+     * through {@link toListItem}, while the records on disk go on saying what the author chose.
+     */
+    private readonly commandLineRunPlugins = new Set<string>();
+    private readonly commandLineRunErrors = new Map<string, string>();
 
     constructor(
         private readonly userDataDir: string,
@@ -287,6 +299,29 @@ export class PluginManager {
         return this.toListItem(next);
     }
 
+    /**
+     * Switch these plugins on for the rest of this process, as a command-line run asked, without
+     * writing anything to the profile.
+     *
+     * What switching one on in the plugin list does, less the write: the plugin loads, it counts as
+     * enabled for dependency resolution and for what a build or a test's game packs, and a failure it
+     * had before is forgotten so it gets a fresh start. A plugin whose permissions this profile has
+     * never granted is refused rather than let through - a name on a command line is not consent to
+     * a third party's code, and granting one is the permission prompt's job. A built-in is granted
+     * when it is installed, whether or not it runs, so this never refuses one.
+     */
+    public async enableForCommandLineRun(pluginIds: readonly string[]): Promise<void> {
+        await this.initialize();
+        for (const pluginId of pluginIds) {
+            if (this.needsAuthorization(this.getRecord(pluginId))) {
+                throw new Error(`Plugin ${pluginId} has not been granted its permissions in this profile`);
+            }
+        }
+        for (const pluginId of pluginIds) {
+            this.commandLineRunPlugins.add(pluginId);
+        }
+    }
+
     public async approvePlugin(pluginId: string, grant: PluginPermissionGrantResult | null): Promise<PluginApproveResult> {
         await this.initialize();
         const record = this.getRecord(pluginId);
@@ -346,6 +381,20 @@ export class PluginManager {
     public async reportLoadError(pluginId: string, error: string | null): Promise<PluginListItem> {
         await this.initialize();
         const record = this.getRecord(pluginId);
+        if (this.commandLineRunPlugins.has(pluginId)) {
+            if (error === null) {
+                this.commandLineRunErrors.delete(pluginId);
+            } else {
+                this.commandLineRunErrors.set(pluginId, error);
+            }
+            return this.toListItem(record);
+        }
+        // Every load reports, and almost every one reports what the last one did: no error. Writing
+        // that back would rewrite the registry on every workspace open for nothing - and a
+        // command-line run, which must leave its profile as it found it, would not.
+        if (record.lastError === error) {
+            return this.toListItem(record);
+        }
         const next = {
             ...record,
             lastError: error,
@@ -747,7 +796,10 @@ export class PluginManager {
         this.setRecords(records);
     }
 
-    private toListItem(record: PluginInstallRecord): PluginListItem {
+    private toListItem(stored: PluginInstallRecord): PluginListItem {
+        const record = this.commandLineRunPlugins.has(stored.pluginId)
+            ? { ...stored, enabled: true, lastError: this.commandLineRunErrors.get(stored.pluginId) ?? null }
+            : stored;
         const status = record.lastError
             ? "error"
             : this.needsAuthorization(record)

@@ -4,16 +4,20 @@ import { createHash } from "crypto";
 import os from "os";
 import path from "path";
 
+import { FsRejectErrorCode } from "@shared/types/os";
 import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "@shared/types/projectSession";
 import { Fs } from "@shared/utils/fs";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 import {
     buildProjectSessionLockRecord,
+    decideHeldProjectSession,
     decideProjectSessionClaim,
     describeHolder,
+    isRecordOf,
     parseProjectSessionLockRecord,
     PROJECT_SESSION_HEARTBEAT_MS,
+    PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH,
     PROJECT_SESSION_LOCK_RELATIVE_PATH,
     serializeProjectSessionLockRecord,
     type ProjectSessionIdentity,
@@ -50,7 +54,9 @@ export interface ProjectSessionLockManagerOptions {
     /** How the manager waits. Replaceable so a test can act inside the wait instead of sitting it out. */
     sleep?: (ms: number) => Promise<void>;
     /**
-     * Called when a heartbeat finds that another Studio has taken over a project this one held.
+     * Called when a heartbeat finds that another Studio has taken over a project this one held -
+     * its claim where this one's was, or, when this one's has gone, a last claim of its own made
+     * since (`holder.released`).
      *
      * The manager has already stopped heartbeating the project and records it as held elsewhere
      * by then; what is left is the part only the app can do - telling the project's window to stop
@@ -73,8 +79,23 @@ interface HeldLock {
     /** The project path as it was resolved, for the log and for the file. */
     projectPath: string;
     lockPath: string;
+    /** Where the last claim on the project is kept - see `PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH`. */
+    lastClaimPath: string;
     record: ProjectSessionLockRecord;
+    /**
+     * What the last-claim record says as far as this session knows: its own record once it has
+     * written it, or what was there before when that write failed. See `decideHeldProjectSession`.
+     */
+    lastClaim: ProjectSessionLockRecord | null;
 }
+
+/** What is in the lock file, told apart as finely as a heartbeat needs. */
+type LockFileState =
+    | { kind: "record"; record: ProjectSessionLockRecord }
+    /** No file at all. */
+    | { kind: "absent" }
+    /** A file that does not hold a record: truncated, half-written, from something else. */
+    | { kind: "unreadable" };
 
 /**
  * The locks this process holds on projects, and the heartbeat that keeps them.
@@ -276,13 +297,29 @@ export class ProjectSessionLockManager {
      * as held elsewhere - so everything {@link heldElsewhere} guards refuses it, as for any project
      * another Studio has - and is reported through `onTakenOver`, which is how its window learns to
      * stop writing.
+     *
+     * A claim that is not there at all is either nothing - `.nlstudio/` cleared by hand, a sync
+     * client that dropped the file - or a takeover this session slept through, by a Studio that has
+     * closed the project again since. The last-claim record tells which (see
+     * `decideHeldProjectSession`): the first is claimed again and the project carries on, the second
+     * is lost exactly as a takeover seen in time would be.
      */
     public async beat(): Promise<void> {
         for (const held of [...this.held.values()]) {
             try {
-                const onDisk = await this.readRecord(held.lockPath);
-                if (onDisk !== null && !this.isOwnRecord(onDisk)) {
-                    this.loseTo(held, onDisk);
+                const lock = await this.readLockFile(held.lockPath);
+                const lastClaim = lock.kind === "record" ? null : await this.readRecord(held.lastClaimPath);
+                const state = decideHeldProjectSession(lock.kind === "record" ? lock.record : null, lastClaim, {
+                    self: this.identity,
+                    lastClaimAtOwnClaim: held.lastClaim,
+                });
+
+                if (state.kind === "taken-over") {
+                    this.loseTo(held, state.by);
+                    continue;
+                }
+                if (state.kind === "displaced") {
+                    this.loseTo(held, state.by, { released: true });
                     continue;
                 }
                 if (this.held.get(keyFor(held.projectPath)) !== held) {
@@ -292,7 +329,19 @@ export class ProjectSessionLockManager {
                     continue;
                 }
                 held.record = { ...held.record, heartbeat: new Date(this.now()).toISOString() };
-                await this.writeRecord(held.lockPath, held.record);
+                if (state.kind === "own" || lock.kind === "unreadable") {
+                    // A record that cannot be read is nobody's claim (see `decideProjectSessionClaim`)
+                    // and is written over, as it always was.
+                    await this.writeRecord(held.lockPath, held.record);
+                } else {
+                    await this.reclaim(held);
+                }
+                if (lock.kind !== "record" && this.held.get(keyFor(held.projectPath)) === held
+                    && (lastClaim === null || !this.isOwnRecord(lastClaim))) {
+                    // The last-claim record went with the lock (a cleared `.nlstudio/`), or was never
+                    // written. It is what the next missing claim will be judged by, so it is put back.
+                    held.lastClaim = await this.writeLastClaim(held.lastClaimPath, held.projectPath, held.record, lastClaim);
+                }
             } catch (error) {
                 // A missed heartbeat is not a lost project: the staleness window is many beats
                 // long, so a disk that stalled has several more attempts before anyone takes it.
@@ -302,9 +351,42 @@ export class ProjectSessionLockManager {
         this.stopHeartbeatIfIdle();
     }
 
+    /**
+     * Write this session's claim back into a lock file that has gone, when nothing says anybody
+     * else had the project meanwhile.
+     *
+     * Created exclusively, as a first claim is, rather than written: a Studio that found the file
+     * missing at the same moment is making a first claim of its own, and exactly one of the two may
+     * get the project. When that other Studio got there first, its record is what is on disk now, and
+     * this is a takeover like any other.
+     */
+    private async reclaim(held: HeldLock): Promise<void> {
+        // The directory goes too when somebody clears `.nlstudio/` out whole.
+        await fs.mkdir(path.dirname(held.lockPath), { recursive: true });
+        const created = await Fs.createFileExclusive(held.lockPath, serializeProjectSessionLockRecord(held.record));
+        if (!created.ok) {
+            throw new Error(created.error.message);
+        }
+        if (created.data) {
+            this.logger.info(
+                "[Project] The session lock on", held.projectPath,
+                "had been removed, and no other NarraLeaf Studio has opened the project since; this one claims it again.",
+            );
+            return;
+        }
+
+        const onDisk = await this.readRecord(held.lockPath);
+        if (onDisk !== null && !this.isOwnRecord(onDisk)) {
+            this.loseTo(held, onDisk);
+        }
+        // Otherwise the file that appeared is this session's own - a beat that overlapped this one -
+        // or one nobody can read, which the next beat writes over.
+    }
+
     private async claimLock(projectPath: string, key: string): Promise<ProjectSessionLockOutcome> {
         const resolved = path.resolve(projectPath);
         const lockPath = path.join(resolved, PROJECT_SESSION_LOCK_RELATIVE_PATH);
+        const lastClaimPath = path.join(resolved, PROJECT_SESSION_LAST_CLAIM_RELATIVE_PATH);
 
         try {
             await fs.mkdir(path.dirname(lockPath), { recursive: true });
@@ -364,7 +446,19 @@ export class ProjectSessionLockManager {
                 : await this.takeOver(lockPath);
 
             if (taken.outcome === "taken") {
-                this.record(key, resolved, lockPath, taken.record);
+                // Before the claim is answered, and so before the window reads or writes a single
+                // document: a Studio this one takes the project from may be asleep rather than gone,
+                // and when it wakes after this one has closed the project again, this record is the
+                // only thing left to tell it somebody was here.
+                const previous = await this.readRecord(lastClaimPath);
+                const lastClaim = await this.writeLastClaim(lastClaimPath, resolved, taken.record, previous);
+                this.record(key, {
+                    projectPath: resolved,
+                    lockPath,
+                    lastClaimPath,
+                    record: taken.record,
+                    lastClaim,
+                });
                 return { ok: true };
             }
             if (taken.outcome === "lost") {
@@ -427,31 +521,62 @@ export class ProjectSessionLockManager {
         return created;
     }
 
-    private record(key: string, projectPath: string, lockPath: string, record: ProjectSessionLockRecord): void {
-        this.held.set(key, { projectPath, lockPath, record });
+    private record(key: string, held: HeldLock): void {
+        this.held.set(key, held);
         this.startHeartbeat();
+    }
+
+    /**
+     * Record `record` as the last claim on the project, and return what the last-claim record says
+     * now as far as this session knows.
+     *
+     * A write that fails does not refuse the project - the lock is taken, and a project must not
+     * become one that cannot be opened over a file beside it - but it is reported, and the answer is
+     * then what was there before (`previous`), so that record is not mistaken later for somebody
+     * having claimed the project after this session.
+     */
+    private async writeLastClaim(
+        lastClaimPath: string,
+        projectPath: string,
+        record: ProjectSessionLockRecord,
+        previous: ProjectSessionLockRecord | null,
+    ): Promise<ProjectSessionLockRecord | null> {
+        try {
+            await this.writeRecord(lastClaimPath, record);
+            return record;
+        } catch (error) {
+            this.logger.warn("[Project] Could not record the session claim on", projectPath, error);
+            return previous;
+        }
     }
 
     /**
      * Give up a project whose claim another Studio has written over, and say so.
      *
+     * `released` when that Studio's claim is itself gone and only its last-claim record is left: it
+     * took the project and has closed it again, and the window is told so rather than that the
+     * project is open there now.
+     *
      * Once per takeover: two heartbeats can overlap on a disk slow enough to have let a takeover
      * happen at all, and both would find the same foreign record.
      */
-    private loseTo(held: HeldLock, onDisk: ProjectSessionLockRecord): void {
+    private loseTo(held: HeldLock, onDisk: ProjectSessionLockRecord, options: { released?: boolean } = {}): void {
         const key = keyFor(held.projectPath);
         if (this.held.get(key) !== held) {
             return;
         }
         this.held.delete(key);
-        const holder = describeHolder(onDisk, onDisk.hostname === this.identity.hostname);
+        const described = describeHolder(onDisk, onDisk.hostname === this.identity.hostname);
+        const holder: ProjectSessionHolder = options.released ? { ...described, released: true } : described;
         // Refused from now on, exactly as a claim that met this record would have been: the
         // project is the other Studio's, and nothing this one could start on it - Dev Mode, a
         // preview, a build - may run beside it.
         this.refused.set(key, holder);
         this.logger.warn(
             "[Project] The session lock on", held.projectPath,
-            "was taken over by another NarraLeaf Studio while this one held it; its workspace stops writing.",
+            options.released
+                ? "had been removed, and another NarraLeaf Studio has opened the project since this one took it; its workspace stops writing."
+                : "was taken over by another NarraLeaf Studio while this one held it; its workspace stops writing.",
         );
         if (!this.onTakenOver) {
             return;
@@ -464,9 +589,7 @@ export class ProjectSessionLockManager {
     }
 
     private isOwnRecord(record: ProjectSessionLockRecord): boolean {
-        return record.pid === this.identity.pid
-            && record.hostname === this.identity.hostname
-            && record.installation === this.identity.installation;
+        return isRecordOf(record, this.identity);
     }
 
     private async readRecord(lockPath: string): Promise<ProjectSessionLockRecord | null> {
@@ -475,6 +598,25 @@ export class ProjectSessionLockManager {
             return null;
         }
         return parseProjectSessionLockRecord(read.data);
+    }
+
+    /**
+     * The lock file of a project this session holds, for a heartbeat.
+     *
+     * Finer than {@link readRecord}, because a heartbeat acts differently on a file that is not there
+     * and one it cannot read, and not at all on a read that failed: a file some other program has
+     * open is still somebody's claim, and a missed heartbeat is a heartbeat missed, not a claim gone.
+     */
+    private async readLockFile(lockPath: string): Promise<LockFileState> {
+        const read = await Fs.read(lockPath);
+        if (!read.ok) {
+            if (read.error.code === FsRejectErrorCode.NOT_FOUND) {
+                return { kind: "absent" };
+            }
+            throw new Error(read.error.message);
+        }
+        const record = parseProjectSessionLockRecord(read.data);
+        return record ? { kind: "record", record } : { kind: "unreadable" };
     }
 
     private async writeRecord(lockPath: string, record: ProjectSessionLockRecord): Promise<void> {

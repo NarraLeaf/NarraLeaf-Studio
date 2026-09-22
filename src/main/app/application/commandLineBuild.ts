@@ -13,7 +13,7 @@ import {
     type CommandLineBuildReport,
     type CommandLineBuildReportExperimental,
 } from "@shared/types/commandLineBuild";
-import type { CommandLineRunEvent, CommandLineRunLogLine } from "@shared/types/commandLineRun";
+import type { CommandLineRunEvent, CommandLineRunLogLine, CommandLineRunPlugin } from "@shared/types/commandLineRun";
 import { experimentalCondition } from "@shared/types/experimental";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { BuildCommandLineOptions } from "./commandLine";
@@ -27,7 +27,9 @@ import { signingPlatformForTarget } from "./managers/build/preflight";
 import { resolveStartupProject } from "./startupProject";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
-import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
+import { findCommandLineVariant, namesReleaseVariant } from "./utils/commandLineVariant";
+import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
+import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 
 /**
  * `narraleaf-studio --build <project>`: one build, no interface, an exit code.
@@ -83,6 +85,10 @@ import { hasAppTag, type ProjectAppTag } from "@shared/types/appTag";
  * The cost is that a scratch profile has none of the machine's settings, and a build reads a few:
  * which Electron mirror to download from, where the packager's own binaries come from.
  * `--build-setting` puts those back for the run without writing them anywhere.
+ *
+ * Nor has it the plugins an author switches on by hand - Gallery and Menu Bar ship switched off - so
+ * a project that declares one ends the run with exit 4. `--build-plugin` switches one on for this run,
+ * again without writing it anywhere: see `utils/commandLinePlugins.ts`.
  *
  * ## Experimental mode
  *
@@ -154,6 +160,8 @@ export class CommandLineBuildRun {
     private finished = false;
     /** What `--build-signing` handed over, so the report can say where the signature came from. */
     private signingCredentials: CommandLineSigningCredential[] = [];
+    /** The plugins the line switched on for this run, once they were found. For the job and the report. */
+    private plugins: CommandLineRunPlugin[] = [];
     /**
      * What the report says about experimental mode.
      *
@@ -215,8 +223,14 @@ export class CommandLineBuildRun {
         this.projectPath = resolution.projectPath;
         this.projectName = (await readProjectConfigFromDir(resolution.projectPath).catch(() => null))?.name;
 
+        const variant = await this.resolveVariant(options.variant);
+        if (!variant.ok) {
+            return this.finish(variant.outcome, variant.reason);
+        }
+
         const planned = planCommandLineBuild({
             options,
+            variant: variant.variant,
             projectPath: resolution.projectPath,
             hostPlatform: currentGameBuildPlatform(),
             hostArch: process.arch,
@@ -227,11 +241,6 @@ export class CommandLineBuildRun {
         }
         this.plan = planned.plan;
 
-        const unknownVariant = await this.refuseUnknownVariant(planned.plan.variantId);
-        if (unknownVariant) {
-            return this.finish("invocation", unknownVariant);
-        }
-
         // Before the checks, because the checks read them: a credential given here is what decides
         // whether this build is signed, and a mirror given here is what decides whether it can
         // download an Electron dist at all.
@@ -240,8 +249,21 @@ export class CommandLineBuildRun {
             return this.finish("invocation", overrides);
         }
 
+        // Before the checks as well: they read which plugins are on - a plugin's required build
+        // fields, what the game will pack - and a plugin this run switches on has to count.
+        const plugins = await enableCommandLinePlugins(this.app.pluginManager, options.plugins, "--build-plugin");
+        if (!plugins.ok) {
+            return this.finish("studio-failed", plugins.reason);
+        }
+        this.plugins = plugins.plugins;
+        if (plugins.plugins.some(plugin => plugin.enabledForRun)) {
+            // What switching a plugin on in the plugin list does next, for a plugin that brings a
+            // language of its own.
+            await this.app.refreshPluginLocales();
+        }
+
         this.emit("info", `building ${this.projectName ?? path.basename(resolution.projectPath)}`
-            + ` as variant "${planned.plan.variantId}"`
+            + ` as variant "${planned.plan.variantName}"`
             + ` for ${planned.plan.platform} (${planned.plan.format}${planned.plan.arch ? `, ${planned.plan.arch}` : ""})`);
         this.emit("info", `output folder: ${planned.plan.outputDir}`);
 
@@ -325,30 +347,42 @@ export class CommandLineBuildRun {
     }
 
     /**
-     * Refuse a `--build-variant` the project does not have, before anything is opened.
+     * The variant `--build-variant` names, found by name in the project's own list before anything
+     * is opened - the rule `--test-variant` follows, from the same function (see
+     * `utils/commandLineVariant.ts`).
      *
-     * The pipeline refuses it too - `resolveBuildVariant` throws rather than falling back on the
-     * release identity, which is the one way this can be wrong without anyone noticing - but it does
-     * so several minutes in, after the project has been opened and its checks have run, and it
-     * reports a build failure rather than a mistyped flag. Asked here as well, the same mistake
-     * costs a second and exits as what it is.
+     * A name the project does not have is refused here rather than left to the pipeline. The
+     * pipeline would refuse an unknown variant too - `resolveBuildVariant` throws rather than
+     * falling back on the release identity - but several minutes in, after the checks have run, and
+     * as a build failure rather than a mistyped flag. Asked here, the same mistake costs a second and
+     * exits as what it is.
      *
-     * A variant file that cannot be read is not an answer, so it is left to the pipeline: refusing on
-     * a read that failed would turn an unreadable file into "no such variant", which sends the caller
-     * looking for the wrong thing.
+     * The document is read only when the line named a variant other than `main`: the release build
+     * needs no document to be found, and must not be refused because one is broken. A document that
+     * is there and cannot be read is not the line's mistake, so it is not refused as one - the run
+     * cannot say which variant was meant, and says why, as `--test-variant` does.
      */
-    private async refuseUnknownVariant(variantId: string): Promise<string | null> {
-        let appTags: ProjectAppTag[];
+    private async resolveVariant(name: string | null): Promise<
+        | { ok: true; variant: { id: string; name: string } }
+        | { ok: false; outcome: CommandLineBuildOutcome; reason: string }
+    > {
+        if (name === null || namesReleaseVariant(name)) {
+            return { ok: true, variant: { id: RELEASE_APP_TAG.id, name: RELEASE_APP_TAG.name } };
+        }
+        let stored: ProjectAppTag[];
         try {
-            appTags = await readProjectAppTagsFromDir(this.projectPath!);
-        } catch {
-            return null;
+            stored = await readProjectAppTagsFromDir(this.projectPath!);
+        } catch (error) {
+            return {
+                ok: false,
+                outcome: "studio-failed",
+                reason: `Could not read the project's build variants to find "${name.trim()}": ${describeError(error)}`,
+            };
         }
-        if (hasAppTag(appTags, variantId)) {
-            return null;
-        }
-        const known = appTags.map(tag => tag.id).join(", ");
-        return `The project has no build variant "${variantId}"${known ? `. It has: ${known}.` : "."}`;
+        const found = findCommandLineVariant(stored, name, "--build-variant");
+        return found.ok
+            ? { ok: true, variant: { id: found.variant.id, name: found.variant.name } }
+            : { ok: false, outcome: "invocation", reason: found.reason };
     }
 
     /**
@@ -416,7 +450,7 @@ export class CommandLineBuildRun {
             }
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
-                commandLineRun: { kind: "build", request: plan.request },
+                commandLineRun: { kind: "build", request: plan.request, plugins: this.plugins },
             });
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
@@ -492,6 +526,13 @@ export class CommandLineBuildRun {
             }
             return this.finish("success", null, event);
         }
+        // Before either half is asked about: a build this profile could not have made whole - a
+        // plugin the project declares that is not running here - or one that stopped on a question
+        // nobody was there to answer is a machine to look at rather than a project to change,
+        // whichever half it was in.
+        if (event.refusal === "environment") {
+            return this.finish("studio-failed", event.error ?? "Studio could not run this build here.", event);
+        }
         // Which half failed is not something the renderer can say - a check refuses without ever
         // reaching the main process, and a pipeline failure looks the same from up there. The
         // session does say it: no session for this project means nothing was ever compiled, so the
@@ -544,7 +585,7 @@ export class CommandLineBuildRun {
             ...(this.plan
                 ? {
                     request: {
-                        variant: this.plan.variantId,
+                        variant: this.plan.variantName,
                         platform: this.plan.platform,
                         formats: [this.plan.format],
                         ...(this.plan.arch ? { arch: this.plan.arch } : {}),
@@ -562,6 +603,7 @@ export class CommandLineBuildRun {
                 ...(signed ? { credentialSource: this.credentialSource() } : {}),
             },
             experimental: this.experimental,
+            plugins: this.plugins,
             findings: this.findings,
             artifacts: (event?.artifacts ?? []).map(artifactPath => {
                 const size = event?.artifactSizes?.find(entry => entry.path === artifactPath);

@@ -22,7 +22,11 @@ export interface RemoteAssetBytes {
     bytes: Uint8Array;
     etag?: string;
     lastModified?: string;
-    /** Diagnostic only; the format gate reads the bytes rather than believing this. */
+    /**
+     * What the server declared the response to be. The format gate reads the bytes, and reads this
+     * only as evidence against them: a web page or text declared here keeps the bytes out, and a media
+     * type never lets in bytes that are not that media (`remoteSnapshotRefusal` in the renderer).
+     */
     contentType?: string;
 }
 

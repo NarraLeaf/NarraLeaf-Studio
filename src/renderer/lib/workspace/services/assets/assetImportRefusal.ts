@@ -55,7 +55,21 @@ export type AssetImportRefusal =
      * Sound or video from a URL the player cannot play. A local file is offered a conversion; bytes
      * pinned to a URL cannot be converted in place, so this is a refusal with the reason in it.
      */
-    | { kind: "remoteUnplayable"; cause: RemoteUnplayableCause };
+    | { kind: "remoteUnplayable"; cause: RemoteUnplayableCause }
+    /**
+     * A URL that answered with a web page where a file was expected: a sign-in page, an error page
+     * served with a success status, a consent wall.
+     */
+    | { kind: "remotePage" }
+    /**
+     * A URL whose answer is not media of the kind the asset is: declared as text or a document, or
+     * bytes with no signature of any format the asset type takes. `expected` is the sidebar section
+     * the asset belongs to, which is how the author named what they were importing.
+     */
+    | { kind: "remoteUnrecognized"; expected: RemoteMediaSection };
+
+/** The sidebar sections whose assets are media with a signature to check, by `AssetCategory` value. */
+export type RemoteMediaSection = "image" | "media" | "font";
 
 /** Which part of a fetched media file the player cannot read. */
 export type RemoteUnplayableCause =

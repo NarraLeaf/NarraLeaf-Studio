@@ -27,7 +27,7 @@ running the command twice. One variant, one platform, one format, one exit code.
 | Flag | What it takes | Default |
 | --- | --- | --- |
 | `--build` | A project folder, or the name of a recently-opened project | — (required) |
-| `--build-variant` | A build variant id | `main`, the release variant |
+| `--build-variant` | A build variant's name | `main`, the release variant |
 | `--build-target` | `windows`, `macos`, `linux`, `web`, `android`, `ios` | the host's own platform |
 | `--build-format` | One format of that platform | the platform's first (`zip` for the desktops and the web, `apk`, `ipa`) |
 | `--build-arch` | `x64`, `arm64`, `universal`; desktop only | the host's arch for a host build, `x64` otherwise |
@@ -37,15 +37,43 @@ running the command twice. One variant, one platform, one format, one exit code.
 | `--build-user-data-dir` | A profile folder for this run | the machine's own profile |
 | `--build-signing` | A JSON file naming this run's signing credentials | the project's own selection, from the machine's vault |
 | `--build-setting` | `key=value`, repeatable; `build.*` keys only | the profile's settings |
+| `--build-plugin=` | A plugin to switch on for this run, by name or id; repeatable | the profile's own plugins; see [below](#plugins-a-scratch-profile-has-switched-off) |
 
-Every value-taking flag accepts both `--flag value` and `--flag=value`.
+Every value-taking flag accepts both `--flag value` and `--flag=value`, except `--build-plugin`, which
+takes only `--build-plugin=value`: a plugin's name is free text, like the names the
+[check flags](command-line-checks.md#the-flags) take only that way.
 
 > **On Windows, write a value containing a colon as `--flag=value`.** A launch dies before Studio
 > writes anything when a bare argument looks like `scheme:rest`: `--build-variant a:b` exits with no
-> output and no report, while `--build-variant=a:b` is read normally.
+> output and no report, while `--build-variant=a:b` is read normally. A variant called
+> `Next Fest: Demo` is `--build-variant="Next Fest: Demo"`.
 
 A companion flag given without `--build` is refused rather than ignored: the alternative is a launch
 that opens the editor while the script that wrote the line believes it is building.
+
+### Naming the variant
+
+`--build-variant` takes the variant's **name** — `main` for the release build, or whatever the
+author called theirs in **Project ▸ App** — matched without regard to case, exactly as
+`--test-variant` does in [command-line checks](command-line-checks.md). A name the project does not
+have is refused before anything is opened, and the refusal lists the ones it has:
+
+```text
+[error] Build: The project has no build variant "Dmeo". It has: main, Demo, Steam.
+[error] Build: invocation (exit 2)
+```
+
+The id a variant is stored under is a generated uuid that no part of Studio shows, and it is not a
+second spelling: given one, the run is refused with the name to write instead. Nothing Studio shipped
+ever wrote the id form down — the documented value was always `main` — so there is no old line for
+this to keep working.
+
+```text
+[error] Build: --build-variant names a variant by its name, not by the id it is stored under. That one is called "Demo": write --build-variant=Demo.
+```
+
+The log and the report say which variant was built by the same name: `building My Game as variant
+"Demo"`, and `request.variant` is `"Demo"`.
 
 ## Exit codes
 
@@ -56,6 +84,11 @@ that opens the editor while the script that wrote the line believes it is buildi
 | 2 | `invocation` | The command line could not be acted on. Nothing was opened. |
 | 3 | `gate-refused` | A check refused the project. Retrying changes nothing until the project does. |
 | 4 | `studio-failed` | Studio could not get far enough to answer. Says nothing about the project. |
+
+`studio-failed` also covers a profile that cannot run the project — a plugin the project declares
+that this profile has not got, has switched off or cannot start — and a run in which something asked
+a question nobody was there to answer. A build loads the project's plugins exactly as a check does;
+both are set out in [command-line checks](command-line-checks.md#plugins).
 
 The distinction that matters most is between `gate-refused` and `studio-failed`. A project whose
 story has an unresolved command is a project someone has to change; Studio failing to open the
@@ -75,6 +108,9 @@ timestamps, and two blocks a job would otherwise have to grep English for:
 - `experimental` — what experimental mode did to this run. A debuggable build looks like any other
   build on disk, so this is the only place a job that archived one can find out.
 
+`plugins` lists what `--build-plugin` named, each by the name the plugin gives itself, with its
+manifest id, its version and `enabledForRun` — false for one the profile already ran.
+
 The shape is `CommandLineBuildReport` in `src/shared/types/commandLineBuild.ts`. Fields are added
 without a schema bump; `schema` changes only when one changes meaning.
 
@@ -89,8 +125,10 @@ opens it — and useless for one that wants an exit code, so a build refuses ins
 A dedicated agent does not need it. A machine that is both an agent and somebody's computer does.
 
 **A different profile is a different everything.** The signing vault lives under it, and so do the
-machine's build settings — a scratch profile has neither. That is what the next two sections are
-for.
+machine's build settings — a scratch profile has neither. That is what the next three sections are
+for. So does the plugin list: a scratch profile has the plugins Studio ships with **Gallery** and
+**Menu Bar** switched off, and a project that declares one of them exits `studio-failed` there unless
+the run switches it on ([below](#plugins-a-scratch-profile-has-switched-off)).
 
 Whether the *download* caches come with it depends on the install. `resolveCacheRoot` puts them
 beside the executable where the platform allows that, and under the profile where it does not:
@@ -170,13 +208,34 @@ The build console names the settings a run was given by key only, and the report
 them. Their values are URLs a job assembled, and a mirror URL carrying an access token is a token in
 a file somebody archives.
 
+## Plugins a scratch profile has switched off
+
+A build loads the plugins the profile runs, as a check does
+([command-line checks](command-line-checks.md#plugins)), and a project made from the starter template
+declares Gallery — which a fresh profile has switched off. `--build-plugin` switches a plugin on for
+this run:
+
+```sh
+--build-plugin=Gallery
+```
+
+Repeatable, one plugin per flag, named by the name the plugin list shows or by its manifest id.
+**Nothing is written to the profile**: the plugin is loaded, counted by the checks and packed into
+the game as if it had been switched on, and the profile's plugin list is left as it was. A plugin
+whose permissions the profile has never granted is refused rather than granted on the run's behalf;
+the plugins Studio ships are granted when it installs them, so Gallery and Menu Bar never are. Every
+refusal, and a named plugin that fails to start, is `studio-failed`. The rules are the checks' own,
+set out in [command-line checks](command-line-checks.md#switching-a-plugin-on-for-one-run).
+
 ## Nothing appears on screen, and nothing needs a display
 
 The operator may be using this machine, and an agent has no screen at all. Four separate things had
 to be told: the workspace window is created hidden and never focused; a failed load does not reveal
 the home screen; the output folder is never opened in the file manager; and the window may not put
 up a native dialog when its page crashes, which would otherwise block the run on an answer nobody is
-there to give.
+there to give. Nothing else may ask a question either — a file picker, a plugin's permission prompt,
+a workspace dialog — and the first one asked ends the run with `studio-failed`, naming what asked
+([command-line checks](command-line-checks.md#nothing-is-asked)).
 
 Two more things make a headless host work at all:
 
@@ -206,7 +265,8 @@ narraleaf-studio \
   --build-report /srv/artifacts/my-game/report.json \
   --build-user-data-dir /var/lib/narraleaf-agent/profile \
   --build-signing /run/secrets/signing.json \
-  --build-setting build.electronMirror=https://mirror.example/electron/
+  --build-setting build.electronMirror=https://mirror.example/electron/ \
+  --build-plugin=Gallery
 ```
 
 How that line is delivered to the machine — SSH, a CI runner, a scheduler — is outside Studio.

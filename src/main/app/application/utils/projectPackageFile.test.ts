@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import msgpack from "msgpack-lite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     PROJECT_PACKAGE_BODY_OFFSET,
     PROJECT_PACKAGE_FORMAT,
@@ -11,8 +11,8 @@ import {
     decodeProjectPackageIndex,
     readProjectPackageVersion,
 } from "@shared/utils/projectPackage";
-import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
-import { classifyUnpackFailure, readProjectPackageInto, writeProjectPackage } from "./projectPackageFile";
+import { ProjectPackageExportErrorCode, ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
+import { classifyPackFailure, classifyUnpackFailure, readProjectPackageInto, writeProjectPackage } from "./projectPackageFile";
 
 const roots: string[] = [];
 
@@ -336,5 +336,198 @@ describe("the code an unpack failure carries", () => {
             .toBe(ProjectPackageImportErrorCode.DiskFull);
         // A disk failure nobody can act on keeps its errno, which the wizard has no sentence for.
         expect((classifyUnpackFailure(denied(packagePath, "EIO"), packagePath) as { code?: unknown }).code).toBe("EIO");
+    });
+});
+
+/** A version 2 package written by hand, entry by entry, so that it can say things Studio never writes. */
+async function handMadePackage(entries: { path: string; data: string }[], directories: string[] = []): Promise<string> {
+    const packagePath = path.join(await scratch("handmade"), "Handmade.nlspkg");
+    const bodies = entries.map(entry => Buffer.from(entry.data));
+    const index = msgpack.encode({
+        format: PROJECT_PACKAGE_FORMAT,
+        version: PROJECT_PACKAGE_FORMAT_VERSION,
+        createdAt: "",
+        projectName: "Handmade",
+        directories,
+        files: entries.map((entry, at) => ({ path: entry.path, size: bodies[at].length })),
+    });
+    const trailer = Buffer.alloc(4);
+    trailer.writeUInt32LE(index.length, 0);
+    await fs.writeFile(packagePath, Buffer.concat([
+        Buffer.from([0x4e, 0x4c, 0x53, 0x50, 0x4b, 0x47, 0x00, PROJECT_PACKAGE_FORMAT_VERSION]),
+        ...bodies,
+        Buffer.from(index),
+        trailer,
+    ]));
+    return packagePath;
+}
+
+/**
+ * A package that holds together until its last entry, which names a file already written. It gets
+ * part-way - folders made, files copied - before it fails, which is the case that used to leave a
+ * half-unpacked folder behind.
+ */
+function failsPartWay(): Promise<string> {
+    return handMadePackage([
+        { path: "Demo.nlproj", data: "config" },
+        { path: "assets/a.bin", data: "aaaa" },
+        { path: "editor/ui/uidoc.json", data: "{}" },
+        { path: "assets/a.bin", data: "again" },
+    ], ["assets", "editor/ui", "empty"]);
+}
+
+async function exists(target: string): Promise<boolean> {
+    return fs.stat(target).then(() => true, () => false);
+}
+
+describe("a failed unpack takes back what it wrote", () => {
+    it("removes a folder the import created, and says the package does not hold together", async () => {
+        const packagePath = await failsPartWay();
+        const parent = await scratch("import");
+        await fs.writeFile(path.join(parent, "neighbour.txt"), "mine");
+        const target = path.join(parent, "Handmade");
+
+        const error = await readProjectPackageInto(packagePath, target).then(() => null, (thrown: unknown) => thrown);
+
+        expect((error as { code?: unknown }).code).toBe(ProjectPackageImportErrorCode.Damaged);
+        expect(await exists(target)).toBe(false);
+        // Only what the import made: the folder it was pointed into, and what else is there, stay.
+        expect(await fs.readdir(parent)).toEqual(["neighbour.txt"]);
+    });
+
+    it("takes the parents it had to create along with the folder", async () => {
+        const packagePath = await failsPartWay();
+        const parent = await scratch("import");
+
+        await expect(readProjectPackageInto(packagePath, path.join(parent, "new", "deeper", "Handmade"))).rejects.toThrow();
+
+        expect(await fs.readdir(parent)).toEqual([]);
+    });
+
+    it("empties a folder that was already there without removing the folder itself", async () => {
+        const packagePath = await failsPartWay();
+        const target = await scratch("import");
+
+        await expect(readProjectPackageInto(packagePath, target)).rejects.toThrow();
+
+        expect(await exists(target)).toBe(true);
+        expect(await fs.readdir(target)).toEqual([]);
+    });
+
+    it("leaves the folder usable, so the next attempt goes through", async () => {
+        const target = path.join(await scratch("import"), "Demo");
+        await expect(readProjectPackageInto(await failsPartWay(), target)).rejects.toThrow();
+
+        const { packagePath } = await exportSample();
+        const result = await readProjectPackageInto(packagePath, target);
+
+        expect(result.fileCount).toBe(4);
+        expect(await listFiles(target)).toContain("Demo.nlproj");
+    });
+
+    it("takes back a version 1 package that fails part-way too", async () => {
+        const legacy = path.join(await scratch("legacy"), "Old.nlspkg");
+        const body = msgpack.encode({
+            format: PROJECT_PACKAGE_FORMAT,
+            version: PROJECT_PACKAGE_LEGACY_VERSION,
+            createdAt: "",
+            projectName: "Old",
+            directories: ["assets"],
+            files: [
+                { path: "Old.nlproj", data: Buffer.from("config") },
+                { path: "assets/one.bin", data: Buffer.from([1, 2, 3]) },
+                { path: "Old.nlproj/inside", data: Buffer.from([4]) },
+            ],
+        });
+        await fs.writeFile(legacy, Buffer.concat([
+            Buffer.from([0x4e, 0x4c, 0x53, 0x50, 0x4b, 0x47, 0x00, PROJECT_PACKAGE_LEGACY_VERSION]),
+            Buffer.from(body),
+        ]));
+        const target = path.join(await scratch("import"), "Old");
+
+        const error = await readProjectPackageInto(legacy, target).then(() => null, (thrown: unknown) => thrown);
+
+        expect((error as { code?: unknown }).code).toBe(ProjectPackageImportErrorCode.Damaged);
+        expect(await exists(target)).toBe(false);
+    });
+
+    it("touches nothing when the folder it was pointed at already held something", async () => {
+        const { packagePath } = await exportSample();
+        const target = await scratch("import");
+        await fs.writeFile(path.join(target, "in-the-way.txt"), "x");
+
+        await expect(readProjectPackageInto(packagePath, target)).rejects.toThrow("must be empty");
+
+        expect(await fs.readdir(target)).toEqual(["in-the-way.txt"]);
+    });
+
+    /**
+     * When the removal itself fails the folder keeps part of the import, and the next attempt will be
+     * refused over it. The wizard learns that by looking at the folder; the log learns it from here.
+     */
+    it("keeps the reason and says in the log's sentence what could not be removed", async () => {
+        const packagePath = await failsPartWay();
+        const target = path.join(await scratch("import"), "Handmade");
+        const rm = vi.spyOn(fs, "rm").mockRejectedValue(Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" }));
+
+        try {
+            const error = await readProjectPackageInto(packagePath, target).then(() => null, (thrown: unknown) => thrown);
+
+            expect((error as { code?: unknown }).code).toBe(ProjectPackageImportErrorCode.Damaged);
+            expect((error as Error).message).toMatch(/could not be removed: EBUSY/);
+            expect(await exists(path.join(target, "Demo.nlproj"))).toBe(true);
+            // The import made one folder, so there is one tree to remove, tried a bounded number of
+            // times as a whole rather than at every level of it.
+            expect(rm).toHaveBeenCalledTimes(3);
+        } finally {
+            rm.mockRestore();
+        }
+    });
+});
+
+describe("the code an export failure carries", () => {
+    const projectRoot = path.resolve("projects", "Demo");
+    const packagePath = path.resolve("exports", "Demo.nlspkg");
+    const failure = (code: string, on?: string) => Object.assign(new Error(`${code}: ${on ?? "write"}`), { code, ...(on ? { path: on } : {}) });
+    const codeOf = (error: Error, pkg: string | undefined = packagePath) =>
+        (classifyPackFailure(error, projectRoot, pkg) as { code?: unknown }).code;
+
+    it("says which side refused, by the path the disk named", () => {
+        const projectFile = path.join(projectRoot, "editor", "ui", "uidoc.json");
+
+        expect(codeOf(failure("EACCES", packagePath))).toBe(ProjectPackageExportErrorCode.FolderReadOnly);
+        expect(codeOf(failure("EPERM", packagePath))).toBe(ProjectPackageExportErrorCode.FolderReadOnly);
+        expect(codeOf(failure("ENOENT", packagePath))).toBe(ProjectPackageExportErrorCode.FolderMissing);
+        expect(codeOf(failure("EACCES", projectFile))).toBe(ProjectPackageExportErrorCode.ProjectUnreadable);
+        expect(codeOf(failure("EBUSY", projectFile))).toBe(ProjectPackageExportErrorCode.ProjectFileBusy);
+        expect(codeOf(failure("ENOENT", projectFile))).toBe(ProjectPackageExportErrorCode.ProjectChanged);
+        // Before the dialog there is no package yet; the project's own configuration is the project's.
+        expect(codeOf(failure("EACCES", path.join(projectRoot, "Demo.nlproj")), undefined))
+            .toBe(ProjectPackageExportErrorCode.ProjectUnreadable);
+    });
+
+    it("counts a write that names no path, and a package inside the project, as the folder's", () => {
+        expect(codeOf(failure("ENOSPC"))).toBe(ProjectPackageExportErrorCode.DiskFull);
+        const inside = path.join(projectRoot, "Demo.nlspkg");
+        expect(codeOf(failure("EACCES", inside), inside)).toBe(ProjectPackageExportErrorCode.FolderReadOnly);
+    });
+
+    it("keeps an errno nobody can act on, and gives a failure that is not the disk's no code", () => {
+        expect(codeOf(failure("EIO", packagePath))).toBe("EIO");
+        expect(codeOf(new Error("Unexpected token in the project file"))).toBeUndefined();
+    });
+
+    it("codes an export into a folder that is no longer there", async () => {
+        const projectRoot = await sampleProject();
+        const gone = path.join(await scratch("out"), "removed", "Demo.nlspkg");
+
+        const error = await writeProjectPackage({
+            projectRoot,
+            packagePath: gone,
+            projectName: "Demo",
+            createdAt: "2026-01-01T00:00:00.000Z",
+        }).then(() => null, (thrown: unknown) => thrown);
+
+        expect((error as { code?: unknown }).code).toBe(ProjectPackageExportErrorCode.FolderMissing);
     });
 });

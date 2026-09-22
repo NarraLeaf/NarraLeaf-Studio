@@ -93,7 +93,19 @@ export const actions = {
     },
     export: {
         chooseFolder: "Choose a folder for the exported project package.",
-        failed: "Failed to export project.",
+        failed: "Could not export the project.",
+        failedWithReason: "{headline} {reason}",
+        // Why an export failed, from the code the main process answered with. The project being
+        // read and the folder being written are the two sides, so each sentence is about one of them.
+        reason: {
+            folderProtected: "The chosen folder is inside Studio's own storage. Choose another folder.",
+            folderReadOnly: "Studio is not allowed to write to the chosen folder.",
+            folderMissing: "The chosen folder no longer exists.",
+            diskFull: "The disk is full.",
+            projectUnreadable: "Studio is not allowed to read some of the project's files.",
+            projectFileBusy: "A file in the project is in use by another program.",
+            projectChanged: "A file in the project was moved or deleted during the export. Export again.",
+        },
         success: {
             one: "Exported project package with {count} file.",
             other: "Exported project package with {count} files.",

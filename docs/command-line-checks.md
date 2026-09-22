@@ -31,23 +31,26 @@ would report a verdict about something the caller did not ask about.
 | `--test-as-shipped` | — (or `=true` / `=false`) | loose files; see [below](#loose-files-or-the-shipped-form) |
 | `--test-variant=` | A build variant's name | `main`, the release build; see [below](#which-variant-which-dlc) |
 | `--test-dlc=` | DLC names or ids, comma-separated; repeatable | no DLC |
+| `--test-plugin=` | A plugin to switch on for this run, by name or id; repeatable | the profile's own plugins; see [below](#switching-a-plugin-on-for-one-run) |
 | `--test-report` | Where to write the JSON report | no report file |
 | `--test-user-data-dir` | A profile folder for this run | the machine's own profile |
 | `--lint` | A project folder, or the name of a recently-opened project | — (required for a sweep) |
+| `--lint-plugin=` | A plugin to switch on for this run, by name or id; repeatable | the profile's own plugins |
 | `--lint-report` | Where to write the JSON report | no report file |
 | `--lint-user-data-dir` | A profile folder for this run | the machine's own profile |
 
-Every value-taking flag accepts both `--flag value` and `--flag=value`, except `--test-variant` and
-`--test-dlc`, which take only `--flag=value`. `--test-list` and `--test-as-shipped` take no separate
-value; the second also accepts `=true` or `=false` for a job that states it from a variable.
+Every value-taking flag accepts both `--flag value` and `--flag=value`, except `--test-variant`,
+`--test-dlc`, `--test-plugin` and `--lint-plugin`, which take only `--flag=value`. `--test-list` and
+`--test-as-shipped` take no separate value; the second also accepts `=true` or `=false` for a job
+that states it from a variable.
 
 > **On Windows, write any value with a colon in it as `--flag=value`.** A launch dies before Studio
 > writes anything when a separate argument looks like `scheme:rest`: `--test-id
 > narraleaf-studio:walkthrough` exits with no output and no report, while
 > `--test-id=narraleaf-studio:walkthrough` — or the short `--test-id walkthrough` — is read normally.
-> That is why the two flags that carry names an author typed accept only the `=` form: a variant
-> called `Next Fest: Demo` cannot be told apart from that shape. The separate form is refused with
-> the spelling that works.
+> That is why the flags that carry names somebody typed — a variant, a DLC, a plugin — accept only
+> the `=` form: a variant called `Next Fest: Demo` cannot be told apart from that shape. The separate
+> form is refused with the spelling that works.
 
 A companion flag given without `--test` or `--lint` is refused rather than ignored, exactly as a
 `--build-*` flag without `--build` is: the alternative is a launch that opens the editor while the
@@ -65,6 +68,11 @@ script that wrote the line believes it is checking something.
 
 The numbers are the build's numbers, position for position, so a job that runs all three does not
 need three tables.
+
+`studio-failed` also covers a profile that cannot run the project: a plugin the project declares is
+not installed, switched off, or will not start ([Plugins](#plugins)), or something in the run asked
+a question nobody was there to answer ([Nothing is asked](#nothing-is-asked)). Both are a machine to
+look at, not a project to change.
 
 `refused` is the one worth reading carefully. A windowed test on a frozen workspace, or one asked
 for while another run holds the slot, is refused — that is the host declining for a reason that may
@@ -91,28 +99,40 @@ narraleaf-studio --test /srv/projects/my-game --test-list
 
 One line per test: the id, the mode, the category, the title, and whether it can run right now (and
 why not when it cannot). Under it, one line per parameter and one per value that parameter accepts,
-each with the label the picker would have shown for it — some of these values are generated ids, and
-a listing that printed those alone would be a lookup table nobody can look anything up in. With
-`--test-report` the same rows are written to the report as structured data, which is what a script
-assembling a command line reads.
+each with the label the picker would have shown for it. With `--test-report` the same rows are
+written to the report as structured data, which is what a script assembling a command line reads.
 
-The registry is populated by Studio's own modules **and by every installed plugin**, so the listing
-is a property of the Studio and the profile the run uses — not of the project alone. A run in a
-scratch profile lists the tests Studio ships and none a plugin contributes.
+**No value in the listing is a generated id.** The walkthrough's endings are stored as a pair of ids,
+so each ending is listed — and taken on the line — by a name: the ending's own name when no other
+ending shares it, with its story put in front where two do, and its scene as well where that is
+still not enough. An ending with no name yet is listed as its story and scene.
+
+```text
+[info] Test: narraleaf-studio:walkthrough  [windowed]  [runtime]  Ending walkthrough
+[info] Test:     --test-parameter ending=<value>   Ending
+[info] Test:         Same time tomorrow   Skeleton / Last light / Same time tomorrow   (default)
+```
+
+The registry is populated by Studio's own modules **and by every plugin the profile has switched
+on** ([Plugins](#plugins)), so the listing is a property of the Studio and the profile the run uses —
+not of the project alone. A run in a scratch profile lists the tests Studio ships and none a plugin
+contributes, unless `--test-plugin` switches that plugin on for the run.
 
 ### Running one
 
 ```sh
 narraleaf-studio --test /srv/projects/my-game \
-  --test-id narraleaf-studio:reachable-endings \
-  --test-parameter ending=good \
+  --test-id=narraleaf-studio:walkthrough \
+  --test-parameter "ending=Same time tomorrow" \
   --test-report /srv/artifacts/test.json
 ```
 
-`--test-parameter` names one value the test declared. A `select` parameter accepts its option
-**values**, never the labels — a label follows the editor's language, and a line written against one
-would stop working when somebody changed it. A `boolean` accepts `true`/`false`, `yes`/`no`,
-`on`/`off`, `1`/`0`. Anything the test does not declare, a `select` value it does not offer, or one
+`--test-parameter` names one value the test declared. A `select` parameter accepts exactly what
+`--test-list` prints for it — an option's name where it has one (matched without regard to case),
+its value where it has none — and never the labels: a label follows the editor's language, and a
+line written against one would stop working when somebody changed it. The id an ending is stored
+under is refused, and the refusal says the ending's name to write instead. A `boolean` accepts
+`true`/`false`, `yes`/`no`, `on`/`off`, `1`/`0`. Anything the test does not declare, a `select` value it does not offer, or one
 id given twice is refused as a bad invocation rather than falling back on the default: a run that
 quietly walked to a different ending than the line named would report a green verdict about
 something nobody asked for.
@@ -191,7 +211,9 @@ narraleaf-studio --test /srv/projects/my-game --test-id=walkthrough \
 ```
 
 **Names, the way the project's author wrote them.** A variant is named by its name — `main`, or
-whatever the author called theirs in **Project ▸ App** — matched without regard to case. A DLC is
+whatever the author called theirs in **Project ▸ App** — matched without regard to case, as
+`--build-variant` names one. The id a variant is stored under is refused, with the name to write
+instead. A DLC is
 named by its name or by its id, the author-chosen word the DLC's file is named after; a name wins
 when both would match, and a DLC whose name has a comma in it is named by its id. `--test-dlc` takes
 a comma-separated list and may also be given more than once.
@@ -277,6 +299,10 @@ levels, and one of three result blocks:
   and which were skipped.
 - `tests` — for `--test-list`: the registry, as described above.
 
+Beside them, `plugins` lists what `--test-plugin` / `--lint-plugin` named, each by the name the plugin
+gives itself, with its manifest id, its version and `enabledForRun` — false for one the profile
+already ran. It is empty when the line named none.
+
 The shape is `CommandLineCheckReport` in `src/shared/types/commandLineCheck.ts`. Fields are added
 without a schema bump; `schema` changes only when one changes meaning.
 
@@ -297,10 +323,111 @@ computer does.
 
 Unlike a build, a check needs nothing else out of the profile — no signing vault, no packager
 mirrors — so there is no `--test-setting` to put anything back. What a scratch profile does change is
-the plugin list, and with it the test registry: see above. It changes nothing about the game a test
+the plugin list, and with it the test registry and whether the project can be answered for at all:
+see [Plugins](#plugins), and `--test-plugin` / `--lint-plugin` for switching one on for the run. It changes nothing about the game a test
 launches: whether it is sealed, which variant it is and which DLC it has are `--test-as-shipped`,
 `--test-variant` and `--test-dlc`, and nothing else — never the profile's own **Preview as
 shipped**, **Run as** or **Run with DLC**.
+
+## Plugins
+
+A run loads **the plugins the author's workspace loads for the project**, the same way: every plugin
+the profile has switched on and whose permissions were approved, less any the project's own
+dependency table holds back because the installed one is a different major version. So a sweep sees
+the plugin nodes, widgets and story rows the **Lint** tab sees, and a test the plugins contribute is
+in the registry. The run says what it loaded, on one line before the check starts:
+
+```text
+[info] Plugins: loaded "Gallery" 3.1.0, "Quick Save" 1.0.0
+```
+
+Deliberately not "only the plugins the project declares". The project's dependency table is written
+when it is saved, scanned or exported, while the editor loads the profile's list; a run that loaded
+less than the editor would call a node unknown that the **Lint** tab can see.
+
+**A plugin the project declares that this profile cannot run ends the run with `studio-failed`
+(exit 4)** before the check starts, and names each such plugin by its name and the version the
+project was made with. Where the plugin is installed and only switched off, the last sentence says
+how to switch it on for the run ([below](#switching-a-plugin-on-for-one-run)):
+
+```text
+[error] Plugins: this project needs "Gallery" 3.1.0, which is switched off in this profile
+[error] Lint: This profile cannot run a plugin this project needs: "Gallery" 3.1.0. Install or switch it on in Studio's plugin list with this profile, or run with a profile that has it. To switch it on for this run only, add --lint-plugin=Gallery.
+[error] Lint: studio-failed (exit 4)
+```
+
+"Cannot run" is the state the editor warns about when it opens the project — not installed, switched
+off, or held back for its version — and two more in which a plugin is installed and on and still
+contributes nothing: its permissions were never approved, or it failed to start. The editor warns and
+lets the author carry on, because somebody is there to decide; a run has nobody, and carrying on
+would answer about a project that is missing part of itself on this machine — a sweep full of
+unknown nodes, a build without the plugin's runtime. A plugin the project does not declare that fails
+to start is logged as an error and does not stop the run, as it does not stop the editor.
+
+This matters most for a **scratch profile**: it has every plugin Studio ships, with **Gallery** and
+**Menu Bar** switched off, and a project made from the starter template declares Gallery. Such a
+project exits 4 in a fresh profile unless the run switches Gallery on — see the next section.
+
+`--test-list` is the one exception: it answers what this Studio and this profile have, and a plugin
+the project needs but cannot have is part of that answer — so each one is logged as a warning and the
+tests are listed anyway, exit 0.
+
+A plugin that has not finished starting after sixty seconds ends the run the same way, naming the
+plugin, rather than leaving it to the thirty-minute silence deadline.
+
+### Switching a plugin on for one run
+
+`--lint-plugin=<name>` and `--test-plugin=<name>` (`--build-plugin=<name>` for a
+[build](command-line-builds.md)) switch a plugin on **for this run only**. A CI job that lints a new
+project made from the starter template, in a profile of its own, needs Gallery:
+
+```sh
+narraleaf-studio --lint /srv/projects/my-game \
+  --lint-user-data-dir=/tmp/ci-profile \
+  --lint-plugin=Gallery \
+  --lint-report=/srv/artifacts/lint.json
+```
+
+```text
+[info] Plugins: loaded "Gallery" 3.1.0 (enabled for this run), "Quick Save" 1.0.0
+```
+
+**Nothing is written to the profile.** The run loads the plugin as if it had been switched on in the
+plugin list, and the profile's plugin list on disk is left byte for byte as it was — so a job pointed
+at somebody's own profile leaves their editor as they left it. The switch is what this run loads,
+never a setting it changes.
+
+A plugin is named the way Studio names it to the author: by the name the plugin list shows, matched
+without regard to case, or by its manifest id (`narraleaf.gallery`). One plugin per flag; give the
+flag once for each. Naming one the profile already runs changes nothing and is not an error — a job
+states what it needs, not what the profile it happens to run in lacks.
+
+Each of these ends the run with `studio-failed` (exit 4) before anything is opened, because which
+plugins a profile has is a property of the machine the line runs on:
+
+- **A name no installed plugin has.** The refusal lists the ones it does:
+
+  ```text
+  [error] Lint: This profile has no plugin "Nope" (--lint-plugin). It has: "Gallery", "Menu Bar", "Quick Save".
+  ```
+
+- **A name two installed plugins share.** The refusal gives each one's id; name the one you mean by
+  it.
+- **A plugin whose permissions this profile has never granted.** Naming a plugin on a command line
+  is not consent to what it asks for, so its permissions are not granted on the run's behalf:
+
+  ```text
+  [error] Lint: "Stats" 1.2.0 (--lint-plugin) needs permissions this profile has not granted, and naming it on the command line does not grant them. Grant them once in Studio's plugin list with this profile, then run again.
+  ```
+
+  The plugins Studio ships are granted when Studio installs them, whether or not they are switched
+  on, so Gallery and Menu Bar never stop here — the same as switching them on in the plugin list,
+  which asks for nothing either.
+
+A plugin the line named that then fails to start ends the run the way a declared plugin that fails
+does — exit 4, naming it — including one the profile already ran: the job asked for it, and a run
+without it would answer about something else. `--test-list` logs it as a warning and lists the tests
+anyway, as it does for a declared one.
 
 ## Trust
 
@@ -329,3 +456,21 @@ when it is minimized, moved off screen or covered by another window, so a run on
 is using is not failed by whatever they bring to the front. Only the games tests launch behave this
 way; a player's game, and a preview an author starts, pause their drawing when hidden, as Chromium
 does by default.
+
+## Nothing is asked
+
+A question needs somebody to answer it, and a run has nobody: a file picker, a plugin asking for a
+permission, one of the workspace's own dialogs, or a page's `alert()`, `confirm()` or `prompt()`
+would each wait for an answer that never comes. So none of them opens. The first one asked **ends the
+run with `studio-failed` (exit 4)**, on a line saying who asked for what:
+
+```text
+[error] Lint: The plugin "Cloud Sync" 1.2.0 asked for permission to use network, and a command-line run has nobody at the screen to answer it. The run stops here rather than waiting for an answer that will not come.
+[error] Lint: studio-failed (exit 4)
+```
+
+Ended rather than merely refused, because whatever asked may carry on without its answer, and a run
+that could not ask what the person at a screen would have been asked has not answered the question
+it was run for. A permission a plugin was already granted in this profile is not asked again, so it
+does not stop the run; one it has never been granted has to be granted once, in Studio, with the
+profile the run uses.

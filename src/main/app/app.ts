@@ -12,6 +12,7 @@ import { WindowAppType, WindowCloseResults, WindowControlPolicy, WindowProps } f
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { getGameHostWindowBackgroundColor } from "./application/theme";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
+import { describePermissionAsker } from "./application/managers/window/unattendedPrompt";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/managers/devMode/devModeNetworkPolicy";
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
@@ -1842,6 +1843,7 @@ export class App extends BaseApp {
             isolated: true,
             autoFocus: !hidden,
             failurePrompts: !headless,
+            unattended: headless,
             preload: this.getPreloadScript(),
             options: {
                 minWidth: 800,
@@ -2386,6 +2388,9 @@ export class App extends BaseApp {
         props: WindowProps[WindowAppType.PluginPermissionPrompt],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.PluginPermissionPrompt>> {
+        // Every path to this prompt waits on its answer, so a window with nobody at the screen may
+        // not open one - see `AppWindow.refuseUnattendedPrompt`.
+        parent.refuseUnattendedPrompt(describePermissionAsker(props.request));
         const config: WindowConfig<WindowAppType.PluginPermissionPrompt> = {
             windowType: WindowAppType.PluginPermissionPrompt,
             isolated: true,

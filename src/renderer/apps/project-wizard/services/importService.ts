@@ -12,7 +12,8 @@ import { isStudioProject } from "./projectVerification";
 export type ImportOutcome =
     | { status: "imported"; root: string; projectName?: string; fileCount?: number }
     | { status: "notAProject"; root: string }
-    | { status: "failed"; error: string };
+    /** `leftBehind`: the folder still holds part of what this attempt unpacked. */
+    | { status: "failed"; error: string; leftBehind: boolean };
 
 /**
  * Why an unpack failed, in the interface's language, from the code main answered with.
@@ -82,7 +83,11 @@ export class ImportService {
             const result = await getInterface().workspace.importProjectPackage(packagePath, targetDir);
             if (!result.success) {
                 console.warn("[wizard] the package could not be unpacked", result.error);
-                return { status: "failed", error: describePackageImportFailure(result.code) };
+                return {
+                    status: "failed",
+                    error: describePackageImportFailure(result.code),
+                    leftBehind: await holdsLeftovers(targetDir, result.code),
+                };
             }
 
             const root = result.data.projectPath;
@@ -97,7 +102,30 @@ export class ImportService {
         } catch (error) {
             // A rejected call is the bridge's or the platform's sentence, for the log.
             console.error("[wizard] the package import threw", error);
-            return { status: "failed", error: translate("wizard.import.error.generic") };
+            return { status: "failed", error: translate("wizard.import.error.generic"), leftBehind: false };
         }
+    }
+}
+
+/**
+ * Whether a failed unpack left part of itself in the folder.
+ *
+ * Main takes back what a failed unpack wrote, and says in its log when some of it would not go. The
+ * page learns it by looking: the folder was empty or absent when the button was pressed (the page
+ * does not offer the button otherwise), so anything in it now is what this attempt left - and it is
+ * what the next attempt would be refused over, which is the thing the author needs to hear.
+ *
+ * Not asked when main refused the folder for being occupied: nothing was written, and the reason
+ * given already says the folder is not empty.
+ */
+async function holdsLeftovers(targetDir: string, code: string | undefined): Promise<boolean> {
+    if (code === ProjectPackageImportErrorCode.FolderNotEmpty) {
+        return false;
+    }
+    try {
+        const listed = await getInterface().fs.list(targetDir);
+        return listed.success && listed.data.ok && listed.data.data.length > 0;
+    } catch {
+        return false;
     }
 }

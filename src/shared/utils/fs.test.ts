@@ -84,6 +84,53 @@ describe("Fs.directorySize", () => {
 });
 
 /**
+ * The pair a caller uses to serve a file in pieces: one handle, measured once, read by span. A
+ * directory has to be refused at the open, because on Windows opening one succeeds.
+ */
+describe("Fs.openForRead and Fs.readSpan", () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await mkdtemp(join(tmpdir(), "nls-span-"));
+        await writeFile(join(root, "digits.bin"), "0123456789");
+        await mkdir(join(root, "folder"));
+    });
+
+    afterEach(async () => {
+        await rm(root, { recursive: true, force: true });
+    });
+
+    it("measures the file and reads a span, or only what is there past the end", async () => {
+        const opened = await Fs.openForRead(join(root, "digits.bin"));
+        if (!opened.ok) throw new Error(opened.error.message);
+        try {
+            expect(opened.data.size).toBe(10);
+            const middle = await Fs.readSpan(opened.data.handle, 2, 3);
+            expect(middle.ok && middle.data.toString()).toBe("234");
+            const tail = await Fs.readSpan(opened.data.handle, 8, 10);
+            expect(tail.ok && tail.data.toString()).toBe("89");
+        } finally {
+            await opened.data.handle.close();
+        }
+    });
+
+    it("refuses a directory and a missing path with the codes a whole-file read gives", async () => {
+        const folder = await Fs.openForRead(join(root, "folder"));
+        expect(!folder.ok && folder.error.code).toBe(FsRejectErrorCode.NOT_A_FILE);
+        const missing = await Fs.openForRead(join(root, "nope.bin"));
+        expect(!missing.ok && missing.error.code).toBe(FsRejectErrorCode.NOT_FOUND);
+    });
+
+    it("reports a read on a closed handle as a failure rather than throwing", async () => {
+        const opened = await Fs.openForRead(join(root, "digits.bin"));
+        if (!opened.ok) throw new Error(opened.error.message);
+        await opened.data.handle.close();
+        const read = await Fs.readSpan(opened.data.handle, 0, 4);
+        expect(read.ok).toBe(false);
+    });
+});
+
+/**
  * The atomic writer. These pin the two things that are easy to break while "just" swapping the
  * implementation body: that the target is *replaced* rather than truncated in place (the whole
  * point), and that `writeFileNoFollow` keeps refusing the paths it used to refuse (its `lstat` gate

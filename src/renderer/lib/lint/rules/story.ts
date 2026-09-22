@@ -2,7 +2,6 @@ import { collectCutPoints } from "@shared/story/appTagFold";
 import {
     reachableSceneIds,
     blueprintDocumentGraphCarriers,
-    scanProjectStoryEntryPoints,
     type StoryEntryPointScan,
 } from "@shared/story/storyReachability";
 import { isBuiltinAppTagId } from "@shared/types/appTag";
@@ -40,6 +39,7 @@ import {
 import type { TranslationKey } from "@shared/i18n/catalog";
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
+import { scanProjectEntryPoints } from "../../workspace/services/references/startStoryTargets";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintCharacterEntry, LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
@@ -420,15 +420,22 @@ function collectCalledSceneIds(document: StoryDocument): Set<StorySceneId> {
 
 /**
  * Where play can begin: the scene an author marked as a story's entry ("Set Entry Scene" in the
- * story panel) and every scene a blueprint's `Start Game` node names.
+ * story panel) and every scene a blueprint's `Start Game` node names - on its picker, or through a
+ * wired pin whose value the project writes down (a recollection list's rows).
  *
- * The whole of it is {@link scanProjectStoryEntryPoints}, which is shared rather than local because
- * the `reachable-endings` test asks the same question - and a report that disagreed with a check
- * about where play begins would tell an author a scene is orphaned while another surface walks
- * straight through it.
+ * The whole of it is {@link scanProjectEntryPoints}, which is shared rather than local because the
+ * `reachable-endings` and `route-coverage` tests ask the same question - and a report that disagreed
+ * with a check about where play begins would tell an author a scene is orphaned while another
+ * surface walks straight through it.
  */
 function collectEntryPoints(ctx: LintContext): StoryEntryPointScan {
-    return scanProjectStoryEntryPoints(ctx.stories, ctx.blueprintDocument);
+    return scanProjectEntryPoints({
+        stories: ctx.stories,
+        blueprintDocument: ctx.blueprintDocument,
+        uiDocument: ctx.uiDocument,
+        variableRegistry: ctx.variableRegistry,
+        pluginStores: ctx.pluginStores,
+    }).scan;
 }
 
 export const STORY_LINT_RULES: readonly LintRule[] = [

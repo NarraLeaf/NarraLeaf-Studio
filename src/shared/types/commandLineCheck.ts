@@ -1,6 +1,7 @@
 import type {
     CommandLineLintResult,
     CommandLineRunLogLine,
+    CommandLineRunPlugin,
     CommandLineTestResult,
 } from "./commandLineRun";
 
@@ -96,12 +97,14 @@ export type CommandLineTestParameterListing = {
      *
      * Both halves, because neither is enough on its own. The line has to carry `value` - a label
      * follows the editor's language, and a command written against one would stop working when
-     * somebody changed it - while `label` is the only thing that says which of them is which. Some
-     * of these values are generated ids, and a listing that printed those alone would be a lookup
-     * table nobody can look anything up in.
+     * somebody changed it - while `label` is the only thing that says which of them is which.
+     *
+     * `value` is what the line writes, which is not always what the test stores. A list whose stored
+     * values are generated ids (the walkthrough's endings) names each option instead, and `value` is
+     * that name: no id is printed, in the listing or in this report.
      */
     options?: Array<{ value: string; label: string }>;
-    /** What the run uses when the line names no value for it. */
+    /** What the run uses when the line names no value for it, spelled as `options[].value` is. */
     defaultValue?: string;
 };
 
@@ -135,6 +138,13 @@ export type CommandLineCheckReport = {
     lint?: CommandLineLintResult;
     /** Present for `--test-list`, which answers about the registry rather than about the project. */
     tests?: CommandLineTestListing[];
+    /**
+     * The plugins the line named with `--test-plugin` / `--lint-plugin`, each by the name the plugin
+     * gives itself, in the order the line named them. `enabledForRun` says which of them the line
+     * switched on and which this profile already ran. Empty when the line named none, and when a
+     * name found no plugin to switch on - `error` says which.
+     */
+    plugins: CommandLineRunPlugin[];
     /** One sentence saying what went wrong, or null when nothing did. */
     error: string | null;
     log: CommandLineRunLogLine[];
