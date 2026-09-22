@@ -83,11 +83,6 @@ export class WidgetModuleRegistry {
         return this.ownerNames.get(type) ?? pluginId;
     }
 
-    /** Plugin ids that currently contribute at least one registered widget type. */
-    public getOwnerPluginIds(): string[] {
-        return Array.from(new Set(this.owners.values()));
-    }
-
     public get(type: string): UIWidgetModule | undefined {
         return this.modules.get(type);
     }
