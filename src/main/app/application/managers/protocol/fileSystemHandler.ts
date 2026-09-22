@@ -4,11 +4,14 @@ import { fileURLToPath } from "url";
 import { AssetResolved, AssetResolver, ProtocolHandler, ProtocolResponse, ProtocolRule, ProtocolScheme } from "./types";
 import { Fs, getMimeType } from "@shared/utils/fs";
 import { normalizePath } from "@shared/utils/string";
-import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { FsRejectError, FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { resolveSingleByteRange, type ResolvedByteRange } from "@shared/utils/httpRange";
+import type { FileHandle } from "fs/promises";
 import { decodeTextBytes, encodeTextBytes, resolveTextEncodingId } from "../../../../utils/textCodec";
 import { decodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
 import { FileStorageBatchEntry, FileStorageInfo, StorageManager } from "../storageManager";
 import { INERT_CONTENT_TYPE, isExecutableContentType, type ProjectCodePolicy } from "./executableContent";
+import { FILE_STREAM_THRESHOLD_BYTES, streamFileSpan } from "./fileBody";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
     private rules: ProtocolRule[] = [];
@@ -138,6 +141,15 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
  */
 const BATCH_WRITE_CONCURRENCY = 8;
 
+/**
+ * The request's `Range` header, if it has one. Tolerates a request without a `headers` object: the
+ * handler reads only the URL and method on every other path, so a request built by hand - as the
+ * tests beside this file do - has never had to supply one.
+ */
+function rangeHeaderOf(request: Request): string | null {
+    return request.headers?.get("range") ?? null;
+}
+
 export class FileSystemHashHandler implements ProtocolHandler {
     private logger: Logger;
     /** Files already reported as served inert, so a bundle fetched a hundred times logs once. */
@@ -192,7 +204,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
                     return this.methodNotAllowed("Hash is not valid for read operations");
                 }
                 if (storageInfo.directory) {
-                    return await this.handleDirectoryRead(storageInfo, relativePath);
+                    return await this.handleDirectoryRead(request, storageInfo, relativePath);
                 }
                 if (relativePath) {
                     // A per-file grant addressed as if it were a directory. 404 rather than serving
@@ -205,7 +217,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
                         data: "Not a directory grant: " + hash
                     };
                 }
-                return await this.handleRead(hash, storageInfo);
+                return await this.handleRead(request, hash, storageInfo);
             } else if (request.method === 'PUT') {
                 if (storageInfo.operation !== "write") {
                     return this.methodNotAllowed("Hash is not valid for write operations");
@@ -276,8 +288,14 @@ export class FileSystemHashHandler implements ProtocolHandler {
      * The Content-Type matters here in a way it does not for per-file grants: these bytes are fetched
      * by the model runtime, which branches on it (JSON manifests vs. binary `.moc3`), so this path
      * reports the real MIME type rather than `application/octet-stream`.
+     *
+     * Byte ranges are honoured, as for a session file grant, because this grant can be asked again.
      */
-    private async handleDirectoryRead(storageInfo: FileStorageInfo, relativePath: string): Promise<ProtocolResponse> {
+    private async handleDirectoryRead(
+        request: Request,
+        storageInfo: FileStorageInfo,
+        relativePath: string,
+    ): Promise<ProtocolResponse> {
         const filePath = this.storageManager.resolveDirectoryGrantPath(storageInfo, relativePath);
         if (!filePath) {
             this.logger.error(`Rejected directory grant path: ${relativePath}`);
@@ -288,76 +306,181 @@ export class FileSystemHashHandler implements ProtocolHandler {
             };
         }
 
-        const result = await Fs.readRaw(filePath);
-        if (!result.ok) {
-            const missing = result.error.code === FsRejectErrorCode.NOT_FOUND;
-            this.logger.error(`Error reading bundle file: ${filePath} - ${result.error.message}`);
+        const readFailed = (error: FsRejectError): ProtocolResponse => {
+            const missing = error.code === FsRejectErrorCode.NOT_FOUND;
+            this.logger.error(`Error reading bundle file: ${filePath} - ${error.message}`);
             return {
                 statusCode: missing ? 404 : 500,
                 headers: { "Content-Type": "text/plain" },
-                data: missing ? "Not found" : `Failed to read file: ${result.error.message}`
+                data: missing ? "Not found" : `Failed to read file: ${error.message}`
             };
+        };
+        const opened = await Fs.openForRead(filePath);
+        if (!opened.ok) {
+            return readFailed(opened.error);
         }
 
-        return {
-            statusCode: 200,
-            headers: {
-                ...this.contentTypeHeaders(storageInfo, filePath, getMimeType(filePath)),
-                // Same reasoning as a session grant: the hash is minted per resolve, so cached bytes
-                // cannot outlive the record they belong to.
-                "Cache-Control": "private, max-age=3600"
-            },
-            data: result.data
-        };
+        return this.fileResponse(request, opened.data, {
+            ...this.contentTypeHeaders(storageInfo, filePath, getMimeType(filePath)),
+            // Same reasoning as a session grant: the hash is minted per resolve, so cached bytes
+            // cannot outlive the record they belong to.
+            "Cache-Control": "private, max-age=3600"
+        }, { byteRanges: true, readFailed });
     }
 
-    private async handleRead(hash: string, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
-        let result;
-        if (storageInfo.raw) {
-            result = await Fs.readRaw(storageInfo.path);
-        } else {
+    /**
+     * Serve a per-file grant.
+     *
+     * The grant's lifetime decides two things here, and they are the same decision:
+     *
+     *  - **When it is spent.** A one-shot grant is destroyed by the first request that gets its bytes -
+     *    read whole, or a stream of them handed to the renderer - and not by one that failed; a
+     *    session grant stays valid until the owner window revokes it.
+     *  - **Whether it answers a `Range`.** A media element reads a clip as a series of range requests
+     *    - one to start, another for every seek outside what it has buffered - so honouring ranges on
+     *    a grant that dies after the first request would advertise something the second request
+     *    cannot have. A one-shot grant therefore answers any request with the whole file and says
+     *    nothing about ranges, which is always a valid reply to a `Range` request. Only a grant that
+     *    can be asked again (Dev Mode's session grants) answers `206`.
+     *
+     * Either way a large file streams rather than being read whole into this process first.
+     */
+    private async handleRead(request: Request, hash: string, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
+        const sessionLived = storageInfo.lifetime === "session";
+        const cacheHeaders: Record<string, string> = sessionLived ? {
+            // Session-lived grants back engine assets that get re-fetched on
+            // scene changes: let the renderer's HTTP cache absorb repeats.
+            // The hash URL is unique per grant (each re-resolve mints a new
+            // one), so cached bytes cannot go stale across recompiles.
+            "Cache-Control": "private, max-age=3600"
+        } : {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        };
+        const spend = () => {
+            if (!sessionLived) {
+                this.storageManager.cleanup(hash);
+            }
+        };
+
+        if (!storageInfo.raw) {
             // The encodings Node cannot name (GBK, Shift_JIS, UTF-16 BE, a UTF-8 that keeps its
             // mark) are decoded here rather than by `Fs`, so iconv-lite stays out of the module the
             // packaged game runtime imports. See `src/main/utils/textCodec.ts`.
-            result = await this.readDecodedText(storageInfo);
-        }
-
-        if (!result.ok) {
-            // As a failed write answers: the filesystem's own error, code and all, so the renderer
-            // can tell the author the file may not be read rather than print this line.
+            const result = await this.readDecodedText(storageInfo);
+            if (!result.ok) {
+                return this.readFailed(result.error);
+            }
+            spend();
             return {
-                statusCode: 500,
-                headers: { "Content-Type": "application/json" },
-                data: JSON.stringify({ error: result.error })
+                statusCode: 200,
+                headers: {
+                    ...this.contentTypeHeaders(storageInfo, storageInfo.path, getMimeType(storageInfo.path)),
+                    ...cacheHeaders,
+                },
+                data: result.data
             };
         }
 
-        const sessionLived = storageInfo.lifetime === "session";
-        if (!sessionLived) {
-            // One-shot grants are destroyed after the first successful read;
-            // session grants stay valid until the owner window revokes them.
-            this.storageManager.cleanup(hash);
+        const opened = await Fs.openForRead(storageInfo.path);
+        if (!opened.ok) {
+            return this.readFailed(opened.error);
         }
+        return this.fileResponse(request, opened.data, {
+            ...this.contentTypeHeaders(storageInfo, storageInfo.path, "application/octet-stream"),
+            ...cacheHeaders,
+        }, { byteRanges: sessionLived, readFailed: error => this.readFailed(error), onServed: spend });
+    }
 
-        const mimeType = storageInfo.raw ? "application/octet-stream" : getMimeType(storageInfo.path);
+    /**
+     * A read the filesystem refused. As a failed write answers: the filesystem's own error, code and
+     * all, so the renderer can tell the author the file may not be read rather than print this line.
+     */
+    private readFailed(error: FsRejectError): ProtocolResponse {
         return {
-            statusCode: 200,
-            headers: {
-                ...this.contentTypeHeaders(storageInfo, storageInfo.path, mimeType),
-                // Session-lived grants back engine assets that get re-fetched on
-                // scene changes: let the renderer's HTTP cache absorb repeats.
-                // The hash URL is unique per grant (each re-resolve mints a new
-                // one), so cached bytes cannot go stale across recompiles.
-                ...(sessionLived ? {
-                    "Cache-Control": "private, max-age=3600"
-                } : {
-                    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0"
-                })
-            },
-            data: result.data
+            statusCode: 500,
+            headers: { "Content-Type": "application/json" },
+            data: JSON.stringify({ error })
         };
+    }
+
+    /**
+     * The response for an opened file: the whole of it, or - when `byteRanges` is set - the single
+     * byte range the request asked for.
+     *
+     * Takes ownership of `file.handle`. A streamed body closes it when the renderer is done with the
+     * stream; every other path closes it before returning.
+     *
+     * `onServed` runs only when the response carries the file's bytes: after a buffered read has
+     * succeeded, or once a stream of them is handed over. A read that fails after the file opened is
+     * answered by `readFailed` instead, as a failed open is.
+     *
+     * The range grammar is the one the packaged runtime's `serveAsset` answers with, from the same
+     * {@link resolveSingleByteRange}: a single `bytes=` range, suffix ranges included, is a `206`;
+     * one past the end of the file is a `416`; anything else - several ranges, a malformed header -
+     * gets the whole file, which is always a valid answer to a `Range` request.
+     */
+    private async fileResponse(
+        request: Request,
+        file: { handle: FileHandle; size: number },
+        headers: Record<string, string>,
+        { byteRanges, readFailed, onServed }: {
+            byteRanges: boolean;
+            readFailed: (error: FsRejectError) => ProtocolResponse;
+            onServed?: () => void;
+        },
+    ): Promise<ProtocolResponse> {
+        const { handle, size } = file;
+        let handedToStream = false;
+        try {
+            const range: ResolvedByteRange = byteRanges
+                ? resolveSingleByteRange(rangeHeaderOf(request), size)
+                : { kind: "full" };
+            const rangeHeaders: Record<string, string> = byteRanges ? { "Accept-Ranges": "bytes" } : {};
+            if (range.kind === "unsatisfiable") {
+                return {
+                    statusCode: 416,
+                    headers: { ...rangeHeaders, "Content-Range": `bytes */${size}` },
+                    data: undefined
+                };
+            }
+
+            const partial = range.kind === "partial";
+            const start = partial ? range.start : 0;
+            const length = partial ? range.end - range.start + 1 : size;
+            let data: Buffer | ReadableStream<Uint8Array>;
+            let sent: number;
+            if (length > FILE_STREAM_THRESHOLD_BYTES) {
+                data = streamFileSpan(handle, start, start + length - 1);
+                handedToStream = true;
+                sent = length;
+            } else {
+                const read = await Fs.readSpan(handle, start, length);
+                if (!read.ok) {
+                    return readFailed(read.error);
+                }
+                data = read.data;
+                // What was actually read, should the file have shrunk since it was measured.
+                sent = data.byteLength;
+            }
+
+            onServed?.();
+            return {
+                statusCode: partial ? 206 : 200,
+                headers: {
+                    ...headers,
+                    ...rangeHeaders,
+                    ...(partial ? { "Content-Range": `bytes ${start}-${start + sent - 1}/${size}` } : {}),
+                    "Content-Length": String(sent),
+                },
+                data
+            };
+        } finally {
+            if (!handedToStream) {
+                await handle.close().catch(() => undefined);
+            }
+        }
     }
 
     /**
