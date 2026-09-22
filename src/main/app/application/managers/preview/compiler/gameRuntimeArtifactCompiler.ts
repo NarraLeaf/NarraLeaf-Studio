@@ -113,6 +113,14 @@ const REQUIRED_RUNTIME_FILES = ["main.js", "bindings.js", "vendor.js", "preload.
 // renderer pair is shared verbatim. Its index.html is generated per pack (see
 // webShell.ts), not copied from the runtime dist.
 const WEB_REQUIRED_RUNTIME_FILES = ["renderer.js", "renderer.css", "web.js"] as const;
+
+/**
+ * The runtime files a pack for this shell carries, whether loose or sealed into the store. The
+ * game's third-party notice is assembled from exactly these (see managers/build/thirdPartyNotices).
+ */
+export function shippedRuntimeFiles(shell: "electron" | "web"): readonly string[] {
+    return shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES;
+}
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
 // Build marker written by project/build/build-runtime.js. It attests that the
 // dist was produced by the runtime build script in production mode; it is
@@ -142,6 +150,11 @@ export type GameRuntimePluginSource = {
     entryPath: string;
     /** Absolute path of the plugin package root; sidecar `include` paths resolve against it. */
     installPath: string;
+    /**
+     * One of the plugins Studio ships. A built-in plugin's bundled npm packages are Studio's to name
+     * in a game's third-party notice; a third-party plugin's are its author's. Absent is not built-in.
+     */
+    builtIn?: boolean;
 };
 
 export type GameRuntimeArtifactCompileInput = {

@@ -379,6 +379,12 @@ export type GameBuildWorkerConfig = {
      * a player is meant to read cannot live inside an archive. Unset when the project has none.
      */
     copyrightFile?: string;
+    /**
+     * Absolute path to the game's `THIRD-PARTY-NOTICES.txt`, shipped beside the executable where
+     * Electron's own licence files already are, for the reason `copyrightFile` is an extra file.
+     * Every desktop build has one.
+     */
+    thirdPartyNoticesFile?: string;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
     /**

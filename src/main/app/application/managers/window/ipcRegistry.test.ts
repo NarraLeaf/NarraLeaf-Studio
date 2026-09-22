@@ -72,6 +72,17 @@ class FakeRequestHandler extends IPCHandler<IPCEventType> {
     }
 }
 
+/** A channel that lands a page's last writes, the way the persistence write channels do. */
+class LastWriteRequestHandler extends IPCHandler<IPCEventType> {
+    readonly name = "last-write" as IPCEventType;
+    readonly type = IPCMessageType.request as never;
+    readonly servesClosingWindow = true;
+
+    public async handle(window: WindowProxy): Promise<RequestStatus<any>> {
+        return this.success({ handledBy: (window as AppWindow).getWebContents().id });
+    }
+}
+
 class ThrowingRequestHandler extends IPCHandler<IPCEventType> {
     readonly name = "throwing-request" as IPCEventType;
     readonly type = IPCMessageType.request as never;
@@ -118,11 +129,13 @@ class CodedRefusalHandler extends IPCHandler<IPCEventType> {
     }
 }
 
-function createRegistry(windows: AppWindow[]): IPCRegistry {
+function createRegistry(windows: AppWindow[], closing: AppWindow[] = []): IPCRegistry {
     const bySender = new Map(windows.map(w => [w.getWebContents().id, w]));
+    const closingBySender = new Map(closing.map(w => [w.getWebContents().id, w]));
     return new IPCRegistry(
         Namespace.NarraLeafStudio,
         sender => bySender.get(sender.id),
+        sender => closingBySender.get(sender.id),
     );
 }
 
@@ -164,6 +177,29 @@ describe("IPCRegistry", () => {
 
         const destroyedResult = await invokeChannel("narraleaf-studio:fake-request", 3, {});
         expect(destroyedResult).toMatchObject({ success: false, error: expect.stringContaining("No live window") });
+    });
+
+    /**
+     * A window that has started closing is off every list, but its page is still running its
+     * `beforeunload` - which is where a game writes out what it owes. The channels that land those
+     * writes answer it; to every other channel it is gone, exactly as before.
+     */
+    it("answers a window that has started closing only on the channels that serve one", async () => {
+        const closing = createFakeWindow(WindowAppType.DevMode, 4);
+        const destroyed = createFakeWindow(WindowAppType.DevMode, 5, true);
+        const ordinary = new FakeRequestHandler();
+        createRegistry([], [closing, destroyed]).initialize([new LastWriteRequestHandler(), ordinary]);
+
+        await expect(invokeChannel("narraleaf-studio:last-write", 4, {}))
+            .resolves.toEqual({ success: true, data: { handledBy: 4 } });
+
+        await expect(invokeChannel("narraleaf-studio:fake-request", 4, {}))
+            .resolves.toMatchObject({ success: false, error: expect.stringContaining("No live window") });
+        expect(ordinary.handleSpy).not.toHaveBeenCalled();
+
+        // Gone is gone, whichever channel asks.
+        await expect(invokeChannel("narraleaf-studio:last-write", 5, {}))
+            .resolves.toMatchObject({ success: false, error: expect.stringContaining("No live window") });
     });
 
     it("enforces per-window API capabilities using real declarations", async () => {

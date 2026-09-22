@@ -14,6 +14,19 @@ type WindowManagerEvents = {
 export class WindowManager {
     private windows: AppWindow[] = [];
     private readonly byWebContentsId = new Map<number, AppWindow>();
+    /**
+     * Windows that have started closing and are not gone yet, by webContents id.
+     *
+     * A window comes off {@link windows} and {@link byWebContentsId} the moment it starts closing,
+     * so that nothing goes on treating it as open. Its page, though, is still running, and this is
+     * exactly when it runs its last code: `beforeunload` and `unload` are dispatched after `close`.
+     * Those handlers are where a game writes out what it has not written yet - the playtime clock
+     * flushes there - and a write sent from them used to reach a registry that had already
+     * forgotten its window and be refused. In Dev Mode that was every second of playtime since the
+     * last whole minute, on every close. The channels that exist to land such a write look here;
+     * see `IPCHandler.servesClosingWindow`.
+     */
+    private readonly closingByWebContentsId = new Map<number, AppWindow>();
     private registry: IPCRegistry | null = null;
 
     public events: EventEmitter<WindowManagerEvents>;
@@ -30,6 +43,7 @@ export class WindowManager {
         this.registry = new IPCRegistry(
             Namespace.NarraLeafStudio,
             sender => this.getWindowByWebContents(sender),
+            sender => this.getClosingWindowByWebContents(sender),
         );
         this.registry.initialize(createDefaultIPCHandlers());
     }
@@ -40,14 +54,29 @@ export class WindowManager {
         this.events.emit("window-created", win);
     }
 
+    /** Forget a window entirely: as open, and as closing. Idempotent. */
     public unregisterWindow(win: AppWindow): void {
         this.app.storageManager.revokeWindowFileSystemAccess(win);
         this.app.menuManager.forgetWindow(win);
         this.windows = this.windows.filter(w => w !== win);
-        for (const [id, mapped] of this.byWebContentsId) {
-            if (mapped === win) {
-                this.byWebContentsId.delete(id);
+        for (const map of [this.byWebContentsId, this.closingByWebContentsId]) {
+            for (const [id, mapped] of map) {
+                if (mapped === win) {
+                    map.delete(id);
+                }
             }
+        }
+    }
+
+    /**
+     * Forget a window as open at the moment it starts closing, and keep it reachable as a closing
+     * window until {@link unregisterWindow} is called for it once it is gone. See
+     * {@link closingByWebContentsId}.
+     */
+    public unregisterClosingWindow(win: AppWindow): void {
+        this.unregisterWindow(win);
+        if (!win.isClosed()) {
+            this.closingByWebContentsId.set(win.getWebContents().id, win);
         }
     }
 
@@ -65,6 +94,11 @@ export class WindowManager {
 
     public getWindowByWebContents(sender: Electron.WebContents): AppWindow | undefined {
         return this.byWebContentsId.get(sender.id);
+    }
+
+    /** The window behind a webContents that has started closing and is not gone yet. */
+    public getClosingWindowByWebContents(sender: Electron.WebContents): AppWindow | undefined {
+        return this.closingByWebContentsId.get(sender.id);
     }
 
     /**
