@@ -25,6 +25,7 @@ import {
 import type { LiveVoiceOp } from "@shared/live/ops";
 import { hashSourceText } from "@shared/utils/localizationText";
 import type { VoiceCsvRow } from "@shared/utils/voiceCsv";
+import type { ExchangeProblem } from "@shared/utils/exchangeProblem";
 import type { StoryDocument } from "@shared/types/story";
 import { Service } from "../Service";
 import { IVoiceService, Services, WorkspaceContext } from "../services";
@@ -73,7 +74,16 @@ export type VoiceImportSummary = {
     applied: number;
     unchanged: number;
     unknown: number;
+    /**
+     * The `unknown` rows that carried something - a note, or a status the import would have taken -
+     * which therefore went nowhere, by their row in the file. A row with nothing in either column is
+     * an ordinary line nobody has recorded yet and is only counted.
+     */
+    skipped: ExchangeProblem[];
 };
+
+/** The `status` values a recording-script import takes; anything else leaves the take's status alone. */
+const IMPORTED_STATUSES: ReadonlySet<string> = new Set(["approved", "linked", "voiced"]);
 
 export type VoiceUnitPatch = {
     /** Asset-library id of the imported clip. Passing this (re-)links the line and re-stamps its hash. */
@@ -154,14 +164,22 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
      * Remove a voice language from the configuration. The voice file on disk is
      * intentionally kept (non-destructive) - re-adding the language restores its
      * clip assignments.
+     *
+     * Pending edits are written first, for the reason `LocalizationService.removeLocale` gives: the
+     * restore promise only holds if the file has the last assignments made before the removal. A
+     * write that fails stays owed, and the library is kept until the retry lands.
      */
     public async removeLocale(code: string): Promise<VoiceConfiguration> {
+        await this.flushPendingChanges().catch(error => {
+            console.warn("[VoiceService] could not save before removing a language", error);
+        });
         const config = await this.updateConfiguration(config => ({
             ...config,
             voicedLocales: config.voicedLocales.filter(locale => locale.code !== code),
         }));
-        this.documents.delete(code);
-        this.dirtyLocales.delete(code);
+        if (!this.dirtyLocales.has(code)) {
+            this.documents.delete(code);
+        }
         return config;
     }
 
@@ -397,7 +415,7 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
      */
     public applyImportedRows(locale: string, rows: readonly VoiceCsvRow[]): VoiceImportSummary {
         const document = this.requireLoadedDocument(locale);
-        const summary: VoiceImportSummary = { applied: 0, unchanged: 0, unknown: 0 };
+        const summary: VoiceImportSummary = { applied: 0, unchanged: 0, unknown: 0, skipped: [] };
         const units = { ...document.units };
         /**
          * Only the takes this import actually changes, in the order the script named them.
@@ -409,13 +427,16 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         const changed: { unitId: string; unit: VoiceUnit }[] = [];
         for (const row of rows) {
             const existing = units[row.unitId];
+            const note = row.note.trim();
+            const declared = row.status.trim().toLowerCase();
             if (!existing) {
                 // No take for this line, so there is nothing for a note or an approval to be about.
                 summary.unknown += 1;
+                if (note || IMPORTED_STATUSES.has(declared)) {
+                    summary.skipped.push({ code: "noTake", ...(row.row !== undefined ? { at: { row: row.row } } : {}) });
+                }
                 continue;
             }
-            const note = row.note.trim();
-            const declared = row.status.trim().toLowerCase();
             const status: VoiceUnitStatus = declared === "approved"
                 ? "approved"
                 : declared === "linked" || declared === "voiced"
@@ -602,12 +623,22 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
         }
     }
 
+    /**
+     * The language's voice library, or the refusal an author sees when it is not in memory - see
+     * `LocalizationService.requireLoadedDocument`, which answers the same two cases the same way.
+     */
     private requireLoadedDocument(locale: string): VoiceDocument {
-        const document = this.documents.get(locale);
-        if (!document) {
-            throw new RendererError(`Voice library not loaded: ${locale}`);
+        // Asked first: a removed language's library can still be held while its last save is owed.
+        if (!this.getConfiguration().voicedLocales.some(entry => entry.code === locale)) {
+            throw new RendererError(translate("workspace.voice.panel.languageGone"));
         }
-        return document;
+        const document = this.documents.get(locale);
+        if (document) {
+            return document;
+        }
+        throw new RendererError(translate("workspace.shell.save.refusedUnreadable", {
+            name: translate("workspace.shell.save.stores.voice"),
+        }));
     }
 
     private scheduleAutoSave(): void {

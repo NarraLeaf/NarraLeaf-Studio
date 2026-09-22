@@ -144,6 +144,10 @@ export const workspace = {
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
             importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
+            importScriptSkipped: {
+                one: "有 {count} 行被跳过",
+                other: "有 {count} 行被跳过",
+            },
             readFailed: "{name} 的配音指派无法读取",
             alreadyAdded: "{name} 已在配音语言列表中",
             languageGone: "该配音语言已不在列表中",
@@ -794,6 +798,27 @@ export const workspace = {
                 notAFolder: "模型需以文件夹导入",
                 emptyFolder: "文件夹为空",
                 copyIncomplete: "文件夹中有文件未能复制到项目中",
+                projectNotAccepting: "项目当前不接受改动",
+            },
+            // 网址未能成为资产、或远程资产的来源无法检查时的原因。只说服务器与地址，不引用状态行或网址本身。
+            remote: {
+                invalidUrl: "该地址不是有效的 URL",
+                unsupportedScheme: "只能下载 http 与 https 地址",
+                unreachable: "无法连接到该服务器",
+                timeout: "服务器在 {seconds} 秒内没有响应",
+                notFound: "服务器上没有该地址的文件",
+                accessDenied: "服务器不允许下载该文件",
+                serverError: "服务器出错，请稍后重试",
+                refused: "服务器未接受该请求",
+                tooLarge: "文件超过远程资产的上限 {limit} MB",
+                noContent: "服务器没有返回内容",
+                bundle: "模型不能从 URL 导入",
+                // {codecs} 与 {container} 是文件自己声明的格式名（HEVC、AVI）。下载的文件无法原地转换，
+                // 出路是转换后从本地导入。
+                unplayableCodecs: "NarraLeaf 无法播放 {codecs}；请转换文件后从本地导入",
+                unplayableContainer: "NarraLeaf 无法打开 {container} 文件；请转换文件后从本地导入",
+                unplayableFormat: "NarraLeaf 无法打开该文件的格式；请转换文件后从本地导入",
+                unplayableNoStreams: "文件中没有 NarraLeaf 可播放的声音或画面",
             },
             // 翻译文件或录音本中被跳过的条目，其余条目照常读取。位置按文件自己的算法：表格的行、
             // JSON 数组的项、PO 文件的行。
@@ -804,6 +829,8 @@ export const workspace = {
                 notEntry: "有条目不是译文",
                 notEntryAtEntry: "第 {n} 项不是译文",
                 unreadableLine: "第 {n} 行无法读取",
+                noTake: "有行对应的对白尚未配音，其备注与状态未应用",
+                noTakeAtRow: "第 {n} 行对应的对白尚未配音，其备注与状态未应用",
             },
         },
         fileDialogFailed: "无法打开文件对话框",

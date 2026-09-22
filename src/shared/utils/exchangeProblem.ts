@@ -34,6 +34,12 @@ export type ExchangeProblem =
     /** An entry that is neither a string nor a translation unit, skipped. */
     | { code: "notEntry"; at?: ExchangeProblemPosition }
     /** A line of a PO file that is none of the things a PO line can be, skipped. */
-    | { code: "unreadableLine"; at: { line: number } };
+    | { code: "unreadableLine"; at: { line: number } }
+    /**
+     * A recording-script row carrying a note or an approval for a line that has no take in this
+     * voice language, skipped: there is nothing for either to be about. Found when the rows are
+     * applied, not when the file is read - only the voice library knows which lines have takes.
+     */
+    | { code: "noTake"; at?: { row: number } };
 
 export type ExchangeProblemCode = ExchangeProblem["code"];

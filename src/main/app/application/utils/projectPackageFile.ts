@@ -12,12 +12,14 @@ import {
     decodeProjectPackage,
     decodeProjectPackageIndex,
     encodeProjectPackageIndex,
+    isNewerProjectPackage,
     locateProjectPackageFiles,
     normalizeProjectPackagePath,
     projectPackageMagic,
     readProjectPackageVersion,
     shouldExcludeProjectPackagePath,
 } from "@shared/utils/projectPackage";
+import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
 import { unpatchedFs as nodeFs, unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 
 /**
@@ -202,15 +204,89 @@ export async function readProjectPackageInto(
     packagePath: string,
     targetDir: string,
 ): Promise<ProjectPackageReadResult> {
+    try {
+        return await unpackProjectPackage(packagePath, targetDir);
+    } catch (error) {
+        throw classifyUnpackFailure(error, packagePath);
+    }
+}
+
+/**
+ * A refusal from the unpacker: the log's sentence, which names paths, and the code the wizard words.
+ */
+export class ProjectPackageImportError extends Error {
+    constructor(
+        public readonly code: ProjectPackageImportErrorCode,
+        message: string,
+        options?: { cause?: unknown },
+    ) {
+        super(message, options);
+        this.name = "ProjectPackageImportError";
+    }
+}
+
+/** What the disk says when it will not let a path be read or written. */
+const ACCESS_DENIED_CODES: ReadonlySet<string> = new Set(["EACCES", "EPERM", "EROFS"]);
+
+/**
+ * Give an unpack failure the code the wizard words it from.
+ *
+ * Two kinds of thing fail here. A failure the disk reported carries an errno, and the path it was
+ * about says which side it was on: the package being read, or the folder being written. Anything
+ * else was thrown by the format's own checks - an index that does not add up, an entry that points
+ * outside the folder, msgpack that will not decode - and every one of those is a package that does
+ * not hold together. A disk failure with no code the author can act on (`EIO`, `EBUSY`) keeps its
+ * errno and gets no sentence of its own; the wizard then says the file could not be unpacked.
+ */
+export function classifyUnpackFailure(error: unknown, packagePath: string): Error {
+    if (error instanceof ProjectPackageImportError) {
+        return error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    const errno = (error as NodeJS.ErrnoException | null)?.code;
+    if (typeof errno !== "string") {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.Damaged, message, { cause: error });
+    }
+    if (errno === "ENOSPC") {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.DiskFull, message, { cause: error });
+    }
+    const failedPath = (error as NodeJS.ErrnoException).path;
+    const onPackage = typeof failedPath === "string" && path.resolve(failedPath) === path.resolve(packagePath);
+    if (onPackage && errno === "ENOENT") {
+        return new ProjectPackageImportError(ProjectPackageImportErrorCode.PackageMissing, message, { cause: error });
+    }
+    if (ACCESS_DENIED_CODES.has(errno)) {
+        return new ProjectPackageImportError(
+            onPackage ? ProjectPackageImportErrorCode.PackageUnreadable : ProjectPackageImportErrorCode.FolderReadOnly,
+            message,
+            { cause: error },
+        );
+    }
+    return error instanceof Error ? error : new Error(message);
+}
+
+async function unpackProjectPackage(
+    packagePath: string,
+    targetDir: string,
+): Promise<ProjectPackageReadResult> {
     await fs.mkdir(targetDir, { recursive: true });
     if ((await fs.readdir(targetDir)).length > 0) {
-        throw new Error("Import folder must be empty. Choose an empty folder for the imported project.");
+        throw new ProjectPackageImportError(
+            ProjectPackageImportErrorCode.FolderNotEmpty,
+            "Import folder must be empty. Choose an empty folder for the imported project.",
+        );
     }
 
     const byteLength = (await fs.stat(packagePath)).size;
-    const version = readProjectPackageVersion(await readSpan(packagePath, 0, PROJECT_PACKAGE_BODY_OFFSET));
+    const head = await readSpan(packagePath, 0, PROJECT_PACKAGE_BODY_OFFSET);
+    const version = readProjectPackageVersion(head);
     if (version === null) {
-        throw new Error("Selected file is not a NarraLeaf Studio project package.");
+        // A package's magic with a version after this Studio's is a package, from a newer Studio -
+        // which is a different thing to tell the author than "this is not a package".
+        throw new ProjectPackageImportError(
+            isNewerProjectPackage(head) ? ProjectPackageImportErrorCode.NewerVersion : ProjectPackageImportErrorCode.NotAPackage,
+            "Selected file is not a NarraLeaf Studio project package this version can read.",
+        );
     }
     if (version === PROJECT_PACKAGE_LEGACY_VERSION) {
         return { ...await readLegacyPackageInto(packagePath, targetDir), byteLength };
@@ -303,10 +379,19 @@ async function readSpan(filePath: string, offset: number, length: number): Promi
  * Names the file. A copy that fails part-way through a project reports whatever the filesystem
  * said, and on its own that is a path-shaped sentence about a file the author never mentioned -
  * which is all an export failure used to put in front of them.
+ *
+ * The disk's errno and the path it was about survive the rewording: the unpacker reads them to tell
+ * a package it cannot read from a folder it cannot write.
  */
 function describeFileFailure(relativePath: string, error: unknown): Error {
     const reason = error instanceof Error ? error.message : String(error);
-    return new Error(`Could not copy "${relativePath}": ${reason}`);
+    const described = new Error(`Could not copy "${relativePath}": ${reason}`, { cause: error });
+    const errno = error as NodeJS.ErrnoException | null;
+    return Object.assign(
+        described,
+        typeof errno?.code === "string" ? { code: errno.code } : {},
+        typeof errno?.path === "string" ? { path: errno.path } : {},
+    );
 }
 
 function toProjectPackagePath(projectRoot: string, absolutePath: string): string {

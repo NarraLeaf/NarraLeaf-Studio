@@ -118,6 +118,15 @@ export const wizard = {
             generic: "The file could not be unpacked.",
             notAProjectTitle: "This is not a NarraLeaf Studio project",
             notAProject: "Unpacking finished, but the result holds no Studio project file. The unpacked contents are in {path}",
+            // Why an unpack failed, from the code the main process answered with. The package and
+            // the folder are the two things on the page, so each sentence is about one of them.
+            notAPackage: "The file is not a NarraLeaf Studio project package.",
+            newerVersion: "The package was made by a newer version of NarraLeaf Studio. Update Studio to import it.",
+            damaged: "The package is damaged or incomplete.",
+            packageMissing: "The package file no longer exists.",
+            packageUnreadable: "Studio is not allowed to read the package file.",
+            folderProtected: "The chosen folder is inside Studio's own storage. Choose another folder.",
+            diskFull: "The disk is full.",
         },
     },
     // The clone flow's first page. Deliberately short: everything else about the project is

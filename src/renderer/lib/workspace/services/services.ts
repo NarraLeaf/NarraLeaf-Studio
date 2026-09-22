@@ -54,6 +54,7 @@ import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import type { HistoryLabel } from "./history/historyModel";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
+import type { RefusableStatus } from "./assets/assetImportRefusal";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
@@ -1326,9 +1327,8 @@ interface IAssetService extends IService {
     list<T extends AssetType>(type: T): string[];
     fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
     exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
-    importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
-    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>>;
-    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
+    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RefusableStatus<Asset<AssetType, AssetSource.Remote>>>;
+    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RefusableStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
     hasRemoteSnapshot(assetId: string): Promise<boolean>;
 }
 
