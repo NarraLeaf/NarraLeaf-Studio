@@ -71,7 +71,9 @@ import {
     type UIStructDef,
 } from "@shared/types/ui-editor/struct";
 import { UI_LIST_LIKE_WIDGET_TYPES } from "@shared/types/ui-editor/list";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -210,19 +212,22 @@ function resolveListElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "list"));
     if (ref) {
         if (ref.elementType !== LIST_ELEMENT_TYPE) {
-            throw new BlueprintGraphExecutionError("List node requires an nl.list element", ctx.node.id);
+            throw new BlueprintGraphExecutionError(
+                translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(LIST_ELEMENT_TYPE) }),
+                ctx.node.id,
+            );
         }
         if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-            throw new BlueprintGraphExecutionError("List node can only target the current Surface", ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
         }
         return addressWidgetFromExecution(ctx, ref.elementId);
     }
     if (target === "element") {
-        throw new BlueprintGraphExecutionError("List Element node requires a List input", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     const elementId = ctx.executionOwner?.elementId;
     if (!elementId) {
-        throw new BlueprintGraphExecutionError("List node requires a List target", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     return addressWidgetFromExecution(ctx, elementId);
 }
@@ -306,7 +311,10 @@ function readFieldId(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): string {
 async function setItemFieldAt(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
     const fieldId = readFieldId(ctx);
     if (!fieldId) {
-        throw new BlueprintGraphExecutionError("Set Item Field At needs a field", ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.pickField", { node: translate("blueprint.node.setItemFieldAt") }),
+            ctx.node.id,
+        );
     }
     const next = withItemFieldSet(
         currentItems(ctx, target),
@@ -324,7 +332,10 @@ async function setItemFieldAt(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
 async function sortListByField(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
     const fieldId = readFieldId(ctx);
     if (!fieldId) {
-        throw new BlueprintGraphExecutionError("Sort List By Field needs a field", ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.pickField", { node: translate("blueprint.node.sortListByField") }),
+            ctx.node.id,
+        );
     }
     const descending = ctx.node.params?.direction === "descending";
     return setItems(

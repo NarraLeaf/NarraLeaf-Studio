@@ -16,6 +16,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { localizationKeyUnitId, resolveLocalizedUnitText } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -98,12 +99,26 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
             const api = requireHostApi(ctx);
             const config = api.localization.getConfig();
             if (!config) {
-                throw new BlueprintGraphExecutionError("This project has no languages configured", ctx.node.id);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noLanguages"), ctx.node.id);
             }
             const raw = resolveNodeInput(ctx, "language");
             const code = String(raw ?? "").trim();
-            if (!code || !config.locales.some(locale => locale.code === code)) {
-                throw new BlueprintGraphExecutionError(`Unknown language: ${code || "(empty)"}`, ctx.node.id);
+            if (!code) {
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.setLanguage"),
+                        pin: translate("blueprint.port.language"),
+                    }),
+                    ctx.node.id,
+                );
+            }
+            if (!config.locales.some(locale => locale.code === code)) {
+                // The code as the author wired it: it names no language, so there is no
+                // display name to show instead.
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.unknownLanguage", { language: code }),
+                    ctx.node.id,
+                );
             }
             await api.localization.setLocale(code);
             return { nextPort: "next" };
@@ -142,7 +157,13 @@ export const localizationBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const keyName = resolvePinString(ctx, "key").trim();
             if (!keyName) {
-                throw new BlueprintGraphExecutionError("Provide a text key", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.getText"),
+                        pin: translate("blueprint.port.key"),
+                    }),
+                    ctx.node.id,
+                );
             }
             const text = await resolveNamedKeyText(ctx, keyName);
             return {

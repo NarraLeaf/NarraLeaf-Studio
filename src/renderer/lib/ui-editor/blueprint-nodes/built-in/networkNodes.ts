@@ -47,6 +47,8 @@ import {
     BLUEPRINT_VALUE_TYPE_RESPONSE_BODY,
     normalizeBlueprintResponseBody,
 } from "@shared/types/blueprint/valueTypes";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
@@ -172,7 +174,7 @@ function readPin(ctx: NetworkExecuteCtx, pinId: string): unknown {
  */
 function requireLocals(ctx: NetworkExecuteCtx): Record<string, unknown> {
     if (!ctx.blueprintLocals) {
-        throw new BlueprintGraphExecutionError("Network: no execution scope to hold the response", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.cannotRunHere"), ctx.node.id);
     }
     return ctx.blueprintLocals;
 }
@@ -205,15 +207,21 @@ function resolveMethod(ctx: NetworkExecuteCtx): BlueprintNetworkMethod {
  * wrong, and an author cannot write a branch that fixes it at runtime. A body that failed to
  * *parse* is a different thing entirely and does get a pin.
  */
-function requireBody(ctx: NetworkExecuteCtx, nodeLabel: string): string {
+function requireBody(ctx: NetworkExecuteCtx, nodeTitleKey: TranslationKey): string {
     const handle = normalizeBlueprintResponseBody(readPin(ctx, "response"));
     if (!handle) {
-        throw new BlueprintGraphExecutionError(`${nodeLabel}: wire a Response`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.inputEmpty", {
+                node: translate(nodeTitleKey),
+                pin: translate("blueprint.port.response"),
+            }),
+            ctx.node.id,
+        );
     }
     const body = readResponseBody(requireLocals(ctx), handle);
     if (body === null) {
         throw new BlueprintGraphExecutionError(
-            `${nodeLabel}: this response is no longer available. A response can only be read by the same execution that fetched it.`,
+            translate("blueprint.runtimeError.responseGone", { node: translate(nodeTitleKey) }),
             ctx.node.id,
         );
     }
@@ -255,7 +263,13 @@ export const networkBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const url = readOptionalString(readPin(ctx, "url"));
             if (!url) {
-                throw new BlueprintGraphExecutionError("Fetch: wire or type a URL", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.fetch"),
+                        pin: translate("blueprint.port.url"),
+                    }),
+                    ctx.node.id,
+                );
             }
             // Checked before the request, not after: the point of the cap is to not hold the bodies,
             // and refusing once one more has already arrived would defeat it.
@@ -312,7 +326,7 @@ export const networkBlueprintNodes: BlueprintNodeDef[] = [
         execute(ctx) {
             return {
                 nextPort: "next",
-                outputValues: { text: requireBody(ctx, "Read Response Text") },
+                outputValues: { text: requireBody(ctx, "blueprint.node.readResponseText") },
             };
         },
     },
@@ -334,7 +348,7 @@ export const networkBlueprintNodes: BlueprintNodeDef[] = [
             errorOut,
         ],
         execute(ctx) {
-            const body = requireBody(ctx, "Read Response JSON");
+            const body = requireBody(ctx, "blueprint.node.readResponseJson");
             try {
                 return {
                     nextPort: "next",

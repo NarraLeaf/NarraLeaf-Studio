@@ -35,6 +35,7 @@ import {
     blueprintRGBAColorToCss,
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type {
     BlueprintTextProperties,
@@ -168,7 +169,7 @@ function runtimeTextRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
     const api = requireHostApi(ctx);
     const elementId = ctx.executionOwner?.elementId;
     if (!elementId) {
-        throw new BlueprintGraphExecutionError("Text node requires a widget execution owner", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     // The drawing, not the template: a component draws its definition once per placement, so a
     // Text node inside one addresses a place no drawing reads unless it says which. See

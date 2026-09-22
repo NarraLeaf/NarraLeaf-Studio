@@ -18,7 +18,9 @@ import {
     BLUEPRINT_NODE_TYPE_SWITCH_TURN_ON,
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type { BlueprintSwitchPropertiesPatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
@@ -115,19 +117,22 @@ function runtimeSwitchRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], targe
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "switch"));
     if (ref) {
         if (ref.elementType !== SWITCH_ELEMENT_TYPE) {
-            throw new BlueprintGraphExecutionError("Switch node requires an nl.switch element", ctx.node.id);
+            throw new BlueprintGraphExecutionError(
+                translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(SWITCH_ELEMENT_TYPE) }),
+                ctx.node.id,
+            );
         }
         if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-            throw new BlueprintGraphExecutionError("Switch node can only target the current Surface", ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
         }
         return { api, elementId: addressWidgetFromExecution(ctx, ref.elementId) };
     }
     if (target === "element") {
-        throw new BlueprintGraphExecutionError("Switch Element node requires a Switch input", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     const elementId = ctx.executionOwner?.elementId;
     if (!elementId) {
-        throw new BlueprintGraphExecutionError("Switch node requires a Switch target", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     return { api, elementId: addressWidgetFromExecution(ctx, elementId) };
 }

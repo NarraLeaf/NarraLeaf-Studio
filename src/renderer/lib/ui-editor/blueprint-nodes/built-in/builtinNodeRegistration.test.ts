@@ -4,7 +4,7 @@
  * An array can be exported, imported by tests, and documented, yet never be spread into
  * `allBuiltinBlueprintNodes` - in which case `registerCoreBlueprintNodes()` skips it and the
  * nodes exist in neither the palette nor `behaviorNodeRegistry`. That failure is silent: the
- * only symptom is a saved graph throwing "Behavior node definition missing" at execution time.
+ * only symptom is a saved graph stopping at execution time with "This node is not available".
  *
  * Membership is checked by node `type`, not by array identity, because some arrays are
  * re-exported for tests while shipping nested inside another (e.g. `imageAssetBlueprintNodes`
@@ -144,7 +144,7 @@ describe("function entry node", () => {
     it("resolves from behaviorNodeRegistry so the executor does not throw a missing definition", () => {
         registerCoreBlueprintNodes();
 
-        // GraphExecutor throws `Behavior node definition missing: <type>` when this lookup returns
+        // GraphExecutor stops with "This node is not available" when this lookup returns
         // undefined, which is exactly what an unregistered entry node caused.
         const behavior = behaviorNodeRegistry.get(BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY);
         expect(behavior).toBeDefined();

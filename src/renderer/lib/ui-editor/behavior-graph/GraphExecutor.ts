@@ -26,6 +26,7 @@ import {
     listUnwiredRequiredInputPins,
 } from "../blueprint-nodes/requiredInputPins";
 import { getBlueprintDebugController } from "./debugControl";
+import { translate } from "@/lib/i18n";
 
 export type ExecuteGraphOptions = {
     graph: UIGraph;
@@ -131,7 +132,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
 
             const node = graph.nodes[currentCursor];
             if (!node) {
-                throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${currentCursor}`, currentCursor);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.nodeMissing"), currentCursor);
             }
 
             if (stepsWithoutWaiting > stepBudget) {
@@ -161,7 +162,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
 
             const definition = behaviorNodeRegistry.get(node.type);
             if (!definition) {
-                throw new BlueprintGraphExecutionError(`Behavior node definition missing: ${node.type}`, currentCursor);
+                throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.nodeTypeMissing"), currentCursor);
             }
 
             const trace = options.trace;
