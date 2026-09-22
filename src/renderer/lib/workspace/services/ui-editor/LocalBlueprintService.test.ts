@@ -242,6 +242,7 @@ function createHarness() {
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
+        commandLineRun: false,
     };
     historyService.setContext(context);
     service.setContext(context);

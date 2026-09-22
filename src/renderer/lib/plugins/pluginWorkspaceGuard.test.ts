@@ -23,6 +23,7 @@ function fakeLiveContext(): WorkspaceContext {
             get: () => "LIVE_SERVICE",
             getAll: () => ["LIVE_SERVICE"],
         } as unknown as WorkspaceContext["services"],
+        commandLineRun: false,
     };
 }
 

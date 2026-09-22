@@ -56,6 +56,10 @@ export function guardWorkspaceContextForPlugin(pluginId: string, context: Worksp
     return {
         project: context.project,
         services: createDeniedRegistry(pluginId),
+        // Carried rather than forced to false: a plugin asking whether its window is answering a
+        // command line gets the same answer Studio's own code does, and lying would be the one way
+        // a plugin could end up recording an author's activity where Studio deliberately does not.
+        commandLineRun: context.commandLineRun,
     };
 }
 

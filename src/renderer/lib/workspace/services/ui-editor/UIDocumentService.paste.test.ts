@@ -46,6 +46,7 @@ function createHarness() {
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
+        commandLineRun: false,
     });
     (service as any).document = (service as any).createEmptyDocument();
     const surfaceId = service.getDocument().surfaces[0].id;

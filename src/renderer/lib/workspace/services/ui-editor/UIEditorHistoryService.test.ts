@@ -146,6 +146,7 @@ function createHarness(initialDocument = documentWithPositions(0, 0), initialBlu
                 throw new Error(`Unexpected service ${service}`);
             },
         } as any,
+        commandLineRun: false,
     };
     historyService.setContext(context);
     history.setContext(context);
