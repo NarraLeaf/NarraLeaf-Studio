@@ -131,7 +131,7 @@ function DependencyBannerStrip({ entries }: { entries: readonly DependencyResolu
                     ? "border-danger/30 bg-danger/10 text-danger"
                     : "border-warning/30 bg-warning/10 text-warning"
             }`}
-            data-dependency-banner={banner.tone}
+            data-dependency-table-banner={banner.tone}
         >
             {banner.lines.map(line => (
                 <p key={line.key}>{tn(line.key, line.count, { count: line.count })}</p>
@@ -146,9 +146,12 @@ function DependencyRow({ entry }: { entry: DependencyResolutionEntry }) {
     const usage = summarizeUsage(dependency.usedBy, tn);
     const state = describeDependencyState(entry);
 
+    // What is installed is stated only when something is, as on the Plugins panel's dependency
+    // screen: the state word beside the name already says a plugin is missing, and "Installed not
+    // installed" read as two facts that contradict each other.
     const meta = [
         t("project.dependencies.meta.requires", { version: dependency.authoredVersion }),
-        t("project.dependencies.meta.installed", { version: installedVersion ?? t("project.dependencies.meta.notInstalled") }),
+        installedVersion ? t("project.dependencies.meta.installed", { version: installedVersion }) : null,
         dependency.builtIn ? t("project.dependencies.meta.builtIn") : null,
         usage,
         !dependency.hard ? t("project.dependencies.meta.dataOnly") : null,

@@ -572,7 +572,6 @@ export const project = {
         meta: {
             requires: "需要 {version}",
             installed: "已安装 {version}",
-            notInstalled: "未安装",
             builtIn: "内置",
             dataOnly: "仅数据",
         },

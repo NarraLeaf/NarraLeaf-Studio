@@ -653,7 +653,6 @@ export const project = {
         meta: {
             requires: "Requires {version}",
             installed: "Installed {version}",
-            notInstalled: "not installed",
             builtIn: "Built-in",
             dataOnly: "data only",
         },

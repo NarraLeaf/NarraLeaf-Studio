@@ -583,7 +583,6 @@ export const project = {
         meta: {
             requires: "{version} が必要",
             installed: "{version} が入っている",
-            notInstalled: "未インストール",
             builtIn: "組み込み",
             dataOnly: "データのみ",
         },
