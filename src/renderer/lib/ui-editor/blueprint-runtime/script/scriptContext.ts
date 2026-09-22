@@ -78,7 +78,24 @@ export const SCRIPT_WIDGET_TYPES = [
     "nl.nvl.texts",
 ] as const;
 
-export type ScriptWidgetType = (typeof SCRIPT_WIDGET_TYPES)[number];
+export type BuiltinScriptWidgetType = (typeof SCRIPT_WIDGET_TYPES)[number];
+
+/**
+ * The widgets loaded plugins contribute, each with the events a script on it may export - event id
+ * to the `event` argument it is called with.
+ *
+ * Empty here, on purpose: a plugin's widget is not Studio's to declare. The project half of the
+ * declarations (`scripts/.narraleaf/project.d.ts`) fills it in from the plugins loaded when it was
+ * written, by declaring this same interface again inside the module, which TypeScript merges. So
+ * `WidgetCtx<"acme.rating.stars">` and `WidgetHandler<"acme.rating.stars", "rated">` type-check in a
+ * project that uses that plugin's widget, and in no other.
+ */
+export interface PluginScriptWidgets {}
+
+/** A widget type a loaded plugin contributes, as {@link PluginScriptWidgets} names it. */
+export type PluginScriptWidgetType = Extract<keyof PluginScriptWidgets, string>;
+
+export type ScriptWidgetType = BuiltinScriptWidgetType | PluginScriptWidgetType;
 
 /**
  * The list row this drawing was drawn for, when it was drawn by a list.

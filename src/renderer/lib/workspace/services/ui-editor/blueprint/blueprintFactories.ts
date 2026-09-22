@@ -15,6 +15,8 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { GLOBAL_MAIN_OWNER_KEY, ownerRefToIndexKey } from "./ownerKeys";
 import {
     scriptEventExportNamesForOwner,
+    scriptEventIdsForOwner,
+    scriptExportNameOf,
     scriptOwnerUsesDefaultExport,
 } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
@@ -64,11 +66,25 @@ function starterHeader(owner: BlueprintOwnerRef, widgetType: string | undefined)
 }
 
 /**
+ * The handler a widget's starter file writes: `onInit` where the widget has it - every built-in
+ * widget does - and otherwise the first event its script is called with, which is where a plugin's
+ * widget that declares no Init lands. A starter naming an event the widget never raises would be a
+ * file that looks like working code and is never called.
+ */
+function starterWidgetHandler(owner: BlueprintOwnerRef, widgetType: string | undefined): { name: string; init: boolean } {
+    const events = scriptEventIdsForOwner(owner, widgetType);
+    if (events.length === 0 || events.includes("init")) {
+        return { name: "onInit", init: true };
+    }
+    return { name: scriptExportNameOf(events[0]), init: false };
+}
+
+/**
  * The file a new script starts as.
  *
  * One handler, named the way every handler is named, and the event chosen so it exists wherever this
- * script sits: `onInit` for a widget - every widget type has it - `onSurfaceInit` for a page,
- * `onAppBoot` for the project, and the default export for a story row, which has no others.
+ * script sits: `onInit` for a widget that has it (see {@link starterWidgetHandler}), `onSurfaceInit`
+ * for a page, `onAppBoot` for the project, and the default export for a story row, which has no others.
  *
  * Written once, when the script is created, and never rewritten: from that moment the file is the
  * author's. See `@shared/project/scriptsDirectory`.
@@ -80,6 +96,10 @@ export function renderStarterScript(params: {
 }): string {
     const widget = params.widgetType ?? "nl.container";
     const header = starterHeader(params.owner, params.widgetType);
+    const handler = starterWidgetHandler(params.owner, params.widgetType);
+    const handlerBody = handler.init
+        ? "    ctx.vars.ready = true;"
+        : `    ctx.host.devtools.log("info", "${handler.name} ran");`;
     switch (params.owner.kind) {
         case "globalMain":
             return [
@@ -106,8 +126,8 @@ export function renderStarterScript(params: {
                 ...header,
                 `import type { ComponentWidgetCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
-                `export function onInit(ctx: ComponentWidgetCtx<"${widget}">): void {`,
-                "    ctx.vars.ready = true;",
+                `export function ${handler.name}(ctx: ComponentWidgetCtx<"${widget}">): void {`,
+                handlerBody,
                 "}",
                 "",
             ].join("\n");
@@ -152,8 +172,8 @@ export function renderStarterScript(params: {
                 ...header,
                 `import type { WidgetCtx } from "${SCRIPT_TYPES_MODULE}";`,
                 "",
-                `export function onInit(ctx: WidgetCtx<"${widget}">): void {`,
-                "    ctx.vars.ready = true;",
+                `export function ${handler.name}(ctx: WidgetCtx<"${widget}">): void {`,
+                handlerBody,
                 "}",
                 "",
             ].join("\n");

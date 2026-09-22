@@ -165,7 +165,18 @@ describe("a plugin widget's declared events", () => {
         register({ type: RATING, logicApi: RATING_LOGIC });
 
         expect(getWidgetLogicApi(RATING)?.supportsPrivateBlueprint).toBe(true);
-        expect(getWidgetLogicApi(RATING)?.events.map(eventDef => eventDef.id)).toEqual(["rated", "mouseClick"]);
+        // Its own two, then the ambient events the host raises on every widget with a blueprint (see
+        // `pluginWidgetHeadsAndSlots.test.ts`).
+        expect(getWidgetLogicApi(RATING)?.events.map(eventDef => eventDef.id)).toEqual([
+            "rated",
+            "mouseClick",
+            "keyDown",
+            "keyUp",
+            "onAnyBroadcast",
+            "onBroadcast",
+            "windowFullscreenChanged",
+            "windowFocusChanged",
+        ]);
         expect(isBlueprintEventDispatchHeadType(RATED_HEAD)).toBe(true);
 
         widgetModuleRegistry.unregister(RATING);
