@@ -10,6 +10,9 @@ import {
 } from "@shared/types/pluginDependencies";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { parsePluginStore } from "@shared/utils/pluginStorage";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { FsRejectErrorCode } from "@shared/types/os";
+import type { PluginListItem } from "@shared/types/plugins";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectDependencyService, Services, WorkspaceContext } from "../services";
@@ -20,7 +23,6 @@ import { FileSystemService } from "./FileSystem";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
 import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
-import { UIGraphService } from "../ui-editor/UIGraphService";
 
 /** Installed plugin info the scanner and resolver consume, derived from PluginListItem. */
 export interface InstalledPlugin {
@@ -40,18 +42,28 @@ export interface DependencyUsageRecord {
     id: string;
     /** True when the reference breaks the document if the plugin is absent. */
     hard: boolean;
+    /**
+     * True when the type was attributed by its name alone, because the plugin that owns it is not
+     * loaded here to claim it (see {@link attributeByNamespace}). Such a reference says the project
+     * still uses the plugin; it says nothing about which version the project is being made with.
+     */
+    byName?: boolean;
 }
 
 export interface DependencyScanInput {
-    usage: DependencyUsageRecord[];
     /**
-     * Plugin ids currently loaded and contributing at least one type. For these,
-     * `usage` is authoritative and recorded entries are re-derived (dropped when
-     * unused); recorded entries for any other plugin are preserved.
+     * Every reference to a plugin the scan found. Complete for every plugin, loaded or not: a loaded
+     * plugin's types are claimed through the registries, and anything else a project can refer to a
+     * plugin by carries the plugin's id in it (see {@link attributeByNamespace}).
      */
-    authoritativePluginIds: Iterable<string>;
+    usage: DependencyUsageRecord[];
     installed: InstalledPlugin[];
     existing?: ProjectDependencyTable;
+    /**
+     * False when a document the scan reads could not be read. What a scan did not see it cannot
+     * vouch for, so no recorded dependency is dropped and none loses a use it recorded.
+     */
+    complete: boolean;
 }
 
 /**
@@ -70,9 +82,10 @@ export class ProjectDependencyService
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         await depend([ctx.services.get<ProjectService>(Services.Project)]);
         // Resolve on open from the *persisted* table so suppression is known
-        // before plugins load. Scanning is deferred to save/export/manual - it
-        // needs loaded plugins to attribute usage, which the persisted table
-        // already captured. A failure here must not block opening the project.
+        // before plugins load. Scanning is left to the moments that act on the
+        // table - a run, an export, a Rescan - since a scan reads every document
+        // and suppression cannot wait for one. A failure here must not block
+        // opening the project.
         try {
             await this.resolve();
         } catch (error) {
@@ -134,31 +147,30 @@ export class ProjectDependencyService
     /**
      * Scan the project for plugin usage and produce an up-to-date table. Merges
      * with the existing table (see {@link buildDependencyTable}).
+     *
+     * Reads the documents as they are in memory, never off the disk. The author's latest edit may
+     * still be waiting for its auto-save, and a scan that re-read the files replaced the open
+     * documents with the older copies on disk - taking the edit with it - whenever a run, which
+     * scans first, started within a second of one.
      */
     public async rescan(): Promise<ProjectDependencyTable> {
-        const ctx = this.getContext();
-        // Load documents defensively so a manual rescan works even if a document
-        // has not been opened yet in this session.
-        try {
-            await ctx.services.get<UIGraphService>(Services.UIGraph).load();
-        } catch { /* fall through - collectors tolerate an unloaded doc */ }
-        try {
-            await ctx.services.get<UIDocumentService>(Services.UIDocument).load();
-        } catch { /* fall through */ }
+        const plugins = await this.listPlugins();
+        const installed = plugins.map(toInstalledPlugin);
+        const existing = this.getProjectService().getDependencyTable();
+        const scan: DependencyScan = {
+            usage: [],
+            complete: true,
+            candidatePluginIds: [...new Set([
+                ...(existing?.plugins ?? []).map(plugin => plugin.id),
+                ...installed.map(plugin => plugin.id),
+            ])],
+        };
+        this.collectBlueprintNodeUsage(scan);
+        this.collectWidgetUsage(scan);
+        await this.collectStorageUsage(scan, listPublishedNamespaces(plugins));
+        await this.collectStoryActionUsage(scan);
 
-        const usage: DependencyUsageRecord[] = [];
-        const authoritative = new Set<string>();
-        this.collectBlueprintNodeUsage(usage, authoritative);
-        this.collectWidgetUsage(usage, authoritative);
-        await this.collectStorageUsage(usage, await this.listPublishedNamespaces());
-        await this.collectStoryActionUsage(usage, authoritative);
-
-        return buildDependencyTable({
-            usage,
-            authoritativePluginIds: authoritative,
-            installed: await this.listInstalledPlugins(),
-            existing: this.getProjectService().getDependencyTable(),
-        });
+        return buildDependencyTable({ usage: scan.usage, installed, existing, complete: scan.complete });
     }
 
     /** Scan, persist the fresh table into the manifest, then re-resolve. */
@@ -168,67 +180,37 @@ export class ProjectDependencyService
         return this.resolve();
     }
 
-    private collectBlueprintNodeUsage(usage: DependencyUsageRecord[], authoritative: Set<string>): void {
+    private collectBlueprintNodeUsage(scan: DependencyScan): void {
         const ctx = this.getContext();
-        const catalog = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
-        for (const pluginId of catalog.getContributingPluginIds()) {
-            authoritative.add(pluginId);
-        }
-
-        let document;
+        let catalog: BlueprintNodeCatalogService;
+        let document: BlueprintDocument;
         try {
+            catalog = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
             document = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint).getBlueprintDocument();
         } catch {
+            scan.complete = false;
             return;
         }
-
-        for (const blueprint of Object.values(document.blueprints)) {
-            const { events, functions, macros } = blueprint.graphs;
-            for (const group of [events, functions, macros]) {
-                if (!group) {
-                    continue;
-                }
-                for (const entry of Object.values(group)) {
-                    const nodes = entry.graph?.nodes;
-                    if (!nodes) {
-                        continue;
-                    }
-                    for (const node of Object.values(nodes)) {
-                        const owner = catalog.getNodeOwner(node.type);
-                        if (owner) {
-                            usage.push({ pluginId: owner, kind: "blueprintNode", id: node.type, hard: true });
-                        }
-                    }
-                }
-            }
-        }
+        scan.usage.push(...collectBlueprintDocumentUsage(document, {
+            ownerOf: type => catalog.getNodeOwner(type),
+            isRegistered: type => catalog.get(type) !== undefined,
+            candidatePluginIds: scan.candidatePluginIds,
+        }));
     }
 
-    private collectWidgetUsage(usage: DependencyUsageRecord[], authoritative: Set<string>): void {
-        for (const pluginId of widgetModuleRegistry.getOwnerPluginIds()) {
-            authoritative.add(pluginId);
-        }
-
-        let document;
+    private collectWidgetUsage(scan: DependencyScan): void {
+        let document: InterfaceDocumentElements;
         try {
-            document = this.getContext().services.get<UIDocumentService>(Services.UIDocument).getDocument();
+            document = this.getContext().services.get<UIDocumentService>(Services.UIDocument).getPageDocument();
         } catch {
+            scan.complete = false;
             return;
         }
-
-        const collect = (elements: Record<string, { type: string }>): void => {
-            for (const element of Object.values(elements)) {
-                const owner = widgetModuleRegistry.getOwner(element.type);
-                if (owner) {
-                    usage.push({ pluginId: owner, kind: "widget", id: element.type, hard: true });
-                }
-            }
-        };
-
-        collect(document.elements);
-        for (const component of document.components ?? []) {
-            collect(component.elements);
-        }
+        scan.usage.push(...collectInterfaceDocumentUsage(document, {
+            ownerOf: type => widgetModuleRegistry.getOwner(type),
+            isRegistered: type => widgetModuleRegistry.has(type),
+            candidatePluginIds: scan.candidatePluginIds,
+        }));
     }
 
     /**
@@ -244,30 +226,31 @@ export class ProjectDependencyService
      * Every story is loaded, not just the open ones: an unopened story's rows are dependencies too. A
      * story that fails to load is skipped rather than fatal - a dependency scan that refuses to
      * finish would block the build over a document the build is about to refuse anyway, with a worse
-     * message.
+     * message - but it leaves the scan incomplete, so nothing it might have referred to is dropped.
      */
-    private async collectStoryActionUsage(usage: DependencyUsageRecord[], authoritative: Set<string>): Promise<void> {
+    private async collectStoryActionUsage(scan: DependencyScan): Promise<void> {
         let story: StoryService;
+        let entries: ReturnType<StoryService["listStories"]>;
         try {
             story = this.getContext().services.get<StoryService>(Services.Story);
+            entries = story.listStories();
         } catch {
+            scan.complete = false;
             return;
         }
-        for (const pluginId of story.getContributingPluginIds()) {
-            authoritative.add(pluginId);
-        }
 
-        for (const entry of story.listStories()) {
+        for (const entry of entries) {
             let document: StoryDocument;
             try {
                 document = await story.loadStory(entry.id);
             } catch {
+                scan.complete = false;
                 continue;
             }
             for (const scene of Object.values(document.scenes)) {
                 for (const block of Object.values(scene.blocks)) {
                     if (block.kind === "action" && block.payload.action === "plugin") {
-                        usage.push({
+                        scan.usage.push({
                             pluginId: block.payload.pluginId,
                             kind: "storyAction",
                             id: block.payload.actionId,
@@ -290,19 +273,21 @@ export class ProjectDependencyService
      * is authored data - no blueprint nodes, no widgets - was classed soft, so it was dropped from
      * every pack as "enabled but unused", and its feature simply did not exist in preview or in a
      * build while the panel in Studio went on working.
-     *
-     * Never marked authoritative either way: the *documents* do not break without the plugin, so a
-     * store must not prune a hard dependency the same plugin has elsewhere.
      */
     private async collectStorageUsage(
-        usage: DependencyUsageRecord[],
+        scan: DependencyScan,
         publishedNamespaces: Map<string, ReadonlySet<string>>,
     ): Promise<void> {
         const ctx = this.getContext();
         const servicesDir = ctx.project.resolve(ProjectNameConvention.EditorServices);
         const listed = await ctx.services.get<FileSystemService>(Services.FileSystem).list(servicesDir);
         if (!listed.ok) {
-            return; // the services directory may not exist yet
+            // A project that has never written a store has no services directory, which is a whole
+            // answer: no stores. Any other failure is a directory that could not be read.
+            if (listed.error.code !== FsRejectErrorCode.NOT_FOUND) {
+                scan.complete = false;
+            }
+            return;
         }
         for (const entry of listed.data) {
             if (entry.type !== "file" || entry.ext !== ".json") {
@@ -310,7 +295,7 @@ export class ProjectDependencyService
             }
             const store = parsePluginStore(entry.name);
             if (store) {
-                usage.push({
+                scan.usage.push({
                     pluginId: store.pluginId,
                     kind: "storage",
                     id: entry.name,
@@ -320,38 +305,16 @@ export class ProjectDependencyService
         }
     }
 
-    /**
-     * Which of each installed plugin's storage namespaces travel into the game.
-     *
-     * Read from the manifest rather than remembered in the table: what a plugin publishes is a fact
-     * about the version installed now, and a namespace it stopped publishing must stop making the
-     * project depend on it.
-     */
-    private async listPublishedNamespaces(): Promise<Map<string, ReadonlySet<string>>> {
-        const result = await getInterface().plugins.list();
-        const published = new Map<string, ReadonlySet<string>>();
-        if (!result.success || !result.data) {
-            return published;
-        }
-        for (const plugin of result.data.plugins) {
-            published.set(plugin.pluginId, new Set(plugin.manifest.contributes?.runtimeData ?? []));
-        }
-        return published;
+    private async listInstalledPlugins(): Promise<InstalledPlugin[]> {
+        return (await this.listPlugins()).map(toInstalledPlugin);
     }
 
-    private async listInstalledPlugins(): Promise<InstalledPlugin[]> {
+    private async listPlugins(): Promise<PluginListItem[]> {
         const result = await getInterface().plugins.list();
         if (!result.success || !result.data) {
             throw new Error(result.success ? "Plugin list response was empty" : (result.error ?? "Failed to list plugins"));
         }
-        return result.data.plugins.map(plugin => ({
-            id: plugin.pluginId,
-            version: plugin.manifest.version,
-            enabled: plugin.enabled,
-            builtIn: plugin.builtIn,
-            name: plugin.manifest.name,
-            publisher: plugin.manifest.publisher,
-        }));
+        return result.data.plugins;
     }
 
     private getProjectService(): ProjectService {
@@ -369,33 +332,176 @@ export class ProjectDependencyService
     }
 }
 
+/** What one scan has gathered so far. */
+interface DependencyScan {
+    usage: DependencyUsageRecord[];
+    /** Cleared by any collector that could not read its document. */
+    complete: boolean;
+    /** The plugin ids a type nothing loaded here defines may belong to: see {@link attributeByNamespace}. */
+    candidatePluginIds: readonly string[];
+}
+
+/** How a collector tells whose a type is. */
+export interface TypeOwnership {
+    /** The loaded plugin that registered this type, if a plugin did. */
+    ownerOf(type: string): string | undefined;
+    /** Whether anything loaded here - Studio itself or a plugin - defines this type. */
+    isRegistered(type: string): boolean;
+    /** Plugin ids a type that nothing here defines may belong to. */
+    candidatePluginIds: Iterable<string>;
+}
+
+/** The part of the interface document the widget scan reads: every page's elements and every component's. */
+export type InterfaceDocumentElements = {
+    elements: Record<string, { type: string }>;
+    components?: ReadonlyArray<{ elements: Record<string, { type: string }> }>;
+};
+
 /**
- * Merge freshly scanned plugin usage with the project's existing dependency
- * table. Pure so the merge policy can be unit-tested independent of the
- * workspace. Fresh usage for authoritative (loaded) plugins wins; recorded
- * entries for non-authoritative (absent/disabled) plugins are preserved.
+ * The plugin a type that nothing loaded here defines belongs to, read off the type's name.
+ *
+ * Every type a plugin contributes is namespaced under the plugin's id: a manifest whose contributed
+ * node or widget is not is refused at install, and registering one the manifest does not declare
+ * throws. So a node or an element of type `acme.fx.shake` belongs to `acme.fx` whether or not that
+ * plugin is loaded, switched on or even installed - which is what lets a scan tell "nothing refers
+ * to this plugin any more" apart from "this plugin is not here to claim its types". The longest id
+ * wins, so `acme.fx.pro.glow` is `acme.fx.pro`'s and not `acme.fx`'s.
+ *
+ * Only ids the project has recorded or this machine has installed are candidates. A type whose
+ * plugin is neither has no version to record, and where its plugin id ends cannot be read off it.
+ */
+export function attributeByNamespace(type: string, candidatePluginIds: Iterable<string>): string | undefined {
+    let owner: string | undefined;
+    for (const id of candidatePluginIds) {
+        if (type.startsWith(`${id}.`) && (owner === undefined || id.length > owner.length)) {
+            owner = id;
+        }
+    }
+    return owner;
+}
+
+function attributeType(type: string, kind: DependencyKind, types: TypeOwnership): DependencyUsageRecord | null {
+    const owner = types.ownerOf(type);
+    if (owner) {
+        return { pluginId: owner, kind, id: type, hard: true };
+    }
+    if (types.isRegistered(type)) {
+        return null; // one of Studio's own
+    }
+    const named = attributeByNamespace(type, types.candidatePluginIds);
+    return named ? { pluginId: named, kind, id: type, hard: true, byName: true } : null;
+}
+
+/** Plugin blueprint nodes in every graph of every blueprint - event layers, functions and macros. */
+export function collectBlueprintDocumentUsage(document: BlueprintDocument, types: TypeOwnership): DependencyUsageRecord[] {
+    const usage: DependencyUsageRecord[] = [];
+    for (const blueprint of Object.values(document.blueprints)) {
+        const { events, functions, macros } = blueprint.graphs;
+        for (const group of [events, functions, macros]) {
+            if (!group) {
+                continue;
+            }
+            for (const entry of Object.values(group)) {
+                const nodes = entry.graph?.nodes;
+                if (!nodes) {
+                    continue;
+                }
+                for (const node of Object.values(nodes)) {
+                    const record = attributeType(node.type, "blueprintNode", types);
+                    if (record) {
+                        usage.push(record);
+                    }
+                }
+            }
+        }
+    }
+    return usage;
+}
+
+/** Plugin widgets placed on any page or inside any component definition. */
+export function collectInterfaceDocumentUsage(document: InterfaceDocumentElements, types: TypeOwnership): DependencyUsageRecord[] {
+    const usage: DependencyUsageRecord[] = [];
+    const collect = (elements: Record<string, { type: string }>): void => {
+        for (const element of Object.values(elements)) {
+            const record = attributeType(element.type, "widget", types);
+            if (record) {
+                usage.push(record);
+            }
+        }
+    };
+    collect(document.elements);
+    for (const component of document.components ?? []) {
+        collect(component.elements);
+    }
+    return usage;
+}
+
+function toInstalledPlugin(plugin: PluginListItem): InstalledPlugin {
+    return {
+        id: plugin.pluginId,
+        version: plugin.manifest.version,
+        enabled: plugin.enabled,
+        builtIn: plugin.builtIn,
+        name: plugin.manifest.name,
+        publisher: plugin.manifest.publisher,
+    };
+}
+
+/**
+ * Which of each installed plugin's storage namespaces travel into the game.
+ *
+ * Read from the manifest rather than remembered in the table: what a plugin publishes is a fact
+ * about the version installed now, and a namespace it stopped publishing must stop making the
+ * project depend on it.
+ */
+function listPublishedNamespaces(plugins: readonly PluginListItem[]): Map<string, ReadonlySet<string>> {
+    const published = new Map<string, ReadonlySet<string>>();
+    for (const plugin of plugins) {
+        published.set(plugin.pluginId, new Set(plugin.manifest.contributes?.runtimeData ?? []));
+    }
+    return published;
+}
+
+/**
+ * Merge freshly scanned plugin usage with the project's existing dependency table. Pure so the
+ * merge policy can be unit-tested independent of the workspace.
+ *
+ * **A plugin has a row exactly while something in the project refers to it.** The scan sees every
+ * reference whether or not the plugin is loaded (see {@link DependencyScanInput.usage}), so a row
+ * whose plugin nothing refers to any more is dropped - a plugin that is absent or switched off
+ * included, since its types would still be in the documents if anything used it. The one time a
+ * row outlives its evidence is a scan that could not read every document.
+ *
+ * What a row says:
+ * - **version** - the installed one, when the scan saw the project use the plugin through a loaded
+ *   type, a story row or a store. A plugin known only by the names of its types is not loaded here -
+ *   absent, switched off, or withheld for its version - so nothing has been made with the installed
+ *   one, and the recorded version stands. Moving it would lift the very suppression that keeps an
+ *   incompatible major away from a project made with the old one.
+ * - **hard** - from the references found. A store's weight is read off the installed manifest, so
+ *   with no plugin installed, or a document unread, the recorded answer is kept as well.
+ * - **usedBy** - what the scan found, plus what was recorded if the scan was incomplete.
  */
 export function buildDependencyTable(input: DependencyScanInput): ProjectDependencyTable {
-    const { usage, installed, existing } = input;
-    const authoritative = new Set(input.authoritativePluginIds);
+    const { usage, installed, existing, complete } = input;
     const installedById = new Map(installed.map(plugin => [plugin.id, plugin] as const));
     const existingById = new Map((existing?.plugins ?? []).map(plugin => [plugin.id, plugin] as const));
 
     // Fold usage records into one accumulator per plugin.
-    const accumulators = new Map<string, { hard: boolean; usedBy: Map<DependencyKind, Set<string>> }>();
+    const accumulators = new Map<string, {
+        hard: boolean;
+        byNameOnly: boolean;
+        usedBy: Map<DependencyKind, Set<string>>;
+    }>();
     for (const record of usage) {
         let accumulator = accumulators.get(record.pluginId);
         if (!accumulator) {
-            accumulator = { hard: false, usedBy: new Map() };
+            accumulator = { hard: false, byNameOnly: true, usedBy: new Map() };
             accumulators.set(record.pluginId, accumulator);
         }
         accumulator.hard = accumulator.hard || record.hard;
-        let set = accumulator.usedBy.get(record.kind);
-        if (!set) {
-            set = new Set();
-            accumulator.usedBy.set(record.kind, set);
-        }
-        set.add(record.id);
+        accumulator.byNameOnly = accumulator.byNameOnly && record.byName === true;
+        addUse(accumulator.usedBy, record.kind, record.id);
     }
 
     const merged = new Map<string, ProjectPluginDependency>();
@@ -404,28 +510,47 @@ export function buildDependencyTable(input: DependencyScanInput): ProjectDepende
         const prior = existingById.get(pluginId);
         const name = info?.name ?? prior?.name;
         const publisher = info?.publisher ?? prior?.publisher;
+        const authoredVersion = accumulator.byNameOnly
+            ? prior?.authoredVersion ?? info?.version ?? "0.0.0"
+            : info?.version ?? prior?.authoredVersion ?? "0.0.0";
+        const usedBy = accumulator.usedBy;
+        if (!complete) {
+            for (const [kind, ids] of Object.entries(prior?.usedBy ?? {}) as [DependencyKind, string[]][]) {
+                for (const id of ids) {
+                    addUse(usedBy, kind, id);
+                }
+            }
+        }
         merged.set(pluginId, {
             id: pluginId,
             builtIn: info?.builtIn ?? prior?.builtIn ?? false,
-            authoredVersion: info?.version ?? prior?.authoredVersion ?? "0.0.0",
-            hard: accumulator.hard,
+            authoredVersion,
+            hard: accumulator.hard || (prior?.hard === true && (!info || !complete)),
             ...(name ? { name } : {}),
             ...(publisher ? { publisher } : {}),
-            usedBy: toUsedBy(accumulator.usedBy),
+            usedBy: toUsedBy(usedBy),
         });
     }
 
-    // Preserve recorded dependencies whose plugin we cannot currently attribute:
-    // absent or disabled plugins are not authoritative, so dropping them would
-    // lose a real dependency needed after export/import.
-    for (const prior of existing?.plugins ?? []) {
-        if (!merged.has(prior.id) && !authoritative.has(prior.id)) {
-            merged.set(prior.id, prior);
+    if (!complete) {
+        for (const prior of existing?.plugins ?? []) {
+            if (!merged.has(prior.id)) {
+                merged.set(prior.id, prior);
+            }
         }
     }
 
     const plugins = Array.from(merged.values()).sort((a, b) => a.id.localeCompare(b.id));
     return { schemaVersion: PROJECT_DEPENDENCY_SCHEMA_VERSION, plugins };
+}
+
+function addUse(usedBy: Map<DependencyKind, Set<string>>, kind: DependencyKind, id: string): void {
+    let set = usedBy.get(kind);
+    if (!set) {
+        set = new Set();
+        usedBy.set(kind, set);
+    }
+    set.add(id);
 }
 
 function toUsedBy(usedBy: Map<DependencyKind, Set<string>>): Partial<Record<DependencyKind, string[]>> {
