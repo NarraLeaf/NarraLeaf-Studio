@@ -10,27 +10,33 @@ import {
 /**
  * What the player's warming of a scene costs, asset by asset, on the page's performance timeline.
  *
- * Studio plans what the player warms (`studioPreloadStrategy`), and the player does the work: it
- * asks the plan's `acquire` for a url the moment it starts on an asset, then fetches and decodes it
- * off-screen. So the start of each asset's work is a call Studio receives, and the end is the
- * player's own. This follows the second without adding any work of its own, and writes two kinds of
- * entry (see `gameTimeline` for the contract):
+ * Studio plans what the player warms (`studioPreloadStrategy`), and the player does the work. For a
+ * picture it has never fetched, it asks the plan's `acquire` for a url the moment it starts, then
+ * fetches and decodes it off-screen - so the start is a call Studio receives and the end is the
+ * player's own settle, which this follows. For a picture it already holds without a bitmap -
+ * fetched earlier as look-ahead, or released by the decoded-image budget - it decodes again without
+ * asking anything, and the only witness is the cache itself, which this checks while such a picture
+ * is outstanding. Neither costs the player any work of its own.
  *
- * - `nl.preload.asset`, one per picture the player actually fetched and decoded;
+ * Two kinds of entry come out (see `gameTimeline` for the contract):
+ *
+ * - `nl.preload.asset`, one per picture the player fetched and decoded, or decoded again;
  * - `nl.scene.load`, one per scene, spanning what that scene's first frame waited for.
  *
  * Comments in English per project convention.
  */
+
+/** How much of a picture the player holds: nothing, the bytes, or the bytes and a decoded bitmap. */
+export type PreloadWarmth = "none" | "fetched" | "decoded";
 
 /**
  * How this reads the player's image cache. Injected, because the cache belongs to a live game that
  * does not exist when the scheduler is built, and because a test has none.
  */
 export type PreloadWarmWatcher = {
-    /** Whether the player already holds `src` the way an entry wanting `decode` needs it held. */
-    isWarm(src: string, decode: boolean): boolean;
+    warmth(src: string): PreloadWarmth;
     /**
-     * When the player's work on `src` settles - true when it loaded - or null when nothing is in
+     * When the player's fetch of `src` settles - true when it loaded - or null when nothing is in
      * flight for it, in which case nothing is started either.
      */
     settled(src: string): Promise<boolean> | null;
@@ -51,13 +57,16 @@ export function createImageCacheWarmWatcher(readGameState: () => GameState | nul
         return { gameState, cache: gameState?.getImageCache() ?? null };
     };
     return {
-        isWarm(src, decode) {
+        warmth(src) {
             const { cache } = cacheOf();
-            return Boolean(cache && cache.has(src) && (!decode || cache.isDecoded(src)));
+            if (!cache || !cache.has(src)) {
+                return "none";
+            }
+            return cache.isDecoded(src) ? "decoded" : "fetched";
         },
         settled(src) {
             const { gameState, cache } = cacheOf();
-            if (!gameState || !cache || !cache.isPreloading(src)) {
+            if (!gameState || !cache || !cache.isPreloading(src) || cache.has(src)) {
                 return null;
             }
             return new Promise<boolean>(resolve => {
@@ -69,6 +78,10 @@ export function createImageCacheWarmWatcher(readGameState: () => GameState | nul
     };
 }
 
+function isWarmFor(warmth: PreloadWarmth, decode: boolean): boolean {
+    return decode ? warmth === "decoded" : warmth !== "none";
+}
+
 type PlannedAsset = {
     band: PreloadEntry["band"];
     pass: "scene" | "advance";
@@ -77,6 +90,9 @@ type PlannedAsset = {
     decode: boolean;
 };
 
+/** A picture the player is decoding again, which it does without asking for a url. */
+type Redecode = { start: number; info: PlannedAsset };
+
 type PendingSceneLoad = {
     start: number;
     scene: string | null;
@@ -84,27 +100,24 @@ type PendingSceneLoad = {
     waited: number;
     remaining: Set<string>;
     decodeBySrc: Map<string, boolean>;
-    poll: ReturnType<typeof setInterval> | null;
     giveUp: ReturnType<typeof setTimeout> | null;
 };
 
 /**
- * How often a scene still waiting is checked against the cache directly.
- *
- * Most gated pictures report through their own settle; this is for the ones that do not - a bitmap
- * the budget released and the player decodes again, which it does without asking for a url and so
- * without Studio hearing of it. Checked only while a scene is waiting, which is a fraction of a
- * second per scene.
+ * How often what has no settle of its own is checked against the cache: a scene's gate, and a
+ * picture being decoded again. About a frame. Checked only while one of those is outstanding, which
+ * is a fraction of a second per scene, and the check is a map lookup per picture.
  */
-const SCENE_LOAD_CHECK_MS = 50;
+const CACHE_CHECK_MS = 16;
 
 /**
- * How long a scene's gate is waited for before the span is written as incomplete.
+ * How long anything is waited for before it is written off.
  *
- * Longer than any gate that ever finishes on a real machine; its job is to make sure a gate that
- * never lands still shows up, marked as such, rather than vanishing.
+ * Longer than any gate that ever finishes on a real machine. A scene still waiting then is written
+ * as incomplete, so a gate that never lands still shows up; a picture still waiting is dropped, since
+ * a plan the story left behind is abandoned by the player and its pictures were never going to land.
  */
-const SCENE_LOAD_GIVE_UP_MS = 60_000;
+const GIVE_UP_MS = 60_000;
 
 export type StudioPreloadTimeline = {
     /** Point at the live game's cache, or stop recording (and drop anything waiting) with null. */
@@ -127,15 +140,33 @@ export function createStudioPreloadTimeline(options?: {
     let assetIds: ReadonlyMap<string, string> = new Map();
     /** The latest reason each url was asked for. */
     const planned = new Map<string, PlannedAsset>();
-    /** Per url, the settle of the work the player is doing on it right now. */
+    /** Per url, the settle of the fetch the player is doing on it right now. */
     const inFlight = new Map<string, Promise<void>>();
+    /** Per url, a decode the player is doing again, found only by looking. */
+    const redecoding = new Map<string, Redecode>();
     let pendingScene: PendingSceneLoad | null = null;
+    let check: ReturnType<typeof setInterval> | null = null;
+
+    const recordAsset = (src: string, start: number, info: PlannedAsset | undefined, ok: boolean): void => {
+        const detail: GamePreloadAssetDetail = {
+            pass: info?.pass ?? "scene",
+            kind: "image",
+            assetId: assetIds.get(src) ?? null,
+            url: src,
+            ...(info ? { band: info.band, scene: info.scene } : {}),
+            ok,
+        };
+        record(GameTimelineName.preloadAsset, start, now(), detail);
+    };
+
+    const stopChecking = (): void => {
+        if (check !== null && !pendingScene && redecoding.size === 0) {
+            clearInterval(check);
+            check = null;
+        }
+    };
 
     const stopWaiting = (pending: PendingSceneLoad): void => {
-        if (pending.poll !== null) {
-            clearInterval(pending.poll);
-            pending.poll = null;
-        }
         if (pending.giveUp !== null) {
             clearTimeout(pending.giveUp);
             pending.giveUp = null;
@@ -143,6 +174,7 @@ export function createStudioPreloadTimeline(options?: {
         if (pendingScene === pending) {
             pendingScene = null;
         }
+        stopChecking();
     };
 
     const finishScene = (pending: PendingSceneLoad, complete: boolean): void => {
@@ -166,24 +198,48 @@ export function createStudioPreloadTimeline(options?: {
         }
     };
 
-    const checkRemaining = (pending: PendingSceneLoad): void => {
+    const checkCache = (): void => {
         const current = watcher;
-        if (!current || pendingScene !== pending) {
+        if (!current) {
             return;
         }
-        for (const src of [...pending.remaining]) {
-            if (current.isWarm(src, pending.decodeBySrc.get(src) ?? true)) {
+        const at = now();
+        for (const [src, redecode] of [...redecoding]) {
+            if (current.warmth(src) === "decoded") {
+                redecoding.delete(src);
+                recordAsset(src, redecode.start, redecode.info, true);
                 settleForScene(src);
+            } else if (at - redecode.start > GIVE_UP_MS) {
+                redecoding.delete(src);
             }
+        }
+        const pending = pendingScene;
+        if (pending) {
+            for (const src of [...pending.remaining]) {
+                if (isWarmFor(current.warmth(src), pending.decodeBySrc.get(src) ?? true)) {
+                    settleForScene(src);
+                }
+            }
+        }
+        stopChecking();
+    };
+
+    const startChecking = (): void => {
+        if (check === null) {
+            check = setInterval(checkCache, CACHE_CHECK_MS);
         }
     };
 
     return {
         useWatcher(next) {
             watcher = next;
-            if (!next && pendingScene) {
+            if (!next) {
                 // The session this was waiting in is gone; what it was waiting for will never land.
-                stopWaiting(pendingScene);
+                redecoding.clear();
+                if (pendingScene) {
+                    stopWaiting(pendingScene);
+                }
+                stopChecking();
             }
         },
 
@@ -195,13 +251,25 @@ export function createStudioPreloadTimeline(options?: {
             if (!plan) {
                 return;
             }
+            const current = watcher;
+            const start = now();
             const gate = new Map<string, boolean>();
             for (const entry of plan.entries) {
                 const decode = entry.decode ?? entry.band !== "idle";
-                planned.set(entry.src, { band: entry.band, pass: kind, scene: sceneName, decode });
+                const info: PlannedAsset = { band: entry.band, pass: kind, scene: sceneName, decode };
+                planned.set(entry.src, info);
                 if (entry.band === "gate") {
                     gate.set(entry.src, decode || gate.get(entry.src) === true);
                 }
+                // Held without a bitmap and wanted with one: the player will decode it again, and
+                // say nothing to anyone. This is where that work is timed from.
+                if (current && decode && !redecoding.has(entry.src) && !inFlight.has(entry.src)
+                    && current.warmth(entry.src) === "fetched") {
+                    redecoding.set(entry.src, { start, info });
+                }
+            }
+            if (redecoding.size > 0) {
+                startChecking();
             }
             if (kind !== "scene") {
                 return;
@@ -212,12 +280,12 @@ export function createStudioPreloadTimeline(options?: {
             if (pendingScene) {
                 stopWaiting(pendingScene);
             }
-            const current = watcher;
             if (!current) {
                 return;
             }
-            const start = now();
-            const remaining = new Set([...gate].filter(([src, decode]) => !current.isWarm(src, decode)).map(([src]) => src));
+            const remaining = new Set(
+                [...gate].filter(([src, decode]) => !isWarmFor(current.warmth(src), decode)).map(([src]) => src),
+            );
             const pending: PendingSceneLoad = {
                 start,
                 scene: sceneName,
@@ -225,7 +293,6 @@ export function createStudioPreloadTimeline(options?: {
                 waited: remaining.size,
                 remaining,
                 decodeBySrc: gate,
-                poll: null,
                 giveUp: null,
             };
             if (remaining.size === 0) {
@@ -236,12 +303,12 @@ export function createStudioPreloadTimeline(options?: {
             for (const src of remaining) {
                 void inFlight.get(src)?.then(() => settleForScene(src));
             }
-            pending.poll = setInterval(() => checkRemaining(pending), SCENE_LOAD_CHECK_MS);
+            startChecking();
             pending.giveUp = setTimeout(() => {
                 if (pendingScene === pending) {
                     finishScene(pending, false);
                 }
-            }, SCENE_LOAD_GIVE_UP_MS);
+            }, GIVE_UP_MS);
         },
 
         acquired(src) {
@@ -259,15 +326,7 @@ export function createStudioPreloadTimeline(options?: {
                 // Nothing to report for a picture the player only noted: without a decode it takes
                 // the url and fetches nothing, so the span would be the cost of a function call.
                 if (!info || info.decode) {
-                    const detail: GamePreloadAssetDetail = {
-                        pass: info?.pass ?? "scene",
-                        kind: "image",
-                        assetId: assetIds.get(src) ?? null,
-                        url: src,
-                        ...(info ? { band: info.band, scene: info.scene } : {}),
-                        ok,
-                    };
-                    record(GameTimelineName.preloadAsset, start, now(), detail);
+                    recordAsset(src, start, info, ok);
                 }
                 settleForScene(src);
             });

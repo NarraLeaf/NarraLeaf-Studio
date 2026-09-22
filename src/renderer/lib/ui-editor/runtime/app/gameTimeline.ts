@@ -113,7 +113,10 @@ export type GameSceneLoadDetail = {
  * - `pass: "scene"` / `"advance"` - the player warming a picture a scene will show, asked for when
  *   the scene was entered or as the story moved. `band` is how urgently: `gate` holds the frame,
  *   `soon` is a click away, `idle` is speculative. Only pictures that were actually fetched and
- *   decoded appear; speculative ones the player merely noted cost nothing and are not listed.
+ *   decoded appear; speculative ones the player merely noted cost nothing and are not listed. A
+ *   picture it already held without a bitmap - fetched earlier as look-ahead, which is how most
+ *   scenes' opening pictures arrive, or released by the decoded-image budget - is decoded again,
+ *   and its span runs from the moment the scene or the story asked for it to the bitmap being held.
  */
 export type GamePreloadAssetDetail = {
     pass: "interface" | "scene" | "advance";

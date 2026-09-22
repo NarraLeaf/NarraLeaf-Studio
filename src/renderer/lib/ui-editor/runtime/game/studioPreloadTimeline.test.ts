@@ -18,10 +18,12 @@ type Recorded = { name: GameTimelineSpanName; start: number; end: number; detail
 function harness() {
     let clock = 0;
     const recorded: Recorded[] = [];
+    /** Decoded, and fetched without a bitmap. */
     const warm = new Set<string>();
+    const fetched = new Set<string>();
     const settles = new Map<string, (ok: boolean) => void>();
     const watcher: PreloadWarmWatcher = {
-        isWarm: src => warm.has(src),
+        warmth: src => (warm.has(src) ? "decoded" : fetched.has(src) ? "fetched" : "none"),
         settled: src => new Promise<boolean>(resolve => {
             settles.set(src, resolve);
         }),
@@ -37,6 +39,7 @@ function harness() {
         timeline,
         recorded,
         warm,
+        fetched,
         at(ms: number) {
             clock = ms;
         },
@@ -165,16 +168,42 @@ describe("a scene", () => {
         }]);
     });
 
-    it("catches a picture the player warmed without asking for a url", async () => {
-        // A bitmap the budget let go of is decoded again with no `acquire`, so nothing settles for
-        // it here. The cache itself is the only witness, and it is checked while the scene waits.
+    it("times the decode of a picture fetched earlier as look-ahead, which asks for no url", async () => {
+        // The ordinary shape of entering a scene: every scene's opening picture is fetched ahead of
+        // time without a bitmap, and the scene that gates on it has the player decode it again -
+        // with no `acquire`, so nothing settles for it here. The cache is the only witness.
         const h = harness();
-        h.timeline.planned("scene", "Title", plan([{ type: "image", src: "bg.png", band: "gate" }]));
+        h.fetched.add("club.png");
+        h.at(1000);
+        h.timeline.planned("scene", "Club room", plan([{ type: "image", src: "club.png", band: "gate" }]));
 
-        h.warm.add("bg.png");
-        await vi.advanceTimersByTimeAsync(60);
+        h.at(1055);
+        h.warm.add("club.png");
+        await vi.advanceTimersByTimeAsync(20);
 
-        expect(h.named("nl.scene.load")[0]?.detail).toMatchObject({ complete: true, waited: 1 });
+        expect(h.named("nl.scene.load")[0]).toMatchObject({
+            start: 1000,
+            end: 1055,
+            detail: { scene: "Club room", gated: 1, waited: 1, complete: true },
+        });
+        expect(h.named("nl.preload.asset")[0]).toMatchObject({
+            start: 1000,
+            end: 1055,
+            detail: { pass: "scene", band: "gate", url: "club.png", ok: true },
+        });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("drops a decode the player never finishes, without writing it", async () => {
+        const h = harness();
+        h.fetched.add("later.png");
+        h.timeline.planned("advance", "Scene", plan([{ type: "image", src: "later.png", band: "soon" }]));
+
+        h.at(61_000);
+        await vi.advanceTimersByTimeAsync(61_000);
+
+        expect(h.named("nl.preload.asset")).toEqual([]);
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     it("that another scene replaces before it lands is not recorded", async () => {
