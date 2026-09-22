@@ -12,8 +12,7 @@
  * and layers, and every Game UI slot surface (the dialogue box, the choice menu, notifications, NVL,
  * the on-stage layer). A host that draws surfaces and does not is a host where a page placed in a
  * frame is drawn and never runs: the element tree then falls back to the parent's adapter, which
- * looks blueprints up under the parent's surface id and finds none of the page's. That is what a
- * Page widget on a slot surface did until every slot took this from the same place the pages do.
+ * looks blueprints up under the parent's surface id and finds none of the page's.
  *
  * ## The page's scope follows the drawing around it
  *
@@ -27,8 +26,6 @@
  * `scopeHeld`, so the drawing that leaves first never closes the page under the one that stays.
  * Closing it there would be a cancellation rather than an error: the page would stay on screen
  * and quietly stop answering.
- *
- * Comments in English per project convention.
  */
 
 import type { MutableRefObject } from "react";

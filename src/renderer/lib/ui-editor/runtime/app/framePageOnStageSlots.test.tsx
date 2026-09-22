@@ -25,8 +25,6 @@
  * What runs is what a game runs: the slot shell and its lifecycle boundary, the Dev Mode adapter, the
  * real host API and nodes, the real element tree and the real frame drawing the page. What is
  * asserted is what a player would see - the text on screen - and the lines the graphs log.
- *
- * Comments in English per project convention.
  */
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
