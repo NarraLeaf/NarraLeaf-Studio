@@ -57,6 +57,7 @@ import {
 } from "@shared/types/experimental";
 import { applyThemeMode, getWindowBackgroundColor } from "./theme";
 import { createCrashSequence, type CrashSaveOutcome, type CrashSequence } from "./crashSequence";
+import { describeFatalErrorForCommandLine, endCommandLineRunOnFailure } from "./commandLineRunEnd";
 import { StudioDebugServer } from "./managers/debug/studioDebugServer";
 import { installFileLogSink } from "./logging/fileLogSink";
 import { getMainTranslator } from "./i18n";
@@ -659,6 +660,15 @@ export class BaseApp {
         }
 
         const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+        // A command-line run has nobody to ask about restarting, and the question is a synchronous
+        // message box - which would stop the very thread every one of the run's deadlines runs on,
+        // leaving a job waiting on a dialog nobody will see. The run ends instead, as `studio-failed`
+        // with the failure on its log; its own ending writes the open workspaces out, as the
+        // sequence below would have. The ending is idempotent, so it is its own re-entrancy guard.
+        if (endCommandLineRunOnFailure(describeFatalErrorForCommandLine(message, this.logsDirForCrash()))) {
+            this.logger.error("[App] Fatal error, ending the command-line run:", message);
+            return;
+        }
         this.crashSequence = createCrashSequence({
             pendingSaveFlushes: () => this.collectPendingSaveFlushes(),
             askToRestart: (outcome) => {
@@ -705,6 +715,18 @@ export class BaseApp {
      * it: an author who sees both must not be told two different things about whether their last
      * edits survived.
      */
+    /**
+     * Where the log a fatal error is written to lives, for the sentence that points at it. Best
+     * effort: the profile may be exactly what failed.
+     */
+    private logsDirForCrash(): string | null {
+        try {
+            return path.join(this.getUserDataDir(), "logs");
+        } catch {
+            return null;
+        }
+    }
+
     private askToRestartAfterCrash(message: string, outcome: CrashSaveOutcome): boolean {
         const logsDir = path.join(this.getUserDataDir(), "logs");
         const headline = message.split("\n", 1)[0] ?? message;
@@ -1032,8 +1054,20 @@ export class BaseApp {
         if (requested) {
             const userDataPath = path.resolve(process.cwd(), requested);
             // Created here rather than left to Electron: the log sink, the global state and the
-            // vault all open files under it within the next few statements.
-            fs.mkdirSync(userDataPath, { recursive: true });
+            // vault all open files under it within the next few statements. A folder that cannot be
+            // made is the operator's to fix, so the failure names the folder and the flag that
+            // named it rather than leaving them to work it out from an `mkdir` error.
+            try {
+                fs.mkdirSync(userDataPath, { recursive: true });
+            } catch (error) {
+                const flag = build.requested && build.userDataDir
+                    ? "--build-user-data-dir"
+                    : `--${check.kind ?? "lint"}-user-data-dir`;
+                throw new Error(
+                    `the profile folder ${userDataPath} (${flag}) could not be created: `
+                    + (error instanceof Error ? error.message : String(error)),
+                );
+            }
             this.electronApp.setPath("userData", userDataPath);
             this.logger.info(`[App] Command-line profile: ${userDataPath}`);
             return;

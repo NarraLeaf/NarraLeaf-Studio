@@ -66,7 +66,13 @@ function workspaceWindow(options: { unattended?: boolean; onRunEvent?: (event: u
         getWindowType: () => WindowAppType.Workspace,
         getApp: () => appDouble(),
         isUnattended: () => options.unattended === true,
-        reportCommandLineRunEvent: (event: unknown) => options.onRunEvent?.(event),
+        // What `AppWindow.endUnattendedRun` does for a window running a job: end its run.
+        endUnattendedRun: (message: string) => options.onRunEvent?.({
+            kind: "finished",
+            ok: false,
+            refusal: "environment",
+            error: message,
+        }),
         refuseUnattendedPrompt: (what: string) => refuseUnattendedPrompt(window as never, what),
     };
     return window as unknown as AppWindow;
