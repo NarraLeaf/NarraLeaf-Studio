@@ -14,7 +14,6 @@ import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "../../utils/previewAsShipped";
 import { RUN_DLC_ON_SETTINGS_KEY } from "../../utils/runDlc";
 import { RUN_VARIANT_SETTINGS_KEY } from "../../utils/runVariant";
 import { defaultTestEdition } from "../../utils/testEdition";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
@@ -38,11 +37,6 @@ vi.mock("../preview/compiler/compileGameRuntimeArtifactInWorker", () => ({
 vi.mock("child_process", async importOriginal => ({
     ...(await importOriginal<typeof import("child_process")>()),
     spawn: vi.fn(),
-}));
-// The key comes out of a native binding and, on first use, writes a machine secret into the profile.
-// What is under test is whether a run asks for it at all.
-vi.mock("../security/packKeyService", () => ({
-    resolvePackEncryptionKey: vi.fn(),
 }));
 vi.mock("chokidar", () => ({
     default: { watch: () => ({ on: () => undefined, close: () => Promise.resolve() }) },
@@ -585,7 +579,6 @@ describe("GameTestManager's held control channel", () => {
  */
 describe("GameTestManager: how a test's game holds its content", () => {
     const PROJECT_NAME = "Sealed Corridor";
-    const KEY = "the-pack-key";
     let projectPath = "";
     let children: (EventEmitter & Record<string, unknown>)[] = [];
 
@@ -622,10 +615,11 @@ describe("GameTestManager: how a test's game holds its content", () => {
         parameters: {},
         asShipped,
         edition: defaultTestEdition(),
+        plugins: [],
     });
 
     /** What the compile was handed, which is where "sealed" and "loose" part ways. */
-    const compiledWithKey = () => vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls[0][1].encryptionKey;
+    const compiledSealed = () => vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls[0][1].protectAssets;
 
     beforeEach(async () => {
         projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-game-test-sealing-"));
@@ -636,8 +630,6 @@ describe("GameTestManager: how a test's game holds its content", () => {
         children = [];
         vi.mocked(spawn).mockReset();
         vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
-        vi.mocked(resolvePackEncryptionKey).mockReset();
-        vi.mocked(resolvePackEncryptionKey).mockResolvedValue(KEY);
         vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
         vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue(
             { appDir: path.join(os.tmpdir(), "app"), copiedAssetCount: 12 } as never,
@@ -657,7 +649,7 @@ describe("GameTestManager: how a test's game holds its content", () => {
 
         await makeManager().launch({ projectPath, runId: "run-1" });
 
-        expect(compiledWithKey()).toBe(KEY);
+        expect(compiledSealed()).toBe(true);
         // On the command-line log, where a job reads it, and not as verbose noise.
         expect(logged).toContainEqual(expect.objectContaining({
             level: "info",
@@ -674,10 +666,7 @@ describe("GameTestManager: how a test's game holds its content", () => {
 
         await makeManager({ previewAsShippedFor: projectPath }).launch({ projectPath, runId: "run-1" });
 
-        expect(compiledWithKey()).toBeUndefined();
-        // A run that is not sealing has no business deriving the key, which reads and on first use
-        // writes the machine secret.
-        expect(resolvePackEncryptionKey).not.toHaveBeenCalled();
+        expect(compiledSealed()).toBe(false);
         expect(logged.map(line => line.message)).toContain(
             "assets: loose files; this project's release build seals them, which --test-as-shipped would test",
         );
@@ -687,11 +676,11 @@ describe("GameTestManager: how a test's game holds its content", () => {
         const logged = projectWindow();
 
         await makeManager({ previewAsShippedFor: projectPath }).launch({ projectPath, runId: "run-1" });
-        expect(compiledWithKey()).toBe(KEY);
+        expect(compiledSealed()).toBe(true);
 
         vi.mocked(compileGameRuntimeArtifactInWorker).mockClear();
         await makeManager().launch({ projectPath, runId: "run-2" });
-        expect(compiledWithKey()).toBeUndefined();
+        expect(compiledSealed()).toBe(false);
 
         // No headless job, so nobody is reading a command-line log.
         expect(logged).toEqual([]);
@@ -787,6 +776,7 @@ describe("GameTestManager: which build a test's game is", () => {
             parameters: {},
             asShipped: false,
             edition: defaultTestEdition(),
+            plugins: [],
         });
 
         await makeManager({ settings: authorChoseDemoWithDlc() }).launch({ projectPath, runId: "run-1" });
@@ -807,6 +797,7 @@ describe("GameTestManager: which build a test's game is", () => {
             parameters: {},
             asShipped: false,
             edition: { variant: { id: DEMO_ID, name: "Demo" }, dlc: [{ id: "voices", name: "Voice pack" }] },
+            plugins: [],
         });
 
         // A profile that chose nothing: the line alone decides.

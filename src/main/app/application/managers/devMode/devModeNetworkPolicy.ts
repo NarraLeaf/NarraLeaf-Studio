@@ -1,5 +1,5 @@
 import { session as electronSession, type Session } from "electron";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { decodeProjectConfig, findProjectConfigFileName, type ProjectConfigData } from "@shared/utils/nlproj";
 import {

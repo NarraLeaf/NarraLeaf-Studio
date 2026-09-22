@@ -14,7 +14,6 @@ import { IPCEventType } from "@shared/types/ipcEvents";
 import { getLocaleRegistryVersion, setLocaleContributions } from "@shared/i18n";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType } from "@shared/types/window";
-import { readJson } from "@shared/utils/json";
 import { safeExecuteFn } from "@shared/utils/os";
 import { StringKeyOf } from "@shared/utils/types";
 import path from "path";
@@ -1297,13 +1296,18 @@ export class BaseApp {
     }
 
     private async constructAppInfo(): Promise<AppInfo> {
-        const pkg = await readJson<{ version: string }>(path.resolve(this.getAppPath(), "package.json"));
-        if (!pkg.ok) {
-            throw new Error(`Failed to load app info: ${pkg.error}`);
+        // Studio's own package.json, which a packaged build keeps inside app.asar - so it is read with
+        // the patched `fs`, the one module that reaches inside the archive. `Fs` deliberately does not
+        // (see unpatchedFs.ts), and reading this through it stops a packaged Studio before any window.
+        let pkg: { version: string };
+        try {
+            pkg = JSON.parse(await fs.promises.readFile(path.resolve(this.getAppPath(), "package.json"), "utf-8"));
+        } catch (error) {
+            throw new Error(`Failed to load app info: ${error instanceof Error ? error.message : String(error)}`);
         }
 
         return {
-            version: pkg.data.version,
+            version: pkg.version,
             experimental: this.getExperimentalState(),
         };
     }

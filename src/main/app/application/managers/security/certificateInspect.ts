@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import {
     SIGNING_EXPIRY_WARNING_DAYS,
     type ResolvedSigningMaterial,

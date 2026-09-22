@@ -1,6 +1,12 @@
 import crypto from "crypto";
 import type { LocaleCode } from "@shared/i18n";
-import fs from "fs/promises";
+// Two modules on purpose. `studioArchiveFs` is the patched one, and it reads only what Studio ships:
+// the runtime bundle, which a packaged Studio keeps inside its own app.asar where only the patched
+// module can reach it, and the koffi addon from Studio's own dependencies. Everything else here - the
+// author's project and the app directory the compile writes - goes through `fs`, which is unpatched:
+// see unpatchedFs.ts for what the patch does to an author's file named like an archive.
+import studioArchiveFs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import { createRequire } from "module";
 import path from "path";
 import { unpackAsarPath } from "../../../../../utils/asarPath";
@@ -113,6 +119,14 @@ const REQUIRED_RUNTIME_FILES = ["main.js", "bindings.js", "vendor.js", "preload.
 // renderer pair is shared verbatim. Its index.html is generated per pack (see
 // webShell.ts), not copied from the runtime dist.
 const WEB_REQUIRED_RUNTIME_FILES = ["renderer.js", "renderer.css", "web.js"] as const;
+
+/**
+ * The runtime files a pack for this shell carries, whether loose or sealed into the store. The
+ * game's third-party notice is assembled from exactly these (see managers/build/thirdPartyNotices).
+ */
+export function shippedRuntimeFiles(shell: "electron" | "web"): readonly string[] {
+    return shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES;
+}
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
 // Build marker written by project/build/build-runtime.js. It attests that the
 // dist was produced by the runtime build script in production mode; it is
@@ -142,6 +156,11 @@ export type GameRuntimePluginSource = {
     entryPath: string;
     /** Absolute path of the plugin package root; sidecar `include` paths resolve against it. */
     installPath: string;
+    /**
+     * One of the plugins Studio ships. A built-in plugin's bundled npm packages are Studio's to name
+     * in a game's third-party notice; a third-party plugin's are its author's. Absent is not built-in.
+     */
+    builtIn?: boolean;
 };
 
 export type GameRuntimeArtifactCompileInput = {
@@ -337,11 +356,14 @@ export type GameRuntimeArtifactCompileInput = {
      */
     shell?: "electron" | "web";
     /**
-     * Opaque pack key for asset protection. When set, packaged output is
-     * protected via @narraleaf/bindings; when absent, output is written
-     * verbatim (protection off).
+     * Seal this artifact's payload into the protected store instead of writing it as loose files.
+     *
+     * A switch and nothing more. Everything the store is sealed with is made by the codec package
+     * inside this compile - from the distribution key when there is one (see `distribution`),
+     * fresh for this run otherwise - and bound into the binaries that ship beside it, so there is
+     * no key for a caller to supply.
      */
-    encryptionKey?: string;
+    protectAssets?: boolean;
     /**
      * The app id this build ships under, as the build resolved it. Only the
      * production electron shell reads it, to name the per-user directory the
@@ -518,7 +540,7 @@ export async function compileGameRuntimeArtifact(
     if (shell === "web" && mode !== "production") {
         throw new Error("Web artifact compile is production-only");
     }
-    if (shell === "web" && input.encryptionKey) {
+    if (shell === "web" && input.protectAssets) {
         throw new Error("Web artifact compile does not support asset protection");
     }
     // The first thing done with the output root is to delete `<root>/app` recursively. A relative
@@ -537,7 +559,7 @@ export async function compileGameRuntimeArtifact(
 
     const engineVersion = await assertRuntimeDistReady(input.runtimeDistDir, shell);
     await fs.rm(appDir, { recursive: true, force: true });
-    if (!input.encryptionKey) {
+    if (!input.protectAssets) {
         // Loose items live under assets/; the sealed store needs no such dir.
         await fs.mkdir(assetsDir, { recursive: true });
     }
@@ -563,7 +585,7 @@ export async function compileGameRuntimeArtifact(
      * Electron opens main.js and the preload itself, before anything of ours
      * could answer for them.
      */
-    const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
+    const sealsShell = input.protectAssets === true && shell !== "web";
     // A shipped desktop game hardens its launch guard by shipping main.js as bytecode. Preview and
     // the experimental debuggable build stay readable source so an author can inspect and step
     // through the real main process; the web shell has no main.js at all.
@@ -590,7 +612,7 @@ export async function compileGameRuntimeArtifact(
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
     // of protected builds. Two different questions, and they do not share a switch.
-    const needsSupportBinary = Boolean(input.encryptionKey)
+    const needsSupportBinary = input.protectAssets === true
         || Boolean(input.distribution && shell !== "web");
     /*
      * Where each target's copy of the support binary goes, and which prebuilt
@@ -663,7 +685,7 @@ export async function compileGameRuntimeArtifact(
     const titleCompile = await resolveTitleCompile({
         wanted: placements.length > 0 && Boolean(input.packaging),
         /* Named so the sentence tells the author which switch to reach for. */
-        reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
+        reason: input.protectAssets ? "Asset protection" : "Shipping a build that can accept patches",
         ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
         ...(input.hostCacheRoot ? { cacheRoot: input.hostCacheRoot } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
@@ -751,7 +773,7 @@ export async function compileGameRuntimeArtifact(
     // Bound before anything is written into it. A build with a distribution key
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
-    if (input.distribution && needsSupportBinary && !input.encryptionKey) {
+    if (input.distribution && needsSupportBinary && !input.protectAssets) {
         await prepareArchiveReader(images, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
@@ -761,7 +783,7 @@ export async function compileGameRuntimeArtifact(
 
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
-    const target: PackTarget = input.encryptionKey
+    const target: PackTarget = input.protectAssets
         ? {
             kind: "sealed",
             /*
@@ -787,7 +809,7 @@ export async function compileGameRuntimeArtifact(
      * thing. Once placed, the app dir holds what ships and the images do not
      * matter.
      */
-    if (input.encryptionKey) {
+    if (input.protectAssets) {
         await placeCodecImages(placements, images);
     }
 
@@ -809,7 +831,7 @@ export async function compileGameRuntimeArtifact(
         for (const fileName of SEALED_SHELL_FILES) {
             await target.writer.add(
                 gameRuntimeBundleRuntimeEntry(fileName),
-                await fs.readFile(path.join(input.runtimeDistDir, fileName)),
+                await studioArchiveFs.readFile(path.join(input.runtimeDistDir, fileName)),
             );
         }
     }
@@ -840,7 +862,7 @@ export async function compileGameRuntimeArtifact(
     // game, because the gate that decides in time reads the loose manifest and a shipped protected
     // build cannot have a text edit standing between a stranger and its content.
     const debuggable = input.debuggable === true;
-    if (debuggable && input.encryptionKey) {
+    if (debuggable && input.protectAssets) {
         notices.push(
             "asset protection is on: this artifact accepts a debugging switch only while its app "
             + "directory is run directly, never as the packaged game",
@@ -1147,7 +1169,7 @@ async function assertRuntimeDistReady(
     const missing: string[] = [];
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         try {
-            await fs.access(path.join(runtimeDistDir, fileName));
+            await studioArchiveFs.access(path.join(runtimeDistDir, fileName));
         } catch {
             missing.push(fileName);
         }
@@ -1165,6 +1187,7 @@ async function assertRuntimeDistReady(
     try {
         manifest = await readJson<{ mode?: unknown; engineVersion?: unknown }>(
             path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME),
+            studioArchiveFs,
         );
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
@@ -1289,7 +1312,7 @@ async function copyRuntimeFiles(
         // preload is opened by Electron in a sandboxed context that cannot load it this way, and the
         // renderer three go into the store (above). See mainProcessBytecode.ts.
         if (fileName === "main.js" && reseedGuard) {
-            const source = reseedGuardMaskTable(await fs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
+            const source = reseedGuardMaskTable(await studioArchiveFs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
             if (bytecodeMain) {
                 await fs.writeFile(path.join(appDir, MAIN_BYTECODE_FILENAME), compileMainToBytecode(source));
                 await fs.writeFile(path.join(appDir, fileName), renderMainBytecodeBootstrap(), "utf8");
@@ -1298,7 +1321,7 @@ async function copyRuntimeFiles(
             }
             continue;
         }
-        await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
+        await studioArchiveFs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {
         // Sourcemaps are a preview-session debugging aid; shipped games leave
@@ -1424,12 +1447,12 @@ async function copyKoffiPackage(destinationDir: string, platformKey: string | un
     for (const directory of directories) {
         const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
         try {
-            await fs.access(prebuild);
+            await studioArchiveFs.access(prebuild);
         } catch {
             continue;
         }
         await fs.mkdir(path.join(targetRoot, "build", "koffi", directory), { recursive: true });
-        await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
+        await studioArchiveFs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
         copied.push(directory);
     }
     if (copied.length === 0) {
@@ -1443,9 +1466,10 @@ async function copyKoffiPackage(destinationDir: string, platformKey: string | un
     }
 }
 
+/** One of Studio's own shipped files, if this install has it. Both callers read Studio's own files. */
 async function copyOptionalFile(sourcePath: string, targetPath: string): Promise<void> {
     try {
-        await fs.copyFile(sourcePath, targetPath);
+        await studioArchiveFs.copyFile(sourcePath, targetPath);
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
             return;
@@ -2797,8 +2821,8 @@ async function readOptionalJson<T>(filePath: string): Promise<T | null> {
     }
 }
 
-async function readJson<T>(filePath: string): Promise<T> {
-    const raw = await fs.readFile(filePath, "utf-8");
+async function readJson<T>(filePath: string, files: Pick<typeof fs, "readFile"> = fs): Promise<T> {
+    const raw = await files.readFile(filePath, "utf-8");
     try {
         return JSON.parse(raw) as T;
     } catch (error) {

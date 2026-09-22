@@ -69,9 +69,9 @@ export type CompileWorkerHooks = {
  * Run compileGameRuntimeArtifact in a forked Electron utility process instead of
  * on the main process. The compile seals the pack through the native codec -
  * seconds of synchronous CPU for a protected project - which would otherwise
- * freeze the Studio window; the worker keeps the main thread responsive. The
- * opaque pack key travels inside `input` (the same value the in-process call
- * received) and never leaves the machine.
+ * freeze the Studio window; the worker keeps the main thread responsive.
+ * `input` crosses as plain data, and whether the payload is sealed is a switch
+ * on it: the codec package makes what it seals with inside the worker.
  */
 export async function compileGameRuntimeArtifactInWorker(
     app: CompileWorkerHostApp,

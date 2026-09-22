@@ -237,6 +237,16 @@ export interface UIWidgetModule {
      */
     readonly acceptsChildren?: boolean;
 
+    /**
+     * The parts this widget builds for itself and holds nothing else, by slot name.
+     *
+     * Read for a plugin's widget only, for the reason `acceptsChildren` is: the built-in part owners
+     * are rows in `document.ts` (`getUIStructuralChildSlot`), and a plugin's answer reaches the same
+     * function through `contributedWidgets.ts`. A child is one of the parts when its
+     * `extra.partSlot` names one of these.
+     */
+    readonly partSlots?: readonly string[];
+
     /** Human-readable display name */
     readonly displayName: string;
 

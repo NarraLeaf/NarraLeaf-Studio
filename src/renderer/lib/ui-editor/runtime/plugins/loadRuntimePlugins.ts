@@ -42,6 +42,7 @@ import {
     type ContributedWidgetDeclaration,
 } from "@shared/types/ui-editor/contributedWidgets";
 import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -347,6 +348,9 @@ function createRuntimePluginApp(
                     + "nodes that start on it in `headNodeTypes`: a built-in widget event head, or a node type "
                     + "this plugin registers.",
             );
+        }
+        for (const problem of scriptEventsOfContributedLogicApi(sanitized.logicApi).problems) {
+            log("warning", `widget ${type}, event "${problem.eventId}": ${problem.message}.`);
         }
         runtimeWidgetRenderers.set(type, {
             ownerPluginId: pluginId,

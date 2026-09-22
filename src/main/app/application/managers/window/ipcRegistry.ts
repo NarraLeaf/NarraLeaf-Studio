@@ -32,6 +32,10 @@ const WINDOW_REFUSALS: ReadonlyMap<string, WindowRefusalReason> = new Map<string
  * checks run after routing. Requests arriving from an unknown or destroyed
  * window (e.g. during shutdown) resolve as a clean failure instead of
  * hanging or throwing.
+ *
+ * A window that has started closing is neither: it is off the open list, but
+ * its page is still running its unload handlers. Only the handlers that declare
+ * `servesClosingWindow` answer it; to every other channel it is gone.
  */
 export class IPCRegistry {
     private readonly ipc: IPCHost;
@@ -40,6 +44,7 @@ export class IPCRegistry {
     constructor(
         namespace: Namespace,
         private readonly resolveWindow: (sender: Electron.WebContents) => AppWindow | undefined,
+        private readonly resolveClosingWindow: (sender: Electron.WebContents) => AppWindow | undefined = () => undefined,
     ) {
         this.ipc = new IPCHost(namespace);
     }
@@ -68,7 +73,7 @@ export class IPCRegistry {
 
     private registerRequest(handler: IPCHandler<IPCEventType>): void {
         this.ipc.handleGlobal(handler.name as never, async (sender, data): Promise<RequestStatus<unknown>> => {
-            const window = this.resolveLiveWindow(sender);
+            const window = this.resolveLiveWindow(sender, handler);
             if (!window) {
                 return this.ipc.failed(new Error(`No live window for IPC request: ${handler.name}`));
             }
@@ -90,7 +95,7 @@ export class IPCRegistry {
 
     private registerMessage(handler: IPCHandler<IPCEventType>): void {
         this.ipc.onMessageGlobal(handler.name as never, (sender, data) => {
-            const window = this.resolveLiveWindow(sender);
+            const window = this.resolveLiveWindow(sender, handler);
             if (!window) {
                 console.warn(`Dropped IPC message ${handler.name}: no live window for sender`);
                 return;
@@ -133,8 +138,9 @@ export class IPCRegistry {
         }
     }
 
-    private resolveLiveWindow(sender: Electron.WebContents): AppWindow | undefined {
-        const window = this.resolveWindow(sender);
+    private resolveLiveWindow(sender: Electron.WebContents, handler: IPCHandler<IPCEventType>): AppWindow | undefined {
+        const window = this.resolveWindow(sender)
+            ?? (handler.servesClosingWindow ? this.resolveClosingWindow(sender) : undefined);
         if (!window || window.isDestroyed()) {
             return undefined;
         }

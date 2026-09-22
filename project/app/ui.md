@@ -225,8 +225,17 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   indented under it is inside it. The name is what the outline shows; the id is
   yours to choose and is what a blueprint refers to.
 - **`<key> = <value>`** sets a prop. A dotted key writes one key of one object:
-  `imageFill.assetId = art-1`. `layout.` / `style.` / `extra.` reach the element's
-  other bags, and `animation = {…}` its enter/exit record.
+  `imageFill.assetId = art-1`. The first segment decides where the line goes:
+  `layout.` / `style.` / `extra.` reach the element's other bags, `animation` is
+  the element's own enter/exit record (`animation = {…}`, or `animation.enter =
+  fade` for one field of it), and `props.` is a prop whatever it is called.
+- **`props.animation = {…}`** is a Page widget's (`nl.frame`) override of how the
+  page it shows enters and leaves inside it; unset, the page's own animation
+  plays. It needs the prefix because it is the same shape of record as the
+  element's own: written bare, `animation = {…}` on a Page widget is not an error,
+  it makes the widget itself fade in and out and leaves the page's animation
+  alone. `show` prints the override with the prefix, and `ui widget nl.frame`
+  lists it that way.
 - **`bind <prop> = blueprint <id>`** points a prop at a value blueprint;
   **`bind <prop> = field <fieldId>`** reads it from the list row the element is
   being drawn for. `ui widget <type>` lists which props accept either. One more
@@ -261,6 +270,30 @@ node project/app/ui.js apply gallery.ui --project <dir> --write
 node project/app/blueprint.js apply back.bp --project <dir> --write
 #   blueprint "Gallery back" owner=widgetMain surface=demo-gallery element=demo-gallery-back
 ```
+
+## A plugin's widgets
+
+The catalogue is Studio's widgets. A plugin's widget joins it only when the run is
+handed the plugin:
+
+```sh
+node project/app/ui.js widget acme.rating.meter --plugin D:/path/to/acme.rating
+node project/app/ui.js check gauge.ui --project D:/path/to/project --plugin D:/path/to/acme.rating
+```
+
+`--plugin` takes a plugin's own directory - the one holding its `manifest.json` -
+and may be given more than once. The plugin's studio entry is run the way Studio
+runs it, with an `app` that records the widgets it registers and answers every
+other call with nothing, and each widget goes into the same registry the editor
+reads, through the same declaration checks. So what the editor refuses about a
+plugin widget, this refuses too: a child under a widget that declares part slots
+is `ui.not_a_part` unless its `extra.partSlot` names one of them, exactly as a
+Slider's child must carry its own marker.
+
+The plugin's code runs in this process with this process's rights - Studio's
+permission gate is not here - so pass only a plugin you would build yourself.
+Without `--plugin`, a plugin's widget type is `ui.unknown_widget_type`, and the
+hint says to pass it.
 
 ## Checking
 

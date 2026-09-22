@@ -296,8 +296,41 @@ app.services.widgets.registerMany([{
 不写或写 `false` 就是叶子控件，和以前一样。插件停用时文档里它的子元素原样保留，只是在插件回来之前
 不能再往里放东西。
 
-插件没有办法声明「只收自己造的部件」那种结构槽位（内建 Slider / Switch 的做法）；`acceptsChildren`
-就是「作者放什么都收」。
+`acceptsChildren` 是「作者放什么都收」。要的是内建 Slider / Switch 那种「只装自己造的部件」，用下面的 `partSlots`。
+
+### 只装自己部件的控件（`partSlots`）
+
+模块上写 `partSlots: ["track", "thumb"]`，这个控件就像 Slider 一样：里面只有它自己造的部件，别的什么都不收。
+部件由 `createDefaultChildElements` 在插入时造出来，每个部件用 `extra: { partSlot: "<槽位名>" }` 说自己填哪个槽位：
+
+```ts
+app.services.widgets.register({
+  type: `${app.plugin.id}.meter`,
+  displayName: "Meter",
+  icon: GaugeIcon,
+  partSlots: ["fill"],
+  createDefaultElement: () => ({ name: "Meter", layout: { x: 0, y: 0, width: 240, height: 24 }, props: { value: 0.5 } }),
+  createDefaultChildElements: ({ element, generateId }) => ({
+    children: [{
+      id: generateId(), type: "nl.container", name: "Fill", parentId: element.id, childrenIds: [],
+      layout: { x: 0, y: 0, width: 120, height: 24 },
+      extra: { partSlot: "fill" },
+    }],
+  }),
+  render: MeterRenderer,
+});
+```
+
+之后宿主替它守住这条边界，和内建的部件控件是同一套代码：
+
+- 画布上选中它再用插入工具画一个新控件，新控件落在它**旁边**，不落进去；图层大纲里它的部件之间没有落点，
+  往里拖什么都落不进去；粘贴也不会粘进它里面。
+- 部件拖不出去（拖出去就再也拖不回来了），但作者照样能选中、改样式、删除部件。
+- `node project/app/ui.js check <file.ui> --plugin <插件目录>` 对一个不带声明槽位的子元素报 `ui.not_a_part`（error）。
+- `render` 照常从 `children` 收到画好的部件。
+
+写了 `partSlots` 就不用再写 `acceptsChildren`；两个都写时按 `partSlots` 算（有部件的控件不收别的），并在控制台说明。
+插件停用时部件原样留在文档里，和 `acceptsChildren` 一样。
 
 ### 控件自己的事件（`logicApi`）
 
@@ -340,14 +373,28 @@ export const ON_RATED = {
   才会启动它，别处放了也永远不会跑。
 - **头节点的输出针脚就是事件 payload 里同名的字段**（上例 `stars` 读 `payload.stars`）。头节点不会被执行，
   它的 `execute` 只是占位。
-- 指针、按键、Init / Flush、广播这些**内建控件都有的事件，宿主会替它发**，只要 `logicApi` 声明了；
+- 指针、Init / Flush、页面进出这些**内建控件都有的事件，宿主会替它发**，只要 `logicApi` 声明了；
   只有控件自己知道发生了的事要 `render` 里用 `dispatchEvent` 发。
+- 按键、广播、全屏与窗口焦点是**环境事件**：不是控件发的，是宿主对页面上每个有蓝图的控件发的，节点面板也在
+  每个控件的蓝图里都给它们的头。所以 `supportsPrivateBlueprint: true` 的控件**不用声明就听得到**——宿主替它补上
+  （`keyDown`、`keyUp`、`onAnyBroadcast`、`onBroadcast`、`windowFullscreenChanged`、`windowFocusChanged`），
+  和内建控件一样；插件自己声明了同 id 的事件就用它自己的。
 - **runtime 入口要把同一份 `logicApi` 写进 `app.game.widgets.register({ type, render, logicApi })`**，
   头节点也要在 runtime 入口 `app.game.blueprintNodes.register` 一次——游戏里读不到 studio 入口的东西。
   漏了这一步，编辑器里一切正常，Dev Mode 和出货游戏里事件接不到任何图。
 - 和内建控件一样，**别的元素的蓝图不能直接听这个控件的事件**：内建控件里只有点击（Element Click）和
   重绘（Element Flush）能从别处点名监听。要让别处知道，就在控件自己的蓝图里写别的元素、或者发广播。
-- 脚本图层（`.ts` 蓝图）目前只认内建头对应的事件，插件自己的头在脚本里没有对应的导出名。
+- **脚本图层听得到插件自己的头。** 控件的蓝图里可以放一层脚本（`.ts` 文件），它和图层一样逐个事件被调用：
+  从内建头开始的事件按内建名字导出（Mouse Click 是 `onMouseClick`，与任何控件上一样）；从**本插件自己的头**开始的
+  事件按**事件 id** 导出（`rated` → `onRated`），`event` 参数就是 `dispatchEvent` 发出的 payload——头节点输出针脚在图里
+  读的是同一份。新建脚本时文件头一行「Called from here: …」列出这个控件的脚本会被哪些名字调用，Dev Mode 对一个一个
+  都没导出的脚本报错并列出这些名字。
+- 脚本的类型由工程的 `scripts/.narraleaf/project.d.ts` 从**当时已加载的插件**写出（插件晚于工程加载，加载后会重写一次）：
+  `WidgetCtx<"acme.rating.stars">`、`WidgetEvent<"acme.rating.stars", "rated">`、`WidgetHandler<"acme.rating.stars", "rated">`
+  都能用，payload 的字段类型来自头节点的数据输出针脚（`integer` / `float` 是 `number`，`string`、`boolean` 照名，其余 `unknown`）。
+- 所以**事件 id 要拼得成导出名**（字母开头，只含字母、数字、下划线），也**不能和同一控件上另一个事件抢同一个导出名**
+  （包括每个控件都有的 `elementClick` / `elementFlush`）。不满足的那个事件照样能在图层里用，只是脚本图层没有它，
+  注册时控制台会点名。
 
 ### `render` 抛错只毁掉这一个控件
 

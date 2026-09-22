@@ -1,4 +1,5 @@
-import fs from "fs/promises";
+import type { FileHandle } from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -100,7 +101,7 @@ async function nameWithExtension(source: string, name: string, isDirectory: bool
     if (isDirectory || path.extname(name) !== "") {
         return name;
     }
-    let handle: fs.FileHandle | undefined;
+    let handle: FileHandle | undefined;
     try {
         handle = await fs.open(source, "r");
         const head = Buffer.alloc(MEDIA_SNIFF_PREFIX_BYTES);

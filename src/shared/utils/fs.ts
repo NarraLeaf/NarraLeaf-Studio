@@ -1,8 +1,12 @@
 import path from "path";
-import fs from "fs/promises";
+import type {Dirent, Stats} from "fs";
 import type { FileHandle } from "fs/promises";
-import {Dirent, default as fsSync, Stats} from "fs";
 import {randomBytes} from "crypto";
+// Unpatched on purpose. Everything that goes through `Fs` - the renderer's file-system facade, the
+// `app://fs` protocol, document storage, the build's measurements - reaches files an author owns.
+// Studio's own archive (the bundles, `public`, package.json inside app.asar) is read with the patched
+// module where that happens, never through `Fs`: nothing here can reach inside it. See unpatchedFs.ts.
+import {unpatchedFs as fsSync, unpatchedFsPromises as fs} from "./unpatchedFs";
 import mime from "mime-types";
 import { FsRequestResult, FsRejectError, FsRejectErrorCode } from "../types/os";
 import { ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";

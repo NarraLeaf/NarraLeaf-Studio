@@ -402,6 +402,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
         openLogsFolder: () =>
             ipcClient.invoke(IPCEventType.appOpenLogsFolder, {}) as Promise<RequestStatus<void>>,
+        openThirdPartyNotices: () =>
+            ipcClient.invoke(IPCEventType.appOpenThirdPartyNotices, {}) as Promise<RequestStatus<void>>,
         probeDownloadSource: (url: string) =>
             ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
         getCacheInventory: () =>

@@ -18,7 +18,7 @@
  */
 
 import { createHash } from "crypto";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { CacheNamespace } from "@shared/types/constants";
 import { PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";

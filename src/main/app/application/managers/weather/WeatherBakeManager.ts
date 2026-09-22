@@ -1,7 +1,7 @@
 import type { App } from "@/app/app";
 import { projectDistrustedRefusal } from "../../utils/projectTrustGate";
 import crypto from "crypto";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { Logger } from "@shared/utils/logger";
 import { weatherBakeKey, type WeatherBakeIdentity } from "@shared/weather/bakeKey";

@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
 import { DLC_DOCUMENT_PATH } from "@shared/documents/specs";
 import { refuseNewerProjectDocument } from "@shared/documents/newerSchema";

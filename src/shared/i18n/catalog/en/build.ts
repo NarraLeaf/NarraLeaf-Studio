@@ -335,7 +335,6 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin}'s {sidecar} program ships into the {platform} artifact unable to run. Build the "
             + "{targetPlatform} target on a {targetPlatform} machine.",
-        "encryption-key-unavailable": "Asset protection is on, but its key could not be read.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
         "mobile-unprotected": "Asset protection does not apply to Android or iOS packages.",
         "progress-carry-unsupported":

@@ -47,7 +47,38 @@ export const SCRIPT_API_DECLARATIONS_PATH = `scripts/${SCRIPTS_GENERATED_DIR}/sc
 export type ScriptSurfaceFacts = {
     id: string;
     name: string;
-    elements: readonly { id: string; name: string; type: string }[];
+    /**
+     * `scriptable` says whether a script can sit on the element at all - a widget with a blueprint of
+     * its own that this file can name the type of. Absent is yes. An element that is not gets no
+     * `Ctx` alias: `WidgetCtx<"acme.stars">` for a plugin that is not loaded right now names a type
+     * the declarations do not have, and the file would be a type error before the author wrote a line.
+     */
+    elements: readonly { id: string; name: string; type: string; scriptable?: boolean }[];
+};
+
+/**
+ * A field of a plugin event's `event` argument, as the kind of value it carries.
+ *
+ * Coarse on purpose: a plugin head's output pin states a graph value type, and the three a script
+ * can use as they are map to their TypeScript names; anything else is `unknown`, which makes the
+ * author check it - the honest answer for a value this file cannot describe.
+ */
+export type ScriptPluginEventFieldKind = "number" | "string" | "boolean" | "unknown";
+
+/** A widget a loaded plugin contributes, and what a script on one is called with. */
+export type ScriptPluginWidgetFacts = {
+    type: string;
+    displayName: string;
+    pluginId: string;
+    /**
+     * Each event a script on it may export. A `builtin` one is Studio's own event of that id -
+     * `mouseClick` is `ScriptEvent<"mouseClick">` on any widget - and the rest are the plugin's,
+     * with the fields its heads' output pins read.
+     */
+    events: readonly (
+        | { id: string; builtin: true }
+        | { id: string; builtin: false; fields: Readonly<Record<string, ScriptPluginEventFieldKind>> }
+    )[];
 };
 
 /** What the generator needs to know about the open project. Every list may be empty. */
@@ -71,6 +102,8 @@ export type ScriptProjectFacts = {
     audioTracks: readonly { id: string; name: string }[];
     inputActions: readonly { id: string; name: string }[];
     locales: readonly string[];
+    /** The plugin widgets loaded when the file is written. Absent is none. */
+    pluginWidgets?: readonly ScriptPluginWidgetFacts[];
 };
 
 const HEADER = [
@@ -128,6 +161,9 @@ function surfaceBlock(surface: ScriptSurfaceFacts, typeName: string, componentSc
         `    type ${typeName}Element = ${unionOf(surface.elements.map(element => element.id))};`,
     ];
     for (const [index, element] of surface.elements.entries()) {
+        if (element.scriptable === false) {
+            continue;
+        }
         const elementType = typeNameOf(element.name, index);
         lines.push(
             `    /** ${JSON.stringify(element.name)} - ${element.type}. */`,
@@ -159,6 +195,49 @@ function sceneIdLines(scenes: ScriptProjectFacts["scenes"]): string[] {
         "    /** Every scene, by the id `isSceneVisited` takes. */",
         `    type SceneId = ${unionOf(scenes.map(scene => scene.id))};`,
     ];
+}
+
+const PLUGIN_FIELD_TYPES: Record<ScriptPluginEventFieldKind, string> = {
+    number: "number",
+    string: "string",
+    boolean: "boolean",
+    unknown: "unknown",
+};
+
+/**
+ * `PluginScriptWidgets`, declared again with this project's plugin widgets in it.
+ *
+ * The host API half declares the interface empty; declaring it a second time inside the same module
+ * merges the two, so `WidgetCtx`, `WidgetHandler` and `WidgetEvent` accept these widget types here
+ * and nowhere else. Written the way the host half writes it - without `export`, which every member of
+ * an ambient module is regardless - because TypeScript refuses to merge an exported declaration with
+ * a local one.
+ */
+function pluginWidgetLines(widgets: readonly ScriptPluginWidgetFacts[]): string[] {
+    if (widgets.length === 0) {
+        return [];
+    }
+    const lines = [
+        "    /** Widgets the plugins loaded when this file was written contribute, and what a script on one is called with. */",
+        "    interface PluginScriptWidgets {",
+    ];
+    for (const widget of [...widgets].sort((a, b) => a.type.localeCompare(b.type))) {
+        lines.push(`        /** ${JSON.stringify(widget.displayName)} - from the plugin ${widget.pluginId}. */`);
+        lines.push(`        ${JSON.stringify(widget.type)}: {`);
+        for (const event of widget.events) {
+            if (event.builtin) {
+                lines.push(`            ${JSON.stringify(event.id)}: ScriptEvent<${JSON.stringify(event.id)}>;`);
+                continue;
+            }
+            const fields = Object.entries(event.fields)
+                .map(([field, kind]) => `readonly ${JSON.stringify(field)}: ${PLUGIN_FIELD_TYPES[kind]}`)
+                .join("; ");
+            lines.push(`            ${JSON.stringify(event.id)}: { ${fields}${fields ? " " : ""}};`);
+        }
+        lines.push("        };");
+    }
+    lines.push("    }", "");
+    return lines;
 }
 
 /**
@@ -198,6 +277,7 @@ export function renderProjectDeclarations(facts: ScriptProjectFacts): string {
         "",
     ];
 
+    lines.push(...pluginWidgetLines(facts.pluginWidgets ?? []));
     for (const [index, surface] of facts.surfaces.entries()) {
         lines.push(...surfaceBlock(surface, surfaceNames[index], false), "");
     }

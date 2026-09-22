@@ -1,5 +1,11 @@
-import fs from "fs/promises";
+// Two modules on purpose. `studioArchiveFs` is the patched one, and it reads only the built-in
+// plugins, which a packaged Studio keeps inside its own app.asar. Every other plugin folder is one
+// somebody else wrote - picked by the author, or downloaded from the registry - and is reached
+// through `fs`, which is unpatched: see unpatchedFs.ts for what the patch does to a file named like
+// an archive, which a plugin is free to ship.
+import studioArchiveFs from "fs/promises";
 import path from "path";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import { UserDataNamespace, AppHost, AppProtocol } from "@shared/types/constants";
 import type {
     PluginInstallPermission,
@@ -37,6 +43,9 @@ type BuiltInPluginSource = {
     sourcePath: string;
     manifest: NormalizedPluginManifestV2;
 };
+
+/** What reading a plugin package's manifest needs from a file-system module. */
+type PluginPackageFiles = Pick<typeof fs, "readFile" | "stat">;
 
 const DEFAULT_STATE: PluginRegistryState = {
     "plugin.records": {},
@@ -85,6 +94,18 @@ export class PluginManager {
     /** Staged copies a swap is filling right now, so cleanup leaves them alone. */
     private readonly stagingInFlight = new Set<string>();
     private initialized: Promise<void> | null = null;
+    /**
+     * Plugins a command-line run switched on for itself (`--lint-plugin` and its siblings), and the
+     * load errors each reported during it.
+     *
+     * In memory and nowhere else, for as long as the process - which is the run - lives. A run must
+     * not change the profile it runs in: a job pointed at a developer's own profile that switched
+     * Gallery on there would leave it on in their editor, and a failure recorded against it would hold
+     * it back there until they switched it off and on. So every reader sees these as switched on,
+     * through {@link toListItem}, while the records on disk go on saying what the author chose.
+     */
+    private readonly commandLineRunPlugins = new Set<string>();
+    private readonly commandLineRunErrors = new Map<string, string>();
 
     constructor(
         private readonly userDataDir: string,
@@ -148,6 +169,7 @@ export class PluginManager {
         entry: string;
         entryPath: string;
         installPath: string;
+        builtIn: boolean;
     }>> {
         await this.initialize();
         return Object.values(this.getRecords())
@@ -162,6 +184,8 @@ export class PluginManager {
                     // Sidecar `include` paths are package-relative, so the pack
                     // compiler needs the package root, not just the entry file.
                     installPath,
+                    // A game build names a built-in plugin's bundled packages in its notice.
+                    builtIn: record.builtIn,
                 };
             });
     }
@@ -287,6 +311,29 @@ export class PluginManager {
         return this.toListItem(next);
     }
 
+    /**
+     * Switch these plugins on for the rest of this process, as a command-line run asked, without
+     * writing anything to the profile.
+     *
+     * What switching one on in the plugin list does, less the write: the plugin loads, it counts as
+     * enabled for dependency resolution and for what a build or a test's game packs, and a failure it
+     * had before is forgotten so it gets a fresh start. A plugin whose permissions this profile has
+     * never granted is refused rather than let through - a name on a command line is not consent to
+     * a third party's code, and granting one is the permission prompt's job. A built-in is granted
+     * when it is installed, whether or not it runs, so this never refuses one.
+     */
+    public async enableForCommandLineRun(pluginIds: readonly string[]): Promise<void> {
+        await this.initialize();
+        for (const pluginId of pluginIds) {
+            if (this.needsAuthorization(this.getRecord(pluginId))) {
+                throw new Error(`Plugin ${pluginId} has not been granted its permissions in this profile`);
+            }
+        }
+        for (const pluginId of pluginIds) {
+            this.commandLineRunPlugins.add(pluginId);
+        }
+    }
+
     public async approvePlugin(pluginId: string, grant: PluginPermissionGrantResult | null): Promise<PluginApproveResult> {
         await this.initialize();
         const record = this.getRecord(pluginId);
@@ -346,6 +393,20 @@ export class PluginManager {
     public async reportLoadError(pluginId: string, error: string | null): Promise<PluginListItem> {
         await this.initialize();
         const record = this.getRecord(pluginId);
+        if (this.commandLineRunPlugins.has(pluginId)) {
+            if (error === null) {
+                this.commandLineRunErrors.delete(pluginId);
+            } else {
+                this.commandLineRunErrors.set(pluginId, error);
+            }
+            return this.toListItem(record);
+        }
+        // Every load reports, and almost every one reports what the last one did: no error. Writing
+        // that back would rewrite the registry on every workspace open for nothing - and a
+        // command-line run, which must leave its profile as it found it, would not.
+        if (record.lastError === error) {
+            return this.toListItem(record);
+        }
         const next = {
             ...record,
             lastError: error,
@@ -506,7 +567,7 @@ export class PluginManager {
 
         let entries: import("fs").Dirent[];
         try {
-            entries = await fs.readdir(builtInPluginsDir, { withFileTypes: true });
+            entries = await studioArchiveFs.readdir(builtInPluginsDir, { withFileTypes: true });
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
                 throw error;
@@ -521,7 +582,7 @@ export class PluginManager {
 
             const sourcePath = path.join(builtInPluginsDir, entry.name);
             try {
-                const manifest = await this.readManifest(sourcePath);
+                const manifest = await this.readManifest(sourcePath, studioArchiveFs);
                 const installPath = this.getInstallPath(manifest.id);
                 await this.replacePluginDirectory(sourcePath, installPath);
                 builtInSources.set(manifest.id, { sourcePath, manifest });
@@ -616,14 +677,14 @@ export class PluginManager {
      */
     private async copyDirectoryFromAsar(sourceDir: string, destDir: string): Promise<void> {
         await fs.mkdir(destDir, { recursive: true });
-        const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+        const entries = await studioArchiveFs.readdir(sourceDir, { withFileTypes: true });
         for (const entry of entries) {
             const sourceEntry = path.join(sourceDir, entry.name);
             const destEntry = path.join(destDir, entry.name);
             if (entry.isDirectory()) {
                 await this.copyDirectoryFromAsar(sourceEntry, destEntry);
             } else if (entry.isFile()) {
-                await fs.writeFile(destEntry, await fs.readFile(sourceEntry));
+                await fs.writeFile(destEntry, await studioArchiveFs.readFile(sourceEntry));
             }
             // Plugin packages contain only regular files and directories; other
             // entry types (symlinks, sockets) are intentionally skipped.
@@ -656,9 +717,13 @@ export class PluginManager {
         });
     }
 
-    private async readManifest(pluginDir: string): Promise<NormalizedPluginManifestV2> {
+    /**
+     * Read and check a plugin package's manifest, through `files`: the patched module for a built-in
+     * package still inside Studio's archive, the unpatched one (the default) for everything else.
+     */
+    private async readManifest(pluginDir: string, files: PluginPackageFiles = fs): Promise<NormalizedPluginManifestV2> {
         const manifestPath = path.join(pluginDir, "manifest.json");
-        const raw = await fs.readFile(manifestPath, "utf-8");
+        const raw = await files.readFile(manifestPath, "utf-8");
         const parsed = JSON.parse(raw);
         const result = validatePluginManifest(parsed);
         if (!result.ok) {
@@ -673,13 +738,13 @@ export class PluginManager {
             if (!this.isSameOrChild(entryPath, root)) {
                 throw new Error(`Plugin ${target} entry must stay inside the plugin package`);
             }
-            const entryStat = await fs.stat(entryPath).catch(() => null);
+            const entryStat = await files.stat(entryPath).catch(() => null);
             if (!entryStat?.isFile()) {
                 throw new Error(`Plugin ${target} entry file not found: ${entry}`);
             }
         }
         if (result.manifest.icon) {
-            await this.verifyIconFile(pluginDir, result.manifest.icon);
+            await this.verifyIconFile(pluginDir, result.manifest.icon, files);
         }
         return result.manifest;
     }
@@ -692,13 +757,13 @@ export class PluginManager {
      * the icon, show the monogram — produces a plugin that looks fine to the
      * user and wrong to its author, with nothing anywhere saying why.
      */
-    private async verifyIconFile(pluginDir: string, icon: string): Promise<void> {
+    private async verifyIconFile(pluginDir: string, icon: string, files: PluginPackageFiles): Promise<void> {
         const root = path.resolve(pluginDir);
         const iconPath = path.resolve(pluginDir, ...icon.split(/[\\/]+/));
         if (!this.isSameOrChild(iconPath, root)) {
             throw new Error("Plugin icon must stay inside the plugin package");
         }
-        const stat = await fs.stat(iconPath).catch(() => null);
+        const stat = await files.stat(iconPath).catch(() => null);
         if (!stat?.isFile()) {
             throw new Error(`Plugin icon file not found: ${icon}`);
         }
@@ -707,7 +772,7 @@ export class PluginManager {
         if (stat.size > PLUGIN_ICON_MAX_BYTES) {
             throw new Error(`Plugin icon must be at most ${Math.floor(PLUGIN_ICON_MAX_BYTES / 1024)} KB`);
         }
-        const error = validatePluginIconBytes(await fs.readFile(iconPath), icon);
+        const error = validatePluginIconBytes(await files.readFile(iconPath), icon);
         if (error) {
             throw new Error(error);
         }
@@ -747,7 +812,10 @@ export class PluginManager {
         this.setRecords(records);
     }
 
-    private toListItem(record: PluginInstallRecord): PluginListItem {
+    private toListItem(stored: PluginInstallRecord): PluginListItem {
+        const record = this.commandLineRunPlugins.has(stored.pluginId)
+            ? { ...stored, enabled: true, lastError: this.commandLineRunErrors.get(stored.pluginId) ?? null }
+            : stored;
         const status = record.lastError
             ? "error"
             : this.needsAuthorization(record)

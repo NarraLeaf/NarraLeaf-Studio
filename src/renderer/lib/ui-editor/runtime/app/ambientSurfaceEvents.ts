@@ -44,23 +44,53 @@ export type AmbientSurfaceTarget = {
 
 /**
  * The live surfaces the game's own composite does not list: those the story puts on the stage and
- * the pages drawn inside frames. Each registers itself while it is drawn and far enough in that its
- * graphs run, and takes itself off when it goes.
+ * the pages drawn inside frames. Each drawing registers itself while it is drawn and far enough in
+ * that its graphs run, and takes itself off when it goes.
+ *
+ * A surface is its runtime scope, not its drawing, so each scope is listed once however many
+ * drawings show it. The dialogue slot is regularly drawn twice at once over one scope - a scene
+ * parked behind a returnable jump keeps its box while the scene it called has drawn its own, and two
+ * concurrent branches that both speak have one each - and a page in a frame on it is drawn twice
+ * with it. Listed once per drawing, each of them ran its heads twice for one event: one preference
+ * change, two runs of `On Preference Changed` against the same state.
+ *
+ * The scope is reached through the drawing registered for it last, which is the one arriving - the
+ * called scene's box, not the caller's on its way out - and through the one before it once that has
+ * gone. It keeps the place in the order the scope first came in at.
  */
 export class AmbientSurfaceTargets {
-    private readonly targets = new Set<AmbientSurfaceTarget>();
+    /** Each scope's drawings, oldest first; the map keeps the order the scopes came in. */
+    private readonly drawingsByScope = new Map<string, AmbientSurfaceTarget[]>();
 
-    /** Add a surface; the returned function takes it off again. */
+    /** Add a drawing of a surface; the returned function takes it off again. */
     public add(target: AmbientSurfaceTarget): () => void {
-        this.targets.add(target);
+        const drawings = this.drawingsByScope.get(target.runtimeScopeId);
+        if (drawings) {
+            drawings.push(target);
+        } else {
+            this.drawingsByScope.set(target.runtimeScopeId, [target]);
+        }
+        let registered = true;
         return () => {
-            this.targets.delete(target);
+            if (!registered) {
+                return;
+            }
+            registered = false;
+            const current = this.drawingsByScope.get(target.runtimeScopeId);
+            const index = current?.lastIndexOf(target) ?? -1;
+            if (!current || index < 0) {
+                return;
+            }
+            current.splice(index, 1);
+            if (current.length === 0) {
+                this.drawingsByScope.delete(target.runtimeScopeId);
+            }
         };
     }
 
-    /** In the order they came in. */
+    /** One per scope, in the order the scopes came in. */
     public list(): AmbientSurfaceTarget[] {
-        return [...this.targets];
+        return [...this.drawingsByScope.values()].map(drawings => drawings[drawings.length - 1]!);
     }
 }
 

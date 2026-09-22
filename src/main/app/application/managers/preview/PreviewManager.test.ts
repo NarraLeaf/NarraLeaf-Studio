@@ -28,11 +28,6 @@ vi.mock("child_process", async importOriginal => ({
 vi.mock("chokidar", () => ({
     default: { watch: () => ({ on: () => undefined, close: () => Promise.resolve() }) },
 }));
-// The key itself comes from a native binding and from secrets on disk. What these cases are about is
-// which launches ask for one at all, so a fixed answer says more than a real derivation would.
-vi.mock("../security/packKeyService", () => ({
-    resolvePackEncryptionKey: async () => "pack-key-for-this-machine",
-}));
 
 let tempDir = "";
 
@@ -557,7 +552,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
     it("runs loose files by default, protected project or not", async () => {
         // The everyday preview. Sealing the store on every launch would be paid on every story edit,
         // for an artifact nobody receives.
-        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
     });
 
     it("seals once this machine asks for it, and changes nothing else about the compile", async () => {
@@ -565,7 +560,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
         globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
         const sealed = await compileInputOfOneLaunch();
 
-        expect(sealed.encryptionKey).toBe("pack-key-for-this-machine");
+        expect(sealed.protectAssets).toBe(true);
         // Everything else is what it was, because "as shipped" has to mean the artifact a protected
         // build produces rather than a third kind of artifact only preview can make. The control
         // channel is exempt: a port and a token are minted per launch.
@@ -576,7 +571,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
         await writeProjectConfig(false);
         globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
 
-        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
     });
 
     it("belongs to one project, not to the machine", async () => {
@@ -584,12 +579,12 @@ describe("PreviewManager and the shipped form of a protected project", () => {
             [normalizeProjectPath(path.join(os.tmpdir(), "some-other-project"))]: true,
         };
 
-        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
     });
 
     function withoutPerLaunchFields(input: Record<string, unknown>): Record<string, unknown> {
         const rest = { ...input };
-        delete rest.encryptionKey;
+        delete rest.protectAssets;
         delete rest.preview;
         return rest;
     }

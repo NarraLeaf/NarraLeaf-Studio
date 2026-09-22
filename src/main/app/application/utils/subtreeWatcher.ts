@@ -1,5 +1,5 @@
-import { watch, type FSWatcher } from "fs";
-import { stat } from "fs/promises";
+import type { FSWatcher } from "fs";
+import { unpatchedFs, unpatchedFsPromises } from "../../../utils/unpatchedFs";
 import * as path from "path";
 import { rememberWatchedFile, watchedFileChanged } from "./watchedFileIdentity";
 import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/atomicWriteTemp";
@@ -54,7 +54,7 @@ export function watchSubtree(
 ): SubtreeWatcher | null {
     let watcher: FSWatcher;
     try {
-        watcher = watch(root, { recursive: true });
+        watcher = unpatchedFs.watch(root, { recursive: true });
     } catch {
         return null;
     }
@@ -78,7 +78,7 @@ export function watchSubtree(
             return;
         }
         void (async () => {
-            const stats = await stat(file).catch(() => null);
+            const stats = await unpatchedFsPromises.stat(file).catch(() => null);
             if (closed) {
                 return;
             }

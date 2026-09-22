@@ -3,6 +3,7 @@ import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
+import { unpatchedFsPromises } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -29,7 +30,6 @@ import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -264,8 +264,9 @@ export class PreviewManager {
             throw new Error("Stop the preview before resetting its player data");
         }
         const userDataDir = path.join(path.resolve(projectPath), ".nlstudio", "preview", "userData");
-        await fs.promises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
-        await fs.promises.rm(path.join(userDataDir, "persistence.json"), { force: true });
+        // Inside the author's project, so unpatched like every other path there (see unpatchedFs.ts).
+        await unpatchedFsPromises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
+        await unpatchedFsPromises.rm(path.join(userDataDir, "persistence.json"), { force: true });
     }
 
     private cancelLaunches(key: string): void {
@@ -366,13 +367,11 @@ export class PreviewManager {
             const sealing = await resolveRunSealing({
                 projectPath: normalizedProjectPath,
                 choice: { by: "preview-setting", settings: this.app.getGlobalState() },
-                resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), normalizedProjectPath),
             });
             const sealingLine = runSealingLogLine(sealing);
             if (sealingLine) {
                 this.emitVerbose(session, sealingLine);
             }
-            const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(attempt);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), normalizedProjectPath);
@@ -399,7 +398,7 @@ export class PreviewManager {
                 // Which DLC this run has installed, from the same machine setting the variant comes
                 // from. Empty until the author ticks one, so a preview is the base game by default.
                 includedDlc: runDlc,
-                encryptionKey,
+                protectAssets: sealing.kind === "sealed",
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that
                 // silently lacks them, and testing a sidecar would mean a full

@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../utils/unpatchedFs";
 import path from "path";
 import type { App } from "@/app/app";
 import type { AppWindow } from "./managers/window/appWindow";
@@ -13,7 +13,7 @@ import {
     type CommandLineBuildReport,
     type CommandLineBuildReportExperimental,
 } from "@shared/types/commandLineBuild";
-import type { CommandLineRunEvent, CommandLineRunLogLine } from "@shared/types/commandLineRun";
+import type { CommandLineRunEvent, CommandLineRunLogLine, CommandLineRunPlugin } from "@shared/types/commandLineRun";
 import { experimentalCondition } from "@shared/types/experimental";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { BuildCommandLineOptions } from "./commandLine";
@@ -28,6 +28,7 @@ import { resolveStartupProject } from "./startupProject";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
 import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
 import { findCommandLineVariant, namesReleaseVariant } from "./utils/commandLineVariant";
+import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 
 /**
@@ -84,6 +85,10 @@ import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
  * The cost is that a scratch profile has none of the machine's settings, and a build reads a few:
  * which Electron mirror to download from, where the packager's own binaries come from.
  * `--build-setting` puts those back for the run without writing them anywhere.
+ *
+ * Nor has it the plugins an author switches on by hand - Gallery and Menu Bar ship switched off - so
+ * a project that declares one ends the run with exit 4. `--build-plugin` switches one on for this run,
+ * again without writing it anywhere: see `utils/commandLinePlugins.ts`.
  *
  * ## Experimental mode
  *
@@ -155,6 +160,8 @@ export class CommandLineBuildRun {
     private finished = false;
     /** What `--build-signing` handed over, so the report can say where the signature came from. */
     private signingCredentials: CommandLineSigningCredential[] = [];
+    /** The plugins the line switched on for this run, once they were found. For the job and the report. */
+    private plugins: CommandLineRunPlugin[] = [];
     /**
      * What the report says about experimental mode.
      *
@@ -240,6 +247,19 @@ export class CommandLineBuildRun {
         const overrides = await this.applyBuildOverrides(planned.plan);
         if (overrides) {
             return this.finish("invocation", overrides);
+        }
+
+        // Before the checks as well: they read which plugins are on - a plugin's required build
+        // fields, what the game will pack - and a plugin this run switches on has to count.
+        const plugins = await enableCommandLinePlugins(this.app.pluginManager, options.plugins, "--build-plugin");
+        if (!plugins.ok) {
+            return this.finish("studio-failed", plugins.reason);
+        }
+        this.plugins = plugins.plugins;
+        if (plugins.plugins.some(plugin => plugin.enabledForRun)) {
+            // What switching a plugin on in the plugin list does next, for a plugin that brings a
+            // language of its own.
+            await this.app.refreshPluginLocales();
         }
 
         this.emit("info", `building ${this.projectName ?? path.basename(resolution.projectPath)}`
@@ -430,7 +450,7 @@ export class CommandLineBuildRun {
             }
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
-                commandLineRun: { kind: "build", request: plan.request },
+                commandLineRun: { kind: "build", request: plan.request, plugins: this.plugins },
             });
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
@@ -583,6 +603,7 @@ export class CommandLineBuildRun {
                 ...(signed ? { credentialSource: this.credentialSource() } : {}),
             },
             experimental: this.experimental,
+            plugins: this.plugins,
             findings: this.findings,
             artifacts: (event?.artifacts ?? []).map(artifactPath => {
                 const size = event?.artifactSizes?.find(entry => entry.path === artifactPath);

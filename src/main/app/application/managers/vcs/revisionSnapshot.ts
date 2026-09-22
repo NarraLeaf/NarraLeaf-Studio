@@ -1,5 +1,4 @@
-import fsSync from "fs";
-import fs from "fs/promises";
+import { unpatchedFs as fsSync, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import type { RevisionId } from "@shared/types/vcs";
 import { isVersioned } from "@shared/vcs/workingSet";

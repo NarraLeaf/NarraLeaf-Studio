@@ -12,6 +12,7 @@ const {
     getRendererApps,
 } = require('./utils');
 const { postcssPlugin } = require('./postCss-plugin');
+const { thirdPartyNoticesPlugin } = require('./third-party-notices');
 
 /**
  * Build all renderer apps located under "src/renderer/apps/<appName>".
@@ -83,7 +84,7 @@ const { postcssPlugin } = require('./postCss-plugin');
                 '.woff': 'file',
                 '.woff2': 'file',
             },
-            plugins: [postcssPlugin()],
+            plugins: [postcssPlugin(), thirdPartyNoticesPlugin()],
         });
 
         // Render html

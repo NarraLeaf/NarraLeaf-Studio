@@ -146,6 +146,40 @@ describe("printing a scene and reading it back", () => {
     });
 });
 
+describe("a row that names a row the same file adds", () => {
+    it("is bound to the id that row ends up with", () => {
+        // The second pass resolves names against the first pass's scene, so a target bound to the row
+        // that put a portrait on stage carries the id the first pass gave that row. When each pass
+        // minted its new rows afresh, the entrance landed under a second id and the transform was
+        // left pointing at one no scene holds.
+        commandI18nStore.setPreference(false);
+        const project = skeletonProject();
+        expect(project).not.toBeNull();
+        const { data, document } = project!;
+        const scene = { ...(Object.values(document.scenes)[0] as StoryScene), rootBlockIds: [], blocks: {} };
+        const lookups = buildLookups(data, document, scene, buildContext(data, document, scene));
+        const source = `#nlstory 1\n#scene ${scene.name} ⟦${scene.id}⟧\n\n/show Narra\n/transform Narra zoom=1.2 d=0.5s\n`;
+        let next = 0;
+        const compiled = compileStoryFile({
+            ast: parseStoryFile(source).ast,
+            existing: scene,
+            document,
+            contextFor: stage => buildContext(data, document, stage ?? scene),
+            prose: lookups.prose,
+            conditions: lookups.conditions,
+            mintId: () => `00000000-0000-4000-8000-${String(next++).padStart(12, "0")}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        const [entrance, transform] = compiled.scene!.rootBlockIds.map(id => compiled.scene!.blocks[id]);
+        expect(entrance?.kind === "action" && entrance.payload.action === "character").toBe(true);
+        const target = transform?.kind === "action" && transform.payload.action === "displayable"
+            ? (transform.payload as { target?: { sourceBlockId?: string } }).target
+            : undefined;
+        expect(target?.sourceBlockId).toBe(entrance!.id);
+    });
+});
+
 describe("a project this tool cannot read", () => {
     it("resolves no names rather than guessing at them", () => {
         // An empty project is a real state - `story command` answers with no `--project` at all - and

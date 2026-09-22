@@ -8,7 +8,7 @@ import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, shell } from "electron";
 import type { Dirent } from "fs";
-import { promises as fs } from "fs";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import os from "os";
 import path from "path";
 import {
@@ -25,6 +25,7 @@ import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } 
 import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
 import { isMainOnlyStateKey, isMainOwnedStateKey, isProtectedStateKey } from "@shared/constants/settingsScopes";
 import { getMainLocale } from "../../../i18n";
+import { THIRD_PARTY_NOTICES_FILENAME } from "../../build/thirdPartyNotices";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -644,6 +645,36 @@ export class AppOpenLogsFolderHandler extends IPCHandler<IPCEventType.appOpenLog
             await fs.mkdir(logsDir, { recursive: true });
             // openPath answers with a message rather than throwing, and an empty string means it worked.
             const failure = await shell.openPath(logsDir);
+            if (failure) {
+                return this.failed(new Error(failure));
+            }
+            return this.success(void 0);
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Open Studio's own third-party notice in the system's text editor.
+ *
+ * The file lists the npm packages inlined into Studio's bundles with their licence texts; the build
+ * scripts write it to `dist/`, and a packaged Studio carries it in its resources folder
+ * (electron-builder.yml), because an editor outside Electron cannot open a file inside the asar.
+ * Like the logs folder it takes no path, so it opens that one file and nothing else.
+ */
+export class AppOpenThirdPartyNoticesHandler extends IPCHandler<IPCEventType.appOpenThirdPartyNotices> {
+    readonly name = IPCEventType.appOpenThirdPartyNotices;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        try {
+            const file = window.app.isPackaged()
+                ? path.join(process.resourcesPath, THIRD_PARTY_NOTICES_FILENAME)
+                : path.join(window.app.getDistDir(), THIRD_PARTY_NOTICES_FILENAME);
+            await fs.access(file);
+            // openPath answers with a message rather than throwing, and an empty string means it worked.
+            const failure = await shell.openPath(file);
             if (failure) {
                 return this.failed(new Error(failure));
             }
