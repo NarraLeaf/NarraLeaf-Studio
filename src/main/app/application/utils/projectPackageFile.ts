@@ -253,7 +253,7 @@ class UnpackFootprint {
     async makeDirectory(directory: string): Promise<void> {
         const first = await fs.mkdir(directory, { recursive: true });
         if (first) {
-            this.created.push({ path: first, directory: true });
+            this.created.push({ path: withoutNamespacePrefix(first), directory: true });
         }
     }
 
@@ -287,8 +287,7 @@ class UnpackFootprint {
 
     /**
      * Remove what was recorded, newest first, and return what would not go. A path inside a recorded
-     * directory goes with that directory. Retried, because on Windows a file just written is often
-     * held for a moment by a scanner or an indexer.
+     * directory goes with that directory.
      */
     async remove(): Promise<unknown[]> {
         const directories = this.created.filter(entry => entry.directory);
@@ -296,14 +295,52 @@ class UnpackFootprint {
             !directories.some(directory => directory !== entry && isInside(directory.path, entry.path)));
         const failures: unknown[] = [];
         for (const entry of roots.reverse()) {
-            try {
-                await fs.rm(entry.path, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-            } catch (error) {
-                failures.push(error);
+            const failure = await removeTree(entry.path);
+            if (failure !== null) {
+                failures.push(failure);
             }
         }
         return failures;
     }
+}
+
+/**
+ * A Windows path without the `\\?\` prefix. `mkdir` with `recursive` answers in that form on Windows
+ * while every other path here is plain, and the two do not compare as one inside the other.
+ */
+function withoutNamespacePrefix(target: string): string {
+    if (target.startsWith("\\\\?\\UNC\\")) {
+        return `\\\\${target.slice(8)}`;
+    }
+    return target.startsWith("\\\\?\\") ? target.slice(4) : target;
+}
+
+/**
+ * The pauses before each attempt at removing one tree. Tried again at all because on Windows a file
+ * just written is often held for a moment by a scanner or an indexer.
+ *
+ * Not `rm`'s own `maxRetries`, which retries at every level of the tree: a folder whose contents
+ * cannot be removed at all - one that denies deleting, say - then multiplies its attempts at each
+ * depth, and an unpack of an ordinary project took minutes to give up. Retrying the whole tree is
+ * bounded by the number of attempts here.
+ */
+const REMOVAL_ATTEMPT_DELAYS_MS: readonly number[] = [0, 200, 800];
+
+/** Remove a tree, or return why it would not go after the last attempt. */
+async function removeTree(target: string): Promise<unknown | null> {
+    let failure: unknown = null;
+    for (const delay of REMOVAL_ATTEMPT_DELAYS_MS) {
+        if (delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        try {
+            await fs.rm(target, { recursive: true, force: true });
+            return null;
+        } catch (error) {
+            failure = error;
+        }
+    }
+    return failure;
 }
 
 /**

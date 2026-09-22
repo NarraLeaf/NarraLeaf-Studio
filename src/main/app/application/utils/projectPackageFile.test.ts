@@ -476,6 +476,9 @@ describe("a failed unpack takes back what it wrote", () => {
             expect((error as { code?: unknown }).code).toBe(ProjectPackageImportErrorCode.Damaged);
             expect((error as Error).message).toMatch(/could not be removed: EBUSY/);
             expect(await exists(path.join(target, "Demo.nlproj"))).toBe(true);
+            // The import made one folder, so there is one tree to remove, tried a bounded number of
+            // times as a whole rather than at every level of it.
+            expect(rm).toHaveBeenCalledTimes(3);
         } finally {
             rm.mockRestore();
         }
