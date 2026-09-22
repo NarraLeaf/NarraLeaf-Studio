@@ -25,10 +25,8 @@ import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "./previewAsShipped";
 import { resolveRunSealing, runSealingLogLine } from "./runSealing";
 
 const PROJECT_NAME = "Tiny Shadows";
-const KEY = "the-pack-key";
 
 let projectPath = "";
-let keyCalls = 0;
 
 /** A project directory whose config says whether its assets are protected. */
 async function writeProject(encryptAssets: boolean | undefined): Promise<void> {
@@ -47,17 +45,11 @@ function settings(previewAsShipped: boolean) {
     return { get: (key: string) => (key === PREVIEW_AS_SHIPPED_SETTINGS_KEY ? stored : undefined) };
 }
 
-function resolveKey() {
-    keyCalls += 1;
-    return Promise.resolve(KEY);
-}
-
 /** A run an author started, asking the machine's setting. */
 function sealing(previewAsShipped: boolean) {
     return resolveRunSealing({
         projectPath,
         choice: { by: "preview-setting", settings: settings(previewAsShipped) },
-        resolveKey,
     });
 }
 
@@ -66,13 +58,11 @@ function headlessSealing(asShipped: boolean) {
     return resolveRunSealing({
         projectPath,
         choice: { by: "command-line", asShipped },
-        resolveKey,
     });
 }
 
 beforeEach(async () => {
     projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-run-sealing-"));
-    keyCalls = 0;
 });
 
 afterEach(async () => {
@@ -88,18 +78,13 @@ describe("a project that protects its assets", () => {
         const result = await sealing(false);
 
         expect(result).toEqual({ by: "preview-setting", asked: false, kind: "loose-by-choice" });
-        // Not merely "no key in the result": deriving one reads and, on first use, writes the
-        // machine secret and the project salt, which a run that is not sealing has no business
-        // touching.
-        expect(keyCalls).toBe(0);
         expect(runSealingLogLine(result)).toContain("Preview as shipped is off");
     });
 
     it("seals when this machine has asked for it, and says so", async () => {
         const result = await sealing(true);
 
-        expect(result).toEqual({ by: "preview-setting", asked: true, kind: "sealed", key: KEY });
-        expect(keyCalls).toBe(1);
+        expect(result).toEqual({ by: "preview-setting", asked: true, kind: "sealed" });
         expect(runSealingLogLine(result)).toContain("encrypting pack");
     });
 });
@@ -113,7 +98,6 @@ describe("a headless run of a project that protects its assets", () => {
         const result = await headlessSealing(false);
 
         expect(result).toEqual({ by: "command-line", asked: false, kind: "loose-by-choice" });
-        expect(keyCalls).toBe(0);
         expect(runSealingLogLine(result)).toBe(
             "assets: loose files; this project's release build seals them, which --test-as-shipped would test",
         );
@@ -122,8 +106,7 @@ describe("a headless run of a project that protects its assets", () => {
     it("seals when the line asks for the shipped form, and says so", async () => {
         const result = await headlessSealing(true);
 
-        expect(result).toEqual({ by: "command-line", asked: true, kind: "sealed", key: KEY });
-        expect(keyCalls).toBe(1);
+        expect(result).toEqual({ by: "command-line", asked: true, kind: "sealed" });
         expect(runSealingLogLine(result)).toBe(
             "assets: sealed in a protected store, as this project's release build holds them (--test-as-shipped)",
         );
@@ -141,7 +124,6 @@ describe("a project that does not protect its assets", () => {
             // a sentence about it on every launch would be noise.
             expect(runSealingLogLine(result)).toBeNull();
         }
-        expect(keyCalls).toBe(0);
     });
 
     it("has nothing to seal on a headless run either, and says which path it took", async () => {
@@ -157,7 +139,6 @@ describe("a project that does not protect its assets", () => {
         const asked = await headlessSealing(true);
         expect(asked).toEqual({ by: "command-line", asked: true, kind: "unprotected" });
         expect(runSealingLogLine(asked)).toContain("--test-as-shipped has nothing to seal");
-        expect(keyCalls).toBe(0);
     });
 
     it("is the answer for a config that says nothing about protection, and for no config at all", async () => {

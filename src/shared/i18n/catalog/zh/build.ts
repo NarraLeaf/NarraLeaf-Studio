@@ -294,7 +294,6 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行；"
             + "请在 {targetPlatform} 机器上构建该目标",
-        "encryption-key-unavailable": "资产保护已开启，但无法取得密钥",
         "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
         "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效",
         "progress-carry-unsupported":

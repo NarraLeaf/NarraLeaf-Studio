@@ -337,11 +337,14 @@ export type GameRuntimeArtifactCompileInput = {
      */
     shell?: "electron" | "web";
     /**
-     * Opaque pack key for asset protection. When set, packaged output is
-     * protected via @narraleaf/bindings; when absent, output is written
-     * verbatim (protection off).
+     * Seal this artifact's payload into the protected store instead of writing it as loose files.
+     *
+     * A switch and nothing more. Everything the store is sealed with is made by the codec package
+     * inside this compile - from the distribution key when there is one (see `distribution`),
+     * fresh for this run otherwise - and bound into the binaries that ship beside it, so there is
+     * no key for a caller to supply.
      */
-    encryptionKey?: string;
+    protectAssets?: boolean;
     /**
      * The app id this build ships under, as the build resolved it. Only the
      * production electron shell reads it, to name the per-user directory the
@@ -518,7 +521,7 @@ export async function compileGameRuntimeArtifact(
     if (shell === "web" && mode !== "production") {
         throw new Error("Web artifact compile is production-only");
     }
-    if (shell === "web" && input.encryptionKey) {
+    if (shell === "web" && input.protectAssets) {
         throw new Error("Web artifact compile does not support asset protection");
     }
     // The first thing done with the output root is to delete `<root>/app` recursively. A relative
@@ -537,7 +540,7 @@ export async function compileGameRuntimeArtifact(
 
     const engineVersion = await assertRuntimeDistReady(input.runtimeDistDir, shell);
     await fs.rm(appDir, { recursive: true, force: true });
-    if (!input.encryptionKey) {
+    if (!input.protectAssets) {
         // Loose items live under assets/; the sealed store needs no such dir.
         await fs.mkdir(assetsDir, { recursive: true });
     }
@@ -563,7 +566,7 @@ export async function compileGameRuntimeArtifact(
      * Electron opens main.js and the preload itself, before anything of ours
      * could answer for them.
      */
-    const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
+    const sealsShell = input.protectAssets === true && shell !== "web";
     // A shipped desktop game hardens its launch guard by shipping main.js as bytecode. Preview and
     // the experimental debuggable build stay readable source so an author can inspect and step
     // through the real main process; the web shell has no main.js at all.
@@ -590,7 +593,7 @@ export async function compileGameRuntimeArtifact(
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
     // of protected builds. Two different questions, and they do not share a switch.
-    const needsSupportBinary = Boolean(input.encryptionKey)
+    const needsSupportBinary = input.protectAssets === true
         || Boolean(input.distribution && shell !== "web");
     /*
      * Where each target's copy of the support binary goes, and which prebuilt
@@ -663,7 +666,7 @@ export async function compileGameRuntimeArtifact(
     const titleCompile = await resolveTitleCompile({
         wanted: placements.length > 0 && Boolean(input.packaging),
         /* Named so the sentence tells the author which switch to reach for. */
-        reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
+        reason: input.protectAssets ? "Asset protection" : "Shipping a build that can accept patches",
         ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
         ...(input.hostCacheRoot ? { cacheRoot: input.hostCacheRoot } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
@@ -751,7 +754,7 @@ export async function compileGameRuntimeArtifact(
     // Bound before anything is written into it. A build with a distribution key
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
-    if (input.distribution && needsSupportBinary && !input.encryptionKey) {
+    if (input.distribution && needsSupportBinary && !input.protectAssets) {
         await prepareArchiveReader(images, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
@@ -761,7 +764,7 @@ export async function compileGameRuntimeArtifact(
 
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
-    const target: PackTarget = input.encryptionKey
+    const target: PackTarget = input.protectAssets
         ? {
             kind: "sealed",
             /*
@@ -787,7 +790,7 @@ export async function compileGameRuntimeArtifact(
      * thing. Once placed, the app dir holds what ships and the images do not
      * matter.
      */
-    if (input.encryptionKey) {
+    if (input.protectAssets) {
         await placeCodecImages(placements, images);
     }
 
@@ -840,7 +843,7 @@ export async function compileGameRuntimeArtifact(
     // game, because the gate that decides in time reads the loose manifest and a shipped protected
     // build cannot have a text edit standing between a stranger and its content.
     const debuggable = input.debuggable === true;
-    if (debuggable && input.encryptionKey) {
+    if (debuggable && input.protectAssets) {
         notices.push(
             "asset protection is on: this artifact accepts a debugging switch only while its app "
             + "directory is run directly, never as the packaged game",

@@ -435,8 +435,8 @@ export function BuildDialogContent({
     //
     // The Content section still writes, on its own (a switch cannot wait 250ms to admit it moved),
     // and joins here through `contentRevision`, which it bumps only after its write has landed - so
-    // the same "disk first, then judge" order holds for `encryption-key-unavailable` and
-    // `web-unprotected`.
+    // the same "disk first, then judge" order holds for `web-unprotected` and
+    // `mobile-unprotected`.
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(() => {
