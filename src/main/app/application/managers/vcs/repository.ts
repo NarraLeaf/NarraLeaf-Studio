@@ -1,4 +1,4 @@
-import fs from "fs";
+import { unpatchedFs as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import {
     VCS_REVISION_KIND_KEY,
