@@ -397,6 +397,29 @@ const UI_STRUCTURAL_SLOT_READERS = new Map<string, (extra: Record<string, unknow
 ]);
 
 /**
+ * The prop a built-in part owner keeps each of its parts' ids in, by slot.
+ *
+ * The slot marker says which part a child is; this prop is how the widget and its properties panel
+ * find it. The renderer falls back to the marker when the prop names nothing, the panel does not -
+ * so a part that arrives in a slot by any route other than the widget building it (a paste into an
+ * emptied slot) has to be pointed at here too, or the panel reports the slot empty and its repair
+ * button builds a second part over the first. A plugin's widget finds its parts by marker alone and
+ * has no row.
+ */
+const UI_STRUCTURAL_SLOT_POINTER_PROPS = new Map<string, Readonly<Record<string, string>>>([
+    ["nl.slider", { track: "trackElementId", handle: "handleElementId" }],
+    ["nl.switch", { track: "trackElementId", thumb: "thumbElementId" }],
+]);
+
+/** The prop that holds the id of `parentType`'s part in `slot`, or null when the widget keeps none. */
+export function getUIStructuralSlotPointerProp(parentType: string | undefined, slot: string): string | null {
+    if (parentType == null) {
+        return null;
+    }
+    return UI_STRUCTURAL_SLOT_POINTER_PROPS.get(parentType)?.[slot] ?? null;
+}
+
+/**
  * The structural slot `extra` claims inside `parentType`, or null when that pairing has no slots.
  *
  * A type the table does not know is looked up among the widgets loaded plugins contribute: one that

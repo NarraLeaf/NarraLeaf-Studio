@@ -108,3 +108,44 @@ describe("pasting an element that carries its own blueprint", () => {
         expect(blueprintDocument.blueprints[derivedBlueprintId(widgetMainOwnerKey(surfaceId, pastedId))]).toBeUndefined();
     });
 });
+
+describe("pasting a widget's part back into the widget", () => {
+    /** A Slider whose handle was deleted: the track is still there, the prop still names the handle. */
+    function sliderWithoutHandle() {
+        const harness = createHarness();
+        const doc = harness.service.getDocument();
+        doc.elements.slider = {
+            ...element("slider", "nl.slider", harness.rootId),
+            childrenIds: ["track"],
+            props: { value: 50, trackElementId: "track", handleElementId: "deleted-handle" },
+        };
+        doc.elements.track = element("track", "nl.container", "slider", { sliderSlot: "track" });
+        doc.elements[harness.rootId].childrenIds.push("slider");
+        return { ...harness, sliderId: "slider" };
+    }
+
+    it("fills the free slot, keeps the part's place inside its widget, and points the widget at it", () => {
+        const { service, surfaceId, sliderId } = sliderWithoutHandle();
+        const handle = element("copied-handle", "nl.container", "other-slider", { sliderSlot: "handle" });
+
+        const result = service.pasteClipboardPayload(surfaceId, sliderId, null, payloadOf(surfaceId, handle));
+
+        expect(result.ok).toBe(true);
+        const [pastedId] = result.ok ? result.newRootIds : [];
+        const doc = service.getDocument();
+        expect(doc.elements[pastedId].parentId).toBe(sliderId);
+        expect(doc.elements[pastedId].layout).toMatchObject({ x: 30, y: 8 });
+        expect(doc.elements[sliderId].props?.handleElementId).toBe(pastedId);
+    });
+
+    it("refuses an ordinary element, and a part for a slot that is already filled", () => {
+        const { service, surfaceId, sliderId } = sliderWithoutHandle();
+        const text = element("copied-text", "nl.text", null);
+        const track = element("copied-track", "nl.container", null, { sliderSlot: "track" });
+
+        expect(service.pasteClipboardPayload(surfaceId, sliderId, null, payloadOf(surfaceId, text)))
+            .toEqual({ ok: false, reason: "invalid_target" });
+        expect(service.pasteClipboardPayload(surfaceId, sliderId, null, payloadOf(surfaceId, track)))
+            .toEqual({ ok: false, reason: "invalid_target" });
+    });
+});
