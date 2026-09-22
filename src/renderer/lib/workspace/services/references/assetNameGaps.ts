@@ -72,6 +72,7 @@ import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
 import { anchorElementId, anchorSurfaceId } from "@shared/blueprint/ownerShape";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isSelfContainedStructImageField } from "@shared/types/ui-editor/builtinStructs";
 import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
 import type { StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
@@ -1037,6 +1038,17 @@ class AssetNameWalk {
         return owning ? listKey(owning.listElementId) : LIST_ANY;
     }
 
+    /** Whether this element reads a row field whose picture needs no name in the project. */
+    private readsSelfContainedImageField(place: ElementPlace, fieldId: string): boolean {
+        const owning = findOwningListItemTemplate(place.pool, place.element);
+        if (!owning) {
+            return false;
+        }
+        const list = place.pool.elements[owning.listElementId];
+        const structId = (list?.props as { itemStructId?: unknown } | undefined)?.itemStructId;
+        return isSelfContainedStructImageField(typeof structId === "string" ? structId : null, fieldId);
+    }
+
     // -- the slots ---------------------------------------------------------------------------
 
     /** The slot one node input is, or null when the walk does not index that node's graph. */
@@ -1235,6 +1247,13 @@ class AssetNameWalk {
             for (const [propPath, binding] of Object.entries(place.element.valueBindings ?? {})) {
                 const assetKind = ASSET_BINDING_PROPS[propPath];
                 if (!assetKind || !binding) {
+                    continue;
+                }
+                // A row field the engine fills with a picture the package already carries - a save
+                // slot's own screenshot, a speaker's avatar. Those rows arrive from a node whose
+                // names are assembled, so tracing them back would always report a gap; what they
+                // hold is not a library name at all. See `isSelfContainedStructImageField`.
+                if (binding.kind === "listItemField" && this.readsSelfContainedImageField(place, binding.fieldId)) {
                     continue;
                 }
                 const reads = binding.kind === "blueprintValue";
