@@ -64,19 +64,41 @@ export type LocalizationUnitPatch = {
     status?: LocalizationUnitStatus;
 };
 
+/** What the author calls a language in `config`: the name it was declared with, or its code when it has none. */
+export function localeDisplayNameIn(config: LocalizationConfiguration, code: string): string {
+    return config.locales.find(entry => entry.code === code)?.displayName || code;
+}
+
 /**
- * The service's own last-resort wording for a refused fallback, in English like every other error
- * thrown here. The dialog that owns this edit keeps the author away from all three cases in the
- * first place, so this is what reaches a caller that did not.
+ * Whether removing `code` is refused: the source language stays while other languages are
+ * translated against it. Exported so the panel can say so before it asks the author to confirm a
+ * removal that would then be refused.
  */
-function describeFallbackConflict(conflict: LocaleFallbackConflict, code: string, fallback: string): string {
+export function isSourceLocked(config: LocalizationConfiguration, code: string): boolean {
+    return code === config.sourceLocale && config.locales.length > 1;
+}
+
+/**
+ * The sentence for a refused fallback. The dialog that owns this edit keeps the author away from all
+ * three cases in the first place - a looping choice is listed but disabled - so this is what reaches
+ * them when the language list changed while the dialog was open.
+ */
+function describeFallbackConflict(
+    conflict: LocaleFallbackConflict,
+    config: LocalizationConfiguration,
+    code: string,
+    fallback: string,
+): string {
     switch (conflict) {
         case "self":
-            return `A language cannot fall back to itself: ${code}`;
+            return translate("workspace.localization.settings.fallbackSelf");
         case "unknown":
-            return `Unknown language: ${fallback}`;
+            return translate("workspace.localization.settings.fallbackGone");
         case "cycle":
-            return `${fallback} already falls back to ${code}, so this would never be used`;
+            return translate("workspace.localization.settings.fallbackLoop", {
+                fallback: localeDisplayNameIn(config, fallback),
+                name: localeDisplayNameIn(config, code),
+            });
     }
 }
 
@@ -171,13 +193,21 @@ export class LocalizationService extends Service<LocalizationService> implements
         return next;
     }
 
+    /*
+     * Every refusal below is thrown as the sentence the panel that asked shows: the panels print
+     * `error.message` as it is, so an English message here was English in every interface language.
+     * A language is named by its display name, as its row shows it.
+     */
+
     public async addLocale(entry: LocalizationLocaleEntry): Promise<LocalizationConfiguration> {
         if (!isValidLocaleCode(entry.code)) {
-            throw new RendererError(`Invalid locale code: ${entry.code}`);
+            throw new RendererError(translate("workspace.localization.panel.invalidCode"));
         }
         return this.updateConfiguration(config => {
             if (config.locales.some(locale => locale.code === entry.code)) {
-                throw new RendererError(`Language already exists: ${entry.code}`);
+                throw new RendererError(translate("workspace.localization.panel.alreadyAdded", {
+                    name: localeDisplayNameIn(config, entry.code),
+                }));
             }
             const displayName = entry.displayName.trim() || entry.code;
             const locales = [...config.locales, { ...entry, displayName }];
@@ -194,8 +224,10 @@ export class LocalizationService extends Service<LocalizationService> implements
      */
     public async removeLocale(code: string): Promise<LocalizationConfiguration> {
         const config = await this.updateConfiguration(config => {
-            if (code === config.sourceLocale && config.locales.length > 1) {
-                throw new RendererError("The source language cannot be removed while other languages exist");
+            if (isSourceLocked(config, code)) {
+                throw new RendererError(translate("workspace.localization.panel.sourceLocked", {
+                    name: localeDisplayNameIn(config, code),
+                }));
             }
             const locales = config.locales
                 .filter(locale => locale.code !== code)
@@ -219,7 +251,7 @@ export class LocalizationService extends Service<LocalizationService> implements
     public async setSourceLocale(code: string): Promise<LocalizationConfiguration> {
         return this.updateConfiguration(config => {
             if (!config.locales.some(locale => locale.code === code)) {
-                throw new RendererError(`Unknown language: ${code}`);
+                throw new RendererError(translate("workspace.localization.panel.languageGone"));
             }
             return { ...config, sourceLocale: code };
         });
@@ -239,7 +271,7 @@ export class LocalizationService extends Service<LocalizationService> implements
         return this.updateConfiguration(config => {
             const entry = config.locales.find(locale => locale.code === code);
             if (!entry) {
-                throw new RendererError(`Unknown language: ${code}`);
+                throw new RendererError(translate("workspace.localization.panel.languageGone"));
             }
             // Only a fallback the patch actually changes is checked. An author who hand-edited a loop
             // into the project file must still be able to rename the language and pick their way out
@@ -247,7 +279,7 @@ export class LocalizationService extends Service<LocalizationService> implements
             if (patch.fallback !== undefined && patch.fallback !== (entry.fallback ?? "")) {
                 const conflict = findLocaleFallbackConflict(config, code, patch.fallback);
                 if (conflict) {
-                    throw new RendererError(describeFallbackConflict(conflict, code, patch.fallback));
+                    throw new RendererError(describeFallbackConflict(conflict, config, code, patch.fallback));
                 }
             }
             return {
@@ -562,7 +594,8 @@ export class LocalizationService extends Service<LocalizationService> implements
 
     public setKey(name: string, definition: LocalizationKeyDefinition): LocalizationKeysDocument {
         if (!isValidLocalizationKeyName(name)) {
-            throw new RendererError(`Invalid key name: ${name}`);
+            // As the add-key row and the widget inspector's "new key" form both word it.
+            throw new RendererError(translate("workspace.localization.table.invalidKeyName"));
         }
         const document = this.requireLoadedKeys();
         const entry: LocalizationKeyDefinition = {
@@ -847,15 +880,20 @@ export class LocalizationService extends Service<LocalizationService> implements
 
     /** What the author calls a language: the name it was declared with, or its code when it has none. */
     private localeDisplayName(locale: string): string {
-        return this.getConfiguration().locales.find(entry => entry.code === locale)?.displayName || locale;
+        return localeDisplayNameIn(this.getConfiguration(), locale);
     }
 
+    /**
+     * Refuse a language the project does not declare. Reached by a panel acting on a row the list
+     * has since dropped - an export or an import started from a menu opened before the language was
+     * removed - so it is worded for the author like the refusals above.
+     */
     private assertKnownLocale(locale: string): void {
         if (!isValidLocaleCode(locale)) {
-            throw new RendererError(`Invalid locale code: ${locale}`);
+            throw new RendererError(translate("workspace.localization.panel.invalidCode"));
         }
         if (!this.getConfiguration().locales.some(entry => entry.code === locale)) {
-            throw new RendererError(`Unknown language: ${locale}`);
+            throw new RendererError(translate("workspace.localization.panel.languageGone"));
         }
     }
 
@@ -867,9 +905,16 @@ export class LocalizationService extends Service<LocalizationService> implements
         return document;
     }
 
+    /**
+     * The key registry, or the refusal an author sees when it is not in memory. That happens when the
+     * registry could not be read - the save-status surface has said so already - and the translation
+     * table's add-key row then shows this, so it is the store's sentence rather than an assertion.
+     */
     private requireLoadedKeys(): LocalizationKeysDocument {
         if (!this.keysDocument) {
-            throw new RendererError("Localization keys not loaded");
+            throw new RendererError(translate("workspace.shell.save.refusedUnreadable", {
+                name: translate("workspace.shell.save.stores.localization"),
+            }));
         }
         return this.keysDocument;
     }
@@ -892,7 +937,7 @@ export class LocalizationService extends Service<LocalizationService> implements
      */
     private getDocumentPath(locale: string): string {
         if (!isValidLocaleCode(locale)) {
-            throw new RendererError(`Invalid locale code: ${locale}`);
+            throw new RendererError(translate("workspace.localization.panel.invalidCode"));
         }
         return localizationDocumentSpec.pathFor({ locale });
     }

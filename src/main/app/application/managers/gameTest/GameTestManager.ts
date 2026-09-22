@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import net from "net";
 import path from "path";
@@ -336,7 +337,8 @@ export class GameTestManager {
         const projectPath = path.resolve(request.projectPath);
         const key = this.projectKey(projectPath);
 
-        const distrusted = refuseDistrustedOperation(this.app, projectPath, "test run");
+        const distrusted = refuseDistrustedOperation(this.app, projectPath, "test run")
+            ?? refuseProjectHeldElsewhere(this.app, projectPath, "test run");
         if (distrusted) {
             return Promise.resolve({ ok: false, reason: distrusted });
         }

@@ -197,10 +197,16 @@ describe("every starter screen leaves a running game the same way", () => {
         if (first.type === BLUEPRINT_NODE_TYPE_FLOW_IF) {
             // A screen that can hold something open over its own content closes that first, and
             // only leaves when nothing is open - Extra's CG viewer, the one case there is. The way
-            // off the screen is then the side taken when nothing is open, and it is the same pair.
-            // What that gate reads is asserted where the viewer is (`starterExtraScreen.test.ts`).
+            // off the screen is then one side of that gate, and it is the same pair. Which side is
+            // "nothing is open" depends on what the gate reads, and that - with the other side
+            // closing the viewer - is asserted where the viewer is (`starterExtraScreen.test.ts`).
             expect(screenName).toBe("Extra");
-            assertClearsThenSteps(graph, first.id, "true");
+            const leaving = (["true", "false"] as const).filter(side => {
+                const out = graph.edges.find(edge => edge.from.nodeId === first.id && edge.from.port === side);
+                return out ? graph.nodes[out.to.nodeId]?.type === BLUEPRINT_NODE_TYPE_PAGE_CLEAR : false;
+            });
+            expect(leaving, "exactly one side of Extra's gate leaves the screen").toHaveLength(1);
+            assertClearsThenSteps(graph, first.id, leaving[0]!);
             return;
         }
         assertClearsThenSteps(graph, head.id, "then");

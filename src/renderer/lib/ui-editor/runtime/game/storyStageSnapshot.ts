@@ -242,8 +242,9 @@ export function computeStoryStageSnapshot(input: {
      * disagreeing is a stage pre-posed down one branch and then played down another.
      *
      * Absent means no store to ask, and the walk falls back to reporting the guess it is making.
-     * `undefined` from the reader means the key is not stored yet: the declared default stands, the
-     * way it does at runtime.
+     * The reader answers a declared variable nothing has stored with its default, as the host's
+     * persistence scope does for every reader at runtime (`ScopeStoreBridge.persistenceGet`), so
+     * `undefined` from it means there is nothing to read - no value and no default.
      */
     readPersistent?: (storageKey: string) => StoryLiteralValue | null | undefined;
     /**
@@ -537,8 +538,8 @@ class SnapshotWalker {
      * store to ask (or the variable is not declared anywhere this walk can see).
      *
      * Wrapped in an object so "the store holds null" and "there is no store" stay apart: only the
-     * second is a guess worth a diagnostic. A key the store has never been written to falls back to
-     * the declared default, which is what the runtime reads there too.
+     * second is a guess worth a diagnostic. A key the store has never been written to reads as its
+     * declared default - the store's answer, the same one the runtime reads there.
      */
     private readStoredPersistent(variableId: string): { value: StoryLiteralValue | null } | undefined {
         if (!this.readPersistent) {
@@ -548,8 +549,7 @@ class SnapshotWalker {
         if (!def) {
             return undefined;
         }
-        const stored = this.readPersistent(def.storageKey);
-        return { value: stored === undefined ? def.defaultValue ?? null : stored };
+        return { value: this.readPersistent(def.storageKey) ?? null };
     }
 
     private evaluateCondition(condition: StoryConditionRef | undefined, blockId: string): boolean {

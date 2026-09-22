@@ -3,7 +3,6 @@
  * Comments in English per project convention.
  */
 
-import type { LiteralValue } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
@@ -14,16 +13,6 @@ import type { BlueprintNodeDef } from "../types";
 import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import { persistentStateKey } from "../../blueprint-runtime/blueprintStateWrites";
-
-function cloneLiteralValue(value: LiteralValue | undefined): unknown {
-    if (value === undefined) {
-        return undefined;
-    }
-    if (typeof structuredClone === "function") {
-        return structuredClone(value);
-    }
-    return JSON.parse(JSON.stringify(value)) as unknown;
-}
 
 function resolvePersistentVariable(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
@@ -69,12 +58,12 @@ export const persistentVariableBlueprintNodes: BlueprintNodeDef[] = [
             // A value binding that reaches this through a Fn shows the value; it has to hear the
             // next write to it.
             ctx.valueExecution?.trackState?.(persistentStateKey(variable.storageKey));
-            const stored = await api.persistence.get(variable.storageKey);
+            // No default applied here: the persistence scope answers an unwritten variable with its
+            // default for every reader (`ScopeStoreBridge.persistenceGet`). A fallback here never
+            // ran anyway - the host hands a graph `null` for "nothing stored", not `undefined`.
             return {
                 nextPort: "next",
-                outputValues: {
-                    value: stored === undefined ? cloneLiteralValue(variable.defaultValue) : stored,
-                },
+                outputValues: { value: await api.persistence.get(variable.storageKey) },
             };
         },
     },

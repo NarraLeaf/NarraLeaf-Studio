@@ -210,6 +210,8 @@ export const widgets = {
         missingPage: "Missing Page",
         targetNotPage: "Target is not a Page",
         pageLoopBlocked: "Page loop blocked",
+        // Beside a page in the page picker that shows this Page widget again, and so cannot be picked.
+        leadsBackHere: "leads back here",
         previewUnavailable: "Page preview unavailable",
         pageRootMissing: "Page root missing",
     },

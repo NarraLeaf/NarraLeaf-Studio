@@ -21,6 +21,7 @@
  * Comments in English per project convention.
  */
 
+import type { ExchangeProblem } from "./exchangeProblem";
 import type {
     ParsedTranslationExchange,
     TranslationExchangeDocument,
@@ -83,7 +84,7 @@ function rowFromValue(unitId: string, value: unknown): TranslationExchangeRow | 
 }
 
 /** Read a `{ id: unit }` map in any of the accepted unit shapes. */
-function rowsFromMap(map: Record<string, unknown>, errors: string[]): TranslationExchangeRow[] {
+function rowsFromMap(map: Record<string, unknown>, problems: ExchangeProblem[]): TranslationExchangeRow[] {
     const rows: TranslationExchangeRow[] = [];
     for (const [unitId, value] of Object.entries(map)) {
         if (!unitId) {
@@ -93,7 +94,7 @@ function rowsFromMap(map: Record<string, unknown>, errors: string[]): Translatio
         if (row) {
             rows.push(row);
         } else {
-            errors.push(`Skipped "${unitId}": its value is neither a string nor a translation unit`);
+            problems.push({ code: "notEntry" });
         }
     }
     return rows;
@@ -106,23 +107,23 @@ export function parseTranslationJson(text: string): ParsedTranslationExchange {
     let parsed: unknown;
     try {
         parsed = JSON.parse(text);
-    } catch (error) {
-        return { rows: [], errors: [`Not a readable JSON file: ${error instanceof Error ? error.message : String(error)}`] };
+    } catch {
+        return { rows: [], problems: [{ code: "notFormat", format: "json" }] };
     }
 
-    const errors: string[] = [];
+    const problems: ExchangeProblem[] = [];
 
     if (Array.isArray(parsed)) {
         const rows: TranslationExchangeRow[] = [];
         parsed.forEach((entry, index) => {
             if (!entry || typeof entry !== "object") {
-                errors.push(`Row ${index + 1} is not a translation unit`);
+                problems.push({ code: "notEntry", at: { entry: index + 1 } });
                 return;
             }
             const record = entry as Record<string, unknown>;
             const unitId = asString(record.unitId ?? record.unit_id ?? record.id ?? record.key).trim();
             if (!unitId) {
-                errors.push(`Row ${index + 1} has no unit id`);
+                problems.push({ code: "missingId", at: { entry: index + 1 } });
                 return;
             }
             const row = rowFromValue(unitId, record);
@@ -130,34 +131,34 @@ export function parseTranslationJson(text: string): ParsedTranslationExchange {
                 rows.push(row);
             }
         });
-        return { rows, errors };
+        return { rows, problems };
     }
 
     if (!parsed || typeof parsed !== "object") {
-        return { rows: [], errors: ["This JSON file holds no translation units"] };
+        return { rows: [], problems: [{ code: "noRows" }] };
     }
 
     const record = parsed as Record<string, unknown>;
     if (record.units && typeof record.units === "object" && !Array.isArray(record.units)) {
         return {
-            rows: rowsFromMap(record.units as Record<string, unknown>, errors),
+            rows: rowsFromMap(record.units as Record<string, unknown>, problems),
             sourceLocale: typeof record.sourceLocale === "string" ? record.sourceLocale : undefined,
             targetLocale: typeof record.targetLocale === "string" ? record.targetLocale : undefined,
-            errors,
+            problems,
         };
     }
 
     // A bare map of ids to translations. Metadata keys are dropped rather than
     // read as units, so a half-Studio file does not grow a unit named "version".
     const bare = Object.fromEntries(Object.entries(record).filter(([key]) => !METADATA_KEYS.has(key)));
-    const rows = rowsFromMap(bare, errors);
+    const rows = rowsFromMap(bare, problems);
     if (rows.length === 0) {
-        return { rows: [], errors: [...errors, "This JSON file holds no translation units"] };
+        return { rows: [], problems: [...problems, { code: "noRows" }] };
     }
     return {
         rows,
         sourceLocale: typeof record.sourceLocale === "string" ? record.sourceLocale : undefined,
         targetLocale: typeof record.targetLocale === "string" ? record.targetLocale : undefined,
-        errors,
+        problems,
     };
 }

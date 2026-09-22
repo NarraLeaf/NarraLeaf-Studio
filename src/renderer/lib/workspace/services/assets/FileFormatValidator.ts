@@ -1,14 +1,19 @@
 import { AssetExtensions, AssetType } from "./assetTypes";
 import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
+import type { AssetImportRefusal } from "./assetImportRefusal";
 
 export type FileFormatValidationResult = {
     success: true;
     data: void;
     error?: never;
+    refusal?: never;
 } | {
     success: false;
     data?: never;
+    /** For the log: English, and it names formats the way a developer would. */
     error?: string;
+    /** For the author: what the interface words (see `describeAssetImportRefusal`). */
+    refusal: AssetImportRefusal;
 };
 
 /**
@@ -37,6 +42,7 @@ export class FileFormatValidator {
             return {
                 success: false,
                 error: `File extension .${fileExt} is not allowed for ${type} assets. Allowed extensions: ${allowedExtensions.join(', ')}`,
+                refusal: { kind: "wrongType", ext: fileExt },
             };
         }
 
@@ -53,6 +59,12 @@ export class FileFormatValidator {
                 success: false,
                 error: `NarraLeaf cannot ${UNDECODABLE_VERB[type] ?? "read"} .${fileExt} files.`
                     + ` Convert to ${undecodable} before importing.`,
+                refusal: {
+                    kind: "cannotUse",
+                    ext: fileExt,
+                    use: UNDECODABLE_VERB[type] ?? "use",
+                    convertTo: CONVERSION_TARGETS[type] ?? ["", ""],
+                },
             };
         }
 
@@ -83,6 +95,7 @@ export class FileFormatValidator {
                     return {
                         success: false,
                         error: `Not a valid JSON file: ${e instanceof Error ? e.message : 'parse failed'}`,
+                        refusal: { kind: "undecodable" },
                     };
                 }
             case AssetType.Other:
@@ -97,6 +110,7 @@ export class FileFormatValidator {
                 return {
                     success: false,
                     error: `File format mismatch: file extension is .${fileExt.toUpperCase()} but file content indicates ${detectedFormat.toUpperCase()} format. The file may be corrupted or misnamed.`,
+                    refusal: { kind: "mismatch", ext: fileExt, actual: detectedFormat.toUpperCase() },
                 };
             }
         }
@@ -381,13 +395,26 @@ function convertTo(extensions: string[], suggestion: string): Record<string, str
  * into the running app — the tests asserted the format list, which was right, and the verb, which
  * was not.
  */
-const UNDECODABLE_VERB: Partial<Record<AssetType, string>> = {
+const UNDECODABLE_VERB: Partial<Record<AssetType, "display" | "play" | "use">> = {
     [AssetType.Image]: "display",
     [AssetType.Audio]: "play",
     [AssetType.Video]: "play",
     // "use" rather than "read": a collection is perfectly readable, and saying otherwise would send
     // an author looking for a corrupt file. What it cannot be is *loaded as a typeface*.
     [AssetType.Font]: "use",
+};
+
+/**
+ * The two formats a refused file is to be converted to, per type - what {@link UNDECODABLE_EXTENSIONS}
+ * spells out in English for the log, as data the interface can put into a sentence of its own.
+ *
+ * Every type with a row in that table has one here; a test keeps the two in step.
+ */
+export const CONVERSION_TARGETS: Partial<Record<AssetType, readonly [string, string]>> = {
+    [AssetType.Image]: [".png", ".webp"],
+    [AssetType.Audio]: [".mp3", ".wav"],
+    [AssetType.Video]: [".mp4", ".webm"],
+    [AssetType.Font]: [".ttf", ".otf"],
 };
 
 export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, string>>> = {

@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import path from "path";
 import crypto from "crypto";
@@ -128,7 +129,11 @@ export class DevModeManager {
     }
 
     public launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
-        const refusal = refuseDistrustedOperation(this.app, projectPath, "Dev Mode");
+        // Before anything is built. A Dev Mode window resolves every asset through this project's
+        // workspace, and a workspace turned away by another Studio never started - so the window
+        // it would open is black, and says nothing about why.
+        const refusal = refuseDistrustedOperation(this.app, projectPath, "Dev Mode")
+            ?? refuseProjectHeldElsewhere(this.app, projectPath, "Dev Mode");
         if (refusal) {
             return Promise.reject(new Error(refusal));
         }
@@ -171,6 +176,16 @@ export class DevModeManager {
             const session = this.sessions.get(this.projectKey(projectPath));
             if (!session) {
                 return "idle";
+            }
+            // A session that outlived its workspace's claim - the workspace reloaded onto the
+            // error screen while this window stayed up. The compile would resolve its assets through
+            // a workspace that is not running any more, and put up a stage with none of them; the
+            // window says why instead, and keeps what it was showing.
+            const heldElsewhere = refuseProjectHeldElsewhere(this.app, projectPath, "Dev Mode");
+            if (heldElsewhere) {
+                session.status = "error";
+                this.queueSessionError(session, heldElsewhere);
+                return "error";
             }
             try {
                 this.emitVerbose(session, "reload requested");

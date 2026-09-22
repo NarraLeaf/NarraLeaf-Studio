@@ -595,6 +595,183 @@ describe("ui/frame-target-missing", () => {
             await run("ui/frame-target-missing", createTestLintContext({ uiDocument: onePage(frame("embed")) })),
         ).toEqual([]);
     });
+
+    it("reports a Page widget inside a component once, under the component, by name", async () => {
+        // Placed twice, and reported once: the widget is written once, in the definition.
+        const placed = (id: string) =>
+            element({ id, type: "nl.container", extra: { componentLink: { componentId: "card-id", linked: true } } });
+        const document = onePage(placed("slot-a"), placed("slot-b"));
+        document.components = [
+            {
+                id: "card-id",
+                name: "Card",
+                rootElementId: "card-root",
+                elements: {
+                    "card-root": element({ id: "card-root", type: "nl.container", childrenIds: ["window"] }),
+                    window: element({ ...frame("window", "gone"), name: "Window", parentId: "card-root" }),
+                },
+            },
+        ];
+
+        const findings = await run("ui/frame-target-missing", createTestLintContext({ uiDocument: document }));
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toEqual({
+            kind: "component",
+            componentId: "card-id",
+            componentName: "Card",
+            elementId: "window",
+            elementName: "Window",
+        });
+        expect(findings[0].target).toEqual({ kind: "uiComponent", componentId: "card-id" });
+    });
+});
+
+/**
+ * `ui/frame-loop`. The shapes it must see are the ones a page-only walk misses: a loop that runs
+ * through a component placement, through a list row, through a component inside a component. And it
+ * must stay quiet about a Page widget that merely shares a page with a loop it is not part of.
+ */
+describe("ui/frame-loop", () => {
+    function frame(id: string, targetSurfaceId: string | null, name?: string) {
+        return element({
+            id,
+            type: UI_FRAME_ELEMENT_TYPE,
+            ...(name ? { name } : {}),
+            props: { targetSurfaceId },
+        });
+    }
+
+    function placed(id: string, componentId: string, childrenIds: string[] = []) {
+        return element({ id, type: "nl.container", childrenIds, extra: { componentLink: { componentId, linked: true } } });
+    }
+
+    /** A card whose one Page widget, "Window", names `target`. */
+    function card(target: string | null): NonNullable<UIDocument["components"]>[number] {
+        return {
+            id: "card",
+            name: "Card",
+            rootElementId: "card-root",
+            elements: {
+                "card-root": element({ id: "card-root", type: "nl.container", childrenIds: ["window"] }),
+                window: element({ ...frame("window", target, "Window"), parentId: "card-root" }),
+            },
+        };
+    }
+
+    /** Pages "Home" and "Gallery", each holding the given top-level elements. */
+    function twoPages(home: UIElement[], gallery: UIElement[], extra: UIElement[] = []) {
+        return uiDocument({
+            surfaces: [
+                { id: "home", name: "Home", rootElementId: "home-root" },
+                { id: "gallery", name: "Gallery", rootElementId: "gallery-root" },
+            ],
+            elements: [
+                element({ id: "home-root", type: "nl.root", childrenIds: home.map(item => item.id) }),
+                element({ id: "gallery-root", type: "nl.root", childrenIds: gallery.map(item => item.id) }),
+                ...home,
+                ...gallery,
+                ...extra,
+            ],
+        });
+    }
+
+    async function where(document: UIDocument): Promise<string[]> {
+        const findings = await run("ui/frame-loop", createTestLintContext({ uiDocument: document }));
+        for (const finding of findings) {
+            expect(finding.messageKey).toBe("lint.rule.uiFrameLoop.message");
+        }
+        return findings.map(finding => {
+            const location = finding.location;
+            if (location.kind === "surface") {
+                return `${location.surfaceName} / ${location.elementName ?? location.elementId}`;
+            }
+            if (location.kind === "component") {
+                return `component ${location.componentName} / ${location.elementName ?? location.elementId}`;
+            }
+            return location.kind;
+        });
+    }
+
+    it("reports both Page widgets of two pages that show each other", async () => {
+        const document = twoPages([frame("to-gallery", "gallery", "Preview")], [frame("to-home", "home", "Back view")]);
+
+        expect(await where(document)).toEqual(["Home / Preview", "Gallery / Back view"]);
+    });
+
+    it("reports a Page widget that shows its own page", async () => {
+        expect(await where(twoPages([frame("mirror", "home", "Mirror")], []))).toEqual(["Home / Mirror"]);
+    });
+
+    it("reports a card's Page widget naming the page the card is placed on, under the card", async () => {
+        const document = twoPages([placed("slot", "card")], []);
+        document.components = [card("home")];
+
+        expect(await where(document)).toEqual(["component Card / Window"]);
+    });
+
+    it("reports both ends of a loop that runs through a card", async () => {
+        // Home places the card, the card shows Gallery, and Gallery shows Home.
+        const document = twoPages([placed("slot", "card")], [frame("to-home", "home", "Back view")]);
+        document.components = [card("gallery")];
+
+        expect(await where(document)).toEqual(["Gallery / Back view", "component Card / Window"]);
+    });
+
+    it("follows a card placed in a list row", async () => {
+        const list = element({ id: "grid", type: "nl.list", childrenIds: ["cell"] });
+        const document = twoPages([list], [], [{ ...placed("cell", "card"), parentId: "grid" }]);
+        document.components = [card("home")];
+
+        expect(await where(document)).toEqual(["component Card / Window"]);
+    });
+
+    it("follows a card placed inside another component", async () => {
+        const document = twoPages([placed("slot", "outer")], []);
+        document.components = [
+            card("home"),
+            {
+                id: "outer",
+                name: "Outer",
+                rootElementId: "outer-root",
+                elements: {
+                    "outer-root": element({ id: "outer-root", type: "nl.container", childrenIds: ["inner"] }),
+                    inner: { ...placed("inner", "card"), parentId: "outer-root" },
+                },
+            },
+        ];
+
+        expect(await where(document)).toEqual(["component Card / Window"]);
+    });
+
+    it("says nothing about Page widgets that lead nowhere back", async () => {
+        // Home shows Gallery, and the card on Gallery shows nothing; the card is not on Home's way.
+        const document = twoPages([frame("to-gallery", "gallery", "Preview")], [placed("slot", "card")]);
+        document.components = [card(null)];
+
+        expect(await where(document)).toEqual([]);
+    });
+
+    it("says nothing about a Page widget beside a loop it is not part of", async () => {
+        // Gallery and Settings show each other; Home shows Gallery and is not on that loop.
+        const document = uiDocument({
+            surfaces: [
+                { id: "home", name: "Home", rootElementId: "home-root" },
+                { id: "gallery", name: "Gallery", rootElementId: "gallery-root" },
+                { id: "settings", name: "Settings", rootElementId: "settings-root" },
+            ],
+            elements: [
+                element({ id: "home-root", type: "nl.root", childrenIds: ["home-frame"] }),
+                frame("home-frame", "gallery", "Preview"),
+                element({ id: "gallery-root", type: "nl.root", childrenIds: ["gallery-frame"] }),
+                frame("gallery-frame", "settings", "Settings view"),
+                element({ id: "settings-root", type: "nl.root", childrenIds: ["settings-frame"] }),
+                frame("settings-frame", "gallery", "Gallery view"),
+            ],
+        });
+
+        expect(await where(document)).toEqual(["Gallery / Settings view", "Settings / Gallery view"]);
+    });
 });
 
 const LAYOUT = { x: 0, y: 0, width: 100, height: 100 };

@@ -382,7 +382,7 @@ function commandCheck(args: Args, io: CliIo): number {
     io.out(formatDiagnostics(result.diagnostics, { fileName: file, source }));
     if (!projectDir) {
         io.out(
-            "\nNo --project: bindings, components and dropped elements were not checked, because none of them "
+            "\nNo --project: bindings, components, Page widget targets and dropped elements were not checked, because none of them "
                 + "can be answered without the document this file is going into.",
         );
     }

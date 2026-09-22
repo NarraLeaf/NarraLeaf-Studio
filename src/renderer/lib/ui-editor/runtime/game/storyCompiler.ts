@@ -193,6 +193,11 @@ import {
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
  * synchronously (for conditions); `set` may be async. Absent outside Dev Mode host persistence.
+ *
+ * `get` answers a declared variable nothing has stored yet with the author's default - the host's
+ * persistence scope does that for every reader, so the story reads through it rather than keeping a
+ * default table of its own (`ScopeStoreBridge.persistenceGet`). `undefined` means an undeclared key,
+ * or a declared one with no default.
  */
 export type StoryPersistenceBridge = {
     get: (storageKey: string) => unknown;
@@ -217,25 +222,6 @@ export type StoryEndingReach = {
 
 /** Single NLR Storable namespace holding all Story "saved" variables. */
 const SAVED_PERSISTENT_NAMESPACE = "__nlr_story_saved__";
-
-/**
- * Declared persistent defaults, keyed by storage key. The host bridge only carries values that were
- * ever written, so a read with no stored entry falls back here.
- *
- * Taken off the MERGED view rather than the document's own `/persis` rows, exactly as the saved
- * defaults are: a persistent variable declared in the project registry - which since the declaration
- * migration is nearly all of them - otherwise reached the runtime with no default at all, so a flag
- * the author gave a starting value read as "not set" until something wrote it.
- */
-function collectPersistentDefaults(view: MergedPersistentView): Record<string, StoryLiteralValue> {
-    const defaults: Record<string, StoryLiteralValue> = {};
-    for (const entry of view.entries) {
-        if (entry.defaultValue !== undefined) {
-            defaults[entry.storageKey] = entry.defaultValue;
-        }
-    }
-    return defaults;
-}
 
 /**
  * Every declared persistent variable's storage key - the set a persistent reference is validated
@@ -834,8 +820,6 @@ type SceneCompileContext = {
      * than at each lookup.
      */
     savedVariables: Record<string, StorySavedVariableDefinition>;
-    /** Story-declared persistent defaults (storageKey → default), the fallback for host reads. */
-    persistentDefaults: Record<string, StoryLiteralValue>;
     /** Every declared persistent storage key (story rows + registry), for reference validation. */
     persistentKeys: Set<string>;
     /** M-VAR registry table (id → def), baked into the bundle; used to compile blueprint persistent GET/SET. */
@@ -1245,7 +1229,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const visitedPersistent = createStoryVisitedPersistent(nlrStory);
     const persistentVariables = input.persistentVariables ?? {};
     const persistentView = collectPersistentView(input.document, persistentVariables);
-    const persistentDefaults = collectPersistentDefaults(persistentView);
     const persistentKeys = mergedPersistentStorageKeys(persistentView);
     pushPersistentNameCollisionDiagnostics(diagnostics, persistentView);
 
@@ -1272,7 +1255,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             visitedPersistent,
             sceneVariables: sceneVariableDefs(scene),
             savedVariables,
-            persistentDefaults,
             persistentKeys,
             persistentVariables,
             persistence: input.persistence,
@@ -1363,7 +1345,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             savedPersistent,
             visitedPersistent,
             savedVariables,
-            persistentDefaults,
             persistentKeys,
             persistentVariables,
             animations,
@@ -1443,7 +1424,6 @@ async function buildLaunchEntryScene(params: {
     savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
     visitedPersistent: Persistent<StoryVisitedContent>;
     savedVariables: Record<string, StorySavedVariableDefinition>;
-    persistentDefaults: Record<string, StoryLiteralValue>;
     persistentKeys: Set<string>;
     persistentVariables: PersistentVariableRuntimeTable;
     animations: Map<string, StoryAnimationAsset>;
@@ -1513,7 +1493,6 @@ async function buildLaunchEntryScene(params: {
         visitedPersistent: params.visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables: params.savedVariables,
-        persistentDefaults: params.persistentDefaults,
         persistentKeys: params.persistentKeys,
         persistentVariables: params.persistentVariables,
         persistence: input.persistence,
@@ -1781,7 +1760,6 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         visitedPersistent,
         sceneVariables: sceneVariableDefs(scene),
         savedVariables,
-        persistentDefaults: collectPersistentDefaults(previewPersistentView),
         persistentKeys: mergedPersistentStorageKeys(previewPersistentView),
         persistentVariables: input.persistentVariables ?? {},
         persistence: input.persistence,
@@ -3228,8 +3206,8 @@ function buildInterpolationWord(
         }
         return applyInterpolationWordMarks(ctx.savedPersistent.toWord(def.storageKey as any), marks);
     }
-    // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
-    // falling back to the story-declared default while the host has never stored a value.
+    // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously, which
+    // answers the declared default while nothing has stored a value.
     if (!ctx.persistentKeys.has(target.variableId)) {
         diagnostic(ctx, "error", blockId, "Persistent variable not found; interpolation skipped.");
         return null;
@@ -3240,10 +3218,8 @@ function buildInterpolationWord(
         return null;
     }
     const storageKey = target.variableId;
-    const persistentDefaults = ctx.persistentDefaults;
     return applyInterpolationWordMarks(new Word(((() => {
-        const stored = persistence.get(storageKey);
-        const value = stored === undefined ? persistentDefaults[storageKey] : stored;
+        const value = persistence.get(storageKey);
         return value === null || value === undefined ? "" : String(value);
     }) as unknown) as any), marks);
 }
@@ -6123,7 +6099,6 @@ function buildExpressionEnv(
     }
 
     const persistence = ctx.persistence;
-    const persistentDefaults = ctx.persistentDefaults;
     // Resolved once at compile time like `savedNamespaceName`: the accessor is what keeps this in step
     // with the engine's own prefix convention instead of reconstructing it (see `storyVisited.ts`).
     const visitedNamespace = DevTools.getNamespaceName(ctx.visitedPersistent);
@@ -6135,9 +6110,8 @@ function buildExpressionEnv(
                 return undefined;
             }
             if (slot.kind === "host") {
-                const stored = persistence?.get(slot.key) as StoryLiteralValue | undefined;
-                // Declared persistent rows read as their default until the host first stores a value.
-                return stored === undefined ? persistentDefaults[slot.key] : stored;
+                // A declared variable nothing has stored reads as its default - the host's answer.
+                return persistence?.get(slot.key) as StoryLiteralValue | undefined;
             }
             return scriptCtx.storable.getNamespace(slot.namespace).get(slot.key) as StoryLiteralValue | undefined;
         },
@@ -6341,7 +6315,6 @@ function persistentCondition(
     if (!persistence) {
         return falseCondition;
     }
-    const persistentDefaults = ctx.persistentDefaults;
     // Structural equality (`strictEquals`), the same rule `/if` expressions use — so a json/array
     // persistent variable compares by shape, not by reference identity, matching scene/saved conditions
     // which go through NLR's `persistent.equals()`. The undefined guard keeps the old
@@ -6349,9 +6322,8 @@ function persistentCondition(
     const equals = (a: StoryLiteralValue | undefined, b: StoryLiteralValue | undefined): boolean =>
         a === undefined || b === undefined ? a === b : strictEquals(a, b);
     return () => {
-        const stored = persistence.get(storageKey);
-        // Declared persistent rows test against their default until the host first stores a value.
-        const current = (stored === undefined ? persistentDefaults[storageKey] : stored) as StoryLiteralValue | undefined;
+        // A declared variable nothing has stored tests against its default - the host's answer.
+        const current = persistence.get(storageKey) as StoryLiteralValue | undefined;
         switch (operator) {
             case "isTrue":
                 return current === true;

@@ -56,6 +56,14 @@ import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { basename } from "@shared/utils/path";
 import { describeFileWriteFailure } from "@/lib/workspace/services/core/writeFailureReason";
 import { itemWrite } from "@/lib/workspace/services/autosave/writeReport";
+import {
+    describeAssetImportRefusal,
+    describeExchangeProblem,
+    describeImportFailure,
+    fileLevelProblem,
+    importReadFailureReason,
+    summarizeImportFailures,
+} from "@/lib/workspace/assets/importFailure";
 
 /** Audio containers offered in the batch-import file picker. */
 const AUDIO_IMPORT_EXTENSIONS = ["mp3", "wav", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba"];
@@ -368,8 +376,9 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         }
         const selection = await appPrivilegedFacade.fs.selectSaveFile(defaultName, ["csv"]);
         if (!selection.success || !selection.data.ok) {
-            const message = selection.success && !selection.data.ok ? selection.data.error.message : undefined;
-            throw new Error(message || "Save dialog failed");
+            // The dialog's own failure is for the log; it is English and says nothing to act on.
+            console.warn("[voice] the save dialog failed", selection);
+            throw new Error(t("workspace.shell.fileDialogFailed"));
         }
         const targetPath = selection.data.data;
         if (!targetPath) {
@@ -458,14 +467,22 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             if (!selection.success || !selection.data.ok || selection.data.data.length === 0) {
                 return;
             }
+            const filePath = selection.data.data[0];
             const filesystem = context.services.get<FileSystemService>(Services.FileSystem);
-            const read = await filesystem.read(selection.data.data[0], "utf-8");
+            // Named by the file's name and why, in the author's terms: the read's own message is
+            // English and quotes the whole path, and the parser answers in codes.
+            const read = await filesystem.read(filePath, "utf-8");
             if (!read.ok) {
-                throw new Error(read.error.message);
+                console.warn("[voice] could not read the recording script", read.error);
+                throw new Error(describeImportFailure(filePath, importReadFailureReason(read.error.code, t), t));
             }
             const parsed = parseVoiceCsv(String(read.data));
             if (parsed.rows.length === 0) {
-                throw new Error(parsed.errors[0] || t("workspace.voice.panel.importScriptFailed"));
+                throw new Error(describeImportFailure(
+                    filePath,
+                    describeExchangeProblem(fileLevelProblem(parsed.problems), t),
+                    t,
+                ));
             }
             await voiceService.loadDocument(code);
             const summary = voiceService.applyImportedRows(code, parsed.rows);
@@ -500,15 +517,19 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
             const importResult = await assetsService.importFromPaths(AssetType.Audio, paths);
             if (!importResult.success) {
-                throw new Error(importResult.error || t("workspace.voice.panel.importFailed"));
+                // The importer's own sentence is for the log: English, and it names paths.
+                console.warn("[voice] the audio import failed", importResult.error);
+                throw new Error(t("workspace.voice.panel.importFailed"));
             }
             let linked = 0;
             let unmatched = 0;
-            let failed = 0;
+            /** The files that did not become assets, by name and why - the booth's to fix and resend. */
+            const failures: { path: string; reason: string | null }[] = [];
             const measured: { unitId: string; sourceText: string; assetId: string }[] = [];
             importResult.data.forEach((result, index) => {
                 if (!result.success) {
-                    failed += 1;
+                    console.warn(`[voice] could not import ${paths[index]}`, result.error);
+                    failures.push({ path: paths[index], reason: describeAssetImportRefusal(result.refusal, t) });
                     return;
                 }
                 const hit = keyMap.get(matchKeyForFilename(paths[index]));
@@ -521,9 +542,12 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                 linked += 1;
             });
             await voiceService.flushPendingChanges();
+            // The count alone said "3 failed" and left the author to find out which three and why;
+            // the detail names them, which is what the booth has to be told.
             uiService?.showNotification(
-                t("workspace.voice.panel.importSummary", { linked, unmatched, failed }),
-                "success",
+                t("workspace.voice.panel.importSummary", { linked, unmatched, failed: failures.length }),
+                failures.length > 0 ? "warning" : "success",
+                failures.length > 0 ? { detail: summarizeImportFailures(failures, t) } : undefined,
             );
             setRefreshTick(tick => tick + 1);
             // Lengths trail the import rather than gating it: a booth hands back hundreds of files at

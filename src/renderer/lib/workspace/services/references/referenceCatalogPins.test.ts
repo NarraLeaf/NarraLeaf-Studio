@@ -140,10 +140,11 @@ describe("the blueprints the shipped starter template creates", () => {
      *
      * Read over the whole template - graphs, interface and story - because that is what the judgement
      * follows a value through. And not zero by not looking: the music room and the voice page pick
-     * their clips off Gallery rows through Play Sound's wired pin, and the EXTRA grids and the CG
-     * viewer draw a row's picture through a binding. Each of those is asserted to be a place the
-     * judgement looked at, so "no gaps" means they were followed and found to name what the package
-     * carries.
+     * their clips off Gallery rows through Play Sound's wired pin, the EXTRA grids draw a row's
+     * picture through a binding, and the CG viewer writes its picture into Set Image Asset - off the
+     * pressed row when it opens, off Get Gallery Variant At as it steps. Each of those is asserted to
+     * be a place the judgement looked at, so "no gaps" means they were followed and found to name
+     * what the package carries.
      */
     it("pick no asset by a name assembled at run time, having looked at every place they pick one", () => {
         const content = path.join(process.cwd(), "resources/templates/skeleton/content/editor");
@@ -168,7 +169,11 @@ describe("the blueprints the shipped starter template creates", () => {
             .sort();
         expect(clipsOn).toEqual(expect.arrayContaining(["Music rows", "Voice rows"]));
         const boundPictures = sinks.filter(entry => entry.sink.kind === "binding" && entry.assetKind === "image");
-        expect(boundPictures.length).toBeGreaterThanOrEqual(3);
+        expect(boundPictures.length).toBeGreaterThanOrEqual(2);
+        const picturesOn = sinks
+            .filter(entry => entry.assetKind === "image" && entry.sink.kind === "pin")
+            .map(entry => (entry.sink.kind === "pin" ? entry.sink.blueprintName : ""));
+        expect(picturesOn).toEqual(expect.arrayContaining(["CG grid", "Viewer"]));
     });
 });
 

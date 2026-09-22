@@ -701,6 +701,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return this.document;
     }
 
+    /**
+     * The project's document: every page with its elements, and every component definition.
+     *
+     * The same object as {@link getDocument} here. It is its own method for the component editor,
+     * whose document service answers `getDocument` with a view of one definition - the definition's
+     * elements and none of the pages' - and answers this with the project's. Whatever asks where a
+     * Page widget's page leads (what that page places, what its own Page widgets draw) asks this.
+     */
+    public getPageDocument(): UIDocument {
+        return this.getDocument();
+    }
+
     public async load(): Promise<UIDocument> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const documentPath = this.getDocumentPath();

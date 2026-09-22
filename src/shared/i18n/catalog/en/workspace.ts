@@ -26,6 +26,11 @@ export const workspace = {
             // A language's table that could not be read, by the language's name; one of
             // `assets.reference.reason` follows it. Never the file's path.
             readFailed: "The translations for {name} could not be read.",
+            // Refusals of an edit to the language list. `{name}` is a language's display name, as
+            // the row shows it.
+            alreadyAdded: "{name} is already in the language list.",
+            sourceLocked: "{name} is the source language. Remove the other languages first, or set another language as the source language.",
+            languageGone: "This language is no longer in the language list.",
         },
         settings: {
             menu: "Language settings…",
@@ -34,6 +39,11 @@ export const workspace = {
             fallbackLabel: "Fallback language",
             fallbackHint: "An entry with no translation here uses this language, then the source language.",
             fallbackLoops: "leads back here",
+            // A fallback refused on save. The dialog keeps all three out of reach; these are for a
+            // list that changed while it was open. `{fallback}` and `{name}` are display names.
+            fallbackSelf: "A language cannot be its own fallback language.",
+            fallbackGone: "The fallback language is no longer in the language list.",
+            fallbackLoop: "{fallback} leads back to {name}.",
         },
         exchange: {
             exportMenu: "Export translations…",
@@ -55,9 +65,9 @@ export const workspace = {
             exportAction: "Export",
             exportDone: "Exported {count} lines to {path}",
             exportEmpty: "Nothing to export.",
-            importFailed: "Could not read the file",
+            // Follows `workspace.shell.import.failed` as its reason.
             importUnsupported: "Studio reads CSV, XLIFF, PO and JSON.",
-            importNoRows: "No translation units in this file",
+            // `{first}` is one of `workspace.shell.import.skipped`.
             importWarnings: "{count} entries were skipped. First: {first}",
             localeMismatch: "This file is for {declared}. Import it into {name}?",
             localeMismatchDetail: "The translations are imported into the selected language regardless of what the file declares.",
@@ -82,6 +92,7 @@ export const workspace = {
             keyNamePlaceholder: "Key (menu.start…)",
             keySourcePlaceholder: "Source text",
             invalidKeyName: "Key names may contain letters, digits, and dots/underscores/hyphens between them.",
+            keyExists: "A key named “{name}” already exists.",
             removeKey: "Remove key",
             removeKeyConfirm: "Remove {name}?",
             removeKeyConfirmDetail: "Existing translations of this key stay in the language files.",
@@ -148,9 +159,11 @@ export const workspace = {
             importFailed: "Could not import the audio files",
             importScript: "Import recording script…",
             importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
-            importScriptFailed: "Could not read that recording script",
             // As `localization.panel.readFailed`, for a voice language's assignments.
             readFailed: "The voice assignments for {name} could not be read.",
+            // As the localization panel's refusals, for the voice language list.
+            alreadyAdded: "{name} is already in the voice language list.",
+            languageGone: "This voice language is no longer in the list.",
             namingTitle: "Recording filename pattern",
             namingHint: "Tokens: {tokens}. Imported audio is matched to lines by this name.",
             namingReset: "Reset to default",
@@ -867,6 +880,51 @@ export const workspace = {
                 openEditors: "the open editor",
             },
         },
+        // A file brought into the project that did not make it: an asset, a translation file, a
+        // recording script, a story script. `{name}` is the file's own name, never its path; the
+        // reason is one of `reason` below, for the failures an author can act on. Never the reader's
+        // or the importer's own message - English, and it names the asset's storage path.
+        import: {
+            failed: "Could not import “{name}”.",
+            withReason: "{headline} {reason}",
+            reason: {
+                missing: "The file no longer exists.",
+                accessDenied: "Studio is not allowed to read the file.",
+                empty: "The file is empty.",
+                // `unit_id` is the column's own header in the exported file, spelled as the
+                // translator sees it.
+                noIdColumn: "The file has no unit_id column.",
+                // `{format}` is XLIFF or JSON.
+                notFormat: "The file is not a readable {format} file.",
+                noRows: "The file has no entries to import.",
+                wrongType: "Files ending in .{ext} cannot be imported here.",
+                // What the player cannot do with the format, by what the asset is for; `{first}` and
+                // `{second}` are the formats to convert to, with their dots.
+                cannotDisplay: "NarraLeaf cannot display .{ext} files. Convert the file to {first} or {second} before importing.",
+                cannotPlay: "NarraLeaf cannot play .{ext} files. Convert the file to {first} or {second} before importing.",
+                cannotUse: "NarraLeaf cannot use .{ext} files. Convert the file to {first} or {second} before importing.",
+                // `{actual}` is the format the bytes are, in capitals: JPEG, TTC.
+                mismatch: "The file is named .{ext}, but its contents are {actual}.",
+                copyFailed: "It could not be copied into the project folder.",
+                projectReadOnly: "Studio is not allowed to write to the project folder.",
+                notAFolder: "Models are imported as a folder.",
+                emptyFolder: "The folder is empty.",
+                copyIncomplete: "Not every file in the folder could be copied into the project.",
+            },
+            // An entry of a translation file or a recording script that was skipped while the rest
+            // were read. Positions are the file's own: a spreadsheet row, a JSON array entry, a line
+            // of a PO file.
+            skipped: {
+                missingId: "An entry has no ID.",
+                missingIdAtRow: "Row {n} has no ID.",
+                missingIdAtEntry: "Entry {n} has no ID.",
+                notEntry: "An entry is not a translation.",
+                notEntryAtEntry: "Entry {n} is not a translation.",
+                unreadableLine: "Line {n} could not be read.",
+            },
+        },
+        // The system's open or save dialog failed to appear at all.
+        fileDialogFailed: "The file dialog could not be opened.",
         // Re-reading the working tree: the bytes on disk stopped being what the editors show (leaving a
         // freeze, restoring a version). The author should normally see nothing at all - this only
         // speaks up when part of it could not be read back, because that is when a panel is stale.

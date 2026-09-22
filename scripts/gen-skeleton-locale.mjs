@@ -93,6 +93,7 @@ const NODE_PARAM_SLOTS = [
     ["blueprint.data.jsonMakeObject", /^field_\d+_name$/, VERBATIM],
     ["blueprint.data.returnValue", "value", RETURN],
     ["blueprint.data.stringLiteral", "value", FEEDS],
+    ["blueprint.element.displayable.getProperty", "property", VERBATIM],
     ["blueprint.element.displayable.setProperty", "property", VERBATIM],
     ["blueprint.element.displayable.setVariant", "variantId", VERBATIM],
     ["blueprint.element.ref", "elementId", VERBATIM],

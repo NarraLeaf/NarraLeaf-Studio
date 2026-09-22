@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
 import { setBlueprintDebugController } from "@/lib/ui-editor/behavior-graph/debugControl";
 import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import { BlueprintDebugSession } from "@/lib/ui-editor/blueprint-runtime/BlueprintDebugSession";
@@ -72,7 +73,9 @@ export function useBlueprintRuntimeCore(
             setBlueprintDebugController(debugSession);
         }
         const nextSession: BlueprintRuntimeCore = {
-            scopeBridge: new ScopeStoreBridge(),
+            // The bundle's declared defaults go in with the scope rather than after it: the first
+            // reader - a title screen's Init, a value binding drawing - may run in the same commit.
+            scopeBridge: new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults(bundle) }),
             debug: new DebugBridge(),
             bindingDebugCoalescer: new BindingDebugCoalescer(),
             executionManager: new BlueprintExecutionManager(),

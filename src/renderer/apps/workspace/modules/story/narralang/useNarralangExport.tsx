@@ -87,7 +87,9 @@ export function useNarralangExport(): NarralangExport {
                 ["nl"],
             );
             if (!selection.success || !selection.data.ok) {
-                throw new Error(selection.success && !selection.data.ok ? selection.data.error.message : "Save dialog failed");
+                // The dialog's own failure is for the log; it is English and says nothing to act on.
+                console.warn("[narralang] the save dialog failed", selection);
+                throw new Error(t("workspace.shell.fileDialogFailed"));
             }
             const targetPath = selection.data.data;
             if (!targetPath) {

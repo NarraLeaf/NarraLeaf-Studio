@@ -146,6 +146,7 @@ export type LintRuleId =
     | "ui/unknown-widget"
     | "ui/component-missing"
     | "ui/frame-target-missing"
+    | "ui/frame-loop"
     | "ui/list-item-field-missing"
     | "ui/gesture-answered-twice"
     | "blueprint/save-field-empty"
@@ -233,6 +234,22 @@ export type LintLocation =
            * scene. Absent rather than filled with the raw element type: `nl.button` is an internal
            * id, and printing it in the locator column would say less than an empty cell.
            */
+          elementName?: string;
+      }
+    /**
+     * A widget inside a component definition.
+     *
+     * Its own kind rather than a `surface` whose id is the definition's: a definition is edited in a
+     * tab of its own, placed on any number of pages, and on none of them is the widget the author
+     * wrote - so a finding about it is filed under the definition, once, and opens the definition.
+     */
+    | {
+          kind: "component";
+          componentId: string;
+          /** The definition's own name, as the component library shows it. */
+          componentName: string;
+          elementId?: string;
+          /** The widget's author-given name, when it has one; see the `surface` case. */
           elementName?: string;
       }
     | { kind: "character"; characterId: string; characterName: string };

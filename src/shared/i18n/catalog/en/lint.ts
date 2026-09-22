@@ -320,6 +320,11 @@ export const lint = {
             description: "A Page widget embedding a page the project does not have",
             message: "This Page widget embeds a page the project does not have",
         },
+        uiFrameLoop: {
+            title: "Circular embedded page",
+            description: "A Page widget embedding a page that leads back to it",
+            message: "This Page widget embeds a page that leads back to it",
+        },
         uiListItemFieldMissing: {
             title: "Missing item field",
             description: "A widget bound to an item field the list drawing it does not declare",

@@ -163,8 +163,10 @@ function NotificationItem({
                     style={folded ? { maxHeight: TEXT_FOLD_HEIGHT } : undefined}
                 >
                     <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
+                    {/* Line breaks in the detail are kept: a detail listing several files puts one on
+                        each line, and run together they read as one sentence. */}
                     {notification.detail && (
-                        <p className="nl-selectable-text mt-1 text-xs text-fg-muted">{notification.detail}</p>
+                        <p className="nl-selectable-text mt-1 whitespace-pre-line text-xs text-fg-muted">{notification.detail}</p>
                     )}
                     {/* The last line fades out instead of being cut through the middle of itself, so a
                         folded card reads as "there is more" rather than as a rendering fault. */}

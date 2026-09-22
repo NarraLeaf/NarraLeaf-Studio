@@ -153,6 +153,16 @@ export class ComponentDocumentServiceAdapter {
         };
     }
 
+    /**
+     * The project's document rather than this editor's view of it.
+     *
+     * The view carries the definition's elements and none of the pages', so a question about where
+     * a page leads - what it places, what its own Page widgets draw - has nothing to walk in it.
+     */
+    public getPageDocument(): UIDocument {
+        return this.base.getDocument();
+    }
+
     public getRevision(): number {
         return this.base.getRevision();
     }

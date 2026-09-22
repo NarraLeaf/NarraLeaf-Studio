@@ -25,6 +25,9 @@ export const workspace = {
             staleCount: "確認が必要なもの {count} 件",
             importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
             readFailed: "{name} の翻訳を読み込めなかった",
+            alreadyAdded: "{name} はすでに言語の一覧にある",
+            sourceLocked: "{name} は原文の言語。先にほかの言語を取り除くか、別の言語を原文の言語にする",
+            languageGone: "この言語はもう言語の一覧にない",
         },
         settings: {
             menu: "言語の設定…",
@@ -33,6 +36,9 @@ export const workspace = {
             fallbackLabel: "代わりに使う言語",
             fallbackHint: "この言語に翻訳の無い項目は、まずこの言語を使い、次に原文の言語を使う",
             fallbackLoops: "ここに戻ってくる",
+            fallbackSelf: "この言語自身は代わりに使う言語にできない",
+            fallbackGone: "代わりに使う言語がもう言語の一覧にない",
+            fallbackLoop: "{fallback} は {name} に戻ってくる",
         },
         exchange: {
             exportMenu: "翻訳を書き出す…",
@@ -54,9 +60,7 @@ export const workspace = {
             exportAction: "書き出す",
             exportDone: "{count} 行を {path} に書き出した",
             exportEmpty: "書き出すものがない",
-            importFailed: "ファイルを読めなかった",
             importUnsupported: "Studio が読めるのは CSV、XLIFF、PO、JSON",
-            importNoRows: "このファイルに翻訳の単位がない",
             importWarnings: "{count} 件を飛ばした。最初のもの：{first}",
             localeMismatch: "このファイルは {declared} 向け。{name} に読み込むか",
             localeMismatchDetail: "ファイルが何と宣言していても、翻訳は選んだ言語に読み込まれる",
@@ -81,6 +85,7 @@ export const workspace = {
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
             invalidKeyName: "キー名に使えるのは英数字と、その間に置くドット、アンダースコア、ハイフン",
+            keyExists: "「{name}」というキーはすでにある",
             removeKey: "キーを取り除く",
             removeKeyConfirm: "{name} を取り除くか",
             removeKeyConfirmDetail: "このキーの既存の翻訳は言語ファイルに残る",
@@ -143,8 +148,9 @@ export const workspace = {
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
             importScriptSummary: "{applied} 行を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
-            importScriptFailed: "その収録台本を読めなかった",
             readFailed: "{name} のボイスの割り当てを読み込めなかった",
+            alreadyAdded: "{name} はすでにボイスの言語の一覧にある",
+            languageGone: "このボイスの言語はもう一覧にない",
             namingTitle: "収録ファイル名のパターン",
             namingHint: "使える語：{tokens}。読み込んだ音声はこの名前で行と対応づける",
             namingReset: "既定に戻す",
@@ -799,6 +805,43 @@ export const workspace = {
                 openEditors: "編集中の行",
             },
         },
+        // プロジェクトに取り込めなかったファイル。アセット、翻訳ファイル、収録台本、ストーリーの
+        // スクリプト。{name} はファイル自身の名前で、パスではない。理由は下の reason から、作者が
+        // 対処できるものだけを選ぶ。読み取りや取り込み自身のメッセージは出さない。
+        import: {
+            failed: "「{name}」を読み込めなかった",
+            withReason: "{headline}。{reason}",
+            reason: {
+                missing: "ファイルがもう存在しない",
+                accessDenied: "Studio にファイルの読み取り権限がない",
+                empty: "ファイルが空",
+                // unit_id は書き出したファイルの列名で、翻訳者が見るとおりに書く。
+                noIdColumn: "ファイルに unit_id 列がない",
+                notFormat: "読み取れる {format} ファイルではない",
+                noRows: "ファイルに読み込める項目がない",
+                wrongType: "ここでは .{ext} ファイルを読み込めない",
+                cannotDisplay: "NarraLeaf では .{ext} ファイルを表示できない。{first} か {second} に変換してから読み込む",
+                cannotPlay: "NarraLeaf では .{ext} ファイルを再生できない。{first} か {second} に変換してから読み込む",
+                cannotUse: "NarraLeaf では .{ext} ファイルを使えない。{first} か {second} に変換してから読み込む",
+                mismatch: "拡張子は .{ext} だが、中身は {actual} 形式",
+                copyFailed: "プロジェクトフォルダーにコピーできなかった",
+                projectReadOnly: "Studio にプロジェクトフォルダーへの書き込み権限がない",
+                notAFolder: "モデルはフォルダーごと読み込む",
+                emptyFolder: "フォルダーが空",
+                copyIncomplete: "フォルダー内の一部のファイルをプロジェクトにコピーできなかった",
+            },
+            // 翻訳ファイルや収録台本で飛ばした項目。残りは読み込む。位置はファイル自身の数え方で、
+            // 表の行、JSON 配列の項目、PO ファイルの行。
+            skipped: {
+                missingId: "ID のない項目がある",
+                missingIdAtRow: "{n} 行目に ID がない",
+                missingIdAtEntry: "{n} 番目の項目に ID がない",
+                notEntry: "翻訳ではない項目がある",
+                notEntryAtEntry: "{n} 番目の項目は翻訳ではない",
+                unreadableLine: "{n} 行目を読み取れない",
+            },
+        },
+        fileDialogFailed: "ファイルのダイアログを開けなかった",
         // 作業ツリーの読み直し。ディスク上のバイト列が、エディタの表示と一致しなくなったとき
         // （凍結を解いた、バージョンを復元した）。普通は何も見えないのが正しく、
         // 一部を読み戻せなかったときだけ口を開く。そのときパネルが古いままになるから。
