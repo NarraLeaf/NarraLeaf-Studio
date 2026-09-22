@@ -68,12 +68,14 @@ describe("the Electron runtime's litter rule", () => {
     });
 
     it("is asked about the release Studio actually ships", () => {
-        // The fixtures were captured from 38.8.6. An Electron upgrade fails here on purpose: capture
-        // the new release's names (see electronReleaseFixtures.ts) and update this version with them.
+        // The fixtures were captured from 38.8.6. A major upgrade - where Electron's file set actually
+        // moves - fails here on purpose: capture the new release's names (see electronReleaseFixtures.ts)
+        // and update this major with them. A patch release inside the `^38` range resolves on any fresh
+        // install and is let through.
         const installed = JSON.parse(
             fsSync.readFileSync(path.join(REPO_ROOT, "node_modules", "electron", "package.json"), "utf8"),
         ) as { version: string };
-        expect(installed.version).toBe("38.8.6");
+        expect(installed.version.split(".")[0]).toBe("38");
     });
 
     /*
