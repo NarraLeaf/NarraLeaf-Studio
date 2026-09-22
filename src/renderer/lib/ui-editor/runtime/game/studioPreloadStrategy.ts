@@ -9,6 +9,7 @@ import type {
     Video,
 } from "narraleaf-react";
 import type { CompiledNlrStory, SceneWarmOrder, StoryWarmResource } from "./storyCompiler";
+import { createStudioPreloadTimeline, type PreloadWarmWatcher } from "./studioPreloadTimeline";
 
 /**
  * Studio's answer to what the player should have ready, and where it should get it.
@@ -61,6 +62,11 @@ export type StudioPreloadScheduler = PreloadStrategy & {
      * leave.
      */
     useFallback(fallback: PreloadStrategy | null): void;
+    /**
+     * How to see the player's cache, for the performance timeline (`studioPreloadTimeline`), or null
+     * to stop recording. Set once the game exists, and cleared with the session.
+     */
+    useWarmWatcher(watcher: PreloadWarmWatcher | null): void;
 };
 
 export function createStudioPreloadScheduler(options?: {
@@ -88,6 +94,8 @@ export function createStudioPreloadScheduler(options?: {
     let openingFrames: string[] = [];
     let report: ((message: string) => void) | null = null;
     let fallback: PreloadStrategy | null = null;
+    /** What each plan and each fetch cost, written to the page's timeline as the player works. */
+    const timeline = createStudioPreloadTimeline();
 
     return {
         useCompiled(next: CompiledNlrStory | null): void {
@@ -98,6 +106,7 @@ export function createStudioPreloadScheduler(options?: {
             currentSceneId = null;
             openingFrames = [];
             if (!next) {
+                timeline.useAssetIds(new Map());
                 return;
             }
             for (const [sceneId, scene] of Object.entries(next.scenes)) {
@@ -121,6 +130,7 @@ export function createStudioPreloadScheduler(options?: {
                 }
                 blockIdByUrlByScene.set(sceneId, blockIdByUrl);
             }
+            timeline.useAssetIds(collectAssetIdsByUrl(next));
         },
 
         useMissingReport(next: ((message: string) => void) | null): void {
@@ -129,6 +139,10 @@ export function createStudioPreloadScheduler(options?: {
 
         useFallback(next: PreloadStrategy | null): void {
             fallback = next;
+        },
+
+        useWarmWatcher(next: PreloadWarmWatcher | null): void {
+            timeline.useWatcher(next);
         },
 
         plan(moment: PreloadMoment): PreloadPlan | null | Promise<PreloadPlan | null> {
@@ -144,10 +158,20 @@ export function createStudioPreloadScheduler(options?: {
                 // the right answer for all of them - it warms more than a plan would, which is the
                 // safe direction - and it is why this delegates rather than answering null, which
                 // at scene entry would warm nothing at all.
-                return fallback ? fallback.plan(moment) : null;
+                const delegated = fallback ? fallback.plan(moment) : null;
+                if (delegated instanceof Promise) {
+                    return delegated.then(answer => {
+                        timeline.planned(moment.kind, null, answer);
+                        return answer;
+                    });
+                }
+                timeline.planned(moment.kind, null, delegated);
+                return delegated;
             }
             const from = moment.kind === "advance" ? rowIndexOf(order, moment.actionId) : 0;
-            return buildPlan(currentSceneId ?? "", order, from, moment.kind === "scene");
+            const plan = buildPlan(currentSceneId ?? "", order, from, moment.kind === "scene");
+            timeline.planned(moment.kind, order.sceneName, plan);
+            return plan;
         },
 
         /**
@@ -178,6 +202,12 @@ export function createStudioPreloadScheduler(options?: {
          * than a number in the game config.
          */
         async acquire(resource: PreloadResource) {
+            // The moment the player starts on this asset, which is where its span on the timeline
+            // begins. Only pictures: a clip is warmed by putting its element on the stage, not
+            // through here.
+            if (resource.type === "image") {
+                timeline.acquired(resource.src);
+            }
             return { url: resource.src, bytes: 0 };
         },
 
@@ -350,4 +380,25 @@ export function createStudioPreloadScheduler(options?: {
         const sounds = compiled?.sceneElements?.[sceneId]?.sounds;
         return sounds ? [...sounds.values()] : [];
     }
+}
+
+/**
+ * The project's asset id behind each url a compile resolved, from the rows that asked for them.
+ *
+ * Only what the rows name: an opening frame or an image mounted on entry is also asked for by the row
+ * that first shows it, which is where its id comes from. A url no row resolved stays unnamed, and the
+ * timeline entry for it says so rather than guessing.
+ */
+function collectAssetIdsByUrl(compiled: CompiledNlrStory): Map<string, string> {
+    const ids = new Map<string, string>();
+    for (const order of Object.values(compiled.sceneWarmOrder ?? {})) {
+        for (const resources of Object.values(order.byBlock)) {
+            for (const resource of resources) {
+                if (resource.assetId && !ids.has(resource.url)) {
+                    ids.set(resource.url, resource.assetId);
+                }
+            }
+        }
+    }
+    return ids;
 }

@@ -111,6 +111,7 @@ import {
     createStudioPreloadScheduler,
     type StudioPreloadScheduler,
 } from "@/lib/ui-editor/runtime/game/studioPreloadStrategy";
+import { createImageCacheWarmWatcher } from "@/lib/ui-editor/runtime/game/studioPreloadTimeline";
 import {
     isStoryVisited,
     readStoryVisitedIds,
@@ -233,6 +234,7 @@ import {
     readReachedEndings,
 } from "./endingsRecord";
 import { createGameBootReporter } from "./bootTiming";
+import { GameTimelineName, gameTimelineNow, recordGameSpan, timeGameSpan } from "./gameTimeline";
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -315,6 +317,33 @@ class NlrSessionSupersededError extends Error {
 }
 
 export type GameAppNavEntry = AppNavEntry;
+
+/** A page or layer that has been asked for and has not painted yet, for `nl.surface.mount`. */
+type SurfaceMountStart = { start: number; surfaceId: string; kind: "page" | "layer" };
+
+/**
+ * How many surfaces may be waiting for their first paint at once before the oldest is forgotten.
+ *
+ * A surface that is asked for and never paints - replaced mid-open, torn down with its session - is
+ * never measured, and without a ceiling each of those would be kept for the rest of the session.
+ * Real stacks hold a handful; this is a leak guard, not a limit anyone reaches.
+ */
+const SURFACE_MOUNTS_TRACKED = 64;
+
+function noteSurfaceMountStart(
+    starts: Map<string, SurfaceMountStart>,
+    key: string,
+    surfaceId: string,
+    kind: SurfaceMountStart["kind"],
+): void {
+    if (starts.size >= SURFACE_MOUNTS_TRACKED) {
+        const oldest = starts.keys().next().value;
+        if (oldest !== undefined) {
+            starts.delete(oldest);
+        }
+    }
+    starts.set(key, { start: gameTimelineNow(), surfaceId, kind });
+}
 
 function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | undefined): UISurface | null {
     if (surfaceId) {
@@ -682,6 +711,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
+    /** Per nav entry or layer key, when it was asked for - see `nl.surface.mount`. */
+    const surfaceMountStartsRef = useRef(new Map<string, SurfaceMountStart>());
     const studioPageHiddenForGameRef = useRef(false);
     const gameHiddenNavKeysRef = useRef(gameHiddenNavKeys);
     const lifecycleRef = useRef(new SurfaceLifecycleOrchestrator());
@@ -1151,6 +1182,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         ): GameAppNavEntry => {
             navEntrySeqRef.current += 1;
             const key = `${surfaceId}:${navEntrySeqRef.current}`;
+            noteSurfaceMountStart(surfaceMountStartsRef.current, key, surfaceId, "page");
             return {
                 key,
                 runtimeScopeId: key,
@@ -1244,6 +1276,17 @@ export function GameApp(props: GameAppProps): ReactNode {
     );
 
     const handleSurfaceLayerPrepaintReady = useCallback((entryKey: string) => {
+        // The first paint this surface was allowed: its fonts and pictures are in and it can be
+        // drawn. Once per entry - a surface that prepaints again (a hot reload) is not opening.
+        const mount = surfaceMountStartsRef.current.get(entryKey);
+        if (mount) {
+            surfaceMountStartsRef.current.delete(entryKey);
+            recordGameSpan(GameTimelineName.surfaceMount, mount.start, gameTimelineNow(), {
+                surfaceId: mount.surfaceId,
+                surface: findSurface(currentBundleRef.current, mount.surfaceId)?.name ?? null,
+                kind: mount.kind,
+            });
+        }
         markSurfacePrepaintReady(entryKey);
         navigation.markPrepaintReady(entryKey);
     }, [markSurfacePrepaintReady, navigation]);
@@ -1422,7 +1465,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
      */
     const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
-        return mountSurfaceLayer(layerStack, {
+        const key = mountSurfaceLayer(layerStack, {
             surfaceId: request.surfaceId,
             props: request.props,
             modal: request.modal,
@@ -1430,6 +1473,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             group: request.group,
             ownerScopeId: request.ownerScopeId,
         });
+        noteSurfaceMountStart(surfaceMountStartsRef.current, key, request.surfaceId, "layer");
+        return key;
     }, [layerStack]);
 
     const hideLayer = useCallback(async (handle: string): Promise<void> => {
@@ -2634,7 +2679,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeLanguageChangeConfiguration(bundle.languageChange),
         [bundle.languageChange],
     );
-    const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
+    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         let capture: string | undefined;
         if (screenshot === true) {
@@ -2668,6 +2713,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         reportSaveCaptureFailure,
         requireActiveLiveGame,
     ]);
+    /** The write, as `nl.save.write` on the performance timeline - capture, serialize and file. */
+    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: boolean) => timeGameSpan(
+        GameTimelineName.saveWrite,
+        () => writeSaveNow(id, metadata, screenshot),
+        outcome => ({ slot: id, screenshot: screenshot === true, ok: outcome.ok }),
+    ), [writeSaveNow]);
 
     /**
      * The running playthrough as bytes, for a slot that names it.
@@ -2733,7 +2784,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * throws outright when there is no game runtime, which is a caller mistake rather than an
      * outcome of loading.
      */
-    const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
+    const loadSaveNow = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("blueprint.node.loadSave");
 
         /**
@@ -3007,6 +3058,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         saveBuild,
         saveCompatibilityConfig,
     ]);
+    /**
+     * The load, as `nl.save.load` on the performance timeline: from the request to the player being
+     * back on the stage, or to the refusal that left them where they were.
+     */
+    const loadSave = useCallback((id: string): Promise<SaveLoadOutcome> => timeGameSpan(
+        GameTimelineName.saveLoad,
+        () => loadSaveNow(id),
+        outcome => ({
+            slot: id,
+            outcome: !outcome.ok ? "failed" : outcome.value.status === "loaded" ? "loaded" : "refused",
+        }),
+    ), [loadSaveNow]);
 
     /**
      * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
@@ -3746,7 +3809,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [bundle, core, host, readTextLocale, readVoiceLocale]);
 
     /**
-     * The compile, timed when it is the boot's.
+     * The compile, timed: as the boot's `story` phase during the boot, and as `nl.story.compile`
+     * for every start after it.
      *
      * A wrapper rather than a mark inside the compile because a cache hit is a compile too: it
      * takes no time, and a phase that is absent from the timeline whenever the story was reused
@@ -3756,7 +3820,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         request: DevModeStartStoryRequest,
     ): Promise<CompiledNlrStory> => {
         if (!bootInFlightRef.current) {
-            return compileStoryDocument(request);
+            const detail = {
+                storyId: String(request.storyId ?? ""),
+                sceneId: request.sceneId ? String(request.sceneId) : null,
+            };
+            return timeGameSpan(GameTimelineName.storyCompile, () => compileStoryDocument(request), () => detail);
         }
         bootReporter.begin("story");
         try {
@@ -4006,6 +4074,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Studio plans the warming, and hands the player urls rather than bytes. Built per session
         // because it is handed to `new Game()` and holds the compile it plans from - a hot reload
         // points the same scheduler at the new one through `useCompiled`.
+        // The session being replaced stops writing to the timeline: whatever it was still waiting to
+        // warm belongs to a player that is about to be unmounted.
+        preloadSchedulerRef.current?.useWarmWatcher(null);
         const preloadScheduler = createStudioPreloadScheduler({
             gateOnWholeScene: preloadGatesWholeScene(normalizePreloadConfiguration(bundle.preload).behavior),
         });
@@ -4038,6 +4109,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         // scene a row-precise launch enters through, above all. It has to be set after the game
         // exists, which is after the scheduler, because the engine's own strategy reads its config.
         preloadScheduler.useFallback(createDefaultPreloadStrategy(game));
+        // What each warm costs, on the page's performance timeline. Read through the live game on
+        // every question, because the player - and the cache it owns - only exists once it mounts.
+        preloadScheduler.useWarmWatcher(createImageCacheWarmWatcher(() => game.getLiveGame().getGameState()));
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
         // two views of one storage in the engine, so the buses' own restore is the more specific

@@ -7,7 +7,18 @@ import {
     resolveDevModeAssetUrl,
 } from "@/lib/ui-editor/runtime/devModeAssetUrls";
 import { warmSurfaceAssets } from "@/lib/ui-editor/runtime/surfaceAssetWarmup";
+import { createGameBootReporter } from "@/lib/ui-editor/runtime/app/bootTiming";
 import { warmDevModeFont } from "@/lib/workspace/hooks/useEditorFontFamily";
+
+/**
+ * This pass on the page's performance timeline, as the boot's `preload` phase - the same phase the
+ * packaged shell writes for its own first-screen pass, because it is the same work.
+ *
+ * Its own reporter, and one with no listener: the loading state here counts from this hook's own
+ * state, and a second reporter is what keeps this span from being closed by the game app's, which
+ * times the story's warm-up under the same name.
+ */
+const interfaceWarmupTimeline = createGameBootReporter();
 
 export type DevModeInterfaceWarmup = {
     /** The screen the window opens on is warm, or never will be (it timed out, or had nothing). */
@@ -77,6 +88,7 @@ export function useDevModeInterfaceWarmup(input: {
         let cancelled = false;
         setState({ key, ready: false, loaded: 0, total: 0 });
         const startedAt = performance.now();
+        interfaceWarmupTimeline.begin("preload");
         void (async () => {
             try {
                 await prewarmRef.current();
@@ -128,6 +140,7 @@ export function useDevModeInterfaceWarmup(input: {
                     );
                 }
             } finally {
+                interfaceWarmupTimeline.end("preload");
                 if (!cancelled) {
                     warmedKeyRef.current = key;
                     setState(previous => ({ ...previous, key, ready: true }));

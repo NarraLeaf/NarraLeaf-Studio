@@ -353,8 +353,17 @@ in the registry. The run says what it loaded, on one line before the check start
 ```
 
 Deliberately not "only the plugins the project declares". The project's dependency table is written
-when it is saved, scanned or exported, while the editor loads the profile's list; a run that loaded
-less than the editor would call a node unknown that the **Lint** tab can see.
+when the game is run from Studio, when the project is exported and on **Rescan**, while the editor
+loads the profile's list; a run that loaded less than the editor would call a node unknown that the
+**Lint** tab can see.
+
+What a project declares is that table, which Studio keeps and nobody edits. A plugin is in it for as
+long as anything in the project refers to it — a blueprint node, a widget, a story row, data the
+plugin stored in the project — whether or not the plugin is installed or switched on where the table
+is written, and it leaves at the next write after the last of those goes. A run reads the table as it
+was last written, so a project whose last use of a plugin was removed and then committed without the
+game being run from Studio since still declares that plugin; run it once, or press **Rescan** under
+**Project ▸ App**.
 
 **A plugin the project declares that this profile cannot run ends the run with `studio-failed`
 (exit 4)** before the check starts, and names each such plugin by its name and the version the

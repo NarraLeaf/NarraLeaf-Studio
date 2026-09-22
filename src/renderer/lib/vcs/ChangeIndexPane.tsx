@@ -7,6 +7,7 @@ import { CHANGE_CATEGORY_LABEL_KEY } from "./changeCategory";
 import type { ChangeIndex, ChangeIndexGroup, ChangeIndexRow } from "./changeIndex";
 import { renderDocumentName } from "./documentName";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "./documentChangeView";
+import { readableStoragePath } from "./identifierDisplay";
 
 /**
  * The left half of a comparison: what changed, as headings and one line per file.
@@ -154,7 +155,9 @@ export function ChangeIndexGroupView({
  * file name, and a column of rows all reading `storydoc.json` needed something beside them to be
  * told apart by - which is how an author ended up picking a scene out of a list by its uuid. The
  * name is the thing's own name now, so the directory has nothing left to distinguish and would only
- * be competing with it. The whole path is in the tooltip, where the row already put it.
+ * be competing with it. The whole path is in the tooltip - when it is a path an author could look
+ * for. A story's folder or an asset's shard is an id, and the interface never shows one
+ * (`identifierDisplay.ts`), so those rows carry no path at all.
  */
 function ChangeIndexRowView({
     row,
@@ -166,6 +169,8 @@ function ChangeIndexRowView({
     onSelect: () => void;
 }) {
     const translator = useTranslation();
+    const path = readableStoragePath(row.path);
+    const members = row.memberCount > 0 ? translator.tn("documentDiff.shell.setFiles", row.memberCount) : null;
 
     return (
         <button
@@ -174,9 +179,7 @@ function ChangeIndexRowView({
             // The path, plus - for a document that is stored as several files - how many of them
             // this one row stands for. In the tooltip rather than on the row, because a row that
             // grows with what it stands for turns the index back into a report.
-            data-tip={row.memberCount > 0
-                ? `${row.path} · ${translator.tn("documentDiff.shell.setFiles", row.memberCount)}`
-                : row.path}
+            data-tip={[path, members].filter(Boolean).join(" · ") || undefined}
             data-change-index-row={row.key}
             className={cn(
                 "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",

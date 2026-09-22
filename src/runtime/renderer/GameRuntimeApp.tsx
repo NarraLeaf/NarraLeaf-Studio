@@ -409,6 +409,11 @@ function createRuntimePluginHost(
         // Present on desktop, absent on the web export - see web.ts. The loader
         // turns that absence into "no app.game.sidecar here".
         ...(sidecar ? { sidecar } : {}),
+        // The same rule for process memory: the desktop bridge asks its main process, and a web
+        // export has no processes to count and no such member.
+        ...(bridge.processMemory
+            ? { processMemory: bridge.processMemory }
+            : {}),
         // Forwarded, never decided: the shell behind this bridge re-reads the pack and checks the
         // named plugin's own declared patterns. Present on both shells, because both can open an
         // address - the desktop one through the platform opener, the web one through the browser.

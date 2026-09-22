@@ -934,11 +934,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return removed;
     }
 
-    /** Plugin ids currently contributing at least one story action, for the dependency scanner. */
-    public getContributingPluginIds(): string[] {
-        return [...new Set(this.pluginActionOwners.values())];
-    }
-
     public getPluginAction(actionId: string): StoryPluginActionRegistration | undefined {
         return this.pluginActions.get(actionId.trim());
     }

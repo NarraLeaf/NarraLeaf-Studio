@@ -22,7 +22,12 @@ export interface ProjectPluginDependency {
     publisher?: string;
     /** True when the plugin ships with Studio (its version is tied to the app version). */
     builtIn: boolean;
-    /** Exact plugin version installed when the table was last recorded. */
+    /**
+     * The plugin version the project is made with, as the scans record it. A scan that finds the
+     * plugin only by the names of its types - it is not loaded there: absent, switched off, or
+     * withheld for its version - leaves the recorded version alone; any other use it finds records
+     * the installed version (see `buildDependencyTable`).
+     */
     authoredVersion: string;
     /**
      * True when the project references a *type* owned by the plugin (blueprint

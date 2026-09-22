@@ -166,6 +166,70 @@ if (menu) {
 - `current` / `onChange(listener)`：玩家正在读的语言，与切换通知。
 - `text(key)`：按项目的本地化键取当前语言下的文案，走的是 `Get Text` 节点那张表、那条 fallback 链；项目没声明这个键时返回 `null`。**给玩家看的字一律走这里**，插件自带一份译文是翻译流程唯一看不到的那份。
 
+### game.diagnostics
+
+引擎缓存此刻持有多少：`imageCache()` 返回图像缓存的条目数、取回字节、解码字节、钉住条目与两项预算（`RuntimePluginImageCacheStats`）。
+
+- 需要声明 `runtimeCapabilities: ["diagnostics"]`。
+- 游戏会话还没起来时返回 `null`（`setup()` 期间就是这样），成员本身在；轮询，没有变更事件。
+- ⚠ `blobBytes` 为 0 是真实答案：Studio 宿主把 url 交给引擎、引擎不复制字节，图片的取回开销在浏览器缓存里，这里数不到。有预算约束的是解码那一栏。
+
+### game.process
+
+游戏各进程占用的内存，按操作系统的口径（任务管理器看到的那个数）：`memory()` 返回 `RuntimePluginProcessMemory`。
+
+```ts
+const reading = await app.game.process?.memory();
+// { scope: "game", workingSetBytes, privateBytes, processes: [{ kind: "renderer", current: true, workingSetBytes, peakWorkingSetBytes, privateBytes? }, ...] }
+```
+
+- **需要声明 `runtimeCapabilities: ["process.memory"]`，这是一项独立的权限**：`diagnostics` 报的是引擎自己的缓存账，这一项报的是玩家机器上每个游戏进程占了多少内存。已经持有 `diagnostics` 的插件**不会**因此拿到它，更新时加上这一项会重新弹权限确认。
+- 读数由主进程从 Electron 的进程表（`app.getAppMetrics()`）取，覆盖主进程、渲染进程、GPU 进程与工具进程——游戏的图片解码、纹理、音频缓冲大多在 JS 堆之外，而 `performance.memory` 在 Electron 里是按桶取整的，两者都答不了「这个游戏在玩家机器上占多少」。
+- 只有数字：进程的用途（`main` / `renderer` / `gpu` / `utility` / `other`）、平台给的服务名（工具进程才有）、是否是插件自己所在的进程、各项字节数。**没有 pid、路径或命令行**。宿主不把读数发往任何地方。
+- `scope: "game"` 是出货游戏与预览：整个应用的全部进程。`scope: "window"` 是 Dev Mode：**只有这扇窗自己的渲染进程**——它周围的主进程、GPU 进程、其他窗口都是 Studio 的，算进去报的就是 Studio。
+- `privateBytes` 只有 Windows 报；其他平台该字段缺席、合计为 `null`，而不是 0。
+- 网页导出没有自己的进程可数，这个域不存在。
+- 每次调用都是一次新读数；前一次还在路上时再调用，拿到的是同一次的答案（不会排队）。
+
+### 性能时间线（`PerformanceObserver`）
+
+游戏页面把自己的时间花在哪里写在标准的 User Timing 时间线上，名字一律以 `nl.` 开头。**不需要任何能力声明，Studio 也没有任何界面读它们**——它们是给插件、profiler、DevTools 读的，出货构建里照样写，带不带读它的插件由作者的构建决定。名字与 `detail` 的形状是契约，类型从 `narraleaf-studio/runtime` 导出（`RuntimePluginTimelineName`、`RuntimePluginTimelineSpanDetails` 及各 `…TimelineDetail`）。
+
+```ts
+import type { RuntimePluginTimelineName } from "narraleaf-studio/runtime";
+
+for (const type of ["mark", "measure"]) {
+  // `buffered` 只能配 `type`，不能配 `entryTypes`，所以两种各订一次。
+  new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) {
+      if (entry.name.startsWith("nl.")) {
+        const name = entry.name as RuntimePluginTimelineName;
+        app.game.log("info", `${name} ${entry.startTime.toFixed(1)} +${entry.duration.toFixed(1)} ${JSON.stringify((entry as PerformanceMeasure).detail ?? null)}`);
+      }
+    }
+  }).observe({ type, buffered: true });
+}
+```
+
+| 名字 | 类型 | 何时 | `detail` |
+| --- | --- | --- | --- |
+| `nl.launch` | mark，`startTime` 为 0 | 每页一次 | `{ origin, pageOrigin, milestones }`，见下 |
+| `nl.boot.bundle` / `.story` / `.preload`（各带 `.start` / `.end` mark） | measure | 启动相位；`preload` 可能出现两段（出货外壳先热首屏界面、引擎再热开场场景；Dev Mode 以界面开场时同样两段） | 无 |
+| `nl.boot.firstFrame` | mark | 第一帧 | 无 |
+| `nl.boot` | measure | 页面原点 → 第一帧 | 无 |
+| `nl.story.compile` | measure | 启动之后每次开始故事时的编译（启动那次是 `nl.boot.story`） | `{ storyId, sceneId }` |
+| `nl.scene.load` | measure | 一个场景的首帧闸：从播放器问「这个场景要暖什么」到首帧要等的最后一张图落地。作者写的转场不在其中 | `{ scene, gated, waited, complete }` |
+| `nl.preload.asset` | measure | 一个资产从开始加载到结束（成功或失败） | `{ pass, kind, assetId, url, band?, firstScreen?, scene?, ok }` |
+| `nl.surface.mount` | measure | 一个页面或图层从被请求到允许首次绘制（字体与图片就绪） | `{ surfaceId, surface, kind: "page" \| "layer" }` |
+| `nl.save.write` | measure | 一次存档：截图、序列化、写文件 | `{ slot, screenshot, ok }` |
+| `nl.save.load` | measure | 一次读档：从请求到玩家回到舞台，或被拒绝而留在原处 | `{ slot, outcome: "loaded" \| "refused" \| "failed" }` |
+
+**放到同一条从进程启动开始的时间轴上**：`nl.launch` 的 `detail.pageOrigin` 是「零点 → 本页时间原点」的毫秒数，任何条目的 `startTime + pageOrigin` 就是它离零点多远。`origin` 说明零点是什么：`process`（出货游戏与预览：操作系统记录的进程创建时刻）、`devMode`（作者按下运行的那一刻）、`page`（网页导出：什么都不知道，零点就是页面本身，`pageOrigin` 为 0）。`milestones` 是页面出现之前的时刻（距零点的毫秒）：出货游戏有 `appReady`（Electron 启动完成）与 `windowCreated`（窗口已建、页面已请求），Dev Mode 只有 `windowCreated`。
+
+**`nl.preload.asset` 的两种来源**：`pass: "interface"` 是界面资产那一遍（图片、声音、字体；`firstScreen` 表示首屏是否在等它）；`pass: "scene"` / `"advance"` 是播放器为场景暖的图片（进场时或随剧情推进），`band` 为 `gate`（挡首帧）/ `soon` / `idle`。播放器只是记下 url、什么都没取的投机条目不列出；已经取回、但没有解码位图的图片（多数场景的开场图就是这样作为预读先到的，或被解码预算释放过）要重新解码，它的跨度从场景或剧情要它的那一刻算到位图就绪。视频与音频按元素预热，不在其中。`assetId` 是项目里的资产 id（只知道地址时为 `null`），`url` 不透明且 Dev Mode 与构建不同——**界面上不要显示这两个**，用 `scene` / `surface` 这类作者起的名字。
+
+**开销与缓冲**：没有逐帧条目，每条都对应一件本来就在发生的事。页面缓冲按名字封顶（资产 1000 条，启动相位合计 400 条，其余各 100–200 条），到顶时清掉该名字重新计数——**已经在订阅的 observer 照样收到每一条**，被清掉的只是给晚到的 `buffered: true` 订阅回放的那份。所以在 `setup()` 里就订阅，要留的自己留。
+
 ### game.log
 
 写入宿主日志，自动带 `[plugin:{id}]` 前缀。Dev Mode 输出到窗口 console；Preview/Production 经 runtime bridge 输出到游戏进程日志。
@@ -182,7 +246,7 @@ studio entry 可以额外注册 palette 动作（`app.services.story.actions`，
 
 ## 限制
 
-- 当前 API 面：`blueprintNodes` + `widgets` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile`）。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
+- 当前 API 面：`blueprintNodes` + `widgets` + `log`，加上 manifest 声明后才出现的能力域（`store` / `events` / `state.*` / `saves.*` / `ui.overlay` / `assets` / `locale` / `menu` / `story.compile` / `diagnostics` / `process.memory`），以及不需要声明的性能时间线。transform 字段、transition 预设等扩展点等待核心先建立对应的预设系统（见设计文档决策记录）。
 - runtime entry 必须自包含（单文件 ESM），不能在运行时 import 插件包内其他文件；React 相关包与 `narraleaf-studio/runtime` 除外（host external）。
 - `react-dom/client` 不可用：插件不得在游戏内挂载自己的 React root。
 - 无 cleanup、无跨插件依赖排序。

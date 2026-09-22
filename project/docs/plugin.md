@@ -487,10 +487,10 @@ Launcher、workspace、Dev Mode 和 preload 之间使用这些 IPC：
 - 插件代码不是 sandbox；安装批准意味着用户信任该本地代码（runtime entry 还会随游戏发布）。
 - 没有在线插件商店、远程 feed、自动更新或依赖解析。
 - 没有插件间依赖排序。
-- 插件注册的 UI、widget、blueprint ID 由约定 + 注册时前缀校验保证，必须以插件 ID 为前缀。
+- 插件注册的 UI、widget、blueprint ID 由约定 + 注册时前缀校验保证，必须以插件 ID 为前缀。项目依赖扫描靠的就是这一条：插件没有载入（未安装、已停用、因版本被扣下）时，它的节点与 widget 按 type 前缀认回给它（`attributeByNamespace`），所以放宽前缀约束会让依赖表认不出这类引用。
 - runtime API 面当前是 `blueprintNodes` + `widgets` + `log`。transform 字段 / transition 预设扩展点等待核心先建立预设系统（当前核心自身也没有可插拔的预设注册点）。
 - runtime entry 不提供 `react-dom/client`：插件不得在游戏内挂载自己的 React root。
-- 静态校验依据项目依赖表（保存时由 workspace 扫描维护）；未在 workspace 中打开保存过的项目可能没有依赖表，此时打包回退为全部启用插件。
+- 静态校验依据项目依赖表。表由 workspace 扫描写入，时机是运行（Dev Mode / Preview）、导出和「重新扫描」——**不是**保存；项目里只要还有东西引用某个插件（蓝图节点、widget、故事行、插件 store），它就留在表里，与插件是否已安装、是否启用无关；最后一处引用删掉之后的下一次扫描把它去掉。只有扫描读不全文档时才一行都不删。从未被扫描过的项目可能没有依赖表，此时打包回退为全部启用插件。
 
 ## 关键实现文件
 

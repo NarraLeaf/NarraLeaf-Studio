@@ -16,6 +16,7 @@ import {
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
 import type { GameMenuModel } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
@@ -277,6 +278,9 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
             };
         },
     },
+    // Asked of the main process on every call: it is the only side that can see the GPU process and
+    // itself, and a reading kept here would only go stale.
+    processMemory: () => ipcRenderer.invoke("runtime:processMemory:read") as Promise<GameProcessMemoryReading>,
     capabilities: { closeRequested: true, windowScale: true, screenshot: true },
     /*
      * Saves here are files in this game's user-data directory. Nothing reclaims them: no quota, no

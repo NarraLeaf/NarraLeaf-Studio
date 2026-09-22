@@ -137,6 +137,12 @@ export type WindowProps = {
     [WindowAppType.DevMode]: {
         projectPath: string;
         entry: import("./devMode").DevModeEntry;
+        /**
+         * When the author asked for this run and when its window was made, for the zero of the
+         * window's performance timeline (see `gameLaunchTiming`). Absent from a window opened by a
+         * Studio that predates it, which then measures from its own page.
+         */
+        launch?: import("./gameLaunchTiming").GameLaunchTiming;
     },
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,

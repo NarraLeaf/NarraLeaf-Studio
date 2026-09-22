@@ -695,7 +695,17 @@ export const documentDiff = {
         assetsOrder: "アセットの並び",
         characters: "キャラクター一覧",
         assetContent: "アセットのファイル",
+        assetOfType: {
+            image: "画像アセット",
+            audio: "音声アセット",
+            video: "動画アセット",
+            json: "JSON アセット",
+            font: "フォントアセット",
+            model: "モデルアセット",
+            other: "その他のアセット",
+        },
         qualified: "{name}（{qualifier}）",
+        numbered: "{name} {index}",
     },
     category: {
         story: "ストーリー",

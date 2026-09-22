@@ -59,10 +59,10 @@ export interface ProjectDependencyRows {
  * The project's dependency table as a list of rows the plugin sidebar can act on.
  *
  * The table comes from the *persisted* resolution rather than a fresh scan: what the project
- * declares is what the author was handed, and a scan needs every plugin loaded to attribute usage -
- * which is exactly what is not true when a dependency is missing. Re-resolving is cheap (it reads
- * the installed list and compares versions) and writes nothing, so it happens on open and after a
- * run.
+ * declares is what a build packs and a headless run checks, and this screen is where the author is
+ * sent when that is not satisfied. A scan that drops a row persists it and re-resolves, so the row
+ * leaves this list with it. Re-resolving is cheap (it reads the installed list and compares
+ * versions) and writes nothing, so it happens on open and after a run.
  */
 export function useProjectDependencyRows(
     context: WorkspaceContext | null,

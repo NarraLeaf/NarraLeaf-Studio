@@ -155,7 +155,17 @@ function windowsSigningFor(target: GameBuildWorkerTarget): Partial<Configuration
     return windowsSigningConfiguration(signing);
 }
 
-/** The `mac` block. Every macOS target gets one; an unsigned target gets the one that says so. */
+/**
+ * The `mac` block. Every macOS target gets one; an unsigned target gets the one that says so.
+ *
+ * What it deliberately never carries is `x64ArchFiles` or `singleArchFiles`, the two exemptions from
+ * the universal merge. A universal target is packed once per architecture and joined by
+ * `@electron/universal`, which refuses a Mach-O file that is the same thin image in both halves -
+ * the one shape that cannot be right for both machines. Everything the compiler stages for a
+ * universal target is either a universal image (see fatMachO.ts) or not machine code at all, and a
+ * plugin's thin sidecar is refused before packing starts. So there is nothing to exempt, and an
+ * exemption here would only hide the next binary that arrives in the wrong form.
+ */
 function macSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
     if (target.platform !== "macos") {
         return {};

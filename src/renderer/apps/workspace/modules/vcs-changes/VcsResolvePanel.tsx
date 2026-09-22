@@ -14,7 +14,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { ConflictFooter, ConflictResolveView, type WriteGuard } from "@/lib/vcs/ConflictResolveView";
-import { useDocumentNames } from "@/lib/vcs/storyTitles";
+import { useDocumentNames } from "@/lib/vcs/nameSources";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
     buildConflictRows,
@@ -222,9 +222,9 @@ export function VcsResolvePanel() {
      * Read from the working tree, which during a merge is the merge's own result for everything
      * that merged cleanly - and the story index nearly always does, because it is a different file
      * from the stories it names. Where it did not, it is one of the conflicted files and unparseable
-     * like the rest, and `documentName.ts` answers with the kind and the id rather than inventing a
-     * title. There is no second side to read: a merge is not a comparison between two revisions, it
-     * is one tree with two answers in it.
+     * like the rest, and `documentName.ts` answers with a stand-in for what the thing is rather than
+     * inventing a title. There is no second side to read: a merge is not a comparison between two
+     * revisions, it is one tree with two answers in it.
      */
     const names = useDocumentNames(MERGE_NAME_SIDES);
 

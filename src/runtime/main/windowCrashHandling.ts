@@ -1,5 +1,6 @@
 import type { BrowserWindow } from "electron";
 import type { GameCrashPolicy } from "@shared/types/gameRuntime";
+import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { buildGameRuntimeIndexUrl } from "@shared/utils/gameRuntimeIndexUrl";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
 import type { RuntimeLogSink } from "./runtimeLog";
@@ -35,6 +36,12 @@ export interface WindowCrashHost {
     /** The native question. Resolves to the index of the chosen button. */
     ask(request: { title: string; message: string; detail: string; buttons: string[] }): Promise<number>;
     now(): number;
+    /**
+     * When this process began and what it did before its first page, for the replacement page's
+     * performance timeline. The process is the same one after a reload, so the launch is too.
+     * Absent where there is nothing to say.
+     */
+    launch?(): GameLaunchTiming | null;
 }
 
 export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrashHost): void {
@@ -84,6 +91,7 @@ export function installWindowCrashHandling(win: BrowserWindow, host: WindowCrash
             crashDetails: host.policy() === "restart"
                 ? null
                 : describeProcessDeath(host.text, reason, exitCode),
+            launch: host.launch?.() ?? null,
         });
         host.log("info", `[Crash] Reloading the game window (policy: ${host.policy()})`);
         expectedProcessSwap = true;

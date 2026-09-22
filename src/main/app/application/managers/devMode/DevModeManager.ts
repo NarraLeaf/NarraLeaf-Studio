@@ -39,6 +39,13 @@ type DevModeSession = {
     /** Set when {@link sourcePath} is a snapshot. Also what stops the file watcher being installed. */
     sourceRevision?: RevisionId;
     entry: DevModeEntry;
+    /**
+     * When the author asked for this run, wall-clock milliseconds - the zero the window's
+     * performance timeline is placed against (see `gameLaunchTiming`). Taken as the request arrives,
+     * before it waits behind anything else this project had queued, because that wait is part of
+     * what the author sat through.
+     */
+    requestedAt: number;
     status: DevModeStatus;
     window: AppWindow<WindowAppType.DevMode> | null;
     windowReady: boolean;
@@ -137,7 +144,8 @@ export class DevModeManager {
         if (refusal) {
             return Promise.reject(new Error(refusal));
         }
-        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry));
+        const requestedAt = Date.now();
+        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt));
     }
 
     public stop(projectPath: string): Promise<DevModeStatus> {
@@ -206,7 +214,7 @@ export class DevModeManager {
         });
     }
 
-    private async launchNow(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
+    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number): Promise<DevModeStatus> {
         const key = this.projectKey(projectPath);
         // Only this project's session is replaced; other projects keep running.
         const previous = this.sessions.get(key);
@@ -217,7 +225,7 @@ export class DevModeManager {
             await this.terminateSession(previous);
         }
 
-        const session = this.createSession(projectPath, entry);
+        const session = this.createSession(projectPath, entry, requestedAt);
         this.sessions.set(key, session);
 
         try {
@@ -344,7 +352,7 @@ export class DevModeManager {
         });
     }
 
-    private createSession(projectPath: string, entry: DevModeEntry): DevModeSession {
+    private createSession(projectPath: string, entry: DevModeEntry, requestedAt: number): DevModeSession {
         return {
             id: crypto.randomUUID(),
             projectPath,
@@ -352,6 +360,7 @@ export class DevModeManager {
             // left undefined so a session is never in a state where "what do I compile" has no answer.
             sourcePath: projectPath,
             entry,
+            requestedAt,
             status: "starting",
             window: null,
             windowReady: false,
@@ -385,6 +394,13 @@ export class DevModeManager {
         const window = await this.app.launchDevMode({
             projectPath: session.projectPath,
             entry: session.entry,
+            // The window is made right after this, so the moment is taken here: the props are the
+            // one thing the page can read about its own launch.
+            launch: {
+                origin: "devMode",
+                zero: session.requestedAt,
+                milestones: [{ name: "windowCreated", at: Math.max(session.requestedAt, Date.now()) }],
+            },
         });
         session.window = window;
         session.windowReady = false;

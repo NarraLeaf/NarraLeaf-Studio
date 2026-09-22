@@ -7,6 +7,7 @@ import { UI_ASSET_ID_PROPERTY_NAMES } from "@shared/build/uiAssetSlots";
 import { blueprintDocumentGraphs } from "@shared/build/blueprintAssetSets";
 import { forEachBlueprintAssetSlot, type BlueprintAssetSlotKind } from "@shared/build/blueprintAssetSlots";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { GameTimelineName, gameTimelineNow, recordGameSpan } from "./app/gameTimeline";
 
 /**
  * What an interface needs before it can be shown, and warming it.
@@ -432,18 +433,33 @@ async function preloadAsset(input: {
     loadFont: SurfaceWarmupFontLoader;
     /** Known from where the id was found - a blueprint pin says what it carries. */
     kind?: PreloadKind;
+    /** `nl.preload.asset` for the performance timeline; see `gameTimeline`. */
+    firstScreen: boolean;
 }): Promise<void> {
+    const start = gameTimelineNow();
     const url = input.assetUrl(input.assetId);
-    const kind = input.kind ?? kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
-    if (kind === "font") {
-        await input.loadFont(input.assetId, url);
-        return;
+    let kind: PreloadKind = input.kind ?? "image";
+    let ok = false;
+    try {
+        kind = input.kind ?? kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
+        if (kind === "font") {
+            await input.loadFont(input.assetId, url);
+        } else if (kind === "audio" || kind === "video") {
+            await preloadMedia(url, kind);
+        } else {
+            await preloadImage(url);
+        }
+        ok = true;
+    } finally {
+        recordGameSpan(GameTimelineName.preloadAsset, start, gameTimelineNow(), {
+            pass: "interface",
+            kind,
+            assetId: input.assetId,
+            url,
+            firstScreen: input.firstScreen,
+            ok,
+        });
     }
-    if (kind === "audio" || kind === "video") {
-        await preloadMedia(url, kind);
-        return;
-    }
-    await preloadImage(url);
 }
 
 /**
@@ -482,6 +498,8 @@ export async function warmSurfaceAssets(input: SurfaceWarmupAccess & {
                 entry: input.entryFor(assetId),
                 assetUrl: input.assetUrl,
                 loadFont: input.loadFont,
+                // Everything this pass warms is one screen's, and that screen is waiting for it.
+                firstScreen: true,
             });
             loaded += 1;
         } catch {
@@ -584,6 +602,7 @@ export async function warmInterfaceAssets(input: SurfaceWarmupAccess & {
                 assetUrl: input.assetUrl,
                 loadFont: input.loadFont,
                 kind,
+                firstScreen: isFirstSurface,
             });
             loaded += 1;
             if (isFirstSurface) {

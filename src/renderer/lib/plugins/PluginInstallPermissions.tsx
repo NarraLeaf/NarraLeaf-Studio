@@ -87,6 +87,7 @@ const RUNTIME_CAPABILITY_KEYS: Record<PluginRuntimeCapability, TranslationKey> =
     "menu": "pluginPermission.permissions.runtimeCapability.menu",
     "story.compile": "pluginPermission.permissions.runtimeCapability.storyCompile",
     "diagnostics": "pluginPermission.permissions.runtimeCapability.diagnostics",
+    "process.memory": "pluginPermission.permissions.runtimeCapability.processMemory",
 };
 
 /**

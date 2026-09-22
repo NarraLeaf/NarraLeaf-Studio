@@ -6,6 +6,8 @@ import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { getInterface } from "@/lib/app/bridge";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
+import { publishGameLaunch } from "@/lib/ui-editor/runtime/app/gameTimeline";
+import { normalizeGameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { WindowAppType } from "@shared/types/window";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { UISurface } from "@shared/types/ui-editor/document";
@@ -78,6 +80,10 @@ export function useDevModePayload(): UseDevModePayloadResult {
                 if (!active || !result.success) {
                     return;
                 }
+                // When the author asked for this run, on the page's performance timeline - the zero a
+                // plugin places the boot against. Once per page, so a props read that comes twice
+                // (a remount) writes nothing more.
+                publishGameLaunch(normalizeGameLaunchTiming(result.data.launch));
                 setState(prev => ({
                     ...prev,
                     entry: result.data.entry,

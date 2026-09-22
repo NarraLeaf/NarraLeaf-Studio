@@ -1,5 +1,6 @@
 import type { DocumentChange, DocumentChangeKind, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
 import type { TranslationKey, Translator } from "@shared/i18n";
+import { elideGeneratedIdentifiers } from "./identifierDisplay";
 
 /**
  * Turning a {@link DocumentDiff} into rows a surface can draw, without any surface in the picture.
@@ -161,16 +162,22 @@ export function resolveDocumentChangeLabel(
     // Cast because a producer's key is a plain string by contract - the diff model is shared with the
     // main process, which has no business importing a renderer's key union. A key with no entry
     // renders as itself, which is what makes a stale producer visible rather than blank.
-    const text = translator.t(change.label.key as TranslationKey, interpolated);
-    const from = params?.from === undefined ? undefined : String(params.from);
-    const to = params?.to === undefined ? undefined : String(params.to);
-    const subject = change.subject;
-    const carriedByLabel = subject === undefined
-        || subject === params?.name
-        || subject === params?.from
-        || subject === params?.to;
+    //
+    // Every piece of text leaves here with its generated ids drawn as an ellipsis
+    // (`identifierDisplay.ts`). A producer states what it compared, and what it compared is often
+    // an id - a reference to a scene, a folder, a record - which is the one kind of value the
+    // interface never shows. The comparison below is made on the raw values, so eliding cannot make
+    // two different values read as the label carrying the subject.
+    const text = elideGeneratedIdentifiers(translator.t(change.label.key as TranslationKey, interpolated));
+    const from = params?.from === undefined ? undefined : elideGeneratedIdentifiers(String(params.from));
+    const to = params?.to === undefined ? undefined : elideGeneratedIdentifiers(String(params.to));
+    const carriedByLabel = change.subject === undefined
+        || change.subject === params?.name
+        || change.subject === params?.from
+        || change.subject === params?.to;
+    const subject = change.subject === undefined ? undefined : elideGeneratedIdentifiers(change.subject);
 
-    return carriedByLabel
+    return carriedByLabel || subject === undefined
         ? { primary: text, ...(from === undefined ? {} : { from }), ...(to === undefined ? {} : { to }) }
         : {
             primary: subject,

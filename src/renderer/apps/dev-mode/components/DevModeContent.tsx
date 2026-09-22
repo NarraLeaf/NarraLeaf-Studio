@@ -1706,6 +1706,17 @@ export function DevModeContent(props: DevModeContentProps) {
         // No `assets` backend on purpose: Dev Mode resolves asset ids over IPC, and the capability
         // is a synchronous `url(assetId)`. A shell that cannot answer synchronously must leave the
         // namespace absent rather than hand out a URL it has to guess.
+        //
+        // Process memory narrowed to this window's own renderer: every other process around it -
+        // Studio's main process, its GPU process, its other windows - is Studio's, and a reading
+        // that counted them would describe Studio rather than the game.
+        processMemory: async () => {
+            const result = await getInterface().devMode.readProcessMemory();
+            if (!result.success) {
+                throw new Error(result.error ?? "Reading process memory failed");
+            }
+            return result.data.reading;
+        },
         subscribeFullscreenChanged: listener => {
             const token = getInterface().devMode.onFullscreenChanged(({ isFullscreen }) => listener(isFullscreen));
             return () => token.cancel();

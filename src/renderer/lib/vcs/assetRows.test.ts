@@ -167,18 +167,18 @@ describe("an asset that is one record and one file", () => {
         expect(new Set(index.rows.map(row => row.key)).size).toBe(2);
     });
 
-    it("names a record with no authored name by its kind, never by its file", () => {
+    it("names a record with no authored name for what it is, never by its file or its shard", () => {
         const index = buildChangeIndex([shard([record(PORTRAIT)])], budget);
 
         // The author never made a thing called assets.metadata.image.json, so the row cannot be
-        // called that. With no name of its own to read, the kind is the complete answer.
-        expect(index.rows[0].name.source).toBe("kind");
-        expect(index.rows[0].name).not.toMatchObject({ source: "authored" });
+        // called that - and it is one asset, not the library it was read out of. With no name of
+        // its own, it is an asset of the type its shard files it under.
+        expect(index.rows[0].name).toEqual({ source: "unnamed", key: "documentDiff.name.assetOfType.image" });
     });
 });
 
 describe("a content file nothing claims", () => {
-    it("is named as an asset's file, and is not declared unclaimed", () => {
+    it("is named for what it is, and is not declared unclaimed", () => {
         // A real state after a bad merge: the bytes survived and the record naming them did not.
         // Hiding the row would make the one case where the fold is wrong the one case nobody sees.
         const index = buildChangeIndex([
@@ -189,9 +189,11 @@ describe("a content file nothing claims", () => {
         expect(index.rows).toHaveLength(2);
         const orphan = index.rows.find(row => row.path === PORTRAIT_CONTENT);
         // The record pool holds records that CHANGED, so "no record" is not something this pass
-        // can know. It says what the file is and which asset it belongs to, and stops there.
+        // can know. It says what the file is, and stops there - without the id it is filed under,
+        // which the interface never shows.
         expect(orphan?.name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
-        expect(JSON.stringify(orphan?.name)).toContain("99553d15-abb5");
+        expect(orphan?.name).toEqual({ source: "unnamed", key: "documentDiff.name.assetContent" });
+        expect(JSON.stringify(orphan?.name)).not.toContain("99553d15");
         expect(orphan?.member).toBeUndefined();
         // Still filed with the assets, so it is found where an author would look for it.
         expect(index.groups.map(group => group.category)).toEqual(["assets"]);
@@ -206,11 +208,31 @@ describe("a content file nothing claims", () => {
 
         expect(index.rows).toHaveLength(1);
         expect(index.rows[0].name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
-        // Whatever shape the name takes, it has to carry the id - that is the only thing that
-        // tells two unclaimed content files apart.
-        // The qualifier is the asset id in the form the author would see it elsewhere, which is what
-        // tells two unclaimed content files apart.
-        expect(JSON.stringify(index.rows[0].name)).toContain("99553d15-abb5");
+        // Never the id: two unclaimed content files are told apart by number on the list
+        // (`numberRepeatedNames`), not by the uuid their path is made of.
+        expect(JSON.stringify(index.rows[0].name)).not.toContain("99553d15");
+    });
+
+    it("is named after the asset when its library was read, though its record did not change", () => {
+        // Bytes replaced in place: the record is untouched, so the comparison carries no record to
+        // fold with - but the name is on disk, and the naming layer reads it.
+        const names = {
+            ...NO_DOCUMENT_NAMES,
+            assetNames: new Map([[PORTRAIT, { name: "Hero portrait", type: "image" }]]),
+        };
+        const index = buildChangeIndex([content(PORTRAIT_CONTENT)], { rowBudget: 1000, complete: true, names });
+
+        expect(index.rows[0].name).toEqual({ source: "authored", text: "Hero portrait" });
+    });
+
+    it("numbers two unnamed content files on one list rather than drawing one word twice", () => {
+        const second = "assets/content/11/11/1111111141118111111111111111";
+        const index = buildChangeIndex([content(PORTRAIT_CONTENT), content(second)], budget);
+
+        expect(index.rows.map(row => row.name)).toEqual([
+            { source: "unnamed", key: "documentDiff.name.assetContent", ordinal: 1 },
+            { source: "unnamed", key: "documentDiff.name.assetContent", ordinal: 2 },
+        ]);
     });
 
     it("says nothing of the sort when no metadata was compared at all", () => {

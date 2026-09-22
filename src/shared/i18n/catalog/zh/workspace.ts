@@ -999,8 +999,8 @@ export const workspace = {
                 moved: "移动",
                 copied: "复制",
             },
-            // 移动或复制的来源。`{path}` 和行本身一样是仓库相对路径。
-            changeFromPath: "来自 {path}",
+            // 移动或复制的来源（行的提示）。`{name}` 是来源的名称，与行本身的命名方式相同，不是路径。
+            changeFrom: "来自 {name}",
             // 唯一一种会挡住「提交版本」的变更——所以它被单独标出来，也因此排在清单最前面，
             // 而不是按路径落在它本来的位置上。
             changeConflict: "未解决的冲突",

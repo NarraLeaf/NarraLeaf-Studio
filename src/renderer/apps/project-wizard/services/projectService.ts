@@ -219,19 +219,20 @@ export class ProjectService {
     /**
      * Record the plugins the template's content is built on into the project it just wrote.
      *
-     * The dependency table is otherwise derived by scanning the documents, and that scan can only
-     * attribute a node type to a plugin that is loaded - which a plugin the author has never
-     * switched on is not, and two of the bundled ones ship switched off. So a project made from a
-     * template that uses one would declare nothing, and its screens would be a page of unknown
-     * nodes with nothing on screen saying why. Declared here, the plugin panel raises the warning
-     * on the first open and offers the one press that turns it on.
+     * The dependency table is otherwise derived by scanning the documents, and nothing scans them
+     * until the author first runs, exports or rescans the project - while two of the bundled
+     * plugins ship switched off. So a project made from a template that uses one would open
+     * declaring nothing, and its screens would be a page of unknown nodes with nothing on screen
+     * saying why. Declared here, the plugin panel raises the warning on the first open and offers
+     * the one press that turns it on.
      *
      * A second write of a file written moments ago, like the languages above and for the same
      * reason: the config has to exist before the template lands, and this is only knowable after.
      *
      * A failure does not fail the project. Everything the author asked for is on disk; what they
-     * lose is the prompt, and the next save's own scan writes the table anyway once the plugin is
-     * on. Refusing to finish here would cost them the project over a hint.
+     * lose is the prompt, and the first scan writes the table anyway - it recognises a plugin's
+     * types by their names, switched on or not. Refusing to finish here would cost them the
+     * project over a hint.
      */
     private static async registerTemplateDependencies(
         configPath: string,
@@ -265,7 +266,7 @@ export class ProjectService {
                     // do not work without it.
                     hard: true,
                     // Left for the scan: which types are used is a fact about the documents, and
-                    // the scan reads them. What cannot be derived is the dependency itself.
+                    // the scan reads them. What it cannot do is run before the first open.
                     usedBy: {},
                 });
             }

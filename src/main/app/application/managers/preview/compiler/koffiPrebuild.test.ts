@@ -9,7 +9,26 @@
  */
 
 import { describe, expect, it } from "vitest";
+import fs from "fs";
+import { createRequire } from "module";
+import path from "path";
+import { GAME_BUILD_ARCHS_BY_PLATFORM } from "@shared/types/gameBuild";
 import { koffiPrebuildDirectories } from "./gameRuntimeArtifactCompiler";
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..", "..", "..", "..");
+
+/** Every prebuild directory some desktop game build asks for. */
+function directoriesGameBuildsNeed(): string[] {
+    const needed = new Set<string>();
+    for (const [platform, archs] of Object.entries(GAME_BUILD_ARCHS_BY_PLATFORM)) {
+        for (const arch of archs) {
+            for (const directory of koffiPrebuildDirectories(`${platform}-${arch}`)) {
+                needed.add(directory);
+            }
+        }
+    }
+    return [...needed];
+}
 
 describe("koffiPrebuildDirectories", () => {
     it("translates every desktop build target koffi ships a prebuild for", () => {
@@ -37,5 +56,32 @@ describe("koffiPrebuildDirectories", () => {
         expect(koffiPrebuildDirectories("android-arm64")).toEqual([]);
         expect(koffiPrebuildDirectories("web")).toEqual([]);
         expect(koffiPrebuildDirectories("")).toEqual([`${process.platform}_${process.arch}`]);
+    });
+});
+
+/*
+ * The game build copies koffi out of Studio's own installation, so a prebuild the packaged Studio
+ * leaves out is one no game it builds can have. electron-builder.yml trims koffi to a keep-list, and
+ * that list once named only the machines Studio itself is released for: an Apple Silicon Studio had
+ * no Intel prebuild to give an Intel or universal Mac game. Packaging Studio never notices - it
+ * looks at a prebuild for another machine only when a game build asks for one.
+ */
+describe("the koffi prebuilds a game build copies", () => {
+    it("are all in the package koffi publishes", () => {
+        const koffiRoot = path.dirname(createRequire(__filename).resolve("koffi/package.json"));
+        for (const directory of directoriesGameBuildsNeed()) {
+            const prebuild = path.join(koffiRoot, "build", "koffi", directory, "koffi.node");
+            expect(fs.existsSync(prebuild), prebuild).toBe(true);
+        }
+    });
+
+    it("are all kept by the packaged Studio", () => {
+        const config = fs.readFileSync(path.join(REPO_ROOT, "electron-builder.yml"), "utf8");
+        const trim = /node_modules\/koffi\/build\/koffi\/!\(([^)]*)\)/.exec(config);
+        expect(trim, "electron-builder.yml no longer trims koffi's prebuilds the way this reads").not.toBeNull();
+        const kept = trim![1].split("|");
+        for (const directory of directoriesGameBuildsNeed()) {
+            expect(kept, directory).toContain(directory);
+        }
     });
 });

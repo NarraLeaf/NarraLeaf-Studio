@@ -9,6 +9,7 @@
  */
 
 import type { GameMenuSpec } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { ReactElement, ReactNode } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
@@ -21,6 +22,7 @@ import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { StoryCompilePass } from "../game/storyCompilePass";
+import type { GameTimelineSpanName } from "../app/gameTimeline";
 
 /**
  * The compile-pass vocabulary, re-exported so a plugin author can NAME these types rather than
@@ -45,6 +47,42 @@ export type {
  * the module the two entries share.
  */
 export type { WidgetLogicApi, WidgetLogicEventDef } from "@shared/types/ui-editor/widgetLogic";
+
+/**
+ * The performance timeline's vocabulary: the names of the entries the game writes and the `detail`
+ * each carries, so a plugin reading them with a `PerformanceObserver` can check its reading against
+ * the contract rather than against a copy of it. The runtime writes them in every build; see
+ * `project/docs/runtime-api.md` ("Performance timeline").
+ *
+ * Types only, on purpose. The names are string literals a plugin writes out (`"nl.save.write"`);
+ * the unions below are what keep a typo in one from compiling.
+ */
+export type {
+    GameLaunchEntryDetail as RuntimePluginLaunchTimelineDetail,
+    GamePreloadAssetDetail as RuntimePluginPreloadAssetTimelineDetail,
+    GameSaveLoadDetail as RuntimePluginSaveLoadTimelineDetail,
+    GameSaveWriteDetail as RuntimePluginSaveWriteTimelineDetail,
+    GameSceneLoadDetail as RuntimePluginSceneLoadTimelineDetail,
+    GameStoryCompileDetail as RuntimePluginStoryCompileTimelineDetail,
+    GameSurfaceMountDetail as RuntimePluginSurfaceMountTimelineDetail,
+    GameTimelineSpanDetails as RuntimePluginTimelineSpanDetails,
+    GameTimelineSpanName as RuntimePluginTimelineSpanName,
+} from "../app/gameTimeline";
+
+/**
+ * Every name the game writes to the performance timeline.
+ *
+ * `nl.launch` and `nl.boot.firstFrame` are marks; `nl.boot` and every `nl.boot.<phase>` are measures
+ * with `.start` / `.end` marks beside them; the rest are measures whose `detail` is described by
+ * {@link RuntimePluginTimelineSpanDetails}.
+ */
+export type RuntimePluginTimelineName =
+    | "nl.launch"
+    | "nl.boot"
+    | "nl.boot.firstFrame"
+    | `nl.boot.${"bundle" | "story" | "preload"}`
+    | `nl.boot.${"bundle" | "story" | "preload"}.${"start" | "end"}`
+    | GameTimelineSpanName;
 
 export type RuntimePluginLogLevel = "info" | "warning" | "error";
 
@@ -447,6 +485,27 @@ export type RuntimePluginDiagnostics = {
     imageCache(): RuntimePluginImageCacheStats | null;
 };
 
+/**
+ * One reading of the game's processes, all sizes in bytes. The same shape the shells hand over, so
+ * there is one definition of what a reading is; the published declarations inline it.
+ */
+export type {
+    GameProcessMemoryReading as RuntimePluginProcessMemory,
+    GameProcessMemoryEntry as RuntimePluginProcessMemoryEntry,
+    GameProcessKind as RuntimePluginProcessKind,
+} from "@shared/types/gameProcessMemory";
+
+/**
+ * `process.memory` — how much memory the game's processes hold, as the operating system counts it:
+ * the number a task manager shows, across the main, renderer, GPU and utility processes.
+ *
+ * Asynchronous because only the main process can see them. Polled rather than subscribed, like
+ * `diagnostics`: a plugin asks on its own clock, and each call is a fresh reading.
+ */
+export type RuntimePluginProcess = {
+    memory(): Promise<GameProcessMemoryReading>;
+};
+
 /** `assets` — turn an asset id from the pack into a URL this shell can load. */
 export type RuntimePluginAssets = {
     url(assetId: string): string;
@@ -580,6 +639,11 @@ export type RuntimePluginGame = {
     story?: RuntimePluginStory;
     /** Present with `"diagnostics"`. */
     diagnostics?: RuntimePluginDiagnostics;
+    /**
+     * Present with `"process.memory"`, on shells that have processes of their own to count: the
+     * packaged game, a preview, and Dev Mode (narrowed to its window). Absent on the web export.
+     */
+    process?: RuntimePluginProcess;
     /** Present when `contributes.sidecars` is non-empty. */
     sidecar?: RuntimePluginSidecars;
     /** Present when `contributes.externalLinks` is non-empty. */

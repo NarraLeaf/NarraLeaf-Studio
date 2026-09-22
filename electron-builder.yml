@@ -74,12 +74,18 @@ files:
   # would empty the keep-set silently, and only the in-app game build would
   # notice, long after packaging succeeded.
   - '!node_modules/app-builder-bin/win/!(${arch}){,/**/*}'
-  # koffi (the FFI @lore-vcs/sdk loads through) ships 18 prebuilds and loads one
-  # by `${process.platform}_${arch}`. The keep-list is the set of hosts Studio is
-  # actually built for (see .github/workflows/release.yml) plus musl for glibc-less
-  # Linux; an explicit list rather than a macro because koffi's triplets agree with
-  # neither ${os} (win32, not win) nor ${arch} (armhf, riscv64d).
-  - '!node_modules/koffi/build/koffi/!(win32_x64|darwin_arm64|linux_x64|musl_x64){,/**/*}'
+  # koffi ships 18 prebuilds and loads one by `${process.platform}_${arch}`. Studio
+  # itself loads it for @lore-vcs/sdk, but the game build also copies prebuilds out of
+  # this directory into every desktop game (the cursor-moving blueprint nodes), so
+  # the keep-list is every desktop target a game can be built for - Windows, macOS
+  # and Linux on x64 and arm64, a universal Mac game being both darwin ones - plus
+  # musl for a glibc-less Linux host. A shorter list packages fine and fails later:
+  # keep only the hosts Studio is released for, and an Apple Silicon Studio has no
+  # prebuild to give an Intel or universal Mac game.
+  # koffiPrebuild.test.ts holds this line to the build targets. An explicit list
+  # rather than a macro because koffi's triplets agree with neither ${os} (win32,
+  # not win) nor ${arch} (armhf, riscv64d).
+  - '!node_modules/koffi/build/koffi/!(win32_x64|win32_arm64|darwin_x64|darwin_arm64|linux_x64|linux_arm64|musl_x64){,/**/*}'
   - from: src/renderer/public
     to: public
     filter:

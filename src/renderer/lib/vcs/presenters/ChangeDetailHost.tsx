@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import type { DocumentChange, DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "../documentChangeView";
-import { splitDocumentPath } from "../changeIndex";
+import { useTranslation } from "@/lib/i18n";
+import { documentNameOf, NO_DOCUMENT_NAMES, renderDocumentName } from "../documentName";
+import { readableStoragePath } from "../identifierDisplay";
 import type { ComparisonSides } from "./comparisonSide";
 import { presenterFor } from "./registry";
 // Imported for the registration inside them, which is the only thing that puts a presenter in
@@ -29,6 +31,12 @@ import "./UIGraphsChangeDetail";
  * over does not also inherit the job of naming the file - and so two presenters cannot end up
  * spelling the same path two ways.
  *
+ * **It is the name, and only the name.** The directory used to sit beside it, dimmed, as it once did
+ * on the index rows; it went from there when the rows started carrying the thing's own name, and it
+ * goes from here for the same reason - plus one: for a story it was `editor/story/stories/<uuid>`,
+ * drawn in full above the scene, and the interface never shows a uuid. The path stays in the name's
+ * tooltip where it is one an author could look for (`identifierDisplay.ts`).
+ *
  * **One presenter, mounted once.** `presenterFor` answers with a single presenter and this renders
  * that one; nothing here loops. The rule matters because the pane it replaced was a stack of every
  * document's changes, and a detail pane that grew a second list would be that stack again with a
@@ -48,7 +56,7 @@ export interface ChangeDetailHostProps {
      * record would put the generic list of rows in front of every asset in the project.
      */
     readonly member?: DocumentDiffEntry;
-    /** What to call this file, when the row is named by something other than its path. */
+    /** What the row that was pressed called this file. See the identity line below. */
     readonly name?: string;
     /** What happened, when the row stands for a record inside the file rather than the file. */
     readonly kind?: DocumentChangeKind;
@@ -75,8 +83,9 @@ export function ChangeDetailHost({
     actions,
     className,
 }: ChangeDetailHostProps) {
+    const { t } = useTranslation();
     const presenter = presenterFor(member ?? entry);
-    const { directory, name } = splitDocumentPath(entry.path);
+    const path = readableStoragePath(entry.path);
     const kind = happened ?? entry.kind;
 
     return (
@@ -88,12 +97,11 @@ export function ChangeDetailHost({
                 >
                     {CHANGE_KIND_GLYPH[kind]}
                 </span>
-                <span className="min-w-0 truncate text-xs font-medium text-fg">{named ?? name}</span>
-                {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" data-tip={directory}>
-                        {directory}
-                    </span>
-                )}
+                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={path ?? undefined}>
+                    {/* A caller that named nothing gets the naming layer's answer with nothing read,
+                        which is still never the file's own name. */}
+                    {named ?? renderDocumentName(documentNameOf(entry.path, NO_DOCUMENT_NAMES), t)}
+                </span>
                 {actions && <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div>}
             </div>
             <div

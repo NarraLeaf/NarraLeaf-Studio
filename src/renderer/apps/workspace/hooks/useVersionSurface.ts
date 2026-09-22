@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translate } from "@/lib/i18n";
 import { listDocumentNames } from "@/lib/vcs/documentName";
-import { readDocumentNames } from "@/lib/vcs/storyTitles";
+import { documentNameSourcesFor } from "@/lib/vcs/documentName";
+import { readDocumentNames } from "@/lib/vcs/nameSources";
 import { Services } from "@/lib/workspace/services/services";
 import { VcsCallError, VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
@@ -1276,10 +1277,14 @@ export function useVersionSurface(): VersionSurface {
                 // `editor/story/stories/48bb.../storydoc.json`, are two different things as far as
                 // anybody reading them is concerned.
                 //
-                // Read here rather than through `useDocumentNames`, which would put a story-index
-                // read behind every surface that mounts this hook, for the sake of a notice that
-                // almost never appears.
-                const names = await readDocumentNames(services.versionControl, { at: "working-tree" });
+                // Read here rather than through `useDocumentNames`, which would put a library read
+                // behind every surface that mounts this hook, for the sake of a notice that almost
+                // never appears - and only the libraries the conflicted paths are named from.
+                const names = await readDocumentNames(
+                    services.versionControl,
+                    { before: null, after: { at: "working-tree" } },
+                    documentNameSourcesFor(conflicts),
+                );
                 if (!alive.current) return true;
                 services.ui.notifications.showSticky({
                     type: NotificationType.Error,

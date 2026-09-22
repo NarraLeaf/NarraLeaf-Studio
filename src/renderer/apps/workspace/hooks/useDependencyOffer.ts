@@ -30,8 +30,15 @@ const NAMES_LISTED = 4;
  * Sticky, and once per window - the same latch, for the same reason, as the recovery and update
  * offers beside it: the notification store outlives any remount, so a per-component guard stacks
  * an identical toast per mount.
+ *
+ * While it is up, it follows the table. The table changes under it - a rescan (a run, an export,
+ * Rescan) drops a plugin the project stopped using, a plugin gets installed or switched on from the
+ * screen the warning leads to - so when no dependency is left unmet the warning is withdrawn, and
+ * when fewer are it names only those. A warning left standing over a plugin the project no longer
+ * needs is one the author can do nothing about.
  */
 let offered = false;
+let offerId: string | null = null;
 
 export function useDependencyOffer() {
     const { context, recovery } = useWorkspace();
@@ -47,27 +54,42 @@ export function useDependencyOffer() {
         const dependencies = context.services.get<ProjectDependencyService>(Services.ProjectDependency);
 
         const evaluate = () => {
+            const unmet = (dependencies.getResolution()?.entries ?? []).filter(isUnmet);
+            const message = translateN("plugins.dependencies.unavailable", unmet.length, { count: unmet.length });
+            const detail = unmet
+                .slice(0, NAMES_LISTED)
+                .map(entry => entry.dependency.name?.trim() || entry.dependency.id)
+                .join(", ");
+
             if (offered) {
+                if (offerId === null) {
+                    return; // closed by the author; not raised again in this window
+                }
+                if (unmet.length === 0) {
+                    ui.notifications.close(offerId);
+                    offerId = null;
+                } else {
+                    ui.notifications.update(offerId, { message, detail });
+                }
                 return;
             }
-            const unmet = (dependencies.getResolution()?.entries ?? []).filter(isUnmet);
             if (unmet.length === 0) {
                 return;
             }
             offered = true;
 
-            const names = unmet
-                .slice(0, NAMES_LISTED)
-                .map(entry => entry.dependency.name?.trim() || entry.dependency.id);
-            ui.notifications.showSticky({
+            offerId = ui.notifications.showSticky({
                 type: NotificationType.Warning,
-                message: translateN("plugins.dependencies.unavailable", unmet.length, { count: unmet.length }),
-                detail: names.join(", "),
+                message,
+                detail,
                 actions: [{
                     label: translate("plugins.dependencies.open"),
                     primary: true,
                     onClick: () => openPluginsPanel(context, { view: "dependencies" }),
                 }],
+                onClose: () => {
+                    offerId = null;
+                },
             });
         };
 
