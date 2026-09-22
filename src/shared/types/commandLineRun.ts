@@ -172,8 +172,27 @@ export type CommandLineRunEvent =
          * way up" arrive as the same event - one `ok: false` and a sentence - and a job would have
          * to read English to know whether retrying is worth anything. `invocation` is the caller's
          * mistake, `unavailable` is the host declining for a reason that may pass.
+         *
+         * `environment` is this Studio and this profile being unable to answer for the project at
+         * all: a plugin the project declares that is not here, or not running here, so its nodes,
+         * widgets and story rows would read as unknown types; or something in the run asking for a
+         * dialog nobody is at the screen to answer. Every job exits `studio-failed` on it - a machine
+         * someone has to look at, not a project someone has to change.
          */
-        refusal?: "invocation" | "unavailable";
+        refusal?: "invocation" | "unavailable" | "environment";
         /** Present exactly when the job was a `--lint` sweep that finished. */
         lint?: CommandLineLintResult;
     };
+
+/**
+ * The sentence a command-line run ends on when something in it asks a question.
+ *
+ * One wording for both processes: the main process refuses a file picker or a permission prompt, the
+ * workspace refuses a dialog of its own or a page's `alert()`, and an operator reading the log of
+ * either should see the same shape of line - who asked, for what, and why the run stopped rather
+ * than waited.
+ */
+export function describeUnattendedRefusal(what: string): string {
+    return `${what}, and a command-line run has nobody at the screen to answer it.`
+        + " The run stops here rather than waiting for an answer that will not come.";
+}

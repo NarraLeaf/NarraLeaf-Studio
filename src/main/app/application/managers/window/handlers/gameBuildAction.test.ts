@@ -113,6 +113,8 @@ function makeWindow(options: {
         app,
         getApp: () => appDouble({ exportPatch }),
         getProps: () => props,
+        // A window somebody is looking at: the picker opens (see `unattendedPrompt.ts`).
+        refuseUnattendedPrompt: () => undefined,
         __grants: grants,
         __exportPatch: exportPatch,
         __storageManager: storageManager,

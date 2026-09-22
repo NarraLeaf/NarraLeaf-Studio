@@ -73,6 +73,10 @@ export const COMMAND_LINE_BUILD_REPORT_SCHEMA = 1;
 
 /** What the launch was asked to produce, restated in the report so the file stands alone. */
 export type CommandLineBuildReportRequest = {
+    /**
+     * The variant's name, as the project spells it - `main` for the release build. Never its stored
+     * id: that is a generated uuid no surface of Studio shows, and a report is read by people too.
+     */
     variant: string;
     platform: GameBuildPlatform;
     formats: GameBuildFormat[];

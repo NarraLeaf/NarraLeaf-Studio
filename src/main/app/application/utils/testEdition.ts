@@ -11,11 +11,10 @@
  *
  * # Names, not ids
  *
- * A variant's id is a generated uuid that no author has ever seen, and a line that had to carry one
- * would be a line nobody could write without opening the project's files. So a variant is named by
- * the name the author gave it - `main` for the release build, whose name is fixed in every language.
- * A DLC's id is different: the author chose it and it names the file they ship, so a DLC is found by
- * its name first and by its id when no name matches.
+ * A variant is named by the name its author gave it, exactly as `--build-variant` names one - both go
+ * through `commandLineVariant.ts`, which says why the stored id is refused. A DLC's id is different:
+ * the author chose it and it names the file they ship, so a DLC is found by its name first and by
+ * its id when no name matches.
  *
  * # What is refused
  *
@@ -30,13 +29,13 @@
 
 import {
     APP_TAG_ID_RELEASE,
-    findAppTagByName,
     listAppTags,
     RELEASE_APP_TAG,
     type ProjectAppTag,
 } from "@shared/types/appTag";
 import { dlcAttachesToBuild, type ProjectDlc } from "@shared/types/dlc";
 import type { CommandLineTestEdition } from "@shared/types/commandLineRun";
+import { findCommandLineVariant, quoteForLine } from "./commandLineVariant";
 
 /** The build a line that names nothing runs: the release variant, with no DLC. */
 export function defaultTestEdition(): CommandLineTestEdition {
@@ -62,22 +61,11 @@ export function resolveTestEdition(input: TestEditionInput): TestEditionResult {
     const allVariants = listAppTags(input.variants);
     let variant: ProjectAppTag = RELEASE_APP_TAG;
     if (input.variantName !== null) {
-        const found = findAppTagByName(allVariants, input.variantName);
-        if (found === "ambiguous") {
-            // Only a hand-edited document can get here: every surface that names a variant numbers a
-            // second one rather than letting two share a name.
-            return {
-                ok: false,
-                reason: `More than one build variant is called "${input.variantName.trim()}", so --test-variant cannot tell them apart. Rename one in Project ▸ App.`,
-            };
+        const found = findCommandLineVariant(input.variants, input.variantName, "--test-variant");
+        if (!found.ok) {
+            return found;
         }
-        if (!found) {
-            return {
-                ok: false,
-                reason: `The project has no build variant "${input.variantName.trim()}". It has: ${allVariants.map(tag => tag.name).join(", ")}.`,
-            };
-        }
-        variant = found;
+        variant = found.variant;
     }
 
     const chosen = new Set<string>();
@@ -191,13 +179,4 @@ function describeDlcFor(dlcs: readonly ProjectDlc[], variant: ProjectAppTag): st
     // Each with its id beside it: the id is author-chosen, names the shipped file, and is what
     // tells two similar names apart - and it is accepted on the line as well as the name.
     return `DLC for "${variant.name}": ${valid.map(dlc => `${dlc.name} (${dlc.id})`).join(", ")}.`;
-}
-
-/**
- * A name as a command line would carry it: bare when it is one word, quoted when it is not.
- *
- * Only for the suggestion in a refusal - a remedy that cannot be pasted back is half a remedy.
- */
-function quoteForLine(name: string): string {
-    return /^[\w.-]+$/.test(name) ? name : `"${name}"`;
 }
