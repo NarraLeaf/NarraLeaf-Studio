@@ -1531,6 +1531,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         textReadTrackerRef.current = null;
     }, []);
 
+    // A closing window never unmounts this component, so the tracker's own detach does not run and
+    // its debounce timer dies with the page: the lines finished just before the close would be
+    // unread next time. `beforeunload` is the last point a write can still be sent, and the one
+    // the playtime clock flushes from (see `usePlaytime`).
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+        const onBeforeUnload = () => textReadTrackerRef.current?.flush();
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, []);
+
     const isCurrentTextReadInGame = useCallback((): boolean => {
         return textReadTrackerRef.current?.isCurrentTextRead() === true;
     }, []);

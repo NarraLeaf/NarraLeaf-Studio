@@ -200,6 +200,13 @@ extraResources:
       # so copying the whole tree would both put a Mach-O binary inside the Windows
       # installer and multiply that size by the number of platforms staged.
       - '!ffmpeg{,/**/*}'
+  # The copyright and licence texts of every npm package inlined into Studio's bundles, which
+  # project/build/third-party-notices.js writes while they are built. In the resources folder
+  # rather than inside the asar because it is a file the About page opens in the system's text
+  # editor (AppOpenThirdPartyNoticesHandler), and nothing outside Electron can read an asar.
+  # pack-electron.js refuses to package when it is missing or incomplete.
+  - from: ./dist/THIRD-PARTY-NOTICES.txt
+    to: THIRD-PARTY-NOTICES.txt
 mac:
   target: dmg
   icon: resources/app-icon.icns
