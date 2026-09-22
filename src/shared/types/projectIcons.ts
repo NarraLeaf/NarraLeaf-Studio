@@ -82,9 +82,10 @@ export type ProjectIconOutput = {
 };
 
 /**
- * Desktop and mobile bake at 1024: electron-builder converts a PNG that size
- * into .icns/.ico, and the mobile repack downscales it into whatever slots the
- * shell template declares. The web sizes are the ones browsers actually ask for.
+ * Desktop and mobile bake at 1024: the build writes the .icns/.ico from a PNG
+ * that size (1024 is the largest .icns slot; see `desktopIcons.ts`), and the
+ * mobile repack downscales it into whatever slots the shell template declares.
+ * The web sizes are the ones browsers actually ask for.
  */
 export const PROJECT_ICON_OUTPUTS: readonly ProjectIconOutput[] = [
     { id: "macos", target: "macos", size: 1024, fileName: "macos.png", opaque: false },
