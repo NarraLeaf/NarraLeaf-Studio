@@ -28,6 +28,7 @@ import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hook
 import type { UIStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+import { useSurfaceTreeInteractivity } from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
 
 /** Shared so an element with no offsets keeps one object identity and never re-poses on it. */
 const ZERO_APPEARANCE_OFFSETS = { x: 0, y: 0 };
@@ -64,6 +65,12 @@ type EditorNodeWrapperProps = {
     styleOverrides?: CSSProperties;
     hasRuntimeOpacityOverride?: boolean;
     hostAdapter?: UIHostAdapter;
+    /**
+     * Whether this node may take pointer / keyboard input at all. What it takes is this AND the
+     * enclosing tree's interactivity, which changes for the whole tree at once and so is read from
+     * context rather than handed to every wrapper (see `surfaceTreeContext`). Outside a tree the
+     * context says yes, and these alone decide.
+     */
     interactive?: boolean;
     keyboardInteractive?: boolean;
     useAppearanceInspectorPreview?: boolean;
@@ -151,8 +158,8 @@ export function EditorNodeWrapper({
     styleOverrides,
     hasRuntimeOpacityOverride = false,
     hostAdapter,
-    interactive = true,
-    keyboardInteractive = interactive,
+    interactive: ownInteractive = true,
+    keyboardInteractive: ownKeyboardInteractive = ownInteractive,
     useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
@@ -160,6 +167,9 @@ export function EditorNodeWrapper({
     componentParams,
     children,
 }: EditorNodeWrapperProps) {
+    const treeInteractivity = useSurfaceTreeInteractivity();
+    const interactive = ownInteractive && treeInteractivity.interactive;
+    const keyboardInteractive = ownKeyboardInteractive && treeInteractivity.keyboardInteractive;
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const containerRef = useRef<HTMLDivElement | null>(null);

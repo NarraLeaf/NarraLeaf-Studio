@@ -117,6 +117,26 @@ export function useWidgetRuntimeSnapshot(): WidgetRuntimeSnapshot {
     );
 }
 
+/**
+ * One value a widget keeps in the runtime store - a slider's value, a switch's check, a text field's
+ * text - handed back again only when that value itself moved.
+ *
+ * Those widgets used to subscribe to the whole snapshot just to be told to read their own value
+ * again, so every hover, press and focus anywhere on the page re-rendered every one of them and every
+ * part each one places: on a settings page with eighteen sliders, a single pointer moving onto the
+ * page cost about two hundred component renders per write, ten writes in a row. The store replaces
+ * such a value with a new object whenever it changes and never edits one in place, so its identity
+ * is the whole comparison.
+ */
+export function useWidgetRuntimeStoreValue<T>(read: (store: WidgetRuntimeStateStore) => T): T | undefined {
+    const store = useWidgetRuntimeStateStore();
+    return useSyncExternalStore(
+        store?.subscribe ?? EMPTY_UNSUBSCRIBE,
+        () => (store ? read(store) : undefined),
+        () => (store ? read(store) : undefined),
+    );
+}
+
 export type WidgetRuntimeElementState = {
     variantOverrideId: string | null;
     signals: SystemInteractionSignals;

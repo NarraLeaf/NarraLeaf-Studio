@@ -11,6 +11,7 @@ import { buildSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimat
 import { BlueprintWidgetInitLifecycle } from "./BlueprintWidgetInitLifecycle";
 import { ElementAnimationPresence } from "./ElementAnimationLayer";
 import { SurfaceElementTree } from "./SurfaceElementTree";
+import { SurfaceTreeInteractivityContext, type SurfaceTreeInteractivity } from "./surfaceTreeContext";
 
 function flattenNodes(node: ReactNode): ReactNode[] {
     if (Array.isArray(node)) {
@@ -498,14 +499,26 @@ describe("SurfaceElementTree", () => {
             keyboardInteractive: true,
         });
 
+        // The tree's own interactivity is handed out once, at its root, rather than to each
+        // wrapper - see `surfaceTreeContext` - and the wrapper combines it with its chrome flag.
+        const interactivity = flattenNodes(tree).find(
+            (node): node is React.ReactElement<{ value: SurfaceTreeInteractivity }> =>
+                isValidElement(node) && node.type === SurfaceTreeInteractivityContext.Provider,
+        );
+        expect(interactivity?.props.value).toEqual({ interactive: false, keyboardInteractive: true });
+
         const wrappers = flattenNodes(tree).filter(
             (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
                 isValidElement(node) && node.type === EditorNodeWrapper,
         );
         const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
-
-        expect(buttonWrapper?.props.interactive).toBe(false);
+        expect(buttonWrapper?.props.interactive).toBe(true);
         expect(buttonWrapper?.props.keyboardInteractive).toBe(true);
+
+        // And what a wrapper under that tree does with it: the pointer half is shut, so it draws no
+        // element id for a press to be traced back to.
+        const markup = renderToStaticMarkup(<>{tree}</>);
+        expect(markup).not.toContain('data-ui-element-id="button"');
     });
 
     it("applies runtime button cursor to the authored wrapper bounds", () => {

@@ -17,8 +17,8 @@ import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeElementState,
-    useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    useWidgetRuntimeStoreValue,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import {
     buttonResolvedVisualToRectangleLike,
@@ -66,13 +66,11 @@ export function TextInputRenderer(props: WidgetRendererProps) {
     const valueChangedPendingRef = useRef<{ value: string; previousValue: string } | null>(null);
     const runtimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
-    const snapshot = useWidgetRuntimeSnapshot();
-    void snapshot;
-
     const p = getTextInputProps(element);
     // The player's text lives in the runtime store for the session; `props.value` is only the value
     // the author set as a starting point and is never written back to the document.
-    const value = (runtimeStore?.getTextInputProperties(runtimeElementKey) ?? resolveTextInputRuntimeValue(p)).value;
+    const runtimeValue = useWidgetRuntimeStoreValue(store => store.getTextInputProperties(runtimeElementKey));
+    const value = (runtimeValue ?? resolveTextInputRuntimeValue(p)).value;
     const valueRef = useRef(value);
     useEffect(() => {
         valueRef.current = value;

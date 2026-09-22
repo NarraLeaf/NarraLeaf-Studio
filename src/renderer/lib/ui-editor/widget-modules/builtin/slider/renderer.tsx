@@ -9,8 +9,8 @@ import {
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import {
     useWidgetRuntimeElementKey,
-    useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
+    useWidgetRuntimeStoreValue,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import { getSliderProps } from "./helpers";
@@ -107,9 +107,8 @@ export function SliderRenderer(props: WidgetRendererProps) {
     const valueChangedPendingRef = useRef<{ value: number; previousValue: number } | null>(null);
     const runtimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
-    const snapshot = useWidgetRuntimeSnapshot();
     const authoredProps = getSliderProps(element);
-    const runtimeProps = runtimeStore?.getSliderProperties(runtimeElementKey);
+    const runtimeProps = useWidgetRuntimeStoreValue(store => store.getSliderProperties(runtimeElementKey));
     const sliderProps = getSliderProps({
         ...element,
         props: {
@@ -121,7 +120,6 @@ export function SliderRenderer(props: WidgetRendererProps) {
     useEffect(() => {
         valueRef.current = sliderProps.value;
     }, [sliderProps.value]);
-    void snapshot;
 
     const trackElement = useMemo(() => findSliderPart(element, document, "track"), [document, element]);
     const handleElement = useMemo(() => findSliderPart(element, document, "handle"), [document, element]);
