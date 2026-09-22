@@ -89,7 +89,9 @@ function surfaceSlotEvents(): Set<ScriptEventId> {
 function widgetSlotEvents(widgetType: string): Set<ScriptEventId> {
     const reached = new Set<ScriptEventId>();
     for (const slotId of listWidgetLogicEventIds(widgetType)) {
-        const eventId = scriptEventIdForWidgetSlot(widgetType, slotId);
+        // A built-in widget's slots only ever resolve to built-in ids; the plugin names are for
+        // widgets a plugin contributes, which this table does not hold.
+        const eventId = scriptEventIdForWidgetSlot(widgetType, slotId) as ScriptEventId | null;
         if (eventId) {
             reached.add(eventId);
         }

@@ -4,7 +4,8 @@ import type { WidgetLogicApi } from "./widgetLogic";
  * Widget types a plugin contributes, as the shared capability lookups see them.
  *
  * The questions every seam asks of a widget type - which events it raises and which heads start on
- * them (`widgetLogic.ts`), whether it may hold children (`document.ts`) - are answered from tables
+ * them (`widgetLogic.ts`), whether it may hold children and which of them are parts it built for
+ * itself (`document.ts`) - are answered from tables
  * written in `shared`, because the workspace, the Dev Mode window and a built game all have to ask
  * them and only `shared` is in all three. A plugin's widget is not in those tables and cannot be:
  * it is registered at run time, and in a different registry in each realm. Before this module every
@@ -35,6 +36,12 @@ export type ContributedWidgetDeclaration = {
     readonly logicApi?: WidgetLogicApi;
     /** Whether an author may put other elements inside it. */
     readonly acceptsChildren?: boolean;
+    /**
+     * The parts it builds for itself and holds nothing else, by slot name - the Slider and Switch
+     * answer rather than the Container one. Already through `sanitizeContributedWidgetPartSlots`,
+     * so a declaration that has slots never also says `acceptsChildren`.
+     */
+    readonly partSlots?: readonly string[];
 };
 
 export type ContributedWidgetSource = {
@@ -98,6 +105,63 @@ export function listContributedWidgets(): ContributedWidgetDeclaration[] {
         }
     }
     return out;
+}
+
+/**
+ * The `extra` key a plugin widget's part carries its slot name under.
+ *
+ * One key for every plugin widget rather than one per type, as the built-in part owners each have
+ * (`sliderSlot`, `switchSlot`): an element has one parent, so it can only ever be a part of one
+ * widget, and a plugin author writing `createDefaultChildElements` has one name to learn instead of
+ * one to invent and then declare as well.
+ */
+export const CONTRIBUTED_WIDGET_PART_SLOT_KEY = "partSlot";
+
+/**
+ * The part slots a contributed widget declares, or an empty list when it declares none (or no loaded
+ * plugin contributes the type).
+ */
+export function getContributedWidgetPartSlots(type: string | undefined | null): readonly string[] {
+    return getContributedWidget(type)?.partSlots ?? [];
+}
+
+export type ContributedPartSlotsProblem = { message: string };
+
+/**
+ * The part slots a plugin widget is held to, from the ones it declared.
+ *
+ * Slot names are kept when they are non-empty strings, once each. A widget that declares slots and
+ * `acceptsChildren` as well is answered as a widget with parts: the two describe opposite parents -
+ * one takes whatever an author puts in it, the other only what it built - and the one with parts is
+ * the narrower claim, so honouring it is the answer that cannot seal an author's element inside
+ * something they were told would hold it. What was set aside is returned beside the result so the
+ * registration site can say so to the plugin's author.
+ */
+export function sanitizeContributedWidgetPartSlots(
+    partSlots: unknown,
+    acceptsChildren: boolean,
+): { partSlots: readonly string[]; acceptsChildren: boolean; problems: ContributedPartSlotsProblem[] } {
+    const problems: ContributedPartSlotsProblem[] = [];
+    const slots: string[] = [];
+    if (partSlots !== undefined && !Array.isArray(partSlots)) {
+        problems.push({ message: "partSlots is not a list of slot names, so the widget has no parts" });
+    }
+    for (const slot of Array.isArray(partSlots) ? partSlots : []) {
+        if (typeof slot !== "string" || slot.trim().length === 0) {
+            problems.push({ message: `part slot ${JSON.stringify(slot)} is not a slot name` });
+            continue;
+        }
+        if (!slots.includes(slot)) {
+            slots.push(slot);
+        }
+    }
+    if (slots.length > 0 && acceptsChildren) {
+        problems.push({
+            message: "declares both partSlots and acceptsChildren; a widget with parts holds only its parts, "
+                + "so acceptsChildren is ignored",
+        });
+    }
+    return { partSlots: slots, acceptsChildren: slots.length > 0 ? false : acceptsChildren, problems };
 }
 
 /**

@@ -271,6 +271,30 @@ node project/app/blueprint.js apply back.bp --project <dir> --write
 #   blueprint "Gallery back" owner=widgetMain surface=demo-gallery element=demo-gallery-back
 ```
 
+## A plugin's widgets
+
+The catalogue is Studio's widgets. A plugin's widget joins it only when the run is
+handed the plugin:
+
+```sh
+node project/app/ui.js widget acme.rating.meter --plugin D:/path/to/acme.rating
+node project/app/ui.js check gauge.ui --project D:/path/to/project --plugin D:/path/to/acme.rating
+```
+
+`--plugin` takes a plugin's own directory - the one holding its `manifest.json` -
+and may be given more than once. The plugin's studio entry is run the way Studio
+runs it, with an `app` that records the widgets it registers and answers every
+other call with nothing, and each widget goes into the same registry the editor
+reads, through the same declaration checks. So what the editor refuses about a
+plugin widget, this refuses too: a child under a widget that declares part slots
+is `ui.not_a_part` unless its `extra.partSlot` names one of them, exactly as a
+Slider's child must carry its own marker.
+
+The plugin's code runs in this process with this process's rights - Studio's
+permission gate is not here - so pass only a plugin you would build yourself.
+Without `--plugin`, a plugin's widget type is `ui.unknown_widget_type`, and the
+hint says to pass it.
+
 ## Checking
 
 ```sh

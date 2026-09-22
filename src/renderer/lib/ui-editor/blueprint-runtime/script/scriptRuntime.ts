@@ -28,7 +28,7 @@ import { addressWidgetFromExecution } from "@/lib/ui-editor/blueprint-nodes/buil
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { listScriptLayers, scriptLayerKey } from "@shared/blueprint/blueprintLayers";
-import { scriptEventExportName, type ScriptEventId } from "./scriptEvents";
+import { scriptExportNameOf } from "./scriptEventDispatch";
 import type { GameScriptContext, ScriptListRow, ScriptSelf, ScriptWidgetType } from "./scriptContext";
 
 /** A mounted script: its module namespace, and where it came from for a message that names a file. */
@@ -148,17 +148,18 @@ export function unmountCompiledScripts(): void {
  * A **script event id**, not the id the dispatch raised. Those are two vocabularies and they differ
  * on every head named after its widget - a slider raises `valueChanged` and its head is
  * `sliderValueChanged` - so a caller translates first through `scriptEventDispatch.ts`. Passing the
- * dispatch's own id here is what made 81 declared handler names unreachable.
+ * dispatch's own id here is what made 81 declared handler names unreachable. A string rather than
+ * the typed id, because a plugin widget's own events are script events under names its plugin chose.
  */
 export function resolveScriptHandler(
     layerKey: string,
-    eventId: ScriptEventId,
+    eventId: string,
 ): ((...args: unknown[]) => unknown) | null {
     const mounted = state().modules[layerKey];
     if (!mounted) {
         return null;
     }
-    const handler = mounted.module[scriptEventExportName(eventId)];
+    const handler = mounted.module[scriptExportNameOf(eventId)];
     return typeof handler === "function" ? (handler as (...args: unknown[]) => unknown) : null;
 }
 
@@ -173,7 +174,7 @@ export function resolveScriptHandler(
  */
 export function resolveScriptLayerHandlers(
     blueprint: Blueprint | undefined,
-    eventId: ScriptEventId,
+    eventId: string,
 ): Array<{ layerKey: string; handler: (...args: unknown[]) => unknown }> {
     const out: Array<{ layerKey: string; handler: (...args: unknown[]) => unknown }> = [];
     if (!blueprint) {

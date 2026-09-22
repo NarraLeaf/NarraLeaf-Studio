@@ -11,7 +11,6 @@ import {
     mountCompiledScripts,
     resolveScriptHandler,
 } from "./script/scriptRuntime";
-import type { ScriptEventId } from "./script/scriptEvents";
 import { parseScriptLayerKey } from "@shared/blueprint/blueprintLayers";
 import { translate } from "@/lib/i18n";
 
@@ -128,7 +127,7 @@ function reportScriptsWithNothingToCall(
         if (accepted.length === 0) {
             continue;
         }
-        const called = accepted.filter((eventId: ScriptEventId) => resolveScriptHandler(layerKey, eventId));
+        const called = accepted.filter(eventId => resolveScriptHandler(layerKey, eventId));
         if (called.length > 0) {
             continue;
         }

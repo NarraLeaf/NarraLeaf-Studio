@@ -188,6 +188,19 @@ export type PluginWidgetModule = {
      * Absent or false, it is a leaf.
      */
     readonly acceptsChildren?: boolean;
+    /**
+     * The parts this widget builds for itself, when it holds those and nothing else - as the built-in
+     * Slider holds its track and handle.
+     *
+     * Each entry names a slot. `createDefaultChildElements` builds the parts, and each part says which
+     * slot it fills with `extra: { partSlot: "<slot>" }`. The widget then holds exactly those: the
+     * canvas, the layer outline, paste and the insert tool put nothing else inside it, a part cannot
+     * be dragged out of it, and the interface command line refuses a child that names no declared slot.
+     * An author can still select, restyle and delete a part. Declaring slots makes `acceptsChildren`
+     * irrelevant - a widget with parts takes nothing else - and `render` receives the parts as
+     * `children`, like any other children.
+     */
+    readonly partSlots?: readonly string[];
     readonly displayName: string;
     readonly icon: LucideIcon;
     createDefaultElement(): Partial<UIElement>;
