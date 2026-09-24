@@ -606,6 +606,30 @@ export const assets = {
             markLoop: "Set loop point at playhead",
             markOut: "Set out point at playhead",
             channels: "{count} ch",
+            seam: "Loop seam",
+            auditionSeam: "Audition seam",
+            auditionSeamTip: "Plays {seconds} seconds either side of the seam.",
+            seamEnd: {
+                out: "Out point",
+                clipEnd: "End of clip",
+            },
+            seamStart: {
+                loop: "Loop point",
+                in: "In point",
+                clipStart: "Start of clip",
+            },
+            levels: "Levels",
+            peak: "Peak",
+            loudness: "Loudness",
+            leadingSilence: "Leading silence",
+            trailingSilence: "Trailing silence",
+            clipping: "Clipping",
+            clippingNone: "None",
+            clippingCount: {
+                one: "{count} place",
+                other: "{count} places",
+            },
+            seconds: "{value} s",
         },
         // Shown in the keybinding settings table and the "?" cheat sheet.
         keybindings: {
@@ -633,6 +657,7 @@ export const assets = {
             zoomIn: "Zoom in",
             zoomOut: "Zoom out",
             zoomFit: "Fit whole clip",
+            auditionSeam: "Audition loop seam",
         },
     },
     image: {

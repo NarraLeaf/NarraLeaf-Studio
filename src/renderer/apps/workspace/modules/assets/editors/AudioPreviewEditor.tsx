@@ -4,6 +4,7 @@ import {
     BetweenVerticalEnd,
     BetweenVerticalStart,
     Crop,
+    Ear,
     IterationCw,
     Maximize,
     Pause,
@@ -30,6 +31,9 @@ import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefi
 import { audioLoopHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { WaveformView, type LoopEnd } from "./audio/WaveformView";
+import { LoopSeamView, SEAM_DEFAULT_HALF_SECONDS, clampHalfWindow } from "./audio/LoopSeamView";
+import { planSeamAudition, resolveLoopSeam, SEAM_AUDITION_SECONDS } from "./audio/seam";
+import { measureLevelsInSlices, type ClipLevels } from "./audio/levels";
 import { useClipPlayback, type PlayRange } from "./audio/useClipPlayback";
 import { clipDuration, clipLength, fromAudioBuffer, type AudioClip, type SampleRange } from "./audio/audioClip";
 import { clampView, ensureVisible, fitAll, scrollByFraction, zoomAt, zoomToRange } from "./audio/viewWindow";
@@ -44,6 +48,8 @@ import {
     type LoopPoints,
 } from "./audio/loopHistory";
 import { TooltipGroup } from "@/lib/tooltip";
+import { Button, FieldLabel } from "@/lib/components/elements";
+import { cn } from "@/lib/utils/cn";
 import { ASSET_UNDECODABLE } from "@/lib/workspace/services/assets/assetReadFailure";
 import { useAssetReadNotice, type AssetReadFailure } from "./useAssetReadNotice";
 
@@ -76,6 +82,21 @@ function formatTime(seconds: number): string {
     return `${minutes}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
+/** `m:ss.mmm` - marker positions are stored to the millisecond, so they are shown to it. */
+function formatTimeMs(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+        return "0:00.000";
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds - minutes * 60;
+    return `${minutes}:${rest.toFixed(3).padStart(6, "0")}`;
+}
+
+/** Levels read to one decimal, which is as fine as any of them is worth comparing. */
+function formatDb(value: number): string {
+    return Number.isFinite(value) ? value.toFixed(1) : "-\u221e";
+}
+
 /**
  * Audio preview: a read-only waveform over the asset - playback, zoom/scroll, range auditioning,
  * and the clip's in and out points.
@@ -89,7 +110,7 @@ function formatTime(seconds: number): string {
  * That also makes cue points the only undoable thing here, which is what the history covers.
  */
 export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentProps<AudioPreviewPayload>) {
-    const { t } = useTranslation();
+    const { t, tn } = useTranslation();
     const { context } = useWorkspace();
     // Playback, zoom, selection and the jump-to-point keys are pure inspection and stay live while
     // frozen. The cue points are the one thing here that is written back to the asset record, so
@@ -109,6 +130,10 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const [selection, setSelection] = useState<SampleRange | null>(null);
     const [volume, setVolume] = useState(1);
     const [muted, setMuted] = useState(false);
+    /** Samples shown either side of the loop seam: its own zoom, separate from the waveform's. */
+    const [seamHalfWindow, setSeamHalfWindow] = useState(0);
+    /** Measured in the background after the clip decodes; `null` until then. */
+    const [levels, setLevels] = useState<ClipLevels | null>(null);
 
     // The committed region. Undo for it is a scope in `HistoryService` like every other editor's,
     // rather than a `{past, present, future}` reducer of its own - the markers are the whole of this
@@ -204,6 +229,23 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             const length = clipLength(clip);
             return current.start >= length ? null : { start: current.start, end: Math.min(current.end, length) };
         });
+    }, [clip]);
+
+    // A new clip opens the seam at the default zoom and has its levels measured - a few slices per
+    // task, so the waveform paints and answers clicks while the measurement runs.
+    useEffect(() => {
+        setLevels(null);
+        if (!clip) {
+            return;
+        }
+        setSeamHalfWindow(clampHalfWindow(SEAM_DEFAULT_HALF_SECONDS * clip.sampleRate, clip.sampleRate));
+        const controller = new AbortController();
+        void measureLevelsInSlices(clip, controller.signal).then(result => {
+            if (result && !controller.signal.aborted) {
+                setLevels(result);
+            }
+        });
+        return () => controller.abort();
     }, [clip]);
 
     const hasSelection = Boolean(selection && selection.end > selection.start);
@@ -370,6 +412,24 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
         play(resolvePlayStart({ position, selection: auditionRange, totalSamples, finished }), auditionRange);
     }, [playing, stop, play, position, auditionRange, totalSamples, finished]);
 
+    /** Where the loop turns around, read the way the running game reads the markers. */
+    const seam = useMemo(
+        () => (clip ? resolveLoopSeam(loopPoints, totalSamples, clip.sampleRate) : null),
+        [clip, loopPoints, totalSamples],
+    );
+
+    /**
+     * Play across the seam and stop. Looping whatever the repeat toggle says: the turnaround is the
+     * whole point, and a run that stopped at the out point would never reach it.
+     */
+    const auditionSeam = useCallback(() => {
+        if (!clip || !seam) {
+            return;
+        }
+        const plan = planSeamAudition(seam, clip.sampleRate);
+        play(plan.from, plan.range, { looping: true, stopAfterSeconds: plan.seconds });
+    }, [clip, seam, play]);
+
     const seekTo = useCallback(
         (sample: number) => {
             stop();
@@ -464,6 +524,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     const keybindings = useMemo<KeybindingDefinition[]>(
         () => [
             { id: "play-pause", key: "space", description: "Play or pause", handler: togglePlay },
+            { id: "audition-seam", key: "shift+space", description: "Audition loop seam", handler: auditionSeam },
             { id: "to-start", key: "home", description: "Go to start", handler: () => seekTo(0) },
             { id: "to-end", key: "end", description: "Go to end", handler: () => seekTo(totalSamples) },
             { id: "nudge-back", key: "arrowleft", description: "Nudge back", handler: () => nudge(-NUDGE_SECONDS) },
@@ -519,7 +580,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
             { id: "zoom-out", key: "-", description: "Zoom out", handler: () => zoomBy(1 / 1.4) },
             { id: "zoom-fit", key: "0", description: "Fit whole clip", handler: () => setView(fitAll(totalSamples)) },
         ],
-        [togglePlay, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy, freeze],
+        [togglePlay, auditionSeam, seekTo, totalSamples, nudge, setLoop, markLoopPoint, goToLoopPoint, clearLoopPoint, selectAll, zoomBy, freeze],
     );
 
     useKeybindings({
@@ -691,13 +752,16 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
 
             {/* Waveform: bounded, and anchored under the toolbar rather than centred - centring it
                 leaves the clip floating in the middle of a tall tab with dead space above and
-                below. No title attribute either: a native tooltip over the editing surface covers
-                the very samples being aimed at. */}
-            <div ref={wheelRef} className="flex min-h-0 flex-1 items-start px-3 py-2">
-                <div
-                    className="relative h-full w-full overflow-hidden rounded-md border border-edge bg-surface-sunken"
-                    style={{ maxHeight: waveformMaxHeight }}
-                >
+                below. It takes its height before the panels under it do: they get what is left and
+                scroll, and in a tab too short for even the waveform it shrinks, down to a floor. No
+                title attribute either: a native tooltip over the editing surface covers the very
+                samples being aimed at. */}
+            <div
+                ref={wheelRef}
+                className="flex min-h-24 grow-0 px-3 pt-2"
+                style={{ flexBasis: waveformMaxHeight + 8 }}
+            >
+                <div className="relative h-full w-full overflow-hidden rounded-md border border-edge bg-surface-sunken">
                     <WaveformView
                         clip={clip}
                         view={view}
@@ -712,6 +776,92 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                         onSelectAll={selectAll}
                     />
                 </div>
+            </div>
+
+            {/* What the waveform cannot show at its own scale: the loop's turnaround up close, and
+                the clip's levels as numbers. */}
+            <div className="flex min-h-0 flex-1 flex-wrap content-start gap-x-4 gap-y-3 overflow-y-auto px-3 pb-3 pt-3">
+                <section className="flex min-w-[280px] flex-[3] flex-col">
+                    <div className="flex min-h-7 items-center justify-between gap-2">
+                        <FieldLabel as="div" className="mb-0">{t("assets.audio.editor.seam")}</FieldLabel>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!seam}
+                            onClick={auditionSeam}
+                            data-tip={t("assets.audio.editor.auditionSeamTip", { seconds: SEAM_AUDITION_SECONDS })}
+                        >
+                            <Ear className="h-4 w-4" />
+                            {t("assets.audio.editor.auditionSeam")}
+                        </Button>
+                    </div>
+                    <div className="relative mt-1 h-28 overflow-hidden rounded-md border border-edge bg-surface-sunken">
+                        {seam && seamHalfWindow > 0 && (
+                            <LoopSeamView
+                                clip={clip}
+                                seam={seam}
+                                halfWindow={seamHalfWindow}
+                                onHalfWindowChange={setSeamHalfWindow}
+                                playhead={playhead}
+                                readOnly={freeze.frozen}
+                                onDrag={dragLoopPoint}
+                                onDragEnd={endLoopDrag}
+                            />
+                        )}
+                    </div>
+                    {seam && (
+                        <div className="mt-1 flex justify-between gap-3 text-2xs tabular-nums text-fg-subtle">
+                            <span>
+                                {t(`assets.audio.editor.seamEnd.${seam.endSource}`)}{" "}
+                                <span className="text-fg-muted">{formatTimeMs(seam.end / clip.sampleRate)}</span>
+                            </span>
+                            <span>
+                                {t(`assets.audio.editor.seamStart.${seam.startSource}`)}{" "}
+                                <span className="text-fg-muted">{formatTimeMs(seam.start / clip.sampleRate)}</span>
+                            </span>
+                        </div>
+                    )}
+                </section>
+
+                <section className="flex min-w-[200px] flex-1 flex-col">
+                    <div className="flex min-h-7 items-center">
+                        <FieldLabel as="div" className="mb-0">{t("assets.audio.editor.levels")}</FieldLabel>
+                    </div>
+                    <dl className="mt-1 space-y-1 rounded-md border border-edge bg-surface-raised p-3 text-xs">
+                        {[
+                            {
+                                label: t("assets.audio.editor.peak"),
+                                value: levels && `${formatDb(levels.peakDb)} dBFS`,
+                            },
+                            {
+                                label: t("assets.audio.editor.loudness"),
+                                value: levels && (levels.loudnessLufs === null ? "-" : `${formatDb(levels.loudnessLufs)} LUFS`),
+                            },
+                            {
+                                label: t("assets.audio.editor.leadingSilence"),
+                                value: levels && t("assets.audio.editor.seconds", { value: levels.leadingSilenceSeconds.toFixed(2) }),
+                            },
+                            {
+                                label: t("assets.audio.editor.trailingSilence"),
+                                value: levels && t("assets.audio.editor.seconds", { value: levels.trailingSilenceSeconds.toFixed(2) }),
+                            },
+                            {
+                                label: t("assets.audio.editor.clipping"),
+                                value: levels && (levels.clippedRuns === 0
+                                    ? t("assets.audio.editor.clippingNone")
+                                    : tn("assets.audio.editor.clippingCount", levels.clippedRuns)),
+                                warn: Boolean(levels && levels.clippedRuns > 0),
+                            },
+                        ].map(row => (
+                            <div key={row.label} className="flex justify-between gap-3">
+                                <dt className="text-fg-muted">{row.label}:</dt>
+                                <dd className={cn("tabular-nums", row.warn ? "text-warning" : "text-fg-muted")}>
+                                    {row.value ?? "…"}
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                </section>
             </div>
 
             {/* One status bar. Values only - the selection and the region read as ranges, the

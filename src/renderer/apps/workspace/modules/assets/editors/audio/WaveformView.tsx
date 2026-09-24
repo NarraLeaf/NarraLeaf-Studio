@@ -52,7 +52,7 @@ const GRAB_TOLERANCE_PX = 6;
 /** Below this a lane is too short to read, so the channels fold into one envelope. */
 const MIN_LANE_HEIGHT = 36;
 
-function readCssColor(element: HTMLElement, token: string, fallback: string): string {
+export function readCssColor(element: HTMLElement, token: string, fallback: string): string {
     const value = getComputedStyle(element).getPropertyValue(token).trim();
     return value.length > 0 ? value : fallback;
 }

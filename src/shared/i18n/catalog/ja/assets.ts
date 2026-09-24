@@ -530,6 +530,29 @@ export const assets = {
             markLoop: "再生位置をループ点にする",
             markOut: "再生位置をアウト点にする",
             channels: "{count} ch",
+            seam: "ループのつなぎ目",
+            auditionSeam: "つなぎ目を試聴",
+            auditionSeamTip: "つなぎ目の前後 {seconds} 秒ずつを再生する",
+            seamEnd: {
+                out: "アウト点",
+                clipEnd: "クリップの末尾",
+            },
+            seamStart: {
+                loop: "ループ点",
+                in: "イン点",
+                clipStart: "クリップの先頭",
+            },
+            levels: "レベル",
+            peak: "ピーク",
+            loudness: "ラウドネス",
+            leadingSilence: "冒頭の無音",
+            trailingSilence: "末尾の無音",
+            clipping: "クリッピング",
+            clippingNone: "なし",
+            clippingCount: {
+                other: "{count} か所",
+            },
+            seconds: "{value} 秒",
         },
         // キーボードショートカットの設定表と「?」の一覧に出る。
         keybindings: {
@@ -557,6 +580,7 @@ export const assets = {
             zoomIn: "拡大",
             zoomOut: "縮小",
             zoomFit: "クリップ全体を表示",
+            auditionSeam: "ループのつなぎ目を試聴",
         },
     },
     image: {

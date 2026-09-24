@@ -277,6 +277,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         section: "content",
         shortcuts: [
             "assets.audio.play-pause",
+            "assets.audio.audition-seam",
             "assets.audio.mark-in",
             "assets.audio.mark-loop",
             "assets.audio.mark-out",

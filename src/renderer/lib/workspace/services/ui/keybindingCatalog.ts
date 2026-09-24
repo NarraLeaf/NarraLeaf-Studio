@@ -31,6 +31,7 @@ import {
     Command,
     Copy,
     CopyPlus,
+    Ear,
     Eraser,
     Flag,
     FlaskConical,
@@ -311,6 +312,9 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.audio.clear-in", "mod+shift+i", "assets.audio.keybindings.clearIn", CATEGORY.assets, Eraser),
     entry("assets.audio.clear-loop", "mod+shift+l", "assets.audio.keybindings.clearLoop", CATEGORY.assets, Eraser),
     entry("assets.audio.clear-out", "mod+shift+o", "assets.audio.keybindings.clearOut", CATEGORY.assets, Eraser),
+    // The seam audition sits beside play: shift+space plays the few seconds across the loop's
+    // turnaround instead of the whole region.
+    entry("assets.audio.audition-seam", "shift+space", "assets.audio.keybindings.auditionSeam", CATEGORY.assets, Ear),
     entry("assets.audio.undo", "mod+z", "assets.audio.keybindings.undo", CATEGORY.assets, Undo2),
     entry("assets.audio.redo", "mod+shift+z", "assets.audio.keybindings.redo", CATEGORY.assets, Redo2),
     entry("assets.audio.select-all", "mod+a", "assets.audio.keybindings.selectAll", CATEGORY.assets, SquareDashedMousePointer),

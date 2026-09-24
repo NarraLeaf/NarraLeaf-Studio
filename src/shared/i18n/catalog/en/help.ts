@@ -407,11 +407,14 @@ export const help = {
         audioClips: {
             title: "Trimming and looping a clip",
             body:
-                "Opening an audio asset shows its waveform, where three marks can be set: the start, the loop "
-                + "point and the end.\n"
+                "Opening an audio asset shows its waveform, where three marks can be set: the in point, the "
+                + "loop point and the out point.\n"
                 + "\n"
                 + "- With a loop point set, the opening plays once and the part after it repeats.\n"
                 + "- The marks belong to the asset, so every row that plays it uses them.\n"
+                + "- Under the waveform, the loop seam shows the end of the loop beside the point it returns to. "
+                + "Dragging either half sideways moves that mark. Audition seam plays a few seconds either side of it.\n"
+                + "- Levels lists the peak, the loudness, the silence at each end and any clipping.\n"
                 + "- Playback, movement, marking and zooming all have keyboard actions.",
         },
         voice: {

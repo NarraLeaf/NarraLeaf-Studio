@@ -440,6 +440,30 @@ export const assets = {
             markLoop: "在播放头设置循环点",
             markOut: "在播放头设置出点",
             channels: "{count} 声道",
+            seam: "循环接缝",
+            auditionSeam: "试听接缝",
+            auditionSeamTip: "播放接缝前后各 {seconds} 秒",
+            seamEnd: {
+                out: "出点",
+                clipEnd: "音频结尾",
+            },
+            seamStart: {
+                loop: "循环点",
+                in: "入点",
+                clipStart: "音频开头",
+            },
+            levels: "电平",
+            peak: "峰值",
+            loudness: "响度",
+            leadingSilence: "开头静音",
+            trailingSilence: "结尾静音",
+            clipping: "削波",
+            clippingNone: "无",
+            clippingCount: {
+                one: "{count} 处",
+                other: "{count} 处",
+            },
+            seconds: "{value} 秒",
         },
         // 显示在快捷键设置表和「?」速查表中。
         keybindings: {
@@ -467,6 +491,7 @@ export const assets = {
             zoomIn: "放大",
             zoomOut: "缩小",
             zoomFit: "显示全部",
+            auditionSeam: "试听循环接缝",
         },
     },
     image: {
