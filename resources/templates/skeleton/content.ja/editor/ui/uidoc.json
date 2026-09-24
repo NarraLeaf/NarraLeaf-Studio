@@ -45547,6 +45547,7 @@
       },
       "props": {
         "label": "オート",
+        "localizationKey": "quickMenu.auto",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -45666,6 +45667,7 @@
       },
       "props": {
         "label": "スキップ",
+        "localizationKey": "quickMenu.skip",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -45785,6 +45787,7 @@
       },
       "props": {
         "label": "ログ",
+        "localizationKey": "quickMenu.log",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -45823,6 +45826,7 @@
       },
       "props": {
         "label": "セーブ",
+        "localizationKey": "quickMenu.save",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -45861,6 +45865,7 @@
       },
       "props": {
         "label": "ロード",
+        "localizationKey": "quickMenu.load",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -45899,6 +45904,7 @@
       },
       "props": {
         "label": "設定",
+        "localizationKey": "quickMenu.config",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -53185,6 +53191,7 @@
       },
       "props": {
         "label": "非表示",
+        "localizationKey": "quickMenu.hide",
         "fontSize": 21,
         "color": "nlbrand:text.muted",
         "fontWeight": "normal",
@@ -58978,7 +58985,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-22T22:48:41.426Z"
+    "updatedAt": "2026-09-24T04:37:04.268Z"
   },
   "structs": {
     "extra.galleryEntry": {

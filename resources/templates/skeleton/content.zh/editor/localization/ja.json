@@ -432,6 +432,41 @@
       "status": "translated",
       "target": "タイトル"
     },
+    "key:quickMenu.auto": {
+      "sourceHash": "fnv1a:e3d822cf",
+      "status": "translated",
+      "target": "オート"
+    },
+    "key:quickMenu.config": {
+      "sourceHash": "fnv1a:f3c259dd",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:quickMenu.hide": {
+      "sourceHash": "fnv1a:36c1a900",
+      "status": "translated",
+      "target": "非表示"
+    },
+    "key:quickMenu.load": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:quickMenu.log": {
+      "sourceHash": "fnv1a:2c9d9f0e",
+      "status": "translated",
+      "target": "ログ"
+    },
+    "key:quickMenu.save": {
+      "sourceHash": "fnv1a:ad5b82b0",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:quickMenu.skip": {
+      "sourceHash": "fnv1a:3ae7f41f",
+      "status": "translated",
+      "target": "スキップ"
+    },
     "key:save.title": {
       "sourceHash": "fnv1a:ad5b82b0",
       "status": "translated",

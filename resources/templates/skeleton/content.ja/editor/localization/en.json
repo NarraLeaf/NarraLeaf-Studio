@@ -417,6 +417,41 @@
       "status": "translated",
       "target": "Title"
     },
+    "key:quickMenu.auto": {
+      "sourceHash": "fnv1a:ea3f7301",
+      "status": "translated",
+      "target": "Auto"
+    },
+    "key:quickMenu.config": {
+      "sourceHash": "fnv1a:6243fa06",
+      "status": "translated",
+      "target": "Config"
+    },
+    "key:quickMenu.hide": {
+      "sourceHash": "fnv1a:ecdeefe3",
+      "status": "translated",
+      "target": "Hide"
+    },
+    "key:quickMenu.load": {
+      "sourceHash": "fnv1a:48ff805f",
+      "status": "translated",
+      "target": "Load"
+    },
+    "key:quickMenu.log": {
+      "sourceHash": "fnv1a:39b03058",
+      "status": "translated",
+      "target": "Log"
+    },
+    "key:quickMenu.save": {
+      "sourceHash": "fnv1a:e66653cc",
+      "status": "translated",
+      "target": "Save"
+    },
+    "key:quickMenu.skip": {
+      "sourceHash": "fnv1a:48e64dcd",
+      "status": "translated",
+      "target": "Skip"
+    },
     "key:save.title": {
       "sourceHash": "fnv1a:e66653cc",
       "status": "translated",
