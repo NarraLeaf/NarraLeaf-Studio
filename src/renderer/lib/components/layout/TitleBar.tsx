@@ -7,7 +7,7 @@ import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 import { cn } from "../../utils/cn";
-import { useProductIconSrc } from "@/lib/appearance/useProductIcon";
+import { PRODUCT_MARK_SRC } from "@/lib/appearance/productMark";
 
 /**
  * Room to leave for the macOS traffic lights.
@@ -25,9 +25,9 @@ const TITLEBAR_EDGE_GAP = 5;
 export interface TitleBarProps {
     title: string;
     /**
-     * Overrides the mark drawn at the leading edge. Omit it to draw whatever the product mark
-     * currently is - which is what every window wants. Pass `""` to draw none: the launcher keeps
-     * its mark in the sidebar, and first-run setup wants a bare bar.
+     * Overrides the mark drawn at the leading edge. Omit it to draw the product mark, which is
+     * what every window wants. Pass `""` to draw none: the launcher keeps its mark in the sidebar,
+     * and first-run setup wants a bare bar.
      */
     iconSrc?: string;
     className?: string;
@@ -54,11 +54,8 @@ export function TitleBar({
     windowControlPolicy = WindowControlPolicy.Standard,
 }: TitleBarProps) {
     const { t } = useTranslation();
-    // Unconditionally, before the choice: `iconSrc ?? useProductIconSrc()` would short-circuit the
-    // hook away for any caller that passes one, and the call order has to be the same every render.
-    const productIconSrc = useProductIconSrc();
     // `??` rather than `||`: an empty string is a caller asking for no mark at all, and survives.
-    const resolvedIconSrc = iconSrc ?? productIconSrc;
+    const resolvedIconSrc = iconSrc ?? PRODUCT_MARK_SRC;
     const isMac = isMacPlatform();
     const isFullscreen = useWindowFullscreen();
     const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;

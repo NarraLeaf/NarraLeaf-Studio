@@ -37,6 +37,11 @@ export interface SettingDescriptor<T extends SettingValueType = SettingValueType
      */
     optionFontStacks?: Record<string, string>;
     /**
+     * Enum only: a small picture per option value, drawn beside its label in the dropdown and in the
+     * closed control - for a choice between images, where the label alone cannot say which is which.
+     */
+    optionImages?: Record<string, string>;
+    /**
      * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
      * instead of an option id. Off by default — a setting whose colors are a design decision
      * should not quietly accept any value.
@@ -98,6 +103,11 @@ export interface AppSettingDefinition<T extends SettingValueType = SettingValueT
      * Font row meant before there was a second one.
      */
     optionFontStacks?: Record<string, string>;
+    /**
+     * Enum only: a small picture per option value, drawn beside its label in the dropdown and in the
+     * closed control - for a choice between images, where the label alone cannot say which is which.
+     */
+    optionImages?: Record<string, string>;
     /**
      * Color only: offer a full picker alongside the preset swatches, storing a `#rrggbb` hex
      * instead of an option id. Off by default — a setting whose colors are a design decision

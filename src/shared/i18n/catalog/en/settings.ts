@@ -121,11 +121,13 @@ export const settings = {
             },
         },
         windowIcon: {
-            label: "Window icon",
-            description: "The icon on Studio's windows and taskbar buttons. Desktop and Start menu shortcuts keep the installed icon.",
+            label: "App icon",
+            description: "The icon Studio shows on the taskbar and in the notification area. Desktop and Start menu shortcuts keep the installed icon.",
+            descriptionMac: "The icon in the Dock while Studio is running. Finder and Launchpad keep the installed icon.",
             options: {
-                default: "NarraLeaf",
                 narra: "Narra",
+                leafWhite: "Leaf on white",
+                leaf: "Leaf",
             },
             unsupportedPlatform: "Not available on this operating system.",
         },

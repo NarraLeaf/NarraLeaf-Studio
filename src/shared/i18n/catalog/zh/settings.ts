@@ -112,11 +112,13 @@ export const settings = {
             },
         },
         windowIcon: {
-            label: "窗口图标",
-            description: "Studio 窗口与任务栏按钮所用的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            label: "应用图标",
+            description: "Studio 在任务栏与通知区域显示的图标。桌面与开始菜单的快捷方式仍使用安装时的图标",
+            descriptionMac: "Studio 运行时在程序坞中显示的图标。访达与启动台仍使用安装时的图标",
             options: {
-                default: "NarraLeaf",
                 narra: "Narra",
+                leafWhite: "白底叶子",
+                leaf: "叶子",
             },
             unsupportedPlatform: "此选项不适用于此操作系统",
         },
