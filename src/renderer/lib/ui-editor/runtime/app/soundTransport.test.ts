@@ -106,7 +106,7 @@ type MixerStub = {
     setVolume: ReturnType<typeof vi.fn>;
 };
 
-function createHarness(tracks: ProjectAudioTrack[] = TRACKS) {
+function createHarness(tracks: ProjectAudioTrack[] = TRACKS, gains: Record<string, number> = {}) {
     const token: TokenStub = { setVolume: vi.fn(), fade: vi.fn(), stop: vi.fn() };
     const created: unknown[] = [];
     const mixer: MixerStub = { getVolume: vi.fn(() => 0.25), setVolume: vi.fn() };
@@ -123,6 +123,7 @@ function createHarness(tracks: ProjectAudioTrack[] = TRACKS) {
             created.push(input);
             return input;
         },
+        getClipGain: assetId => gains[assetId] ?? 1,
         log: (_level, message) => void logged.push(message),
     });
     return { transport, token, created, mixer, logged };
@@ -157,6 +158,32 @@ describe("createSoundTransport play", () => {
 
         expect(token.fade).not.toHaveBeenCalled();
         expect(token.setVolume).toHaveBeenCalledWith(1);
+    });
+});
+
+/**
+ * A gain set on the asset balances the clip against the project's others. Every volume this
+ * transport writes replaces the token's outright, so the gain has to be in each of them.
+ */
+describe("createSoundTransport clip gain", () => {
+    it("multiplies the clip's gain into the start, the fade-in and every later volume", async () => {
+        const { transport, token, created } = createHarness(TRACKS, { a1: 0.5 });
+
+        const handle = await transport.play({ assetId: "a1", audioTrackId: "bgm", volume: 0.8, fadeInMs: 400 });
+        expect(created[0]).toMatchObject({ volume: 0.4 });
+        expect(token.fade).toHaveBeenCalledWith(0, 0.4, 400);
+
+        await transport.setVolume(handle!, 0.6, 0);
+        expect(token.setVolume).toHaveBeenLastCalledWith(0.3);
+    });
+
+    it("never raises a clip, whatever gain the host reports", async () => {
+        const { transport, token } = createHarness(TRACKS, { a1: 4, a2: Number.NaN });
+
+        await transport.play({ assetId: "a1", audioTrackId: "bgm", volume: 0.5 });
+        expect(token.setVolume).toHaveBeenLastCalledWith(0.5);
+        await transport.play({ assetId: "a2", audioTrackId: "bgm", volume: 0.5 });
+        expect(token.setVolume).toHaveBeenLastCalledWith(0.5);
     });
 });
 

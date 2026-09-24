@@ -321,7 +321,7 @@ export const workspace = {
         scope: {
             storyScene: "scene",
             storyMotion: "motion",
-            audioLoop: "audio markers",
+            audioLoop: "audio markers and gain",
             uiSurface: "interface",
             blueprint: "blueprint",
             project: "project",
@@ -339,6 +339,7 @@ export const workspace = {
             storySpeakerChange: "speaker change",
             storyMotionEdit: "motion edit",
             audioMarkers: "marker change",
+            audioGain: "gain change",
             surfaceEdit: "interface edit",
             blueprintEdit: "blueprint edit",
             replaceText: "text replacement",

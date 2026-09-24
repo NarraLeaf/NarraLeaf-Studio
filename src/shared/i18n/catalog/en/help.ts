@@ -415,6 +415,10 @@ export const help = {
                 + "- Under the waveform, the loop seam shows the end of the loop beside the point it returns to. "
                 + "Dragging either half sideways moves that mark. Audition seam plays a few seconds either side of it.\n"
                 + "- Levels lists the peak, the loudness, the silence at each end and any clipping.\n"
+                + "- Gain lowers the clip's volume wherever the game plays it. Align sets it from the measured "
+                + "loudness, so clips aligned to the same target play at the same level. A clip cannot be made louder.\n"
+                + "- Clear all markers plays and loops the whole file again.\n"
+                + "- Scrolling with Option (Alt) held magnifies the waveform vertically. Only the display changes.\n"
                 + "- Playback, movement, marking and zooming all have keyboard actions.",
         },
         voice: {

@@ -2299,6 +2299,25 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-ja-say");
     });
 
+    it("carries a take's gain as its volume, in the scene table and in a replay", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say: dialogueBlock("say", "text-say", "こんにちは。") }, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
+            voice: voiceSetup(() => "ja"),
+            audioClips: { "asset-ja-say": { gainDb: -6 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const gain = Math.pow(10, -6 / 20);
+        // Not the bare URL a take on the plain bus otherwise is: the gain has to travel as a volume.
+        const take = (compiled.scenes["scene-1"] as any).config?.voices?.["text-say"];
+        expect(take.config.src).toBe("nlr://asset-ja-say");
+        expect(take.state.volume).toBeCloseTo(gain, 6);
+        const replay = compiled.getVoicePlayback?.("text-say");
+        expect(replay?.src).toBe("nlr://asset-ja-say");
+        expect(replay?.volume).toBeCloseTo(gain, 6);
+    });
+
     it("voices narration lines as well", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: narrationBlock("say", "text-say", "……。") }, ["say"]),
@@ -3919,6 +3938,125 @@ describe("story audio", () => {
         const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm");
         expect((sound as any)?.config.seek).toBe(1);
         expect((sound as any)?.config.endTime).toBe(60);
+    });
+
+    /**
+     * A gain set in the audio preview balances a clip against the project's others. The engine keeps
+     * one volume per sound, so the gain has to be in every volume the compiler writes: the one the
+     * clip starts with, and the one a later `/vol` replaces it with.
+     */
+    describe("clip gain", () => {
+        const minusSix = Math.pow(10, -6 / 20);
+
+        function soundRows(extra: Record<string, unknown> = {}): Record<string, StoryBlock> {
+            return {
+                se: {
+                    id: "se",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "playSound", objectName: "piano", assetId: "asset-piano", volume: 0.8, ...extra } as StoryActionPayload,
+                },
+                vol: {
+                    id: "vol",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "setVolume", objectName: "piano", volume: 0.4 } as StoryActionPayload,
+                },
+            };
+        }
+
+        function actionContent(compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>, type: string): unknown[] | undefined {
+            const action = compiled.actionIdBindings
+                .map(binding => binding.action as unknown as { type: string; contentNode?: { getContent(): unknown[] } })
+                .find(candidate => candidate.type === type);
+            return action?.contentNode?.getContent();
+        }
+
+        it("starts a sound at its row's volume times the clip's gain, and keeps the gain through /vol", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(soundRows(), ["se", "vol"]),
+                sceneId: "scene-1",
+                audioClips: { "asset-piano": { gainDb: -6 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect(compiled.diagnostics).toEqual([]);
+            const play = actionContent(compiled, "sound:play")?.[0] as { end: number };
+            expect(play.end).toBeCloseTo(0.8 * minusSix, 6);
+            const [volume] = actionContent(compiled, "sound:setVolume") as [number, number];
+            expect(volume).toBeCloseTo(0.4 * minusSix, 6);
+            // A gain alone is not a region: the clip still plays whole.
+            const sound = compiled.sceneElements?.["scene-1"].sounds.get("piano") as any;
+            expect(sound.config.seek).toBe(0);
+            expect(sound.config.endTime).toBeUndefined();
+        });
+
+        it("leaves the volumes alone for a clip with no gain", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(soundRows(), ["se", "vol"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect((actionContent(compiled, "sound:play")?.[0] as { end: number }).end).toBe(0.8);
+            expect((actionContent(compiled, "sound:setVolume") as [number])[0]).toBe(0.4);
+        });
+
+        it("applies to the scene's own music and to a /vol on it", async () => {
+            const document = baseDocument({
+                quieter: {
+                    id: "quieter",
+                    kind: "action",
+                    parentId: null,
+                    childrenIds: [],
+                    payload: { action: "audio", operation: "setVolume", objectName: "bgm", volume: 0.3 },
+                },
+            }, ["quieter"]);
+            document.scenes["scene-1"].bgm = { assetId: "asset-theme", volume: 0.5 };
+
+            const compiled = await compileStudioStoryToNlr({
+                document,
+                sceneId: "scene-1",
+                audioClips: { "asset-theme": { gainDb: -6 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            expect((compiled.scene as any).state.backgroundMusic.state.volume).toBeCloseTo(0.5 * minusSix, 6);
+            expect((actionContent(compiled, "sound:setVolume") as [number])[0]).toBeCloseTo(0.3 * minusSix, 6);
+        });
+
+        it("applies to a /bgm row", async () => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument(bgmRow("music", "asset-theme", { volume: 0.6 }), ["music"]),
+                sceneId: "scene-1",
+                audioClips: { "asset-theme": { gainDb: -6 } },
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+
+            const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm") as any;
+            expect(sound.state.volume).toBeCloseTo(0.6 * minusSix, 6);
+        });
+    });
+
+    /**
+     * An in or loop point with no out point ends at the end of the file. The engine drops a loop
+     * point with no end time beside it and streams the clip through an element that loops from 0:00,
+     * so the region has to carry the file's length as that end time.
+     */
+    it("ends a region with no out point at the file's length", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(bgmRow("music", "asset-theme"), ["music"]),
+            sceneId: "scene-1",
+            audioClips: { "asset-theme": { inMs: 1000, loopStartMs: 5000, lengthMs: 90_000 } },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const sound = compiled.sceneElements?.["scene-1"].sounds.get("bgm") as any;
+        expect(sound.config.seek).toBe(1);
+        expect(sound.config.loopStart).toBe(5);
+        expect(sound.config.endTime).toBe(90);
     });
 
     it("plays an unmarked clip whole", async () => {

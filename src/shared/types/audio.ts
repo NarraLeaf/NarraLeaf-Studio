@@ -36,7 +36,48 @@ export type AudioClipRegion = {
      * degrades to the plain loop the two other markers already describe.
      */
     loopStartMs?: number;
+    /**
+     * Length of the file, in milliseconds, standing in for an out point the author did not mark.
+     *
+     * Carried only when a region needs it: an in or loop point with no out point. The engine keeps a
+     * loop point only alongside an end time, and without one it streams a looping clip through an
+     * element that restarts at 0:00 - so "loop back to the loop point at the end of the file", which
+     * is what the preview plays and the seam view draws, reached the game as "loop the whole file".
+     * The end of the file is the end time the author meant.
+     */
+    lengthMs?: number;
+    /**
+     * Playback gain in decibels, never above 0: the engine cannot raise a clip past its own level, so
+     * balancing loudness means bringing the loud clips down. Absent is unity.
+     */
+    gainDb?: number;
 };
+
+/**
+ * The file length a region was measured against, as the asset record stores it.
+ *
+ * Kept with the hash of the file it was measured on, because markers outlive the file: after the
+ * file is replaced, a length from the old one would describe a loop end the new file does not have.
+ * A length whose hash no longer matches is ignored, and the preview measures the new file again.
+ */
+export type AudioClipLength = { ms: number; hash: string };
+
+/** `extras.audioLoop` on an audio asset: the three markers, plus the file length when it is needed. */
+export type StoredAudioClipRegion = Pick<AudioClipRegion, "inMs" | "outMs" | "loopStartMs"> & {
+    fileLength?: AudioClipLength;
+};
+
+/**
+ * `extras.audioGain` on an audio asset.
+ *
+ * `targetLufs` is the loudness the gain was aligned to, when it came from aligning rather than from
+ * a number typed in. It is what lets the next clip opened in the same project offer the same target,
+ * so a project's clips balance against one another without a project setting to keep in step.
+ */
+export type StoredAudioGain = { db: number; targetLufs?: number };
+
+/** The quietest a gain can make a clip. Below this it is silence for every practical purpose. */
+export const AUDIO_GAIN_MIN_DB = -60;
 
 /**
  * Game audio payload: everything a running game needs to play a clip the way it was authored.
@@ -67,17 +108,38 @@ function finiteNonNegative(value: unknown): number | undefined {
     return value;
 }
 
+/** A stored gain, clamped to what the engine can play; `undefined` for unity or anything unreadable. */
+export function normalizeAudioGainDb(extras: unknown): number | undefined {
+    const gain = extras && typeof extras === "object" ? (extras as { audioGain?: unknown }).audioGain : undefined;
+    const db = gain && typeof gain === "object" ? (gain as { db?: unknown }).db : undefined;
+    if (typeof db !== "number" || !Number.isFinite(db)) {
+        return undefined;
+    }
+    const clamped = Math.max(AUDIO_GAIN_MIN_DB, Math.min(0, db));
+    return clamped === 0 ? undefined : clamped;
+}
+
+/** Whether a region carries any of the three markers - as opposed to only a gain. */
+export function hasClipMarkers(region: AudioClipRegion | null | undefined): boolean {
+    return region?.inMs !== undefined || region?.outMs !== undefined || region?.loopStartMs !== undefined;
+}
+
 /**
- * Read a region out of an asset's `extras`, tolerating the shape that preceded it.
+ * Read how an asset's clip is played out of its `extras`: the marked region, tolerating the shape
+ * that preceded it, and the gain.
  *
  * The short-lived cue-point model recorded exactly this - "a BGM's loop in/out points" - as a free
  * list, so the earliest two markers in time order are the in and the out. Reading them keeps records
  * written against the old shape from silently losing what the author marked. Never write `cuePoints`.
  *
- * Returns `null` rather than an empty object when nothing is marked, so callers can drop the asset
- * from a table with a single check.
+ * `fileHash` is the hash of the file the asset holds now. Only with it does a stored file length
+ * reach the result, and only when it was measured on that same file (see {@link AudioClipLength}).
+ * Callers that only draw the markers pass nothing.
+ *
+ * Returns `null` rather than an empty object when nothing is marked and the gain is unity, so
+ * callers can drop the asset from a table with a single check.
  */
-export function normalizeAudioClipRegion(extras: unknown): AudioClipRegion | null {
+export function normalizeAudioClipRegion(extras: unknown, fileHash?: string): AudioClipRegion | null {
     if (!extras || typeof extras !== "object") {
         return null;
     }
@@ -116,18 +178,49 @@ export function normalizeAudioClipRegion(extras: unknown): AudioClipRegion | nul
             loopStartMs = undefined;
         }
     }
-    if (inMs === undefined && outMs === undefined && loopStartMs === undefined) {
+    const gainDb = normalizeAudioGainDb(extras);
+    if (inMs === undefined && outMs === undefined && loopStartMs === undefined && gainDb === undefined) {
         return null;
+    }
+    // The file's end, standing in for the out point, only where the engine needs one and only when it
+    // was measured on the file the asset holds now.
+    let lengthMs: number | undefined;
+    if (outMs === undefined && (inMs !== undefined || loopStartMs !== undefined) && fileHash) {
+        const stored = (loop as { fileLength?: { ms?: unknown; hash?: unknown } } | null)?.fileLength;
+        const ms = finiteNonNegative(stored?.ms);
+        const lastMarker = Math.max(inMs ?? 0, loopStartMs ?? 0);
+        if (stored?.hash === fileHash && ms !== undefined && ms > lastMarker) {
+            lengthMs = ms;
+        }
     }
     return {
         ...(inMs !== undefined ? { inMs } : {}),
         ...(outMs !== undefined ? { outMs } : {}),
         ...(loopStartMs !== undefined ? { loopStartMs } : {}),
+        ...(lengthMs !== undefined ? { lengthMs } : {}),
+        ...(gainDb !== undefined ? { gainDb } : {}),
     };
 }
 
 /**
+ * A clip's gain as the linear factor a `Sound` volume is multiplied by: 1 when it has none.
+ *
+ * Multiplied into the volume at every place a clip starts *and* every place its volume is set again
+ * afterwards, because the engine keeps one volume per sound: a `/vol` row or a Set Sound Volume node
+ * writes that number outright, and a factor applied only at the start would be gone after the first.
+ */
+export function audioClipGain(region: AudioClipRegion | null | undefined): number {
+    const db = region?.gainDb;
+    return db === undefined || !Number.isFinite(db) ? 1 : Math.pow(10, Math.min(0, db) / 20);
+}
+
+/**
  * A region as the engine's `Sound` config wants it: seconds, and `endTime` omitted when unmarked.
+ *
+ * "Unmarked" means neither an out point nor a file length standing in for one: an in or loop point
+ * with no out point ends at the end of the file, and says so, because the engine drops a loop point
+ * that has no end time beside it (see {@link AudioClipRegion.lengthMs}). The gain is not part of this:
+ * it multiplies the caller's own volume (see {@link audioClipGain}).
  *
  * `seek` is always present because zero is its default anyway, so there is no difference between
  * "starts at the beginning" and "unmarked". `endTime` is different: present means "stop/turn around
@@ -146,8 +239,9 @@ export function audioClipRegionToSoundConfig(region: AudioClipRegion | null | un
     const seek = (region?.inMs ?? 0) / 1000;
     const loopStart = region?.loopStartMs === undefined ? undefined : region.loopStartMs / 1000;
     const loopStartPart = loopStart !== undefined && loopStart !== seek ? { loopStart } : {};
-    if (region?.outMs === undefined) {
+    const endMs = region?.outMs ?? region?.lengthMs;
+    if (endMs === undefined) {
         return { seek, ...loopStartPart };
     }
-    return { seek, endTime: region.outMs / 1000, ...loopStartPart };
+    return { seek, endTime: endMs / 1000, ...loopStartPart };
 }

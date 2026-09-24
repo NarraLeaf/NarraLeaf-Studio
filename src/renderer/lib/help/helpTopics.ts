@@ -281,6 +281,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "assets.audio.mark-in",
             "assets.audio.mark-loop",
             "assets.audio.mark-out",
+            "assets.audio.clear-markers",
         ],
         related: ["audio", "assets"],
     },

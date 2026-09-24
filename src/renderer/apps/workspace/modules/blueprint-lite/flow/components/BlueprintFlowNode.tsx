@@ -46,7 +46,7 @@ import {
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
-import { normalizeAudioClipRegion } from "@shared/types/audio";
+import { hasClipMarkers, normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
@@ -285,7 +285,8 @@ function AudioAssetPickerRow({
     // Whether the author marked in/out points on this clip decides whether Loop loops the body or
     // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
     // so the node has to say which it is.
-    const marked = normalizeAudioClipRegion(asset?.extras) !== null;
+    // Markers only: a clip with nothing but a gain still loops the whole file.
+    const marked = hasClipMarkers(normalizeAudioClipRegion(asset?.extras));
 
     return (
         <div

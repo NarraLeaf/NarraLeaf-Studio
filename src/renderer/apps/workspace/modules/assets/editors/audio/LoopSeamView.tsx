@@ -3,6 +3,7 @@ import { clipLength, type AudioClip } from "./audioClip";
 import type { LoopMarker } from "./loopHistory";
 import { seamDragMarker, type LoopSeam } from "./seam";
 import { readCssColor } from "./WaveformView";
+import { amplitudeLabel, stepAmplitude } from "./amplitude";
 
 interface LoopSeamViewProps {
     clip: AudioClip;
@@ -12,6 +13,9 @@ interface LoopSeamViewProps {
     onHalfWindowChange: (samples: number) => void;
     /** Playhead position in samples; drawn on whichever side it falls in. */
     playhead: number | null;
+    /** Vertical magnification of the samples, 1 for true size. Display only. */
+    amplitude: number;
+    onAmplitudeChange: (amplitude: number) => void;
     /** Frozen project: the halves can be looked at but not dragged. */
     readOnly: boolean;
     /** Live during a drag - the editor applies these without touching undo history. */
@@ -53,7 +57,8 @@ function formatOffset(ms: number): string {
  * step in level, a beat landing early or a click from a discontinuous sample reads straight off the
  * picture. Each half is dragged sideways to slide its marker under the seam line - the content
  * moves with the pointer, the way a clip slips in an editor - and the wheel with the zoom modifier
- * narrows or widens both halves together, down to the individual samples.
+ * narrows or widens both halves together, down to the individual samples. With Option/Alt the
+ * wheel magnifies the samples vertically instead.
  */
 export function LoopSeamView({
     clip,
@@ -61,6 +66,8 @@ export function LoopSeamView({
     halfWindow,
     onHalfWindowChange,
     playhead,
+    amplitude,
+    onAmplitudeChange,
     readOnly,
     onDrag,
     onDragEnd,
@@ -77,8 +84,8 @@ export function LoopSeamView({
     /** Which half the pointer is over. A ref, so hovering does not re-render. */
     const hoverRef = useRef<"end" | "start" | null>(null);
 
-    const propsRef = useRef({ clip, seam, halfWindow, playhead, readOnly });
-    propsRef.current = { clip, seam, halfWindow, playhead, readOnly };
+    const propsRef = useRef({ clip, seam, halfWindow, playhead, readOnly, amplitude });
+    propsRef.current = { clip, seam, halfWindow, playhead, readOnly, amplitude };
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -86,7 +93,7 @@ export function LoopSeamView({
         if (!canvas || !context) {
             return;
         }
-        const { clip, seam, halfWindow, playhead, readOnly } = propsRef.current;
+        const { clip, seam, halfWindow, playhead, readOnly, amplitude } = propsRef.current;
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
         const width = Math.max(2, Math.floor(rect.width));
@@ -165,7 +172,8 @@ export function LoopSeamView({
                             if (x < half.x0 || x > half.x1) {
                                 continue;
                             }
-                            const y = midline - (samples[index] * laneHeight) / 2;
+                            const value = Math.max(-1, Math.min(1, samples[index] * amplitude));
+                            const y = midline - (value * laneHeight) / 2;
                             if (started) {
                                 context.lineTo(x, y);
                             } else {
@@ -192,8 +200,9 @@ export function LoopSeamView({
                                 if (value > maximum) maximum = value;
                             }
                         }
-                        const barTop = midline - (maximum * laneHeight) / 2;
-                        const barBottom = midline - (minimum * laneHeight) / 2;
+                        // Magnified samples stop at the lane's edge rather than spilling into the next one.
+                        const barTop = midline - (Math.min(1, maximum * amplitude) * laneHeight) / 2;
+                        const barBottom = midline - (Math.max(-1, minimum * amplitude) * laneHeight) / 2;
                         context.fillRect(half.x0 + column, barTop, 1, Math.max(1, barBottom - barTop));
                     }
                 }
@@ -230,6 +239,14 @@ export function LoopSeamView({
             }
         }
 
+        // The magnification, in the corner of the right half, for the same reason the waveform
+        // above prints its own.
+        const magnified = amplitudeLabel(amplitude);
+        if (magnified) {
+            context.fillStyle = subtleColor;
+            context.fillText(magnified, width - context.measureText(magnified).width - 4, RULER_HEIGHT + 3);
+        }
+
         // The seam itself, opaque and full height: every other mark here is read against it.
         context.fillStyle = primaryColor;
         context.fillRect(mid - 1, 0, 2, height);
@@ -250,7 +267,7 @@ export function LoopSeamView({
 
     useEffect(() => {
         draw();
-    }, [draw, clip, seam, halfWindow, playhead, readOnly]);
+    }, [draw, clip, seam, halfWindow, playhead, readOnly, amplitude]);
 
     // Observe the container, not the canvas - the same guard against a draw-resize loop the
     // waveform above documents.
@@ -276,14 +293,21 @@ export function LoopSeamView({
 
     // Zoom with the same modifier the waveform uses. A bare wheel is left alone so the panel this
     // sits in still scrolls.
-    const zoomRef = useRef({ halfWindow, onHalfWindowChange, sampleRate: clip.sampleRate });
-    zoomRef.current = { halfWindow, onHalfWindowChange, sampleRate: clip.sampleRate };
+    const zoomRef = useRef({ halfWindow, onHalfWindowChange, sampleRate: clip.sampleRate, amplitude, onAmplitudeChange });
+    zoomRef.current = { halfWindow, onHalfWindowChange, sampleRate: clip.sampleRate, amplitude, onAmplitudeChange };
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) {
             return;
         }
         const onWheel = (event: WheelEvent) => {
+            // Option/Alt magnifies the samples vertically, the same modifier the waveform above uses.
+            if (event.altKey) {
+                event.preventDefault();
+                const { amplitude, onAmplitudeChange } = zoomRef.current;
+                onAmplitudeChange(stepAmplitude(amplitude, event.deltaY));
+                return;
+            }
             if (!event.ctrlKey && !event.metaKey) {
                 return;
             }

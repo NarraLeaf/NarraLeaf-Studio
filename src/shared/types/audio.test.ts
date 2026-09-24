@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { audioClipRegionToSoundConfig, normalizeAudioClipRegion } from "./audio";
+import { audioClipGain, audioClipRegionToSoundConfig, hasClipMarkers, normalizeAudioClipRegion } from "./audio";
 
 /**
  * The region normalizer is the one place the editor and the game agree on what a clip's markers
@@ -222,5 +222,54 @@ describe("audioClipRegionToSoundConfig", () => {
     it("degrades to a plain loop when the stored loop point was out of window", () => {
         const stored = { audioLoop: { inMs: 1500, outMs: 96_000, loopStartMs: 120_000 } };
         expect(audioClipRegionToSoundConfig(normalizeAudioClipRegion(stored))).toEqual({ seek: 1.5, endTime: 96 });
+    });
+});
+
+/**
+ * The file length stands in for an out point the author did not mark, and only then: the engine
+ * drops a loop point with no end time beside it, so without the length "loop back to the loop point
+ * at the end of the file" reached the game as "loop the whole file".
+ */
+describe("the file length a region is stored with", () => {
+    const stored = (fileLength?: { ms: number; hash: string }, extra: Record<string, number> = {}) => ({
+        audioLoop: { inMs: 1000, loopStartMs: 5000, ...extra, ...(fileLength ? { fileLength } : {}) },
+    });
+
+    it("stands in for the missing out point when it was measured on this file", () => {
+        const region = normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }), "h1");
+        expect(region).toEqual({ inMs: 1000, loopStartMs: 5000, lengthMs: 90_000 });
+        expect(audioClipRegionToSoundConfig(region)).toEqual({ seek: 1, endTime: 90, loopStart: 5 });
+    });
+
+    it("is ignored once the file has changed, or when the reader does not say which file it has", () => {
+        expect(normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }), "h2")).not.toHaveProperty("lengthMs");
+        expect(normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }))).not.toHaveProperty("lengthMs");
+    });
+
+    it("never overrides an out point the author marked, and never ends before a marker", () => {
+        expect(normalizeAudioClipRegion(stored({ ms: 90_000, hash: "h1" }, { outMs: 60_000 }), "h1"))
+            .not.toHaveProperty("lengthMs");
+        expect(normalizeAudioClipRegion(stored({ ms: 4000, hash: "h1" }), "h1")).not.toHaveProperty("lengthMs");
+    });
+});
+
+describe("the clip gain", () => {
+    it("is read, clamped to what the engine can play, and dropped at unity", () => {
+        expect(normalizeAudioClipRegion({ audioGain: { db: -6 } })).toEqual({ gainDb: -6 });
+        expect(normalizeAudioClipRegion({ audioGain: { db: 4 } })).toBeNull();
+        expect(normalizeAudioClipRegion({ audioGain: { db: -120 } })).toEqual({ gainDb: -60 });
+        expect(normalizeAudioClipRegion({ audioGain: { db: "loud" } })).toBeNull();
+    });
+
+    it("is not a marker: a clip with only a gain still plays whole", () => {
+        const region = normalizeAudioClipRegion({ audioGain: { db: -6 } });
+        expect(hasClipMarkers(region)).toBe(false);
+        expect(audioClipRegionToSoundConfig(region)).toEqual({ seek: 0 });
+    });
+
+    it("becomes the factor a volume is multiplied by", () => {
+        expect(audioClipGain(undefined)).toBe(1);
+        expect(audioClipGain({ gainDb: -6 })).toBeCloseTo(0.501, 3);
+        expect(audioClipGain({ gainDb: -20 })).toBeCloseTo(0.1, 6);
     });
 });

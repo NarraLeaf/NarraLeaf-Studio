@@ -304,7 +304,7 @@ export const workspace = {
         scope: {
             storyScene: "シーン",
             storyMotion: "モーション",
-            audioLoop: "音声のマーカー",
+            audioLoop: "音声のマーカーとゲイン",
             uiSurface: "インターフェース",
             blueprint: "ブループリント",
             project: "プロジェクト",
@@ -322,6 +322,7 @@ export const workspace = {
             storySpeakerChange: "話者の変更",
             storyMotionEdit: "モーションの編集",
             audioMarkers: "マーカーの変更",
+            audioGain: "ゲインの変更",
             surfaceEdit: "インターフェースの編集",
             blueprintEdit: "ブループリントの編集",
             replaceText: "テキストの置換",

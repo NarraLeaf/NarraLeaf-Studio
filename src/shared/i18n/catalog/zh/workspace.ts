@@ -292,7 +292,7 @@ export const workspace = {
         scope: {
             storyScene: "场景",
             storyMotion: "运动",
-            audioLoop: "音频标记",
+            audioLoop: "音频标记与增益",
             uiSurface: "界面",
             blueprint: "蓝图",
             project: "项目",
@@ -310,6 +310,7 @@ export const workspace = {
             storySpeakerChange: "说话人变更",
             storyMotionEdit: "运动编辑",
             audioMarkers: "标记变更",
+            audioGain: "增益变更",
             surfaceEdit: "界面编辑",
             blueprintEdit: "蓝图编辑",
             replaceText: "文本替换",
