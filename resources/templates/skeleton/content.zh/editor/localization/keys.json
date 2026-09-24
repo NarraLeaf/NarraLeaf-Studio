@@ -177,6 +177,27 @@
     "nav.title": {
       "sourceText": "标题"
     },
+    "quickMenu.auto": {
+      "sourceText": "自动"
+    },
+    "quickMenu.config": {
+      "sourceText": "设置"
+    },
+    "quickMenu.hide": {
+      "sourceText": "隐藏"
+    },
+    "quickMenu.load": {
+      "sourceText": "加载"
+    },
+    "quickMenu.log": {
+      "sourceText": "记录"
+    },
+    "quickMenu.save": {
+      "sourceText": "保存"
+    },
+    "quickMenu.skip": {
+      "sourceText": "跳过"
+    },
     "save.title": {
       "sourceText": "保存"
     },

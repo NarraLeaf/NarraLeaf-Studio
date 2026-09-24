@@ -278,11 +278,14 @@ export function SurfaceList({
     // button is the row directly above this pane (SurfaceActions), so two lines saying there are no
     // pages and to press that button are the button described rather than offered.
     if (surfaces.length === 0 && !globalBlueprintCard) {
-        return <div className="flex-1 overflow-y-auto px-2 py-2" />;
+        return <div className="min-h-64 flex-1 overflow-y-auto px-2 py-2" />;
     }
 
+    // The floor is there because this list is what the panel is for: the component and input-action
+    // sections below it shrink before it does, and it keeps a card's worth of height even when they
+    // have nothing left to give.
     return (
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
+        <div className="min-h-64 flex-1 overflow-y-auto px-2 py-2 space-y-2">
             {globalBlueprintCard ? (
                 <button
                     type="button"

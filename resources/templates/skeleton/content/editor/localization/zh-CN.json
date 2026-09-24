@@ -442,6 +442,41 @@
       "status": "translated",
       "target": "标题"
     },
+    "key:quickMenu.auto": {
+      "sourceHash": "fnv1a:126befb6",
+      "status": "translated",
+      "target": "自动"
+    },
+    "key:quickMenu.config": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "设置"
+    },
+    "key:quickMenu.hide": {
+      "sourceHash": "fnv1a:e10c7bcd",
+      "status": "translated",
+      "target": "隐藏"
+    },
+    "key:quickMenu.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:quickMenu.log": {
+      "sourceHash": "fnv1a:a1dd7bf1",
+      "status": "translated",
+      "target": "记录"
+    },
+    "key:quickMenu.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "保存"
+    },
+    "key:quickMenu.skip": {
+      "sourceHash": "fnv1a:c197c7e2",
+      "status": "translated",
+      "target": "跳过"
+    },
     "key:save.title": {
       "sourceHash": "fnv1a:4d2d5d68",
       "status": "translated",

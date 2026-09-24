@@ -177,6 +177,27 @@
     "nav.title": {
       "sourceText": "Title"
     },
+    "quickMenu.auto": {
+      "sourceText": "Auto"
+    },
+    "quickMenu.config": {
+      "sourceText": "Config"
+    },
+    "quickMenu.hide": {
+      "sourceText": "Hide"
+    },
+    "quickMenu.load": {
+      "sourceText": "Load"
+    },
+    "quickMenu.log": {
+      "sourceText": "Log"
+    },
+    "quickMenu.save": {
+      "sourceText": "Save"
+    },
+    "quickMenu.skip": {
+      "sourceText": "Skip"
+    },
     "save.title": {
       "sourceText": "Save"
     },
