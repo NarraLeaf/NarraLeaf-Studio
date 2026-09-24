@@ -965,34 +965,40 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
                             {t("assets.audio.editor.auditionSeam")}
                         </Button>
                     </div>
-                    <div className="relative mt-1 h-28 overflow-hidden rounded-md border border-edge bg-surface-sunken">
-                        {seam && seamHalfWindow > 0 && (
-                            <LoopSeamView
-                                clip={clip}
-                                seam={seam}
-                                halfWindow={seamHalfWindow}
-                                onHalfWindowChange={setSeamHalfWindow}
-                                playhead={playhead}
-                                amplitude={seamAmplitude}
-                                onAmplitudeChange={setSeamAmplitude}
-                                readOnly={freeze.frozen}
-                                onDrag={dragLoopPoint}
-                                onDragEnd={endLoopDrag}
-                            />
+                    {/* Grows to the section's height, so its bottom edge lines up with the level
+                        cards beside it. The two marker names ride inside the frame, each under the
+                        half it names, rather than below it: below, they would hold the frame a line
+                        short of the cards. Stacked in a narrow tab, it keeps a height of its own. */}
+                    <div className="mt-1 flex min-h-32 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface-sunken">
+                        <div className="relative min-h-0 flex-1">
+                            {seam && seamHalfWindow > 0 && (
+                                <LoopSeamView
+                                    clip={clip}
+                                    seam={seam}
+                                    halfWindow={seamHalfWindow}
+                                    onHalfWindowChange={setSeamHalfWindow}
+                                    playhead={playhead}
+                                    amplitude={seamAmplitude}
+                                    onAmplitudeChange={setSeamAmplitude}
+                                    readOnly={freeze.frozen}
+                                    onDrag={dragLoopPoint}
+                                    onDragEnd={endLoopDrag}
+                                />
+                            )}
+                        </div>
+                        {seam && (
+                            <div className="flex shrink-0 justify-between gap-3 border-t border-edge px-2 py-1 text-2xs tabular-nums text-fg-subtle">
+                                <span>
+                                    {t(`assets.audio.editor.seamEnd.${seam.endSource}`)}{" "}
+                                    <span className="text-fg-muted">{formatTimeMs(seam.end / clip.sampleRate)}</span>
+                                </span>
+                                <span>
+                                    {t(`assets.audio.editor.seamStart.${seam.startSource}`)}{" "}
+                                    <span className="text-fg-muted">{formatTimeMs(seam.start / clip.sampleRate)}</span>
+                                </span>
+                            </div>
                         )}
                     </div>
-                    {seam && (
-                        <div className="mt-1 flex justify-between gap-3 text-2xs tabular-nums text-fg-subtle">
-                            <span>
-                                {t(`assets.audio.editor.seamEnd.${seam.endSource}`)}{" "}
-                                <span className="text-fg-muted">{formatTimeMs(seam.end / clip.sampleRate)}</span>
-                            </span>
-                            <span>
-                                {t(`assets.audio.editor.seamStart.${seam.startSource}`)}{" "}
-                                <span className="text-fg-muted">{formatTimeMs(seam.start / clip.sampleRate)}</span>
-                            </span>
-                        </div>
-                    )}
                 </section>
 
                 <section className="flex min-w-[200px] flex-1 flex-col">
