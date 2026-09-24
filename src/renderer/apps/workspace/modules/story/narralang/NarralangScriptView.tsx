@@ -369,7 +369,7 @@ export function NarralangScriptView(props: NarralangScriptViewProps) {
 
     return (
         // `.nl-editor-surface`, like the row list beside it and the built-in text editor: this is a
-        // reading surface and resolves its alpha from the same `editor.surfaceOpacity` setting.
+        // reading surface, and under a wallpaper it takes the same editor background they do.
         // Monaco itself paints nothing; see `transparent` in `studioMonaco` for why.
         <div className="nl-editor-surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {props.rows.length > 0 ? (

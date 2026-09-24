@@ -9,6 +9,14 @@ import {
 
 export type { PlayRange } from "./transport";
 
+/** Overrides for one run, for auditions that are not the transport's own play button. */
+export interface PlayOptions {
+    /** Loop this run whatever the transport's repeat toggle says. */
+    looping?: boolean;
+    /** Stop after this many seconds, however far through the range that is. */
+    stopAfterSeconds?: number;
+}
+
 /**
  * Playback for the edited clip.
  *
@@ -93,7 +101,7 @@ export function useClipPlayback(clip: AudioClip | null) {
     }, []);
 
     const play = useCallback(
-        (from: number, range: PlayRange | null) => {
+        (from: number, range: PlayRange | null, options?: PlayOptions) => {
             if (!clip || clipLength(clip) === 0) {
                 return;
             }
@@ -114,7 +122,7 @@ export function useClipPlayback(clip: AudioClip | null) {
                 from,
                 range,
                 totalSamples: clipLength(clip),
-                looping: loop,
+                looping: options?.looping ?? loop,
             });
             source.loop = geometry.looping;
             // The turnaround, not the entry: starting before `loopStart` is the whole point of an
@@ -129,18 +137,25 @@ export function useClipPlayback(clip: AudioClip | null) {
                     ? Math.max(0, (geometry.end - geometry.start) / clip.sampleRate)
                     : undefined;
             originRef.current = { geometry, startedAt: context.currentTime };
+            const timed = options?.stopAfterSeconds !== undefined;
             source.onended = () => {
                 if (sourceRef.current === source) {
                     sourceRef.current = null;
+                    originRef.current = null;
                     setPlaying(false);
-                    // Reached here on its own: `stop` detaches this handler, so nothing else can.
-                    setFinished(true);
+                    // Reached here on its own: `stop` detaches this handler, so nothing else can. A
+                    // timed run ran out of time rather than out of samples, so it parks like a pause
+                    // and the next press resumes from where it stopped.
+                    setFinished(!timed);
                 }
             };
             if (durationSeconds === undefined) {
                 source.start(0, offsetSeconds);
             } else {
                 source.start(0, offsetSeconds, durationSeconds);
+            }
+            if (timed) {
+                source.stop(context.currentTime + Math.max(0, options?.stopAfterSeconds ?? 0));
             }
             sourceRef.current = source;
             setPlaying(true);

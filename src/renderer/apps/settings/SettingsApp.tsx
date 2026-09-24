@@ -226,6 +226,7 @@ export function SettingsApp() {
                 : optionLabels,
             optionColors: setting.optionColors,
             optionFontStacks: setting.optionFontStacks,
+            optionImages: setting.optionImages,
             allowCustomColor: setting.allowCustomColor,
             onPreview: setting.onPreview,
             min: setting.min,

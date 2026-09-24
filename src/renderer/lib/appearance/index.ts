@@ -1,18 +1,12 @@
 import { getInterface } from "@/lib/app/bridge";
 import { normalizeAccentColor } from "@shared/constants/accent";
-import {
-    EDITOR_SURFACE_OPACITY_KEY,
-    EDITOR_SURFACE_OPACITY_VAR,
-    editorSurfaceAlpha,
-} from "@/lib/settings/editorSurfaceOptions";
 import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
 import { UI_FONT_FAMILY_KEY, UI_FONT_VAR, uiFontCssFamily } from "@/lib/settings/uiFontOptions";
 import { setTooltipDelay } from "@/lib/tooltip";
-import { WINDOW_ICON_DEFAULT, WINDOW_ICON_KEY, resolveWindowIcon, windowIconUrl } from "@shared/constants/windowIcon";
 
 /**
  * Apply the appearance preferences CSS cannot resolve on its own: `ui.accentColor`,
- * `ui.fontFamily`, `ui.reduceMotion`, `editor.surfaceOpacity` and `ui.tooltipDelay`.
+ * `ui.fontFamily`, `ui.reduceMotion` and `ui.tooltipDelay`.
  *
  * Unlike the theme — which is pure CSS, because Electron's nativeTheme drives
  * `prefers-color-scheme` in every renderer — none of these has a media query
@@ -32,11 +26,6 @@ let subscribed = false;
 const motionListeners = new Set<(reduced: boolean) => void>();
 let reduceMotion = false;
 
-/** Listeners for the product mark, for the React side (see `useProductIcon`). */
-const productIconListeners = new Set<() => void>();
-let productIconId: string = WINDOW_ICON_DEFAULT;
-let productIconSrc: string = windowIconUrl(WINDOW_ICON_DEFAULT);
-
 function applyAccentColor(value: unknown): void {
     const accent = normalizeAccentColor(value);
     const root = document.documentElement.style;
@@ -50,18 +39,6 @@ function applyAccentColor(value: unknown): void {
     // picks between them, so a theme switch needs nothing from this module.
     root.setProperty("--nl-primary-ink-on-dark", accent.inkOnDarkChannels);
     root.setProperty("--nl-primary-ink-on-light", accent.inkOnLightChannels);
-}
-
-/**
- * Publish `editor.surfaceOpacity` as one custom property on the root element.
- *
- * One variable rather than three setting readers: the story editor's prose area, the inspector's
- * field area and the Dev Mode debug panel are three components in two windows, and each reading
- * the preference for itself is three chances to disagree. They all carry `.nl-editor-surface`
- * instead, whose single rule resolves the sunken paint's alpha through this property.
- */
-function applyEditorSurfaceOpacity(value: unknown): void {
-    document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
 }
 
 /**
@@ -87,21 +64,6 @@ function applyTooltipDelay(value: unknown): void {
     const numeric = typeof value === "number" ? value : Number(value);
     if (Number.isFinite(numeric)) {
         setTooltipDelay(numeric);
-    }
-}
-
-/**
- * Follow `ui.windowIcon` on the interface's own logo surfaces, not just on the window itself.
- *
- * The title bars, the launcher's sidebar and the empty-editor watermark all draw the product mark,
- * and none of them is reachable from `BrowserWindow.setIcon` - so a change that stopped at the OS
- * would leave a window showing one mark in the taskbar and another in its own title bar.
- */
-function applyProductIcon(value: unknown): void {
-    productIconId = resolveWindowIcon(typeof value === "string" ? value : null).id;
-    productIconSrc = windowIconUrl(productIconId);
-    for (const listener of productIconListeners) {
-        listener();
     }
 }
 
@@ -137,28 +99,6 @@ export function previewAccentColor(value: unknown): void {
     applyAccentColor(value);
 }
 
-/** The URL every logo surface in the interface draws. */
-export function getProductIconSrc(): string {
-    return productIconSrc;
-}
-
-/**
- * Whether the mark is the one the interface was drawn around.
- *
- * The empty-editor watermark asks: the shipped mark is a flat silhouette meant to be painted
- * through a mask, and masking a full-colour portrait would reduce it to a blob.
- */
-export function isProductIconDefault(): boolean {
-    return productIconId === WINDOW_ICON_DEFAULT;
-}
-
-export function subscribeProductIcon(listener: () => void): () => void {
-    productIconListeners.add(listener);
-    return () => {
-        productIconListeners.delete(listener);
-    };
-}
-
 export function subscribeReduceMotion(listener: (reduced: boolean) => void): () => void {
     motionListeners.add(listener);
     return () => {
@@ -170,13 +110,11 @@ export async function initAppearance(): Promise<void> {
     const state = getInterface().app.state;
 
     try {
-        const [accent, uiFont, motion, surfaceOpacity, tooltipDelay, productIcon] = await Promise.all([
+        const [accent, uiFont, motion, tooltipDelay] = await Promise.all([
             state.getGlobalState("ui.accentColor"),
             state.getGlobalState(UI_FONT_FAMILY_KEY),
             state.getGlobalState("ui.reduceMotion"),
-            state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
             state.getGlobalState(TOOLTIP_DELAY_KEY),
-            state.getGlobalState(WINDOW_ICON_KEY),
         ]);
         if (accent.success) {
             applyAccentColor(accent.data.value);
@@ -187,14 +125,8 @@ export async function initAppearance(): Promise<void> {
         if (motion.success) {
             applyReduceMotion(motion.data.value);
         }
-        if (surfaceOpacity.success) {
-            applyEditorSurfaceOpacity(surfaceOpacity.data.value);
-        }
         if (tooltipDelay.success) {
             applyTooltipDelay(tooltipDelay.data.value);
-        }
-        if (productIcon.success) {
-            applyProductIcon(productIcon.data.value);
         }
     } catch (error) {
         console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
@@ -209,12 +141,8 @@ export async function initAppearance(): Promise<void> {
                 applyUIFontFamily(change.value);
             } else if (change.key === "ui.reduceMotion") {
                 applyReduceMotion(change.value);
-            } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {
-                applyEditorSurfaceOpacity(change.value);
             } else if (change.key === TOOLTIP_DELAY_KEY) {
                 applyTooltipDelay(change.value);
-            } else if (change.key === WINDOW_ICON_KEY) {
-                applyProductIcon(change.value);
             }
         });
     }

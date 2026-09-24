@@ -116,18 +116,22 @@ extraMetadata:
 # The icon is the app's own. electron-builder appends the extension the platform needs (.ico on
 # Windows, .icns on macOS), so the name is given without one; a document icon distinct from the app
 # icon would be better and is not worth blocking this on.
+#
+# The app's icon here and in the mac/win/linux blocks below is the default of the icon setting
+# (WINDOW_ICON_DEFAULT in src/shared/constants/windowIcon.ts), which windowIcon.test.ts holds these
+# paths to - the setting changes what a running Studio wears, and this is what it wears otherwise.
 fileAssociations:
   - ext: nlproj
     name: NarraLeaf Studio Project
     description: NarraLeaf Studio Project
     mimeType: application/x-narraleaf-project
-    icon: resources/app-icon
+    icon: resources/studio-icon/narra
     role: Editor
   - ext: nlspkg
     name: NarraLeaf Studio Project Package
     description: NarraLeaf Studio Project Package
     mimeType: application/x-narraleaf-project-package
-    icon: resources/app-icon
+    icon: resources/studio-icon/narra
     role: Editor
 
 asar: true
@@ -215,7 +219,7 @@ extraResources:
     to: THIRD-PARTY-NOTICES.txt
 mac:
   target: dmg
-  icon: resources/app-icon.icns
+  icon: resources/studio-icon/narra.icns
   # Studio is never code-signed, on any host. Left unset, `identity` makes
   # electron-builder search the login keychain and sign with whatever Apple
   # certificate it finds there — on a maintainer's own Mac that is their
@@ -428,7 +432,7 @@ nsis:
   include: installer.nsh
 win:
   target: nsis
-  icon: resources/app-icon.ico
+  icon: resources/studio-icon/narra.ico
   extraResources:
     - from: ./resources/codesign/win32
       to: resources/codesign/win32
@@ -436,7 +440,7 @@ win:
       to: resources/ffmpeg/win32
 linux:
   target: AppImage
-  icon: resources/app-icon.png
+  icon: resources/studio-icon/narra.png
   extraResources:
     - from: ./resources/codesign/linux
       to: resources/codesign/linux

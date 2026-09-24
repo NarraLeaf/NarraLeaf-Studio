@@ -292,7 +292,7 @@ export const workspace = {
         scope: {
             storyScene: "场景",
             storyMotion: "运动",
-            audioLoop: "音频标记",
+            audioLoop: "音频标记与增益",
             uiSurface: "界面",
             blueprint: "蓝图",
             project: "项目",
@@ -310,6 +310,7 @@ export const workspace = {
             storySpeakerChange: "说话人变更",
             storyMotionEdit: "运动编辑",
             audioMarkers: "标记变更",
+            audioGain: "增益变更",
             surfaceEdit: "界面编辑",
             blueprintEdit: "蓝图编辑",
             replaceText: "文本替换",
@@ -602,6 +603,10 @@ export const workspace = {
             blurOff: "关闭",
             fillMode: "填充方式",
             anchor: "位置",
+            editorPlate: "编辑器底色",
+            editorPlateOpacity: "编辑器底色不透明度",
+            sidebarPlate: "侧边栏底色",
+            sidebarPlateOpacity: "侧边栏底色不透明度",
             fill: {
                 cover: "缩放填满",
                 contain: "适应",

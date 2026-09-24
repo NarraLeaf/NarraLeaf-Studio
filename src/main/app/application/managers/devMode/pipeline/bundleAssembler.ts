@@ -985,8 +985,10 @@ export async function loadGameAudio(projectPath: string): Promise<GameAudioBundl
     const clips: Record<string, AudioClipRegion> = {};
     if (record && typeof record === "object") {
         for (const [assetId, raw] of Object.entries(record)) {
-            const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
-            const region = normalizeAudioClipRegion(extras);
+            const record = raw && typeof raw === "object" ? raw as { extras?: unknown; hash?: unknown } : undefined;
+            // The hash lets a stored file length through only when it was measured on this file.
+            const hash = typeof record?.hash === "string" ? record.hash : undefined;
+            const region = normalizeAudioClipRegion(record?.extras, hash);
             if (region) {
                 clips[assetId] = region;
             }

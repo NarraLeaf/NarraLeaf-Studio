@@ -41,7 +41,7 @@ import { StatusBar, STATUS_BAR_HEIGHT } from "./StatusBar";
 import { QuickOpenPicker } from "./QuickOpenPicker";
 import { BackgroundImageDialog } from "./BackgroundImageDialog";
 import { useWorkspaceBackgroundImage } from "./useWorkspaceBackgroundImage";
-import { backgroundLayerStyle } from "@/lib/workspace/services/ui/backgroundSettings";
+import { backgroundLayerStyle, backgroundPlateStyle } from "@/lib/workspace/services/ui/backgroundSettings";
 import { useKeybindings } from "../../hooks";
 import { useRegistry } from "../../registry";
 import { useDialogs } from "../../hooks/useUIService";
@@ -860,13 +860,20 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     // reveal this single layer uniformly. Because no element ever paints the raw picture, there is
     // no bright bleed through the gaps; and text, icons, borders, raised/overlay surfaces and content
     // images all keep their own opaque paints, so real content never reads as see-through.
+    //
+    // Two plates are the author's to set in the dialog: the editor's reading surfaces
+    // (`.nl-editor-surface`) and the docks (`.nl-sidebar-surface`). Each switch and opacity becomes
+    // an alpha published here, on the same element as the class, so it applies exactly where the
+    // wallpaper does.
     const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
+    const rootStyle = backgroundUrl ? (backgroundPlateStyle(backgroundSettings) as React.CSSProperties) : undefined;
 
     return (
         <TeamProjectProvider surface={versionSurface}>
             <div
                 {...windowRootProps}
                 className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
+                style={rootStyle}
             >
                 <TooltipHost />
                 {backgroundUrl && (

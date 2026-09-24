@@ -19,10 +19,10 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
-import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
+import { useAssetInspectorMetadata } from "./useAssetInspectorMetadata";
 import { InspectorWritesProvider } from "./framework/fields/inspectorWrites";
 import {
     interfaceDocumentFreezeScope,
@@ -757,7 +757,6 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      * old word until some unrelated interaction re-rendered the rail.
      */
     const assetLibraryRevision = useAssetLibraryRevision();
-    const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
@@ -1030,7 +1029,6 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             setActiveAsset(asset);
             setActiveSetId(setId);
             setActiveCharacter(character);
-            setAssetMetadata(null);
             setUISelection(uiSelection);
             setActiveSceneId(sceneId);
             setComparisonSelection(comparison);
@@ -1195,42 +1193,14 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         t,
     ]);
 
-    // Load asset metadata when asset changes
-    useEffect(() => {
-        if (!activeAsset || !assetsService) {
-            setAssetMetadata(null);
-            return;
-        }
-
-        let cancelled = false;
-
-        const loadMetadata = async () => {
-            try {
-                const result = await assetsService.fetch(activeAsset);
-                if (!cancelled && result.success) {
-                    // Avoid storing raw binary data to prevent UI freeze
-                    const { metadata } = result.data as any;
-                    setAssetMetadata({ metadata } as AssetData<any>);
-                }
-            } catch (err) {
-                console.error("Failed to load asset metadata:", err);
-            }
-        };
-
-        loadMetadata();
-
-        return () => {
-            cancelled = true;
-        };
-        // `hash` is in the dependency list on purpose: a content replacement keeps the id and changes
-        // the bytes, so without it this panel would keep reporting the dimensions and size of the
-        // file that was there before.
-    }, [activeAsset?.id, activeAsset?.hash, assetsService]);
+    // Owns its own lifetime: a record edit republishes the subject without touching the file, so
+    // clearing this on each new selection is what used to empty the info card. See the hook.
+    const assetMetadata = useAssetInspectorMetadata(activeAsset, assetsService);
 
     /**
      * The selection carries a *snapshot* of the asset record. A content replacement rewrites that
      * record in place, so without this the inspector would keep showing the previous hash — and the
-     * metadata reload above, which keys on it, would never run.
+     * metadata read above, which keys on it, would never run.
      */
     useEffect(() => {
         if (!assetsService || !activeAsset) return;
@@ -1514,14 +1484,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     }
 
     /**
-     * The whole panel is opaque, and follows the `editor.surfaceOpacity` knob rather than a fixed
-     * colour.
+     * The whole panel is one reading surface. Under a wallpaper it sits in a dock, so the dock's plate
+     * from the background dialog decides how much of the picture reaches it (see styles.css).
      *
      * `.nl-editor-surface` is the one rule the editor's reading surfaces share (prose column, Dev Mode
-     * debug panel, and this): a custom workspace background otherwise shows straight through a
-     * panel whose base is `rgba(0,0,0,0)`, and values you have to read must not compete with a
-     * photograph. It goes on both the panel root and the scroller so the whole plane paints as one,
-     * header included.
+     * debug panel, and this). It goes on the panel root only, which already spans the header and
+     * the scroller: a second plate on the scroller would stack its alpha over the first, and the
+     * field area would come out more solid than the header above it.
      *
      * An earlier version scoped this to story rows only, which left the asset, character, interface and
      * (empty, on a Dashboard tab) inspectors reading over the wallpaper. A field label is a field
@@ -1541,7 +1510,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             </div>
 
             {/* Content */}
-            <div className="nl-editor-surface flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
+            <div className="flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
     );
 }
