@@ -1030,11 +1030,16 @@ export class BuildService extends Service<BuildService> {
                 });
             consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", line, { source: BUILD_CONSOLE_SOURCE });
         }
-        const refusal = translateN(
-            scope === "assets" ? "build.contentComputedPinSummary" : "build.contentCoverageSummary",
-            touching.length,
-            { count: touching.length, variant },
-        );
+        // The headline is what the build state carries, and the dashboard archives it, so it has to
+        // be true of every line beneath it. A project built on a plugin's nodes, opened where that
+        // plugin is not loaded, refuses here with nothing it names having been assembled by anyone:
+        // the remedy is a plugin to switch on, and the headline says so when that is the whole of it.
+        const allUnloaded = touching.every(gap => gap.assetName?.origin.kind === "node"
+            && gap.assetName.origin.unknownType === true);
+        const summaryKey = scope === "assets"
+            ? (allUnloaded ? "build.contentUnloadedNodeSummary" : "build.contentComputedPinSummary")
+            : "build.contentCoverageSummary";
+        const refusal = translateN(summaryKey, touching.length, { count: touching.length, variant });
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: refusal });
         return this.state;

@@ -612,6 +612,67 @@ describe("BuildService asset-name gate", () => {
         expect(gameBuild.start).toHaveBeenCalledTimes(1);
         expect(state.status).toBe("done");
     });
+
+    /**
+     * The same refusal, where the name comes out of a node type nothing here can load: a project
+     * built on a plugin's nodes, opened where that plugin is not installed or is switched off. The
+     * shipped starter is one - its EXTRA screen is built on the Gallery plugin - and it refused with
+     * six sentences naming the author's own widgets and a remedy (pick the asset in the picker) that
+     * cannot be carried out on a node drawn as a stub.
+     */
+    const TILE_FROM_UNLOADED_PLUGIN = assetNameGapToIndexGap({
+        assetKind: "image",
+        sink: {
+            kind: "pin",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "showTile",
+            nodeType: "blueprint.element.image.setImageAsset",
+            nodeTitle: "Set Image Asset",
+            pinId: "asset",
+            pinLabel: "Asset",
+        },
+        origin: {
+            kind: "node",
+            blueprintId: "bp-grid",
+            blueprintName: "CG grid",
+            ownerKey: "widgetMain:surface:list",
+            graphKind: "event",
+            graphId: "ev-open",
+            nodeId: "rows",
+            nodeType: "narraleaf.gallery.getEntries",
+            nodeTitle: "narraleaf.gallery.getEntries",
+            unknownType: true,
+        },
+    });
+
+    it("says a node type is not loaded, and names the type rather than a card title", async () => {
+        const { service, lines, run } = mount({ referenceGaps: [TILE_FROM_UNLOADED_PLUGIN] });
+
+        const state = await service.start(REQUEST);
+
+        expect(gameBuild.start).not.toHaveBeenCalled();
+        expect(run).not.toHaveBeenCalled();
+        expect(state.error).toContain("build.contentUnloadedNodeSummary");
+        expect(lines.some(line =>
+            line.channel === BUILD_CONSOLE_CHANNEL
+            && line.level === "error"
+            && line.message.includes("lint.rule.blueprintAssembledAssetName.messageUnloadedNode")
+            && line.message.includes("narraleaf.gallery.getEntries"))).toBe(true);
+    });
+
+    it("keeps the assembled headline when one of them really is assembled", async () => {
+        // Strictly true of every line beneath it or it is not the headline: a run that has both
+        // says the one the author can act on in the project.
+        const { service } = mount({ referenceGaps: [TILE_FROM_UNLOADED_PLUGIN, ROW_PICTURE] });
+
+        const state = await service.start(REQUEST);
+
+        expect(state.error).toContain("build.contentComputedPinSummary");
+    });
 });
 
 describe("BuildService network gate", () => {

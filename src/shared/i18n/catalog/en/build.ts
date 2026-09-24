@@ -515,6 +515,13 @@ export const build = {
         one: "Build stopped: {count} asset name is assembled at run time. See the console.",
         other: "Build stopped: {count} asset names are assembled at run time. See the console.",
     },
+    // The same refusal where every one of them comes out of a node type nothing here can load: the
+    // plugin that defines it is not installed or is switched off, and there is nothing in the
+    // project to change.
+    contentUnloadedNodeSummary: {
+        one: "Build stopped: {count} asset name comes from a node type that is not loaded. See the console.",
+        other: "Build stopped: {count} asset names come from node types that are not loaded. See the console.",
+    },
     /**
      * A package build whose scripts did not all compile. Written in the main process, first line of
      * the failure the build reports; the compiler's own line for each file follows it, naming the

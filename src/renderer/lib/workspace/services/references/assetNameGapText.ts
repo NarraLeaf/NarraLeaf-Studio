@@ -19,6 +19,11 @@ import type { ReferenceIndexGap } from "./referenceModel";
  * The sentence lives in the project check's catalogue (`lint.rule.blueprintAssembledAssetName`),
  * because that is the one reader that cannot render it where it runs: a rule may not build prose,
  * so it hands on the key and the params, and every other surface renders the same key.
+ *
+ * Two sentences, not one. A name the project puts together is the author's own construct and the
+ * remedy is theirs; a name coming out of a node type nothing here can load is a plugin that is not
+ * installed or is switched off, and telling them to pick an asset in the picker sends them to a
+ * node drawn as a stub. Which one it is comes off the origin (`unknownType`).
  */
 
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
@@ -65,18 +70,39 @@ export function assetNameGapMessage(gap: AssetNameGap): AssetNameGapMessage {
     if (gap.origin.kind === "node") {
         setKey("origin", blueprintNodeTitleKey(gap.origin.nodeTitle));
     }
+    // A node type nothing here can load is named by its type - there is no card to take a title
+    // from, and the type is what says which plugin is missing, the way `blueprint/unknown-node`
+    // names it. The sentence differs too: the author has a plugin to install or switch on, not a
+    // name of their own to change.
+    const unloaded = gap.origin.kind === "node" && gap.origin.unknownType === true;
+    if (unloaded && gap.origin.kind === "node") {
+        delete paramKeys.origin;
+        params.origin = gap.origin.nodeType;
+    }
     const sink = gap.sink;
     if (sink.kind === "pin") {
         params.node = sink.nodeTitle;
         params.pin = sink.pinLabel;
         setKey("node", blueprintNodeTitleKey(sink.nodeTitle));
         setKey("pin", blueprintLabelKey(sink.pinLabel));
-        return { key: "lint.rule.blueprintAssembledAssetName.message", params, paramKeys };
+        return {
+            key: unloaded
+                ? "lint.rule.blueprintAssembledAssetName.messageUnloadedNode"
+                : "lint.rule.blueprintAssembledAssetName.message",
+            params,
+            paramKeys,
+        };
     }
     params.element = sink.elementName;
     params.prop = sink.propPath;
     setKey("prop", BINDING_PROP_LABEL_KEYS[sink.propPath]);
-    return { key: "lint.rule.blueprintAssembledAssetName.messageBinding", params, paramKeys };
+    return {
+        key: unloaded
+            ? "lint.rule.blueprintAssembledAssetName.messageUnloadedNodeBinding"
+            : "lint.rule.blueprintAssembledAssetName.messageBinding",
+        params,
+        paramKeys,
+    };
 }
 
 /** The whole sentence, in the language `t` speaks. */

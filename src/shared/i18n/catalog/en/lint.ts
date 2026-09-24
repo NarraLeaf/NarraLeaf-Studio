@@ -285,6 +285,11 @@ export const lint = {
             // the reader's language, named the way the canvas and the inspector name them.
             message: "\"{pin}\" on \"{node}\" receives an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
             messageBinding: "\"{prop}\" on \"{element}\" is bound to an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
+            // The same two places, where the name comes from a node type nothing here can load.
+            // `{origin}` is the node type rather than a title: it is what names the plugin, the way
+            // `blueprintUnknownNode` names it.
+            messageUnloadedNode: "\"{pin}\" on \"{node}\" receives an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
+            messageUnloadedNodeBinding: "\"{prop}\" on \"{element}\" is bound to an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
         },
         uiUnlocalizedText: {
             title: "Unlocalized text",

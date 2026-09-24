@@ -120,6 +120,10 @@ import { mergeBlueprintAssetPins, type BlueprintAssetPin, type BlueprintAssetPin
  * given up is precision rather than safety: a list's rows are one value, so a row whose label was
  * put together taints the picture beside it.
  *
+ * A node type the catalogue has never heard of is on the same side of the bar - nothing can say
+ * what it hands out - but it is recorded as its own reason (`unknownType`), because what an author
+ * has to do about it is install or switch on a plugin rather than change anything they wrote.
+ *
  * The sinks are every input pin a node declares as carrying an asset (`assetRef`), Play Sound's
  * wired clip included, and every value binding on a widget property that draws an asset.
  *
@@ -180,8 +184,16 @@ export type AssetNameSink =
 
 /** Where the name that reaches a sink is put together. */
 export type AssetNameOrigin =
-    /** A node that assembles a string, or one whose value this walk cannot follow. */
-    | (AssetNameNodeSite & { kind: "node" })
+    /**
+     * A node that assembles a string, or one whose value this walk cannot follow.
+     *
+     * `unknownType` separates the two reasons a node can be one, because they are two different
+     * things to tell an author. Without it, the node type a plugin defines reads as a name the
+     * author's own graph puts together the moment that plugin is not loaded - so a project built on
+     * a plugin's nodes reports its own widgets as the fault, with a remedy (pick the asset in the
+     * picker) that cannot be carried out on a node drawn as a stub.
+     */
+    | (AssetNameNodeSite & { kind: "node"; unknownType?: true })
     /** A story row whose `/set` computes the value it writes. */
     | {
         kind: "storyRow";
@@ -946,8 +958,8 @@ class AssetNameWalk {
         return info;
     }
 
-    private nodeOrigin(site: GraphSite, node: BlueprintGraphNode): AssetNameOrigin {
-        return { kind: "node", ...this.nodeSite(site, node) };
+    private nodeOrigin(site: GraphSite, node: BlueprintGraphNode, unknownType?: true): AssetNameOrigin {
+        return { kind: "node", ...this.nodeSite(site, node), ...(unknownType ? { unknownType } : {}) };
     }
 
     private nodeSite(site: GraphSite, node: BlueprintGraphNode): AssetNameNodeSite {
@@ -1113,8 +1125,11 @@ class AssetNameWalk {
     private outputContributions(site: GraphSite, node: BlueprintGraphNode, pinId: string): Contribution[] {
         const info = this.info(node);
         if (!info) {
-            // A node nobody can describe could put anything together.
-            return [{ kind: "origin", origin: this.nodeOrigin(site, node) }];
+            // A node type the catalogue has never heard of: the plugin that defines it is not
+            // installed, is switched off, or failed to load. Nothing can say what it hands out, so
+            // it is an origin like any other - but one the author did not write, which is why the
+            // gap carries the reason rather than only the verdict.
+            return [{ kind: "origin", origin: this.nodeOrigin(site, node, true) }];
         }
         const pin = info.pins.find(candidate => candidate.id === pinId && candidate.kind === "output");
         if (pin && (pin.semantic !== "data" || isInertValueType(pin.valueType))) {

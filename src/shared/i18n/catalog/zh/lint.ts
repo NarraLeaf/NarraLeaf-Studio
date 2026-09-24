@@ -268,6 +268,8 @@ export const lint = {
             description: "资产由游戏运行时拼出的名称选定，游戏包不会带上该资产",
             message: "“{node}”的“{pin}”收到的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
             messageBinding: "“{element}”的“{prop}”绑定的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+            messageUnloadedNode: "“{node}”的“{pin}”收到的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
+            messageUnloadedNodeBinding: "“{element}”的“{prop}”绑定的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
         },
         uiUnlocalizedText: {
             title: "未本地化的文本",
