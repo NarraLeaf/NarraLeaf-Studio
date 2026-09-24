@@ -1,10 +1,5 @@
 import { getInterface } from "@/lib/app/bridge";
 import { normalizeAccentColor } from "@shared/constants/accent";
-import {
-    EDITOR_SURFACE_OPACITY_KEY,
-    EDITOR_SURFACE_OPACITY_VAR,
-    editorSurfaceAlpha,
-} from "@/lib/settings/editorSurfaceOptions";
 import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
 import { UI_FONT_FAMILY_KEY, UI_FONT_VAR, uiFontCssFamily } from "@/lib/settings/uiFontOptions";
 import { setTooltipDelay } from "@/lib/tooltip";
@@ -12,7 +7,7 @@ import { WINDOW_ICON_DEFAULT, WINDOW_ICON_KEY, resolveWindowIcon, windowIconUrl 
 
 /**
  * Apply the appearance preferences CSS cannot resolve on its own: `ui.accentColor`,
- * `ui.fontFamily`, `ui.reduceMotion`, `editor.surfaceOpacity` and `ui.tooltipDelay`.
+ * `ui.fontFamily`, `ui.reduceMotion` and `ui.tooltipDelay`.
  *
  * Unlike the theme — which is pure CSS, because Electron's nativeTheme drives
  * `prefers-color-scheme` in every renderer — none of these has a media query
@@ -50,18 +45,6 @@ function applyAccentColor(value: unknown): void {
     // picks between them, so a theme switch needs nothing from this module.
     root.setProperty("--nl-primary-ink-on-dark", accent.inkOnDarkChannels);
     root.setProperty("--nl-primary-ink-on-light", accent.inkOnLightChannels);
-}
-
-/**
- * Publish `editor.surfaceOpacity` as one custom property on the root element.
- *
- * One variable rather than three setting readers: the story editor's prose area, the inspector's
- * field area and the Dev Mode debug panel are three components in two windows, and each reading
- * the preference for itself is three chances to disagree. They all carry `.nl-editor-surface`
- * instead, whose single rule resolves the sunken paint's alpha through this property.
- */
-function applyEditorSurfaceOpacity(value: unknown): void {
-    document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
 }
 
 /**
@@ -170,11 +153,10 @@ export async function initAppearance(): Promise<void> {
     const state = getInterface().app.state;
 
     try {
-        const [accent, uiFont, motion, surfaceOpacity, tooltipDelay, productIcon] = await Promise.all([
+        const [accent, uiFont, motion, tooltipDelay, productIcon] = await Promise.all([
             state.getGlobalState("ui.accentColor"),
             state.getGlobalState(UI_FONT_FAMILY_KEY),
             state.getGlobalState("ui.reduceMotion"),
-            state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
             state.getGlobalState(TOOLTIP_DELAY_KEY),
             state.getGlobalState(WINDOW_ICON_KEY),
         ]);
@@ -186,9 +168,6 @@ export async function initAppearance(): Promise<void> {
         }
         if (motion.success) {
             applyReduceMotion(motion.data.value);
-        }
-        if (surfaceOpacity.success) {
-            applyEditorSurfaceOpacity(surfaceOpacity.data.value);
         }
         if (tooltipDelay.success) {
             applyTooltipDelay(tooltipDelay.data.value);
@@ -209,8 +188,6 @@ export async function initAppearance(): Promise<void> {
                 applyUIFontFamily(change.value);
             } else if (change.key === "ui.reduceMotion") {
                 applyReduceMotion(change.value);
-            } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {
-                applyEditorSurfaceOpacity(change.value);
             } else if (change.key === TOOLTIP_DELAY_KEY) {
                 applyTooltipDelay(change.value);
             } else if (change.key === WINDOW_ICON_KEY) {

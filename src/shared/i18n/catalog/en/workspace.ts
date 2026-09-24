@@ -694,6 +694,10 @@ export const workspace = {
             blurOff: "Off",
             fillMode: "Fill",
             anchor: "Position",
+            editorPlate: "Editor background",
+            editorPlateOpacity: "Editor background opacity",
+            sidebarPlate: "Sidebar background",
+            sidebarPlateOpacity: "Sidebar background opacity",
             fill: {
                 cover: "Scale to fill",
                 contain: "Fit",

@@ -440,7 +440,11 @@ async function phaseSurface() {
                 editorBg: editor ? getComputedStyle(editor).backgroundColor : null,
                 editorAlpha: editor ? alphaOf(getComputedStyle(editor).backgroundColor) : null,
                 storySurfaceAlpha: surface ? alphaOf(getComputedStyle(surface).backgroundColor) : null,
-                surfaceOpacityVar: getComputedStyle(document.documentElement).getPropertyValue('--nl-editor-surface-opacity').trim(),
+                // Only published under a wallpaper; null means none is set and the plate is opaque.
+                surfaceAlphaVar: (() => {
+                    const shell = document.querySelector('.nl-has-workspace-bg');
+                    return shell ? getComputedStyle(shell).getPropertyValue('--nl-editor-surface-alpha').trim() : null;
+                })(),
                 topGap: (editor && firstLine)
                     ? Math.round(firstLine.getBoundingClientRect().y - editor.getBoundingClientRect().y)
                     : null,
@@ -449,7 +453,7 @@ async function phaseSurface() {
         run.check('U-1', 'the first line is not flush against the top of the editor',
             m.topGap !== null && m.topGap >= 4, `${m.topGap}px`);
         run.check('U-2', 'the editor surface carries the workspace surface opacity rather than being a solid slab',
-            m.surfaceOpacityVar === '1' || (m.editorAlpha !== null && m.editorAlpha < 1),
+            m.surfaceAlphaVar === null || m.surfaceAlphaVar === '1' || (m.editorAlpha !== null && m.editorAlpha < 1),
             JSON.stringify(m));
         run.note(`surface readings: ${JSON.stringify(m)}`);
         await d.screenshot('sb-surface');

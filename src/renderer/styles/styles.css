@@ -59,13 +59,6 @@
     --nl-story-mark: 26px;
 
     /*
-     * Alpha of the editor's reading surfaces (`.nl-editor-surface` below). Studio windows override
-     * it on the root element from the `editor.surfaceOpacity` setting (src/renderer/lib/appearance);
-     * 1 here is that setting's default and what a surface rendered outside the bootstrap gets.
-     */
-    --nl-editor-surface-opacity: 1;
-
-    /*
      * The Studio interface typeface.
      *
      * `--nl-ui-font-base` is the stack the product ships with — Tailwind's `sans`, pulled through
@@ -567,19 +560,41 @@ select:focus {
 }
 
 /*
- * The editor's reading surfaces: the story editor's prose area, the inspector's field area and the
- * Dev Mode debug panel body. Same sunken paint they were pinned to, with its alpha taken from the
- * `editor.surfaceOpacity` setting instead of from the token.
+ * The editor's reading surfaces: the story editor's prose area, the inspector, the text editor and
+ * the Dev Mode debug panel body. Without a wallpaper this is plain `bg-surface-sunken`.
  *
- * Why it is adjustable at all: the rule above deliberately clears every base `bg-surface` so a
- * wallpaper reads as one picture, which left the text you actually read sitting on the photograph.
- * Making these three opaque fixed the reading but cut a hard rectangle out of an otherwise
- * translucent app — and the wallpaper is opt-in, so the plate under the words has to be too.
- * At 100% this is exactly `bg-surface-sunken`; at 0% the surface is gone and the wallpaper runs
- * behind the prose again.
+ * Under a wallpaper the plate is the author's choice, made in the background dialog: off by default,
+ * so the picture runs behind the prose like behind the rest of the editor area, or on at an opacity
+ * of their own. The workspace root publishes the resulting alpha as `--nl-editor-surface-alpha`
+ * beside `.nl-has-workspace-bg`; the fallback only covers a frame where the class is set and the
+ * property is not yet. Two rules rather than one alpha that defaults to 1, so a window with no
+ * wallpaper (Dev Mode, the launcher's previews) has nothing to read and cannot come out translucent.
  */
 .nl-editor-surface {
-    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-opacity));
+    background-color: rgb(var(--nl-surface-sunken));
+}
+
+.nl-has-workspace-bg .nl-editor-surface {
+    background-color: rgb(var(--nl-surface-sunken) / var(--nl-editor-surface-alpha, 0));
+}
+
+/*
+ * The docks under a wallpaper: the left and right sidebars and the bottom panel carry this beside
+ * their `bg-surface`, and it gives them back the base paint at the dock plate's alpha
+ * (`--nl-sidebar-surface-alpha`, published like the editor's). Solid by default, which is what they
+ * are without a wallpaper; the author can thin them from the background dialog. Later than the
+ * wallpaper rule and of the same weight, so it wins over the cleared `bg-surface`.
+ *
+ * A reading surface inside a dock (the inspector) adds no plate of its own there: the dock already
+ * decided how much of the picture reaches it, and a second alpha on top would make the inspector
+ * more solid than the dock around it.
+ */
+.nl-has-workspace-bg .nl-sidebar-surface {
+    background-color: rgb(var(--nl-surface) / var(--nl-sidebar-surface-alpha, 1));
+}
+
+.nl-has-workspace-bg .nl-sidebar-surface .nl-editor-surface {
+    background-color: transparent;
 }
 
 /*

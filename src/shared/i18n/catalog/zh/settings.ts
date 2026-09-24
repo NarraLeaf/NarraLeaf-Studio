@@ -161,10 +161,6 @@ export const settings = {
                 monospace: "等宽",
             },
         },
-        editorSurfaceOpacity: {
-            label: "编辑面不透明度",
-            description: "故事正文与检查器字段背后阅读面的不透明度",
-        },
         maxActiveEditors: {
             label: "最大活动编辑器数",
             description: "同时保持加载并保留滚动位置与焦点的编辑器标签数（{min}-{max}）；其余标签在重新打开时重新加载",

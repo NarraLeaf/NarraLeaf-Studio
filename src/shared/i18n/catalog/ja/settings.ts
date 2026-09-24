@@ -171,10 +171,6 @@ export const settings = {
                 monospace: "等幅",
             },
         },
-        editorSurfaceOpacity: {
-            label: "エディタの面の不透明度",
-            description: "ストーリー文とインスペクタの項目の背後にある面の不透明度",
-        },
         maxActiveEditors: {
             label: "同時に保持するエディタの数",
             description:

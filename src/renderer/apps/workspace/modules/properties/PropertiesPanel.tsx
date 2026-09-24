@@ -1484,14 +1484,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     }
 
     /**
-     * The whole panel is opaque, and follows the `editor.surfaceOpacity` knob rather than a fixed
-     * colour.
+     * The whole panel is one reading surface. Under a wallpaper it sits in a dock, so the dock's plate
+     * from the background dialog decides how much of the picture reaches it (see styles.css).
      *
      * `.nl-editor-surface` is the one rule the editor's reading surfaces share (prose column, Dev Mode
-     * debug panel, and this): a custom workspace background otherwise shows straight through a
-     * panel whose base is `rgba(0,0,0,0)`, and values you have to read must not compete with a
-     * photograph. It goes on both the panel root and the scroller so the whole plane paints as one,
-     * header included.
+     * debug panel, and this). It goes on the panel root only, which already spans the header and
+     * the scroller: a second plate on the scroller would stack its alpha over the first, and the
+     * field area would come out more solid than the header above it.
      *
      * An earlier version scoped this to story rows only, which left the asset, character, interface and
      * (empty, on a Dashboard tab) inspectors reading over the wallpaper. A field label is a field
@@ -1511,7 +1510,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             </div>
 
             {/* Content */}
-            <div className="nl-editor-surface flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
+            <div className="flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
     );
 }

@@ -2294,10 +2294,9 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                 sitting under a `hidden` that overrides them, so the column has no size to contribute
                 while the script has the body. */}
             <div className={scriptOpen ? "hidden" : "relative flex min-h-0 min-w-0 flex-1 flex-col"}>
-            {/* The prose surface. A custom workspace background clears every base `bg-surface` fill
-                (see styles.css), which is right for chrome and wrong for the text you are reading,
-                so this one paints its own — at the `editor.surfaceOpacity` the author chose. Opaque
-                by default; `.nl-editor-surface` is the one rule the three reading surfaces share. */}
+            {/* The prose surface. Sunken without a wallpaper; with one, it keeps a plate only if the
+                author turned on the editor background in the background dialog, at the opacity set
+                there. `.nl-editor-surface` is the one rule the reading surfaces share. */}
             <div
                 ref={editor.scrollContainerRef}
                 className="nl-editor-surface min-h-0 flex-1 overflow-auto py-2"

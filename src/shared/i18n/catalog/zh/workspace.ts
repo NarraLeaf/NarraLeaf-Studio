@@ -603,6 +603,10 @@ export const workspace = {
             blurOff: "关闭",
             fillMode: "填充方式",
             anchor: "位置",
+            editorPlate: "编辑器底色",
+            editorPlateOpacity: "编辑器底色不透明度",
+            sidebarPlate: "侧边栏底色",
+            sidebarPlateOpacity: "侧边栏底色不透明度",
             fill: {
                 cover: "缩放填满",
                 contain: "适应",

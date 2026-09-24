@@ -173,10 +173,6 @@ export const settings = {
                 monospace: "Monospace",
             },
         },
-        editorSurfaceOpacity: {
-            label: "Editor surface opacity",
-            description: "Opacity of the surfaces behind story text and inspector fields.",
-        },
         maxActiveEditors: {
             label: "Maximum active editors",
             description:

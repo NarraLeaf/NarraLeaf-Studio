@@ -122,6 +122,10 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundFill",
     "ui.backgroundAnchor",
     "ui.backgroundBlur",
+    "ui.backgroundEditorFill",
+    "ui.backgroundEditorOpacity",
+    "ui.backgroundSidebarFill",
+    "ui.backgroundSidebarOpacity",
     "story.actionCreator.starredActionIds",
 ];
 
@@ -133,7 +137,7 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
  * question deserves. Both groups are things the receiving machine is better off without.
  *
  * - **The wallpaper.** `ui.backgroundImage` is a file NAME inside this profile's background cache,
- *   never a path, so on another machine it names a file that does not exist; the other four keys
+ *   never a path, so on another machine it names a file that does not exist; the other keys
  *   only describe how that missing picture would be painted. Carrying the picture itself would
  *   mean putting megabytes of base64 in a settings file, which is not what a settings file is.
  * - **The identity.** The name and address recorded on commits are the author's, not the
@@ -145,6 +149,10 @@ export const UNEXPORTED_PREFERENCE_KEYS: readonly string[] = [
     "ui.backgroundFill",
     "ui.backgroundAnchor",
     "ui.backgroundBlur",
+    "ui.backgroundEditorFill",
+    "ui.backgroundEditorOpacity",
+    "ui.backgroundSidebarFill",
+    "ui.backgroundSidebarOpacity",
     "versionControl.authorName",
     "versionControl.authorEmail",
     // Also the identity, for the same reason and one more of its own. The label is what
