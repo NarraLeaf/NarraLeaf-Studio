@@ -52977,7 +52977,7 @@
     "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275": {
       "id": "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275",
       "type": "nl.text",
-      "name": "Auto place",
+      "name": "Auto line",
       "parentId": "f4d2f822-fd4f-4f62-924d-0cfb8a945a23",
       "childrenIds": [],
       "layout": {
@@ -52989,7 +52989,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "The clubroom",
+        "text": "You're late.",
         "fontSize": 16,
         "color": "nlbrand:text.subtle",
         "fontWeight": "normal",
@@ -58978,7 +58978,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-22T22:48:41.426Z"
+    "updatedAt": "2026-09-24T04:18:42.920Z"
   },
   "structs": {
     "extra.galleryEntry": {

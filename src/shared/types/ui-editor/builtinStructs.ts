@@ -92,6 +92,11 @@ const HISTORY_ENTRY_STRUCT: UIStructDef = {
  * row rather than only the node so that a save screen built as a list can show a thumbnail per row
  * with no graph at all: a row is what a list draws, and a picture that differs per row has to be a
  * field to be one.
+ *
+ * `line` and `speaker` are there for the same reason and answer the same as `Get Save Line`: the
+ * sentence a slot was left on is what tells two auto-saves apart, and the nodes that could read it
+ * are effectful, which a value blueprint on a row may not be. Empty strings for a slot taken before
+ * any line played.
  */
 const SAVE_ENTRY_STRUCT: UIStructDef = {
     id: UI_STRUCT_ID_SAVE_ENTRY,
@@ -101,6 +106,8 @@ const SAVE_ENTRY_STRUCT: UIStructDef = {
         field("timestamp", "number"),
         field("createdAt", "number"),
         field("preview", "image"),
+        field("line", "string"),
+        field("speaker", "string"),
         field("metadata", "json"),
     ],
 };

@@ -361,6 +361,21 @@ declare module "@narraleaf/script" {
     	 * of slots a per-row graph call whose only job would be to ask again.
     	 */
     	preview: BlueprintImageAsset | null;
+    	/**
+    	 * The last sentence the slot was left on, and who spoke it - the same two strings
+    	 * {@link SaveRecordLine} publishes, read from the same engine metadata.
+    	 *
+    	 * They ride the row for the reason \`preview\` does. A row is what a list draws, and a value
+    	 * blueprint on that row may only read the row's own fields: \`Get Save Line\` is effectful, so a
+    	 * list-built save screen could not reach it at all and had nothing per-row to say beyond the
+    	 * time. What is in a scheduled auto-save is decided by the scheduler, not by an author, so
+    	 * \`metadata\` is empty for every one of them and the line is the only thing that tells two of
+    	 * them apart.
+    	 *
+    	 * Empty strings for a slot whose record carries none - a save taken before any line played.
+    	 */
+    	line: string;
+    	speaker: string;
     	/** Whatever the writer attached as user metadata (null when none). */
     	metadata: unknown;
     };

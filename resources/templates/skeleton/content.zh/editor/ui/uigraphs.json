@@ -8973,7 +8973,7 @@
       },
       "b5f7de69-3133-45ba-9689-067cb41987e6": {
         "id": "b5f7de69-3133-45ba-9689-067cb41987e6",
-        "name": "台词",
+        "name": "对白",
         "owner": {
           "kind": "componentWidgetMain",
           "componentId": "d3f603c4-ca2d-4404-82be-a935fd0bd9eb",
@@ -14025,7 +14025,7 @@
       },
       "50fbdd1e-06f3-4d44-880f-82a9f556ba75": {
         "id": "50fbdd1e-06f3-4d44-880f-82a9f556ba75",
-        "name": "台词",
+        "name": "对白",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
@@ -15145,24 +15145,24 @@
       },
       "42b27f4b-2294-4070-b012-75096ed59a17": {
         "id": "42b27f4b-2294-4070-b012-75096ed59a17",
-        "name": "自动存档地点",
+        "name": "自动存档对白",
         "owner": {
           "kind": "widgetMain",
           "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
           "elementId": "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275"
+        },
+        "graphs": {
+          "eventIds": [],
+          "events": {},
+          "functionIds": [],
+          "functions": {}
         },
         "members": {
           "variables": {},
           "fields": {},
           "functions": {}
         },
-        "bindings": {},
-        "graphs": {
-          "eventIds": [],
-          "events": {},
-          "functionIds": [],
-          "functions": {}
-        }
+        "bindings": {}
       },
       "7198c177-f0d0-4b5c-b433-7af512425cfd": {
         "id": "7198c177-f0d0-4b5c-b433-7af512425cfd",
@@ -15417,21 +15417,12 @@
       },
       "7da805da-0347-41e1-883b-78beba26baa0": {
         "id": "7da805da-0347-41e1-883b-78beba26baa0",
-        "name": "自动存档地点",
+        "name": "自动存档对白",
         "owner": {
           "kind": "widgetValue",
           "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
           "elementId": "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275",
           "propPath": "text"
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {},
-        "meta": {
-          "valueType": "string"
         },
         "graphs": {
           "eventIds": [
@@ -15512,17 +15503,6 @@
               "name": "图层 1",
               "graph": {
                 "nodes": {
-                  "n1": {
-                    "id": "n1",
-                    "type": "blueprint.data.returnValue",
-                    "params": {},
-                    "meta": {
-                      "editorLayout": {
-                        "x": 1080,
-                        "y": 40
-                      }
-                    }
-                  },
                   "n2": {
                     "id": "n2",
                     "type": "blueprint.event.head.init",
@@ -15549,28 +15529,12 @@
                     "id": "n5",
                     "type": "blueprint.list.getItemField",
                     "params": {
-                      "field": "metadata"
+                      "field": "line"
                     },
                     "meta": {
                       "editorLayout": {
-                        "x": 500,
-                        "y": 260
-                      }
-                    }
-                  },
-                  "n6": {
-                    "id": "n6",
-                    "type": "blueprint.data.jsonGet",
-                    "params": {
-                      "__inlineLiteralPins": [
-                        "path"
-                      ],
-                      "path": "place"
-                    },
-                    "meta": {
-                      "editorLayout": {
-                        "x": 740,
-                        "y": 260
+                        "x": 300,
+                        "y": 320
                       }
                     }
                   },
@@ -15580,8 +15544,89 @@
                     "params": {},
                     "meta": {
                       "editorLayout": {
-                        "x": 920,
-                        "y": 260
+                        "x": 520,
+                        "y": 320
+                      }
+                    }
+                  },
+                  "n8": {
+                    "id": "n8",
+                    "type": "blueprint.string.isBlank",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 740,
+                        "y": 320
+                      }
+                    }
+                  },
+                  "n5_2": {
+                    "id": "n5_2",
+                    "type": "blueprint.list.getItemField",
+                    "params": {
+                      "field": "line"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 960,
+                        "y": 460
+                      }
+                    }
+                  },
+                  "n7_2": {
+                    "id": "n7_2",
+                    "type": "blueprint.string.toString",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1180,
+                        "y": 460
+                      }
+                    }
+                  },
+                  "n9": {
+                    "id": "n9",
+                    "type": "if",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 960,
+                        "y": 60
+                      }
+                    }
+                  },
+                  "n10": {
+                    "id": "n10",
+                    "type": "blueprint.data.stringLiteral",
+                    "params": {
+                      "value": "无对白"
+                    },
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1180,
+                        "y": 220
+                      }
+                    }
+                  },
+                  "n1": {
+                    "id": "n1",
+                    "type": "blueprint.data.returnValue",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1420,
+                        "y": 460
+                      }
+                    }
+                  },
+                  "n11": {
+                    "id": "n11",
+                    "type": "blueprint.data.returnValue",
+                    "params": {},
+                    "meta": {
+                      "editorLayout": {
+                        "x": 1420,
+                        "y": 160
                       }
                     }
                   }
@@ -15593,7 +15638,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n1",
+                      "nodeId": "n9",
                       "port": "in"
                     }
                   },
@@ -15603,7 +15648,7 @@
                       "port": "then"
                     },
                     "to": {
-                      "nodeId": "n1",
+                      "nodeId": "n9",
                       "port": "in"
                     }
                   },
@@ -15613,16 +15658,6 @@
                       "port": "value"
                     },
                     "to": {
-                      "nodeId": "n6",
-                      "port": "json"
-                    }
-                  },
-                  {
-                    "from": {
-                      "nodeId": "n6",
-                      "port": "result"
-                    },
-                    "to": {
                       "nodeId": "n7",
                       "port": "value"
                     }
@@ -15633,7 +15668,67 @@
                       "port": "result"
                     },
                     "to": {
+                      "nodeId": "n8",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "n8",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "n9",
+                      "port": "condition"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "n9",
+                      "port": "true"
+                    },
+                    "to": {
+                      "nodeId": "n11",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "n9",
+                      "port": "false"
+                    },
+                    "to": {
                       "nodeId": "n1",
+                      "port": "in"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "n5_2",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "n7_2",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "n7_2",
+                      "port": "result"
+                    },
+                    "to": {
+                      "nodeId": "n1",
+                      "port": "value"
+                    }
+                  },
+                  {
+                    "from": {
+                      "nodeId": "n10",
+                      "port": "value"
+                    },
+                    "to": {
+                      "nodeId": "n11",
                       "port": "value"
                     }
                   }
@@ -15646,6 +15741,15 @@
           },
           "functionIds": [],
           "functions": {}
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {},
+        "meta": {
+          "valueType": "string"
         }
       },
       "181e12a0-d275-41c8-89af-47530b0f968f": {
@@ -27518,6 +27622,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-09-21T23:31:04.000Z"
+    "updatedAt": "2026-09-24T04:19:26.058Z"
   }
 }

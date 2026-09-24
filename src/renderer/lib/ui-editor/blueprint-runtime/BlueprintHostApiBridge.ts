@@ -2109,6 +2109,8 @@ function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
             timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
             createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
             preview: normalizeBlueprintImageAssetValue(record.preview),
+            line: typeof record.line === "string" ? record.line : "",
+            speaker: typeof record.speaker === "string" ? record.speaker : "",
             metadata: normalizeJsonValue(record.metadata),
         });
     }

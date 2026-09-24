@@ -1475,7 +1475,7 @@
         "4dafd6a8-af4b-433b-9572-02fa59295531": {
           "id": "4dafd6a8-af4b-433b-9572-02fa59295531",
           "type": "nl.text",
-          "name": "台词预览",
+          "name": "对白预览",
           "parentId": "5107c0a1-0000-4000-8000-000000000001",
           "childrenIds": [],
           "layout": {
@@ -3548,7 +3548,7 @@
         "0ff0af5f-1e67-4244-8752-1b39a3c858de": {
           "id": "0ff0af5f-1e67-4244-8752-1b39a3c858de",
           "type": "nl.text",
-          "name": "台词",
+          "name": "对白",
           "parentId": "5e17fd1c-4934-4ca0-acf8-3e2bcc409ee5",
           "childrenIds": [],
           "layout": {
@@ -7795,7 +7795,7 @@
           {
             "id": "p0",
             "type": "say",
-            "text": "台词",
+            "text": "对白",
             "character": "说话人",
             "voice": "",
             "voiceId": "",
@@ -7805,7 +7805,7 @@
           {
             "id": "p1",
             "type": "say",
-            "text": "台词",
+            "text": "对白",
             "character": "说话人",
             "voice": "",
             "voiceId": "",
@@ -7815,7 +7815,7 @@
           {
             "id": "p2",
             "type": "say",
-            "text": "台词",
+            "text": "对白",
             "character": "说话人",
             "voice": "",
             "voiceId": "",
@@ -7825,7 +7825,7 @@
           {
             "id": "p3",
             "type": "say",
-            "text": "台词",
+            "text": "对白",
             "character": "说话人",
             "voice": "",
             "voiceId": "",
@@ -8411,7 +8411,7 @@
     "465a62e7-7bbc-475d-8002-929ada7ee70b": {
       "id": "465a62e7-7bbc-475d-8002-929ada7ee70b",
       "type": "nl.text",
-      "name": "台词",
+      "name": "对白",
       "parentId": "e1e45cc5-f9bf-48da-b126-555dcc1abcf6",
       "childrenIds": [],
       "layout": {
@@ -52977,7 +52977,7 @@
     "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275": {
       "id": "d1de46e5-04f3-40e2-8b1f-cf1eeeb63275",
       "type": "nl.text",
-      "name": "自动存档地点",
+      "name": "自动存档对白",
       "parentId": "f4d2f822-fd4f-4f62-924d-0cfb8a945a23",
       "childrenIds": [],
       "layout": {
@@ -52989,7 +52989,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "社团活动室",
+        "text": "你迟到了。",
         "fontSize": 16,
         "color": "nlbrand:text.subtle",
         "fontWeight": "normal",
@@ -57986,7 +57986,7 @@
         "visible": true
       },
       "props": {
-        "text": "台词",
+        "text": "对白",
         "fontSize": 24,
         "color": "nlbrand:text.primary",
         "textAlign": "left",
@@ -58978,7 +58978,7 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:26.711Z",
-    "updatedAt": "2026-09-22T22:48:41.426Z"
+    "updatedAt": "2026-09-24T04:18:42.920Z"
   },
   "structs": {
     "extra.galleryEntry": {

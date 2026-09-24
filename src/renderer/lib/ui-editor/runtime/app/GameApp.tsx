@@ -258,7 +258,7 @@ import type {
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
 import { usePlaytime } from "./usePlaytime";
-import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
+import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import type { WeatherSeedRef } from "@shared/weather/model";
 import { weatherSpecForStage } from "@shared/weather/stage";
 
@@ -3420,6 +3420,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                         ? registerDevModeSavePreviewImage(id, record.metadata.capture)
                         : null,
                 ),
+                // Read from the record this loop already holds, through the reader `Get Save Line`
+                // uses, so a row and that node say the same thing about the same slot.
+                ...readSavedGameLine(record.savedGame),
                 metadata: record.metadata.user ?? null,
             };
         }));
@@ -3511,17 +3514,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!record) {
             return null;
         }
-        const savedGame = record.savedGame;
-        const meta =
-            savedGame && typeof savedGame === "object"
-                ? (savedGame as { meta?: unknown }).meta
-                : undefined;
-        const fields = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
-        const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
-        return {
-            line: toText(fields.lastSentence),
-            speaker: toText(fields.lastSpeaker),
-        };
+        return readSavedGameLine(record.savedGame);
     }, [host.saveStore]);
 
     /**
