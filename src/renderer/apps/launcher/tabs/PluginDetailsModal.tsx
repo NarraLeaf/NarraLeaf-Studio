@@ -2,6 +2,7 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { PluginDetailsBody } from "@/lib/plugins/ui/PluginDetailsBody";
 import { hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
+import { pluginRecordActions } from "@/lib/plugins/ui/pluginRecordActions";
 import type { PluginListItem } from "@shared/types/plugins";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 
@@ -36,6 +37,10 @@ export function PluginDetailsModal({
     const name = installed?.manifest.name ?? registryEntry?.name ?? pluginId;
     const updateAvailable = hasUpdate(installed, registryEntry);
     const compatible = isCompatible(registryEntry);
+    // No window here runs a plugin, so writing the record is the whole change and there is nothing
+    // to retry: Enable clears a recorded failure on its way past, and the next project to open is
+    // what tries the plugin again.
+    const actions = installed ? pluginRecordActions(installed, false) : null;
 
     const footer = (
         <div className="flex items-center gap-2">
@@ -49,7 +54,7 @@ export function PluginDetailsModal({
                     {t("plugins.uninstall")}
                 </button>
             ) : null}
-            {installed && installed.status === "needsAuthorization" ? (
+            {installed && actions?.authorize ? (
                 <button
                     type="button"
                     className={dialogFooterButtonClass({ variant: "primary", disabled: busy })}
@@ -58,14 +63,15 @@ export function PluginDetailsModal({
                 >
                     {t("plugins.authorize")}
                 </button>
-            ) : installed && installed.status !== "error" ? (
+            ) : null}
+            {installed && actions?.toggle ? (
                 <button
                     type="button"
                     className={dialogFooterButtonClass({ variant: "secondary", disabled: busy })}
-                    onClick={() => onSetEnabled(installed.pluginId, !installed.enabled)}
+                    onClick={() => onSetEnabled(installed.pluginId, actions.toggle === "enable")}
                     disabled={busy}
                 >
-                    {installed.enabled ? t("common.disable") : t("common.enable")}
+                    {actions.toggle === "enable" ? t("common.enable") : t("common.disable")}
                 </button>
             ) : null}
             {updateAvailable ? (

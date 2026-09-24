@@ -1,8 +1,9 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../utils/unpatchedFs";
 import path from "path";
 import type { App } from "@/app/app";
 import type { AppWindow } from "./managers/window/appWindow";
 import { WindowAppType } from "@shared/types/window";
+import type { AppEventToken } from "@shared/types/app";
 import {
     COMMAND_LINE_CHECK_EXIT_CODES,
     COMMAND_LINE_CHECK_REPORT_SCHEMA,
@@ -10,16 +11,32 @@ import {
     type CommandLineCheckReport,
     type CommandLineTestListing,
 } from "@shared/types/commandLineCheck";
-import type {
-    CommandLineRunEvent,
-    CommandLineRunJob,
-    CommandLineRunLogLine,
+import {
+    commandLinePluginFlag,
+    type CommandLineRunEvent,
+    type CommandLineRunJob,
+    type CommandLineRunLogLine,
+    type CommandLineRunPlugin,
+    type CommandLineRunTask,
+    type CommandLineTestEdition,
 } from "@shared/types/commandLineRun";
+import type { ProjectAppTag } from "@shared/types/appTag";
+import type { ProjectDlc } from "@shared/types/dlc";
 import type { DevModeConsoleLogLevel } from "@shared/types/devMode";
 import type { CheckCommandLineOptions } from "./commandLine";
 import type { CommandLineBuildProjectLookup } from "./commandLineBuild";
 import { resolveStartupProject } from "./startupProject";
+import { readProjectAppTagsFromDir } from "./utils/appTagsFile";
+import { readProjectDlcFromDir } from "./utils/dlcFile";
 import { readProjectConfigFromDir } from "./utils/projectConfigFile";
+import { enableCommandLinePlugins } from "./utils/commandLinePlugins";
+import { COMMAND_LINE_RUN_SILENCE_MS, getCommandLineRunEnd } from "./commandLineRunEnd";
+import {
+    defaultTestEdition,
+    describeTestEdition,
+    isDefaultTestEdition,
+    resolveTestEdition,
+} from "./utils/testEdition";
 
 /**
  * `narraleaf-studio --test <project>` and `--lint <project>`: one check, no interface, an exit code.
@@ -59,19 +76,33 @@ import { readProjectConfigFromDir } from "./utils/projectConfigFile";
  * lock on that directory. Acted on long before this file - `BaseApp.setupUserDataDir` - because
  * everything else reads through it.
  *
- * Unlike a build, a check reads nothing else out of the profile: no signing vault, no packager
- * mirrors. So there is no `--test-setting` to put anything back, and there is no reason for one.
- */
-
-/**
- * How long the workspace may say nothing at all before the run gives up on it.
+ * Unlike a build, a check needs nothing else out of the profile: no signing vault, no packager
+ * mirrors. So there is no `--test-setting` to put anything back.
  *
- * An idle deadline rather than a total one, and reset by every line the check writes: a walkthrough
- * of a long story or a sweep of a two-thousand-asset library takes as long as it takes, and a total
- * deadline would cancel exactly the runs that most needed to finish. What this catches is the other
- * shape: a window that opened, said nothing, and is never going to.
+ * ## The shipped form
+ *
+ * `--test-as-shipped` travels on the job, and the main process reads it back off the window's props
+ * when the test launches its game (`GameTestManager`). It is the whole of that run's answer: the
+ * machine's "Preview as shipped" setting is an author's habit and is not consulted - see
+ * `runSealing.ts`. A lint sweep never compiles or launches the game, so it has no counterpart.
+ *
+ * ## Which build the game is
+ *
+ * `--test-variant` and `--test-dlc` are the same decision about the other two things a test's game
+ * used to take from the machine - the "Run as" variant and the "Run with DLC" choices - and they are
+ * resolved here, against the project's own documents, before the workspace opens: a name the
+ * project does not have is a mistyped line, and it should cost a second rather than a compile. What
+ * travels on the job is the resolved build, and a line that names neither runs the release variant
+ * with no DLC on every machine. See `utils/testEdition.ts`.
+ *
+ * ## Plugins the profile does not run
+ *
+ * The workspace loads the plugins the profile has switched on, as the editor does, and a project
+ * that declares one it cannot have ends the run with exit 4. `--test-plugin` / `--lint-plugin` switch
+ * one on for this run only - found by name in the profile's list here, before the workspace opens,
+ * and held in memory by the plugin manager so nothing is written to the profile. See
+ * `utils/commandLinePlugins.ts`.
  */
-const WORKSPACE_SILENCE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export class CommandLineCheckRun {
     private readonly log: CommandLineRunLogLine[] = [];
@@ -80,6 +111,10 @@ export class CommandLineCheckRun {
     private projectPath: string | null = null;
     private projectName: string | undefined;
     private check: "test" | "lint" = "lint";
+    /** What the workspace was opened to do, once the line has been read far enough to say. */
+    private job: CommandLineRunJob | null = null;
+    /** The plugins the line switched on for this run, once they were found. For the report. */
+    private plugins: CommandLineRunPlugin[] = [];
     private finished = false;
 
     constructor(
@@ -98,6 +133,10 @@ export class CommandLineCheckRun {
         // report file the caller is going to look for.
         this.reportPath = options.reportPath ? path.resolve(process.cwd(), options.reportPath) : null;
         this.check = options.kind ?? "lint";
+        // From here on a failure outside this run's own flow - a fatal error in the main process, a
+        // window that asks something, the watchdog - ends the run through this run's own finish, with
+        // its log and its report. See `commandLineRunEnd.ts`.
+        getCommandLineRunEnd()?.attach(sentence => this.finish("studio-failed", sentence));
 
         if (options.error) {
             return this.finish("invocation", options.error);
@@ -111,7 +150,8 @@ export class CommandLineCheckRun {
                 `Missing --${options.kind} value: expected a project path or a recent project's name`,
             );
         }
-        if (options.kind === "lint" && (options.testId !== null || options.list || options.parameters.length > 0)) {
+        if (options.kind === "lint" && (options.testId !== null || options.list || options.parameters.length > 0
+            || options.asShipped || options.variant !== null || options.dlc.length > 0)) {
             return this.finish("invocation", "The --test flags were given with --lint, which runs no test");
         }
         if (options.kind === "test" && !options.list && !options.testId) {
@@ -136,14 +176,90 @@ export class CommandLineCheckRun {
         this.projectPath = resolution.projectPath;
         this.projectName = (await readProjectConfigFromDir(resolution.projectPath).catch(() => null))?.name;
 
-        const job: CommandLineRunJob = options.kind === "lint"
-            ? { kind: "lint" }
-            : options.list
-                ? { kind: "test-list" }
-                : { kind: "test", testId: options.testId!, parameters: parameters.values };
+        let task: CommandLineRunTask;
+        if (options.kind === "lint") {
+            task = { kind: "lint" };
+        } else if (options.list) {
+            task = { kind: "test-list" };
+        } else {
+            const edition = await this.resolveEdition(options);
+            if (!edition.ok) {
+                return this.finish(edition.outcome, edition.reason);
+            }
+            task = {
+                kind: "test",
+                testId: options.testId!,
+                parameters: parameters.values,
+                asShipped: options.asShipped,
+                edition: edition.edition,
+            };
+        }
+
+        // After everything the line could have got wrong, so a mistyped flag is still exit 2 on a
+        // line that also names a plugin this profile lacks - and before the workspace opens, which is
+        // where the plugins it loads are decided.
+        getCommandLineRunEnd()?.waitingOn("the plugins this line names to be found");
+        const plugins = await enableCommandLinePlugins(
+            this.app.pluginManager,
+            options.plugins,
+            commandLinePluginFlag(options.kind),
+        );
+        if (!plugins.ok) {
+            return this.finish("studio-failed", plugins.reason);
+        }
+        this.plugins = plugins.plugins;
+        if (plugins.plugins.some(plugin => plugin.enabledForRun)) {
+            // What switching a plugin on in the plugin list does next, for a plugin that brings a
+            // language of its own.
+            await this.app.refreshPluginLocales();
+        }
+        const job: CommandLineRunJob = { ...task, plugins: plugins.plugins };
 
         this.emit("info", describeJob(job, this.projectName ?? path.basename(resolution.projectPath)));
+        this.job = job;
         return this.runInWorkspace(job);
+    }
+
+    /**
+     * The build a test's game is, from `--test-variant` and `--test-dlc`.
+     *
+     * The documents are read only when the line named something: a line that names neither runs the
+     * release variant with no DLC, which needs neither document and must not be refused because one
+     * of them is broken. A document that is there and cannot be read is not the line's mistake, so
+     * it is not refused as one - the run cannot say which build was meant, and says why.
+     */
+    private async resolveEdition(options: CheckCommandLineOptions): Promise<
+        | { ok: true; edition: CommandLineTestEdition }
+        | { ok: false; outcome: CommandLineCheckOutcome; reason: string }
+    > {
+        if (options.variant === null && options.dlc.length === 0) {
+            return { ok: true, edition: defaultTestEdition() };
+        }
+        const projectPath = this.projectPath!;
+        let variants: ProjectAppTag[];
+        let dlcs: ProjectDlc[];
+        try {
+            // The variants even for a line that names only DLC: a DLC is refused when it attaches to
+            // another variant, and the refusal names that variant.
+            variants = await readProjectAppTagsFromDir(projectPath);
+            dlcs = options.dlc.length > 0 ? await readProjectDlcFromDir(projectPath) : [];
+        } catch (error) {
+            return {
+                ok: false,
+                outcome: "studio-failed",
+                reason: "Could not read the project's build variants and DLC to find the ones this line names: "
+                    + describeError(error),
+            };
+        }
+        const resolved = resolveTestEdition({
+            variantName: options.variant,
+            dlcNames: options.dlc,
+            variants,
+            dlcs,
+        });
+        return resolved.ok
+            ? resolved
+            : { ok: false, outcome: "invocation", reason: resolved.reason };
     }
 
     /**
@@ -156,12 +272,15 @@ export class CommandLineCheckRun {
     private async runInWorkspace(job: CommandLineRunJob): Promise<void> {
         const projectPath = this.projectPath!;
         let workspace: AppWindow<WindowAppType.Workspace>;
+        const end = getCommandLineRunEnd();
         try {
-            await this.app.ensureLauncher({ deferShow: true });
+            end?.waitingOn("the window the project is opened from to load");
+            await this.app.ensureLauncher({ unattended: true });
             const launcher = this.app.findLauncherWindow();
             if (!launcher) {
                 return this.finish("studio-failed", "Studio could not prepare a window to open the project from.");
             }
+            end?.waitingOn("the project's workspace window to load");
             workspace = await this.app.openProject(launcher, projectPath, {
                 background: true,
                 commandLineRun: job,
@@ -169,17 +288,22 @@ export class CommandLineCheckRun {
         } catch (error) {
             return this.finish("studio-failed", `Studio could not open the project: ${describeError(error)}`);
         }
+        end?.waitingOn("the workspace to report");
+        const silenceMs = COMMAND_LINE_RUN_SILENCE_MS[this.check];
 
         await new Promise<void>(resolve => {
             let settled = false;
             let deadline: ReturnType<typeof setTimeout>;
+            // Assigned by the subscription below, which can settle the run before it returns: what
+            // the page said before the run was listening is handed over as the run subscribes.
+            let token: AppEventToken | null = null;
             const settle = (run: () => Promise<void>) => {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 clearTimeout(deadline);
-                token.cancel();
+                token?.cancel();
                 void run().then(resolve, resolve);
             };
             const armDeadline = () => {
@@ -187,13 +311,13 @@ export class CommandLineCheckRun {
                 deadline = setTimeout(() => {
                     settle(() => this.finish(
                         "studio-failed",
-                        `The workspace said nothing for ${Math.round(WORKSPACE_SILENCE_TIMEOUT_MS / 60000)} minutes, so the run was abandoned.`,
+                        `The workspace said nothing for ${Math.round(silenceMs / 60000)} minutes, so the run was abandoned.`,
                     ));
-                }, WORKSPACE_SILENCE_TIMEOUT_MS);
+                }, silenceMs);
             };
             armDeadline();
 
-            const token = workspace.onCommandLineRunEvent(event => {
+            token = workspace.onCommandLineRunEvent(event => {
                 armDeadline();
                 if (event.kind === "log") {
                     const { kind: _kind, ...line } = event;
@@ -202,6 +326,9 @@ export class CommandLineCheckRun {
                 }
                 settle(() => this.finishFromWorkspace(event));
             });
+            if (settled) {
+                token.cancel();
+            }
 
             // "closed", not "close": a page process that died is `destroy()`ed rather than closed,
             // and that is exactly the case this is here to catch.
@@ -231,6 +358,26 @@ export class CommandLineCheckRun {
             this.printTestListing(event.tests);
             return this.finish("success", null, event);
         }
+        // The game this test launched said which form its content took, on the log, when it was
+        // compiled (see `GameTestManager`). A headless test launches no game at all, so it never
+        // will - and a line that asked for the shipped form and heard nothing back would leave the
+        // job believing the sealed path had been exercised.
+        if (this.job?.kind === "test" && this.job.asShipped && event.test?.presentation === "headless") {
+            this.emit(
+                "warning",
+                `--test-as-shipped: ${event.test.testId} is headless and launches no game, so no content was sealed`,
+            );
+        }
+        // The same for which build the game is. A headless test reads the project's documents as
+        // they stand - every story, every row - so a variant or DLC the line named changed nothing
+        // it looked at, and the job should not believe that build was the one checked.
+        if (this.job?.kind === "test" && !isDefaultTestEdition(this.job.edition) && event.test?.presentation === "headless") {
+            this.emit(
+                "warning",
+                `--test-variant / --test-dlc: ${event.test.testId} is headless and launches no game,`
+                    + " so it read the project as a whole rather than the build the line named",
+            );
+        }
         if (event.ok) {
             this.emit("success", event.test ? `${event.test.title} passed` : "no blocking findings");
             return this.finish("success", null, event);
@@ -241,7 +388,9 @@ export class CommandLineCheckRun {
             ? "invocation"
             : event.refusal === "unavailable"
                 ? "refused"
-                : event.test
+                : event.refusal === "environment"
+                    ? "studio-failed"
+                    : event.test
                     ? outcomeForTestStatus(event.test.status)
                     // A lint sweep that finished and did not pass is the project failing the check.
                     // Anything that produced nothing and named no refusal is Studio failing to
@@ -272,9 +421,10 @@ export class CommandLineCheckRun {
                 test.title,
                 test.available ? "" : `- unavailable: ${test.unavailableReason ?? "no reason given"}`,
             ].filter(Boolean).join("  "));
-            // A line of its own per parameter, and per accepted value under it. A `select` whose
-            // values are generated ids is exactly the case a one-line summary cannot serve: the
-            // line has to carry the id, and only the label beside it says which one to carry.
+            // A line of its own per parameter, and per accepted value under it, with the label beside
+            // it: the value is what the line carries, and the label is what says which row it is.
+            // Where a test stores generated ids, the workspace has already put each row's name in
+            // the value's place, so nothing printed here is an id.
             for (const parameter of test.parameters) {
                 this.emit("info", `    --test-parameter ${parameter.id}=<value>   ${parameter.label}`);
                 if (!parameter.options) {
@@ -306,6 +456,10 @@ export class CommandLineCheckRun {
         }
         this.finished = true;
         const exitCode = COMMAND_LINE_CHECK_EXIT_CODES[outcome];
+        // The outcome is decided, and only the teardown is left - which is bounded, so a process
+        // still alive well past its bound exits with this code rather than waiting on it.
+        const end = getCommandLineRunEnd();
+        end?.finishing(exitCode, this.app.getShutdownDeadlineMs());
         // Unless the check has just said it, the same way the build's finish does: one problem
         // printed twice reads as two.
         if (error && this.log[this.log.length - 1]?.message !== error) {
@@ -330,12 +484,16 @@ export class CommandLineCheckRun {
             ...(event?.test ? { test: event.test } : {}),
             ...(event?.lint ? { lint: event.lint } : {}),
             ...(event?.tests ? { tests: event.tests } : {}),
+            plugins: this.plugins,
             error,
             log: this.log,
         };
 
+        end?.waitingOn("the report to be written");
         await this.writeReport(report);
+        end?.waitingOn("the open project to be put down");
         await this.app.drainForShutdown();
+        end?.waitingOn("standard output to drain");
         await flushStandardOutput();
         this.app.electronApp.exit(exitCode);
     }
@@ -381,6 +539,8 @@ export class CommandLineCheckRun {
      */
     private record(line: CommandLineRunLogLine): void {
         this.log.push(line);
+        // Every line is progress, to the watchdog as to the run's own deadline.
+        getCommandLineRunEnd()?.progress();
         const source = line.source ? `${line.source}: ` : "";
         const text = `[${line.level}] ${source}${line.message}`;
         process.stdout.write(`${text}\n`);
@@ -455,7 +615,10 @@ function describeJob(job: CommandLineRunJob, projectName: string): string {
             const parameters = Object.entries(job.parameters)
                 .map(([id, value]) => `${id}=${value}`)
                 .join(" ");
-            return `running ${job.testId} against ${projectName}${parameters ? ` with ${parameters}` : ""}`;
+            const edition = describeTestEdition(job.edition);
+            return `running ${job.testId} against ${projectName}${parameters ? ` with ${parameters}` : ""}`
+                + (edition ? `, ${edition}` : "")
+                + (job.asShipped ? ", with its content as shipped" : "");
         }
         default:
             return `running against ${projectName}`;

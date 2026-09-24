@@ -6,6 +6,7 @@ import { installVirtualLayoutStub } from "@/lib/utils/virtualLayoutTestStub";
 import type { LocalizationDocument } from "@shared/types/localization";
 import type { StoryTranslationRow } from "@/lib/workspace/services/localization/localizationModel";
 import { Services } from "@/lib/workspace/services/services";
+import { translate } from "@/lib/i18n";
 // Imported statically, not from inside a test: this module's dependency graph is most of the
 // workspace, and loading it lazily charged three seconds of import to the first `it` - which is a
 // test that fails under load and passes on its own.
@@ -17,6 +18,11 @@ const LINE_COUNT = 5000;
 const SCENE_COUNT = 10;
 
 const updateUnit = vi.fn();
+const showError = vi.fn();
+/** The languages the project lists; a case removes one to act out a removal from elsewhere. */
+let listedLocales = [{ code: "ja", displayName: "Japanese" }];
+/** What the project's manifest subscribers are, so a case can announce a changed manifest. */
+const manifestListeners = new Set<() => void>();
 /** Keybindings the tab registered, so a test can fire one without a live KeybindingService. */
 const registeredKeybindings: { id: string; catalogId?: string; handler: (context: never) => void }[] = [];
 
@@ -68,7 +74,7 @@ const ROWS = Array.from({ length: LINE_COUNT }, (_, index) => storyRow(index));
 const services = {
     [Services.Localization]: {
         extractRows: () => ROWS,
-        getConfiguration: () => ({ locales: [{ code: "ja", displayName: "Japanese" }] }),
+        getConfiguration: () => ({ locales: listedLocales }),
         loadDocument: () => Promise.resolve(document_),
         onDocumentChanged: () => () => undefined,
         getKeysIfLoaded: () => null,
@@ -98,7 +104,14 @@ const services = {
         },
     },
     [Services.UIDocument]: { getDocument: () => null },
+    [Services.Project]: {
+        onConfigChanged: (listener: () => void) => {
+            manifestListeners.add(listener);
+            return () => manifestListeners.delete(listener);
+        },
+    },
 } as Record<string, unknown>;
+(services[Services.UI] as Record<string, unknown>).showError = showError;
 
 vi.mock("../../context", () => ({
     useWorkspace: () => ({
@@ -116,6 +129,9 @@ afterEach(() => {
     cleanup();
     restoreLayout();
     updateUnit.mockReset();
+    showError.mockReset();
+    listedLocales = [{ code: "ja", displayName: "Japanese" }];
+    manifestListeners.clear();
     registeredKeybindings.length = 0;
 });
 
@@ -242,5 +258,47 @@ describe("LocalizationEditorTab find", () => {
         await typeQuery("Line 424");
 
         expect(window.document.body.textContent).toContain("1/11");
+    });
+});
+
+describe("LocalizationEditorTab when its language leaves the list", () => {
+    function typeInto(box: HTMLTextAreaElement, text: string) {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!;
+        setter.call(box, text);
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    /**
+     * Removed by a collaborator, or by a restored version: the panel that closes the table on a
+     * removal is not the one that made it. The table used to stay, and every line typed into it was
+     * thrown away by a service that no longer held the language.
+     */
+    it("stops offering rows, and says the translations are still on disk", async () => {
+        await renderTab();
+        expect(window.document.querySelector("textarea")).not.toBeNull();
+
+        listedLocales = [];
+        await act(async () => {
+            manifestListeners.forEach(listener => listener());
+        });
+
+        expect(window.document.querySelector("textarea")).toBeNull();
+        expect(window.document.body.textContent).toContain(translate("workspace.localization.panel.languageGone"));
+        expect(window.document.body.textContent).toContain(translate("workspace.localization.panel.removeConfirmDetail"));
+    });
+
+    it("says an edit the library refuses, once rather than per keystroke", async () => {
+        updateUnit.mockImplementation(() => {
+            throw new Error(translate("workspace.localization.panel.languageGone"));
+        });
+        await renderTab();
+        const box = window.document.querySelector("textarea")!;
+
+        await act(async () => {
+            typeInto(box, "訳");
+            typeInto(box, "訳文");
+        });
+
+        expect(showError).toHaveBeenCalledTimes(1);
     });
 });

@@ -138,6 +138,10 @@ const FREEZE_REMEDIES: Record<WorkspaceRefusingFreezeKind, string> = {
     // would be a game missing most of the project rather than a build of it.
     recovery: "Leave recovery mode - this window reopens as a normal workspace - and try again.",
     manual: "Unfreeze the workspace and try again.",
+    // Normally unreachable: the project session gate refuses the same operations first, with the
+    // same account of where the project is. Written anyway so the record stays exhaustive, and so a
+    // report that arrives here before the gate has heard still tells the author the truth.
+    "taken-over": "This project is now open in another NarraLeaf Studio. Close it there, then open the project here again.",
 };
 
 /**

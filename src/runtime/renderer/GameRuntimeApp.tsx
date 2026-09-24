@@ -10,6 +10,7 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { GLOBAL_MAIN_OWNER_KEY } from "@shared/blueprint/ownerKey";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { GameRuntimePackV1, GameRuntimePreloadBridge, GameSessionClaim } from "@shared/types/gameRuntime";
@@ -20,6 +21,7 @@ import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackgr
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 import { BLUEPRINT_INPUT_MISSING_MESSAGE_KEY } from "@/lib/ui-editor/blueprint-nodes/requiredInputPins";
+import { describeAssetResolutionFailure } from "@/lib/ui-editor/runtime/assetResolution";
 import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
@@ -222,8 +224,15 @@ function useRuntimePackPreload(input: {
             firstSurface,
             assetUrl: assetId => bridge.assetUrl(assetId),
             onProgress: (settled, total) => runtimeShellBootReporter.progress("preload", settled, total),
+            // The first frame waits for the first screen and nothing else; the rest of the pack keeps
+            // warming behind it. See `preloadRuntimePackAssets` for why the wait is no longer the pack.
+            onFirstSurfaceSettled: () => {
+                runtimeShellBootReporter.end("preload");
+                if (!cancelled) {
+                    setState({ key: preloadKey, ready: true, result: null });
+                }
+            },
         }).then(result => {
-            runtimeShellBootReporter.end("preload");
             if (cancelled) {
                 return;
             }
@@ -400,6 +409,11 @@ function createRuntimePluginHost(
         // Present on desktop, absent on the web export - see web.ts. The loader
         // turns that absence into "no app.game.sidecar here".
         ...(sidecar ? { sidecar } : {}),
+        // The same rule for process memory: the desktop bridge asks its main process, and a web
+        // export has no processes to count and no such member.
+        ...(bridge.processMemory
+            ? { processMemory: bridge.processMemory }
+            : {}),
         // Forwarded, never decided: the shell behind this bridge re-reads the pack and checks the
         // named plugin's own declared patterns. Present on both shells, because both can open an
         // address - the desktop one through the platform opener, the web one through the browser.
@@ -581,7 +595,16 @@ function GameRuntimeSession() {
             return;
         }
         if (event.type === "execution.error") {
-            bridge.log("error", event.message);
+            // Prefixed with where it happened, as a missing input is below: a page by the name the
+            // author gave it, or the global blueprint, which belongs to no page. Without it a stopped
+            // loop reads the same in the log whichever of a dozen screens it was on.
+            const surface = event.surfaceId
+                ? pack?.bundle.ui.uidoc.surfaces.find(item => item.id === event.surfaceId)
+                : undefined;
+            const inGlobalBlueprint = !event.surfaceId && event.blueprintId !== undefined &&
+                pack?.bundle.ui.localBlueprints.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.blueprintId === event.blueprintId;
+            const place = surface ? surface.name : inGlobalBlueprint ? "Global blueprint" : null;
+            bridge.log("error", place ? `${place}: ${event.message}` : event.message);
         } else if (event.type === "node.input_missing") {
             // The one thing a player's log can say about "the button did nothing": which page, which
             // node, which pin. Named in the English the catalogue declares - the map that localizes a
@@ -602,6 +625,34 @@ function GameRuntimeSession() {
     const log = useCallback<GameAppHost["log"]>((level, message) => {
         bridge?.log(level, message);
     }, [bridge]);
+
+    /**
+     * A picture a widget could not get, as one line of the player's log.
+     *
+     * A shipped game has no issue list and must not grow one in front of a player, but a blank
+     * space with no line anywhere is the thing an author debugging a report from a player cannot
+     * work with. Once per distinct failure for the life of the window: a list of forty rows failing
+     * the same way is one line, and a failure the player walks past again is not a new one.
+     *
+     * Worded by the same function as Dev Mode's issue, prefixed with the page like a missing blueprint
+     * input is. A pack carries no asset names, so the sentence cannot say which file it was; it
+     * still says which page, which widget and which field.
+     */
+    const loggedAssetFailuresRef = useRef(new Set<string>());
+    const reportAssetResolution = useCallback<NonNullable<GameAppHost["reportAssetResolution"]>>(report => {
+        if (!bridge || report.type !== "outcome" || report.outcome.status !== "failed") {
+            return;
+        }
+        const failure = { site: report.site, requested: report.outcome.requested, stage: report.outcome.stage };
+        const sentence = describeAssetResolutionFailure(failure, pack?.bundle.storyLibrary?.assetNames, translate);
+        const key = `${report.site.surfaceId}\u0000${sentence}`;
+        if (loggedAssetFailuresRef.current.has(key)) {
+            return;
+        }
+        loggedAssetFailuresRef.current.add(key);
+        const surface = pack?.bundle.ui.uidoc.surfaces.find(item => item.id === report.site.surfaceId);
+        bridge.log("error", surface ? `${surface.name}: ${sentence}` : sentence);
+    }, [bridge, pack]);
 
     /**
      * The Fetch node's request. Every shell backs this - the desktop preload forwards it to the main
@@ -901,6 +952,7 @@ function GameRuntimeSession() {
             onDebugEvent,
             disposeMessage: "Preview runtime disposed",
             log,
+            reportAssetResolution,
             resolveStoryAssetUrl,
             resolveWeatherClip,
             saveStore,
@@ -944,6 +996,7 @@ function GameRuntimeSession() {
         log,
         onDebugEvent,
         pack,
+        reportAssetResolution,
         persistenceAdapter,
         quitApplication,
         restartApplication,

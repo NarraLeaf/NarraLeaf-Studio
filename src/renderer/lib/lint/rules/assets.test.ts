@@ -119,6 +119,24 @@ describe("assets/unused", () => {
         expect(findings[1].messageParams).toEqual({ asset: "tune.mp3" });
     });
 
+    it("leaves an asset picked by a computed value to the blueprint rule, and still withholds its kind", async () => {
+        // It used to be filed here as "unused assets not listed", under the project's name, where
+        // it took the place of the row it hid. `blueprint/assembled-asset-name` reports it now, at
+        // the node; the doubt it casts over pictures still holds the picture rows back.
+        const ctx = createTestLintContext({
+            assets: [asset("pic"), asset("tune", { type: AssetType.Audio, name: "tune.mp3", ext: "mp3" })],
+            referencedAssetIds: new Set<string>(),
+            assetIndex: {
+                complete: false,
+                gaps: [{ reason: "computedAssetPin", slice: "blueprint", location: "CG grid › Set Image Asset.asset", affects: ["image"] }],
+            },
+        });
+
+        const findings = await runRule("assets/unused", ctx);
+
+        expect(findings.map(finding => finding.messageParams)).toEqual([{ asset: "tune.mp3" }]);
+    });
+
     it("says the project could not be scanned when the index never built", async () => {
         const ctx = createTestLintContext({
             assets: [asset("a")],

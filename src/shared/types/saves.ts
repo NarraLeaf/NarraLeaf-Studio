@@ -13,6 +13,8 @@
  * bundle, and the game app runs the scheduler off it.
  */
 
+import type { BlueprintImageAsset } from "./blueprint/valueTypes";
+
 export type AutoSaveConfiguration = {
     /** Write an autosave on a timer while a game is running. */
     enabled: boolean;
@@ -229,6 +231,30 @@ export type AutoSaveEntry = {
     timestamp: number;
     /** When this slot was first written, epoch milliseconds. */
     createdAt: number;
+    /**
+     * The picture stored with this slot, addressed the way `Get Save Preview` addresses it; null
+     * when the record holds none.
+     *
+     * The same answer as that node's, from the same bytes, rather than a second one: the entry is
+     * read out of the record anyway, so carrying the picture along costs nothing and spares a list
+     * of slots a per-row graph call whose only job would be to ask again.
+     */
+    preview: BlueprintImageAsset | null;
+    /**
+     * The last sentence the slot was left on, and who spoke it - the same two strings
+     * {@link SaveRecordLine} publishes, read from the same engine metadata.
+     *
+     * They ride the row for the reason `preview` does. A row is what a list draws, and a value
+     * blueprint on that row may only read the row's own fields: `Get Save Line` is effectful, so a
+     * list-built save screen could not reach it at all and had nothing per-row to say beyond the
+     * time. What is in a scheduled auto-save is decided by the scheduler, not by an author, so
+     * `metadata` is empty for every one of them and the line is the only thing that tells two of
+     * them apart.
+     *
+     * Empty strings for a slot whose record carries none - a save taken before any line played.
+     */
+    line: string;
+    speaker: string;
     /** Whatever the writer attached as user metadata (null when none). */
     metadata: unknown;
 };

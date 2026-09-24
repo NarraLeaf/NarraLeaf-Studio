@@ -20,6 +20,7 @@
  */
 
 import { normalizeRectExtent, type BlueprintRect, type BlueprintVector2D } from "@shared/types/blueprint/valueTypes";
+import { readUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 
 /** The design size of a surface, which is what its shell's measured box maps onto. */
 export type SurfaceDesignSize = { width: number; height: number };
@@ -75,28 +76,58 @@ function surfaceScale(shellRect: DOMRect, design: SurfaceDesignSize): { x: numbe
 }
 
 /**
+ * The value of the `data-ui-drawing` attribute a drawn element carries, naming the drawing it is in.
+ *
+ * Encoded because a drawing key joins its segments with a NUL, which has no business in an attribute.
+ * An element drawn once, for the page, carries no attribute at all.
+ */
+export function uiDrawingAttributeValue(instanceKey: string): string {
+    return encodeURIComponent(instanceKey);
+}
+
+/**
+ * The painted copies of an element that a widget address can mean, most specific first.
+ *
+ * An address that names a drawing means that drawing and nothing else: a graph running in row 3 that
+ * moves the pointer to its own button means row 3's button, and measuring whichever row the page
+ * holds first sent it to row 1. An address with no drawing means the page's own copy when there is
+ * one; an element that is only ever drawn in rows or placements, named from outside all of them, has
+ * no one right answer, and keeps the one it always had - the first painted copy.
+ */
+function candidateNodesFor(doc: Document, address: string): HTMLElement[] {
+    const { elementId, instanceKey } = readUIWidgetAddress(address);
+    if (!elementId) {
+        return [];
+    }
+    const nodes = [...doc.querySelectorAll<HTMLElement>(`[data-ui-element-id="${escapeAttributeValue(elementId)}"]`)];
+    if (instanceKey) {
+        const wanted = uiDrawingAttributeValue(instanceKey);
+        return nodes.filter(node => node.getAttribute("data-ui-drawing") === wanted);
+    }
+    const pageDrawn = nodes.filter(node => !node.hasAttribute("data-ui-drawing"));
+    return [...pageDrawn, ...nodes.filter(node => node.hasAttribute("data-ui-drawing"))];
+}
+
+/**
  * Measure one widget, in the coordinates of the surface it sits on.
  *
- * ## Which instance
- *
- * One element id can be on screen more than once: every row of a list renders the same authored
- * widget, and a linked component instance carries the whole component's ids with it. The first
- * painted instance is the answer, and a zero-area one is skipped rather than reported - a hidden
- * widget is on screen at no size, and returning that box would send a pointer to the top-left
- * corner of the surface. Callers that need a particular row have to say which, and no caller does
- * yet, so this stays first-wins and says so rather than pretending the question does not exist.
+ * Takes a widget address (`widgetAddress.ts`) rather than an element id, because one element id can
+ * be on screen more than once: every row of a list renders the same authored widget, and a linked
+ * component instance carries the whole component's ids with it. Which copy is meant is
+ * {@link candidateNodesFor}'s question. A zero-area copy is skipped rather than reported - a hidden
+ * widget is on screen at no size, and returning that box would send a pointer to the top-left corner
+ * of the surface.
  */
 export function measureElementSurfaceRect(
-    elementId: string,
+    address: string,
     designSizeOf: SurfaceDesignSizeLookup,
     root?: Document | null,
 ): MeasuredSurfaceRect | null {
     const doc = resolveDocument(root);
-    if (!doc || !elementId) {
+    if (!doc || !address) {
         return null;
     }
-    const nodes = doc.querySelectorAll<HTMLElement>(`[data-ui-element-id="${escapeAttributeValue(elementId)}"]`);
-    for (const node of nodes) {
+    for (const node of candidateNodesFor(doc, address)) {
         const rect = node.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) {
             continue;

@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IPCMessageType, Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { ApiCapability } from "@shared/types/pluginPermissions";
-import { WINDOW_PROJECT_MISMATCH_CODE, WindowAppType } from "@shared/types/window";
+import {
+    WINDOW_PROJECT_MISMATCH_CODE,
+    WINDOW_SERVER_OFF_LIMITS_CODE,
+    WINDOW_SIGN_IN_UNUSED_CODE,
+    WindowAppType,
+} from "@shared/types/window";
 
 const { ipcMainMock } = vi.hoisted(() => {
     const handlers = new Map<string, (event: any, data: any) => Promise<any>>();
@@ -67,6 +72,17 @@ class FakeRequestHandler extends IPCHandler<IPCEventType> {
     }
 }
 
+/** A channel that lands a page's last writes, the way the persistence write channels do. */
+class LastWriteRequestHandler extends IPCHandler<IPCEventType> {
+    readonly name = "last-write" as IPCEventType;
+    readonly type = IPCMessageType.request as never;
+    readonly servesClosingWindow = true;
+
+    public async handle(window: WindowProxy): Promise<RequestStatus<any>> {
+        return this.success({ handledBy: (window as AppWindow).getWebContents().id });
+    }
+}
+
 class ThrowingRequestHandler extends IPCHandler<IPCEventType> {
     readonly name = "throwing-request" as IPCEventType;
     readonly type = IPCMessageType.request as never;
@@ -100,11 +116,26 @@ class RefusingMessageHandler extends IPCHandler<IPCEventType> {
     }
 }
 
-function createRegistry(windows: AppWindow[]): IPCRegistry {
+/** A handler refusing with whatever code it is built with, the way the Team channels refuse. */
+class CodedRefusalHandler extends IPCHandler<IPCEventType> {
+    readonly type = IPCMessageType.request as never;
+
+    constructor(readonly name: IPCEventType, private readonly code: string) {
+        super();
+    }
+
+    public async handle(): Promise<RequestStatus<any>> {
+        return this.failed(Object.assign(new Error("refused"), { code: this.code }));
+    }
+}
+
+function createRegistry(windows: AppWindow[], closing: AppWindow[] = []): IPCRegistry {
     const bySender = new Map(windows.map(w => [w.getWebContents().id, w]));
+    const closingBySender = new Map(closing.map(w => [w.getWebContents().id, w]));
     return new IPCRegistry(
         Namespace.NarraLeafStudio,
         sender => bySender.get(sender.id),
+        sender => closingBySender.get(sender.id),
     );
 }
 
@@ -148,6 +179,29 @@ describe("IPCRegistry", () => {
         expect(destroyedResult).toMatchObject({ success: false, error: expect.stringContaining("No live window") });
     });
 
+    /**
+     * A window that has started closing is off every list, but its page is still running its
+     * `beforeunload` - which is where a game writes out what it owes. The channels that land those
+     * writes answer it; to every other channel it is gone, exactly as before.
+     */
+    it("answers a window that has started closing only on the channels that serve one", async () => {
+        const closing = createFakeWindow(WindowAppType.DevMode, 4);
+        const destroyed = createFakeWindow(WindowAppType.DevMode, 5, true);
+        const ordinary = new FakeRequestHandler();
+        createRegistry([], [closing, destroyed]).initialize([new LastWriteRequestHandler(), ordinary]);
+
+        await expect(invokeChannel("narraleaf-studio:last-write", 4, {}))
+            .resolves.toEqual({ success: true, data: { handledBy: 4 } });
+
+        await expect(invokeChannel("narraleaf-studio:fake-request", 4, {}))
+            .resolves.toMatchObject({ success: false, error: expect.stringContaining("No live window") });
+        expect(ordinary.handleSpy).not.toHaveBeenCalled();
+
+        // Gone is gone, whichever channel asks.
+        await expect(invokeChannel("narraleaf-studio:last-write", 5, {}))
+            .resolves.toMatchObject({ success: false, error: expect.stringContaining("No live window") });
+    });
+
     it("enforces per-window API capabilities using real declarations", async () => {
         const workspace = createFakeWindow(WindowAppType.Workspace, 1);
         const prompt = createFakeWindow(WindowAppType.PluginPermissionPrompt, 2);
@@ -187,18 +241,43 @@ describe("IPCRegistry", () => {
         ]);
 
         await invokeChannel("narraleaf-studio:refusing-request", 1, {});
-        expect(reportWindowProjectRefusal).toHaveBeenCalledWith(workspace, "refusing-request");
+        expect(reportWindowProjectRefusal).toHaveBeenCalledWith(workspace, "refusing-request", "project");
 
         // A message answers nobody, so its refusal would otherwise be dropped along with its return
         // value - which is exactly the failure the console line exists to prevent.
         reportWindowProjectRefusal.mockClear();
         sendMessage("narraleaf-studio:refusing-message", 1, {});
         await Promise.resolve();
-        expect(reportWindowProjectRefusal).toHaveBeenCalledWith(workspace, "refusing-message");
+        expect(reportWindowProjectRefusal).toHaveBeenCalledWith(workspace, "refusing-message", "project");
 
         // An ordinary failure is not one of these and must not be announced as one.
         reportWindowProjectRefusal.mockClear();
         await invokeChannel("narraleaf-studio:throwing-request", 1, {});
+        expect(reportWindowProjectRefusal).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The Team channels refuse a window that may not speak to a server as the account, and those
+     * refusals go down the same line - the same throttle, the same console, the same silence about
+     * what was named - with the reason each code stands for.
+     */
+    it("reports the Team channels' refusals through the same line, with their own reason", async () => {
+        const workspace = createFakeWindow(WindowAppType.Workspace, 1);
+        createRegistry([workspace]).initialize([
+            new CodedRefusalHandler("sign-in-refusal" as IPCEventType, WINDOW_SIGN_IN_UNUSED_CODE),
+            new CodedRefusalHandler("off-limits-refusal" as IPCEventType, WINDOW_SERVER_OFF_LIMITS_CODE),
+            new CodedRefusalHandler("other-refusal" as IPCEventType, "vcs/sign-in-unused"),
+        ]);
+
+        await invokeChannel("narraleaf-studio:sign-in-refusal", 1, {});
+        expect(reportWindowProjectRefusal).toHaveBeenLastCalledWith(workspace, "sign-in-refusal", "sign-in-unused");
+
+        await invokeChannel("narraleaf-studio:off-limits-refusal", 1, {});
+        expect(reportWindowProjectRefusal).toHaveBeenLastCalledWith(workspace, "off-limits-refusal", "server-off-limits");
+
+        // A coded failure the author is shown a sentence for is an answer, not one of these.
+        reportWindowProjectRefusal.mockClear();
+        await invokeChannel("narraleaf-studio:other-refusal", 1, {});
         expect(reportWindowProjectRefusal).not.toHaveBeenCalled();
     });
 

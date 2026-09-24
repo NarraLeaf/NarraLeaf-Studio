@@ -20,8 +20,44 @@
 //
 // Regenerate after editing the English skeleton:  node scripts/gen-skeleton-locale.mjs
 // Verify the committed trees match:               node scripts/gen-skeleton-locale.mjs --check
-// A string that has no entry in the table fails the run and is named, so English cannot leak into
-// the variant by being forgotten.
+// List every word the blueprints show, as JSON:   node scripts/gen-skeleton-locale.mjs --graph-text
+//
+// Three things fail the run, and each is named, so English cannot leak into a variant by being
+// forgotten:
+//   - a string in a translatable place that the table has no entry for;
+//   - a table entry nothing asked for. That is how a part of the content the generator has stopped
+//     reading shows up: the blueprints moved from `blueprint.program.graphs` to `blueprint.graphs`,
+//     and every layer name, function name and on-screen literal in them went on shipping in English
+//     for as long as the generator went on looking in the old place - while their entries sat in
+//     both tables, looked up by nothing;
+//   - in the blueprint document, a string somewhere this script has not been told about (below).
+//
+// What a blueprint says, and what it only stores
+//
+// The blueprint document (`editor/ui/uigraphs.json`) is walked field by field against a
+// description of its shape, and every string in it has to land somewhere that description names. A
+// field it does not name that holds a string fails the run, rather than being copied as it is: a
+// new node, a new field on a layer, or the graphs moving again then needs a decision, instead of
+// being English nobody noticed. Every blueprint is walked the same way whatever owns it - the
+// global one, surfaces, widgets, component definitions, value bindings, story actions.
+//
+// Translated (through the table): the names an author navigates by - a blueprint's, each layer's,
+// each member variable, field and function's, a `Fn` head's and its pins' - and the words a node
+// puts in front of someone: text a node writes on screen (`Set Text`), what a confirm dialog asks
+// and its answers, what `Log` prints to the author.
+//
+// Never translated: anything the code looks up, compares or parses. Ids and references of every
+// kind (elements, surfaces, assets, variables, stories, functions), localization keys, input action
+// ids, broadcast event names, JSON paths and field names, enum values (`enter`, `cg`, `true`), the
+// operand of a string comparison, and a date pattern: `YYYY/MM/DD HH:mm` is read by `Format Time`,
+// not by a player, and it is the same pattern in all three languages.
+//
+// Decided by where it goes: a string literal node, and a literal typed into `Concat`, is whatever
+// the pin its value reaches is - text if every pin it feeds is text, left alone if every one is
+// something the code reads. A value graph's `Return Value` is text when the property it binds is
+// a widget's `text` or `label`, or when it is a story's inline value. A literal that reaches one of
+// each is left as it is and printed as ambiguous on every run; the fix for one is in the English
+// content (a literal per use), not here.
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -31,15 +67,330 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = resolve(HERE, "../resources/templates/skeleton");
 const TABLES = ["zh", "ja"];
 
-/** Node params that hold text a player reads, or a name an author reads. Nothing else is touched. */
-const TRANSLATED_NODE_PARAMS = new Set([
-    "blueprint.layer.confirm:message",
-    "blueprint.layer.confirm:button_1_label",
-    "blueprint.layer.confirm:button_2_label",
-    "blueprint.element.text.setText:text",
-    "blueprint.data.stringLiteral:value",
-    "blueprint.fn.head:name",
-]);
+const TEXT = "text";
+const VERBATIM = "verbatim";
+/** The class of whatever this node's output is wired into. */
+const FEEDS = "feeds";
+/** A value graph's result: the class of the property or story slot the blueprint binds. */
+const RETURN = "return";
+/** A literal whose uses disagree: left as it is, and printed. */
+const AMBIGUOUS = "ambiguous";
+
+/**
+ * What each node param holds, by node type and param key. A literal typed into a data pin is stored
+ * as a param under the pin's id, so the same entry answers for a literal typed into the pin and for a
+ * literal node wired into it.
+ *
+ * Only strings need an entry, and only strings that are not empty. A string in a param with no
+ * entry fails the run: add the param here, as text or as verbatim, once you know which it is.
+ */
+const NODE_PARAM_SLOTS = [
+    ["blueprint.app.setFullscreen", "mode", VERBATIM],
+    ["blueprint.collection.arrayFind", "key", VERBATIM],
+    ["blueprint.component.getParam", "paramId", VERBATIM],
+    ["blueprint.data.booleanLiteral", "value", VERBATIM],
+    ["blueprint.data.jsonGet", "path", VERBATIM],
+    ["blueprint.data.jsonMakeObject", /^field_\d+_name$/, VERBATIM],
+    ["blueprint.data.returnValue", "value", RETURN],
+    ["blueprint.data.stringLiteral", "value", FEEDS],
+    ["blueprint.element.displayable.getProperty", "property", VERBATIM],
+    ["blueprint.element.displayable.setProperty", "property", VERBATIM],
+    ["blueprint.element.displayable.setVariant", "variantId", VERBATIM],
+    ["blueprint.element.ref", "elementId", VERBATIM],
+    ["blueprint.element.ref", "elementType", VERBATIM],
+    ["blueprint.element.ref", "surfaceId", VERBATIM],
+    ["blueprint.element.text.setText", "text", TEXT],
+    ["blueprint.event.head.action", "actionId", VERBATIM],
+    ["blueprint.event.head.onBroadcast", "event", VERBATIM],
+    ["blueprint.fn.call", "fnRef", VERBATIM],
+    ["blueprint.fn.head", "name", TEXT],
+    ["blueprint.game.getTrackVolume", "audioTrackId", VERBATIM],
+    ["blueprint.game.isSceneVisited", "storyId", VERBATIM],
+    ["blueprint.game.isSceneVisited", "sceneId", VERBATIM],
+    ["blueprint.game.quit", "surfaceId", VERBATIM],
+    ["blueprint.game.setTrackVolume", "audioTrackId", VERBATIM],
+    ["blueprint.game.startStory", "sceneId", VERBATIM],
+    ["blueprint.game.startStory", "storyId", VERBATIM],
+    ["blueprint.layer.confirm", "message", TEXT],
+    ["blueprint.layer.confirm", /^button_\d+_label$/, TEXT],
+    ["blueprint.layer.confirm", "surfaceId", VERBATIM],
+    ["blueprint.list.getItemField", "field", VERBATIM],
+    ["blueprint.local.get", "variableId", VERBATIM],
+    ["blueprint.local.set", "variableId", VERBATIM],
+    ["blueprint.localization.getText", "key", VERBATIM],
+    ["blueprint.log", "value", TEXT],
+    ["blueprint.page.go", "surfaceId", VERBATIM],
+    ["blueprint.persistent.get", "persistentVariableId", VERBATIM],
+    ["blueprint.sound.play", "audioTrackId", VERBATIM],
+    ["blueprint.sound.play", "soundAssetId", VERBATIM],
+    ["blueprint.string.concat", /^(a|b|in_\d+)$/, FEEDS],
+    ["blueprint.string.equals", /^(a|b)$/, VERBATIM],
+    ["blueprint.time.format", "pattern", VERBATIM],
+    ["narraleaf.gallery.getEntries", "galleryKind", VERBATIM],
+    ["narraleaf.gallery.getStats", "galleryKind", VERBATIM],
+];
+
+/** Bookkeeping params any node may carry: lists of the pin ids it grew, and their value types. */
+const SHARED_PARAM_SLOTS = [
+    [/^__\w+(Pins|PinIds|PinTypes)$/, VERBATIM],
+    ["__variableValueType", VERBATIM],
+];
+
+function nodeParamSlot(nodeType, key) {
+    const matches = pattern => (typeof pattern === "string" ? pattern === key : pattern.test(key));
+    for (const [type, pattern, slot] of NODE_PARAM_SLOTS) {
+        if (type === nodeType && matches(pattern)) {
+            return slot;
+        }
+    }
+    for (const [pattern, slot] of SHARED_PARAM_SLOTS) {
+        if (matches(pattern)) {
+            return slot;
+        }
+    }
+    return undefined;
+}
+
+/** What a value graph's result is, from what its blueprint is bound to. */
+function returnSlot(owner) {
+    if (owner?.kind === "widgetValue") {
+        return owner.propPath === "text" || owner.propPath === "label" ? TEXT : VERBATIM;
+    }
+    if (owner?.kind === "storyAction") {
+        return owner.mode === "value" ? TEXT : VERBATIM;
+    }
+    return AMBIGUOUS;
+}
+
+function isRecord(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** True when a string anyone could read is somewhere inside `value`. */
+function holdsText(value) {
+    if (typeof value === "string") {
+        return value !== "";
+    }
+    if (value && typeof value === "object") {
+        return Object.values(value).some(holdsText);
+    }
+    return false;
+}
+
+/**
+ * Translates the blueprint document in place, and accounts for every string in it.
+ *
+ * Returns the places a word was translated (`slots`, as JSON-pointer paths with the English they
+ * held), the places nothing here describes that hold a string (`unclassified`, each with one
+ * blueprint and layer it was seen in), and the literals whose uses disagree (`ambiguous`).
+ */
+function translateBlueprintDocument(file, say) {
+    const slots = [];
+    const unclassified = new Map();
+    const ambiguous = [];
+
+    const unknown = (label, ctx) => {
+        if (!unclassified.has(label)) {
+            unclassified.set(label, ctx.seenIn ?? "");
+        }
+    };
+    const child = (ctx, key, parent, label = key) => ({
+        ...ctx,
+        pointer: [...ctx.pointer, key],
+        parent,
+        key,
+        where: `${ctx.where}.${label}`,
+    });
+
+    const verbatim = () => {};
+    const word = (value, ctx) => {
+        if (typeof value === "string") {
+            if (value !== "") {
+                slots.push({ pointer: ctx.pointer, source: value });
+                ctx.parent[ctx.key] = say(value);
+            }
+        } else if (holdsText(value)) {
+            unknown(ctx.where, ctx);
+        }
+    };
+    /** A record whose keys are known: each one handled as given, and text under any other fails. */
+    const shape = handlers => (value, ctx) => {
+        if (!isRecord(value)) {
+            if (holdsText(value)) {
+                unknown(ctx.where, ctx);
+            }
+            return;
+        }
+        for (const [key, entry] of Object.entries(value)) {
+            const handler = Object.prototype.hasOwnProperty.call(handlers, key) ? handlers[key] : undefined;
+            if (handler) {
+                handler(entry, child(ctx, key, value));
+            } else if (holdsText(entry)) {
+                unknown(`${ctx.where}.${key}`, ctx);
+            }
+        }
+    };
+    /** A map keyed by id, or a list: every entry handled the same way. */
+    const eachOf = handler => (value, ctx) => {
+        if (!value || typeof value !== "object") {
+            if (holdsText(value)) {
+                unknown(ctx.where, ctx);
+            }
+            return;
+        }
+        for (const [key, entry] of Object.entries(value)) {
+            handler(entry, child(ctx, Array.isArray(value) ? Number(key) : key, value, "*"));
+        }
+    };
+
+    // The class of whatever a node's output reaches, following `Concat` through to its own uses.
+    const feedsSlot = (graph, nodeId, ctx, seen = new Set()) => {
+        if (seen.has(nodeId)) {
+            return AMBIGUOUS;
+        }
+        seen.add(nodeId);
+        const found = new Set();
+        for (const edge of graph.edges ?? []) {
+            if (edge?.from?.nodeId !== nodeId) {
+                continue;
+            }
+            const consumer = graph.nodes?.[edge.to?.nodeId];
+            let slot = consumer ? nodeParamSlot(consumer.type, edge.to.port) : undefined;
+            if (slot === FEEDS) {
+                slot = feedsSlot(graph, consumer.id, ctx, seen);
+            } else if (slot === RETURN) {
+                slot = returnSlot(ctx.owner);
+            } else if (slot === undefined) {
+                unknown(`node pin ${consumer?.type ?? "(missing node)"}:${edge.to?.port} (fed a string)`, ctx);
+                slot = AMBIGUOUS;
+            }
+            found.add(slot);
+        }
+        if (found.size === 0) {
+            // Wired into nothing, so read by nothing.
+            return VERBATIM;
+        }
+        return found.size === 1 ? [...found][0] : AMBIGUOUS;
+    };
+
+    const pinList = eachOf(shape({ pinId: verbatim, name: word, valueType: verbatim }));
+    const params = (graph, node) => (value, ctx) => {
+        if (!isRecord(value)) {
+            if (holdsText(value)) {
+                unknown(ctx.where, ctx);
+            }
+            return;
+        }
+        for (const [key, entry] of Object.entries(value)) {
+            const paramCtx = child(ctx, key, value);
+            // A Call Fn node carries a copy of the function's signature so it can draw its pins
+            // without reading the document, and the editor calls the call stale the moment the copy
+            // and the head disagree - so the copy is translated exactly as the head is.
+            if (key === "__fnSignatureSnapshot") {
+                shape({ name: word, params: pinList, returns: pinList })(entry, paramCtx);
+                continue;
+            }
+            if (key === "__fnParamPinLabels" || key === "__fnReturnPinLabels") {
+                eachOf(word)(entry, paramCtx);
+                continue;
+            }
+            if (!holdsText(entry)) {
+                continue;
+            }
+            let slot = nodeParamSlot(node.type, key);
+            if (slot === FEEDS) {
+                slot = feedsSlot(graph, node.id, ctx);
+            } else if (slot === RETURN) {
+                slot = returnSlot(ctx.owner);
+            }
+            if (slot === undefined) {
+                unknown(`node param ${node.type}:${key}`, ctx);
+            } else if (slot === TEXT) {
+                word(entry, paramCtx);
+            } else if (slot === AMBIGUOUS) {
+                ambiguous.push({ where: `${node.type}:${key}`, seenIn: ctx.seenIn, value: entry });
+            }
+        }
+    };
+    const graph = (value, ctx) => {
+        shape({
+            nodes: eachOf((node, nodeCtx) => shape({
+                id: verbatim,
+                type: verbatim,
+                params: params(value, node),
+                meta: shape({ editorLayout: verbatim }),
+                // Written by the packager, never under `editor/`; asset ids either way.
+                assetVariants: verbatim,
+            })(node, nodeCtx)),
+            edges: verbatim,
+            meta: shape({ graphKind: verbatim }),
+        })(value, ctx);
+    };
+    const layer = (value, ctx) => shape({
+        id: verbatim,
+        name: word,
+        graph,
+        // A path under `scripts/`, and what the compiler last said about it.
+        script: verbatim,
+        meta: shape({}),
+    })(value, { ...ctx, seenIn: `${ctx.seenIn} / ${isRecord(value) ? value.name ?? value.id : "?"}` });
+    const blueprint = (value, ctx) => shape({
+        id: verbatim,
+        name: word,
+        owner: verbatim,
+        members: shape({
+            variables: eachOf(shape({ id: verbatim, name: word, valueType: verbatim, meta: shape({}) })),
+            fields: eachOf(shape({
+                id: verbatim,
+                name: word,
+                kind: verbatim,
+                valueSource: verbatim,
+                meta: shape({}),
+            })),
+            functions: eachOf(shape({
+                id: verbatim,
+                name: word,
+                parameters: eachOf(shape({ name: word, valueType: verbatim })),
+                returnType: verbatim,
+                meta: shape({}),
+            })),
+        }),
+        // Which prop is bound to which field; a `fallback` shown in its place is not described yet.
+        bindings: eachOf(shape({
+            id: verbatim,
+            target: verbatim,
+            source: verbatim,
+            mode: verbatim,
+            status: verbatim,
+            brokenReason: verbatim,
+        })),
+        graphs: shape({
+            eventIds: verbatim,
+            events: eachOf(layer),
+            functionIds: verbatim,
+            functions: eachOf(layer),
+            macros: eachOf(layer),
+        }),
+        meta: shape({ valueType: verbatim }),
+    })(value, {
+        ...ctx,
+        owner: isRecord(value) ? value.owner : undefined,
+        seenIn: `blueprint ${JSON.stringify(isRecord(value) ? value.name : "?")}`,
+    });
+
+    shape({
+        schemaVersion: verbatim,
+        meta: verbatim,
+        blueprintDocument: shape({
+            schemaVersion: verbatim,
+            meta: verbatim,
+            ownerRecords: verbatim,
+            blueprints: eachOf(blueprint),
+        }),
+    })(file, { pointer: [], where: "uigraphs.json", parent: null, key: null });
+
+    return { slots, unclassified, ambiguous };
+}
 
 /** FNV-1a over UTF-16 code units — the same hash `shared/utils/localizationText` stamps units with. */
 function hashSourceText(text) {
@@ -66,12 +417,14 @@ function buildVariant(locale) {
     const contentDir = join(TEMPLATE_DIR, "content");
     const strings = table.strings;
     const missing = new Set();
+    const asked = new Set();
 
     /** The table's word for an authored one; a string it does not know is reported, never guessed. */
     const say = text => {
         if (typeof text !== "string" || text === "") {
             return text;
         }
+        asked.add(text);
         if (!Object.prototype.hasOwnProperty.call(strings, text)) {
             missing.add(text);
             return text;
@@ -132,35 +485,11 @@ function buildVariant(locale) {
     }
     emit(uidocPath, uidoc.value, uidoc.trailingNewline);
 
-    // --- The blueprints: the confirm dialogs a player answers, and the names an author navigates by.
+    // --- The blueprints: the names an author navigates by, and the words their nodes show. Every
+    // string in the document is accounted for; see "What a blueprint says" at the top.
     const graphsPath = "editor/ui/uigraphs.json";
     const graphs = readJson(join(contentDir, graphsPath));
-    for (const blueprint of Object.values(graphs.value.blueprintDocument?.blueprints ?? {})) {
-        blueprint.name = say(blueprint.name);
-        const programGraphs = blueprint.program?.graphs ?? {};
-        for (const collection of ["events", "functions"]) {
-            for (const entry of Object.values(programGraphs[collection] ?? {})) {
-                entry.name = say(entry.name);
-                for (const node of Object.values(entry.graph?.nodes ?? {})) {
-                    for (const [key, value] of Object.entries(node.params ?? {})) {
-                        if (TRANSLATED_NODE_PARAMS.has(`${node.type}:${key}`)) {
-                            node.params[key] = say(value);
-                        }
-                    }
-                    // A Call Fn node carries a copy of the function's signature so it can draw its
-                    // pins without reading the document. It is the same name told twice, and a copy
-                    // left in English is what the node would then be labelled with.
-                    const snapshot = node.params?.__fnSignatureSnapshot;
-                    if (snapshot && typeof snapshot === "object") {
-                        snapshot.name = say(snapshot.name);
-                        for (const pin of [...(snapshot.params ?? []), ...(snapshot.returns ?? [])]) {
-                            pin.name = say(pin.name);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    const blueprintText = translateBlueprintDocument(graphs.value, say);
     emit(graphsPath, graphs.value, graphs.trailingNewline);
 
     // --- The story: its own translation, promoted into the text the author edits.
@@ -227,6 +556,13 @@ function buildVariant(locale) {
             // which the table answers for, like the interface does.
             if (node.action === "setVariable" && typeof node.value === "string") {
                 node.value = translations.units?.[node.value] ? node.value : say(node.value);
+                return;
+            }
+            // An ending's name is text a player reads - wherever the game lists its endings - and it
+            // has no translation unit of its own, so the table answers for it as for any other
+            // string the author typed.
+            if (node.control === "ending" && typeof node.name === "string") {
+                node.name = say(node.name);
                 return;
             }
             Object.values(node).forEach(walk);
@@ -320,14 +656,40 @@ function buildVariant(locale) {
         emit(`editor/localization/${name}`, document.value, document.trailingNewline);
     }
 
+    const problems = [];
+    if (blueprintText.unclassified.size > 0) {
+        const list = [...blueprintText.unclassified]
+            .sort(([a], [b]) => (a < b ? -1 : 1))
+            .map(([where, seenIn]) => `  ${where}${seenIn ? `  (in ${seenIn})` : ""}`)
+            .join("\n");
+        problems.push(
+            `${graphsPath} holds strings in ${blueprintText.unclassified.size} place(s) this script has no description of:\n`
+            + `${list}\n`
+            + "Say what each one is in gen-skeleton-locale.mjs - text a player or an author reads, or something "
+            + "the code looks up - before it ships in English or gets translated into a broken reference.",
+        );
+    }
     if (missing.size > 0) {
         const list = [...missing].sort().map(text => `  ${JSON.stringify(text)}`).join("\n");
-        throw new Error(
+        problems.push(
             `gen-skeleton-locale.${locale}.json has no entry for ${missing.size} string(s):\n${list}\n`
             + "Add each one (an unchanged string maps to itself).",
         );
     }
-    return files;
+    const unasked = Object.keys(strings).filter(text => !asked.has(text)).sort();
+    if (unasked.length > 0) {
+        const list = unasked.map(text => `  ${JSON.stringify(text)}`).join("\n");
+        problems.push(
+            `gen-skeleton-locale.${locale}.json has ${unasked.length} entr${unasked.length === 1 ? "y" : "ies"} `
+            + `nothing in the English content asked for:\n${list}\n`
+            + "Remove each one whose string the English content no longer has. If it does still have it, this "
+            + "script has stopped reading the part it is in - find that before touching the table.",
+        );
+    }
+    if (problems.length > 0) {
+        throw new Error(problems.join("\n\n"));
+    }
+    return { files, graphText: blueprintText.slots, ambiguous: blueprintText.ambiguous };
 }
 
 function listFiles(dir, prefix = "") {
@@ -343,10 +705,22 @@ function listFiles(dir, prefix = "") {
     return out;
 }
 
+// The places in the blueprint document that hold a word, with the English each one holds - the same
+// in every variant, since the structure is copied. `starterLocaleGraphText.test.ts` reads each one
+// out of the shipped variants and fails where the word is still the English one.
+if (process.argv.includes("--graph-text")) {
+    const { graphText } = buildVariant(TABLES[0]);
+    process.stdout.write(JSON.stringify({ file: "editor/ui/uigraphs.json", slots: graphText }) + "\n");
+    process.exit(0);
+}
+
 const check = process.argv.includes("--check");
 let failed = false;
 for (const locale of TABLES) {
-    const files = buildVariant(locale);
+    const { files, ambiguous } = buildVariant(locale);
+    for (const { where, seenIn, value } of ambiguous) {
+        console.warn(`content.${locale}: left as written, its uses disagree: ${where} = ${JSON.stringify(value)} (in ${seenIn})`);
+    }
     const outDir = join(TEMPLATE_DIR, `content.${locale}`);
     const exists = statSync(outDir, { throwIfNoEntry: false })?.isDirectory() ?? false;
     if (check) {

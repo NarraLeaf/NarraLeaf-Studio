@@ -15,12 +15,17 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes";
+import { registerBuiltInPluginBlueprintNodes } from "../builtinPluginNodes";
 import { loadSaveSchema } from "../project";
 import { compileBlueprintDocument } from "./compile";
 import { parseBlueprintText } from "./parse";
 import { printBlueprint } from "./print";
 
 registerCoreBlueprintNodes();
+// The shipped skeleton's EXTRA screen is built on the Gallery plugin's nodes, and the CLI
+// registers every bundled plugin's the same way. Without this the skeleton reads here as a
+// document full of unknown types.
+registerBuiltInPluginBlueprintNodes();
 
 const SKELETON_PROJECT = path.resolve(__dirname, "../../../../../resources/templates/skeleton/content");
 const SKELETON = path.join(SKELETON_PROJECT, "editor", "ui", "uigraphs.json");

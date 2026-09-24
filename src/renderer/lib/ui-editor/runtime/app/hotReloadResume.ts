@@ -19,6 +19,7 @@
 
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { StoryDocument, StoryLiteralValue } from "@shared/types/story";
+import { translate } from "@/lib/i18n";
 
 /**
  * Where the run stood when the reload arrived.
@@ -121,7 +122,7 @@ export function resolveRelaunchStartRow(params: {
         return { startBlockId, notice: null };
     }
     if (target.kind === "sceneStart") {
-        return { notice: "The row this run started from no longer exists; restarted from the start of the scene." };
+        return { notice: translate("game.run.resume.relaunchRowGone") };
     }
     // The scene itself is gone. Left to the compile to answer, which is the one thing here that
     // cannot be improved by dropping the row: there is no scene to restart the top of.
@@ -218,21 +219,21 @@ export function applyResumeToLaunchSnapshot(
 /**
  * The message the author is told when a reload could not put them back, or `null` when it could.
  *
- * English here rather than through the i18n catalog for the reason every compile diagnostic is: this
- * file is inside the shared game app, which is also what a packaged game runs, and the catalog is a
- * Studio thing. The Dev Mode Issues panel shows what the runtime says, verbatim.
+ * From the catalog, in the language of the window the game runs in: the Dev Mode Issues panel shows
+ * what the runtime says verbatim, and the packaged game's runtime bundle carries the same catalog
+ * (its `@/lib/i18n` is the shell's shim), so there is no build this sentence cannot be worded in.
  */
 export function storyResumeNotice(target: StoryResumeTarget): string | null {
     if (target.kind === "entry") {
         return target.reason === "sceneMissing"
-            ? "The scene you were on no longer exists; restarted from the beginning."
-            : "The story you were playing no longer exists; restarted from the beginning.";
+            ? translate("game.run.resume.sceneGone")
+            : translate("game.run.resume.storyGone");
     }
     if (target.kind === "previousRow") {
-        return "The row you were on no longer exists; resumed from the row before it.";
+        return translate("game.run.resume.rowGoneBefore");
     }
     if (target.kind === "sceneStart") {
-        return "The row you were on no longer exists; resumed from the start of the scene.";
+        return translate("game.run.resume.rowGoneSceneStart");
     }
     return null;
 }

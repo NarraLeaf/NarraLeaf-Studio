@@ -2,8 +2,10 @@ import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-edito
 import type { DevModeBundle } from "@shared/types/devMode";
 import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
-import { isUIListItemInstanceKeyOf } from "@shared/types/ui-editor/list";
+import { isUIListItemInstanceKeyOf, leaveUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import { popUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
+import { resolveUIWidgetAddressFromDrawing } from "@shared/types/ui-editor/widgetDrawing";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime, UIHostAdapterElementEventOptions } from "../types";
 import {
@@ -19,6 +21,7 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
+import { createWidgetDrawingRegistry } from "./widgetDrawingRegistry";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -43,7 +46,10 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     const persistentVariables = bundle.ui.persistentVariables;
     const surfaceStore = scopeBridge.getSurfaceStore(effectiveRuntimeScopeId);
     type PendingFlush = {
+        elementId: string;
         payload?: Record<string, unknown>;
+        /** The drawing the flush is for. Queued per drawing, so two rows' flushes are two flushes. */
+        options?: UIHostAdapterElementEventOptions;
         queuedDuringFlush: boolean;
         resolve: Array<() => void>;
     };
@@ -72,6 +78,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             getParam: key => hostApi.frame.getParam(key),
             emit: (eventName, data) => hostApi.frame.emit(eventName, data),
         },
+        resolveWidgetAddress: (elementId, instanceKey) => resolveUIWidgetAddressFromDrawing(document, elementId, instanceKey),
+        drawings: createWidgetDrawingRegistry(document),
         dispatchElementBlueprintEvent: async () => {
             /* assigned after adapter */
         },
@@ -254,13 +262,19 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
      * further would hand an ancestor a private copy of its own variables, freshly defaulted, for as
      * long as the pointer happened to be over a row. That reads as an ancestor whose variables never
      * remember anything, which is not a failure any author could see the cause of.
+     *
+     * Only the row's own part of the key goes. The list may be drawn inside a row of another list or
+     * inside a component placement, and the event is still in that drawing - the key it is left with
+     * is the one the list itself was drawn with. The scope does go whole: it describes the row being
+     * left, and the enclosing row's scope is not something the inner one carries.
      */
     const leavingListRow = (parentId: string, options: UIHostAdapterElementEventOptions | undefined): UIHostAdapterElementEventOptions | undefined => {
         if (!options || !isUIListItemInstanceKeyOf(options.instanceKey, parentId)) {
             return options;
         }
-        const { listItemScope: _scope, instanceKey: _key, ...rest } = options;
-        return rest;
+        const { listItemScope: _scope, instanceKey, ...rest } = options;
+        const outerKey = leaveUIListItemInstanceKey(instanceKey);
+        return outerKey ? { ...rest, instanceKey: outerKey } : rest;
     };
 
     const resolvePendingFlushes = (items: PendingFlush[]) => {
@@ -307,7 +321,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
 
         if (flushCascadeRounds > MAX_FLUSH_CASCADE_ROUNDS) {
             const droppedItems = [...batch.map(([, item]) => item), ...pendingFlushes.values()];
-            const elementIds = batch.map(([elementId]) => elementId).join(", ");
+            const elementIds = batch.map(([, item]) => item.elementId).join(", ");
             pendingFlushes.clear();
             flushCascadeRounds = 0;
             debug.emit({
@@ -323,9 +337,9 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
 
         flushDraining = true;
         try {
-            for (const [elementId, item] of batch) {
+            for (const [, item] of batch) {
                 try {
-                    await dispatchElementBlueprintEventNow(elementId, "flush", item.payload);
+                    await dispatchElementBlueprintEventNow(item.elementId, "flush", item.payload, item.options);
                 } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
                     debug.emit({
@@ -349,17 +363,32 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         }
     };
 
-    const enqueueElementFlush = (elementId: string, eventPayload?: Record<string, unknown>): Promise<void> => {
+    /**
+     * Queue one flush, de-duplicated per drawing rather than per element.
+     *
+     * Keyed by the element alone, the queue kept one flush for every row of a list and every
+     * placement of a component and dropped the drawing on the way through - so a slider inside a
+     * card flushed as nobody, and the card's graph was never found to answer it.
+     */
+    const enqueueElementFlush = (
+        elementId: string,
+        eventPayload?: Record<string, unknown>,
+        eventOptions?: UIHostAdapterElementEventOptions,
+    ): Promise<void> => {
         const queuedDuringFlush = flushDraining;
+        const key = buildUIWidgetAddress(elementId, eventOptions?.instanceKey);
         return new Promise(resolve => {
-            const existing = pendingFlushes.get(elementId);
+            const existing = pendingFlushes.get(key);
             if (existing) {
                 existing.payload = eventPayload ?? existing.payload;
+                existing.options = eventOptions ?? existing.options;
                 existing.queuedDuringFlush = existing.queuedDuringFlush && queuedDuringFlush;
                 existing.resolve.push(resolve);
             } else {
-                pendingFlushes.set(elementId, {
+                pendingFlushes.set(key, {
+                    elementId,
                     payload: eventPayload,
+                    options: eventOptions,
                     queuedDuringFlush,
                     resolve: [resolve],
                 });
@@ -370,7 +399,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
 
     blueprintRuntime.dispatchElementBlueprintEvent = async (elementId, eventName, eventPayload, eventOptions) => {
         if (eventName === "flush") {
-            await enqueueElementFlush(elementId, eventPayload);
+            await enqueueElementFlush(elementId, eventPayload, eventOptions);
             return;
         }
         await dispatchElementBlueprintEventNow(elementId, eventName, eventPayload, eventOptions);
@@ -470,6 +499,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             callerComponentId: input.callerComponentId,
             callerComponentParams: input.callerComponentParams,
             callerInstanceKey: input.callerInstanceKey,
+            callerListItemScope: input.callerListItemScope,
+            document,
             runtimeScopeId: effectiveRuntimeScopeId,
             hostAdapter: adapter,
             debug,
@@ -478,6 +509,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             depth: input.depth,
             signal: input.signal,
             callerExecutionId: input.callerExecutionId,
+            valueExecution: input.valueExecution,
         });
 
     return adapter;

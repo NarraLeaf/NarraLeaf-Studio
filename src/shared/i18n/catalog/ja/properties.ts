@@ -115,7 +115,6 @@ export const properties = {
         projectDefault: "プロジェクト既定のフォント",
         projectSection: "プロジェクト",
         choose: "フォントを選ぶ",
-        loadError: "フォントを読み込めなかった（{error}）。アセットが正しくなるまで、プレビューは代替フォントで表示する",
         select: "フォントを選択",
     },
     imageFill: {
@@ -130,7 +129,6 @@ export const properties = {
         selectHint: "クリックするとアセットブラウザが開く",
         changeImage: "画像を変える",
         openEditor: "クリックでエディタを開く",
-        resolveError: "画像アセットを解決できなかった（{error}）。そのアセットが用意されるまで、プレビューは実際と違う",
         selectFillImage: "塗りに使う画像を選択",
         mode: {
             cover: "カバー",
@@ -157,6 +155,7 @@ export const properties = {
         // ここからは両者が同じに見えるが、手を打ってよいのは片方だけ。
         unknown: "使われているかどうか分からない",
         unknownDetail: "{location} を読めなかった",
+        unknownComputed: "{location} のアセット名は実行時に組み立てられる",
         count: {
             other: "参照 {count} 件",
         },
@@ -169,6 +168,7 @@ export const properties = {
             character: "キャラクター",
             voice: "ボイス",
             design: "デザイン",
+            plugin: "プラグイン",
         },
     },
     tags: {
@@ -188,6 +188,7 @@ export const properties = {
             loadAsset: "アセットを読み込めなかった",
             deleteFailed: "サムネイルを削除できなかった",
             saveFailed: "サムネイルを保存できなかった",
+            saveFailedWithReason: "サムネイルを保存できなかった。{reason}",
             unknown: "原因不明のエラー",
         },
     },

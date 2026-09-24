@@ -1,7 +1,9 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
+import { unpatchedFsPromises } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -22,12 +24,12 @@ import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { listScriptCompileFailures } from "../devMode/pipeline/scriptCompiler";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
 import { rememberWatchedFile, watchedFileChanged } from "../../utils/watchedFileIdentity";
 import { watchSubtree, type SubtreeWatcher } from "../../utils/subtreeWatcher";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
@@ -167,6 +169,13 @@ export class PreviewManager {
         if (distrusted) {
             return Promise.reject(new Error(distrusted));
         }
+        // Another Studio has this project, and this one's workspace for it is on the error screen.
+        // A preview would still compile and run - from disk, into `.nlstudio/preview`, which is the
+        // other Studio's to write. See `projectSessionGate`.
+        const heldElsewhere = refuseProjectHeldElsewhere(this.app, projectPath, "preview");
+        if (heldElsewhere) {
+            return Promise.reject(new Error(heldElsewhere));
+        }
         const frozen = getWorkspaceFreeze(projectPath);
         if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "preview");
@@ -255,8 +264,9 @@ export class PreviewManager {
             throw new Error("Stop the preview before resetting its player data");
         }
         const userDataDir = path.join(path.resolve(projectPath), ".nlstudio", "preview", "userData");
-        await fs.promises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
-        await fs.promises.rm(path.join(userDataDir, "persistence.json"), { force: true });
+        // Inside the author's project, so unpatched like every other path there (see unpatchedFs.ts).
+        await unpatchedFsPromises.rm(path.join(userDataDir, "saves"), { recursive: true, force: true });
+        await unpatchedFsPromises.rm(path.join(userDataDir, "persistence.json"), { force: true });
     }
 
     private cancelLaunches(key: string): void {
@@ -356,14 +366,12 @@ export class PreviewManager {
             }
             const sealing = await resolveRunSealing({
                 projectPath: normalizedProjectPath,
-                settings: this.app.getGlobalState(),
-                resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), normalizedProjectPath),
+                choice: { by: "preview-setting", settings: this.app.getGlobalState() },
             });
             const sealingLine = runSealingLogLine(sealing);
             if (sealingLine) {
                 this.emitVerbose(session, sealingLine);
             }
-            const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(attempt);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
             const runDlc = await resolveRunDlc(this.app.getGlobalState(), normalizedProjectPath);
@@ -390,7 +398,7 @@ export class PreviewManager {
                 // Which DLC this run has installed, from the same machine setting the variant comes
                 // from. Empty until the author ticks one, so a preview is the base game by default.
                 includedDlc: runDlc,
-                encryptionKey,
+                protectAssets: sealing.kind === "sealed",
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that
                 // silently lacks them, and testing a sidecar would mean a full
@@ -415,6 +423,12 @@ export class PreviewManager {
                 session,
                 `artifact compile finished: ${path.relative(normalizedProjectPath, artifact.appDir)} (${artifact.copiedAssetCount} asset(s))`,
             );
+            // A preview runs with a script that did not compile, the way Dev Mode does - it is where
+            // the author fixes one - but not in silence: the packaged runtime has no issue list, so
+            // without this line the layer would simply do nothing on screen.
+            for (const message of listScriptCompileFailures(artifact.pack?.bundle?.ui?.scripts)) {
+                this.emitWorkspaceConsoleLog(session, { level: "error", source: "Preview", message });
+            }
 
             session.status = "launching";
             // The last point at which a cancel is free. Everything from the spawn below to

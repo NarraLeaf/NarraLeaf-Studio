@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import { safeStorage } from "electron";
 import { UserDataNamespace } from "@shared/types/constants";
 import { IPCMessageType } from "@shared/types/ipc";

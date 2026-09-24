@@ -14,7 +14,7 @@ import { nextStoryRevealToken } from "../story/scene-editor/storySceneEditorTabI
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import { openAssetPreviewTabsInEditor } from "../assets/dnd/openDraggedAssetsInEditor";
 import { requestAssetSetReveal } from "../assets/assetSetReveal";
-import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
+import { createComponentEditorTab, createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
 import { createCharacterEditorTab } from "../characters/state/useCharacterFocus";
 import { STORY_VARIABLES_PANEL_ID } from "../story-variables/storyVariablesPanelId";
@@ -103,6 +103,20 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             deps.openEditorTab(createSurfaceEditorTab(surface));
+            return true;
+        }
+        case "uiComponent": {
+            const context = deps.context;
+            if (!context) {
+                return false;
+            }
+            const component = context.services
+                .get<UIDocumentService>(Services.UIDocument)
+                .getComponent(target.componentId);
+            if (!component) {
+                return false;
+            }
+            deps.openEditorTab(createComponentEditorTab(component));
             return true;
         }
         case "blueprint": {

@@ -25,7 +25,7 @@
 
 当 NarraLeaf React `LiveGame` 对象已经创建并存入 Studio runtime、但 `liveGame.newGame()` 尚未启动第一段剧情前触发。该节点仅出现在全局蓝图中，每个被接受的 NarraLeaf session id 触发一次。
 
-自 NarraLeaf React 环境预初始化改动后，游戏启动时会在 **Surface 系统启动之前** 作为加载项初始化 NarraLeaf React 环境：以「Story 库默认 Story（`storyLibrary.index.defaultStoryId`）的入口场景」的 compiled story 挂载 `Player`（Player `onReady`），此时 `LiveGame` 已创建、默认场景资源开始预热（Player `onPreloadComplete`），但**尚未调用 `liveGame.newGame()`，也不会进入游戏**。因此 `gameReady` 现在会在启动阶段、进入首个 Surface（例如主菜单）之前触发一次，用于初始化环境并允许全局蓝图加载游戏设置——玩家仍停留在主菜单，游戏并未开始。若项目未配置默认 Story，则改为挂载一个空 NarraLeaf React 环境（不含任何场景），`gameReady` 仍会在启动时触发。
+自 NarraLeaf React 环境预初始化改动后，游戏启动时会在 **Surface 系统启动之前** 作为加载项初始化 NarraLeaf React 环境：以「Story 库默认 Story（`storyLibrary.index.defaultStoryId`）的入口场景」的 compiled story 挂载 `Player`（Player `onReady`），此时 `LiveGame` 已创建、默认场景资产开始预热（Player `onPreloadComplete`），但**尚未调用 `liveGame.newGame()`，也不会进入游戏**。因此 `gameReady` 现在会在启动阶段、进入首个 Surface（例如主菜单）之前触发一次，用于初始化环境并允许全局蓝图加载游戏设置——玩家仍停留在主菜单，游戏并未开始。若项目未配置默认 Story，则改为挂载一个空 NarraLeaf React 环境（不含任何场景），`gameReady` 仍会在启动时触发。
 
 真正「进入游戏」只发生在玩家触发 `Start Game`（`Start Game` 蓝图节点）或读取存档时：此时才对**同一个已初始化的 `LiveGame`** 调用 `newGame()` / `deserialize()`。当 `Start Game` 的目标就是已预热的默认场景时为「秒开」，直接在同一环境上进入，**不会重复触发 `gameReady`**；仅当 `Start Game` 指定了不同的场景时才会重新挂载环境并再次触发 `gameReady`。
 
@@ -112,7 +112,7 @@
 
 `blueprint.event.head.init` - 元素初始化事件
 
-当支持私有蓝图的元素在 Dev Mode runtime 中完成首次渲染并挂载后触发一次；它不是渲染前 hook。Dev Mode bundle revision 刷新导致对应 Surface / 元素 remount 时会再次触发。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。
+当支持私有蓝图的元素在 Dev Mode runtime 中完成首次渲染并挂载后触发一次；它不是渲染前 hook。Dev Mode bundle revision 刷新导致对应 Surface / 元素 remount 时会再次触发。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。上一次求值读到的变量被写入时也会重新求值——`Get Var` 读到的全局、页面变量，以及经 `Call Fn` 在函数体里读到的元素变量、持久变量（`Get Persistent`）与存档变量（`Get Saved Var`），无论写入来自哪张图、哪个宿主，还是故事本身。
 - `then` - 执行出口
 
 ## Unmount
@@ -360,7 +360,7 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 
 `blueprint.event.head.preferenceChanged` - 指定 Game Preference 变化事件
 
-当当前活动 NarraLeaf `LiveGame` 的指定 Game Preference 字段变化时触发。节点通过 Inspector 参数 `Preference` 选择要监听的偏好键，底层订阅 NarraLeaf React `game.preference.onPreferenceChange`。该节点出现在 Global 蓝图和当前 active Surface 蓝图中；典型用途是设置 Page 的 Surface 蓝图里随 `BGM Volume`、`Voice Volume`、`Game Speed` 等偏好实时更新 Slider、文本或图标显示（控件层用 Element 分类节点写回目标控件）。
+当当前活动 NarraLeaf `LiveGame` 的指定 Game Preference 字段变化时触发。节点通过 Inspector 参数 `Preference` 选择要监听的偏好键，底层订阅 NarraLeaf React `game.preference.onPreferenceChange`。该节点出现在 Global 蓝图和 Surface 蓝图中：Global 先触发，然后是每个正在显示的 Surface——活动页面、叠在它上面的层（从最上层开始）、Frame 里显示的页面、故事放到舞台上的界面；层在完成首帧绘制之前不会收到。`On Fullscreen Changed`、`On Window Focus Changed`、`On Window Close Requested` 按同一顺序派发，其中 `On Window Close Requested` 在某个界面执行 `Keep Window Open` 后不再派发给它下面的界面。典型用途是设置 Page 的 Surface 蓝图里随 `BGM Volume`、`Voice Volume`、`Game Speed` 等偏好实时更新 Slider、文本或图标显示（控件层用 Element 分类节点写回目标控件）。
 
 监听目标是当前活动 `LiveGame` 的 preference 派发器：没有活动 game runtime 时不会订阅，也不会触发；`On Game Ready` 之后运行时会在新的 `LiveGame` 上重新建立订阅。通过 Preference Setter（如 `Set BGM Volume`）或 NarraLeaf 内部写入偏好都会触发该事件；`onPreferenceChange` 不保证对相同值去重，写入相同值时也可能再次触发。为提供 `previousValue`，运行时在订阅时用 `getPreferences()` 播种快照并缓存该键上一次已知值。避免在监听某偏好的图里再写入同一偏好，以免自触发循环。
 
@@ -376,7 +376,7 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 
 `blueprint.event.head.anyPreferenceChanged` - 任意 Game Preference 变化事件
 
-当当前活动 NarraLeaf `LiveGame` 的任意 Game Preference 字段变化时触发，底层订阅 NarraLeaf React `game.preference.onPreferenceChange(listener)`（对应 `event:game.preference.change`）。该节点出现在 Global 蓝图和当前 active Surface 蓝图中；用于集中处理设置变更，例如统一持久化当前设置或一次性刷新整个设置面板。
+当当前活动 NarraLeaf `LiveGame` 的任意 Game Preference 字段变化时触发，底层订阅 NarraLeaf React `game.preference.onPreferenceChange(listener)`（对应 `event:game.preference.change`）。该节点出现在 Global 蓝图和 Surface 蓝图中，派发范围与顺序同 `On Preference Changed`；用于集中处理设置变更，例如统一持久化当前设置或一次性刷新整个设置面板。
 
 没有活动 game runtime 时不会订阅，也不会触发；`On Game Ready` 之后在新的 `LiveGame` 上重新订阅。触发与去重语义、以及 `previousValue` 缓存方式与 `On Preference Changed` 一致。
 
@@ -392,6 +392,13 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 面板级手势的落点。什么东西触发它不写在节点上：项目给手势起名字并给出默认绑定，Surface 说自己回答哪几个、以及在可操作控件上要不要照样触发，运行时按名字把操作抛给蓝图。作者把「推进」从单击改成空格，改的是词表里的一行。
 
 出现在 Global 蓝图和 Surface 蓝图中。控件私有蓝图里没有它——控件想要原始手势，用自己的 `Mouse Click` 等事件头；「在这个控件上点一下等于推进」正是这套词表要替换掉的写法。
+
+两处的触发范围不同：
+
+- **Surface 蓝图**只收到该 Surface 在输入区里响应的那些操作。按键归当前持有键盘的条目（活动页面，或压在它上面的模态层）；指针手势归落点所在的那一条 lane。
+- **Global 蓝图**收到词表里的**全部**操作，不需要在任何地方开启：按键在游戏收得到按键的任何时候（与 Global 的 `On Key Down` 同一道门——文本框持有焦点时不触发，事件已被停止传播时不触发），不论持有键盘的是页面还是模态层；指针手势在它落到的第一条 lane 上，没有落在任何 lane 上（页面空白处会穿透到舞台，舞台上可能什么都没有）时由游戏的绘制根接住；每次物理输入只触发一次，落在可操作控件上（含运行时插件画的浮层）时与 Surface 同样让位。
+- **Global 先于界面**。同一次输入，Global 的图执行完之后，持有键盘的条目（或指针落到的 lane）才开始响应；两边都响应同一个操作时两边都会执行。Global 没有「拦截冒泡」选项——那是 Surface 对身后 lane 的回答；Global 的处理器要让界面听不到这次输入，只能停止传播（脚本里的 `ctx.stopPropagation()`），与 Global 按键事件头相同。
+- Global 响应过的滚动手势与触屏手势视为已被消耗：惯性尾巴与抬指后合成的那次点击不再触发任何东西。
 
 一次派发携带整个词表，具体由卡片上的 `Action` 过滤。没有通配写法：`Action` 留空的卡片什么都不监听，和未配置的 `On Preference Changed` 一样。
 

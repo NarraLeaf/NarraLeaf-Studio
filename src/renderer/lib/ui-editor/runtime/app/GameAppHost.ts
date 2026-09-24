@@ -24,6 +24,7 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { NlrActionIdBinding, StoryAssetKind } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import type { AssetResolutionReporter } from "@/lib/ui-editor/runtime/assetResolution";
 import type { GameBootProgress } from "./bootTiming";
 import type { SaveLoadOutcome } from "./saveLoad";
 
@@ -88,6 +89,13 @@ export type GameAppSaveRecord = {
         /** ISO timestamps written by the store; absent on records it could not stamp. */
         createdAt?: string;
         updatedAt?: string;
+        /**
+         * The slot's picture as a data URL, absent when the write asked for none or the capture
+         * failed. The same bytes {@link GameAppSaveStore.readPreview} hands back - declared here
+         * because a caller that already holds the record should not read it a second time to see
+         * whether there is one.
+         */
+        capture?: string;
         /** What produced the save; absent on records written before the stamp existed. */
         compatibility?: SaveCompatibilityStamp;
         /** Seconds of play behind the save; absent on records written before playtime was tracked. */
@@ -197,11 +205,13 @@ export type GameAppHost = {
      * warm, which is what makes Start Game instant and keeps a title screen from painting before
      * `gameReady` has run the graphs behind it.
      *
-     * Dev Mode turns it on. Half of what Dev Mode is for is looking at the interface, and
-     * compiling the story and warming its first scene is the longest part of its boot - MEASURED
-     * at 2.3s of 3.3s on a full-length project, all of it behind a dark loading page. With this
-     * on the surfaces are up in about a second and the story boots behind them. What it costs is
-     * the guarantee: press Start before the environment is ready and the press waits for it.
+     * Dev Mode turns it on when it opens on its interface. Half of what Dev Mode is for is looking
+     * at the interface, and compiling the story and warming its first scene is the longest part of
+     * its boot - MEASURED at 2.3s of 3.3s on a full-length project, all of it behind a dark loading
+     * page. With this on the surfaces are up as soon as their own screen is warm and the story boots
+     * behind them. What it costs is the guarantee: press Start before the environment is ready and
+     * the press waits for it. A Dev Mode launch into a story leaves it off - the window opens on the
+     * stage, and drawing the interface ahead of it would only show a title nobody asked for.
      */
     surfacesBeforeStoryBoot?: boolean;
     /**
@@ -281,6 +291,20 @@ export type GameAppHost = {
      * (the packaged game — it has no editor to point into) loses nothing it had before.
      */
     reportIssue?: (issue: GameAppRuntimeIssue) => void;
+    /**
+     * What became of each asset a widget on a surface asked for - drawn, not asked for, or failed
+     * and at which step - and when that drawing goes away.
+     *
+     * Without it a picture that could not be had was a blank space and nothing else: the reason
+     * stayed in the widget's own state, no console line, no issue. Facts rather than sentences,
+     * because the sentence depends on the project's asset table (is the asset gone, or only
+     * unreadable?), which the host has and the widget does not. Dev Mode keeps a ledger of the
+     * failures and puts them in the issue list; the packaged game writes one log line per failure.
+     *
+     * Widgets reach it through `AssetResolutionReporterContext`, which the app provides from this.
+     * Reports arrive when an outcome changes, never per render.
+     */
+    reportAssetResolution?: AssetResolutionReporter;
     resolveStoryAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,

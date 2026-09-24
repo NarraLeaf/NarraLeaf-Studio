@@ -21,6 +21,7 @@ import {
 } from "@shared/types/preference";
 import {
     createDevModeBlueprintHostApi,
+    mergeWidgetPatch,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
     type BlueprintSoundPlayInput,
@@ -170,7 +171,7 @@ function createHostApi(options?: {
     onOpenSurface?: (surfaceId: string, props?: Record<string, unknown>) => Promise<void> | void;
     onQuitApplication?: () => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
-    initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
+    readWidgetPatches?: () => Readonly<Record<string, DevModeWidgetRuntimePatch>> | undefined;
     onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<boolean> | boolean;
     onDeleteSave?: (id: string) => Promise<void> | void;
@@ -245,7 +246,7 @@ function createHostApi(options?: {
         onPageBack: options?.onPageBack ?? (() => undefined),
         onQuitApplication: options?.onQuitApplication,
         onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
-        initialWidgetPatches: options?.initialWidgetPatches,
+        readWidgetPatches: options?.readWidgetPatches,
         widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
     });
 }
@@ -421,7 +422,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         await expect(hostApi.game.setPreference("voiceEndMode", "hold" as BlueprintGamePreferenceValue)).rejects.toThrow(/voiceEndMode/);
         await expect(hostApi.game.setPreference("skipInterval", 0)).rejects.toThrow(/skipInterval/);
         await expect(hostApi.game.setPreference("autoForward", 1 as BlueprintGamePreferenceValue)).rejects.toThrow(/autoForward/);
-        expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(/not supported/);
+        expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(/is not a game preference/);
         expect(preferenceWrites).toEqual([{ key: "skipDelay", value: 0 }]);
     });
 
@@ -672,26 +673,51 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         };
         const patches: Record<string, DevModeWidgetRuntimePatch> = {};
         const onWidgetPatch = (elementId: string, patch: DevModeWidgetRuntimePatch) => {
-            patches[elementId] = {
-                ...(patches[elementId] ?? {}),
-                ...patch,
-                props: { ...(patches[elementId]?.props ?? {}), ...(patch.props ?? {}) },
-            };
+            patches[elementId] = mergeWidgetPatch(patches[elementId], patch);
         };
+        const readWidgetPatches = () => patches;
 
-        const speaking = createHostApi({ document, onWidgetPatch });
+        const speaking = createHostApi({ document, onWidgetPatch, readWidgetPatches });
         await speaking.widget.setImageProperties("image", {
             asset: { kind: "imageAsset", assetId: "avatar-a" },
         });
         expect(resolvedImageAssetId(document, patches)).toBe("avatar-a");
 
-        const rebuilt = createHostApi({ document, onWidgetPatch, initialWidgetPatches: patches });
+        const rebuilt = createHostApi({ document, onWidgetPatch, readWidgetPatches });
         expect(rebuilt.widget.getImageProperties("image").asset).toEqual({
             kind: "imageAsset",
             assetId: "avatar-a",
         });
         await rebuilt.widget.setImageProperties("image", { asset: null });
         expect(resolvedImageAssetId(document, patches)).toBeNull();
+    });
+
+    it("two host APIs on one scope read each other's writes, whichever was built first", async () => {
+        // The shape of the key-press defect. A page's pointer-driven graphs ran on one host API and
+        // the page's key actions on another the game had built beside it, for the same scope, when
+        // the page opened. Each kept its own copy of what it had painted, so an Escape handler asking
+        // whether the viewer was open read the copy taken before anybody had clicked - `false`, with
+        // the viewer on screen - and the page closed under the player instead of the viewer.
+        const document = createDocument();
+        document.elements.image = { ...document.elements.image!, layout: { ...document.elements.image!.layout, visible: false } };
+        const patches: Record<string, DevModeWidgetRuntimePatch> = {};
+        const onWidgetPatch = (elementId: string, patch: DevModeWidgetRuntimePatch) => {
+            patches[elementId] = mergeWidgetPatch(patches[elementId], patch);
+        };
+        const readWidgetPatches = () => patches;
+
+        const keys = createHostApi({ document, onWidgetPatch, readWidgetPatches });
+        const pointer = createHostApi({ document, onWidgetPatch, readWidgetPatches });
+
+        await pointer.widget.setVisible("image", true);
+        expect(keys.widget.getCommonProperties("image").visible).toBe(true);
+        expect(keys.widget.getDisplayableProperties("image").visible).toBe(true);
+
+        // And back the other way, through the setter's own "did this change?" guard: the key side
+        // closing the viewer has to be a real write, not a no-op measured against a stale copy.
+        await keys.widget.setVisible("image", false);
+        expect(pointer.widget.getCommonProperties("image").visible).toBe(false);
+        expect(patches.image?.visible).toBe(false);
     });
 
     it("supports Image appearance variant overrides", async () => {
@@ -1515,6 +1541,39 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 
             await expect(animation).resolves.toMatchObject({ id: "animation:test" });
             expect(resolved).toBe(true);
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("wakes a wait started on another host API of the game when the animation is stopped", async () => {
+        // A page's host API is rebuilt whenever the game's capabilities are, under any graph still
+        // waiting on the old one - and a `Stop Animation` reaches the animation by id from any graph
+        // of the game. When each host API kept its own waiters, the stop cleared the motion and woke
+        // nobody: the waiting graph slept until the animation's full length had passed.
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const waiting = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            const stopping = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            let resolved = false;
+            const animation = waiting.widget.animateDisplayable("image", {
+                id: "animation:rebuilt",
+                target: { opacity: [0, 1] },
+                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+                resetOnComplete: true,
+            }).then(result => {
+                resolved = true;
+                return result;
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await stopping.widget.stopDisplayableAnimation("animation:rebuilt");
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(resolved).toBe(true);
+            await expect(animation).resolves.toMatchObject({ id: "animation:rebuilt" });
             expect(store.getDisplayableMotion("scope\0image")).toBeNull();
         } finally {
             vi.useRealTimers();

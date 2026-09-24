@@ -1,7 +1,12 @@
 import path from "path";
-import fs from "fs/promises";
-import {Dirent, default as fsSync, Stats} from "fs";
+import type {Dirent, Stats} from "fs";
+import type { FileHandle } from "fs/promises";
 import {randomBytes} from "crypto";
+// Unpatched on purpose. Everything that goes through `Fs` - the renderer's file-system facade, the
+// `app://fs` protocol, document storage, the build's measurements - reaches files an author owns.
+// Studio's own archive (the bundles, `public`, package.json inside app.asar) is read with the patched
+// module where that happens, never through `Fs`: nothing here can reach inside it. See unpatchedFs.ts.
+import {unpatchedFs as fsSync, unpatchedFsPromises as fs} from "./unpatchedFs";
 import mime from "mime-types";
 import { FsRequestResult, FsRejectError, FsRejectErrorCode } from "../types/os";
 import { ATOMIC_WRITE_TEMP_SUFFIX } from "./atomicWriteTemp";
@@ -68,6 +73,53 @@ export class Fs {
 
     public static readRaw(path: string): Promise<FsRequestResult<Buffer>> {
         return this.wrap(fs.readFile(path));
+    }
+
+    /**
+     * Open a regular file for reading and report its size, for a caller that serves it in pieces
+     * rather than holding all of it at once.
+     *
+     * The size is taken from the open handle, not from a separate `stat` of the path, so a response
+     * that declares a length and then reads bytes gets both from the same file even if the path is
+     * replaced in between. A directory opens without complaint on Windows, so it is refused here with
+     * the `EISDIR` a {@link readRaw} of it would have raised. The caller owns the handle and must
+     * close it.
+     */
+    public static openForRead(path: string): Promise<FsRequestResult<{ handle: FileHandle; size: number }>> {
+        return this.wrap((async () => {
+            const handle = await fs.open(path, "r");
+            try {
+                const stats = await handle.stat();
+                if (!stats.isFile()) {
+                    throw this.createNodeError("EISDIR", `Not a file: ${path}`);
+                }
+                return { handle, size: stats.size };
+            } catch (error) {
+                await handle.close().catch(() => undefined);
+                throw error;
+            }
+        })());
+    }
+
+    /**
+     * Bytes `start..start+length-1` of a file opened with {@link openForRead}, in one buffer.
+     *
+     * Shorter than `length` only when the file shrank after it was measured, so a caller reports the
+     * length it actually has rather than the one it expected. The handle stays open either way.
+     */
+    public static readSpan(handle: FileHandle, start: number, length: number): Promise<FsRequestResult<Buffer>> {
+        return this.wrap((async () => {
+            const buffer = Buffer.alloc(length);
+            let filled = 0;
+            while (filled < length) {
+                const { bytesRead } = await handle.read(buffer, filled, length - filled, start + filled);
+                if (bytesRead === 0) {
+                    break;
+                }
+                filled += bytesRead;
+            }
+            return filled === length ? buffer : buffer.subarray(0, filled);
+        })());
     }
 
     /**
@@ -678,6 +730,8 @@ export class Fs {
                         return { code: FsRejectErrorCode.NOT_A_DIR, message: nodeError.message };
                     case 'EIO':
                         return { code: FsRejectErrorCode.IO_ERROR, message: nodeError.message };
+                    case 'ENOSPC':
+                        return { code: FsRejectErrorCode.NO_SPACE, message: nodeError.message };
                     default:
                         return { code: FsRejectErrorCode.UNKNOWN, message: nodeError.message };
                 }

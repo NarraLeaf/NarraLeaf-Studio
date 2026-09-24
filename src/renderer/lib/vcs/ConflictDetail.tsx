@@ -5,6 +5,7 @@ import type { VcsMergeSideChoice } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { renderDocumentName, type DocumentName } from "./documentName";
+import { elideGeneratedIdentifiers, readableChangePath, readableStoragePath } from "./identifierDisplay";
 import {
     describeMergeSides,
     effectiveMergeSide,
@@ -49,7 +50,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
             className={cn("flex h-full min-h-0 flex-col", className)}
         >
             <div className="flex shrink-0 items-baseline gap-1.5 overflow-hidden px-3 py-2">
-                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={path}>
+                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={readableStoragePath(path) ?? undefined}>
                     {renderDocumentName(name, t)}
                 </span>
             </div>
@@ -61,7 +62,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
                         {t("documentDiff.resolve.change.loading")}
                     </p>
                 ) : entry.status === "error" ? (
-                    <p className="text-2xs text-danger">{entry.message}</p>
+                    <p className="text-2xs text-danger">{elideGeneratedIdentifiers(entry.message)}</p>
                 ) : entry.document.blocked !== undefined ? (
                     // Tier three: refuse, and say which wall was hit. The two whole-file buttons on
                     // this file's row are still the answer for it and are still there - this is a
@@ -72,7 +73,7 @@ export function ConflictDetail({ path, name, entry, choices, disabled, onChooseC
                         {entry.document.detail && (
                             // The producer's own words, untranslated and marked as such by being
                             // quieter - never instead of the sentence above it.
-                            <p className="text-2xs text-fg-subtle opacity-70">{entry.document.detail}</p>
+                            <p className="text-2xs text-fg-subtle opacity-70">{elideGeneratedIdentifiers(entry.document.detail)}</p>
                         )}
                     </div>
                 ) : entry.document.decisions.length === 0 ? (
@@ -137,7 +138,7 @@ function MergeChangeRow({
                         "min-w-0 truncate text-2xs",
                         label.untranslated ? "font-mono text-fg-muted" : "text-fg",
                     )}
-                    data-tip={decision.path.join(" / ")}
+                    data-tip={readableChangePath(decision.path)}
                 >
                     {label.primary}
                 </span>
@@ -206,8 +207,10 @@ function MergeValue({ view }: { view: MergeValueView }) {
     }
     return (
         <span className="block min-w-0">
+            {/* Keyed by position: the two columns are rows of each other by position, and a field
+                name with its ids drawn as an ellipsis is no longer unique. */}
             {view.lines.map((line, index) => (
-                <span key={line.name ?? index} className="flex min-w-0 items-baseline gap-1">
+                <span key={index} className="flex min-w-0 items-baseline gap-1">
                     {line.name && <span className="shrink-0 text-2xs text-fg-subtle">{line.name}</span>}
                     <span className="min-w-0 truncate text-2xs text-fg">{line.text}</span>
                 </span>

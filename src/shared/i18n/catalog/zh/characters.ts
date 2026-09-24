@@ -185,6 +185,7 @@ export const characters = {
             import: "导入",
             importing: "正在导入…",
             failed: "导入失败",
+            readFailed: "无法读取该 PSD 文件",
             reason: {
                 hidden: "在 Photoshop 里是隐藏的",
                 blendSkipped: "已跳过",

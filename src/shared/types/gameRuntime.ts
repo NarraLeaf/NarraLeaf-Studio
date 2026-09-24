@@ -12,6 +12,7 @@ import type {
     GameProgressImportResult,
 } from "./gameProgress";
 import type { GameMenuModel } from "./gameMenu";
+import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { NormalizedPluginManifestV2 } from "./plugins";
 import type { StoryId } from "./story";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -588,6 +589,16 @@ export const GAME_RUNTIME_CRASH_POLICY_QUERY_PARAM = "nlpolicy";
 
 export const GAME_RUNTIME_LOG_PATH_QUERY_PARAM = "nllog";
 
+/**
+ * When the game's process started and what it did before the page existed, for the page's own
+ * performance timeline (see `@shared/types/gameLaunchTiming`).
+ *
+ * On the address for the reason the two above are: it has to be readable before anything else is,
+ * and it describes the process rather than any one page - so a page reloaded after a crash carries
+ * the same launch, which is still when this process began.
+ */
+export const GAME_RUNTIME_LAUNCH_QUERY_PARAM = "nllaunch";
+
 export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
 
 export type GameCrashPolicy = typeof GAME_CRASH_POLICIES[number];
@@ -1065,6 +1076,14 @@ export type GameRuntimePreloadBridge = {
      * Studio's own menu on it - which is why the capability is checked and not assumed.
      */
     menu?: GameRuntimeMenuBridge;
+    /**
+     * What this game's processes hold in memory, as the operating system counts it - see
+     * `@shared/types/gameProcessMemory` for why the main process is the one that has to answer.
+     *
+     * Absent on the web export, which is one tab of somebody else's browser and has no processes of
+     * its own to count; `app.game.process` then does not exist for plugins there.
+     */
+    processMemory?: () => Promise<GameProcessMemoryReading>;
 };
 
 declare global {

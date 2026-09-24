@@ -3,8 +3,8 @@ import { clientToSurface } from "@/lib/ui-editor/geometry";
 import {
     buildLayoutPatchForNewElementFromSurfaceRect,
     buildLayoutPatchForPointInSurface,
-    resolveInsertTargetParent,
 } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { resolveNewElementParent } from "@/lib/ui-editor/tree/resolveAddTarget";
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -48,15 +48,12 @@ export function useSurfaceImageDrop(params: {
                 selData?.surfaceId === surface.id
                     ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
                     : null;
-            const target = resolveInsertTargetParent(doc, surface.id, {
-                hitElementId: null,
-                primaryElementId,
-            });
-            if (!target) {
+            const parentId = resolveNewElementParent(doc, surface.id, primaryElementId);
+            if (!parentId) {
                 return;
             }
-            const layoutPatch = buildLayoutPatchForPointInSurface(doc, target.parentId, surfacePoint);
-            const element = documentService.createElement(target.parentId, type, layoutPatch);
+            const layoutPatch = buildLayoutPatchForPointInSurface(doc, parentId, surfacePoint);
+            const element = documentService.createElement(parentId, type, layoutPatch);
             stateService.setUIElementSelection({
                 editor: "ui",
                 surfaceId: surface.id,
@@ -115,11 +112,8 @@ export function useSurfaceImageDrop(params: {
                     selData?.surfaceId === surface.id
                         ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
                         : null;
-                const target = resolveInsertTargetParent(doc, surface.id, {
-                    hitElementId: null,
-                    primaryElementId,
-                });
-                if (!target) {
+                const parentId = resolveNewElementParent(doc, surface.id, primaryElementId);
+                if (!parentId) {
                     return;
                 }
 
@@ -129,13 +123,13 @@ export function useSurfaceImageDrop(params: {
                     const { width: imgW, height: imgH } = dimList[i];
                     const freshDoc = documentService.getDocument();
                     // Anchor drop at pointer: widget center aligns with surfacePoint (not top-left).
-                    const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(freshDoc, target.parentId, {
+                    const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(freshDoc, parentId, {
                         x: surfacePoint.x - imgW / 2,
                         y: surfacePoint.y - imgH / 2,
                         width: imgW,
                         height: imgH,
                     });
-                    const element = documentService.createElement(target.parentId, "nl.image", layoutPatch);
+                    const element = documentService.createElement(parentId, "nl.image", layoutPatch);
                     const nextProps: Record<string, unknown> = {
                         ...(element.props ?? {}),
                         fillType: "image",

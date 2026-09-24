@@ -14,6 +14,7 @@ import {
     displayableCreatorIdentity,
     normalizeStageObjectName,
     resolveDisplayableTargetRef,
+    revealCreates,
 } from "./displayableTarget";
 import {
     BGM_STAGE_OBJECT_NAME,
@@ -413,6 +414,11 @@ const REVEALABLE_KINDS: ReadonlySet<StageObjectKind> =
 export function revealableStageObjectDeclarations(scene: StoryScene | null | undefined): StageObjectDeclaration[] {
     const declarations: StageObjectDeclaration[] = [];
     for (const block of liveSceneBlocks(scene)) {
+        // A `/show <asset>` row declares and reveals in one line, so there is no later row for it to
+        // be waiting on - it is not a candidate for "declared and never shown" at all.
+        if (block.kind === "action" && revealCreates(block.payload)) {
+            continue;
+        }
         const declaration = declaredStageObject(block);
         if (declaration && REVEALABLE_KINDS.has(declaration.kind)) {
             declarations.push(declaration);

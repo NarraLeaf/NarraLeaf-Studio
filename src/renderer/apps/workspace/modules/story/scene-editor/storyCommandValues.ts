@@ -374,6 +374,16 @@ export type StoryCommandTargetValue =
      * IS one of the four or was never resolved as one, so there is no free-name case to record.
      */
     | { type: "reserved"; name: StoryReservedTargetName }
+    /**
+     * A file in the project, named where a thing on stage would be - the subject of a verb that can
+     * bring its own into existence (`/show sunset`).
+     *
+     * `name` is the library name the author typed, which is what a diagnostic prints and what the
+     * element is called after when the row names none of its own; `assetId` is what the row stores,
+     * so renaming the file never reaches the line. `assetType` says which library answered, because
+     * that is what decides the kind of element the row builds.
+     */
+    | { type: "asset"; assetType: "image" | "video"; assetId: string; name: string }
     | {
           type: "stageObject";
           objectKind: StoryCommandStageObjectKind;

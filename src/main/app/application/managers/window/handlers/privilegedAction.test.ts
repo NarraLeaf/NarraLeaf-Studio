@@ -39,6 +39,7 @@ vi.mock("@shared/utils/fs", async (importOriginal) => {
 });
 
 const { PrivilegedFsCallHandler } = await import("./privilegedAction");
+const { refuseUnattendedPrompt } = await import("../unattendedPrompt");
 
 /**
  * The app as a picker reads it: whether this launch answers dialogs from a page rather than opening
@@ -59,12 +60,22 @@ function appDouble() {
  * and the app it belongs to - the picker asks that whether this launch is answering dialogs from a
  * page instead of opening them (`fileDialog.ts`).
  */
-function workspaceWindow(): AppWindow {
-    return {
+function workspaceWindow(options: { unattended?: boolean; onRunEvent?: (event: unknown) => void } = {}): AppWindow {
+    const window = {
         win: {},
         getWindowType: () => WindowAppType.Workspace,
         getApp: () => appDouble(),
-    } as unknown as AppWindow;
+        isUnattended: () => options.unattended === true,
+        // What `AppWindow.endUnattendedRun` does for a window running a job: end its run.
+        endUnattendedRun: (message: string) => options.onRunEvent?.({
+            kind: "finished",
+            ok: false,
+            refusal: "environment",
+            error: message,
+        }),
+        refuseUnattendedPrompt: (what: string) => refuseUnattendedPrompt(window as never, what),
+    };
+    return window as unknown as AppWindow;
 }
 
 async function openPicker(title?: string): Promise<Electron.OpenDialogOptions> {
@@ -83,6 +94,26 @@ async function openPicker(title?: string): Promise<Electron.OpenDialogOptions> {
 }
 
 describe("privileged selectFile dialog", () => {
+    it("opens nothing in a window with nobody at the screen, and ends that window's run", async () => {
+        // A command-line run's workspace. A picker there waits for an answer nobody will give, so
+        // the run is ended with a line naming what asked, and the caller hears a failure at once.
+        showOpenDialog.mockClear();
+        const events: unknown[] = [];
+        const result = await new PrivilegedFsCallHandler().handle(
+            workspaceWindow({ unattended: true, onRunEvent: event => events.push(event) }),
+            { actor: { kind: "facade", id: "default" }, operation: "selectFile", filters: [], multiple: false, title: "Import Script" },
+        );
+
+        expect(showOpenDialog).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ success: true, data: { ok: false } });
+        expect(events).toEqual([expect.objectContaining({
+            kind: "finished",
+            ok: false,
+            refusal: "environment",
+            error: expect.stringContaining('asked for a file picker ("Import Script")'),
+        })]);
+    });
+
     it("titles the dialog the way the caller asked", async () => {
         expect((await openPicker("Import Script")).title).toBe("Import Script");
     });

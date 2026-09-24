@@ -26,8 +26,11 @@ export {
     LINT_SEVERITY_ORDER,
     deriveLintRuleSlug,
     isLintRulelessId,
+    resolveLintMessageParams,
 } from "./types";
 export { describeStoryLoadFailure, storyUnreadableFinding } from "./storyLoadFailure";
+export { tallyLintFindingsByRule } from "./ruleTally";
+export type { LintRuleTally } from "./ruleTally";
 export type {
     LintAssetEntry,
     LintCharacterEntry,

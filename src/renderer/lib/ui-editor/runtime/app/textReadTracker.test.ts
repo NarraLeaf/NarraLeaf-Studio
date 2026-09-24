@@ -170,6 +170,36 @@ describe("createTextReadTracker", () => {
         expect(harness.mirror[harness.mirror.length - 1]).toBe(false);
     });
 
+    /**
+     * A closing window never unmounts the game, so `detach` does not run on the way out and the
+     * debounce timer dies with the page. `flush` is what `beforeunload` calls instead: the line that
+     * finished a moment before the close is written now, once, and the tracker keeps working for a
+     * close the game then cancels.
+     */
+    it("flushes a pending write on demand and goes on tracking", async () => {
+        const harness = createHarness();
+        await harness.tracker.whenLoaded;
+
+        harness.setDialog({ actionId: "uuid-1", ended: true });
+        harness.notify();
+        expect(harness.persisted).toEqual([]);
+
+        harness.tracker.flush();
+        expect(harness.persisted).toEqual([["uuid-1"]]);
+
+        // The cancelled timer does not write it a second time, and a flush with nothing owed is free.
+        vi.advanceTimersByTime(60);
+        harness.tracker.flush();
+        expect(harness.persisted).toEqual([["uuid-1"]]);
+
+        // Still subscribed: the next finished line is tracked and debounced as usual.
+        expect(harness.cancelCount()).toBe(0);
+        harness.setDialog({ actionId: "uuid-2", ended: true });
+        harness.notify();
+        vi.advanceTimersByTime(60);
+        expect(harness.persisted).toEqual([["uuid-1"], ["uuid-1", "uuid-2"]]);
+    });
+
     it("clearAll wipes memory and persistence immediately and re-marks a finished on-screen line", async () => {
         const harness = createHarness({}, ["uuid-old"]);
         await harness.tracker.whenLoaded;

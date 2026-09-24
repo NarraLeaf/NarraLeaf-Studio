@@ -1,6 +1,5 @@
 import crypto from "crypto";
-import fs from "fs/promises";
-import { createReadStream } from "fs";
+import { unpatchedFs, unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import {
     assetTrackEnabled,
@@ -569,7 +568,7 @@ function assetSourcePath(projectPath: string, id: string): string | null {
 async function hashFile(filePath: string): Promise<string | null> {
     return new Promise(resolve => {
         const hash = crypto.createHash("sha256");
-        const stream = createReadStream(filePath);
+        const stream = unpatchedFs.createReadStream(filePath);
         stream.on("data", chunk => hash.update(chunk));
         stream.on("error", () => resolve(null));
         stream.on("end", () => resolve(hash.digest("hex")));

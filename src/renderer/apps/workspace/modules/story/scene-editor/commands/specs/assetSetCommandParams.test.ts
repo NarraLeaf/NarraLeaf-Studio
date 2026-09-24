@@ -89,6 +89,11 @@ describe("asset set command params", () => {
         // The mask is the one asset a row writes a level down (`transform.to.maskAssetId`), which is
         // exactly the slot the materializer had to be taught about - so it is worth proving here.
         ["/transform hero mask=Room", IMAGE_SET],
+        // `/show`'s subject slot reads the libraries as well as the stage, and the id it stores is the
+        // row's own `assetId` - the same field `/image` and `/video` write, so a set reaches assembly
+        // by the same route.
+        ["/show Room", IMAGE_SET],
+        ["/show Sting", VIDEO_SET],
     ])("commits %s and hands the set id to assembly", (source, setId) => {
         expect(assemblyReadsSet(build(source), setId)).toBe(true);
     });
@@ -151,5 +156,26 @@ describe("asset set command params", () => {
         ]);
         // The two rule-image slots - `/bg` and `/jump` both carry one - and nothing else.
         expect(refused.sort()).toEqual(["background.rule", "jump.rule"]);
+    });
+
+    /**
+     * The other way a slot reaches a library: a subject slot that can bring its own into existence.
+     *
+     * Listed for the same reason the asset slots are - a verb learning to create its own subject is a
+     * decision, not a default - and it is a shorter list on purpose: `/hide` reads no library, because
+     * nothing unseen can be concealed.
+     */
+    it("classifies every subject slot that reads a library", () => {
+        const reading: string[] = [];
+        for (const def of listCommandDefs()) {
+            for (const param of def.params) {
+                for (const type of paramTypes(param)) {
+                    if (type.kind === "target" && type.assets) {
+                        reading.push(`${def.commandId}.${param.name}: ${[...type.assets].sort().join("+")}`);
+                    }
+                }
+            }
+        }
+        expect(reading.sort()).toEqual(["show.target: image+video"]);
     });
 });

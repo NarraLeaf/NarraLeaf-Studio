@@ -121,6 +121,11 @@ export class UIDocumentContentRevisions {
         }
         if (readsComponentLibrary) {
             parts.push(this.getComponentLibrarySignature(document, documentRevision));
+            // A placement draws its definition, and a Page widget in the definition draws a page -
+            // so that page is read too. Followed for the whole library, the way the library's own
+            // bytes are above: which definitions this surface reaches through nested placements is
+            // not worth working out for a signature.
+            nestedSurfaceIds.push(...collectComponentFrameTargets(document.components ?? []));
         }
         for (const nestedSurfaceId of nestedSurfaceIds) {
             parts.push(this.buildSurfaceSignature(document, documentRevision, nestedSurfaceId, visited));
@@ -138,9 +143,18 @@ export class UIDocumentContentRevisions {
             return "";
         }
         const own = JSON.stringify(component);
-        return componentEmbedsAnotherComponent(component)
-            ? `${own}${SEPARATOR}${this.getComponentLibrarySignature(document, documentRevision)}`
-            : own;
+        const embedsAnother = componentEmbedsAnotherComponent(component);
+        const parts = [own];
+        if (embedsAnother) {
+            parts.push(this.getComponentLibrarySignature(document, documentRevision));
+        }
+        // A preview of the definition draws the pages its Page widgets name, as a placement does.
+        const pages = collectComponentFrameTargets(embedsAnother ? (document.components ?? []) : [component]);
+        const visited = new Set<UISurfaceId>();
+        for (const surfaceId of pages) {
+            parts.push(this.buildSurfaceSignature(document, documentRevision, surfaceId, visited));
+        }
+        return parts.join(SEPARATOR);
     }
 
     private getComponentLibrarySignature(document: UIDocument, documentRevision: number): string {
@@ -164,6 +178,23 @@ const INVALIDATED = "invalidated";
 
 /** JSON.stringify never emits a raw newline (it escapes them), so no part can span the join. */
 const SEPARATOR = "\n";
+
+/** The pages the Page widgets inside these definitions draw. */
+function collectComponentFrameTargets(components: readonly UIComponentDefinition[]): UISurfaceId[] {
+    const targets: UISurfaceId[] = [];
+    for (const component of components) {
+        for (const element of Object.values(component.elements)) {
+            if (element.type !== UI_FRAME_ELEMENT_TYPE) {
+                continue;
+            }
+            const targetSurfaceId = getUIFrameWidgetProps(element).targetSurfaceId;
+            if (targetSurfaceId) {
+                targets.push(targetSurfaceId);
+            }
+        }
+    }
+    return targets;
+}
 
 function componentEmbedsAnotherComponent(component: UIComponentDefinition): boolean {
     return Object.values(component.elements).some(element => Boolean(getUIComponentLink(element)));

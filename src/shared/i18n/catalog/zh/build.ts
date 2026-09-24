@@ -294,7 +294,6 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} 的 {sidecar} 程序进入 {platform} 产物后将无法运行；"
             + "请在 {targetPlatform} 机器上构建该目标",
-        "encryption-key-unavailable": "资产保护已开启，但无法取得密钥",
         "web-unprotected": "资产保护对 Web 导出不生效，其文件以明文发布",
         "mobile-unprotected": "资产保护对 Android 与 iOS 包不生效",
         "progress-carry-unsupported":
@@ -422,10 +421,20 @@ export const build = {
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
     // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
-    contentComputedPinGap: "{location} 的资产来自计算结果，因此本次构建无法判断它需要哪个资产",
+    // 中文只用 `other`，所以两条写成同一句，不带「每个」这类随数量变的词。
     contentComputedPinSummary: {
-        one: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在引脚上选定资产，详见控制台",
-        other: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在每个引脚上选定资产，详见控制台",
+        one: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
+        other: "构建已中止：{count} 处资产名称在运行时拼出，详见控制台",
+    },
+    contentUnloadedNodeSummary: {
+        one: "构建已中止：{count} 处资产名称来自未加载的节点类型，详见控制台",
+        other: "构建已中止：{count} 处资产名称来自未加载的节点类型，详见控制台",
+    },
+    // 发行包构建中有脚本未能编译。由主进程写出，是构建失败信息的第一行；其后逐个文件跟着编译器
+    // 自己的那一行（带文件、行号与列号）。
+    scriptsNotCompiled: {
+        one: "有 {count} 个脚本无法编译",
+        other: "有 {count} 个脚本无法编译",
     },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本项目",

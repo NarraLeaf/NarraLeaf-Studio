@@ -100,6 +100,15 @@ export const project = {
         live: "The project's own settings are read-only during a live session. What is still editable here is what the session carries.",
         frozen: "The project's own settings are read-only while the project is frozen.",
     },
+    // A change to a project setting that did not reach the project file, from any surface that
+    // changes one. Named as the file, because that is what the author can go and look at, and
+    // followed by what the disk said when that is something to act on
+    // (`workspace.shell.save.reason`). The change is not kept - the setting goes back to what the
+    // file holds - so nothing here speaks of trying again.
+    writeFailed: {
+        plain: "Could not save the project file.",
+        withReason: "Could not save the project file. {reason}",
+    },
     details: {
         nameLabel: "Application Name",
         namePlaceholder: "Application name",
@@ -252,6 +261,13 @@ export const project = {
         clearBackground: "Keep transparency",
         transparent: "None",
         icnsPreview: "ICNS preview",
+        // An icon operation that failed. The picked file is named by its own file name, never its
+        // path; `readFailed` may be followed by one of `assets.reference.reason`. `failed` is for
+        // anything that is not one of the others.
+        pickFailed: "The file picker could not be opened.",
+        unsupported: "“{name}” cannot be used as an icon.",
+        readFailed: "“{name}” could not be read.",
+        failed: "Could not update the icons.",
         target: {
             macos: "macOS",
             windows: "Windows",
@@ -578,11 +594,42 @@ export const project = {
         rescan: "Rescan",
         scanning: "Scanning project…",
         empty: "No plugin dependencies.",
+        /**
+         * Above the list, one sentence per state the rows are in: what the state is, and where it is
+         * put right. Each names its own cause, so a plugin that is not installed is never described
+         * as installed at the wrong version. The words match the rows' (and so the Plugins panel's).
+         */
         banner: {
-            // Names the version verdict without borrowing the word for the author's own switch:
-            // every plugin this banner is about was withheld by Studio, not turned off by anyone.
-            blocked: "Some plugins are not loaded for this project. Their installed version is incompatible. Update or reinstall them.",
-            warnings: "A plugin is outdated, or an optional dependency is unavailable.",
+            missing: {
+                one: "A plugin this project uses is not installed. Install it from the plugins panel.",
+                other: "{count} plugins this project uses are not installed. Install them from the plugins panel.",
+            },
+            /** Released by the Rescan button beside this banner, which is what the sentence ends on. */
+            held: {
+                one: "A plugin is off for this project. Its installed version is incompatible with the one this project was authored against. Click Rescan to use the installed version.",
+                other: "{count} plugins are off for this project. Their installed versions are incompatible with the ones this project was authored against. Click Rescan to use the installed versions.",
+            },
+            needsAuthorization: {
+                one: "A plugin this project uses needs authorization. Authorize it in the plugins panel.",
+                other: "{count} plugins this project uses need authorization. Authorize them in the plugins panel.",
+            },
+            disabled: {
+                one: "A plugin this project uses is disabled. Enable it in the plugins panel.",
+                other: "{count} plugins this project uses are disabled. Enable them in the plugins panel.",
+            },
+            failed: {
+                one: "A plugin this project uses failed to load. The plugins panel shows the error.",
+                other: "{count} plugins this project uses failed to load. The plugins panel shows the errors.",
+            },
+            outdated: {
+                one: "A plugin is older than the version this project was authored against.",
+                other: "{count} plugins are older than the versions this project was authored against.",
+            },
+            /** A data-only dependency at another major: it still loads, so nothing holds it back. */
+            incompatible: {
+                one: "A plugin is installed at a version incompatible with the one this project was authored against.",
+                other: "{count} plugins are installed at versions incompatible with the ones this project was authored against.",
+            },
         },
         status: {
             ready: "Ready",
@@ -606,7 +653,6 @@ export const project = {
         meta: {
             requires: "Requires {version}",
             installed: "Installed {version}",
-            notInstalled: "not installed",
             builtIn: "Built-in",
             dataOnly: "data only",
         },

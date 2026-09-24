@@ -5,17 +5,22 @@ import type { CommandLineRunJob } from "@shared/types/commandLineRun";
 import { throwException } from "@shared/utils/error";
 import { getInterface } from "@/lib/app/bridge";
 import { setCrashRecoveryFlush } from "@/lib/app/errorHandling/crashRecovery";
-import { freezeProjectWrites } from "@/lib/app/writeFreeze";
+import { freezeProjectWrites, getProjectWriteFreeze, isTakenOver } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { startRecoveryShell } from "@/lib/workspace/recovery/recoveryShell";
 import { Workspace } from "@/lib/workspace/workspace";
-import { createWorkspaceAssetUrlResolver, resolveAllWorkspaceAssetUrls } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import {
+    createWorkspaceAssetUrlResolver,
+    resolveAllWorkspaceAssetUrls,
+    workspaceAssetTypes,
+} from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { translate } from "@/lib/i18n";
 import { Service } from "@/lib/workspace/services/Service";
 import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
+import { watchForSessionTakeover } from "@/lib/workspace/startup/sessionTakeover";
 import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendingSaves";
 import type { WorkspaceStartupStage } from "../components/WorkspaceOpeningOverlay";
 
@@ -146,6 +151,9 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         };
 
         const initWorkspace = async () => {
+            // Read out of the props below, and kept here for the failure branch: a command-line run's
+            // window has no error screen anybody will read.
+            let job: CommandLineRunJob | null = null;
             try {
                 await enqueueWorkspaceInit(async () => {
                     // Create workspace context
@@ -165,7 +173,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     // Before the recovery branch, so a window that is both is at least honest about
                     // it: recovery wins - a project somebody is here to repair is not one to build,
                     // test or sweep - and the run is told so when the job never starts.
-                    const job = props.commandLineRun ?? null;
+                    job = props.commandLineRun ?? null;
                     setCommandLineRun(job);
                     if (props.recovery) {
                         setRecovery(true);
@@ -283,6 +291,18 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                 });
             } catch (err) {
                 console.error("Failed to initialize workspace:", err);
+                // The error screen below is what an author reads to find out why. A command-line
+                // run's window renders no screen at all, and the load result alone ends the run on
+                // "could not open this project" - so the run is told the reason first, and ends on
+                // the sentence the screen would have shown.
+                if (job) {
+                    getInterface().workspace.reportCommandLineRun({
+                        kind: "finished",
+                        ok: false,
+                        refusal: "environment",
+                        error: `The workspace could not open this project: ${err instanceof Error ? err.message : String(err)}`,
+                    });
+                }
                 // Tells a pending replace-launch to keep its opener: this window failed to
                 // become a workspace (e.g. the folder is not a project).
                 getInterface().workspace.reportLoadResult(false);
@@ -329,7 +349,13 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         // it goes, so one asset at a time meant one three-hop wait at a time.
         const allToken = getInterface().workspace.onResolveAllAssetUrls(async () => {
             try {
-                return { success: true, data: { urls: await resolveAllWorkspaceAssetUrls(context) } };
+                return {
+                    success: true,
+                    data: {
+                        urls: await resolveAllWorkspaceAssetUrls(context),
+                        types: workspaceAssetTypes(context),
+                    },
+                };
             } catch (error) {
                 return { success: false, error: error instanceof Error ? error.message : String(error) };
             }
@@ -354,6 +380,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             if (!currentContext) {
                 return { success: true, data: { confirmed: true } };
             }
+            // A project another Studio took over has nothing here left to lose - nothing typed in
+            // this window can be saved - and the editor that would draw the sheet is no longer on
+            // screen. Asking would leave the close waiting on a dialog nobody can see.
+            if (isTakenOver(getProjectWriteFreeze())) {
+                return { success: true, data: { confirmed: true } };
+            }
 
             const uiService = currentContext.services.get<UIService>(Services.UI);
             const confirmed = await uiService.showConfirm(
@@ -372,13 +404,27 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             if (!currentContext) {
                 return { success: true, data: { flushed: true } };
             }
+            // Nothing is owed to a project another Studio has taken over. The latch would refuse
+            // every one of these writes anyway; not attempting them keeps a close from filling the
+            // console with a refusal per document.
+            if (isTakenOver(getProjectWriteFreeze())) {
+                return { success: true, data: { flushed: true } };
+            }
             const result = await flushPendingSaves(currentContext);
             return { success: true, data: { flushed: result.flushed } };
         });
 
+        // Another NarraLeaf Studio has taken this window's project over. On mount rather than
+        // with the context, like the two handlers above, because a takeover can land while the
+        // workspace is still starting - see `watchForSessionTakeover`.
+        const takenOverToken = watchForSessionTakeover(
+            () => contextRef.current?.project.getConfig().projectPath ?? null,
+        );
+
         return () => {
             token.cancel();
             flushToken.cancel();
+            takenOverToken.cancel();
         };
     }, []);
 

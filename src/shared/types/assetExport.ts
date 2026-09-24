@@ -27,7 +27,14 @@ export interface AssetExportEntry {
 /** What could not be copied, named by where it was going rather than by its shard path. */
 export interface AssetExportFailure {
     relativePath: string;
+    /**
+     * The failure as main has it. A filesystem error's message quotes the shard path the file was
+     * read from - the asset's id, split into folders - so where `code` is present the renderer words
+     * the failure from the code and does not show this.
+     */
     reason: string;
+    /** The filesystem's error code (`EACCES`, `ENOENT`, ...), when the failure was the filesystem's. */
+    code?: string;
 }
 
 export interface AssetExportResult {

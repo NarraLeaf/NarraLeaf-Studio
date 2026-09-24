@@ -18,12 +18,13 @@
  * comes back where it was, and whether the game starts full-screen.
  */
 
-import { useCallback, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Switch } from "@/lib/components/elements";
 import { normalizeWindowConfiguration, type WindowConfiguration } from "@/lib/workspace/project/configuration";
 import { SettingShell } from "./settingRows";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -35,41 +36,28 @@ export function ProjectWindowSection({
 }: ProjectSectionProps) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
-    const [windowConfig, setWindowConfig] = useState<WindowConfiguration>(
-        () => normalizeWindowConfiguration(config.app?.window),
-    );
-    const [saving, setSaving] = useState(false);
-
-    const commit = useCallback(async (patch: Partial<WindowConfiguration>) => {
-        if (saving) {
-            return;
-        }
-        const previous = windowConfig;
-        setSaving(true);
-        setWindowConfig(current => normalizeWindowConfiguration({ ...current, ...patch }));
-        try {
-            const updated = await projectService.updateWindowConfiguration(patch);
-            setWindowConfig(normalizeWindowConfiguration(updated.app?.window));
-            onConfigChange(updated);
-        } catch (error) {
-            setWindowConfig(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(false);
-        }
-    }, [onConfigChange, projectService, saving, uiService, windowConfig]);
+    const stored = useMemo(() => normalizeWindowConfiguration(config.app?.window), [config.app?.window]);
+    // Three switches, each its own change: pressing one while another is still being written is two
+    // decisions, and both are kept (see `useConfigSlice`).
+    const { value: windowConfig, commit } = useConfigSlice<WindowConfiguration>({
+        stored,
+        write: patch => projectService.updateWindowConfiguration(patch),
+        onConfigChange,
+        uiService,
+        normalize: normalizeWindowConfiguration,
+    });
 
     return (
         <SettingsGroup title={t("project.group.window")}>
             <SettingShell
                 title={t("project.window.resizableTitle")}
                 description={t("project.window.resizableDescription")}
-                tooltip={freeze.writes(saving)["data-tip"]}
+                tooltip={freeze.writes()["data-tip"]}
             >
                 <Switch
                     size="sm"
                     checked={windowConfig.resizable}
-                    disabled={freeze.writes(saving).disabled}
+                    disabled={freeze.writes().disabled}
                     aria-label={t("project.window.resizableTitle")}
                     onCheckedChange={value => void commit({ resizable: value })}
                 />
@@ -77,12 +65,12 @@ export function ProjectWindowSection({
             <SettingShell
                 title={t("project.window.rememberTitle")}
                 description={t("project.window.rememberDescription")}
-                tooltip={freeze.writes(saving)["data-tip"]}
+                tooltip={freeze.writes()["data-tip"]}
             >
                 <Switch
                     size="sm"
                     checked={windowConfig.rememberGeometry}
-                    disabled={freeze.writes(saving).disabled}
+                    disabled={freeze.writes().disabled}
                     aria-label={t("project.window.rememberTitle")}
                     onCheckedChange={value => void commit({ rememberGeometry: value })}
                 />
@@ -90,12 +78,12 @@ export function ProjectWindowSection({
             <SettingShell
                 title={t("project.window.fullscreenTitle")}
                 description={t("project.window.fullscreenDescription")}
-                tooltip={freeze.writes(saving)["data-tip"]}
+                tooltip={freeze.writes()["data-tip"]}
             >
                 <Switch
                     size="sm"
                     checked={windowConfig.startFullscreen}
-                    disabled={freeze.writes(saving).disabled}
+                    disabled={freeze.writes().disabled}
                     aria-label={t("project.window.fullscreenTitle")}
                     onCheckedChange={value => void commit({ startFullscreen: value })}
                 />

@@ -5,7 +5,10 @@ import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@sha
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
+import type {
+    BehaviorGraphEventControl,
+    BehaviorGraphValueTracking,
+} from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
@@ -30,6 +33,32 @@ export type UIHostAdapterElementEventOptions = {
     componentParams?: Record<string, string>;
     eventControl?: BehaviorGraphEventControl;
     allowClosedScopeExecution?: boolean;
+};
+
+/**
+ * The drawings a running surface is showing, for the events that are not raised by any one of them.
+ *
+ * A click knows its drawing - it landed on one. A broadcast, a window focus change or a flush that a
+ * graph's write set off does not: it names an element, and an element in a list row is drawn once
+ * per row. The document says which list repeats it but not what rows that list is showing - rows
+ * come from bindings and from graphs at run time - so the list announces each row it draws here,
+ * and whoever fans such an event out asks here which drawings to run it in.
+ */
+export type UIHostAdapterDrawings = {
+    /** Announce one row a list is drawing. Returns the retraction, for when the row goes away. */
+    registerListRow: (listElementId: string, row: { instanceKey: string; listItemScope: UIListItemScope }) => () => void;
+    /**
+     * Every drawing of `elementId` on screen, each as the options an event run in it carries.
+     *
+     * An element drawn once, for the page, has one drawing with nothing to name: `[{}]`. An element
+     * in a list row has one per row the list is drawing - none while the list is empty.
+     */
+    everyDrawingOf: (elementId: string) => UIHostAdapterElementEventOptions[];
+    /**
+     * The options naming the drawing a widget address is in: its key, the component that holds the
+     * element and the params of the placement, and the row, when the row is on screen to read.
+     */
+    optionsForAddress: (address: string) => UIHostAdapterElementEventOptions | undefined;
 };
 
 /**
@@ -86,8 +115,16 @@ export type UIHostAdapterBlueprintRuntime = {
         callerComponentParams?: Record<string, string>;
         /** Which drawing the call came from, so the body's widget writes land on it. */
         callerInstanceKey?: string;
+        /** The list row the call came from, so the body reads the row the caller was answering for. */
+        callerListItemScope?: UIListItemScope | null;
         signal?: AbortSignal;
         callerExecutionId?: string;
+        /**
+         * The caller's value-binding bookkeeping, when the caller is a binding being evaluated: what
+         * the body reads is what the binding shows, so the body records its reads where the caller's
+         * own go.
+         */
+        valueExecution?: BehaviorGraphValueTracking;
     }) => Promise<{ returns: Record<string, unknown> }>;
     frame?: {
         getParam: (key: string) => unknown;
@@ -95,6 +132,18 @@ export type UIHostAdapterBlueprintRuntime = {
     };
     /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
     hostApi?: BlueprintHostApiRuntime;
+    /**
+     * The widget address of `elementId` as a graph running in the drawing `instanceKey` means it.
+     *
+     * Asked of the runtime because the answer needs the document - whether the element is inside
+     * the row or the placement the graph is running in, or outside it - and a running graph does
+     * not hold one. The rule is `resolveUIWidgetAddressFromDrawing`; every node reaches it through
+     * `addressWidgetFromExecution`. A runtime without it (a test double) keeps every target in the
+     * running drawing, which is what addressing did before the rule.
+     */
+    resolveWidgetAddress?: (elementId: string, instanceKey: string | undefined) => string;
+    /** The drawings on screen, for fanning out an event no drawing raised. See {@link UIHostAdapterDrawings}. */
+    drawings?: UIHostAdapterDrawings;
 };
 
 /**
@@ -160,6 +209,11 @@ export type RenderSurfaceOptions = {
 
 export type RenderDocumentSurfaceOptions = RenderSurfaceOptions & {
     document: UIDocument;
+    /**
+     * The project's document, when `document` is a view of it that does not hold the project's
+     * pages' elements - the component editor's. A Page widget draws its page from this.
+     */
+    pageDocument?: UIDocument;
 };
 
 export type RenderComponentOptions = {

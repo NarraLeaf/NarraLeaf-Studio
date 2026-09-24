@@ -521,7 +521,9 @@ export const help = {
                 "Three nodes read input actions.\n"
                 + "\n"
                 + "- On Action runs when the action fires. It reports which device raised it and where the "
-                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget.\n"
+                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget. "
+                + "On the global blueprint it runs for every action on every screen, before any interface "
+                + "answers it.\n"
                 + "- Is Action Held answers whether the action is held at this moment. A key, a mouse button "
                 + "and a long press can be held; a scroll is an instant and a double click is a sequence, so "
                 + "both read false.\n"
@@ -985,7 +987,9 @@ export const help = {
                 + "- What a plugin contributes appears in the same places as the built-in equivalents, marked "
                 + "with the plugin it came from.\n"
                 + "- A project records the plugins it depends on. Opened on a machine that is missing one, it "
-                + "states which plugin is missing and what in the project uses it.",
+                + "states which plugin is missing and what in the project uses it.\n"
+                + "- A plugin installed at a different major version from the one the project was made with is off "
+                + "for the project until Rescan in Project ▸ App records the installed version.",
         },
     },
 } as const;

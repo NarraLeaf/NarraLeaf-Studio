@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageManager } from "../storageManager";
 import type { AppWindow } from "../window/appWindow";
 import { encodeWriteBatchFrame } from "@shared/utils/writeBatchFrame";
+import { FsRejectErrorCode } from "@shared/types/os";
+import { Fs } from "@shared/utils/fs";
 import { FileSystemHandler, FileSystemHashHandler } from "./fileSystemHandler";
+import { FILE_STREAM_THRESHOLD_BYTES } from "./fileBody";
 
 vi.mock("electron", () => ({
     app: {
@@ -171,6 +174,249 @@ describe("FileSystemHashHandler grant lifetimes", () => {
 
         const goneHash = storageManager.allocateHash(path.join(tempDir, "not-here.png"), true, "read", 1);
         await expect(storageManager.stabilizeSessionRead(goneHash, 42)).resolves.toBeNull();
+    });
+});
+
+/**
+ * How a grant answers a media element. A `<video>` reads a clip as a series of `Range` requests - one
+ * to start, one per seek outside what it has buffered - so ranges are honoured exactly where a grant
+ * can be asked more than once, and a one-shot grant keeps answering whole files and dying after one.
+ */
+describe("FileSystemHashHandler byte ranges", () => {
+    /** Every byte is its own offset (mod 256), so a slice says where it came from. */
+    const SMALL_SIZE = 1000;
+    let tempDir: string;
+    let filePath: string;
+    let storageManager: StorageManager;
+    let handler: FileSystemHashHandler;
+
+    const bytesFrom = (start: number, length: number) =>
+        Buffer.from(Array.from({ length }, (_, index) => (start + index) % 256));
+
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-range-"));
+        filePath = path.join(tempDir, "clip.webm");
+        await fs.writeFile(filePath, bytesFrom(0, SMALL_SIZE));
+        storageManager = new StorageManager({
+            logger: { error: vi.fn(), warn: vi.fn() },
+        } as any);
+        handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    function grant(target = filePath, lifetime: "once" | "session" = "session"): string {
+        const hash = storageManager.allocateHash(target, true, "read", 7);
+        storageManager.updateStatus(hash, "ready");
+        if (lifetime === "session") {
+            expect(storageManager.promoteToSessionRead(hash, 7)).toBe(true);
+        }
+        return hash;
+    }
+
+    function rangeRequest(url: string, range?: string): Request {
+        return {
+            url,
+            method: "GET",
+            headers: new Headers(range === undefined ? {} : { range }),
+        } as unknown as Request;
+    }
+
+    async function bodyOf(data: unknown): Promise<Buffer> {
+        if (Buffer.isBuffer(data)) {
+            return data;
+        }
+        expect(data).toBeInstanceOf(ReadableStream);
+        return Buffer.from(await new Response(data as ReadableStream<Uint8Array>).arrayBuffer());
+    }
+
+    it("answers a single range on a session grant with 206 and the bytes it names", async () => {
+        const response = await handler.handle(rangeRequest(`app://fs/${grant()}`, "bytes=100-199"));
+
+        expect(response.statusCode).toBe(206);
+        expect(response.headers["Content-Range"]).toBe(`bytes 100-199/${SMALL_SIZE}`);
+        expect(response.headers["Content-Length"]).toBe("100");
+        expect(response.headers["Accept-Ranges"]).toBe("bytes");
+        // The rest of a session grant's answer is unchanged by the range.
+        expect(response.headers["Cache-Control"]).toBe("private, max-age=3600");
+        expect(response.headers["Content-Type"]).toBe("application/octet-stream");
+        expect((await bodyOf(response.data)).equals(bytesFrom(100, 100))).toBe(true);
+    });
+
+    it("answers the open-ended range a media element starts with as 206 over the whole file", async () => {
+        // `bytes=0-` is what Chromium sends first; a 206 back is what tells it seeking by range works.
+        const response = await handler.handle(rangeRequest(`app://fs/${grant()}`, "bytes=0-"));
+
+        expect(response.statusCode).toBe(206);
+        expect(response.headers["Content-Range"]).toBe(`bytes 0-${SMALL_SIZE - 1}/${SMALL_SIZE}`);
+        expect((await bodyOf(response.data)).equals(bytesFrom(0, SMALL_SIZE))).toBe(true);
+    });
+
+    it("answers a suffix range with the last bytes of the file", async () => {
+        const response = await handler.handle(rangeRequest(`app://fs/${grant()}`, "bytes=-10"));
+
+        expect(response.statusCode).toBe(206);
+        expect(response.headers["Content-Range"]).toBe(`bytes ${SMALL_SIZE - 10}-${SMALL_SIZE - 1}/${SMALL_SIZE}`);
+        expect((await bodyOf(response.data)).equals(bytesFrom(SMALL_SIZE - 10, 10))).toBe(true);
+    });
+
+    it("clamps a range that runs past the end to the file", async () => {
+        const response = await handler.handle(rangeRequest(`app://fs/${grant()}`, "bytes=990-5000"));
+
+        expect(response.statusCode).toBe(206);
+        expect(response.headers["Content-Range"]).toBe(`bytes 990-999/${SMALL_SIZE}`);
+        expect(response.headers["Content-Length"]).toBe("10");
+    });
+
+    it.each(["bytes=1000-", "bytes=5000-6000", "bytes=-0"])("refuses %s with 416 and the file's size", async range => {
+        const response = await handler.handle(rangeRequest(`app://fs/${grant()}`, range));
+
+        expect(response.statusCode).toBe(416);
+        expect(response.headers["Content-Range"]).toBe(`bytes */${SMALL_SIZE}`);
+        expect(response.headers["Accept-Ranges"]).toBe("bytes");
+        expect(response.data).toBeUndefined();
+    });
+
+    it.each(["bytes=0-1,5-6", "items=0-5", "bytes=9-3"])("answers %s, which it does not serve as a range, with the whole file", async range => {
+        const response = await handler.handle(rangeRequest(`app://fs/${grant()}`, range));
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["Content-Range"]).toBeUndefined();
+        expect(response.headers["Content-Length"]).toBe(String(SMALL_SIZE));
+        expect(response.headers["Accept-Ranges"]).toBe("bytes");
+        expect((await bodyOf(response.data)).equals(bytesFrom(0, SMALL_SIZE))).toBe(true);
+    });
+
+    it("keeps serving repeated ranges from one session grant, as a seeking video asks for them", async () => {
+        const url = `app://fs/${grant()}`;
+        for (const [start, end] of [[0, 99], [600, 699], [0, 9], [950, 999]]) {
+            const response = await handler.handle(rangeRequest(url, `bytes=${start}-${end}`));
+            expect(response.statusCode).toBe(206);
+            expect((await bodyOf(response.data)).equals(bytesFrom(start, end - start + 1))).toBe(true);
+        }
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(200);
+    });
+
+    it("keeps a one-shot grant one-shot: a range gets the whole file, and nothing gets a second answer", async () => {
+        const url = `app://fs/${grant(filePath, "once")}`;
+
+        const first = await handler.handle(rangeRequest(url, "bytes=100-199"));
+        expect(first.statusCode).toBe(200);
+        expect(first.headers["Content-Range"]).toBeUndefined();
+        // Advertising ranges would invite the follow-up request this grant cannot answer.
+        expect(first.headers["Accept-Ranges"]).toBeUndefined();
+        expect(first.headers["Cache-Control"]).toContain("no-store");
+        expect((await bodyOf(first.data)).equals(bytesFrom(0, SMALL_SIZE))).toBe(true);
+
+        expect((await handler.handle(rangeRequest(url, "bytes=100-199"))).statusCode).toBe(404);
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(404);
+    });
+
+    it("does not spend a one-shot grant on a read that failed", async () => {
+        const target = path.join(tempDir, "late.webm");
+        const url = `app://fs/${grant(target, "once")}`;
+
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(500);
+        await fs.writeFile(target, bytesFrom(0, 10));
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(200);
+    });
+
+    it("does not spend a one-shot grant when the file opened but could not be read", async () => {
+        const url = `app://fs/${grant(filePath, "once")}`;
+        const readSpan = vi.spyOn(Fs, "readSpan").mockResolvedValueOnce({
+            ok: false,
+            error: { code: FsRejectErrorCode.IO_ERROR, message: "EIO: i/o error, read" },
+        });
+        try {
+            const failed = await handler.handle(rangeRequest(url));
+            expect(failed.statusCode).toBe(500);
+            expect(failed.headers["Content-Type"]).toBe("application/json");
+            expect(JSON.parse(String(failed.data)).error.code).toBe(FsRejectErrorCode.IO_ERROR);
+        } finally {
+            readSpan.mockRestore();
+        }
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(200);
+        expect((await handler.handle(rangeRequest(url))).statusCode).toBe(404);
+    });
+
+    it("serves ranges inside a directory grant, which is asked many times too", async () => {
+        await fs.mkdir(path.join(tempDir, "bundle"));
+        await fs.writeFile(path.join(tempDir, "bundle", "motion.bin"), bytesFrom(0, SMALL_SIZE));
+        const hash = storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 7);
+
+        const response = await handler.handle(rangeRequest(`app://fs/${hash}/motion.bin`, "bytes=10-19"));
+        expect(response.statusCode).toBe(206);
+        expect(response.headers["Content-Range"]).toBe(`bytes 10-19/${SMALL_SIZE}`);
+        expect((await bodyOf(response.data)).equals(bytesFrom(10, 10))).toBe(true);
+    });
+
+    it("keeps a distrusted window's script inert when it is asked for by range", async () => {
+        await fs.mkdir(path.join(tempDir, "bundle"));
+        await fs.writeFile(path.join(tempDir, "bundle", "runtime.js"), "export default 1;");
+        const distrusted = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => false });
+        const hash = storageManager.allocateDirectoryHash(path.join(tempDir, "bundle"), 7);
+
+        const response = await distrusted.handle(rangeRequest(`app://fs/${hash}/runtime.js`, "bytes=0-5"));
+        expect(response.statusCode).toBe(206);
+        expect(response.headers["Content-Type"]).toBe("text/plain; charset=utf-8");
+        expect(response.headers["X-Content-Type-Options"]).toBe("nosniff");
+    });
+
+    it("answers an empty file whole, and refuses any range of it", async () => {
+        const empty = path.join(tempDir, "empty.bin");
+        await fs.writeFile(empty, Buffer.alloc(0));
+        const url = `app://fs/${grant(empty)}`;
+
+        const whole = await handler.handle(rangeRequest(url));
+        expect(whole.statusCode).toBe(200);
+        expect(whole.headers["Content-Length"]).toBe("0");
+        expect((await handler.handle(rangeRequest(url, "bytes=0-"))).statusCode).toBe(416);
+    });
+
+    describe("a file too large to buffer", () => {
+        const LARGE_SIZE = FILE_STREAM_THRESHOLD_BYTES + 12345;
+        let largePath: string;
+
+        beforeEach(async () => {
+            largePath = path.join(tempDir, "large.webm");
+            await fs.writeFile(largePath, bytesFrom(0, LARGE_SIZE));
+        });
+
+        it("streams the whole file rather than reading it into memory first", async () => {
+            const response = await handler.handle(rangeRequest(`app://fs/${grant(largePath)}`));
+
+            expect(response.statusCode).toBe(200);
+            expect(response.data).toBeInstanceOf(ReadableStream);
+            expect(response.headers["Content-Length"]).toBe(String(LARGE_SIZE));
+            expect((await bodyOf(response.data)).equals(bytesFrom(0, LARGE_SIZE))).toBe(true);
+        });
+
+        it("streams a large range and buffers a small one", async () => {
+            const url = `app://fs/${grant(largePath)}`;
+
+            const large = await handler.handle(rangeRequest(url, "bytes=7-"));
+            expect(large.statusCode).toBe(206);
+            expect(large.data).toBeInstanceOf(ReadableStream);
+            expect(large.headers["Content-Length"]).toBe(String(LARGE_SIZE - 7));
+            expect((await bodyOf(large.data)).equals(bytesFrom(7, LARGE_SIZE - 7))).toBe(true);
+
+            const small = await handler.handle(rangeRequest(url, `bytes=${LARGE_SIZE - 300}-${LARGE_SIZE - 201}`));
+            expect(small.statusCode).toBe(206);
+            expect(Buffer.isBuffer(small.data)).toBe(true);
+            expect((await bodyOf(small.data)).equals(bytesFrom(LARGE_SIZE - 300, 100))).toBe(true);
+        });
+
+        it("streams to a one-shot grant too, and still spends it on the first request", async () => {
+            const url = `app://fs/${grant(largePath, "once")}`;
+
+            const first = await handler.handle(rangeRequest(url, "bytes=0-"));
+            expect(first.statusCode).toBe(200);
+            expect(first.data).toBeInstanceOf(ReadableStream);
+            expect((await bodyOf(first.data)).byteLength).toBe(LARGE_SIZE);
+            expect((await handler.handle(rangeRequest(url))).statusCode).toBe(404);
+        });
     });
 });
 
@@ -372,5 +618,67 @@ describe("FileSystemHashHandler and the code a window may run", () => {
         const model = await handler.handle(makeRequest(`${hash}/model.moc3`));
         expect(model.statusCode).toBe(200);
         expect(model.headers["Content-Type"]).not.toBe("text/plain; charset=utf-8");
+    });
+});
+
+/**
+ * A single-file write the disk refuses. The renderer words the failure for the author from the
+ * filesystem's code - a read-only file, a folder that is gone - so the answer has to carry the code,
+ * and it must not be the grant URL the write went to, which names nothing anyone can act on.
+ */
+describe("FileSystemHashHandler refused writes", () => {
+    let tempDir: string;
+    let storageManager: StorageManager;
+    let handler: FileSystemHashHandler;
+
+    beforeEach(async () => {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-fs-refused-"));
+        storageManager = new StorageManager({
+            logger: { error: vi.fn(), warn: vi.fn() },
+        } as any);
+        handler = new FileSystemHashHandler("app", {}, storageManager, { mayRunProjectCode: () => true });
+    });
+
+    afterEach(async () => {
+        await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("answers with the filesystem's own error, code and all, as JSON", async () => {
+        // A file where the target's folder should be: no platform can create the scratch file.
+        const blocker = path.join(tempDir, "not-a-folder");
+        await fs.writeFile(blocker, "x");
+        const target = path.join(blocker, "Demo.nlproj");
+        const hash = storageManager.allocateHash(target, true, "write", 1);
+        storageManager.updateStatus(hash, "ready");
+
+        const body = new TextEncoder().encode("bytes");
+        const response = await handler.handle({
+            url: `app://fs/${hash}`,
+            method: "PUT",
+            arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+        } as unknown as Request);
+
+        expect(response.statusCode).toBe(500);
+        expect(response.headers?.["Content-Type"]).toBe("application/json");
+        const error = JSON.parse(String(response.data)).error as { code: string; message: string };
+        expect(Object.values(FsRejectErrorCode)).toContain(error.code);
+        expect(error.message).not.toContain("app://");
+        expect(error.message).not.toContain(hash);
+    });
+
+    it("answers a read it could not make the same way", async () => {
+        // A folder where a file was granted: nothing can read it as one.
+        const folder = path.join(tempDir, "a-folder");
+        await fs.mkdir(folder);
+        const hash = storageManager.allocateHash(folder, true, "read", 1);
+        storageManager.updateStatus(hash, "ready");
+
+        const response = await handler.handle({ url: `app://fs/${hash}`, method: "GET" } as unknown as Request);
+
+        expect(response.statusCode).toBe(500);
+        expect(response.headers?.["Content-Type"]).toBe("application/json");
+        const error = JSON.parse(String(response.data)).error as { code: string; message: string };
+        expect(Object.values(FsRejectErrorCode)).toContain(error.code);
+        expect(error.message).not.toContain(hash);
     });
 });

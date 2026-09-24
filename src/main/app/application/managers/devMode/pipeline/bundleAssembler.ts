@@ -1,7 +1,8 @@
 import path from "path";
 import { pathToFileURL } from "url";
 import { hasScriptLayer } from "@shared/blueprint/blueprintLayers";
-import { compileProjectScripts } from "./scriptCompiler";
+import { compileProjectScripts, listScriptCompileFailures } from "./scriptCompiler";
+import { BuildRefusal } from "@shared/build/buildRefusal";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
@@ -137,6 +138,18 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     }
 }
 
+/**
+ * The refusal a package build gives when one of the author's scripts did not compile.
+ *
+ * A count in the author's language, then the compiler's own line for each file. Those lines stay as
+ * the compiler wrote them: they carry the file, the line and the column, and they are the same words
+ * Dev Mode's issue list shows for the same file.
+ */
+function describeScriptCompileRefusal(failures: readonly string[], locale?: LocaleCode): string {
+    const translator = createTranslator(locale ?? FALLBACK_LOCALE);
+    return [translator.tn("build.scriptsNotCompiled", failures.length), ...failures].join("\n");
+}
+
 async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
     const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
     const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
@@ -180,13 +193,10 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
     // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
     // cannot run, so the scene it names is not an entry into any story this package holds.
     const sceneDrop = planSceneDrop(context, variant.id, Object.values(localBlueprints.blueprints ?? {}));
-    // The author's scripts, bundled. A failure here is carried as a diagnostic on the blueprint
-    // rather than thrown: a script that will not compile is one dead handler, and the rest of the
-    // game still has to run - the type check is a lint and the build never depends on one.
-    // Dev Mode's answer when the host gives none: under `.nlstudio/`, which version control and a
-    // project export both exclude, beside the rest of what a Dev Mode run produces, named as `file:`
-    // URLs because that is what the Dev Mode document's policy admits. A build says where the pack
-    // is being assembled and names the pack's own scheme.
+    // The author's scripts, bundled. Dev Mode's answer when the host gives no output: under
+    // `.nlstudio/`, which version control and a project export both exclude, beside the rest of what
+    // a Dev Mode run produces, named as `file:` URLs because that is what the Dev Mode document's
+    // policy admits. A build says where the pack is being assembled and how the page names it.
     const scripts = await compileProjectScripts(
         context.projectPath,
         localBlueprints,
@@ -195,13 +205,20 @@ async function assembleBundle(context: DevModeBundleLoadContext): Promise<DevMod
             toUrl: filePath => pathToFileURL(filePath).toString(),
         },
     );
-    // A script that did not compile is a handler that will not run, and a build that says nothing
-    // about it ships a control that does nothing. Each distinct file is said once - two blueprints
-    // may name one script - and it stays a notice rather than a failure, because the type check is
-    // a lint and a build never depends on one.
-    for (const message of new Set(
-        Object.values(scripts).flatMap(script => (script.diagnostics ?? []).map(d => d.message)),
-    )) {
+    // A script that did not compile is a layer that will not run. Each distinct file is said once -
+    // two layers may name one script.
+    //
+    // Only a package refuses, the rule the asset sets below follow too. Dev Mode and a preview keep
+    // running with the layer dead and the message on screen, which is the loop an author fixes it
+    // in. A package that let it past would install cleanly and do less than the author wrote with
+    // nothing anywhere saying so. A type error is not one of these: esbuild strips types without
+    // reading them, so a script whose types are wrong compiles and runs, and the type check stays
+    // the author's editor's business.
+    const scriptFailures = listScriptCompileFailures(scripts);
+    if (scriptFailures.length > 0 && context.packaging) {
+        throw new BuildRefusal(describeScriptCompileRefusal(scriptFailures, context.locale));
+    }
+    for (const message of scriptFailures) {
         context.onNotice?.(message);
     }
     // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
@@ -678,7 +695,7 @@ async function materializeAssetSets(
     for (const problem of result.problems) {
         const sentence = describeAssetSetProblem(problem, storyLibrary, variantName);
         if (context.packaging) {
-            throw new Error(sentence);
+            throw new BuildRefusal(sentence);
         }
         context.onNotice?.(sentence);
     }
@@ -720,7 +737,7 @@ async function resolveCharacterAssetSets(
     for (const problem of result.problems) {
         const sentence = describeShippedAssetSetProblem(problem, variantName);
         if (context.packaging) {
-            throw new Error(sentence);
+            throw new BuildRefusal(sentence);
         }
         context.onNotice?.(sentence);
     }
@@ -757,7 +774,7 @@ async function resolveUiAssetSets(
     for (const problem of result.problems) {
         const sentence = describeShippedAssetSetProblem(problem, variantName);
         if (context.packaging) {
-            throw new Error(sentence);
+            throw new BuildRefusal(sentence);
         }
         context.onNotice?.(sentence);
     }
@@ -794,7 +811,7 @@ async function resolveBlueprintAssetSets(
     for (const problem of result.problems) {
         const sentence = describeShippedAssetSetProblem(problem, variantName);
         if (context.packaging) {
-            throw new Error(sentence);
+            throw new BuildRefusal(sentence);
         }
         context.onNotice?.(sentence);
     }

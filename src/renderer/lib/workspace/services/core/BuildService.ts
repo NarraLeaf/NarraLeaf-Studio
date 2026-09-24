@@ -22,7 +22,7 @@ import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
 import type { StudioTaskProgress } from "@shared/types/studioTask";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
-import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
+import { resolveLintMessageParams, type LintReport, type LintReportEntry, type LintSeverity } from "@/lib/lint/types";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import {
     collectBlueprintNetworkNodes,
@@ -31,6 +31,7 @@ import {
 } from "@/lib/lint/rules";
 // One spelling of "where is this finding", shared with the report tab - see locationText.ts.
 import { describeLintLocation, nonRedundantLintLocation } from "@/lib/lint/locationText";
+import { tallyLintFindingsByRule } from "@/lib/lint/ruleTally";
 export { nonRedundantLintLocation };
 import { EventEmitter } from "../ui/EventEmitter";
 import { ConsoleService, type ConsoleLogLevel } from "./ConsoleService";
@@ -57,6 +58,7 @@ import {
 } from "@shared/blueprint/appTagGraphFold";
 import { AppTagService } from "../appTag/AppTagService";
 import type { ReferenceIndexGap } from "../references/referenceModel";
+import { describeAssetNameGap } from "../references/assetNameGapText";
 // Type-only, like `LintService` above: the gate needs `getIndexResult()` and nothing else, and a
 // value import would drag every extractor into the build path and its tests.
 import type { ReferenceService } from "../references/ReferenceService";
@@ -953,18 +955,19 @@ export class BuildService extends Service<BuildService> {
      * ## The one gap that matters wherever it is
      *
      * A trimming build also leaves out assets, and it decides which by reading the ids written in the
-     * bytes it ships. An asset the running game *computes* the id of is invisible to that reading -
-     * and `computedAssetPin` is the index reporting exactly that shape, in any document. It is
-     * refused rather than worked around, because the alternative is a shipped game whose art is
-     * missing with nothing anywhere having said so. The remedy is to name the asset in the pin
-     * instead of wiring a value into it.
+     * bytes it ships. An asset whose name the running game *assembles* is invisible to that reading -
+     * and `computedAssetPin` is the index reporting exactly that shape (`findAssetNameGaps`), in any
+     * document. It is refused rather than worked around, because the alternative is a shipped game
+     * whose art is missing with nothing anywhere having said so. A name read out of something the
+     * project writes down - a list row filled from the Gallery, a variable set from a picker - is
+     * not that shape and is not refused: the package carries it.
      *
      * ## The two scopes, which are two different questions
      *
      * `assets` is asked of every package. What it refuses is the one construct the id sweep cannot
-     * see - an asset arriving on a pin from a computed value - and nothing else, because that
-     * question has nothing to do with which scenes a build keeps. The remedy is to select the asset
-     * on the pin.
+     * see - an asset picked by a name assembled at run time - and nothing else, because that
+     * question has nothing to do with which scenes a build keeps. Each refusal is printed in the
+     * project check's own sentence, which says what to do instead.
      *
      * `content` is asked only where the build also drops scenes. It adds the gaps that make the
      * scene answer itself incomplete: a story document that would not load, and an index that never
@@ -1014,20 +1017,29 @@ export class BuildService extends Service<BuildService> {
         }
 
         const consoleService = this.tryGetConsole();
-        const gapKey = scope === "assets" ? "build.contentComputedPinGap" : "build.contentCoverageGap";
         for (const gap of touching) {
-            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", translate(gapKey, {
-                // A gap with no site is the index itself; it has no location to name, and the
-                // sentence has to read as one either way.
-                location: gap.location ?? translate("build.contentCoverageWholeProject"),
-                variant,
-            }), { source: BUILD_CONSOLE_SOURCE });
+            // An asset picked by a computed value is reported in the sentence the canvas and the
+            // project check print for it, naming the node the way its card does.
+            const line = gap.assetName
+                ? describeAssetNameGap(gap.assetName, translate)
+                : translate("build.contentCoverageGap", {
+                    // A gap with no site is the index itself; it has no location to name, and the
+                    // sentence has to read as one either way.
+                    location: gap.location ?? translate("build.contentCoverageWholeProject"),
+                    variant,
+                });
+            consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", line, { source: BUILD_CONSOLE_SOURCE });
         }
-        const refusal = translateN(
-            scope === "assets" ? "build.contentComputedPinSummary" : "build.contentCoverageSummary",
-            touching.length,
-            { count: touching.length, variant },
-        );
+        // The headline is what the build state carries, and the dashboard archives it, so it has to
+        // be true of every line beneath it. A project built on a plugin's nodes, opened where that
+        // plugin is not loaded, refuses here with nothing it names having been assembled by anyone:
+        // the remedy is a plugin to switch on, and the headline says so when that is the whole of it.
+        const allUnloaded = touching.every(gap => gap.assetName?.origin.kind === "node"
+            && gap.assetName.origin.unknownType === true);
+        const summaryKey = scope === "assets"
+            ? (allUnloaded ? "build.contentUnloadedNodeSummary" : "build.contentComputedPinSummary")
+            : "build.contentCoverageSummary";
+        const refusal = translateN(summaryKey, touching.length, { count: touching.length, variant });
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: refusal });
         return this.state;
@@ -1584,7 +1596,7 @@ export class BuildService extends Service<BuildService> {
         });
     }
 
-    /** Every finding on the build channel at the level its severity maps to, then one summary. */
+    /** Every finding on the build channel at the level its severity maps to, then a count per rule, then one summary. */
     private logLintReport(consoleService: ConsoleService | null, report: LintReport): void {
         if (!consoleService) {
             return;
@@ -1604,6 +1616,23 @@ export class BuildService extends Service<BuildService> {
             consoleService.log(BUILD_CONSOLE_CHANNEL, "info", `+${suppressed} more`, {
                 source: BUILD_CONSOLE_SOURCE,
             });
+        }
+        // What the cap cut off, as a count per rule. The first two hundred findings of a sweep that
+        // is 99.8% one rule are two hundred copies of one sentence, and without this the console
+        // says nothing at all about the rules underneath it.
+        const tally = tallyLintFindingsByRule(report.entries);
+        if (tally.length > 0) {
+            consoleService.log(BUILD_CONSOLE_CHANNEL, "info", translate("lint.console.byRule"), {
+                source: BUILD_CONSOLE_SOURCE,
+            });
+            for (const rule of tally) {
+                consoleService.log(
+                    BUILD_CONSOLE_CHANNEL,
+                    LINT_CONSOLE_LEVELS[rule.severity],
+                    translate("lint.console.ruleCount", { rule: rule.ruleId, count: rule.count }),
+                    { source: BUILD_CONSOLE_SOURCE },
+                );
+            }
         }
         consoleService.log(
             BUILD_CONSOLE_CHANNEL,
@@ -1826,7 +1855,7 @@ function isBlockingLintSeverity(
  * {@link nonRedundantLintLocation}.
  */
 export function formatLintFinding(entry: LintReportEntry): string {
-    const message = translate(entry.messageKey, entry.messageParams);
+    const message = translate(entry.messageKey, resolveLintMessageParams(entry, translate));
     return translate("lint.console.finding", {
         rule: entry.ruleId,
         location: nonRedundantLintLocation(describeLintLocation(entry.location), message),

@@ -33,9 +33,11 @@ import {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE as AUDIO_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK as SOUND_PARAM_TRACK,
 } from "./audioTrackParams";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
@@ -91,6 +93,11 @@ const handleOut: BlueprintNodePinDef = {
  * and feeds it here, which is the whole point of the array node signature. The
  * inspector's picker below covers the fixed-clip case (a button click), and the
  * wired pin wins when both are present.
+ *
+ * Declared as carrying a clip, so what arrives here is held to the rule every
+ * asset pin is: the package carries the clips whose names the project writes
+ * down, and a name put together while the game runs is refused where it is
+ * used. A gallery row's clip passes - the catalogue it was read from ships.
  */
 const assetIdIn: BlueprintNodePinDef = {
     id: "assetId",
@@ -99,6 +106,7 @@ const assetIdIn: BlueprintNodePinDef = {
     valueType: "string",
     label: "Asset Id",
     optional: true,
+    assetRef: { kind: "audio" },
 };
 
 const loopIn: BlueprintNodePinDef = {
@@ -175,13 +183,7 @@ const isPlayingOut: BlueprintNodePinDef = {
 type SoundExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function readPin(ctx: SoundExecuteCtx, pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 /** A seconds pin as the milliseconds the host capability takes. Negative and unset both read as 0. */
@@ -248,10 +250,16 @@ function resolveTrackId(ctx: SoundExecuteCtx): string | null {
  * A transport node's target handle. Required: pausing "whatever is playing" is
  * not expressible, because the host may hold several clips at once.
  */
-function requireHandle(ctx: SoundExecuteCtx, nodeLabel: string) {
+function requireHandle(ctx: SoundExecuteCtx, nodeTitleKey: TranslationKey) {
     const handle = normalizeBlueprintSoundHandle(readPin(ctx, "handle"));
     if (!handle) {
-        throw new BlueprintGraphExecutionError(`${nodeLabel}: wire a sound Handle`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.inputEmpty", {
+                node: translate(nodeTitleKey),
+                pin: translate("blueprint.port.handle"),
+            }),
+            ctx.node.id,
+        );
     }
     return handle;
 }
@@ -287,7 +295,10 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const assetId = resolveAssetId(ctx);
             if (!assetId) {
-                throw new BlueprintGraphExecutionError("Play Sound: pick a clip or wire an Asset Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickClip", { node: translate("blueprint.node.playSound") }),
+                    ctx.node.id,
+                );
             }
             // Every override is passed as "unset" when its pin is unwired, so the host resolves the
             // track's own default rather than this node inventing one. A hard-coded `loop: false`
@@ -333,7 +344,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.pause(requireHandle(ctx, "Pause Sound"));
+            await requireHostApi(ctx).sound.pause(requireHandle(ctx, "blueprint.node.pauseSound"));
             return { nextPort: "next" };
         },
     },
@@ -347,7 +358,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [execIn, handleIn, execNext],
         async execute(ctx) {
-            await requireHostApi(ctx).sound.resume(requireHandle(ctx, "Resume Sound"));
+            await requireHostApi(ctx).sound.resume(requireHandle(ctx, "blueprint.node.resumeSound"));
             return { nextPort: "next" };
         },
     },
@@ -369,7 +380,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, handleIn, volumeIn, fadeIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.setVolume(
-                requireHandle(ctx, "Set Sound Volume"),
+                requireHandle(ctx, "blueprint.node.setSoundVolume"),
                 readOptionalNumber(readPin(ctx, "volume")) ?? 1,
                 readSecondsAsMs(ctx, "fade"),
             );
@@ -387,7 +398,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, handleIn, timeIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).sound.seek(
-                requireHandle(ctx, "Seek Sound"),
+                requireHandle(ctx, "blueprint.node.seekSound"),
                 readSecondsAsMs(ctx, "time"),
             );
             return { nextPort: "next" };
@@ -406,7 +417,7 @@ export const soundBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 nextPort: "next",
                 outputValues: {
-                    isPlaying: requireHostApi(ctx).sound.isPlaying(requireHandle(ctx, "Is Sound Playing")),
+                    isPlaying: requireHostApi(ctx).sound.isPlaying(requireHandle(ctx, "blueprint.node.isSoundPlaying")),
                 },
             };
         },

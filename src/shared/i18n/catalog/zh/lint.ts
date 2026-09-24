@@ -263,6 +263,14 @@ export const lint = {
             description: "项目无法加载其类型的节点",
             message: "{type} 未加载，因此该节点不会在游戏中运行",
         },
+        blueprintAssembledAssetName: {
+            title: "运行时拼出的资产名称",
+            description: "资产由游戏运行时拼出的名称选定，游戏包不会带上该资产",
+            message: "“{node}”的“{pin}”收到的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+            messageBinding: "“{element}”的“{prop}”绑定的资产名称在运行时拼出（来自“{origin}”）。游戏包只带项目中写明名称的资产，发布后此处没有资产。请在资产选择器中选择资产，或从列表行、变量中读取已选定的资产",
+            messageUnloadedNode: "“{node}”的“{pin}”收到的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
+            messageUnloadedNodeBinding: "“{element}”的“{prop}”绑定的资产名称来自 {origin}，该节点类型未加载，其指向的资产不会进入发布后的游戏。请安装或启用提供该节点类型的插件，然后重新构建",
+        },
         uiUnlocalizedText: {
             title: "未本地化的文本",
             description: "项目已有第二种语言，文本仍直接写在控件上",
@@ -292,6 +300,11 @@ export const lint = {
             title: "缺失的嵌入页面",
             description: "页面控件嵌入了项目中不存在的页面",
             message: "该页面控件嵌入的页面在此项目中不存在",
+        },
+        uiFrameLoop: {
+            title: "循环的嵌入页面",
+            description: "页面控件嵌入的页面会绕回该控件",
+            message: "该页面控件嵌入的页面会绕回该控件",
         },
         uiListItemFieldMissing: {
             title: "条目字段不存在",
@@ -462,6 +475,9 @@ export const lint = {
         expand: "展开",
         collapseAll: "全部折叠",
         expandAll: "全部展开",
+        // 某条规则的问题数远多于报告一开始列出的那些时，它那一组的最后一行。写的是该规则的总数，
+        // 也就是上面那行标题里的那个数。
+        showAll: "显示全部 {count} 条",
         // 行号那一列念出来的样子。列里只写数字——故事编辑器的行号槽就是这么写的，
         // 读者是拿这一列去对那一列。
         lineAria: "第 {line} 行",
@@ -477,6 +493,10 @@ export const lint = {
         // 先位置、再哪里不对、最后是哪条规则说的——编译器那种一行，也是读的人扫视的顺序。
         // 不再留严重级别的位：控制台每一行左边本来就有一列级别，写在句子里是重复。
         finding: "{location} {message}（{rule}）",
+        // 见英文目录：整轮检查的构成，打在所有问题之后、总结那一行旁边。控制台没法像报告页那样折叠，
+        // 而一轮检查常常是同一条规则重复上千次。
+        byRule: "按规则统计",
+        ruleCount: "{rule}：{count}",
     },
     build: {
         started: "正在检查项目…",

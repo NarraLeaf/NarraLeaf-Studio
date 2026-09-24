@@ -2,12 +2,13 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { app } from "electron";
-import fs from "fs";
+import { unpatchedFs as fs } from "../../../../../utils/unpatchedFs";
 import path from "path";
 import { resolveDefaultProjectDirectory } from "../../../defaultProjectDirectory";
 import { dialogTranslator, showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+import { wizardCreatedProject } from "./projectWizardCreatedAction";
 
 export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectWizardLaunch> {
     readonly name = IPCEventType.projectWizardLaunch;
@@ -58,9 +59,37 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
                     && typeof result === "object"
                     && "created" in result
                     && "projectPath" in result;
+                if (answered && result.created && props?.publishTo) {
+                    handOverCreatedProject(window, wizardWindow, result.projectPath);
+                }
                 resolve(this.success(answered ? result : null));
             });
         });
+    }
+}
+
+/**
+ * Give the window that opened a wizard the one folder that wizard made, so it can send it on.
+ *
+ * The launcher's "new project on this server" has the wizard write the project and then publishes
+ * it itself - from a window with no project, which `vcs.publishProject` holds to a directory it
+ * holds a write grant over. The wizard wrote the project through its own grant, and that grant dies
+ * with the wizard, so the launcher is given one of its own here: **on that folder alone, not
+ * recursive**, which is enough to name it and nothing more.
+ *
+ * Only for a folder the wizard reported through `projectWizard.created`, which checked the wizard's
+ * own grant and that a project was there - never on the close result's word alone - and only for a
+ * wizard opened to put a project on a server, which is the one caller with anything to do next.
+ */
+function handOverCreatedProject(opener: AppWindow, wizard: AppWindow, projectPath: unknown): void {
+    if (typeof projectPath !== "string" || !wizardCreatedProject(wizard, projectPath)) {
+        return;
+    }
+    try {
+        opener.app.storageManager.grantFileSystemAccess(opener, path.resolve(projectPath), "write", false);
+    } catch (error) {
+        // An opener that closed while the wizard was up has nothing left to publish with.
+        opener.app.logger.warn("[Wizard] Could not hand the created project to its opener:", error);
     }
 }
 

@@ -119,6 +119,39 @@ import {
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
 import { silenceRuntimeConsole } from "./runtimeConsole";
+import type { GameLaunchTiming } from "@shared/types/gameLaunchTiming";
+import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
+
+/**
+ * When this process was created, as the operating system recorded it - the zero of the game's
+ * performance timeline.
+ *
+ * Earlier than anything this file can observe for itself: by the time its first line runs,
+ * Electron has already started and loaded the bundle, and that is time a player waited through
+ * too. Node's own uptime stands in on a platform that cannot say.
+ */
+const processCreatedAt = process.getCreationTime?.() ?? Date.now() - process.uptime() * 1000;
+/** When Electron finished starting and this shell began its own work. */
+let appReadyAt: number | null = null;
+/** When the window existed and its page was asked for. */
+let windowCreatedAt: number | null = null;
+
+/**
+ * What the page is told about its own launch; see `@shared/types/gameLaunchTiming`.
+ *
+ * Handed over on the page's address, the same channel the crash policy takes, so a page reloaded
+ * after a crash is told the same thing - it is the same process, launched at the same moment.
+ */
+function gameLaunchTiming(): GameLaunchTiming {
+    const milestones: GameLaunchTiming["milestones"] = [];
+    if (appReadyAt !== null) {
+        milestones.push({ name: "appReady", at: appReadyAt });
+    }
+    if (windowCreatedAt !== null) {
+        milestones.push({ name: "windowCreated", at: windowCreatedAt });
+    }
+    return { origin: "process", zero: processCreatedAt, milestones };
+}
 
 const appDir = __dirname;
 
@@ -219,6 +252,23 @@ if (shellMode === "production" && !shellDebuggable
  * it would mean recompiling to change how a run is observed.
  */
 const testNetworkBlocked = process.env.NARRALEAF_TEST_NETWORK === "blocked";
+
+/**
+ * A test is driving this game, so it has to keep running when its window is not on screen.
+ *
+ * Chromium stops painting a window that is minimized, off-screen or covered by another window, and
+ * throttles its timers to one wake a second. A story waits on painted frames - to enter its first
+ * scene, to finish a transition - so a driven game that ended up behind the author's editor, or
+ * behind a window some other program opened, stood still while the test kept clicking at it, and
+ * the run failed a minute later for having stopped advancing. MEASURED: minimizing the window, or
+ * moving it off-screen, the moment it appeared failed the walkthrough every time, and an unattended
+ * batch failed about one run in thirty that way.
+ *
+ * Only for Studio's own test launches - `GameTestManager` sets the variable, and a shipped game
+ * never reads it. A player's hidden game should be throttled; nobody is looking at it and it has
+ * nothing to finish. A driven one does, and whether it is on top says nothing about the game.
+ */
+const testDriven = shellMode !== "production" && process.env.NARRALEAF_TEST_DRIVEN === "1";
 
 // Preview keeps saves next to the compiled app; a shipped game names its
 // per-user directory explicitly (see resolvePlayerDataDir).
@@ -445,6 +495,16 @@ if (testNetworkBlocked) {
     );
 }
 
+if (testDriven) {
+    // Here for the same reason as the network switch above: Chromium reads these before it starts.
+    // A covered window is otherwise treated as hidden, and a hidden one loses its timers and its
+    // process priority. The window itself is told separately (`backgroundThrottling`), because a
+    // minimized window is hidden whatever these say.
+    app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+    app.commandLine.appendSwitch("disable-renderer-backgrounding");
+    app.commandLine.appendSwitch("disable-background-timer-throttling");
+}
+
 /**
  * Earliest possible refusal of a command line a shipped game does not accept: before app-ready,
  * before any window or session exists. The post-pack-read check below stays as the authoritative
@@ -506,6 +566,7 @@ void app.whenReady().then(async () => {
     if (startupBlocked || secondCopy) {
         return;
     }
+    appReadyAt = Date.now();
     resources = await createRuntimeResources(appDir, {
         // Where a player puts a patch: the folder their copy of the game sits in,
         // which is the first place anyone looks for one. The same folder the
@@ -575,9 +636,11 @@ void app.whenReady().then(async () => {
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
+    windowCreatedAt = Date.now();
     await mainWindow.loadURL(buildGameRuntimeIndexUrl({
         policy: normalizeGameCrashPolicy(pack.crash?.policy),
         logPath: runtimeLogPath(userDataDir),
+        launch: gameLaunchTiming(),
     })).catch(error => {
         if (isQuitting) {
             return;
@@ -970,6 +1033,9 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             additionalArguments: [
                 buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
             ],
+            // A test's game keeps painting and keeping time when it is not on screen - see
+            // `testDriven`. Every other window keeps Chromium's default.
+            ...(testDriven ? { backgroundThrottling: false } : {}),
         },
     });
     win.setTitle(windowTitle);
@@ -1166,6 +1232,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             noLink: true,
         })).response,
         now: () => Date.now(),
+        launch: gameLaunchTiming,
     });
     // Auto mode plays for an hour without a single input, which the system reads as an idle
     // machine; the renderer says when the story is moving on its own and this holds the display
@@ -1827,6 +1894,12 @@ function registerRuntimeIpc(): void {
         applyGameMenu(normalizeGameMenuModel(model));
     });
     ipcMain.handle("runtime:window:isFocused", () => mainWindow?.isFocused() === true);
+    // What the game's processes hold in memory, for a plugin granted `process.memory`. Every process
+    // this app has - the game is all of them - with the page's own marked. Nothing here is decided by
+    // the renderer: the list is the operating system's, read the moment it is asked for.
+    ipcMain.handle("runtime:processMemory:read", () => summarizeGameProcessMemory(app.getAppMetrics(), {
+        currentPid: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getOSProcessId() : null,
+    }));
     /*
      * The Save Screenshot family.
      *

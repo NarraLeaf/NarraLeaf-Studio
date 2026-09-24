@@ -75,6 +75,7 @@ import {
     type BlueprintMinimapPreference,
 } from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useAssetNameGaps } from "../hooks/useAssetNameGaps";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
@@ -148,6 +149,7 @@ import {
 import {
     createComponentDocumentServiceAdapter,
     getComponentTabId,
+    parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import {
     buildAccessibleBlueprintVariableOptions,
@@ -718,7 +720,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         graphId: graphAddress?.graphId ?? null,
         nodeId: editor.selectedNodeIds.length === 1 ? editor.selectedNodeIds[0] : null,
     });
+    const assetNameGaps = useAssetNameGaps(context);
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
+        assetNameGaps,
         widgetElement,
         // The same document the palette walks, so the two agree about which element a list draws.
         uiDocument,
@@ -1725,12 +1729,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             out[node.id] = {
                 [BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE]: listBlueprintSetFramePageTargetOptions({
-                    document: currentDocument,
+                    // The project's document, not a component editor's view of one definition: where
+                    // a page leads is read off the pages, whose elements that view does not carry.
+                    document: blueprintDocumentService.getPageDocument(),
                     owner: bp.owner,
                     ir: activeIr,
                     nodeId: node.id,
                     nodeType: node.type,
-                }),
+                }).filter(option => !parseComponentEditorSurfaceId(String(option.value))),
             };
         }
         return out;
@@ -1826,8 +1832,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
         const uiDocument = blueprintDocumentService.getDocument();
+        // The project's pages. A component definition's graph is edited against a view that also
+        // lists the definition itself as a surface, which is not a page anything can open.
         const surfaceOptions: BlueprintInspectorParamSelectOption[] = uiDocument.surfaces
-            .filter(s => s.kind === "appSurface")
+            .filter(s => s.kind === "appSurface" && !parseComponentEditorSurfaceId(s.id))
             .map(s => ({ value: s.id, label: s.name || t("blueprint.options.untitledSurface") }));
         const storyEntries = storyService.listStories();
         const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries

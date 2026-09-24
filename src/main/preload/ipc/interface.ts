@@ -4,7 +4,7 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
-import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import type { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "@shared/types/blueprint/externalLink";
@@ -19,6 +19,7 @@ import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/stat
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type {
     BuildPreflightFinding,
@@ -55,6 +56,7 @@ import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
+import type { ProjectSessionHolder } from "@shared/types/projectSession";
 import type {
     TeamCallOutcome,
     TeamConnection,
@@ -62,7 +64,7 @@ import type {
     TeamSubscribeOutcome,
 } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -287,6 +289,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
         acquireSessionLock: () =>
             ipcClient.invoke(IPCEventType.workspaceAcquireSessionLock, {}),
+        onSessionTakenOver: (handler: (holder: ProjectSessionHolder) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceSessionTakenOver, data => handler(data.holder)),
         openProjectFolder: () =>
             ipcClient.invoke(IPCEventType.workspaceOpenProjectFolder, {}),
         onConfirmClose: (handler: () => Promise<RequestStatus<{ confirmed: boolean }>>) =>
@@ -299,7 +303,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
-        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>) =>
+        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<AssetUrlDirectory>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAllAssetUrls, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
@@ -398,6 +402,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
         openLogsFolder: () =>
             ipcClient.invoke(IPCEventType.appOpenLogsFolder, {}) as Promise<RequestStatus<void>>,
+        openThirdPartyNotices: () =>
+            ipcClient.invoke(IPCEventType.appOpenThirdPartyNotices, {}) as Promise<RequestStatus<void>>,
         probeDownloadSource: (url: string) =>
             ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
         getCacheInventory: () =>
@@ -450,6 +456,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModeFullscreenChanged, handler),
         getWindowFocused: () =>
             ipcClient.invoke(IPCEventType.devModeWindowFocusGet, {}) as Promise<RequestStatus<{ isFocused: boolean }>>,
+        readProcessMemory: () =>
+            ipcClient.invoke(IPCEventType.devModeProcessMemory, {}) as Promise<RequestStatus<{
+                reading: GameProcessMemoryReading;
+            }>>,
         onWindowFocusChanged: (handler: (payload: { isFocused: boolean }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeWindowFocusChanged, handler),
         saveScreenshot: (projectRef: DevModeSaveProjectRef) =>
@@ -494,7 +504,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         resolveAllAssetUrls: () =>
-            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<{ urls: Record<string, string> }>>,
+            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<AssetUrlDirectory>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
         save: {
@@ -669,9 +679,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Goes to the network; ~2s when nothing answers. On demand only, never on a timer. */
         getSyncState: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsGetSyncState, { projectPath }) as Promise<RequestStatus<VcsSyncState>>,
-        /** Local read - no socket. Null means nobody has signed in to this project's server. */
+        /** Local read - no socket. `session` null means this project uses no sign-in there. */
         getServerSession: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<{ session: VcsServerSession | null }>>,
+            ipcClient.invoke(IPCEventType.vcsGetServerSession, { projectPath }) as Promise<RequestStatus<VcsProjectServerSession>>,
+        /** Raises Studio's own sign-in question for this project; the answer is recorded by the host. */
+        useServerSession: (projectPath: string, remoteOrigin?: string) =>
+            ipcClient.invoke(
+                IPCEventType.vcsUseServerSession,
+                remoteOrigin === undefined ? { projectPath } : { projectPath, remoteOrigin },
+            ) as Promise<RequestStatus<VcsProjectServerSession>>,
         /** Goes to the network. The token is not stored here and does not come back. */
         signIn: (projectPath: string, authUrl: string, token: string) =>
             ipcClient.invoke(IPCEventType.vcsSignIn, { projectPath, authUrl, token }) as Promise<RequestStatus<VcsSignInOutcome>>,

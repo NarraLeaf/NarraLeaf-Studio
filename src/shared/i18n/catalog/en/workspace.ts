@@ -23,6 +23,14 @@ export const workspace = {
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
             importSummary: "Imported {applied} translations ({unchanged} unchanged, {unknown} unknown, {skippedEmpty} empty skipped)",
+            // A language's table that could not be read, by the language's name; one of
+            // `assets.reference.reason` follows it. Never the file's path.
+            readFailed: "The translations for {name} could not be read.",
+            // Refusals of an edit to the language list. `{name}` is a language's display name, as
+            // the row shows it.
+            alreadyAdded: "{name} is already in the language list.",
+            sourceLocked: "{name} is the source language. Remove the other languages first, or set another language as the source language.",
+            languageGone: "This language is no longer in the language list.",
         },
         settings: {
             menu: "Language settings…",
@@ -31,6 +39,11 @@ export const workspace = {
             fallbackLabel: "Fallback language",
             fallbackHint: "An entry with no translation here uses this language, then the source language.",
             fallbackLoops: "leads back here",
+            // A fallback refused on save. The dialog keeps all three out of reach; these are for a
+            // list that changed while it was open. `{fallback}` and `{name}` are display names.
+            fallbackSelf: "A language cannot be its own fallback language.",
+            fallbackGone: "The fallback language is no longer in the language list.",
+            fallbackLoop: "{fallback} leads back to {name}.",
         },
         exchange: {
             exportMenu: "Export translations…",
@@ -52,9 +65,9 @@ export const workspace = {
             exportAction: "Export",
             exportDone: "Exported {count} lines to {path}",
             exportEmpty: "Nothing to export.",
-            importFailed: "Could not read the file",
+            // Follows `workspace.shell.import.failed` as its reason.
             importUnsupported: "Studio reads CSV, XLIFF, PO and JSON.",
-            importNoRows: "No translation units in this file",
+            // `{first}` is one of `workspace.shell.import.skipped`.
             importWarnings: "{count} entries were skipped. First: {first}",
             localeMismatch: "This file is for {declared}. Import it into {name}?",
             localeMismatchDetail: "The translations are imported into the selected language regardless of what the file declares.",
@@ -79,6 +92,7 @@ export const workspace = {
             keyNamePlaceholder: "Key (menu.start…)",
             keySourcePlaceholder: "Source text",
             invalidKeyName: "Key names may contain letters, digits, and dots/underscores/hyphens between them.",
+            keyExists: "A key named “{name}” already exists.",
             removeKey: "Remove key",
             removeKeyConfirm: "Remove {name}?",
             removeKeyConfirmDetail: "Existing translations of this key stay in the language files.",
@@ -145,7 +159,16 @@ export const workspace = {
             importFailed: "Could not import the audio files",
             importScript: "Import recording script…",
             importScriptSummary: "Applied {applied} rows ({unchanged} unchanged, {unknown} not voiced)",
-            importScriptFailed: "Could not read that recording script",
+            // Beside the summary when rows of the script were skipped; the detail lists them by row.
+            importScriptSkipped: {
+                one: "{count} row was skipped",
+                other: "{count} rows were skipped",
+            },
+            // As `localization.panel.readFailed`, for a voice language's assignments.
+            readFailed: "The voice assignments for {name} could not be read.",
+            // As the localization panel's refusals, for the voice language list.
+            alreadyAdded: "{name} is already in the voice language list.",
+            languageGone: "This voice language is no longer in the list.",
             namingTitle: "Recording filename pattern",
             namingHint: "Tokens: {tokens}. Imported audio is matched to lines by this name.",
             namingReset: "Reset to default",
@@ -349,6 +372,15 @@ export const workspace = {
         // The project is pointed at a server this machine has no account on. Said as a state,
         // with the row that fixes it directly underneath.
         noAccountHere: "This machine has no account on that server.",
+        // The machine has an account on that server and this project does not use it: never asked,
+        // or answered no. Said as a state, with the row that changes it underneath.
+        signInUnused: "This project does not use the sign-in for that server.",
+        // Opens the sign-in question for this project. The ellipsis marks a control that opens a
+        // window of its own.
+        useSignIn: "Use the sign-in as {name}…",
+        // On the sign-out control beside "Signed in as". Signing out here is this project's and no
+        // other's; Settings is where the sign-in leaves the machine.
+        signOutHint: "Only this project is signed out. Other projects that use this sign-in are not affected.",
         // Opens Settings, where a server is added to this machine and signed out of. The ellipsis
         // is this catalog's mark for a control that opens somewhere else.
         manage: "Manage servers…",
@@ -381,6 +413,7 @@ export const workspace = {
         liveBlockedMerge: "Finish the merge to start or join a live session.",
         liveBlockedRecovery: "Live sessions are unavailable in recovery mode.",
         liveBlockedSession: "This workspace is already in a live session.",
+        liveBlockedTakenOver: "This project is now open in another NarraLeaf Studio.",
         // Where this window stands in the room it is in, in the slot the member count uses
         // outside one. Values with no labels, like every other fact in this panel.
         liveHost: "Host",
@@ -539,6 +572,16 @@ export const workspace = {
         projectLockedTitle: "This project is open in another NarraLeaf Studio",
         projectLockedHere: "Open on this computer since {time}. Retry once it has been closed there.",
         projectLockedElsewhere: "Open on {host} since {time}. Retry once it has been closed there.",
+        // The same project, lost while this window had it open: another Studio took it over, and
+        // from then on nothing typed here is written. The time is when the other one took it.
+        projectTakenOverTitle: "This project is now open in another NarraLeaf Studio",
+        projectTakenOverHere: "Open on this computer since {time}. Changes in this window are no longer saved. Retry once it has been closed there.",
+        projectTakenOverElsewhere: "Open on {host} since {time}. Changes in this window are no longer saved. Retry once it has been closed there.",
+        // The same loss, found only after the other Studio had closed the project again. The time is
+        // when the other one opened it.
+        projectDisplacedTitle: "This project was opened in another NarraLeaf Studio",
+        projectDisplacedHere: "Opened on this computer at {time}. Changes in this window are no longer saved. Retry to reopen the project.",
+        projectDisplacedElsewhere: "Opened on {host} at {time}. Changes in this window are no longer saved. Retry to reopen the project.",
         openLauncher: "Open launcher",
         panelRenderError: "This panel hit a rendering error",
         mainEditorRegion: "Main editor",
@@ -750,20 +793,61 @@ export const workspace = {
         },
         // Save reporting: the sticky toast raised when a file cannot be written, and the lines the
         // "Storage" console channel carries. A failed write retries on a backoff that never gives
-        // up, so the wording says "still trying" rather than "lost".
+        // up, so the wording says "still trying" rather than "lost". The toast carries what the disk
+        // said only as a `reason` below: the system's own message is English, names the scratch file
+        // an atomic write renames from, and goes to the console line instead.
         save: {
-            failedTitle: "Could not save {file}",
-            failedDetailTransient: "Still retrying in the background. {error}",
-            failedDetailPermanent: "Retrying fails until this is fixed. {error}",
+            // Titled by what the author knows the file as, never by its path: `{name}` is one of the
+            // store names below, `failedTitleNamed` carries something the author named (an asset, a
+            // story), and a write whose writer did not say what it was names no file at all.
+            failedTitle: "Could not save the {name}",
+            failedTitleNamed: "Could not save “{name}”",
+            failedTitleUnnamed: "Could not save a file",
+            // The first two are for a file an auto-saver keeps trying to write. The third is for a
+            // write nothing tries again (a folder list, a panel layout), which offers no retry.
+            failedDetailTransient: "Still retrying in the background.",
+            failedDetailPermanent: "Retrying fails until this is fixed.",
+            failedDetailNotSaved: "The change was not saved.",
+            // `{retry}` is one of the three sentences above.
+            failedDetailWithReason: "{reason} {retry}",
+            // A write the author asked for, reported by the surface that asked: an export, a text
+            // file, a thumbnail. `{name}` is the file's or the asset's name.
+            // A store that could not be read when the project opened: its writes are refused, because
+            // what is in memory is empty and writing it would replace the file with nothing.
+            refusedUnreadable: "The {name} could not be read. Changes are not saved.",
+            fileFailed: {
+                plain: "Could not save “{name}”.",
+                withReason: "Could not save “{name}”. {reason}",
+            },
+            storeFailed: {
+                plain: "Could not save the {name}.",
+                withReason: "Could not save the {name}. {reason}",
+            },
+            // What the disk said, for the failures an author can do something about. Any other
+            // failure is named only in the console line.
+            reason: {
+                permissionDenied: "The file is read-only, or Studio is not allowed to write to it.",
+                folderMissing: "The folder it belongs in no longer exists.",
+                diskFull: "The disk is full.",
+            },
             retry: "Retry now",
             consoleFailed: "write failed ({code}, attempt {attempt}): {path} · {error}",
+            // A file whose writer reports its own failures and keeps nothing to try again (the project
+            // file): no toast from here, and no attempt count, because there is no second attempt.
+            consoleFailedNotRetried: "write failed ({code}), not retried: {path} · {error}",
             consoleRecovered: "write succeeded: {path}",
             flushFailed: "could not flush {label}: {error}",
             // The read side: a document that is on disk but cannot be understood. The wording leads
             // with what did NOT happen, because the fear this raises is "has Studio eaten my work?".
-            unreadableTitle: "Could not read {file}",
+            // `{reason}` is one of `unreadableReason`, never the parser's own message; the copy set
+            // aside is said to exist, and where it is goes to the console line, not here.
+            unreadableTitle: "Could not read the {name}",
             unreadableDetail: "{reason} The file is unchanged. Nothing was written over it.",
-            unreadableDetailQuarantined: "{reason} The file is unchanged. A copy of it is at {path}.",
+            unreadableDetailQuarantined: "{reason} The file is unchanged, and a copy of it has been kept.",
+            unreadableReason: {
+                damaged: "The file is damaged or is not in a format Studio can read.",
+                newerVersion: "It was saved by a newer version of NarraLeaf Studio.",
+            },
             consoleUnreadable: "read failed ({kind}): {path} · {reason}",
             consoleQuarantined: "kept a copy of the unreadable file at {path}",
             // A write refused because the workspace is frozen. Not a failure: nothing is wrong, and
@@ -801,11 +885,95 @@ export const workspace = {
                 characters: "characters",
                 project: "project settings",
                 assets: "asset library",
+                // Studio's own state rather than the author's project, named for the notice that
+                // says one of them could not be saved.
+                projectIcon: "project icon",
+                panelLayout: "panel layout",
+                recentColors: "recent colors",
+                pluginData: "plugin data",
                 // Not a document store: the row an author has open for editing, whose words the
                 // documents have not been told about yet.
                 openEditors: "the open editor",
             },
         },
+        // A file brought into the project that did not make it: an asset, a translation file, a
+        // recording script, a story script. `{name}` is the file's own name, never its path; the
+        // reason is one of `reason` below, for the failures an author can act on. Never the reader's
+        // or the importer's own message - English, and it names the asset's storage path.
+        import: {
+            failed: "Could not import “{name}”.",
+            withReason: "{headline} {reason}",
+            reason: {
+                missing: "The file no longer exists.",
+                accessDenied: "Studio is not allowed to read the file.",
+                empty: "The file is empty.",
+                // `unit_id` is the column's own header in the exported file, spelled as the
+                // translator sees it.
+                noIdColumn: "The file has no unit_id column.",
+                // `{format}` is XLIFF or JSON.
+                notFormat: "The file is not a readable {format} file.",
+                noRows: "The file has no entries to import.",
+                wrongType: "Files ending in .{ext} cannot be imported here.",
+                // What the player cannot do with the format, by what the asset is for; `{first}` and
+                // `{second}` are the formats to convert to, with their dots.
+                cannotDisplay: "NarraLeaf cannot display .{ext} files. Convert the file to {first} or {second} before importing.",
+                cannotPlay: "NarraLeaf cannot play .{ext} files. Convert the file to {first} or {second} before importing.",
+                cannotUse: "NarraLeaf cannot use .{ext} files. Convert the file to {first} or {second} before importing.",
+                // `{actual}` is the format the bytes are, in capitals: JPEG, TTC.
+                mismatch: "The file is named .{ext}, but its contents are {actual}.",
+                copyFailed: "It could not be copied into the project folder.",
+                projectReadOnly: "Studio is not allowed to write to the project folder.",
+                notAFolder: "Models are imported as a folder.",
+                emptyFolder: "The folder is empty.",
+                copyIncomplete: "Not every file in the folder could be copied into the project.",
+                // The project is frozen or being re-read from disk; it takes no new assets until then.
+                projectNotAccepting: "The project is not accepting changes right now.",
+            },
+            // Why a URL did not become an asset, or a remote asset's source could not be checked.
+            // Said about the server and the address, never quoting the status line or the URL.
+            remote: {
+                invalidUrl: "The address is not a valid URL.",
+                unsupportedScheme: "Only http and https addresses can be downloaded.",
+                unreachable: "Studio could not connect to the server.",
+                timeout: "The server did not respond within {seconds} seconds.",
+                notFound: "The server has no file at this address.",
+                accessDenied: "The server does not allow this file to be downloaded.",
+                serverError: "The server reported an error. Try again later.",
+                refused: "The server did not accept the request.",
+                tooLarge: "The file is larger than {limit} MB, the limit for a remote asset.",
+                noContent: "The server returned no content.",
+                bundle: "Models cannot be imported from a URL.",
+                // `{codecs}` and `{container}` are the format names the file itself declares (HEVC, AVI).
+                // A downloaded file cannot be converted in place, so the way on is a converted copy
+                // imported from disk.
+                unplayableCodecs: "NarraLeaf cannot play {codecs}. Convert the file and import the converted copy from disk.",
+                unplayableContainer: "NarraLeaf cannot open {container} files. Convert the file and import the converted copy from disk.",
+                unplayableFormat: "NarraLeaf cannot open this file's format. Convert the file and import the converted copy from disk.",
+                unplayableNoStreams: "The file holds no sound or picture that NarraLeaf can play.",
+                // A sign-in page, a consent wall, an error page served as a success.
+                webPage: "The address returned a web page instead of a file.",
+                // Text or a document, or bytes that match no format of the section being imported into.
+                unrecognizedImage: "The address did not return an image in a format NarraLeaf recognizes.",
+                unrecognizedMedia: "The address did not return sound or video in a format NarraLeaf recognizes.",
+                unrecognizedFont: "The address did not return a font in a format NarraLeaf recognizes.",
+            },
+            // An entry of a translation file or a recording script that was skipped while the rest
+            // were read. Positions are the file's own: a spreadsheet row, a JSON array entry, a line
+            // of a PO file.
+            skipped: {
+                missingId: "An entry has no ID.",
+                missingIdAtRow: "Row {n} has no ID.",
+                missingIdAtEntry: "Entry {n} has no ID.",
+                notEntry: "An entry is not a translation.",
+                notEntryAtEntry: "Entry {n} is not a translation.",
+                unreadableLine: "Line {n} could not be read.",
+                // A recording-script row with a note or a status for a line that has no take.
+                noTake: "A row is for a line that is not voiced. Its note and status were not applied.",
+                noTakeAtRow: "Row {n} is for a line that is not voiced. Its note and status were not applied.",
+            },
+        },
+        // The system's open or save dialog failed to appear at all.
+        fileDialogFailed: "The file dialog could not be opened.",
         // Re-reading the working tree: the bytes on disk stopped being what the editors show (leaving a
         // freeze, restoring a version). The author should normally see nothing at all - this only
         // speaks up when part of it could not be read back, because that is when a panel is stale.
@@ -1015,8 +1183,9 @@ export const workspace = {
                 moved: "Moved",
                 copied: "Copied",
             },
-            // Where a move or a copy came from. `{path}` is repository-relative, like the row itself.
-            changeFromPath: "from {path}",
+            // Where a move or a copy came from, in the row's tooltip. `{name}` is what the origin is
+            // called, named the way the row is - never its path, which for an asset is its id.
+            changeFrom: "from {name}",
             // The only change that stops a version from being submitted, which is why it is called out
             // and why it sorts to the top of the list rather than sitting wherever the path puts it.
             changeConflict: "Unresolved conflict",
@@ -1222,6 +1391,9 @@ export const workspace = {
                     // because what the author does next is connect to that project.
                     alreadyPublished: "This project is already on that server as {name}, and that server gives a project one name.",
                     unknown: "That server did not record the project.",
+                    // The author said this project does not use the sign-in for that server, or
+                    // closed the question. Nothing was sent.
+                    declined: "This project does not use the sign-in for that server, so the project was not recorded.",
                     // Not a refusal: this project has been on that server before - a copied
                     // project folder carries the same repository - and it is registered under the
                     // name it was published as. Said rather than done quietly, because the author

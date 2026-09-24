@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import { SCRIPTS_DIR, SCRIPTS_GENERATED_DIR, SCRIPTS_MODULES_DIR } from "@shared/project/scriptsDirectory";
 import path from "path";
 import crypto from "crypto";
@@ -38,6 +39,13 @@ type DevModeSession = {
     /** Set when {@link sourcePath} is a snapshot. Also what stops the file watcher being installed. */
     sourceRevision?: RevisionId;
     entry: DevModeEntry;
+    /**
+     * When the author asked for this run, wall-clock milliseconds - the zero the window's
+     * performance timeline is placed against (see `gameLaunchTiming`). Taken as the request arrives,
+     * before it waits behind anything else this project had queued, because that wait is part of
+     * what the author sat through.
+     */
+    requestedAt: number;
     status: DevModeStatus;
     window: AppWindow<WindowAppType.DevMode> | null;
     windowReady: boolean;
@@ -128,11 +136,16 @@ export class DevModeManager {
     }
 
     public launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
-        const refusal = refuseDistrustedOperation(this.app, projectPath, "Dev Mode");
+        // Before anything is built. A Dev Mode window resolves every asset through this project's
+        // workspace, and a workspace turned away by another Studio never started - so the window
+        // it would open is black, and says nothing about why.
+        const refusal = refuseDistrustedOperation(this.app, projectPath, "Dev Mode")
+            ?? refuseProjectHeldElsewhere(this.app, projectPath, "Dev Mode");
         if (refusal) {
             return Promise.reject(new Error(refusal));
         }
-        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry));
+        const requestedAt = Date.now();
+        return this.enqueue(projectPath, () => this.launchNow(projectPath, entry, requestedAt));
     }
 
     public stop(projectPath: string): Promise<DevModeStatus> {
@@ -172,6 +185,16 @@ export class DevModeManager {
             if (!session) {
                 return "idle";
             }
+            // A session that outlived its workspace's claim - the workspace reloaded onto the
+            // error screen while this window stayed up. The compile would resolve its assets through
+            // a workspace that is not running any more, and put up a stage with none of them; the
+            // window says why instead, and keeps what it was showing.
+            const heldElsewhere = refuseProjectHeldElsewhere(this.app, projectPath, "Dev Mode");
+            if (heldElsewhere) {
+                session.status = "error";
+                this.queueSessionError(session, heldElsewhere);
+                return "error";
+            }
             try {
                 this.emitVerbose(session, "reload requested");
                 await this.compileAndSendBundle(session, "reloading");
@@ -191,7 +214,7 @@ export class DevModeManager {
         });
     }
 
-    private async launchNow(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
+    private async launchNow(projectPath: string, entry: DevModeEntry, requestedAt: number): Promise<DevModeStatus> {
         const key = this.projectKey(projectPath);
         // Only this project's session is replaced; other projects keep running.
         const previous = this.sessions.get(key);
@@ -202,7 +225,7 @@ export class DevModeManager {
             await this.terminateSession(previous);
         }
 
-        const session = this.createSession(projectPath, entry);
+        const session = this.createSession(projectPath, entry, requestedAt);
         this.sessions.set(key, session);
 
         try {
@@ -329,7 +352,7 @@ export class DevModeManager {
         });
     }
 
-    private createSession(projectPath: string, entry: DevModeEntry): DevModeSession {
+    private createSession(projectPath: string, entry: DevModeEntry, requestedAt: number): DevModeSession {
         return {
             id: crypto.randomUUID(),
             projectPath,
@@ -337,6 +360,7 @@ export class DevModeManager {
             // left undefined so a session is never in a state where "what do I compile" has no answer.
             sourcePath: projectPath,
             entry,
+            requestedAt,
             status: "starting",
             window: null,
             windowReady: false,
@@ -370,6 +394,13 @@ export class DevModeManager {
         const window = await this.app.launchDevMode({
             projectPath: session.projectPath,
             entry: session.entry,
+            // The window is made right after this, so the moment is taken here: the props are the
+            // one thing the page can read about its own launch.
+            launch: {
+                origin: "devMode",
+                zero: session.requestedAt,
+                milestones: [{ name: "windowCreated", at: Math.max(session.requestedAt, Date.now()) }],
+            },
         });
         session.window = window;
         session.windowReady = false;
@@ -526,7 +557,9 @@ export class DevModeManager {
                     source: "Dev Mode",
                     message: `nlang compile failed:\n${detail}`,
                 });
-                this.queueSessionError(session, `nlang compile failed:\n${detail}`);
+                // The window heads this with its own "session failed to start", in the author's
+                // language; an English label in front of the detail would only say it again.
+                this.queueSessionError(session, detail);
                 return;
             }
             this.emitVerbose(session, `nlang compile finished in ${Date.now() - started} ms`);
@@ -569,7 +602,7 @@ export class DevModeManager {
                 source: "Dev Mode",
                 message: `Dev Mode bundle failed:\n${message}`,
             });
-            this.queueSessionError(session, `Dev Mode bundle failed:\n${message}`);
+            this.queueSessionError(session, message);
         }
     }
 

@@ -60,8 +60,12 @@ export interface BuildCommandLineOptions {
      * Resolved by `resolveStartupProject`, exactly as `--project`'s value is.
      */
     selector: string | null;
-    /** `--build-variant`: which build variant to produce. Null means the release variant. */
-    variantId: string | null;
+    /**
+     * `--build-variant`: which build variant to produce, by the name its author gave it, as typed.
+     * Null means the release variant, `main`. Found in the project's own list before any window
+     * opens - see `utils/commandLineVariant.ts`.
+     */
+    variant: string | null;
     /** `--build-target`: one platform. Null means the host's own. */
     platform: string | null;
     /** `--build-format`: one format of that platform. Null means the platform's first. */
@@ -82,8 +86,9 @@ export interface BuildCommandLineOptions {
      * second process is refused the lock and exits.
      *
      * A different profile is a different everything: no signing credentials, none of the machine's
-     * build settings. `--build-signing` and `--build-setting` are how a run puts back the two a
-     * build actually needs.
+     * build settings, the plugins an author switches on by hand switched off. `--build-signing`,
+     * `--build-setting` and `--build-plugin` are how a run puts back the three a build actually
+     * needs.
      */
     userDataDir: string | null;
     /**
@@ -101,6 +106,14 @@ export interface BuildCommandLineOptions {
      * keys are allowed are decided by `planCommandLineBuild`.
      */
     settings: string[];
+    /**
+     * `--build-plugin=<name>`, repeatable: plugins this run switches on, for this run only.
+     *
+     * Kept as typed. Which installed plugin a name means - and whether this profile may run it - is
+     * decided against the profile's plugin list before any window opens; see
+     * `utils/commandLinePlugins.ts`, which `--test-plugin` and `--lint-plugin` share.
+     */
+    plugins: string[];
     /**
      * `--build-allow-unsigned`: this launch accepts an artifact with no code signature.
      *
@@ -144,6 +157,45 @@ export interface CheckCommandLineOptions {
     list: boolean;
     /** `--test-parameter key=value`, repeatable, as typed. */
     parameters: string[];
+    /**
+     * `--test-as-shipped`: a game the test launches holds its content as the release build does -
+     * sealed in a protected store, for a project with asset protection on - instead of as loose
+     * files.
+     *
+     * Off unless the line says so, and the line is the only thing asked: the machine's "Preview as
+     * shipped" setting is a habit of the author at that machine, and a run with nobody at the screen
+     * has none to inherit. A job gets the same path from the same line on every machine it runs on.
+     * Loose is the default because it is several times faster on a real-size project (the store is
+     * written whole on every run) and the sealed path is a question a job asks on purpose.
+     */
+    asShipped: boolean;
+    /**
+     * `--test-variant=<name>`: the build variant a game the test launches is assembled as, by the
+     * name its author gave it. Null means the release variant, `main`.
+     *
+     * Like {@link asShipped}, the line is the only thing asked: the machine's "Run as" choice is the
+     * habit of an author at that machine, so a job that relied on it would test one build on a
+     * developer's machine and another on an agent. The name is kept as typed - whether the project
+     * has a variant by it is decided against the project's own document, before any window opens.
+     */
+    variant: string | null;
+    /**
+     * `--test-dlc=<name>[,<name>]`, repeatable: the DLC installed beside that game, by name or id.
+     * Empty means none, which is what a player who bought only the game has - and, for the same
+     * reason as above, the machine's "Run with DLC" choices are never read in its place.
+     */
+    dlc: string[];
+    /**
+     * `--test-plugin=<name>` / `--lint-plugin=<name>`, repeatable: plugins this run switches on, for
+     * this run only, by the name Studio shows for them or by their manifest id.
+     *
+     * The profile a job runs in is usually a throwaway one, and a throwaway profile has the built-in
+     * plugins an author switches on by hand switched off - so a project made from the starter
+     * template, which declares one of them, could not be checked in it at all. Nothing is written to
+     * the profile: the switch changes what this run loads, never the plugin list on disk. Kept as
+     * typed; resolved against the profile before any window opens.
+     */
+    plugins: string[];
     /** `--test-report` / `--lint-report`: where to write the JSON report. */
     reportPath: string | null;
     /** `--test-user-data-dir` / `--lint-user-data-dir`: the profile this launch runs against. */
@@ -297,12 +349,12 @@ function takeValue(value: string | undefined): string | null {
  * a value, how they report a missing one, or whether their value is mistaken for a path to open.
  * {@link VALUE_TAKING_FLAGS} is built from these keys for that last reason.
  */
-type BuildValueField = "selector" | "variantId" | "platform" | "format" | "arch" | "outputDir"
+type BuildValueField = "selector" | "variant" | "platform" | "format" | "arch" | "outputDir"
     | "reportPath" | "userDataDir" | "signingPath";
 
 const BUILD_VALUE_FLAGS = {
     "--build": "selector",
-    "--build-variant": "variantId",
+    "--build-variant": "variant",
     "--build-target": "platform",
     "--build-format": "format",
     "--build-arch": "arch",
@@ -370,7 +422,7 @@ const BUILD_ALLOW_UNSIGNED_FLAG = "--build-allow-unsigned";
 /** What each build flag says it wants, for the "missing value" message. */
 const BUILD_VALUE_DESCRIPTIONS: Record<BuildValueFlag | BuildListFlag, string> = {
     "--build": "a project path or a recent project's name",
-    "--build-variant": "a build variant id",
+    "--build-variant": "a build variant's name",
     "--build-target": "a platform",
     "--build-format": "a format",
     "--build-arch": "an architecture",
@@ -406,6 +458,174 @@ const CHECK_PARAMETER_FLAG = "--test-parameter";
 
 /** `--test-list`, which carries no value. */
 const CHECK_LIST_FLAG = "--test-list";
+
+/** `--test-as-shipped`, on when given bare. See {@link readAsShippedFlag} for the `=value` form. */
+const CHECK_AS_SHIPPED_FLAG = "--test-as-shipped";
+
+/** The spellings a boolean is written in on a command line - the ones `--test-parameter` accepts. */
+const BOOLEAN_SPELLINGS: Readonly<Record<string, boolean>> = {
+    true: true,
+    yes: true,
+    on: true,
+    1: true,
+    false: false,
+    no: false,
+    off: false,
+    0: false,
+};
+
+function readBooleanSpelling(value: string): boolean | null {
+    const spelled = BOOLEAN_SPELLINGS[value.trim().toLowerCase()];
+    return spelled === undefined ? null : spelled;
+}
+
+/**
+ * Read one argument as `--test-as-shipped`, or answer null when it is not that flag.
+ *
+ * Bare, it means on. `--test-as-shipped=false` is accepted too, for a job that states the choice
+ * from a variable rather than adding and removing the flag.
+ *
+ * Never a separate value, and a boolean word right after the bare flag is refused rather than left
+ * alone: `--test-as-shipped false` would otherwise read as the flag - on - followed by a stray
+ * word, and the run would seal exactly when the line said not to, with nothing on the log to say
+ * the line had been misread.
+ */
+function readAsShippedFlag(
+    arg: string,
+    next: string | undefined,
+): { value: boolean; error: null } | { value: null; error: string } | null {
+    if (arg === CHECK_AS_SHIPPED_FLAG) {
+        if (next !== undefined && readBooleanSpelling(next) !== null) {
+            return {
+                value: null,
+                error: `${CHECK_AS_SHIPPED_FLAG} takes no separate value: write ${CHECK_AS_SHIPPED_FLAG}=${next.trim()}`,
+            };
+        }
+        return { value: true, error: null };
+    }
+    if (!arg.startsWith(`${CHECK_AS_SHIPPED_FLAG}=`)) {
+        return null;
+    }
+    const raw = arg.slice(CHECK_AS_SHIPPED_FLAG.length + 1);
+    const value = readBooleanSpelling(raw);
+    return value === null
+        ? { value: null, error: `Invalid ${CHECK_AS_SHIPPED_FLAG} value: expected true or false, got "${raw}"` }
+        : { value, error: null };
+}
+
+/**
+ * Read one argument as `flag` when that flag takes its value only after an equals sign, or answer
+ * null when the argument is some other flag.
+ *
+ * **Only the `--flag=value` form**, for the flags whose values are names somebody typed - a variant,
+ * a DLC, a plugin. Every other value-taking flag also takes its value as the next argument, and these
+ * deliberately do not: on Windows a separate argument shaped like `scheme:rest` - a variant called
+ * "Demo: Next Fest" - kills the launch before Studio runs a line, with no output and no report. A
+ * path or a test id can be told apart from that shape; a free-text name cannot. So the separated form
+ * is refused with the spelling that works, which teaches a job the form that survives the one name
+ * that has a colon in it, and the next argument is left where it is rather than taken as the value.
+ *
+ * `raw` is everything after the first "=", as typed.
+ */
+function readEqualsOnlyFlag(
+    arg: string,
+    next: string | undefined,
+    flag: string,
+    wanted: string,
+): { raw: string; error: null } | { raw: null; error: string } | null {
+    if (arg === flag) {
+        const separate = takeValue(next);
+        return {
+            raw: null,
+            error: separate === null
+                ? `Missing ${flag} value: write ${flag}=${wanted}`
+                : `${flag} takes its value after an equals sign: write ${flag}=${separate.includes(" ") ? `"${separate}"` : separate}`,
+        };
+    }
+    return arg.startsWith(`${flag}=`) ? { raw: arg.slice(flag.length + 1), error: null } : null;
+}
+
+/** `--test-variant=<name>`. See {@link readEditionFlag}. */
+const CHECK_VARIANT_FLAG = "--test-variant";
+
+/** `--test-dlc=<name>[,<name>]`, repeatable. See {@link readEditionFlag}. */
+const CHECK_DLC_FLAG = "--test-dlc";
+
+type CheckEditionFlag = typeof CHECK_VARIANT_FLAG | typeof CHECK_DLC_FLAG;
+
+/**
+ * Read one argument as `--test-variant` or `--test-dlc`, or answer null when it is neither.
+ *
+ * Only the `--flag=value` form, for the reason {@link readEqualsOnlyFlag} gives. A DLC list is split
+ * on commas, so a DLC whose name has one is named by its id, which cannot.
+ */
+function readEditionFlag(
+    arg: string,
+    next: string | undefined,
+): { flag: CheckEditionFlag; values: string[]; error: string | null } | null {
+    for (const flag of [CHECK_VARIANT_FLAG, CHECK_DLC_FLAG] as const) {
+        const wanted = flag === CHECK_VARIANT_FLAG ? "<name>" : "<name>[,<name>]";
+        const read = readEqualsOnlyFlag(arg, next, flag, wanted);
+        if (!read) {
+            continue;
+        }
+        if (read.error !== null) {
+            return { flag, values: [], error: read.error };
+        }
+        const values = flag === CHECK_DLC_FLAG
+            ? read.raw.split(",").map(value => value.trim()).filter(Boolean)
+            : [read.raw.trim()].filter(Boolean);
+        return values.length === 0
+            ? { flag, values, error: `Missing ${flag} value: write ${flag}=${wanted}` }
+            : { flag, values, error: null };
+    }
+    return null;
+}
+
+/**
+ * `--build-plugin`, `--test-plugin` and `--lint-plugin`, and the job each belongs to.
+ *
+ * One flag per job, spelled with the job's prefix like every other flag in these families, so a line
+ * reads as flags of the job it asks for - and a `--lint-plugin` beside `--test` is refused as the two
+ * checks on one line it is, the way a `--lint-report` there is.
+ *
+ * Each takes one plugin, by the name Studio shows for it or by its manifest id, and may be given
+ * once per plugin. Not split on commas, unlike `--test-dlc`: nothing stops a plugin's name from
+ * having one, and one plugin per flag is the shape `--build-setting` already has.
+ */
+const PLUGIN_FLAGS = {
+    "--build-plugin": "build",
+    "--test-plugin": "test",
+    "--lint-plugin": "lint",
+} as const satisfies Record<string, "build" | "test" | "lint">;
+
+type PluginFlag = keyof typeof PLUGIN_FLAGS;
+
+/**
+ * Read one argument as a plugin flag, or answer null when it is not one.
+ *
+ * Only the `--flag=value` form: a plugin's name is free text its publisher chose, which is the case
+ * {@link readEqualsOnlyFlag} exists for.
+ */
+function readPluginFlag(
+    arg: string,
+    next: string | undefined,
+): { flag: PluginFlag; value: string; error: null } | { flag: PluginFlag; value: null; error: string } | null {
+    for (const flag of Object.keys(PLUGIN_FLAGS) as PluginFlag[]) {
+        const read = readEqualsOnlyFlag(arg, next, flag, "<name>");
+        if (!read) {
+            continue;
+        }
+        if (read.error !== null) {
+            return { flag, value: null, error: read.error };
+        }
+        const value = read.raw.trim();
+        return value === ""
+            ? { flag, value: null, error: `Missing ${flag} value: write ${flag}=<name>` }
+            : { flag, value, error: null };
+    }
+    return null;
+}
 
 /** What each check flag says it wants, for the "missing value" message. */
 const CHECK_VALUE_DESCRIPTIONS: Record<CheckValueFlag | typeof CHECK_PARAMETER_FLAG, string> = {
@@ -452,13 +672,21 @@ function readCheckFlag(
     return { flag, value: value === "" ? null : value, consumedNext: false };
 }
 
-/** Whether anything but `--test`/`--lint` themselves asked for something about a check. */
-function hasCheckCompanionFlag(check: CheckCommandLineOptions): boolean {
+/**
+ * Whether anything but `--test`/`--lint` themselves asked for something about a check.
+ *
+ * `testFlagNamed` rather than the fields those flags fill: `--test-as-shipped=false` names the flag
+ * as much as the bare form does, and a refused `--test-variant Demo` names one as much as a
+ * well-formed one - and both leave their field exactly as it would be had the flag never appeared.
+ */
+function hasCheckCompanionFlag(check: CheckCommandLineOptions, testFlagNamed: boolean): boolean {
     return check.testId !== null
         || check.list
         || check.parameters.length > 0
+        || check.plugins.length > 0
         || check.reportPath !== null
-        || check.userDataDir !== null;
+        || check.userDataDir !== null
+        || testFlagNamed;
 }
 
 /**
@@ -491,7 +719,7 @@ function isAppScriptArgument(argument: string | undefined): boolean {
 
 /** Whether anything but `--build` itself asked for something about a build. */
 function hasBuildCompanionFlag(build: BuildCommandLineOptions): boolean {
-    return build.variantId !== null
+    return build.variant !== null
         || build.platform !== null
         || build.format !== null
         || build.arch !== null
@@ -500,6 +728,7 @@ function hasBuildCompanionFlag(build: BuildCommandLineOptions): boolean {
         || build.userDataDir !== null
         || build.signingPath !== null
         || build.settings.length > 0
+        || build.plugins.length > 0
         || build.allowUnsigned;
 }
 
@@ -519,7 +748,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const build: BuildCommandLineOptions = {
         requested: false,
         selector: null,
-        variantId: null,
+        variant: null,
         platform: null,
         format: null,
         arch: null,
@@ -528,10 +757,11 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         userDataDir: null,
         signingPath: null,
         settings: [],
+        plugins: [],
         allowUnsigned: false,
         error: null,
     };
-    const buildFlagErrors = new Map<BuildValueFlag | BuildListFlag, string>();
+    const buildFlagErrors = new Map<BuildValueFlag | BuildListFlag | PluginFlag, string>();
     const check: CheckCommandLineOptions = {
         requested: false,
         kind: null,
@@ -539,6 +769,10 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
         testId: null,
         list: false,
         parameters: [],
+        asShipped: false,
+        variant: null,
+        dlc: [],
+        plugins: [],
         reportPath: null,
         userDataDir: null,
         error: null,
@@ -546,6 +780,11 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const checkFlagErrors = new Map<string, string>();
     /** Both checks named on one line: kept so the refusal survives whichever was read last. */
     let bothChecksNamed = false;
+    /**
+     * `--test-as-shipped`, `--test-variant` or `--test-dlc` appeared, in any form, well-formed or
+     * not. See {@link hasCheckCompanionFlag}.
+     */
+    let testFlagNamed = false;
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -568,6 +807,30 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
         if (arg === BUILD_ALLOW_UNSIGNED_FLAG) {
             build.allowUnsigned = true;
+            continue;
+        }
+
+        // A plugin to switch on for this run, for whichever job the flag's prefix names. A refusal
+        // is never forgiven by a later occurrence, unlike a value flag's: each occurrence names a
+        // different plugin, so a well-formed `--lint-plugin=B` after a refused `--lint-plugin A`
+        // would run without A while the line said to run with it.
+        const pluginFlag = readPluginFlag(arg, argv[i + 1]);
+        if (pluginFlag) {
+            const job = PLUGIN_FLAGS[pluginFlag.flag];
+            const errors: Map<string, string> = job === "build" ? buildFlagErrors : checkFlagErrors;
+            if (job !== "build") {
+                if (check.kind !== null && check.kind !== job) {
+                    bothChecksNamed = true;
+                }
+                check.kind ??= job;
+            }
+            if (pluginFlag.error !== null) {
+                if (!errors.has(pluginFlag.flag)) {
+                    errors.set(pluginFlag.flag, pluginFlag.error);
+                }
+            } else {
+                (job === "build" ? build.plugins : check.plugins).push(pluginFlag.value);
+            }
             continue;
         }
 
@@ -606,6 +869,47 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             }
             check.kind ??= "test";
             check.list = true;
+            continue;
+        }
+
+        // A test flag, so beside `--lint` it is the same refusal `--test-id` there gets. It does
+        // not make a check requested on its own: without `--test` it is a companion flag naming a
+        // check nothing asked for, refused below with the others.
+        const asShippedFlag = readAsShippedFlag(arg, argv[i + 1]);
+        if (asShippedFlag) {
+            testFlagNamed = true;
+            if (check.kind === "lint") {
+                bothChecksNamed = true;
+            }
+            check.kind ??= "test";
+            if (asShippedFlag.error !== null) {
+                checkFlagErrors.set(CHECK_AS_SHIPPED_FLAG, asShippedFlag.error);
+            } else {
+                check.asShipped = asShippedFlag.value;
+                checkFlagErrors.delete(CHECK_AS_SHIPPED_FLAG);
+            }
+            continue;
+        }
+
+        // Test flags as well, for the reason `--test-as-shipped` is: which build a test's game is
+        // means nothing to a sweep. The variant is the last one given, as a value flag's is; DLC
+        // accumulate, because two `--test-dlc` flags name two DLC.
+        const editionFlag = readEditionFlag(arg, argv[i + 1]);
+        if (editionFlag) {
+            testFlagNamed = true;
+            if (check.kind === "lint") {
+                bothChecksNamed = true;
+            }
+            check.kind ??= "test";
+            if (editionFlag.error !== null) {
+                checkFlagErrors.set(editionFlag.flag, editionFlag.error);
+            } else if (editionFlag.flag === CHECK_VARIANT_FLAG) {
+                check.variant = editionFlag.values[0];
+                checkFlagErrors.delete(editionFlag.flag);
+            } else {
+                check.dlc.push(...editionFlag.values.filter(value => !check.dlc.includes(value)));
+                checkFlagErrors.delete(editionFlag.flag);
+            }
             continue;
         }
 
@@ -753,7 +1057,8 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     const orderedBuildFlags = [
         ...Object.keys(BUILD_VALUE_FLAGS),
         ...Object.keys(BUILD_LIST_FLAGS),
-    ] as Array<BuildValueFlag | BuildListFlag>;
+        "--build-plugin",
+    ] as Array<BuildValueFlag | BuildListFlag | PluginFlag>;
     build.error = orderedBuildFlags
         .map(flag => buildFlagErrors.get(flag))
         .find((message): message is string => message !== undefined) ?? null;
@@ -766,14 +1071,21 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     }
 
     // The same three refusals for the checks, in the same order and for the same reasons.
-    const orderedCheckFlags: Array<CheckValueFlag | typeof CHECK_PARAMETER_FLAG> = [
+    const orderedCheckFlags: Array<
+        CheckValueFlag | typeof CHECK_PARAMETER_FLAG | typeof CHECK_AS_SHIPPED_FLAG | CheckEditionFlag | PluginFlag
+    > = [
         ...(Object.keys(CHECK_VALUE_FLAGS) as CheckValueFlag[]),
         CHECK_PARAMETER_FLAG,
+        CHECK_AS_SHIPPED_FLAG,
+        CHECK_VARIANT_FLAG,
+        CHECK_DLC_FLAG,
+        "--test-plugin",
+        "--lint-plugin",
     ];
     check.error = orderedCheckFlags
         .map(flag => checkFlagErrors.get(flag))
         .find((message): message is string => message !== undefined) ?? null;
-    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check))) {
+    if (!check.requested && (check.error !== null || hasCheckCompanionFlag(check, testFlagNamed))) {
         check.requested = true;
         check.error ??= "Missing --test or --lint: the check flags name a check nothing asked for";
     }

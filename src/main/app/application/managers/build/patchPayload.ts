@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { openAssetArchive, ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings/read";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
-import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
+import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, RUNTIME_HOST_FILE_PREFIXES } from "@shared/utils/gameRuntimeBundle";
 
 /**
  * Reading a compiled app directory's payload back out, entry by entry.
@@ -18,8 +18,15 @@ import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle"
  * told, the same way the shipped game and the content audit decide.
  */
 
-/** The entry-name prefixes a payload carries besides the descriptor and the assets. */
-const PAYLOAD_FILE_PREFIXES = ["plugins", "puppet"] as const;
+/**
+ * The directories a payload carries besides the descriptor and the assets.
+ *
+ * Exactly the ones the runtime serves the page from, and derived from the runtime's own list rather
+ * than written out: this was a second copy, and when compiled scripts joined that list they did not
+ * join this one, so a patch for an unprotected build left a changed script behind and the installed
+ * game kept running the old one.
+ */
+const PAYLOAD_FILE_PREFIXES = RUNTIME_HOST_FILE_PREFIXES.map(prefix => prefix.replace(/\/+$/, ""));
 
 export interface PayloadReader {
     /** The pack descriptor, already parsed - callers need it to name the assets. */

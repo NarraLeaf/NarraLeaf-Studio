@@ -335,7 +335,6 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin}'s {sidecar} program ships into the {platform} artifact unable to run. Build the "
             + "{targetPlatform} target on a {targetPlatform} machine.",
-        "encryption-key-unavailable": "Asset protection is on, but its key could not be read.",
         "web-unprotected": "Asset protection does not apply to the web export; its files ship unprotected.",
         "mobile-unprotected": "Asset protection does not apply to Android or iOS packages.",
         "progress-carry-unsupported":
@@ -509,12 +508,28 @@ export const build = {
      */
     contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
     // The one construct the asset sweep cannot read, refused for every build rather than only for
-    // the ones that also drop scenes: every package carries the assets its bytes name, and a pin fed
-    // by a computed value names none.
-    contentComputedPinGap: "{location} receives its asset from a computed value, so this build cannot tell which asset it needs.",
+    // the ones that also drop scenes: every package carries the assets whose names its bytes hold,
+    // and a name assembled at run time is in none of them. Each one is printed above this in the
+    // project check's own sentence (`lint.rule.blueprintAssembledAssetName`), which says what to do.
     contentComputedPinSummary: {
-        one: "Build stopped: {count} pin receives its asset from a computed value. Select the asset on the pin. See the console.",
-        other: "Build stopped: {count} pins receive their asset from a computed value. Select the asset on each pin. See the console.",
+        one: "Build stopped: {count} asset name is assembled at run time. See the console.",
+        other: "Build stopped: {count} asset names are assembled at run time. See the console.",
+    },
+    // The same refusal where every one of them comes out of a node type nothing here can load: the
+    // plugin that defines it is not installed or is switched off, and there is nothing in the
+    // project to change.
+    contentUnloadedNodeSummary: {
+        one: "Build stopped: {count} asset name comes from a node type that is not loaded. See the console.",
+        other: "Build stopped: {count} asset names come from node types that are not loaded. See the console.",
+    },
+    /**
+     * A package build whose scripts did not all compile. Written in the main process, first line of
+     * the failure the build reports; the compiler's own line for each file follows it, naming the
+     * file, line and column.
+     */
+    scriptsNotCompiled: {
+        one: "{count} script could not be compiled.",
+        other: "{count} scripts could not be compiled.",
     },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",

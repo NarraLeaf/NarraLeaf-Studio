@@ -2,17 +2,24 @@ import { getInterface } from "@/lib/app/bridge";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getProjectWriteFreeze, isProjectWriteReloadHeld } from "@/lib/app/writeFreeze";
 import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
-import { RequestStatus } from "@shared/types/ipcEvents";
 import type { MediaProbeOutcome } from "@shared/types/mediaProbe";
-import type { RemoteAssetBytes, RemoteAssetValidators } from "@shared/types/remoteAsset";
+import {
+    isRemoteAssetFetchErrorCode,
+    RemoteAssetFetchErrorCode,
+    type RemoteAssetBytes,
+    type RemoteAssetValidators,
+} from "@shared/types/remoteAsset";
 import type { MediaSupportVerdict } from "@shared/utils/mediaSupport";
 import { basename, dirname, extname } from "@shared/utils/path";
 import { AssetsService } from "../../core/AssetsService";
 import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
+import { itemWrite } from "../../autosave/writeReport";
 import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_TYPES, AssetCategory, AssetExtensions, AssetType, isBundleAssetType } from "../assetTypes";
+import type { AssetImportRefusal, RefusableStatus, RemoteUnplayableCause } from "../assetImportRefusal";
 import { assetTypeMatchesExtension } from "../importPathExpansion";
+import { remoteSnapshotRefusal } from "./remoteSnapshotRefusal";
 import { Asset, AssetResolveMeta, AssetSource } from "../types";
 import type { AssetContentDigest } from "./LocalAssetsManager";
 
@@ -53,12 +60,15 @@ export class RemoteAssetsManager {
      * Takes a category rather than a type for the same reason the local importer does: the author
      * pointed at a sidebar section, and which member type a file belongs to is a question about the
      * file. Here it is answered *after* the fetch, because a URL frequently cannot answer it.
+     *
+     * A refusal answers twice, as the local importer's do: `error` for the log, in English and
+     * naming the URL, and `refusal` for the author, which the surface that asked words.
      */
     public async importRemoteAsset(
         category: AssetCategory,
         remoteUrl: string,
         groupId?: string,
-    ): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>> {
+    ): Promise<RefusableStatus<Asset<AssetType, AssetSource.Remote>>> {
         const frozen = this.refuseWhileFrozen();
         if (frozen) {
             return frozen;
@@ -67,27 +77,27 @@ export class RemoteAssetsManager {
         const trimmed = remoteUrl.trim();
         const fetched = await this.download(trimmed);
         if (!fetched.success) {
-            return { success: false, error: fetched.error };
+            return fetched;
         }
         if (!fetched.data) {
             // An import sends no validators, so a well-behaved server cannot answer 304 here. One
             // that does has told us nothing we can store, and saying so beats an empty error.
-            return { success: false, error: "The server answered with no content" };
+            return refuse("The server answered with no content", { kind: "remoteNoContent" });
         }
 
         const type = this.chooseType(category, trimmed, fetched.data);
         if (isBundleAssetType(type)) {
             // A bundle is a directory whose manifest names siblings by relative path; one URL cannot
             // stand for that tree. Refused rather than half-supported.
-            return { success: false, error: "A model bundle cannot be imported from a URL" };
+            return refuse("A model bundle cannot be imported from a URL", { kind: "remoteBundle" });
         }
 
         const id = this.getUuidService().generate();
         const name = this.resolveUniqueName(type, trimmed, fetched.data);
 
-        const written = await this.writeSnapshot(type, id, name, fetched.data.bytes);
+        const written = await this.writeSnapshot(type, id, name, fetched.data);
         if (!written.success || !written.data) {
-            return { success: false, error: written.error };
+            return { success: false, error: written.error, refusal: written.refusal };
         }
 
         const asset: Asset<AssetType, AssetSource.Remote> = {
@@ -190,7 +200,7 @@ export class RemoteAssetsManager {
      */
     public async refresh<T extends AssetType>(
         asset: Asset<T, AssetSource.Remote>,
-    ): Promise<RequestStatus<{ changed: boolean; digest?: AssetContentDigest; meta: AssetResolveMeta<AssetSource.Remote> }>> {
+    ): Promise<RefusableStatus<{ changed: boolean; digest?: AssetContentDigest; meta: AssetResolveMeta<AssetSource.Remote> }>> {
         const frozen = this.refuseWhileFrozen();
         if (frozen) {
             return frozen;
@@ -198,7 +208,12 @@ export class RemoteAssetsManager {
 
         const url = asset.meta?.url?.trim();
         if (!url) {
-            return { success: false, error: "This asset has no source URL" };
+            // Only a hand-edited record gets here. The source row above the button is then empty,
+            // which is what "not a valid URL" points the author at.
+            return refuse("This asset has no source URL", {
+                kind: "remoteFetch",
+                code: RemoteAssetFetchErrorCode.InvalidUrl,
+            });
         }
 
         // Validators are only meaningful alongside the bytes they describe. A record whose snapshot
@@ -206,7 +221,7 @@ export class RemoteAssetsManager {
         const hasSnapshot = await this.snapshotExists(asset.id);
         const fetched = await this.download(url, hasSnapshot ? validatorsOf(asset.meta) : undefined);
         if (!fetched.success) {
-            return { success: false, error: fetched.error };
+            return fetched;
         }
 
         if (!fetched.data) {
@@ -216,9 +231,9 @@ export class RemoteAssetsManager {
             };
         }
 
-        const written = await this.writeSnapshot(asset.type, asset.id, asset.name, fetched.data.bytes);
+        const written = await this.writeSnapshot(asset.type, asset.id, asset.name, fetched.data);
         if (!written.success || !written.data) {
-            return { success: false, error: written.error };
+            return { success: false, error: written.error, refusal: written.refusal };
         }
 
         return {
@@ -257,31 +272,42 @@ export class RemoteAssetsManager {
      * the record that gets registered describes bytes the project does not have. Refusing before the
      * fetch also spares a pointless download.
      */
-    private refuseWhileFrozen(): RequestStatus<never> | null {
+    private refuseWhileFrozen(): RefusableStatus<never> | null {
         if (getProjectWriteFreeze() || isProjectWriteReloadHeld()) {
-            return { success: false, error: "The project is not accepting changes right now" };
+            return refuse("The project is not accepting changes right now", { kind: "projectNotAccepting" });
         }
         return null;
     }
 
-    /** Fetch through main. Absent `data` on success means the server answered 304. */
+    /**
+     * Fetch through main. Absent `data` on success means the server answered 304.
+     *
+     * Main refuses with its log sentence and a code, and the code becomes the refusal. A failure
+     * with no code of the fetcher's - the handler itself falling over - is one no author can act on,
+     * so it carries no refusal and is listed by name alone.
+     */
     private async download(
         url: string,
         validators?: RemoteAssetValidators,
-    ): Promise<RequestStatus<RemoteAssetBytes | null>> {
+    ): Promise<RefusableStatus<RemoteAssetBytes | null>> {
         const result = await getInterface().assets.fetchRemote(url, validators);
         if (!result.success) {
-            return { success: false, error: result.error ?? "Failed to fetch the remote asset" };
+            const error = result.error ?? "Failed to fetch the remote asset";
+            return isRemoteAssetFetchErrorCode(result.code)
+                ? refuse(error, { kind: "remoteFetch", code: result.code })
+                : { success: false, error };
         }
         return { success: true, data: result.data.kind === "ok" ? result.data : null };
     }
 
     /**
-     * Write bytes to the asset's content shard and return their digest.
+     * Write fetched bytes to the asset's content shard and return their digest.
      *
-     * Format-gated with the same validator imports pass. It matters more here than for a local
-     * import: a URL that has quietly become a login page answers 200 with HTML, and without this the
-     * project would gain an "image" that no consumer can decode.
+     * Format-gated more strictly than a local import (see {@link remoteSnapshotRefusal}): a URL that
+     * has quietly become a sign-in page answers 200 with HTML under whatever name the address ends
+     * in, and the local importer's rule - pass bytes it does not recognise - would let that in as an
+     * "image" no consumer can decode. Here the page is refused, and so are media bytes that carry no
+     * signature of their kind.
      *
      * Playability-gated too, which the local import path is *not* - see {@link refuseUnplayable}.
      * Both callers go through here, so an import and a refresh answer the question the same way; the
@@ -291,42 +317,63 @@ export class RemoteAssetsManager {
         type: T,
         assetId: string,
         name: string,
-        bytes: Uint8Array,
-    ): Promise<RequestStatus<AssetContentDigest>> {
+        fetched: RemoteAssetBytes,
+    ): Promise<RefusableStatus<AssetContentDigest>> {
+        const { bytes } = fetched;
         if (!isValidAssetStorageId(assetId)) {
             return { success: false, error: `Invalid asset id: ${assetId}` };
         }
         if (bytes.byteLength === 0) {
-            return { success: false, error: "The server returned an empty file" };
+            return refuse("The server returned an empty file", { kind: "empty" });
         }
 
         const destPath = this.getSnapshotPath(assetId);
-        const validation = await this.assetsService.getFileFormatValidator().validateFileFormat(type, name, bytes);
-        if (!validation.success) {
-            return { success: false, error: validation.error || "File format validation failed" };
+        const validator = this.assetsService.getFileFormatValidator();
+        const validation = await validator.validateFileFormat(type, name, bytes);
+        const refused = remoteSnapshotRefusal(type, fetched, validation, validator);
+        if (refused) {
+            return refuse(refused.error, refused.refusal);
         }
 
         const unplayable = await this.refuseUnplayable(type, name, bytes);
         if (unplayable) {
-            return { success: false, error: unplayable };
+            return refuse(describeUnplayableForLog(unplayable), { kind: "remoteUnplayable", cause: unplayable });
         }
 
+        // Every failure from here on is the project folder refusing the copy. The messages name the
+        // snapshot's path, which is the asset's id split into folders, so they stay in the log, and
+        // the refusal says what the disk said.
         const fs = this.getFileSystem();
         const destDir = dirname(destPath);
         const dirExists = await fs.isDirExists(destDir);
         if (!dirExists.ok) {
-            return { success: false, error: `Failed to check destination directory: ${dirExists.error?.message}` };
+            return refuse(
+                `Failed to check destination directory: ${dirExists.error?.message}`,
+                { kind: "copyFailed", fsCode: dirExists.error?.code },
+            );
         }
         if (!dirExists.data) {
             const created = await fs.createDir(destDir);
             if (!created.ok) {
-                return { success: false, error: `Failed to create destination directory: ${destDir}. ${created.error?.message}` };
+                return refuse(
+                    `Failed to create destination directory: ${destDir}. ${created.error?.message}`,
+                    { kind: "copyFailed", fsCode: created.error?.code },
+                );
             }
         }
 
-        const written = await fs.writeRaw(destPath, bytes);
+        // Reported by the caller - the import or the refresh the author asked for - by the name it
+        // arrived under, never by `destPath`, which is the asset's id split into folders.
+        const written = await fs.writeRaw(
+            destPath,
+            bytes,
+            itemWrite(name, "workspace.shell.save.stores.assets", "handledByWriter"),
+        );
         if (!written.ok) {
-            return { success: false, error: `Failed to store the remote asset: ${destPath}. ${written.error?.message}` };
+            return refuse(
+                `Failed to write the snapshot of ${name}: ${written.error.message}`,
+                { kind: "copyFailed", fsCode: written.error.code },
+            );
         }
 
         // Recomputed from what actually landed, exactly as every other write path does: the hash is
@@ -366,13 +413,13 @@ export class RemoteAssetsManager {
      * rule `MediaSupportService` states at length; the import goes through, and the library scan
      * marks it later if it turns out badly.
      *
-     * @returns the sentence to refuse with, or `null` to let the bytes through.
+     * @returns why the bytes will not play, or `null` to let them through.
      */
     private async refuseUnplayable<T extends AssetType>(
         type: T,
         name: string,
         bytes: Uint8Array,
-    ): Promise<string | null> {
+    ): Promise<RemoteUnplayableCause | null> {
         if (type !== AssetType.Audio && type !== AssetType.Video) {
             return null;
         }
@@ -393,7 +440,13 @@ export class RemoteAssetsManager {
             if (!created.ok) {
                 return null;
             }
-            const written = await fs.writeRaw(scratchPath, bytes);
+            // A scratch copy for the probe to read. A failure leaves the question unanswered, which
+            // is what `null` already says, and there is nothing for the author to do about it.
+            const written = await fs.writeRaw(
+                scratchPath,
+                bytes,
+                itemWrite(name, "workspace.shell.save.stores.assets", "handledByWriter"),
+            );
             if (!written.ok) {
                 return null;
             }
@@ -512,46 +565,58 @@ const MIME_PREFIXES: Partial<Record<AssetType, string[]>> = {
 };
 
 /**
- * The refusal a probe outcome earns, or `null` to let the bytes through.
+ * Why a probe outcome keeps the bytes out, or `null` to let them through.
  *
  * Pure and exported so the rule can be asserted without a project, a filesystem or a subprocess.
  * The rule is one line of code and two paragraphs of reasoning - see {@link
  * RemoteAssetsManager.refuseUnplayable} - and the paragraph that matters most is the one about an
  * unanswered probe, which is the arm a test can actually pin down.
  */
-export function remoteMediaRefusal(outcome: MediaProbeOutcome | null): string | null {
+export function remoteMediaRefusal(outcome: MediaProbeOutcome | null): RemoteUnplayableCause | null {
     // Not knowing is never a verdict: no ffprobe here, a timeout, unparseable output. None of those
     // is evidence about the file, and refusing on one would make importing a URL impossible on a
     // machine that merely lacks a tool.
     if (!outcome || outcome.status !== "probed" || outcome.verdict.tier === "accept") {
         return null;
     }
-    return `NarraLeaf cannot play what this URL serves: ${describeVerdict(outcome.verdict)}. `
-        + "Convert the file and import that instead - bytes pinned to a URL cannot be converted "
-        + "in place.";
+    return unplayableCause(outcome.verdict);
 }
 
 /**
- * Why these bytes will not play, in a clause that fits inside a sentence.
+ * Which part of the file the player cannot read.
  *
- * Names the codec or the container rather than the tier, because "reencode" is this pipeline's
- * vocabulary and the author never asked for a conversion. The one thing they can act on is knowing
- * *which* part of the file the player cannot read.
+ * The codec or the container rather than the tier, because "reencode" is this pipeline's vocabulary
+ * and the author never asked for a conversion. The one thing they can act on is knowing *which* part
+ * of the file the player cannot read.
  */
-function describeVerdict(verdict: MediaSupportVerdict): string {
+function unplayableCause(verdict: MediaSupportVerdict): RemoteUnplayableCause {
     if (verdict.unsupportedCodecs.length > 0) {
-        const codecs = verdict.unsupportedCodecs.join(", ");
-        return `nothing here decodes ${codecs}`;
+        return { kind: "codecs", codecs: [...verdict.unsupportedCodecs] };
     }
     if (!verdict.container.demuxable) {
-        const container = verdict.container.names[0];
-        return container
-            ? `nothing here opens a ${container} container`
-            : "its container cannot be opened";
+        return { kind: "container", container: verdict.container.names[0] ?? null };
     }
     // `no-streams`, and whatever a future tier turns out to be. Vague on purpose: a wrong specific
     // reason is worse than an honest general one.
-    return "it holds no sound or picture that can be played";
+    return { kind: "noStreams" };
+}
+
+/** The same cause, as the log's sentence. */
+function describeUnplayableForLog(cause: RemoteUnplayableCause): string {
+    const lead = "NarraLeaf cannot play what this URL serves";
+    switch (cause.kind) {
+        case "codecs":
+            return `${lead}: nothing here decodes ${cause.codecs.join(", ")}`;
+        case "container":
+            return `${lead}: nothing here opens a ${cause.container ?? "this"} container`;
+        case "noStreams":
+            return `${lead}: it holds no sound or picture that can be played`;
+    }
+}
+
+/** A failure: the log's sentence, and the refusal the author is told. */
+function refuse(error: string, refusal: AssetImportRefusal): RefusableStatus<never> {
+    return { success: false, error, refusal };
 }
 
 function validatorsOf(meta: AssetResolveMeta<AssetSource.Remote>): RemoteAssetValidators {

@@ -56,7 +56,7 @@ blueprint.sound.play
 
   inputs
     in       exec  - In
-    assetId  data:string, optional  - Asset Id
+    assetId  data:string, optional, asset id  - Asset Id
     loop     data:boolean, optional, takes a literal  - Loop
     volume   data:float, optional, takes a literal  - Volume
     fadeIn   data:float, optional, takes a literal  - Fade In (s)
@@ -75,6 +75,18 @@ with an **extra pins** block naming the param the ids are listed in and spelling
 out the pins one add writes. They come in groups more often than not, and the
 group is what has to go in the list: one confirm button is `button_1_label` and
 `button_1_pressed`, both of them, or the button is not there.
+
+The catalogue includes the node types the plugins bundled with Studio contribute, because a
+project may be built on them and one of those plugins ships switched off - the shipped skeleton's
+EXTRA screen is built on the Gallery plugin's. `node` says so on the node it belongs to:
+
+```
+node project/app/blueprint.js node "Get Gallery"
+  ...
+  plugin     narraleaf.gallery (bundled with Studio; a project using it depends on it)
+```
+
+A node from a plugin nobody bundles is still unknown here, as it is in the editor.
 
 `--owner` filters to what the add-node palette would offer for that owner kind
 (`globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`,
@@ -270,6 +282,32 @@ Three things to know before using it:
   migration that lifts an older one needs a service to seed the variable
   registry as it runs, so it cannot happen here; `apply` refuses and says to
   open the project in Studio once.
+
+## Removing
+
+```sh
+node project/app/blueprint.js remove --project D:/path/to/project --blueprint <id>           # dry run
+node project/app/blueprint.js remove --project D:/path/to/project --blueprint <id> --write
+```
+
+`apply` can empty a blueprint but not take it away, and `ui apply` can drop the
+element a blueprint hangs off but, owning only the interface document, leaves the
+blueprint behind with an owner nothing points at. `remove` is the other half: the
+blueprint goes, and so does the owner entry that pointed at it. Run it before the
+`ui apply` that drops the element, and that apply has nothing to warn about.
+
+- **One blueprint, named exactly.** `--blueprint` takes an id or a whole name;
+  unlike `show`, part of a name is not enough, and a name several blueprints share
+  lists them with their ids and removes none.
+- **Only the kinds Studio drops by itself.** A widget's, a component element's and
+  a value binding's blueprint go when the thing they hang off goes, so removing one
+  here leaves a document the editor could also have left. The game's blueprint and
+  a surface's are made for every project and every surface, and a story action's is
+  run by a story row this tool cannot see, so those are refused.
+- **Nothing may still name it.** Another blueprint reading one of its variables or
+  calling one of its Fns, or a prop bound to it as a value blueprint, is a refusal
+  that says where - removing it under any of them would leave a node that reads
+  nothing, or a prop that shows nothing, with no error anywhere.
 
 ## Where this lives
 

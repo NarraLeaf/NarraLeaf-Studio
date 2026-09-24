@@ -6,10 +6,13 @@ import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { getInterface } from "@/lib/app/bridge";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
+import { publishGameLaunch } from "@/lib/ui-editor/runtime/app/gameTimeline";
+import { normalizeGameLaunchTiming } from "@shared/types/gameLaunchTiming";
 import { WindowAppType } from "@shared/types/window";
 import type { DevModeBundle, DevModeEntry } from "@shared/types/devMode";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { scrubGeneratedIds } from "@shared/utils/generatedId";
 
 /**
  * A story the main process has asked this window to start, in place of whatever it is playing.
@@ -77,6 +80,10 @@ export function useDevModePayload(): UseDevModePayloadResult {
                 if (!active || !result.success) {
                     return;
                 }
+                // When the author asked for this run, on the page's performance timeline - the zero a
+                // plugin places the boot against. Once per page, so a props read that comes twice
+                // (a remount) writes nothing more.
+                publishGameLaunch(normalizeGameLaunchTiming(result.data.launch));
                 setState(prev => ({
                     ...prev,
                     entry: result.data.entry,
@@ -133,9 +140,12 @@ export function useDevModePayload(): UseDevModePayloadResult {
             setState(prev => ({ ...prev, launchRequest: { ...request, afterRevision: prev.bundle?.revision ?? null } }));
         });
         const errorToken = getInterface().devMode.onControlError(({ message }) => {
+            // What the main process could not assemble, in its own words: shown under the window's
+            // "session failed to start", with any generated id taken out - the interface never shows
+            // one. The Workspace console keeps the full text.
             setState(prev => ({
                 ...prev,
-                sessionError: message,
+                sessionError: scrubGeneratedIds(message),
             }));
         });
         return () => {

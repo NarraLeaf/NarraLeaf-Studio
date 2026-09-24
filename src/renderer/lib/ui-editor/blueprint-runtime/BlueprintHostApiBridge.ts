@@ -41,7 +41,9 @@ import {
     normalizeBlueprintCharacterInfo,
     type BlueprintCharacterInfo,
 } from "@shared/types/blueprint/characterInfo";
+import { translate } from "@/lib/i18n";
 import { truncateDebugEventMessage } from "./DebugBridge";
+import { widgetKindName } from "../blueprint-nodes/widgetKindName";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
@@ -108,7 +110,7 @@ import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/he
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
 import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
-import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
+import { buildImageFillPropsChange } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
 import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
 import type {
@@ -133,12 +135,14 @@ import type {
 } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
+    isAppearanceModel,
     isButtonCursorValue,
     type AppearanceFieldTransition,
     type AppearanceModel,
     type AppearancePropertyGroup,
     type AppearanceVariant,
     type ButtonCursorValue,
+    type TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import {
     DEFAULT_SYSTEM_INTERACTION_SIGNALS,
@@ -152,6 +156,7 @@ import {
     createInitialButtonAppearance,
     ensureButtonAppearanceHasAllKeys,
     isUsableAppearanceModel,
+    syncTextAppearanceDefaultRowsFromProps,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export type DevModeWidgetRuntimePatch = {
@@ -163,6 +168,15 @@ export type DevModeWidgetRuntimePatch = {
      * exists: the record is the *document*, shared by every drawing of it. Writing text onto a
      * component's element made all six placements of that component show the sixth one's text, and
      * it also meant a running game was quietly editing the file the author saved.
+     *
+     * Only the props a write changed, key by key, and each key whole. A prop that is a group of
+     * fields - `imageFill`, `appearance`, `effects`, a frame's `params` - is one prop here: a write
+     * that changes one field of it writes the whole group, built from the group this drawing shows
+     * now, so the fields it did not mention are the drawing's rather than the author's. The drawing
+     * lays these over the record one key at a time and so does every reader, which is why a group
+     * is never merged field by field anywhere: `appearance` (variants, rows, conditions) has no such
+     * merge that means anything, and one place merging deeper than the rest would paint something
+     * other than what a graph reads back.
      */
     props?: Record<string, unknown>;
     display?: boolean;
@@ -175,6 +189,32 @@ export type DevModeWidgetRuntimePatch = {
     layout?: Partial<Pick<BlueprintDisplayableProperties["bounds"], "x" | "y" | "width" | "height">> &
         Partial<Pick<BlueprintDisplayableProperties, "rotation" | "opacity">>;
 };
+
+/**
+ * One write laid over what a drawing already had, later winning.
+ *
+ * `props` is merged rather than replaced: each write states only the properties it changed, and a
+ * shallow spread would drop everything an earlier write had put there. The merge goes one key deep
+ * and no further - see {@link DevModeWidgetRuntimePatch.props} for why a group of fields is written
+ * whole instead. Every other field is one fact, so last-writer-wins is what they mean.
+ *
+ * The one merge there is. A host keeps the patches its drawings are painted from and a host API
+ * reads them back, and the two have to agree on what a sequence of writes adds up to - a second
+ * merge rule anywhere would make a widget read back something other than what is on screen.
+ */
+export function mergeWidgetPatch(
+    previous: DevModeWidgetRuntimePatch | undefined,
+    patch: DevModeWidgetRuntimePatch,
+): DevModeWidgetRuntimePatch {
+    const merged: DevModeWidgetRuntimePatch = { ...(previous ?? {}), ...patch };
+    if (previous?.props || patch.props) {
+        merged.props = { ...(previous?.props ?? {}), ...(patch.props ?? {}) };
+    }
+    return merged;
+}
+
+/** How the widget readers below see a drawing's runtime patches: one address at a time. */
+type WidgetPatchReader = { get(address: string): DevModeWidgetRuntimePatch | undefined };
 
 export type BlueprintElementFlushPayload = {
     element: BlueprintElementRef;
@@ -1080,19 +1120,33 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsLayerMounted?: (handle: string) => boolean;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     /**
-     * What the host has already written over the authored record for this runtime scope.
+     * Everything written over the authored record for this runtime scope, by anyone, read live.
      *
-     * A drawing outlives the host API that paints it: the Game UI dialog box is rebuilt whenever the
-     * gap between two lines outlives the engine's replacement grace, and the patches it painted are
-     * kept by the host so the box comes back looking as it did. Every setter below compares the
-     * value it is given against what the drawing currently shows and writes nothing when they agree,
-     * so a host API that started from the authored record alone skipped exactly the writes that put
-     * an element *back* to what the author wrote - the previous speaker's avatar stayed on a
-     * narration line, because narration asks for no avatar and no avatar is what the widget was
-     * authored with.
+     * The host keeps the patches its drawings are painted from; this is that table for this scope,
+     * and `onWidgetPatch` has to have laid a write into it (by {@link mergeWidgetPatch})
+     * before it returns. Given this, the host API keeps no copy of its own, and every widget read
+     * and every "did this change?" guard answers from what is on screen.
+     *
+     * A copy was what this used to be, taken when the host API was built, and it went wrong twice.
+     * A drawing outlives the host API that paints it - the Game UI dialog box is rebuilt whenever
+     * the gap between two lines outlives the engine's replacement grace - and a rebuild that started
+     * empty skipped exactly the writes that put an element *back* to what the author wrote: the
+     * previous speaker's avatar stayed on a narration line. Seeding the copy fixed that one and not
+     * the general case, which is two host APIs on one scope at once. Neither saw the other's writes,
+     * so a graph run from one read whatever the scope had shown when that one was built - a key
+     * press asking "is the viewer open?" was told no while the viewer was plainly on screen,
+     * because the click that opened it ran on the other. A graph still running on a host API that
+     * has since been rebuilt (a `Delay` loop across a story start) is the same case.
+     *
+     * Absent where nothing else paints the scope - the editor's own preview, a test - and the host
+     * API then keeps its own table, merged the same way.
      */
-    initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
-    onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
+    readWidgetPatches?: () => Readonly<Record<string, DevModeWidgetRuntimePatch>> | undefined;
+    /**
+     * A write changed a widget, so it flushes. `elementId` is the element the listening heads name;
+     * `address` is the drawing the write landed on, which the widget's own graph runs in.
+     */
+    onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload, address: string) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
     componentDefinitionMode?: boolean;
@@ -1199,17 +1253,30 @@ function readDocumentElement(document: UIDocument, address: string): UIElement |
     return undefined;
 }
 
-function requireDocumentElement(document: UIDocument, elementId: string, label: string): UIElement {
+function requireDocumentElement(document: UIDocument, elementId: string): UIElement {
     const element = readDocumentElement(document, elementId);
     if (!element) {
-        throw new Error(`${label}: element not found: ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.elementNotFound"));
     }
     return element;
 }
 
+/** A widget as an author knows it, for an error: its own name, never its id. */
+function elementLabel(element: UIElement): string {
+    return element.name?.trim() || translate("blueprint.runtimeError.unnamedWidget");
+}
+
+/** The error for a widget that is not of the type a call needs, naming both in the author's terms. */
+function widgetWrongKind(element: UIElement, expectedType: string): Error {
+    return new Error(translate("blueprint.runtimeError.widgetWrongKind", {
+        element: elementLabel(element),
+        kind: widgetKindName(expectedType),
+    }));
+}
+
 function readPatchedDocumentElement(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): UIElement | undefined {
     const element = readDocumentElement(document, elementId);
@@ -1228,10 +1295,10 @@ function readPatchedDocumentElement(
 
 function readPatchedElementLayout(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): UIElement["layout"] {
-    const element = requireDocumentElement(document, elementId, "displayable");
+    const element = requireDocumentElement(document, elementId);
     return {
         ...element.layout,
         ...(runtimePatches?.get(elementId)?.layout ?? {}),
@@ -1240,19 +1307,19 @@ function readPatchedElementLayout(
 
 function readDisplayableSurfaceTopLeft(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): { x: number; y: number } {
-    requireDocumentElement(document, elementId, "displayable");
+    requireDocumentElement(document, elementId);
     return getElementSurfaceTopLeftEx(id => readPatchedDocumentElement(document, runtimePatches, id), elementId);
 }
 
 function readDisplayableParentSurfaceTopLeft(
     document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    runtimePatches: WidgetPatchReader | undefined,
     elementId: string,
 ): { x: number; y: number } {
-    const element = requireDocumentElement(document, elementId, "displayable");
+    const element = requireDocumentElement(document, elementId);
     if (!element.parentId) {
         return { x: 0, y: 0 };
     }
@@ -1260,23 +1327,23 @@ function readDisplayableParentSurfaceTopLeft(
 }
 
 function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
-    const el = requireDocumentElement(document, elementId, "setVariant");
+    const el = requireDocumentElement(document, elementId);
     if (!isAppearanceCapableElementType(el.type)) {
-        throw new Error(`setVariant: element type does not support appearance variants: ${el.type}`);
+        throw new Error(translate("blueprint.runtimeError.noVariants", { element: elementLabel(el) }));
     }
     if (variantId === null) {
         return;
     }
     const rawAppearance = (el.props as Record<string, unknown> | undefined)?.appearance;
     if (!rawAppearance || typeof rawAppearance !== "object") {
-        throw new Error(`setVariant: element has no appearance model: ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.noVariants", { element: elementLabel(el) }));
     }
     const variants = (rawAppearance as { variants?: { id: string }[] }).variants;
     if (!Array.isArray(variants) || variants.length === 0) {
-        throw new Error(`setVariant: element has no appearance variants: ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.noVariants", { element: elementLabel(el) }));
     }
     if (!variants.some(v => v.id === variantId)) {
-        throw new Error(`setVariant: unknown variant id "${variantId}" for element ${elementId}`);
+        throw new Error(translate("blueprint.runtimeError.unknownVariant", { element: elementLabel(el) }));
     }
 }
 
@@ -1370,75 +1437,75 @@ function sleepMs(durationMs: number): Promise<void> {
 }
 
 function assertTextElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "text");
+    const el = requireDocumentElement(document, elementId);
     // Text specialisations included: they store the same props, so every text call reads and
     // writes the same fields on them.
     if (!isWidgetTypeOf(el.type, "nl.text")) {
-        throw new Error(`text: element is not a Text widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.text");
     }
     return el;
 }
 
 function assertSliderElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "slider");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.slider") {
-        throw new Error(`slider: element is not a Slider widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.slider");
     }
     return el;
 }
 
 function assertSwitchElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "switch");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.switch") {
-        throw new Error(`switch: element is not a Switch widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.switch");
     }
     return el;
 }
 
 function assertTextInputElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "textInput");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.textInput") {
-        throw new Error(`textInput: element is not a Text Input widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.textInput");
     }
     return el;
 }
 
 function assertListElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "list");
+    const el = requireDocumentElement(document, elementId);
     if (!isListLikeWidgetType(el.type)) {
-        throw new Error(`list: element is not a List widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.list");
     }
     return el;
 }
 
 function assertButtonElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "button");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.button") {
-        throw new Error(`button: element is not a Button widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.button");
     }
     return el;
 }
 
 function assertContainerElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "container");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.container") {
-        throw new Error(`container: element is not a Container widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.container");
     }
     return el;
 }
 
 function assertImageElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "image");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.image") {
-        throw new Error(`image: element is not an Image widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.image");
     }
     return el;
 }
 
 function assertFrameElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "frame");
+    const el = requireDocumentElement(document, elementId);
     if (el.type !== "nl.frame") {
-        throw new Error(`frame: element is not a Frame widget: ${el.type}`);
+        throw widgetWrongKind(el, "nl.frame");
     }
     return el;
 }
@@ -1460,11 +1527,14 @@ function jsonEquals(a: unknown, b: unknown): boolean {
  *
  * Every widget reader takes the override map for this reason. Reading the record alone answers what
  * the author saved, which stopped being the answer the moment a graph wrote anything - and made
- * every "did this actually change?" guard compare against the wrong value.
+ * every "did this actually change?" guard compare against the wrong value. Every prop write starts
+ * from it too (`changeWidgetProps`), for the same reason one step later.
+ *
+ * One key deep, as the drawing lays a patch over the record - see `DevModeWidgetRuntimePatch.props`.
  */
 function withWidgetPropOverride(
     element: UIElement,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): UIElement {
     const props = overrides.get(address)?.props;
@@ -1473,7 +1543,7 @@ function withWidgetPropOverride(
 
 function readTextProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintTextProperties {
     const el = withWidgetPropOverride(assertTextElement(document, address), overrides, address);
@@ -1538,14 +1608,14 @@ function readListProperties(
     const items = widgetRuntimeStore.getListItems(scopedKey)
         ?? readListItemsFallback(document, scope, stateScopeId, pageProps, elementId);
     const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
-        getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
+        getListProps(requireDocumentElement(document, elementId)).selectedIndex;
     return {
         items,
         selectedIndex,
         scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
         struct: resolveUIStruct(
             document,
-            getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
+            getListProps(requireDocumentElement(document, elementId)).itemStructId,
         ),
     };
 }
@@ -1599,7 +1669,7 @@ function readSwitchProperties(
 function readDisplayableProperties(
     document: UIDocument,
     elementId: string,
-    runtimePatches?: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    runtimePatches?: WidgetPatchReader,
 ): BlueprintDisplayableProperties {
     const layout = readPatchedElementLayout(document, runtimePatches, elementId);
     const patch = runtimePatches?.get(elementId);
@@ -1684,7 +1754,7 @@ function variantDisplayableOpacityTransition(
 function readEffectiveDisplayableProperties(
     document: UIDocument,
     widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimePatches: WidgetPatchReader,
     runtimeScopeId: string | undefined,
     activeSurfaceId: string,
     elementId: string,
@@ -1730,11 +1800,11 @@ function readVariantId(document: UIDocument, widgetRuntimeStore: WidgetRuntimeSt
 function readCommonProperties(
     document: UIDocument,
     widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimePatches: WidgetPatchReader,
     scopedKey: string,
     elementId: string,
 ): BlueprintWidgetCommonProperties {
-    const el = requireDocumentElement(document, elementId, "widget");
+    const el = requireDocumentElement(document, elementId);
     const patch = runtimePatches.get(elementId);
     const props = (el.props ?? {}) as Record<string, unknown>;
     return {
@@ -1806,7 +1876,7 @@ function patchButtonDefaultCursorAppearance(
 
 function readButtonProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintButtonProperties {
     const p = getButtonProps(withWidgetPropOverride(assertButtonElement(document, address), overrides, address));
@@ -1819,7 +1889,7 @@ function readButtonProperties(
 
 function readContainerProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintContainerProperties {
     const el = withWidgetPropOverride(assertContainerElement(document, address), overrides, address);
@@ -1828,7 +1898,7 @@ function readContainerProperties(
 
 function readImageProperties(
     document: UIDocument,
-    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    overrides: WidgetPatchReader,
     address: string,
 ): BlueprintImageProperties {
     const p = getRectangleLikeProps(withWidgetPropOverride(assertImageElement(document, address), overrides, address));
@@ -1854,7 +1924,7 @@ function readFrameProperties(document: UIDocument, elementId: string): Blueprint
 
 function readEffectiveFrameProperties(
     document: UIDocument,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimePatches: WidgetPatchReader,
     elementId: string,
 ): BlueprintFrameProperties {
     const current = readFrameProperties(document, elementId);
@@ -1957,6 +2027,16 @@ export type BlueprintGameHistoryEntry = {
     text: string;
     /** Speaker nametag for a say entry; null for menu entries or narration. */
     character: string | null;
+    /**
+     * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
+     * speaker this build has no character for.
+     *
+     * The character's own picture rather than the differential they wore on this line. Which
+     * differential that was is stage state, and a line already read is off the stage - the engine
+     * records who spoke and what they said, and nothing that survives a load records what they were
+     * wearing while they said it.
+     */
+    avatar: BlueprintImageAsset | null;
     /** Resolved voice clip URL for a say entry; null when absent. Not addressable - see `voiceId`. */
     voice: string | null;
     /**
@@ -1994,6 +2074,7 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
             type: record.type === "menu" ? "menu" : "say",
             text: record.text == null ? "" : String(record.text),
             character: normalizeNullableHistoryString(record.character),
+            avatar: normalizeBlueprintImageAssetValue(record.avatar),
             voice: normalizeNullableHistoryString(record.voice),
             voiceId: normalizeNullableHistoryString(record.voiceId),
             selected: normalizeNullableHistoryString(record.selected),
@@ -2027,6 +2108,9 @@ function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
             slot: Number.isFinite(Number(record.slot)) ? Math.trunc(Number(record.slot)) : 0,
             timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
             createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
+            preview: normalizeBlueprintImageAssetValue(record.preview),
+            line: typeof record.line === "string" ? record.line : "",
+            speaker: typeof record.speaker === "string" ? record.speaker : "",
             metadata: normalizeJsonValue(record.metadata),
         });
     }
@@ -2243,6 +2327,40 @@ function normalizeTextPatch(
     return next;
 }
 
+/** The appearance rows each text property a graph can set is painted from. */
+const TEXT_APPEARANCE_KEYS_BY_PROPERTY: Partial<Record<keyof BlueprintTextProperties, readonly TextAppearancePropertyKey[]>> = {
+    fontAssetId: ["fontAssetId"],
+    fontSize: ["fontSize"],
+    fontWeight: ["fontWeight"],
+    color: ["color"],
+    lineHeight: ["lineHeight"],
+    effects: ["effectBlur", "effectTextShadow", "effectBlend", "effectFilter"],
+};
+
+/**
+ * The appearance a text change has to carry beside its flat props, or nothing.
+ *
+ * A text with an appearance model - every text made in Studio has one - is painted from its default
+ * variant's rows, with the flat props only the baseline under them. So a write of the colour alone
+ * changed what a graph read back and nothing on screen. The rows are brought into step the way the
+ * inspector brings them into step when an author edits the same property, starting from the
+ * appearance `drawn` - the drawing being written - already shows.
+ */
+function textAppearanceChange(drawn: UIElement, changes: BlueprintTextPropertiesPatch): Record<string, unknown> {
+    const appearance = (drawn.props as { appearance?: unknown } | undefined)?.appearance;
+    if (!isAppearanceModel(appearance) || !isUsableAppearanceModel(appearance)) {
+        return {};
+    }
+    const keys = (Object.keys(changes) as Array<keyof BlueprintTextProperties>)
+        .flatMap(property => TEXT_APPEARANCE_KEYS_BY_PROPERTY[property] ?? []);
+    if (keys.length === 0) {
+        return {};
+    }
+    const flat = getTextProps({ ...drawn, props: { ...(drawn.props ?? {}), ...changes } });
+    const next = syncTextAppearanceDefaultRowsFromProps(appearance, flat, keys);
+    return next === appearance ? {} : { appearance: next };
+}
+
 function textPatchChanges(current: BlueprintTextProperties, patch: BlueprintTextPropertiesPatch): boolean {
     for (const [key, value] of Object.entries(patch) as Array<[keyof BlueprintTextProperties, unknown]>) {
         if (!jsonEquals(current[key], value)) {
@@ -2312,18 +2430,21 @@ function elementIdFromScopedWidgetRuntimeKey(scopedKey: string): string {
     return separatorIndex >= 0 ? scopedKey.slice(separatorIndex + 1) : scopedKey;
 }
 
-function normalizeGameSaveId(operation: string, id: string): string {
+function normalizeGameSaveId(id: string): string {
     const safe = String(id ?? "").trim();
     if (!safe) {
-        throw new Error(`${operation}: save id is required`);
+        throw new Error(translate("blueprint.runtimeError.noSave"));
     }
     return safe;
 }
 
 function normalizeSentenceCps(cps: unknown): number {
     const value = typeof cps === "number" ? cps : Number(cps);
-    if (!Number.isFinite(value) || value <= 0) {
-        throw new Error("setSentenceSpeed: CPS must be a positive number");
+    if (!Number.isFinite(value)) {
+        throw new Error(translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.cps") }));
+    }
+    if (value <= 0) {
+        throw new Error(translate("blueprint.runtimeError.valueAbove", { name: translate("blueprint.port.cps"), min: "0" }));
     }
     return value;
 }
@@ -2360,22 +2481,27 @@ const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
 function normalizeGamePreferenceKey(key: unknown): BlueprintGamePreferenceKey {
     const safeKey = String(key ?? "").trim() as BlueprintGamePreferenceKey;
     if (!GAME_PREFERENCE_KEYS.has(safeKey)) {
-        throw new Error(`game preference key is not supported: ${String(key ?? "")}`);
+        throw new Error(translate("blueprint.runtimeError.preferenceUnknown", { key: String(key ?? "") }));
     }
     return safeKey;
 }
 
-function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePreferenceKey, value: unknown): number {
+/**
+ * The preference errors below name the key as it was asked for. Only a script reaches them with a
+ * bad value - a preference node checks its own pin first and names the pin - and the key is the
+ * word that script's author typed.
+ */
+function normalizeGamePreferenceNumber(key: BlueprintGamePreferenceKey, value: unknown): number {
     const safeValue = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(safeValue)) {
-        throw new Error(`${operation}: ${key} must be a finite number`);
+        throw new Error(translate("blueprint.runtimeError.valueNotNumber", { name: key }));
     }
     switch (key) {
         case "gameSpeed":
         case "cps":
         case "skipInterval":
             if (safeValue <= 0) {
-                throw new Error(`${operation}: ${key} must be a positive number`);
+                throw new Error(translate("blueprint.runtimeError.valueAbove", { name: key, min: "0" }));
             }
             break;
         case "voiceVolume":
@@ -2387,7 +2513,7 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
         case "autoForwardDelay":
         case "textRevealDuration":
             if (safeValue < 0) {
-                throw new Error(`${operation}: ${key} must be zero or greater`);
+                throw new Error(translate("blueprint.runtimeError.valueAtLeast", { name: key, min: "0" }));
             }
             break;
         default:
@@ -2397,7 +2523,6 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
 }
 
 function normalizeGamePreferenceValue(
-    operation: string,
     key: BlueprintGamePreferenceKey,
     value: unknown,
 ): BlueprintGamePreferenceValue {
@@ -2409,13 +2534,13 @@ function normalizeGamePreferenceValue(
         case "skipping":
         case "showDialog":
             if (typeof value !== "boolean") {
-                throw new Error(`${operation}: ${key} must be a boolean`);
+                throw new Error(translate("blueprint.runtimeError.valueNotBoolean", { name: key }));
             }
             return value;
         case "voiceEndMode": {
             const mode = String(value ?? "").trim();
             if (mode !== "fade" && mode !== "stop" && mode !== "none") {
-                throw new Error(`${operation}: voiceEndMode must be "fade", "stop", or "none"`);
+                throw new Error(translate("blueprint.runtimeError.voiceEndModeInvalid", { name: key }));
             }
             return mode;
         }
@@ -2430,9 +2555,9 @@ function normalizeGamePreferenceValue(
         case "skipInterval":
         case "autoForwardDelay":
         case "textRevealDuration":
-            return normalizeGamePreferenceNumber(operation, key, value);
+            return normalizeGamePreferenceNumber(key, value);
         default:
-            throw new Error(`${operation}: ${key} is not supported`);
+            throw new Error(translate("blueprint.runtimeError.preferenceUnknown", { key: String(key) }));
     }
 }
 
@@ -2596,62 +2721,68 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
-        initialWidgetPatches,
+        readWidgetPatches,
     } =
         options;
     const stateScopeId = runtimeScopeId ?? activeSurfaceId;
     const currentPageProps = normalizeJsonRecord(pageProps);
     const pendingFlushElementIds = new Set<string>();
-    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>(
-        Object.entries(initialWidgetPatches ?? {}),
-    );
-    type DisplayableAnimationWaitReason = "completed" | "stopped";
-
-    const displayableAnimationWaiters = new Map<
-        string,
-        Set<(reason: DisplayableAnimationWaitReason) => void>
-    >();
+    /**
+     * This host API's own table, kept only when the host does not share its own - see
+     * `readWidgetPatches` for why sharing is the rule wherever a game runs.
+     */
+    const ownPatches = readWidgetPatches ? null : new Map<string, DevModeWidgetRuntimePatch>();
+    /**
+     * What this scope's drawings show over the authored record, one address at a time.
+     *
+     * Read-only on purpose: the only way in is {@link emitWidgetPatch}, so a write reaches the
+     * drawing and every reader by one road, and there is no second copy to fall out of step with it.
+     */
+    const runtimePatches: WidgetPatchReader = {
+        get: address => (ownPatches ? ownPatches.get(address) : readWidgetPatches?.()?.[address]),
+    };
     let flushScheduled = false;
 
+    /**
+     * Lay one write over a drawing: the host's table (which the drawing is painted from and every
+     * host API on the scope reads), or this host API's own when it has none to share.
+     */
     const emitWidgetPatch = (
         elementId: string,
         patch: DevModeWidgetRuntimePatch,
         options?: { widgetStateChanged?: boolean },
     ) => {
+        ownPatches?.set(elementId, mergeWidgetPatch(ownPatches.get(elementId), patch));
         onWidgetPatch(elementId, patch);
         widgetRuntimeStore.notifyRuntimePatchesChanged(options);
     };
 
     /**
-     * The props this drawing is working with: what the author wrote, under what the graph has since
-     * written over it.
+     * Change props of one drawing, starting from what that drawing shows now.
      *
-     * Every widget read and every widget write goes through this. Reading the authored props alone
-     * would make a second write to the same property recompute from the original value - "set the
-     * text, then append to it" would append to what the author typed - and it would make the change
-     * checks that guard each setter compare against the wrong thing and skip the write.
-     */
-    const effectiveProps = (address: string, element: UIElement): Record<string, unknown> => {
-        const override = runtimePatches.get(address)?.props;
-        return override ? { ...(element.props ?? {}), ...override } : (element.props ?? {});
-    };
-
-    /** The element as this drawing currently sees it. Never the record the document holds. */
-    const effectiveElement = (address: string, element: UIElement): UIElement => {
-        const override = runtimePatches.get(address)?.props;
-        return override ? { ...element, props: { ...(element.props ?? {}), ...override } } : element;
-    };
-
-    /**
-     * Write props for one drawing.
+     * The one road every prop setter writes by. `change` is handed the drawing - the authored record
+     * under every write this drawing has had, read at this address, so a row's copy of an element
+     * and never the page's or another row's - and returns the props it changes, a group of fields
+     * whole (see {@link DevModeWidgetRuntimePatch.props}). An empty answer writes nothing, and the
+     * return value says whether anything was written.
      *
-     * Takes the whole next bag rather than a delta, because that is what each setter already
-     * computes - and the merge below keeps the properties this write did not mention.
+     * The setter is given the drawing rather than the record to build from because building from
+     * the record wrote the author's value of every prop back over the drawing: the second write to
+     * an image put the authored picture back over the one the first write had set, and a button's
+     * pointer put back the label a graph had just changed - two nodes in a row, the second undoing
+     * the first, nothing reported.
      */
-    const writeWidgetProps = (address: string, props: Record<string, unknown>) => {
-        const previous = runtimePatches.get(address) ?? {};
-        runtimePatches.set(address, { ...previous, props: { ...(previous.props ?? {}), ...props } });
-        emitWidgetPatch(address, { props });
+    const changeWidgetProps = (
+        address: string,
+        record: UIElement,
+        change: (drawn: UIElement) => Record<string, unknown>,
+    ): boolean => {
+        const changes = change(withWidgetPropOverride(record, runtimePatches, address));
+        if (Object.keys(changes).length === 0) {
+            return false;
+        }
+        emitWidgetPatch(address, { props: changes });
+        return true;
     };
 
     const scheduleElementFlush = (elementId: string) => {
@@ -2680,58 +2811,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 // `On Element Flush` heads pick themselves by element id, and a head cannot be
                 // written against one row of a list or one placement of a component.
                 const flushedElementId = readUIWidgetAddressElementId(id);
-                void onElementFlush(flushedElementId, {
-                    element: {
-                        surfaceId: activeSurfaceId,
-                        elementId: flushedElementId,
-                        elementType: target.type,
+                void onElementFlush(
+                    flushedElementId,
+                    {
+                        element: {
+                            surfaceId: activeSurfaceId,
+                            elementId: flushedElementId,
+                            elementType: target.type,
+                        },
                     },
-                });
+                    id,
+                );
             }
-        });
-    };
-
-    const notifyDisplayableAnimationDone = (
-        animationId: string,
-        reason: DisplayableAnimationWaitReason = "stopped",
-    ): void => {
-        const waiters = displayableAnimationWaiters.get(animationId);
-        if (!waiters || waiters.size === 0) {
-            return;
-        }
-        displayableAnimationWaiters.delete(animationId);
-        for (const resolve of Array.from(waiters)) {
-            resolve(reason);
-        }
-    };
-
-    const waitForDisplayableAnimation = async (
-        animationId: string,
-        waitMs: number,
-    ): Promise<DisplayableAnimationWaitReason> => {
-        if (waitMs <= 0) {
-            return "completed";
-        }
-        return new Promise<DisplayableAnimationWaitReason>(resolve => {
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
-            const finish = (reason: DisplayableAnimationWaitReason) => {
-                if (timeoutId !== undefined) {
-                    clearTimeout(timeoutId);
-                }
-                const waiters = displayableAnimationWaiters.get(animationId);
-                waiters?.delete(finish);
-                if (waiters?.size === 0) {
-                    displayableAnimationWaiters.delete(animationId);
-                }
-                resolve(reason);
-            };
-            let waiters = displayableAnimationWaiters.get(animationId);
-            if (!waiters) {
-                waiters = new Set<(reason: DisplayableAnimationWaitReason) => void>();
-                displayableAnimationWaiters.set(animationId, waiters);
-            }
-            waiters.add(finish);
-            timeoutId = setTimeout(() => finish("completed"), waitMs);
         });
     };
 
@@ -2826,7 +2917,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const target = document.surfaces.find(s => s.id === targetSurfaceId);
                 if (!target) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`openSurface: surface not found: ${targetSurfaceId}`);
+                    throw new Error(translate("blueprint.runtimeError.pageNotFound"));
                 }
                 await onOpenSurface(targetSurfaceId, normalizeJsonRecord(props));
                 emitHostCall(emit, cap, "return");
@@ -2863,7 +2954,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onQuitApplication) {
-                        throw new Error("quitApplication: application runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsWindow"));
                     }
                     await onQuitApplication();
                 } finally {
@@ -2875,7 +2966,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onGetFullscreen) {
-                        throw new Error("getFullscreen: application window is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsWindow"));
                     }
                     return (await onGetFullscreen()) === true;
                 } finally {
@@ -2887,7 +2978,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onSetFullscreen) {
-                        throw new Error("setFullscreen: application window is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsWindow"));
                     }
                     await onSetFullscreen(fullscreen === true);
                 } finally {
@@ -3023,16 +3114,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const targetSurfaceId = String(surfaceId ?? "").trim();
                     if (!targetSurfaceId) {
-                        throw new Error("Show Layer: no page selected");
+                        throw new Error(translate("blueprint.runtimeError.noPage"));
                     }
-                    // Named ahead of the host call and by id: an author picked a page that has since
-                    // been deleted or renamed, and the id is the only thing that ties the failure
-                    // back to the node they have to fix.
+                    // Checked ahead of the host call: an author picked a page that has since been
+                    // deleted. The failure is reported against the node that asked, which is
+                    // where it is fixed; the id itself means nothing to the author.
                     if (!document.surfaces.some(surface => surface.id === targetSurfaceId)) {
-                        throw new Error(`Show Layer: page not found: ${targetSurfaceId}`);
+                        throw new Error(translate("blueprint.runtimeError.pageNotFound"));
                     }
                     if (!onShowLayer) {
-                        throw new Error("Show Layer: this preview has no layer stack");
+                        throw new Error(translate("blueprint.runtimeError.needsLayers"));
                     }
                     const group = typeof showOptions?.group === "string" && showOptions.group.trim()
                         ? showOptions.group.trim()
@@ -3088,7 +3179,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         emit({
                             type: "devtools.log",
                             level: "warn",
-                            message: "Close This Layer: this page is not a layer, so nothing was closed",
+                            message: translate("blueprint.runtimeError.notALayer", {
+                                node: translate("blueprint.node.closeThisLayer"),
+                            }),
                         });
                     }
                 } finally {
@@ -3109,7 +3202,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 if (!readDocumentElement(document, elementId)) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`setVisible: element not found: ${elementId}`);
+                    throw new Error(translate("blueprint.runtimeError.elementNotFound"));
                 }
                 const previous = readCommonProperties(
                     document,
@@ -3118,10 +3211,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                     elementId,
                 ).visible;
-                runtimePatches.set(elementId, {
-                    ...(runtimePatches.get(elementId) ?? {}),
-                    visible,
-                });
                 emitWidgetPatch(elementId, { visible });
                 if (previous !== visible) {
                     scheduleElementFlush(elementId);
@@ -3133,7 +3222,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 if (!readDocumentElement(document, elementId)) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`setEnabled: element not found: ${elementId}`);
+                    throw new Error(translate("blueprint.runtimeError.elementNotFound"));
                 }
                 const previous = readCommonProperties(
                     document,
@@ -3142,10 +3231,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                     elementId,
                 ).enabled;
-                runtimePatches.set(elementId, {
-                    ...(runtimePatches.get(elementId) ?? {}),
-                    enabled,
-                });
                 emitWidgetPatch(elementId, { enabled });
                 if (previous !== enabled) {
                     scheduleElementFlush(elementId);
@@ -3180,7 +3265,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ...previousPatch,
                         layout,
                     };
-                    runtimePatches.set(elementId, nextPatch);
                     emitWidgetPatch(elementId, nextPatch);
                 }
                 const opacityTransition = variantDisplayableOpacityTransition(document, elementId, targetVariant);
@@ -3233,7 +3317,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!textPatchChanges(current, normalized)) {
                         return;
                     }
-                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), ...normalized });
+                    changeWidgetProps(elementId, el, drawn => ({ ...normalized, ...textAppearanceChange(drawn, normalized) }));
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3262,23 +3346,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             ? patch.cursor
                             : current.cursor;
 
-                    let changed = false;
-                    const nextProps = { ...(el.props ?? {}) };
-                    if (hasLabelPatch && nextLabel !== current.label) {
-                        nextProps.label = nextLabel;
-                        changed = true;
+                    const changed = changeWidgetProps(elementId, el, drawn => {
+                        const changes: Record<string, unknown> = {};
+                        if (hasLabelPatch && nextLabel !== current.label) {
+                            changes.label = nextLabel;
+                        }
+                        if (hasCursorPatch && nextCursor !== current.cursor) {
+                            // The pointer lives in the appearance's default row, so the appearance
+                            // this drawing already has is the one to change - not the authored one.
+                            const flat = { ...getButtonProps(drawn), cursor: nextCursor };
+                            changes.cursor = nextCursor;
+                            changes.appearance = patchButtonDefaultCursorAppearance(flat.appearance, flat, nextCursor);
+                        }
+                        return changes;
+                    });
+                    if (changed) {
+                        scheduleElementFlush(elementId);
                     }
-                    if (hasCursorPatch && nextCursor !== current.cursor) {
-                        const flat = { ...getButtonProps(el), cursor: nextCursor };
-                        nextProps.cursor = nextCursor;
-                        nextProps.appearance = patchButtonDefaultCursorAppearance(flat.appearance, flat, nextCursor);
-                        changed = true;
-                    }
-                    if (!changed) {
-                        return;
-                    }
-                    writeWidgetProps(elementId, nextProps);
-                    scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3302,7 +3386,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (clipContent === current.clipContent) {
                         return;
                     }
-                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), clipContent });
+                    changeWidgetProps(elementId, el, () => ({ clipContent }));
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3344,18 +3428,25 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!fillChanged && !flipChanged) {
                         return;
                     }
-                    let nextProps: Record<string, unknown> = { ...(el.props ?? {}) };
-                    if (fillChanged) {
-                        const previousFill = getRectangleLikeProps(el).imageFill;
-                        const nextFill: ImageFill = {
-                            ...previousFill,
-                            mode: fitMode,
-                            assetId,
-                            cropPlacement: cropRect,
-                        };
-                        nextProps = buildImageFillPropsUpdate(el, nextFill);
-                    }
-                    writeWidgetProps(elementId, { ...nextProps, imageFlipX: flipX, imageFlipY: flipY });
+                    changeWidgetProps(elementId, el, drawn => {
+                        const changes: Record<string, unknown> = {};
+                        if (fillChanged) {
+                            // The fill this drawing shows, with this write's fields laid over it, and
+                            // the appearance rows it paints from brought into step with it.
+                            const nextFill: ImageFill = {
+                                ...getRectangleLikeProps(drawn).imageFill,
+                                mode: fitMode,
+                                assetId,
+                                cropPlacement: cropRect,
+                            };
+                            Object.assign(changes, buildImageFillPropsChange(drawn, nextFill));
+                        }
+                        if (flipChanged) {
+                            changes.imageFlipX = flipX;
+                            changes.imageFlipY = flipY;
+                        }
+                        return changes;
+                    });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3583,9 +3674,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // Existence is still checked against the document: a measurement for an id no
                     // surface holds would be a silent null indistinguishable from "not painted yet",
                     // and the two want different things from the author.
-                    requireDocumentElement(document, elementId, "measuredRect");
+                    requireDocumentElement(document, elementId);
+                    // The address, not the element: the drawing it names is the copy to measure.
                     return measureElementSurfaceRect(
-                        readUIWidgetAddressElementId(elementId),
+                        elementId,
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     )?.rect ?? null;
                 } finally {
@@ -3658,7 +3750,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (Object.keys(nextPatch.layout ?? {}).length === 0) {
                         delete nextPatch.layout;
                     }
-                    runtimePatches.set(elementId, nextPatch);
                     emitWidgetPatch(elementId, nextPatch);
                     const next = readEffectiveDisplayableProperties(
                         document,
@@ -3702,7 +3793,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             return motion;
                         }
                     }
-                    const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
+                    // Waited on in the store, not in this host API: a `Stop Animation` that ends it
+                    // may come from any graph of the game, and this host API may be replaced under
+                    // this very wait (see `waitForDisplayableMotion`).
+                    const waitReason = await widgetRuntimeStore.waitForDisplayableMotion(motion.id, waitMs);
                     // Hold-mode motions ("after: hold") commit their final pose into persistent
                     // state on natural completion and release the one-shot motion slot in the
                     // same update: absolute x/y (commitLayoutOnComplete), rotation, and opacity
@@ -3763,7 +3857,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                                         ...layoutPatch,
                                     },
                                 };
-                                runtimePatches.set(elementId, nextPatch);
                             }
                             const baseChanged = Object.keys(basePatch).length > 0
                                 ? widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, basePatch, { silent: true })
@@ -3811,7 +3904,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (cleared) {
                         scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
                     }
-                    notifyDisplayableAnimationDone(animationId, "stopped");
+                    widgetRuntimeStore.settleDisplayableMotionWaits(animationId, "stopped");
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3838,7 +3931,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
                         return;
                     }
-                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), targetSurfaceId, params });
+                    changeWidgetProps(elementId, el, () => ({ targetSurfaceId, params }));
                     const nextPatch: DevModeWidgetRuntimePatch = {
                         ...(runtimePatches.get(elementId) ?? {}),
                         frame: {
@@ -3846,7 +3939,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             params,
                         },
                     };
-                    runtimePatches.set(elementId, nextPatch);
                     emitWidgetPatch(elementId, nextPatch);
                     scheduleElementFlush(elementId);
                 } finally {
@@ -4033,13 +4125,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const sceneId = String(request?.sceneId ?? "").trim();
                     const startBlockId = String(request?.startBlockId ?? "").trim();
                     if (!storyId) {
-                        throw new Error("startStory: storyId is required");
+                        throw new Error(translate("blueprint.runtimeError.pickStory", { node: translate("blueprint.node.startGame") }));
                     }
                     if (!sceneId) {
-                        throw new Error("startStory: sceneId is required");
+                        throw new Error(translate("blueprint.runtimeError.pickScene", { node: translate("blueprint.node.startGame") }));
                     }
                     if (!onStartStory) {
-                        throw new Error("startStory: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.startGame") }));
                     }
                     // `startBlockId` is forwarded rather than dropped: the node has always carried
                     // a `From Row` pin and the request has always had somewhere to put it, so a
@@ -4067,9 +4159,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.readSaveGame";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("readSaveGame", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onReadSaveGame) {
-                        throw new Error("readSaveGame: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return (await onReadSaveGame(saveId)) ?? null;
                 } finally {
@@ -4100,10 +4192,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const targetSurfaceId = String(surfaceId ?? "").trim();
                     if (!targetSurfaceId) {
-                        throw new Error("quit: surfaceId is required");
+                        throw new Error(translate("blueprint.runtimeError.pickPage", { node: translate("blueprint.node.quitGame") }));
                     }
                     if (!onQuitGame) {
-                        throw new Error("quit: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.quitGame") }));
                     }
                     await onQuitGame(targetSurfaceId);
                 } finally {
@@ -4114,9 +4206,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.writeSave";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("writeSave", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onWriteSave) {
-                        throw new Error("writeSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     await onWriteSave(saveId, normalizeJsonValue(metadata), screenshot === true);
                 } finally {
@@ -4127,9 +4219,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.loadSave";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("loadSave", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onLoadSave) {
-                        throw new Error("loadSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     // Anything other than an explicit false is a load: a host wired before this
                     // returned a value at all resolves undefined, and its saves did apply.
@@ -4142,9 +4234,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.deleteSave";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("deleteSave", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onDeleteSave) {
-                        throw new Error("deleteSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     await onDeleteSave(saveId);
                 } finally {
@@ -4156,7 +4248,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onListSaveIds) {
-                        throw new Error("listSaveIds: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     const ids = await onListSaveIds();
                     return [...ids].map(id => String(id));
@@ -4168,9 +4260,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveMetadata";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveMetadata", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveMetadata) {
-                        throw new Error("getSaveMetadata: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeJsonValue(await onGetSaveMetadata(saveId));
                 } finally {
@@ -4204,9 +4296,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSavePlaytime";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSavePlaytime", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSavePlaytime) {
-                        throw new Error("getSavePlaytime: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordPlaytime(await onGetSavePlaytime(saveId));
                 } finally {
@@ -4217,9 +4309,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveTimes";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveTimes", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveTimes) {
-                        throw new Error("getSaveTimes: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
                 } finally {
@@ -4230,9 +4322,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveLine";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveLine", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveLine) {
-                        throw new Error("getSaveLine: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordLine(await onGetSaveLine(saveId));
                 } finally {
@@ -4243,9 +4335,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSaveStory";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSaveStory", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSaveStory) {
-                        throw new Error("getSaveStory: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeSaveRecordStory(await onGetSaveStory(saveId));
                 } finally {
@@ -4256,9 +4348,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "game.getSavePreview";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const saveId = normalizeGameSaveId("getSavePreview", id);
+                    const saveId = normalizeGameSaveId(id);
                     if (!onGetSavePreview) {
-                        throw new Error("getSavePreview: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
                 } finally {
@@ -4270,7 +4362,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onWriteAutoSave) {
-                        throw new Error("writeAutoSave: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     await onWriteAutoSave();
                 } finally {
@@ -4282,7 +4374,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onListAutoSaves) {
-                        throw new Error("listAutoSaves: game save runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsSaves"));
                     }
                     return normalizeAutoSaveEntries(await onListAutoSaves());
                 } finally {
@@ -4294,7 +4386,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onGetHistory) {
-                        throw new Error("getHistory: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.getHistory") }));
                     }
                     return normalizeBlueprintGameHistory(await onGetHistory());
                 } finally {
@@ -4306,7 +4398,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onGetFuture) {
-                        throw new Error("getFuture: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.getFutureHistory") }));
                     }
                     return normalizeBlueprintGameHistory(await onGetFuture());
                 } finally {
@@ -4318,7 +4410,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onRestoreHistory) {
-                        throw new Error("restoreHistory: game runtime is not available");
+                        // One capability, two nodes: an entry to go back to is Restore From
+                        // History, none is Undo Last History Entry.
+                        throw new Error(translate("blueprint.runtimeError.needsGame", {
+                            node: translate(String(id ?? "").trim()
+                                ? "blueprint.node.restoreFromHistory"
+                                : "blueprint.node.undoLastHistoryEntry"),
+                        }));
                     }
                     const safeId = String(id ?? "").trim();
                     await onRestoreHistory(safeId ? safeId : undefined);
@@ -4331,7 +4429,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onRedoHistory) {
-                        throw new Error("redoHistory: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.redoNextHistoryEntry") }));
                     }
                     await onRedoHistory();
                 } finally {
@@ -4561,7 +4659,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         // Not the bargain `isSceneVisited` and the read take. Those answer while a
                         // title screen lays out; this one is a button doing what the player asked,
                         // and a write with nothing to write into has to say so.
-                        throw new Error("Set Saved Var: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.setSavedVar") }));
                     }
                     onSetSavedVariable(variableId, value);
                 } finally {
@@ -4631,7 +4729,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onSelectChoice) {
-                        throw new Error("choose: choice runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.selectChoice") }));
                     }
                     await onSelectChoice(index);
                 } finally {
@@ -4643,7 +4741,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onNext) {
-                        throw new Error("next: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.next") }));
                     }
                     await onNext();
                 } finally {
@@ -4655,7 +4753,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onSkip) {
-                        throw new Error("skip: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.skip") }));
                     }
                     await onSkip();
                 } finally {
@@ -4667,7 +4765,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onShowDialog) {
-                        throw new Error("showDialog: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.showDialog") }));
                     }
                     await onShowDialog();
                 } finally {
@@ -4679,7 +4777,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onHideDialog) {
-                        throw new Error("hideDialog: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.hideDialog") }));
                     }
                     await onHideDialog();
                 } finally {
@@ -4691,7 +4789,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     if (!onToggleDialogDisplay) {
-                        throw new Error("toggleDialogDisplay: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.toggleDialogDisplay") }));
                     }
                     await onToggleDialogDisplay();
                 } finally {
@@ -4704,7 +4802,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const safeCps = normalizeSentenceCps(cps);
                     if (!onSetSentenceSpeed) {
-                        throw new Error("setSentenceSpeed: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.setSentenceSpeed") }));
                     }
                     await onSetSentenceSpeed(safeCps);
                 } finally {
@@ -4717,10 +4815,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const safeKey = normalizeGamePreferenceKey(key);
                     if (!onGetGamePreference) {
-                        throw new Error("getPreference: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGameAny"));
                     }
                     return normalizeGamePreferenceValue(
-                        "getPreference",
                         safeKey,
                         onGetGamePreference(safeKey),
                     );
@@ -4733,9 +4830,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const safeKey = normalizeGamePreferenceKey(key);
-                    const safeValue = normalizeGamePreferenceValue("setPreference", safeKey, value);
+                    const safeValue = normalizeGamePreferenceValue(safeKey, value);
                     if (!onSetGamePreference) {
-                        throw new Error("setPreference: game runtime is not available");
+                        throw new Error(translate("blueprint.runtimeError.needsGameAny"));
                     }
                     await onSetGamePreference(safeKey, safeValue);
                 } finally {
@@ -4912,9 +5009,11 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "pointer.moveToElementCenter";
                 emitHostCall(emit, cap, "call");
                 try {
-                    requireDocumentElement(document, elementId, "movePointerToElement");
+                    requireDocumentElement(document, elementId);
+                    // Measured by address: the button in the row the graph is running in, not the
+                    // first copy of it the page happens to hold.
                     const measured = measureElementSurfaceRect(
-                        readUIWidgetAddressElementId(elementId),
+                        elementId,
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     );
                     if (!measured) {

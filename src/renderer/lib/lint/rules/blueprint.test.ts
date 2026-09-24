@@ -993,6 +993,16 @@ describe("blueprint/empty-event", () => {
         );
         expect(findings).toEqual([]);
     });
+
+    it("says nothing about a script layer, which has no nodes because it is a file", async () => {
+        // A script layer used to be walked as an empty graph, and every one of them was reported as
+        // an event that runs nothing - in the build log, beside the script it was wrong about.
+        const document = documentWithGraphs({ events: {} });
+        const graphs = document.blueprints.bp1.graphs as unknown as { events: Record<string, unknown> };
+        graphs.events.boot = { id: "boot", script: { scriptRef: "scripts/boot.ts" } };
+        const findings = await run("blueprint/empty-event", createTestLintContext({ blueprintDocument: document }));
+        expect(findings).toEqual([]);
+    });
 });
 describe("blueprint/unknown-node", () => {
     it("is an error by default", () => {

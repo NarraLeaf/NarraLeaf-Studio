@@ -1,3 +1,4 @@
+import { createRequire } from "module";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import esbuild from "esbuild";
@@ -24,8 +25,10 @@ import esbuild from "esbuild";
 const MAIN_ENTRY = path.resolve(__dirname, "../../../../index.ts");
 const ROOT = path.resolve(__dirname, "../../../../../..");
 
-/** Externals must match the real build; see project/build/build-main.js. */
-const EXTERNAL = ["electron", "esbuild", "@narraleaf/bindings", "koffi"];
+/** The main bundle's own externals, from the list the real build reads. */
+const EXTERNAL = (createRequire(__filename)(path.join(ROOT, "project", "build", "main-bundles.js")) as {
+    mainProcessBundleOptions(name: string, options: { dev: boolean }): { external?: string[] };
+}).mainProcessBundleOptions("main", { dev: true }).external ?? [];
 
 async function staticallyReachableInputs(): Promise<Set<string>> {
     const result = await esbuild.build({

@@ -26,9 +26,10 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ARRAY } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
@@ -64,16 +65,16 @@ const entryIdIn: BlueprintNodePinDef = {
 
 /** Resolve the required backlog entry id (the `id` field of a Get Backlog entry). */
 function resolveHistoryEntryId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "id", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, "id");
     const id = String(value ?? "").trim();
     if (!id) {
-        throw new BlueprintGraphExecutionError("Restore From History: entry id is required", ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.inputEmpty", {
+                node: translate("blueprint.node.restoreFromHistory"),
+                pin: translate("blueprint.port.entryId"),
+            }),
+            ctx.node.id,
+        );
     }
     return id;
 }
@@ -81,6 +82,7 @@ function resolveHistoryEntryId(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
 export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+        assetNames: "assembled",
         displayName: "Get History",
         category: "Game",
         keywords: ["history", "backlog", "log", "dialog", "dialogue", "say", "menu", "entries", "game", "nlr"],
@@ -101,6 +103,7 @@ export const backlogBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
+        assetNames: "assembled",
         displayName: "Get Future History",
         category: "Game",
         keywords: ["history", "backlog", "future", "ahead", "forward", "redo", "entries", "game", "nlr"],

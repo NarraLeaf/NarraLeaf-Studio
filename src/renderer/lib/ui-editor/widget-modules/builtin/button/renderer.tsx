@@ -13,6 +13,7 @@ import {
 } from "react";
 import { motion } from "motion/react";
 import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
+import { resolveUITextRuns } from "@shared/types/ui-editor/textRuns";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -22,6 +23,7 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
+import { TextRunsBody, useTextRunWords } from "@/lib/ui-editor/widget-modules/shared/text/TextRuns";
 import {
     buttonResolvedVisualToRectangleLike,
     resolveButtonCursor,
@@ -41,7 +43,7 @@ import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/ap
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import { useLocalizedWidgetText } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
-import { getButtonProps } from "./helpers";
+import { buttonLabelPatch, getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import {
     debugUIDoubleClick,
@@ -57,9 +59,10 @@ function commitButtonLabelEditValue(documentService: UIDocumentService, elementI
     if (docEl?.valueBindings?.[BUTTON_LABEL_PROP_PATH]?.kind === "blueprintValue") {
         documentService.clearElementBlueprintValueBinding(elementId, BUTTON_LABEL_PROP_PATH);
     }
-    documentService.updateElementProps(elementId, {
-        label: nextLabel,
-    });
+    documentService.updateElementProps(
+        elementId,
+        docEl ? buttonLabelPatch(docEl, nextLabel) : { label: nextLabel },
+    );
 }
 
 export function ButtonRenderer(props: WidgetRendererProps) {
@@ -198,7 +201,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const dispatchClick =
         canDispatchClick && !isEditing
             ? () => {
-                  void rt!.dispatchElementBlueprintEvent(element.id, "mouseClick", {
+                  // A key press standing in for a click, so it is the click of this drawing - the
+                  // row it is in and the placement it belongs to - exactly as a pointer's would be.
+                  void props.dispatchEvent?.("mouseClick", {
                       x: Math.abs(element.layout.width) / 2,
                       y: Math.abs(element.layout.height) / 2,
                   });
@@ -263,6 +268,13 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         localizationKey: p.localizationKey,
     });
     const showLabel = displayLabel.trim().length > 0;
+
+    // The label's marks, on the one rule a text label's follow: runs are drawn only while they still
+    // spell what is on screen. A translation, a label driven by a value blueprint or by a list row's
+    // field, and one a blueprint set at runtime all arrive here as a different string, and each falls
+    // back to the plain label rather than to words the button no longer holds.
+    const labelRuns = resolveUITextRuns(displayLabel, p.rich);
+    const labelRunWords = useTextRunWords(labelRuns);
     const hasChildNodes = children != null && Children.count(children) > 0;
 
     // Read off the resolved visuals, not the flat props: the label's type is variant material now,
@@ -431,6 +443,19 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         [commitLabelAndClose, element.id, surface.id],
     );
 
+    // A button's label is always set horizontally: it has no writing-mode props of its own.
+    const labelRunsBody = (words: NonNullable<typeof labelRunWords>) => (
+        <TextRunsBody
+            words={words}
+            writingMode="horizontal-tb"
+            textOrientation="mixed"
+            tateChuYoko={false}
+            tateChuYokoMaxLength={0}
+            textWrapMode={p.textWrapMode}
+            fontWeightBold={v.fontWeight === "normal" ? "bold" : 700}
+        />
+    );
+
     const labelBlock =
         showLabel || isEditing ? (
             <div style={labelColumnStyle}>
@@ -455,6 +480,24 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                         onClick={e => e.stopPropagation()}
                         onMouseDown={e => e.stopPropagation()}
                     />
+                ) : labelRunWords ? (
+                    // A marked label is a `div` holding the engine's words, the way a marked text
+                    // label is; a plain one stays the paragraph below, untouched, so a button that
+                    // carries no marks is drawn exactly as it was before buttons could carry any.
+                    // The words inherit the label's size, colour, weight and family from this box,
+                    // which is what keeps a hovered state's colour and its tween reaching them.
+                    labelTextMotionActive ? (
+                        <motion.div
+                            style={{ ...labelTypography, flexShrink: 0 }}
+                            initial={false}
+                            animate={labelTextAnimate}
+                            transition={labelTextTransition}
+                        >
+                            {labelRunsBody(labelRunWords)}
+                        </motion.div>
+                    ) : (
+                        <div style={{ ...labelTypography, flexShrink: 0 }}>{labelRunsBody(labelRunWords)}</div>
+                    )
                 ) : labelTextMotionActive ? (
                     <motion.p
                         style={{ ...labelTypography, flexShrink: 0 }}

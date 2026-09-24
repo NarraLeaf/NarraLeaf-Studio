@@ -12,7 +12,15 @@ import {
 import { LintService } from "../workspace/services/core/LintService";
 import { ProjectService } from "../workspace/services/core/ProjectService";
 import { describeLintLocation } from "./locationText";
-import type { LintReport } from "./types";
+import { tallyLintFindingsByRule } from "./ruleTally";
+import { resolveLintMessageParams, type LintReport, type LintSeverity } from "./types";
+
+/** Each severity's console level. The one place a finding's level is decided for this stream. */
+const CONSOLE_LEVELS: Record<LintSeverity, DevModeConsoleLogLevel> = {
+    error: "error",
+    warning: "warning",
+    info: "info",
+};
 
 /**
  * The workspace half of `narraleaf-studio --lint`.
@@ -77,8 +85,21 @@ export async function runCommandLineLint(context: WorkspaceContext): Promise<voi
     // One line per finding, in the order the sweep produced them, and in the words the build
     // console uses - `formatLintFinding` is the same function the Build tab prints through.
     for (const entry of report.entries) {
-        emit(entry.severity === "error" ? "error" : entry.severity === "warning" ? "warning" : "info",
-            formatLintFinding(entry));
+        emit(CONSOLE_LEVELS[entry.severity], formatLintFinding(entry));
+    }
+
+    // Then the shape of it. A stream cannot fold a rule away the way the report tab can, and one
+    // rule is routinely most of a sweep - so a reader who has just scrolled past nine thousand
+    // copies of one sentence gets, beside the summary, the count each rule actually made.
+    const tally = tallyLintFindingsByRule(report.entries);
+    if (tally.length > 0) {
+        emit("info", translate("lint.console.byRule"));
+        for (const rule of tally) {
+            emit(CONSOLE_LEVELS[rule.severity], translate("lint.console.ruleCount", {
+                rule: rule.ruleId,
+                count: rule.count,
+            }));
+        }
     }
 
     const config = projectService.getLintingConfiguration();
@@ -94,7 +115,7 @@ export async function runCommandLineLint(context: WorkspaceContext): Promise<voi
         return {
             severity: entry.severity,
             id: entry.ruleId,
-            message: translate(entry.messageKey, entry.messageParams),
+            message: translate(entry.messageKey, resolveLintMessageParams(entry, translate)),
             ...(location ? { location } : {}),
         };
     });

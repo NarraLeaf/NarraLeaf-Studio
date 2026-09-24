@@ -770,7 +770,25 @@ export const documentDiff = {
         assetsOrder: "Asset order",
         characters: "Cast",
         assetContent: "Asset file",
+        /**
+         * An asset whose record gives it no name, by the type the record is filed under. Also what a
+         * row says when the name could not be read but the type could.
+         */
+        assetOfType: {
+            image: "Image asset",
+            audio: "Audio asset",
+            video: "Video asset",
+            json: "JSON asset",
+            font: "Font asset",
+            model: "Model asset",
+            other: "Other asset",
+        },
         qualified: "{name} ({qualifier})",
+        /**
+         * A stand-in that would otherwise read the same as another on one list: "Story 2". `{index}`
+         * is its position among those stand-ins, and claims nothing about the thing itself.
+         */
+        numbered: "{name} {index}",
     },
     category: {
         story: "Story",

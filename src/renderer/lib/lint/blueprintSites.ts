@@ -18,6 +18,10 @@ import type { SearchJumpTarget } from "../workspace/services/search/searchIndexM
  *  - **Macros are walked.** Nothing populates `graphs.macros` today, but half a dozen walkers read
  *    it defensively and a node buried in one would ship exactly like a node on an event. Costing
  *    nothing while the record is empty is the cheapest way to not be the walker that forgot.
+ *  - **A script layer is not a graph, and is not a site.** It has no nodes for any rule here to
+ *    read, and listing it as an empty graph made `blueprint/empty-event` report every script layer
+ *    as an event that runs nothing - in the build log, beside the script it was wrong about. What a
+ *    script does is the compiler's to report, and it does.
  */
 
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -62,13 +66,16 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
             continue;
         }
         const graphs = blueprint.graphs;
-        const slots: readonly { graphKind: BlueprintGraphKind; entries: Record<string, { graph?: BlueprintGraphIr }> }[] = [
+        const slots: readonly { graphKind: BlueprintGraphKind; entries: Record<string, { graph?: BlueprintGraphIr; script?: unknown }> }[] = [
             { graphKind: "event", entries: graphs.events ?? {} },
             { graphKind: "function", entries: graphs.functions ?? {} },
             { graphKind: "macro", entries: graphs.macros ?? {} },
         ];
         for (const { graphKind, entries } of slots) {
             for (const [graphId, slot] of Object.entries(entries)) {
+                if (slot?.script) {
+                    continue;
+                }
                 sites.push({
                     blueprintId: blueprint.id,
                     blueprintName: blueprint.name,

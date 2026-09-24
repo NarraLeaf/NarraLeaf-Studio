@@ -1,8 +1,146 @@
 import { describe, expect, it } from "vitest";
-import { describeDependencyState } from "./dependencyStatusDisplay";
+import { describeDependencyBanner, describeDependencyState, isDependencyUnavailable } from "./dependencyStatusDisplay";
 
 const SWITCHED_OFF = { status: "satisfied", suppressed: false, installedEnabled: false } as const;
 const WITHHELD = { status: "incompatible", suppressed: true, installedEnabled: true } as const;
+const MISSING = { status: "missing", suppressed: true, installedEnabled: undefined } as const;
+const AWAITING_GRANT = { status: "satisfied", suppressed: false, installedEnabled: true, installedStatus: "needsAuthorization" } as const;
+const FAILED = { status: "satisfied", suppressed: false, installedEnabled: true, installedStatus: "error" } as const;
+const READY = { status: "satisfied", suppressed: false, installedEnabled: true, installedStatus: "enabled" } as const;
+const OUTDATED = { status: "outdated", suppressed: false, installedEnabled: true } as const;
+
+describe("describeDependencyState - the plugin's own state", () => {
+    /**
+     * Installed, switched on, at a usable version, and contributing nothing: the version verdict
+     * reads "satisfied" for both, and Project ▸ App used to write nothing beside them at all.
+     */
+    it("writes the Plugins panel's word for a plugin waiting for its permissions", () => {
+        expect(describeDependencyState(AWAITING_GRANT))
+            .toEqual({ labelKey: "plugins.status.needsAuthorization", className: "text-warning" });
+    });
+
+    it("writes the Plugins panel's word for a plugin that failed to load", () => {
+        expect(describeDependencyState(FAILED))
+            .toEqual({ labelKey: "plugins.workspace.activity.failed", className: "text-danger" });
+    });
+
+    it("writes the authorization, not the switch, for a plugin whose grant was declined", () => {
+        // Declining switches it off as well; what the Plugins panel shows and offers is the grant.
+        expect(describeDependencyState({ ...AWAITING_GRANT, installedEnabled: false })?.labelKey)
+            .toBe("plugins.status.needsAuthorization");
+    });
+
+    it("writes the switch for a plugin switched off after it failed", () => {
+        // Both halves of that record, because the plugin list used to send the other one. It reported
+        // a remembered failure ahead of the switch, so this row said "switched off" about a plugin it
+        // called "error" - one plugin, two screens, two answers. The record now says `disabled` as
+        // well, and this row is unmoved either way.
+        expect(describeDependencyState({ ...FAILED, installedEnabled: false })?.labelKey)
+            .toBe("project.dependencies.status.disabled");
+        expect(describeDependencyState({ ...FAILED, installedEnabled: false, installedStatus: "disabled" })?.labelKey)
+            .toBe("project.dependencies.status.disabled");
+    });
+
+    it("writes the hold over the plugin's own state, which would not matter while it is held", () => {
+        expect(describeDependencyState({ ...WITHHELD, installedStatus: "needsAuthorization" })?.labelKey)
+            .toBe("project.dependencies.status.suppressed");
+    });
+});
+
+describe("describeDependencyBanner", () => {
+    it("shows nothing when every row is ready", () => {
+        expect(describeDependencyBanner([READY, READY])).toBeNull();
+        expect(describeDependencyBanner([])).toBeNull();
+    });
+
+    /**
+     * The defect this replaces: the red banner was picked by the overall verdict, which is `blocked`
+     * for an absent hard dependency too, and it said the installed version was incompatible.
+     */
+    it("says a missing plugin is not installed, and nothing about its version", () => {
+        expect(describeDependencyBanner([MISSING])).toEqual({
+            tone: "danger",
+            lines: [{ key: "project.dependencies.banner.missing", count: 1 }],
+        });
+    });
+
+    it("sends a held plugin to Rescan with its own sentence", () => {
+        expect(describeDependencyBanner([WITHHELD])?.lines)
+            .toEqual([{ key: "project.dependencies.banner.held", count: 1 }]);
+    });
+
+    it("gives every state present its own sentence and count, most blocking first", () => {
+        expect(describeDependencyBanner([OUTDATED, FAILED, SWITCHED_OFF, AWAITING_GRANT, WITHHELD, MISSING, WITHHELD]))
+            .toEqual({
+                tone: "danger",
+                lines: [
+                    { key: "project.dependencies.banner.missing", count: 1 },
+                    { key: "project.dependencies.banner.held", count: 2 },
+                    { key: "project.dependencies.banner.needsAuthorization", count: 1 },
+                    { key: "project.dependencies.banner.disabled", count: 1 },
+                    { key: "project.dependencies.banner.failed", count: 1 },
+                    { key: "project.dependencies.banner.outdated", count: 1 },
+                ],
+            });
+    });
+
+    it("is a warning, not a danger, when every plugin still loads", () => {
+        expect(describeDependencyBanner([OUTDATED, READY])?.tone).toBe("warning");
+        expect(describeDependencyBanner([{ status: "incompatible", suppressed: false, installedEnabled: true }]))
+            .toEqual({ tone: "warning", lines: [{ key: "project.dependencies.banner.incompatible", count: 1 }] });
+    });
+
+    it("is a danger for a plugin that is installed and on and still contributes nothing", () => {
+        expect(describeDependencyBanner([AWAITING_GRANT])?.tone).toBe("danger");
+        expect(describeDependencyBanner([FAILED])?.tone).toBe("danger");
+    });
+});
+
+describe("isDependencyUnavailable", () => {
+    it("counts every state in which the plugin contributes nothing", () => {
+        expect(isDependencyUnavailable(MISSING)).toBe(true);
+        expect(isDependencyUnavailable(WITHHELD)).toBe(true);
+        expect(isDependencyUnavailable(SWITCHED_OFF)).toBe(true);
+        expect(isDependencyUnavailable(AWAITING_GRANT)).toBe(true);
+        expect(isDependencyUnavailable(FAILED)).toBe(true);
+    });
+
+    /**
+     * The gap this closes: the warning raised on open, and the counts that repeat it, were written
+     * from the version verdict and the switch alone. A plugin waiting for its permissions, or one
+     * that failed to start, is installed at a usable version with its switch on - so a project
+     * whose only trouble was one of those opened in silence, and the author met unknown node types
+     * with nothing on screen to explain them.
+     */
+    it("agrees with the banner, which calls those same rows a problem", () => {
+        for (const row of [MISSING, WITHHELD, SWITCHED_OFF, AWAITING_GRANT, FAILED]) {
+            expect(describeDependencyBanner([row])?.tone).toBe("danger");
+        }
+        for (const row of [READY, OUTDATED]) {
+            expect(isDependencyUnavailable(row)).toBe(false);
+            expect(describeDependencyBanner([row])?.tone ?? "warning").toBe("warning");
+        }
+    });
+
+    /**
+     * A warning is raised whenever a project opens, so the false positive costs more than the false
+     * negative: an outdated plugin loads and the project works, and a warning about it is one the
+     * author learns to close without reading.
+     */
+    it("does not count a plugin that merely loads at another version", () => {
+        expect(isDependencyUnavailable(OUTDATED)).toBe(false);
+        expect(isDependencyUnavailable({ status: "incompatible", suppressed: false, installedEnabled: true })).toBe(false);
+    });
+
+    it("counts a data-only dependency the same way: its data is there and nothing reads it", () => {
+        // Nothing is held back, since nothing loads for it either way, so `suppressed` is false.
+        expect(isDependencyUnavailable({ status: "missing", suppressed: false })).toBe(true);
+    });
+
+    it("says nothing before the first resolve, when there is no verdict yet", () => {
+        expect(isDependencyUnavailable({})).toBe(false);
+    });
+});
 
 describe("describeDependencyState", () => {
     it("says nothing about a plugin that is installed, compatible and loaded", () => {

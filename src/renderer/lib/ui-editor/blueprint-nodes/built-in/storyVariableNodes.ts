@@ -19,41 +19,39 @@ import {
     BLUEPRINT_NODE_TYPE_SCENE_GET,
     BLUEPRINT_NODE_TYPE_SCENE_SET,
 } from "@shared/types/blueprint/graph";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { StoryVariableRuntimeAccess } from "../../runtime/types";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
+import { savedVariableStateKey } from "../../blueprint-runtime/blueprintStateWrites";
 
 type ExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function requireStoryRuntime(ctx: ExecuteCtx) {
     const runtime = ctx.hostAdapter.storyRuntime;
     if (!runtime) {
-        throw new BlueprintGraphExecutionError(
-            "Story variables are only available inside a Story",
-            ctx.node.id,
-        );
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.needsStory"), ctx.node.id);
     }
     return runtime;
 }
 
-function requireVariableId(ctx: ExecuteCtx, paramKey: string, label: string): string {
+function requireVariableId(ctx: ExecuteCtx, paramKey: string): string {
     const id = String(ctx.params[paramKey] ?? "").trim();
     if (!id) {
-        throw new BlueprintGraphExecutionError(`Pick a ${label}`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate(paramKey === "savedVariableId"
+                ? "blueprint.runtimeError.pickSavedVariable"
+                : "blueprint.runtimeError.pickSceneVariable"),
+            ctx.node.id,
+        );
     }
     return id;
 }
 
 function readValuePin(ctx: ExecuteCtx): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    return resolveNodeInput(ctx, "value");
 }
 
 function getNode(
@@ -79,7 +77,7 @@ function getNode(
         ],
         inspectorParams: [{ key: paramKey, label: paramLabel, kind: paramKind }],
         execute: ctx => {
-            const id = requireVariableId(ctx, paramKey, paramLabel);
+            const id = requireVariableId(ctx, paramKey);
             return { nextPort: "next", outputValues: { value: access(ctx).get(id) } };
         },
     };
@@ -108,7 +106,7 @@ function setNode(
         ],
         inspectorParams: [{ key: paramKey, label: paramLabel, kind: paramKind }],
         execute: ctx => {
-            const id = requireVariableId(ctx, paramKey, paramLabel);
+            const id = requireVariableId(ctx, paramKey);
             access(ctx).set(id, readValuePin(ctx));
             return { nextPort: "next" };
         },
@@ -145,7 +143,10 @@ const savedGetNode: BlueprintNodeDef = {
     ],
     inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
     execute: ctx => {
-        const id = requireVariableId(ctx, "savedVariableId", "Saved variable");
+        const id = requireVariableId(ctx, "savedVariableId");
+        // A value binding that reaches this through a Fn shows the value; it has to hear the next
+        // write to it, from a screen or from the story.
+        ctx.valueExecution?.trackState?.(savedVariableStateKey(id));
         const storyRuntime = ctx.hostAdapter.storyRuntime;
         if (storyRuntime) {
             return { nextPort: "next", outputValues: { value: storyRuntime.savedVar.get(id), found: true } };
@@ -184,7 +185,7 @@ const savedSetNode: BlueprintNodeDef = {
     ],
     inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
     execute: ctx => {
-        const id = requireVariableId(ctx, "savedVariableId", "Saved variable");
+        const id = requireVariableId(ctx, "savedVariableId");
         const value = readValuePin(ctx);
         const storyRuntime = ctx.hostAdapter.storyRuntime;
         if (storyRuntime) {

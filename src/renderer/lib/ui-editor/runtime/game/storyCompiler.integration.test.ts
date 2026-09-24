@@ -17,6 +17,9 @@ import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
 const EMPTY_APPEARANCE: CharacterAppearanceSummary = { kind: "preset", poses: [], defaultPoseId: null };
 import { computeStoryStageSnapshot } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
+import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
+import { openStoryPersistence } from "@/lib/ui-editor/runtime/app/storyPersistence";
+import { declaredPersistentDefaults } from "@shared/variables/mergedPersistentView";
 
 function declarationBlock(id: string, valueType: "boolean" | "number", defaultValue?: number | boolean): StoryBlock {
     return {
@@ -811,7 +814,7 @@ describe("compileStudioStoryToNlr", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "mask", message: "Mask effect has no image asset." },
+            { level: "warning", blockId: "mask", message: "This mask effect has no image." },
         ]);
     });
 
@@ -955,7 +958,7 @@ describe("compileStudioStoryToNlr", () => {
             });
 
             expect(compiled.diagnostics).toEqual([
-                { level: "warning", blockId: "say", message: "Inline event: character image source not found for char-ghost." },
+                { level: "warning", blockId: "say", message: "The character of this row is no longer in this project." },
             ]);
             // The event is dropped, but the surrounding line still compiles.
             const words = sayWords(compiled);
@@ -1367,8 +1370,8 @@ describe("compileStudioStoryToNlr", () => {
         // The undeclared reference is caught - as an ERROR, because whether a variable is declared is
         // a fact about the document. The declared one passes validation and only trips the separate
         // "needs host persistence" gate, which is a fact about the HOST and stays a warning.
-        expect(compiled.diagnostics).toContainEqual({ level: "error", blockId: "set-ghost", message: "Persistent variable not found; the assignment was skipped." });
-        expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toContain("require Dev Mode host persistence");
+        expect(compiled.diagnostics).toContainEqual({ level: "error", blockId: "set-ghost", message: "The persistent variable this row assigns is no longer declared; the assignment was skipped." });
+        expect(compiled.diagnostics.find(d => d.blockId === "set-declared")?.message).toBe("Persistent variables cannot be written here; the assignment was skipped.");
         expect(compiled.diagnostics.some(d => d.blockId === "set-declared" && d.message.includes("not found"))).toBe(false);
     });
 
@@ -1379,8 +1382,48 @@ describe("compileStudioStoryToNlr", () => {
         const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
         expect(compiled.diagnostics).toContainEqual({
             level: "error",
-            message: `Two scenes share the name "${document.scenes["scene-1"].runtimeName}"; their scene-local variables would collide. Rename one.`,
+            message: `The scenes “${document.scenes["scene-1"].name}” and “${document.scenes["scene-2"].name}” keep their scene variables under one name, so each overwrites the other's.`,
         });
+    });
+
+    it("flags a scene stored without a runtime name whose display name another scene's runtime name matches", async () => {
+        // A document from before every scene had one compiles such a scene under its display name, so
+        // that is the name it collides under - and the name Studio would otherwise have handed out.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        document.scenes["scene-1"].runtimeName = "chapter_1";
+        document.scenes["scene-2"].runtimeName = "";
+        document.scenes["scene-2"].name = "chapter_1";
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "error",
+            message: "The scenes “Scene 1” and “chapter_1” keep their scene variables under one name, so each overwrites the other's.",
+        });
+    });
+
+    it("names two colliding scenes once when the author gave them one title", async () => {
+        // The pair a project made before internal names were minted unique most often holds: two
+        // scenes both called "Chapter 1". Naming the title twice would read as a fault in the sentence.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        for (const id of ["scene-1", "scene-2"] as const) {
+            document.scenes[id].name = "Chapter 1";
+            document.scenes[id].runtimeName = "chapter_1";
+        }
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toContainEqual({
+            level: "error",
+            message: "The two scenes named “Chapter 1” keep their scene variables under one name, so each overwrites the other's.",
+        });
+    });
+
+    it("says nothing about two scenes whose display names match but whose runtime names do not", async () => {
+        // What Studio makes of a second "Chapter 1" now: the same title, its own namespace.
+        const document = baseDocument({ say: narrationBlock("say", "text-say", "Hi.") }, ["say"]);
+        document.scenes["scene-1"].name = "Chapter 1";
+        document.scenes["scene-1"].runtimeName = "chapter_1";
+        document.scenes["scene-2"].name = "Chapter 1";
+        document.scenes["scene-2"].runtimeName = "chapter_1_2";
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics.some(entry => entry.message.includes("keep their scene variables"))).toBe(false);
     });
 
     it("seeds declared scene-local defaults at the scene head and compiles declaration rows to nothing", async () => {
@@ -1571,7 +1614,7 @@ describe("compileStudioStoryToNlr", () => {
             {
                 level: "error",
                 blockId: "bg",
-                message: "Transition \"maskFade\" is not available; the change was played as a cut. Choose a transition on this row.",
+                message: "Transition “maskFade” is not available; the change was played as a cut. Choose a transition on this row.",
             },
         ]);
         expect(findTransition(compiled)).toBeUndefined();
@@ -1587,7 +1630,7 @@ describe("compileStudioStoryToNlr", () => {
             {
                 level: "error",
                 blockId: "bg",
-                message: "Transition \"custom\" is not available; the change was played as a cut. Choose a transition on this row.",
+                message: "Transition “custom” is not available; the change was played as a cut. Choose a transition on this row.",
             },
         ]);
         expect(findTransition(compiled)).toBeUndefined();
@@ -2619,8 +2662,8 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(typeOf("dupe")).toBeUndefined();
         expect(typeOf("nowhere")).toBeUndefined();
         expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "dupe", message: 'Label "start" is declared more than once in this scene.' },
-            { level: "error", blockId: "nowhere", message: "Go to target label not found in this scene: elsewhere" },
+            { level: "error", blockId: "dupe", message: "Label “start” is declared more than once in this scene." },
+            { level: "error", blockId: "nowhere", message: "Label “elsewhere” is not in this scene." },
         ]);
     });
 
@@ -2651,7 +2694,7 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(typeOf("exact")?.type).toBe("control:jump");
         expect(typeOf("miscased")).toBeUndefined();
         expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "miscased", message: "Go to target label not found in this scene: START" },
+            { level: "error", blockId: "miscased", message: "Label “START” is not in this scene." },
         ]);
     });
 
@@ -2717,6 +2760,8 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(resources).toEqual([{
             type: "video",
             url: "nlr://asset-opening",
+            // The asset the url was resolved from, which is what the performance timeline names.
+            assetId: "asset-opening",
             video: compiled.sceneElements?.["scene-1"]?.videos.get("opening"),
         }]);
         expect(compiled.sceneElements?.["scene-1"]?.videos.get("opening")).toBeDefined();
@@ -2804,7 +2849,7 @@ describe("compileStudioStoryToNlr voice", () => {
         });
         expect(noHost.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
         expect(noHost.diagnostics).toEqual([
-            { level: "warning", blockId: "create", message: 'Ambience effect "snow" needs its weather produced, which this compile cannot do.' },
+            { level: "warning", blockId: "create", message: "Ambience effect “snow” needs its weather produced, which is not possible here." },
         ]);
 
         const failedBake = await compileStudioStoryToNlr({
@@ -2815,7 +2860,7 @@ describe("compileStudioStoryToNlr voice", () => {
         });
         expect(failedBake.actionIdBindings.find(binding => binding.blockId === "create")).toBeUndefined();
         expect(failedBake.diagnostics).toEqual([
-            { level: "warning", blockId: "create", message: 'Weather for ambience effect "snow" could not be produced.' },
+            { level: "warning", blockId: "create", message: "The weather for ambience effect “snow” could not be produced." },
         ]);
     });
 
@@ -2911,16 +2956,30 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.diagnostics).toContainEqual({
             level: "warning",
             blockId: undefined,
-            message: 'Persistent variable "Score" is declared in both the variable registry and a story row; references are ambiguous.',
+            message: "The persistent variable “Score” is declared both in the project's variables and by a story row; references to it are ambiguous.",
         });
     });
 
-    it("falls back to a REGISTRY-declared persistent variable's default while the host has stored nothing", async () => {
-        // The registry is where persistent variables are declared after the migration, but the
-        // compiler collected its default-value table from the document's `/persis` rows alone. So a
-        // flag the author gave a starting value reached the runtime with no default at all and read as
-        // empty until something wrote it - while Dev Mode's variables panel, which reads the merged
-        // view, showed the default and disagreed with the running game.
+    it("reads a REGISTRY-declared persistent variable's default while the host has stored nothing", async () => {
+        // The registry is where persistent variables are declared after the migration. A flag the
+        // author gave a starting value once reached the running story with no default at all and
+        // read as empty until something wrote it - while Dev Mode's variables panel, which reads the
+        // merged view, showed the default and disagreed with the running game.
+        //
+        // The default comes from the persistence scope a game builds, not from the compiler: the
+        // port here is the one `GameApp` hands a story, over a scope declared from the bundle.
+        const persistentVariables = {
+            "reg-chapter": {
+                id: "reg-chapter",
+                name: "Chapter",
+                scope: "persistent" as const,
+                valueType: "number" as const,
+                defaultValue: 3,
+                storageKey: "key_chapter",
+            },
+        };
+        const scope = new ScopeStoreBridge({ persistentDefaults: declaredPersistentDefaults({ ui: { persistentVariables } }) });
+        const persistence = await openStoryPersistence(scope);
         const say: StoryBlock = {
             id: "say",
             kind: "nodeAction",
@@ -2943,17 +3002,8 @@ describe("compileStudioStoryToNlr voice", () => {
             document: baseDocument({ say }, ["say"]),
             sceneId: "scene-1",
             // The host has never written this key, which is the whole state under test.
-            persistence: { get: () => undefined, set: () => undefined },
-            persistentVariables: {
-                "reg-chapter": {
-                    id: "reg-chapter",
-                    name: "Chapter",
-                    scope: "persistent",
-                    valueType: "number",
-                    defaultValue: 3,
-                    storageKey: "key_chapter",
-                },
-            },
+            persistence: persistence.port,
+            persistentVariables,
         });
 
         expect(compiled.diagnostics).toEqual([]);
@@ -3053,7 +3103,7 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.diagnostics).toContainEqual({
             level: "warning",
             blockId: undefined,
-            message: 'Saved variable "Gold" is declared in both the variable registry and a story row; references are ambiguous.',
+            message: "The saved variable “Gold” is declared both in the project's variables and by a story row; references to it are ambiguous.",
         });
     });
 });
@@ -3664,7 +3714,7 @@ describe("puppet characters", () => {
         });
 
         expect(compiled.sceneElements?.["scene-1"]?.puppets.size).toBe(0);
-        expect(compiled.diagnostics.some(entry => /no model asset/.test(entry.message))).toBe(true);
+        expect(compiled.diagnostics.some(entry => /has no model\./.test(entry.message))).toBe(true);
     });
 
     it("reports a puppet that names no runtime", async () => {
@@ -4198,7 +4248,7 @@ describe("story audio", () => {
 
             // The handle is created once and holds the first row's bus, so the second row's track
             // cannot be honoured. Two intents, one outcome - said out loud rather than dropped.
-            expect(compiled.diagnostics.some(entry => /already playing on the "Ambience" track/.test(entry.message))).toBe(true);
+            expect(compiled.diagnostics.some(entry => /already playing on the track “Ambience”/.test(entry.message))).toBe(true);
             expect((compiled.sceneElements?.["scene-1"].sounds.get("rain") as any).config.type).toBe("t_amb");
         });
 
@@ -4534,7 +4584,7 @@ describe("break", () => {
         // An error, not a warning: the engine's own answer to a stray breakLoop arrives at play time,
         // on the player's screen, so the production build has to refuse it here.
         expect(outside.diagnostics).toEqual([
-            { level: "error", blockId: "brk", message: "Break is not inside a repeat group; there is no loop for it to leave." },
+            { level: "error", blockId: "brk", message: "This break is not inside a repeat; there is no loop for it to leave." },
         ]);
     });
 });
@@ -4679,7 +4729,7 @@ describe("diagnostics carry their origin row", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "show", message: "Character image source not found for Nattou." },
+            { level: "warning", blockId: "show", message: "“Nattou” has no poses, so nothing is drawn." },
         ]);
     });
 
@@ -4704,7 +4754,9 @@ describe("diagnostics carry their origin row", () => {
 
         expect(compiled.diagnostics).toHaveLength(1);
         expect(compiled.diagnostics[0]?.blockId).toBe("show");
-        expect(compiled.diagnostics[0]?.message).toBe("Character image source not found for narrator.");
+        // The character is not in the project at all, which is what the row is told - by no name,
+        // since the only one left is the id.
+        expect(compiled.diagnostics[0]?.message).toBe("The character of this row is no longer in this project.");
         // The specific regression this guards: the id used to be interpolated straight in.
         expect(compiled.diagnostics[0]?.message).not.toContain("6f1b9d0e");
     });
@@ -4849,9 +4901,9 @@ describe("stage object references", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "error", blockId: "show", message: "Image \"poster\" is not on stage; an earlier row has to create it." },
-            { level: "error", blockId: "vol", message: "Sound \"piano\" is not playing; an earlier /sound row has to start it." },
-            { level: "error", blockId: "fade", message: "Layer \"foreground\" is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "show", message: "Image “poster” is not on stage; an earlier row has to create it." },
+            { level: "error", blockId: "vol", message: "Sound “piano” is not playing; an earlier sound row has to start it." },
+            { level: "error", blockId: "fade", message: "Layer “foreground” is not on stage; an earlier row has to create it." },
         ]);
         // The rows compiled to nothing at all: no statements, and no blank objects left on stage.
         expect(compiledRows(compiled)).toEqual([]);
@@ -4876,6 +4928,78 @@ describe("stage object references", () => {
 
         expect(compiled.diagnostics).toEqual([]);
         expect(compiledRows(compiled)).toEqual(expect.arrayContaining(["show", "retitle", "vol"]));
+    });
+
+    /**
+     * A `show` row that names its own source creates what it reveals, so nothing has to have made it
+     * first. The rule above it is unchanged and is what these sit against: a `show` naming a name and
+     * no source is still a row addressing something that has to exist.
+     */
+    it("builds and reveals a picture the row names itself", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
+            }, ["show"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(["show"]);
+        expect([...(compiled.sceneElements?.["scene-1"].images.keys() ?? [])]).toEqual(["sunset"]);
+    });
+
+    it("lets a later row address the picture such a show row left on stage", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "sunset", assetId: "asset-sunset" }),
+                hide: actionBlock("hide", {
+                    action: "image",
+                    operation: "hide",
+                    objectName: "sunset",
+                    target: { kind: "image", name: "sunset", label: "sunset", sourceBlockId: "show" },
+                }),
+            }, ["show", "hide"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(["show", "hide"]);
+    });
+
+    it("builds and reveals a clip the row names itself", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "video", operation: "show", objectName: "intro", assetId: "asset-intro" }),
+                play: actionBlock("play", {
+                    action: "video",
+                    operation: "play",
+                    objectName: "intro",
+                    target: { name: "intro", label: "intro", sourceBlockId: "show" },
+                }),
+            }, ["show", "play"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiledRows(compiled)).toEqual(["show", "play"]);
+    });
+
+    it("still reports a show row that names neither a source nor anything on stage", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                show: actionBlock("show", { action: "image", operation: "show", objectName: "poster" }),
+            }, ["show"]),
+            sceneId: "scene-1",
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "error", blockId: "show", message: "Image “poster” is not on stage; an earlier row has to create it." },
+        ]);
+        expect(compiledRows(compiled)).toEqual([]);
     });
 
     it("routes the music channel through its built-in reference without reporting it", async () => {
@@ -4919,7 +5043,7 @@ describe("stage object references", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "quieter", message: "No background music is set before this row; /bgm has to run first." },
+            { level: "warning", blockId: "quieter", message: "No background music is set before this row; a BGM row has to run first." },
         ]);
     });
 
@@ -4994,7 +5118,7 @@ describe("stage object references", () => {
             const compiled = await compile({ exit: characterRow("exit", "exit", "char-alice") }, ALICE);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "exit", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "exit", message: "Character “Alice” is not on stage; an earlier row has to bring it on stage." },
             ]);
             // The row that used to build a blank portrait and hide it now builds nothing at all.
             expect(compiledRows(compiled)).toEqual([]);
@@ -5006,7 +5130,7 @@ describe("stage object references", () => {
             const compiled = await compile({ face: characterRow("face", "expression", "char-alice") }, ALICE);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "face", message: "Character “Alice” is not on stage; an earlier row has to bring it on stage." },
             ]);
             expect(compiled.sceneElements?.["scene-1"].images.size).toBe(0);
         });
@@ -5036,7 +5160,7 @@ describe("stage object references", () => {
             }, ALICE);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "face", message: "Character \"Alice\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "face", message: "Character “Alice” is not on stage; an earlier row has to bring it on stage." },
             ]);
         });
 
@@ -5087,7 +5211,7 @@ describe("stage object references", () => {
             const compiled = await compile({ motion: characterRow("motion", "setMotion", "char-doll") }, DOLL);
 
             expect(compiled.diagnostics).toEqual([
-                { level: "error", blockId: "motion", message: "Character \"Doll\" is not on stage; an earlier row has to bring it on stage." },
+                { level: "error", blockId: "motion", message: "Character “Doll” is not on stage; an earlier row has to bring it on stage." },
             ]);
             expect(compiled.sceneElements?.["scene-1"].puppets.size).toBe(0);
         });
@@ -5246,7 +5370,7 @@ describe("a layered character a row-precise launch pre-poses", () => {
         });
 
         expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "sad", message: "Bob is on stage as a single image, so its appearance tags cannot change here." },
+            { level: "warning", blockId: "sad", message: "“Bob” is on stage as a single image, so its appearance tags cannot change here." },
         ]);
         expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
     });
@@ -5490,5 +5614,80 @@ describe("quit", () => {
         const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
         expect(boundBlocks).not.toContain("leave");
         expect(boundBlocks).toContain("after");
+    });
+});
+
+/**
+ * What the warm order says the stage mounts when a scene starts.
+ *
+ * The engine initialises every image a scene uses at the top of the scene, hidden, with the source it
+ * was built with. Planning a character's look only by the row that first shows it left it to idle
+ * time while the page was already fetching it, and a scene entry reported its own characters as
+ * shown before they were warmed.
+ */
+describe("the images a scene mounts on entry", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    const ANNA: DevModeCharacterSummary = {
+        id: "char-anna",
+        name: "Anna",
+        appearance: {
+            kind: "layered",
+            canvas: { width: 100, height: 200 },
+            axes: [{
+                id: "mood",
+                name: "Mood",
+                tags: [{ id: "calm", name: "Calm" }, { id: "cross", name: "Cross" }],
+                defaultTagId: "calm",
+            }],
+            layers: [
+                { id: "body", name: "Body", axisId: null, assetId: "asset-body" },
+                { id: "face", name: "Face", axisId: "mood", options: { calm: "asset-calm", cross: "asset-cross" } },
+            ],
+        },
+    };
+
+    /** Thirteen lines of narration, then Anna walks on - far past any look-ahead window. */
+    function lateEntrance(): StoryDocument {
+        const blocks: Record<string, StoryBlock> = {};
+        for (let index = 0; index < 13; index++) {
+            blocks[`line-${index}`] = narrationBlock(`line-${index}`, `text-${index}`, `Line ${index}`);
+        }
+        blocks.enter = {
+            id: "enter", kind: "action", parentId: null, childrenIds: [],
+            payload: { action: "character", operation: "enter", characterId: "char-anna", tags: { mood: "calm" } },
+        };
+        return baseDocument(blocks);
+    }
+
+    async function compileLateEntrance() {
+        return compileStudioStoryToNlr({
+            document: lateEntrance(),
+            sceneId: "scene-1",
+            characters: [ANNA],
+            resolveAssetUrl,
+            collectWarmOrder: true,
+        });
+    }
+
+    it("lists the look a late character is built with, and only that look", async () => {
+        const order = (await compileLateEntrance()).sceneWarmOrder?.["scene-1"];
+
+        expect(order?.onEntry).toEqual(["nlr://asset-body", "nlr://asset-calm"]);
+        // The other expression is what a later row switches to, and it stays with that row.
+        expect(order?.onEntry).not.toContain("nlr://asset-cross");
+        expect(order?.byBlock.enter?.map(resource => resource.url)).toContain("nlr://asset-cross");
+        // Each named by the asset it resolved from - the layer's own option, not the character.
+        expect(order?.byBlock.enter?.find(resource => resource.url === "nlr://asset-cross")?.assetId).toBe("asset-cross");
+    });
+
+    it("says where the entrance is the way the story editor counts rows", async () => {
+        const order = (await compileLateEntrance()).sceneWarmOrder?.["scene-1"];
+
+        // The fixture's scene opens with its declaration rows, which the editor counts like any other.
+        const scene = lateEntrance().scenes["scene-1"];
+        expect(order?.rows.enter).toBe(scene.rootBlockIds.indexOf("enter") + 1);
+        expect(order?.rows.enter).toBeGreaterThan(13);
+        expect(order?.sceneName).toBe(scene.name);
     });
 });

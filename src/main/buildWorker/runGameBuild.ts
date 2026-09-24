@@ -8,6 +8,7 @@ import {
     type GameBuildFormat,
 } from "@shared/types/gameBuild";
 import { writeArtifactDigests } from "./artifactDigests";
+import { tidyElectronStage } from "./electronRuntimeFiles";
 import {
     describeMacSigning,
     describeWindowsSigning,
@@ -59,7 +60,12 @@ const BUILDER_ARCHS: Record<GameBuildArch, Arch> = {
     universal: Arch.universal,
 };
 
-function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWorkerTarget): Configuration {
+function builderConfiguration(
+    config: GameBuildWorkerConfig,
+    target: GameBuildWorkerTarget,
+    log: GameBuildLogger,
+): Configuration {
+    const extraFiles = extraFilesFor(config);
     return {
         // Each platform's options are gated on the target's own platform, not
         // just on the block being present: a stray block would otherwise put a
@@ -76,13 +82,30 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         productName: config.productName,
         electronVersion: config.electronVersion,
         ...(target.electronDist ? { electronDist: target.electronDist } : {}),
+        // Runs once the Electron runtime is unpacked and before anything of the game's joins it,
+        // whichever way the runtime arrived. A copied installation carries whatever its machine
+        // left in it and a macOS one would lose its licences; see electronRuntimeFiles.ts.
+        afterExtract: async context => {
+            const { removedLitter } = await tidyElectronStage({
+                appOutDir: context.appOutDir,
+                platform: target.platform,
+                ...(target.electronDist ? { sourceDist: target.electronDist } : {}),
+            });
+            if (removedLitter.length > 0) {
+                log(
+                    "info",
+                    `left out of the ${target.platform} package: ${removedLitter.join(", ")} - found in the `
+                    + "Electron runtime, but put there by this machine rather than shipped by Electron",
+                );
+            }
+        },
         ...(target.iconPath ? { icon: target.iconPath } : {}),
         ...(config.copyright ? { copyright: config.copyright } : {}),
         // `to` is the app's content root, which is next to the executable on Windows and Linux and
-        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in.
-        ...(config.copyrightFile
-            ? { extraFiles: [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] }
-            : {}),
+        // `Contents/` inside the bundle on macOS - in all three, the folder a player lands in, and
+        // the one that holds Electron's own LICENSE.electron.txt and LICENSES.chromium.html (put
+        // there by electron-builder on Windows and Linux, by tidyElectronStage on macOS).
+        ...(extraFiles.length > 0 ? { extraFiles } : {}),
         // Always the smallest artifact. The level used to be the author's to pick, and it
         // was noise: it changes nothing a player sees, it does nothing at all for the web
         // and mobile outputs, and the fast setting only pays off on a build nobody ships.
@@ -115,6 +138,14 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
     };
 }
 
+/** The notices shipped beside the executable, outside the asar where a player can open them. */
+function extraFilesFor(config: GameBuildWorkerConfig): Array<{ from: string; to: string }> {
+    return [
+        ...(config.copyrightFile ? [{ from: config.copyrightFile, to: "COPYRIGHT.txt" }] : []),
+        ...(config.thirdPartyNoticesFile ? [{ from: config.thirdPartyNoticesFile, to: "THIRD-PARTY-NOTICES.txt" }] : []),
+    ];
+}
+
 /** The `win` block, when this target is a Windows one carrying Authenticode options. */
 function windowsSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
     const signing = target.signing;
@@ -124,7 +155,17 @@ function windowsSigningFor(target: GameBuildWorkerTarget): Partial<Configuration
     return windowsSigningConfiguration(signing);
 }
 
-/** The `mac` block. Every macOS target gets one; an unsigned target gets the one that says so. */
+/**
+ * The `mac` block. Every macOS target gets one; an unsigned target gets the one that says so.
+ *
+ * What it deliberately never carries is `x64ArchFiles` or `singleArchFiles`, the two exemptions from
+ * the universal merge. A universal target is packed once per architecture and joined by
+ * `@electron/universal`, which refuses a Mach-O file that is the same thin image in both halves -
+ * the one shape that cannot be right for both machines. Everything the compiler stages for a
+ * universal target is either a universal image (see fatMachO.ts) or not machine code at all, and a
+ * plugin's thin sidecar is refused before packing starts. So there is nothing to exempt, and an
+ * exemption here would only hide the next binary that arrives in the wrong form.
+ */
 function macSigningFor(target: GameBuildWorkerTarget): Partial<Configuration> {
     if (target.platform !== "macos") {
         return {};
@@ -184,7 +225,7 @@ async function packageDesktopTargets(config: GameBuildWorkerConfig, log: GameBui
                     // which the dialog's artifact preview could not have predicted.
                     targets: platform.createTarget(targetNames, BUILDER_ARCHS[target.arch]),
                     projectDir: appDir,
-                    config: builderConfiguration(config, target),
+                    config: builderConfiguration(config, target, log),
                 });
                 artifacts.push(...produced.map(artifact => path.resolve(artifact)));
             }

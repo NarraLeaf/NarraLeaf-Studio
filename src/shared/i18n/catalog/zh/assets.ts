@@ -23,6 +23,8 @@ export const assets = {
         moreReferences: "…另有 {count} 处",
         unverifiedTitle: "无法检查这些资产的使用情况",
         unverifiedMessage: "无法确定这些资产是否仍在使用；删除后，正在使用它们的位置将失去资产来源",
+        unverifiedComputed: "以下位置的资产名称在运行时拼出：",
+        unverifiedUnreadable: "以下位置无法读取：",
         confirmTitle: {
             one: "删除 {count} 项",
             other: "删除 {count} 项",
@@ -30,7 +32,6 @@ export const assets = {
         confirmMessage: "所选分组内的全部内容也会一并删除",
         action: "删除",
         failedTitle: "删除失败",
-        failed: "无法删除：{error}",
     },
     rename: {
         failed: "无法重命名 {name}",
@@ -72,7 +73,22 @@ export const assets = {
     unreadable: {
         category: "该类别无法读取，文件保持原样",
         notSaved: "当前不保存该类别的改动",
-        notSavedDetail: "无法读取 {file}，没有内容被覆盖",
+        notSavedDetail: "“{category}”类别无法读取，没有内容被覆盖",
+    },
+    reference: {
+        missing: "该资产已不在本项目中",
+        unreadable: "该资产无法读取",
+        unreadableNamed: "资产“{asset}”无法读取",
+        notAsset: "该值不是资产",
+        // 编辑器打开资产却读不到时，先说上面某一句；项目里仍有该资产时，再说读取的结果（只列作者能处理的）。
+        // 永不显示读取自带的消息，那里面是资产的存储路径。
+        withReason: "{headline}；{reason}",
+        reason: {
+            fileMissing: "其文件已不在项目文件夹中",
+            accessDenied: "Studio 没有读取其文件的权限",
+            undecodable: "其文件已损坏，或不是 Studio 能打开的格式",
+            newerVersion: "其文件由更新版本的 NarraLeaf Studio 保存",
+        },
     },
     overview: {
         loading: "正在读取资产库…",
@@ -361,6 +377,12 @@ export const assets = {
         partial: "已导出 {exported} 个文件，{failed} 个未能导出",
         partialTitle: "部分文件未能导出",
         failed: "导出失败：{error}",
+        reason: {
+            permissionDenied: "访问被拒绝",
+            sourceMissing: "项目文件夹中缺少该文件",
+            diskFull: "磁盘已满",
+            copyFailed: "无法复制该文件",
+        },
     },
     selector: {
         selectType: "选择 {type}",

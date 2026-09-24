@@ -74,12 +74,18 @@ files:
   # would empty the keep-set silently, and only the in-app game build would
   # notice, long after packaging succeeded.
   - '!node_modules/app-builder-bin/win/!(${arch}){,/**/*}'
-  # koffi (the FFI @lore-vcs/sdk loads through) ships 18 prebuilds and loads one
-  # by `${process.platform}_${arch}`. The keep-list is the set of hosts Studio is
-  # actually built for (see .github/workflows/release.yml) plus musl for glibc-less
-  # Linux; an explicit list rather than a macro because koffi's triplets agree with
-  # neither ${os} (win32, not win) nor ${arch} (armhf, riscv64d).
-  - '!node_modules/koffi/build/koffi/!(win32_x64|darwin_arm64|linux_x64|musl_x64){,/**/*}'
+  # koffi ships 18 prebuilds and loads one by `${process.platform}_${arch}`. Studio
+  # itself loads it for @lore-vcs/sdk, but the game build also copies prebuilds out of
+  # this directory into every desktop game (the cursor-moving blueprint nodes), so
+  # the keep-list is every desktop target a game can be built for - Windows, macOS
+  # and Linux on x64 and arm64, a universal Mac game being both darwin ones - plus
+  # musl for a glibc-less Linux host. A shorter list packages fine and fails later:
+  # keep only the hosts Studio is released for, and an Apple Silicon Studio has no
+  # prebuild to give an Intel or universal Mac game.
+  # koffiPrebuild.test.ts holds this line to the build targets. An explicit list
+  # rather than a macro because koffi's triplets agree with neither ${os} (win32,
+  # not win) nor ${arch} (armhf, riscv64d).
+  - '!node_modules/koffi/build/koffi/!(win32_x64|win32_arm64|darwin_x64|darwin_arm64|linux_x64|linux_arm64|musl_x64){,/**/*}'
   - from: src/renderer/public
     to: public
     filter:
@@ -200,6 +206,13 @@ extraResources:
       # so copying the whole tree would both put a Mach-O binary inside the Windows
       # installer and multiply that size by the number of platforms staged.
       - '!ffmpeg{,/**/*}'
+  # The copyright and licence texts of every npm package inlined into Studio's bundles, which
+  # project/build/third-party-notices.js writes while they are built. In the resources folder
+  # rather than inside the asar because it is a file the About page opens in the system's text
+  # editor (AppOpenThirdPartyNoticesHandler), and nothing outside Electron can read an asar.
+  # pack-electron.js refuses to package when it is missing or incomplete.
+  - from: ./dist/THIRD-PARTY-NOTICES.txt
+    to: THIRD-PARTY-NOTICES.txt
 mac:
   target: dmg
   icon: resources/app-icon.icns
@@ -253,6 +266,17 @@ mac:
       to: resources/codesign/darwin
     - from: ./resources/ffmpeg/darwin
       to: resources/ffmpeg/darwin
+    # Electron's own licence and Chromium's credits. On Windows and Linux electron-builder leaves
+    # both beside the executable (LICENSE renamed to LICENSE.electron.txt); on macOS it deletes
+    # them once the bundle is built (app-builder-lib electronMac.js), so nothing of either licence
+    # would reach a Mac. They go where THIRD-PARTY-NOTICES.txt goes above - Contents/Resources,
+    # process.resourcesPath. node_modules/electron is where electron-builder reads electronVersion
+    # from, so this is the release it downloads, and neither text differs by platform or arch.
+    # Games get the same two files from src/main/buildWorker/electronRuntimeFiles.ts.
+    - from: ./node_modules/electron/dist/LICENSE
+      to: LICENSE.electron.txt
+    - from: ./node_modules/electron/dist/LICENSES.chromium.html
+      to: LICENSES.chromium.html
 # The DMG window *is* the background image: dmg-builder measures the file with
 # `sips` and hands that size to dmgbuild as the window size, which also means
 # `dmg.window` is silently ignored whenever `background` is set (dmg-builder's

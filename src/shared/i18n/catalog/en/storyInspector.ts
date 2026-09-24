@@ -583,7 +583,6 @@ export const storyInspector = {
         change: "Change",
         select: "Select",
         clearImage: "Clear image",
-        assetError: "Image asset could not be resolved: {error}",
         selectImageTitle: "Select Background Image",
     },
 

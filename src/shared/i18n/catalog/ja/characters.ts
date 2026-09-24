@@ -206,6 +206,7 @@ export const characters = {
             import: "読み込む",
             importing: "読み込んでいる…",
             failed: "読み込みに失敗",
+            readFailed: "この PSD を読み込めなかった",
             reason: {
                 hidden: "Photoshop で非表示",
                 blendSkipped: "スキップ",

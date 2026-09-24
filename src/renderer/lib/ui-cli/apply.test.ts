@@ -129,6 +129,71 @@ describe("applying a .ui file keeps the document's key order", () => {
     });
 });
 
+/**
+ * A page of its own, so the list on it is the only thing that names its item shape. The skeleton's
+ * own shapes are named by several lists each, which would hide whether the last one leaving is what
+ * drops a shape.
+ */
+function shelfPage(withList: boolean): string {
+    return [
+        "struct demo.shelfItem",
+        "    field id: string",
+        "    field title: string",
+        "",
+        "surface Shelf id=demo-shelf kind=appSurface size=1920x1080",
+        "    Root: nl.root id=demo-shelf-root @0,0 1920x1080",
+        ...(withList
+            ? [
+                "        Shelf: nl.list id=demo-shelf-list @0,0 800x600",
+                "            itemStructId = demo.shelfItem",
+                "            itemKeyFieldId = id",
+            ]
+            : ["        Blank: nl.container id=demo-shelf-blank @0,0 800x600"]),
+    ].join("\n");
+}
+
+/** Apply `text` to `document` in place, as `ui apply` does, and say what it reported. */
+function applyText(document: UIDocument, text: string) {
+    const compiled = compileUiFile(parseUiFile(text), { existing: document });
+    expect(compiled.diagnostics.filter(item => item.severity === "error").map(item => item.message)).toEqual([]);
+    return applyCompiled(document, compiled);
+}
+
+describe("applying a .ui file to the item shapes", () => {
+    it("drops a shape when the apply takes away the last list that named it", () => {
+        const document = loadSkeleton();
+        applyText(document, shelfPage(true));
+        expect(document.structs?.["demo.shelfItem"]).toBeDefined();
+
+        // The same page without its list, and without the struct block: the shape goes with the list.
+        const withoutList = shelfPage(false).split("\n").slice(4).join("\n");
+        const result = applyText(document, withoutList);
+
+        expect(result.structsRemoved).toEqual(["demo.shelfItem"]);
+        expect(document.structs?.["demo.shelfItem"]).toBeUndefined();
+        // Every other shape is still named by the lists it was named by, and stays.
+        expect(Object.keys(document.structs ?? {})).toEqual(Object.keys(loadSkeleton().structs ?? {}));
+    });
+
+    it("keeps a shape the file itself declares, whether or not anything names it yet", () => {
+        const document = loadSkeleton();
+        applyText(document, shelfPage(true));
+        // Declared in the file and named by nothing after it: an author writing the shape before
+        // the list that will use it.
+        const result = applyText(document, shelfPage(false));
+        expect(result.structsRemoved).toEqual([]);
+        expect(document.structs?.["demo.shelfItem"]).toBeDefined();
+    });
+
+    it("leaves alone a shape nothing named before the apply either", () => {
+        const document = loadSkeleton();
+        document.structs = { ...document.structs, "demo.unnamed": { id: "demo.unnamed", fields: [] } };
+        const result = applyText(document, shelfPage(false).split("\n").slice(4).join("\n"));
+        expect(result.structsRemoved).toEqual([]);
+        expect(document.structs["demo.unnamed"]).toBeDefined();
+    });
+});
+
 describe("mergePreservingOrder", () => {
     it("keeps the order it was given, appends what is new, drops what is gone", () => {
         const merged = mergePreservingOrder(

@@ -18,11 +18,12 @@
  */
 
 import { createHash } from "crypto";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { CacheNamespace } from "@shared/types/constants";
 import { PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { inspectLive2DSdkArchive, readArchiveEntry, type Live2DSdkArchive } from "./live2dSdkArchive";
+import { loadEsbuild as loadStudioEsbuild } from "../../../../utils/esbuildLoader";
 
 export type PuppetRuntimeBuildLog = (level: "info" | "warning" | "error", message: string) => void;
 
@@ -210,9 +211,9 @@ const stubNodeBuiltins = {
  */
 export async function buildLive2DRuntime(
     request: Live2DRuntimeBuildRequest,
-    // Injected so a test can build without resolving the real bundler, and so the packaged app's
-    // require of it stays in one place.
-    loadEsbuild: () => Promise<EsbuildModule> = () => import("esbuild"),
+    // Injected so a test can build without resolving the real bundler. The default is the one
+    // loader that can start esbuild's binary in a packaged Studio; see `utils/esbuildLoader.ts`.
+    loadEsbuild: () => Promise<EsbuildModule> = loadStudioEsbuild,
 ): Promise<Live2DRuntimeBuildResult> {
     const log = request.log ?? (() => undefined);
 

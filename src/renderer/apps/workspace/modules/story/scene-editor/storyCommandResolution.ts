@@ -137,9 +137,21 @@ function resolveTarget(
     value: string,
     span: StoryCommandSpan,
     context: StoryCommandContext,
+    filled: ReadonlySet<string>,
 ): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } {
     const needle = value.trim().toLowerCase();
     const matches: StoryCommandTargetValue[] = [];
+
+    // A line that names the element it is creating is a line that creates one, so the library is read
+    // before the stage - see the grammar's `namedBy`. It is the only way a row of this shape reads
+    // back as itself: the object it made answers to a name of its own from the moment it exists.
+    const namesNewObject = Boolean(type.namedBy && filled.has(type.namedBy));
+    if (namesNewObject) {
+        const asset = resolveTargetAsset(type, value, span, context);
+        if (asset) {
+            return asset;
+        }
+    }
 
     // The reserved words go first, and unconditionally. They name stage singletons the engine
     // addresses without a creator block, so nothing in `stageObjects` can ever spell one and there is
@@ -197,6 +209,16 @@ function resolveTarget(
         return { value: { kind: "target", target: matches[0] } };
     }
 
+    // Nothing on stage answers, so a verb that can make its own subject looks in the library. After
+    // the stage and before the refusals: a picture already on stage is what `/show` has always meant,
+    // and only a name the scene cannot place is a name the project might hold a file for.
+    if (!namesNewObject) {
+        const asset = resolveTargetAsset(type, value, span, context);
+        if (asset) {
+            return asset;
+        }
+    }
+
     // A kind the slot resolves only so it can refuse it. Checked AFTER the accepted kinds, so a name
     // two worlds share still lands on the world this verb can act on rather than on the complaint.
     for (const kind of type.refuses ?? []) {
@@ -215,6 +237,37 @@ function resolveTarget(
         return { value: { kind: "target", target: { type: "stageObject", objectKind: freeKind, name: value.trim(), known: false } } };
     }
     return { issue: { code: "unknownTarget", span, value } };
+}
+
+/**
+ * The file a target slot's name answers to, or null when no library it reads holds one.
+ *
+ * Sets are legal here for the same reason they are on `/image`: the id lands in the payload's
+ * `assetId`, which is one of the fields assembly resolves a set for, so naming one reaches the player
+ * as a file rather than as an id nothing answers.
+ *
+ * One name in two libraries is ambiguous rather than first-match, exactly as one name in two worlds
+ * on stage is: the line does not say which, and picking one would be a guess the author cannot see.
+ */
+function resolveTargetAsset(
+    type: Extract<StoryCommandParamType, { kind: "target" }>,
+    value: string,
+    span: StoryCommandSpan,
+    context: StoryCommandContext,
+): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } | null {
+    const needle = value.trim().toLowerCase();
+    const found: StoryCommandTargetValue[] = [];
+    for (const assetType of type.assets ?? []) {
+        for (const entry of assetChoices(context, assetType, true)) {
+            if (entry.name.trim().toLowerCase() === needle) {
+                found.push({ type: "asset", assetType, assetId: entry.id, name: entry.name });
+            }
+        }
+    }
+    if (found.length > 1) {
+        return { issue: { code: "ambiguousName", span, value } };
+    }
+    return found.length === 1 ? { value: { kind: "target", target: found[0] } } : null;
 }
 
 /** Resolve a `/swap` content by what its target turned out to be: an asset for image, words for text. */
@@ -252,6 +305,7 @@ function resolveAgainstType(
     span: StoryCommandSpan,
     context: StoryCommandContext,
     resolved: Record<string, StoryCommandValue>,
+    filled: ReadonlySet<string>,
 ): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } | null {
     switch (type.kind) {
         case "asset": {
@@ -379,7 +433,7 @@ function resolveAgainstType(
             return { value: { kind: "variable", ref: matches[0].ref, valueType: matches[0].valueType, name: matches[0].name, defaultValue: matches[0].defaultValue } };
         }
         case "target":
-            return resolveTarget(type, value, span, context);
+            return resolveTarget(type, value, span, context, filled);
         case "content":
             return resolveContent(type, value, span, context, resolved);
         case "enum": {
@@ -524,6 +578,16 @@ export function resolveCommandLine(line: StoryCommandLine, context: StoryCommand
         return { args: resolved, issues };
     }
 
+    // Which slots the line fills, read once before anything resolves. It is a property of the LINE
+    // rather than of the resolution, which is what lets a slot ask about a key that is declared after
+    // it: the grammar's order decides what sees what *resolved*, and a slot that only has to know
+    // whether another was written must not be made to wait for it.
+    const filled = new Set(
+        line.args
+            .filter(arg => arg.param && (arg.value.trim() || arg.quoted))
+            .map(arg => arg.param!.name),
+    );
+
     for (const param of line.def.params) {
         const arg = line.args.find(candidate => candidate.param?.name === param.name);
         // An empty value is a slot the author has not filled yet (`d=`, mid-keystroke) and resolves to
@@ -532,7 +596,7 @@ export function resolveCommandLine(line: StoryCommandLine, context: StoryCommand
         if (!arg || (!arg.value && !arg.quoted)) {
             continue;
         }
-        const outcome = resolveParam(param, arg.value, arg.valueSpan, context, resolved);
+        const outcome = resolveParam(param, arg.value, arg.valueSpan, context, resolved, filled);
         if ("issue" in outcome) {
             issues.push(outcome.issue);
             continue;
@@ -559,11 +623,13 @@ function resolveParam(
     span: StoryCommandSpan,
     context: StoryCommandContext,
     resolved: Record<string, StoryCommandValue>,
+    /** Which of this line's slots carry a value - read by a target slot that can create its subject. */
+    filled: ReadonlySet<string>,
 ): { value: StoryCommandValue } | { issue: StoryCommandResolutionIssue } {
     const types = paramTypes(param);
     const deferred: StoryCommandResolutionIssue[] = [];
     for (const type of types) {
-        const outcome = resolveAgainstType(type, value, span, context, resolved);
+        const outcome = resolveAgainstType(type, value, span, context, resolved, filled);
         if (outcome && "value" in outcome) {
             return outcome;
         }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ProjectPackageImportErrorCode } from "@shared/types/projectPackage";
 import { ImportService } from "./importService";
 
 const mocks = vi.hoisted(() => ({
@@ -27,6 +28,8 @@ function listing(entries: { name: string; ext: string | null; type: string }[]) 
 }
 
 const STUDIO_PROJECT = listing([{ name: "MyGame", ext: ".nlproj", type: "file" }]);
+/** What listing a folder that is no longer there answers. */
+const NO_FOLDER = { success: true, data: { ok: false, error: { code: "NOT_FOUND", message: "gone" } } };
 const PRE_NLPROJ_PROJECT = listing([{ name: "project", ext: ".json", type: "file" }]);
 const NOT_A_PROJECT = listing([{ name: "notes", ext: ".txt", type: "file" }]);
 
@@ -107,22 +110,72 @@ describe("ImportService.importProject", () => {
         expect(await runImport()).toEqual({ status: "notAProject", root: TARGET });
     });
 
-    it("passes the main process's own refusal through", async () => {
+    /**
+     * Main's own sentence is English and names the package, the folder and the file inside the
+     * package that failed. The page says why from the code instead, in the interface's language.
+     */
+    it.each([
+        [ProjectPackageImportErrorCode.NotAPackage, "wizard.import.error.notAPackage"],
+        [ProjectPackageImportErrorCode.NewerVersion, "wizard.import.error.newerVersion"],
+        [ProjectPackageImportErrorCode.Damaged, "wizard.import.error.damaged"],
+        [ProjectPackageImportErrorCode.PackageMissing, "wizard.import.error.packageMissing"],
+        [ProjectPackageImportErrorCode.PackageUnreadable, "wizard.import.error.packageUnreadable"],
+        [ProjectPackageImportErrorCode.FolderNotEmpty, "wizard.validation.notEmpty"],
+        [ProjectPackageImportErrorCode.FolderProtected, "wizard.import.error.folderProtected"],
+        [ProjectPackageImportErrorCode.FolderReadOnly, "wizard.validation.cannotWrite"],
+        [ProjectPackageImportErrorCode.DiskFull, "wizard.import.error.diskFull"],
+    ])("words the refusal %s from its code, not from main's message", async (code, key) => {
         mocks.workspace.importProjectPackage.mockResolvedValue({
             success: false,
-            error: "Selected import folder is inside protected Studio storage.",
+            error: "Could not copy \"assets/content/53/22/b0e3\": EACCES: permission denied, open 'D:/game/x'",
+            code,
+        });
+        // Main took back what it wrote, and the folder it had created went with it.
+        mocks.fs.list.mockResolvedValue(NO_FOLDER);
+
+        expect(await runImport()).toEqual({ status: "failed", error: key, leftBehind: false });
+    });
+
+    it("gives the general sentence for a refusal it has no code for", async () => {
+        mocks.workspace.importProjectPackage.mockResolvedValue({
+            success: false,
+            error: "File system access is not allowed for package: D:/Downloads/My-Game.nlspkg",
+        });
+        mocks.fs.list.mockResolvedValue(listing([]));
+
+        expect(await runImport()).toEqual({ status: "failed", error: "wizard.import.error.generic", leftBehind: false });
+    });
+
+    /**
+     * A failed unpack is taken back by main; when some of it would not go, the next attempt would be
+     * refused for the folder not being empty, and without this the page could not say why it was not.
+     */
+    it("says the folder still holds part of the failed attempt when it does", async () => {
+        mocks.workspace.importProjectPackage.mockResolvedValue({
+            success: false,
+            error: "Could not copy \"assets/a.png\": EEXIST (1 of the paths this import wrote could not be removed: EBUSY)",
+            code: ProjectPackageImportErrorCode.Damaged,
+        });
+        mocks.fs.list.mockResolvedValue(listing([{ name: "assets", ext: null, type: "directory" }]));
+
+        expect(await runImport()).toEqual({ status: "failed", error: "wizard.import.error.damaged", leftBehind: true });
+        expect(mocks.fs.list).toHaveBeenCalledWith(TARGET);
+    });
+
+    it("does not look for leftovers in a folder main refused for being occupied", async () => {
+        mocks.workspace.importProjectPackage.mockResolvedValue({
+            success: false,
+            error: "Import folder must be empty.",
+            code: ProjectPackageImportErrorCode.FolderNotEmpty,
         });
 
-        expect(await runImport()).toEqual({
-            status: "failed",
-            error: "Selected import folder is inside protected Studio storage.",
-        });
+        expect(await runImport()).toEqual({ status: "failed", error: "wizard.validation.notEmpty", leftBehind: false });
         expect(mocks.fs.list).not.toHaveBeenCalled();
     });
 
     it("survives a thrown error", async () => {
         mocks.workspace.importProjectPackage.mockRejectedValue(new Error("unreadable archive"));
 
-        expect(await runImport()).toEqual({ status: "failed", error: "unreadable archive" });
+        expect(await runImport()).toEqual({ status: "failed", error: "wizard.import.error.generic", leftBehind: false });
     });
 });

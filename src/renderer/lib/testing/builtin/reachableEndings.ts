@@ -1,4 +1,3 @@
-import { scanProjectStoryEntryPoints } from "@shared/story/storyReachability";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type {
     StoryBlock,
@@ -19,6 +18,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import type { TestDefinition, TestVerdict } from "../types";
+import { readEntryPointProject, scanEntryPointsAndReport } from "./entryPoints";
 import type { BuiltInTestHost } from "./index";
 
 /**
@@ -114,12 +114,16 @@ export function createReachableEndingsTest(host: BuiltInTestHost): TestDefinitio
                 console.warn("[reachable-endings] blueprint document unavailable", error);
             }
 
-            const { byStory, undecidable } = scanProjectStoryEntryPoints(stories, blueprintDocument);
-            if (undecidable.length > 0) {
+            // Where play begins, read the way the project check reads it - a `Start Game` fed from a
+            // recollection list begins at every scene the list's rows can name.
+            const project = await readEntryPointProject(services, stories, blueprintDocument);
+            const { scan: { byStory }, blocked } = scanEntryPointsAndReport(ctx, project);
+            if (blocked) {
                 // The same guard `story/unreachable-scene` takes, and mandatory for the same reason:
                 // a check that reports every path in the project because it could not find the entry
-                // is one an author switches off in the first five minutes.
-                return skip("undecidableEntry");
+                // is one an author switches off in the first five minutes. The node that stopped it
+                // has already been named, one finding each.
+                return skip("undecidableEntry", blocked);
             }
             if (byStory.size === 0) {
                 return skip("noEntryPoint");
@@ -208,8 +212,14 @@ export function createReachableEndingsTest(host: BuiltInTestHost): TestDefinitio
 }
 
 /** Declining is a verdict, not an error: see the header for what each reason means. */
-function skip(reason: "storiesUnread" | "undecidableEntry" | "noEntryPoint" | "noEndings"): TestVerdict {
-    return { status: "skipped", summary: { key: `test.builtin.reachableEndings.skipped.${reason}` } };
+function skip(
+    reason: "storiesUnread" | "undecidableEntry" | "noEntryPoint" | "noEndings",
+    params?: Record<string, string>,
+): TestVerdict {
+    return {
+        status: "skipped",
+        summary: { key: `test.builtin.reachableEndings.skipped.${reason}`, ...(params ? { params } : {}) },
+    };
 }
 
 /**

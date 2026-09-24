@@ -38,8 +38,8 @@ import {
 | --- | --- |
 | `definePlugin` | 声明插件入口。 |
 | `ui` | Studio 公共 UI kit。 |
-| `AssetType` | 项目资源类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
-| `AssetSource` | 项目资源来源枚举：`Local`、`Remote`。 |
+| `AssetType` | 项目资产类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
+| `AssetSource` | 项目资产来源枚举：`Local`、`Remote`。 |
 | `PanelPosition` | Panel 位置枚举：`Left`、`Right`、`Bottom`。 |
 
 ## PluginApp
@@ -89,14 +89,14 @@ await app.services.storage.writeJson(`${app.plugin.id}.items`, { version: 1, ite
 
 ## app.services.assets
 
-项目资源的插件 facade。
+项目资产的插件 facade。
 
 ```ts
 app.services.assets.getMap();
 app.services.assets.list(AssetType.Image);
 app.services.assets.get(AssetType.Image, assetId);
-app.services.assets.fetch(asset);          // 解码后的资源数据；失败 throw
-app.services.assets.createObjectUrl(asset); // 远程资源返回远程 URL；本地资源创建 blob URL
+app.services.assets.fetch(asset);          // 解码后的资产数据；失败 throw
+app.services.assets.createObjectUrl(asset); // 远程资产返回远程 URL；本地资产创建 blob URL
 app.services.assets.revokeObjectUrl(url);   // 不再展示时释放 blob URL
 ```
 
@@ -247,13 +247,13 @@ app.services.widgets.list();
 app.services.widgets.has(type);
 ```
 
-`PluginWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu/floating toolbar 工厂。
+`PluginWidgetModule` 定义 UI 编辑器控件：`type`（插件 ID 前缀，且必须在 manifest `contributes.widgets` 中声明）、`displayName`、`icon`、`createDefaultElement`、`render`、可选的 inspector/docker bar/context menu/floating toolbar 工厂，以及三条声明：`acceptsChildren`（作者能不能往里放别的元素，像 Container 那样）、`partSlots`（只装自己造的部件，像 Slider 那样；部件用 `extra.partSlot` 说自己填哪个槽位）和 `logicApi`（它发哪些事件、每个事件从哪些头节点开始）。写法与限制见 [create-plugin.md](./create-plugin.md)。
 
 `render` 收的就是 runtime entry 那份 `RuntimeWidgetRendererProps`，两侧完全一样，**都没有 `hostAdapter`**——所以"一个 render 两个 entry 复用"是字面成立的，直接把渲染函数放进共享模块即可。游戏渲染面仍由 runtime entry 注册：`app.game.widgets.register({ type, render })`（见 [runtime-api.md](./runtime-api.md)）。
 
 其余几个工厂拿到的 `documentService` / `stateService` 是 `PluginWidgetDocumentApi` / `PluginWidgetEditorStateApi`——**不是 Studio 的服务实例**。它们能做的是控件本分的事：读整份界面文档，写元素的 props / layout / animation / extra / 列表条目接线，以及把一串写入并成一次撤销（`runSurfaceHistoryTransaction`）。表以外的成员会**抛错**而不是返回 undefined，错误里写着该走哪个 API。
 
-原因是 Studio 自己的 `UIWidgetModule` 交出来的是活的 `UIDocumentService`：`Service.getContext()` 是 public，`getContext().services.get(...)` 就是工作区服务注册表，往下是按窗口默认授权、对整个工程递归读写的文件系统——插件权限提示里说过插件拿不到的那一套。插件要文件系统走 `app.privileged.fs.*`，那里按插件自己的授权检查。
+原因是 Studio 自己的 `UIWidgetModule` 交出来的是活的 `UIDocumentService`：`Service.getContext()` 是 public，`getContext().services.get(...)` 就是工作区服务注册表，往下是按窗口默认授权、对整个项目递归读写的文件系统——插件权限提示里说过插件拿不到的那一套。插件要文件系统走 `app.privileged.fs.*`，那里按插件自己的授权检查。
 
 `get` / `list` 回答的是 `PluginWidgetTypeInfo`（`type` / `displayName` / `extends` / `ownerPluginId`），不是模块对象本身。
 
@@ -298,7 +298,15 @@ app.services.blueprintNodes.register({
 } satisfies PluginBlueprintNodeDef);
 ```
 
-`PluginBlueprintNodeDef` 是宿主 `BlueprintNodeDef` 中「节点自述」的那一半（`BlueprintNodeDeclaration`：type / 分类 / 引脚 / inspector / role），加上窄签名的 `execute`。`scope` 与 `requiresHostApi` 不在其中：这两个字段回答的是「这个节点可以出现在哪些 owner 里」，属于宿主的判断，内置目录靠评审给出；而且 `scope` 直接列举 `BlueprintOwnerRef` 的 owner kind，公开它等于让插件钉死一个内部联合类型。插件编译后的代码若仍带着这两个字段，注册时会被丢弃。`BlueprintNodePinDef` / inspector 参数的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`；从 `narraleaf-studio/plugin` 导出的是 `BlueprintNodePinDef` 与 `BlueprintInspectorParamSelectOption`，inspector 参数本身用 `PluginBlueprintNodeDef["inspectorParams"]` 取。
+`PluginBlueprintNodeDef` 是宿主 `BlueprintNodeDef` 中「节点自述」的那一半（`BlueprintNodeDeclaration`：type / 分类 / 引脚 / inspector / role），加上窄签名的 `execute`。`scope` 与 `requiresHostApi` 不在其中：这两个字段回答的是「这个节点可以出现在哪些 owner 里」，属于宿主的判断，内置目录靠评审给出；而且 `scope` 直接列举 `BlueprintOwnerRef` 的 owner kind，公开它等于让插件钉死一个内部联合类型。插件编译后的代码若仍带着这两个字段，注册时会被丢弃。`BlueprintNodePinDef` / inspector 参数的完整字段见 `src/renderer/lib/ui-editor/blueprint-nodes/types.ts`；从 `narraleaf-studio/plugin` 导出的是 `BlueprintNodePinDef`、`BlueprintAssetNameFlow` 与 `BlueprintInspectorParamSelectOption`，inspector 参数本身用 `PluginBlueprintNodeDef["inspectorParams"]` 取。
+
+输出引脚能带字符串（`string` / `json` / `any` / `array` 等）的节点，应当用 `assetNames` 声明这些输出从哪里来。游戏包只带项目中写明名称的资产，Studio 据此判断一个资产名称会不会在运行时才拼出来：
+
+- `"forward"`：输出只是某个输入、输入的一部分或输入的集合（取数组元素、取 JSON 字段一类）。
+- `"written"`：输出读自项目中写明的内容，例如插件自己通过 `contributes.runtimeData` 发布的数据。Gallery 的读取节点就是这样声明的。
+- `"assembled"`：输出可能是运行时新拼出的字符串（拼接、格式化、玩家输入、网络返回）。
+
+不声明等同于 `"assembled"`。这样的节点输出流到资产引脚或资产属性的绑定上时，画布、项目检查和构建都会报错。某个输出与节点整体不同时，可以在该输出引脚上用 `assetName` 单独声明。
 
 ## app.services.story
 
@@ -428,7 +436,7 @@ ui.Panel.EmptyState(props: { icon?: React.ReactNode; title: React.ReactNode; des
 
 ### AssetSelector
 
-`ui.AssetSelector` 复用 Studio 的项目资源树、搜索、筛选、导入和图片悬停预览。懒加载组件：第一次渲染可能短暂返回 `null`，保持 `visible` 为 `true` 即可。
+`ui.AssetSelector` 复用 Studio 的项目资产树、搜索、筛选、导入和图片悬停预览。懒加载组件：第一次渲染可能短暂返回 `null`，保持 `visible` 为 `true` 即可。
 
 ```ts
 type AssetSelectorProps = {

@@ -2,6 +2,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame, type PreloadStrategy } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { RUNTIME_PREFERENCE_DEFAULTS } from "@shared/types/preference";
+import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type {
     BlueprintGameHistoryEntry,
     BlueprintGameNotification,
@@ -19,6 +20,9 @@ import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import type { GameHostCapabilities } from "./gameHostApiOptions";
 import { readNlrLastDialogSpeaker } from "./nlrDialogReaders";
 import { findStageSurfaceForSlot } from "./stageSlots";
+import { needsRunningGame, refusal } from "./runtimeRefusals";
+import { translate } from "@/lib/i18n";
+import type { TranslationKey } from "@shared/i18n";
 
 /**
  * Project Game UI slot components resolved from the uidoc's stage surfaces. A missing entry means
@@ -187,7 +191,7 @@ export const STUDIO_SKIP_KEY_BINDING = "studio.skipAction";
 
 export type LiveGameUiCallbackDeps = {
     /** Returns the active LiveGame or throws a `${operation}: game runtime is not available` error. */
-    requireLiveGame: (operation: string) => LiveGame;
+    requireLiveGame: (asker: TranslationKey | null) => LiveGame;
     /** Latest LiveGame or null; read lazily so callbacks stay stable across session churn. */
     getLiveGame: () => LiveGame | null;
     /** The choice menus on the stage (see `ChoiceMenus`); more than one can be. */
@@ -196,6 +200,15 @@ export type LiveGameUiCallbackDeps = {
     currentDialogNametagRef: MutableRefObject<string | null>;
     /** The engine dialog boxes the custom dialog surfaces have mounted (see `DialogClickTargets`). */
     dialogClickTargets: DialogClickTargets;
+    /**
+     * The picture that stands for a speaker, by the source name the engine records on a backlog line.
+     *
+     * Read lazily, like `getLiveGame`: the character table arrives with the bundle and these
+     * callbacks are built once per host, so a resolver captured by value would answer from whichever
+     * table happened to be mounted when the host was built. Absent on a host with no character table
+     * - the story preview, a bundle that carries none - and every backlog row then has no picture.
+     */
+    resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null;
 };
 
 /**
@@ -277,8 +290,17 @@ function liveGameHistoryControls(liveGame: LiveGame): {
  * Shared by the two halves of the timeline - `getHistory()` behind the play head and `getFuture()`
  * ahead of it - because an entry is the same entry whichever side of the head it sits on, and a
  * backlog screen binds both lists to one item template.
+ *
+ * The avatar is resolved here rather than read off the entry: the engine records the speaker's name
+ * and nothing about their picture, and the name it records is the source name - the same one
+ * `resolveSpeakerCharacterId` joins the character table on for the live line. A host with no table
+ * to join against passes no resolver, and every row reads as having no picture, which is what a
+ * backlog showed before this field existed.
  */
-function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
+function toBlueprintHistoryEntries(
+    raw: unknown,
+    resolveSpeakerAvatar?: (sourceName: string) => BlueprintImageAsset | null,
+): BlueprintGameHistoryEntry[] {
     if (!Array.isArray(raw)) {
         return [];
     }
@@ -290,11 +312,13 @@ function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
         const element = (record.element ?? {}) as Record<string, unknown>;
         const isMenu = element.type === "menu";
         const text = element.text == null ? "" : String(element.text);
+        const character = !isMenu && element.character != null ? String(element.character) : null;
         return [{
             id: String(record.token ?? ""),
             type: isMenu ? "menu" : "say",
             text,
-            character: !isMenu && element.character != null ? String(element.character) : null,
+            character,
+            avatar: character ? resolveSpeakerAvatar?.(character) ?? null : null,
             voice: !isMenu && element.voice != null ? String(element.voice) : null,
             // The replayable handle. Present from engine 0.24.0 on; an entry from an older
             // save simply has none, and a backlog replay button hides itself for that line.
@@ -342,7 +366,14 @@ export async function fastForwardToNextChoice(
  * no React state — so hosts can build them once per session.
  */
 export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGameUiCallbacks {
-    const { requireLiveGame, getLiveGame, choiceMenus, currentDialogNametagRef, dialogClickTargets } = deps;
+    const {
+        requireLiveGame,
+        getLiveGame,
+        choiceMenus,
+        currentDialogNametagRef,
+        dialogClickTargets,
+        resolveSpeakerAvatar,
+    } = deps;
 
     return {
         onGetNametag: (): string | null => {
@@ -368,18 +399,21 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onGetHistory: (): BlueprintGameHistoryEntry[] => {
-            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.());
+            return toBlueprintHistoryEntries(getLiveGame()?.getHistory?.(), resolveSpeakerAvatar);
         },
 
         onGetFuture: (): BlueprintGameHistoryEntry[] => {
             const liveGame = getLiveGame();
             const getFuture = liveGame ? liveGameHistoryControls(liveGame).getFuture : undefined;
-            return toBlueprintHistoryEntries(getFuture ? getFuture.call(liveGame) : undefined);
+            return toBlueprintHistoryEntries(
+                getFuture ? getFuture.call(liveGame) : undefined,
+                resolveSpeakerAvatar,
+            );
         },
 
         onRestoreHistory: async (id?: string): Promise<void> => {
             const token = String(id ?? "").trim();
-            const liveGame = requireLiveGame("Restore From History");
+            const liveGame = requireLiveGame("blueprint.node.restoreFromHistory");
             // Snapshot-based restore works both during live play and after loading a save (where the
             // closure-based undo stack is empty). Prefer it when a specific backlog line is targeted;
             // "go back one line" falls through to undo.
@@ -395,7 +429,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         onRedoHistory: async (): Promise<void> => {
-            const liveGame = requireLiveGame("Redo Next History Entry");
+            const liveGame = requireLiveGame("blueprint.node.redoNextHistoryEntry");
             liveGameHistoryControls(liveGame).redo?.call(liveGame);
         },
 
@@ -426,7 +460,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         onSelectChoice: async (index: number): Promise<void> => {
             const runtime = choiceMenus.current();
             if (!runtime) {
-                throw new Error("Select Choice: no active choice menu");
+                throw refusal("game.run.noChoiceMenu", "blueprint.node.selectChoice");
             }
             runtime.choose(index);
         },
@@ -442,45 +476,45 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             }
             // No dialog surface of its own: the engine draws the box, and its stage announcer
             // answers a click anywhere on the player.
-            const liveGame = requireLiveGame("Next");
+            const liveGame = requireLiveGame("blueprint.node.next");
             const gameState = liveGame.getGameState();
             if (!gameState) {
-                throw new Error("Next: game state is not available");
+                throw needsRunningGame("blueprint.node.next");
             }
             const clickTarget = gameState.mainContentNode ?? gameState.playerCurrent;
             if (!clickTarget) {
-                throw new Error("Next: virtual click target is not available");
+                throw needsRunningGame("blueprint.node.next");
             }
             clickTarget.click();
         },
 
         onSkip: async (): Promise<void> => {
-            requireLiveGame("Skip").skipDialog();
+            requireLiveGame("blueprint.node.skip").skipDialog();
         },
 
         onShowDialog: async (): Promise<void> => {
-            requireLiveGame("Show Dialog").game.preference.setPreference("showDialog", true);
+            requireLiveGame("blueprint.node.showDialog").game.preference.setPreference("showDialog", true);
         },
 
         onHideDialog: async (): Promise<void> => {
-            requireLiveGame("Hide Dialog").game.preference.setPreference("showDialog", false);
+            requireLiveGame("blueprint.node.hideDialog").game.preference.setPreference("showDialog", false);
         },
 
         onToggleDialogDisplay: async (): Promise<void> => {
-            const preference = requireLiveGame("Toggle Dialog Display").game.preference;
+            const preference = requireLiveGame("blueprint.node.toggleDialogDisplay").game.preference;
             preference.setPreference("showDialog", preference.getPreference("showDialog") !== true);
         },
 
         onSetSentenceSpeed: async (cps: number): Promise<void> => {
             const value = typeof cps === "number" ? cps : Number(cps);
             if (!Number.isFinite(value) || value <= 0) {
-                throw new Error("Set Sentence Speed: CPS must be a positive number");
+                throw new Error(translate("blueprint.runtimeError.valueAbove", { name: "CPS", min: "0" }));
             }
-            requireLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
+            requireLiveGame("blueprint.node.setSentenceSpeed").game.preference.setPreference("cps", value);
         },
 
         onGetGamePreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
-            const preference = requireLiveGame(`Get ${key} Preference`).game.preference as {
+            const preference = requireLiveGame(null).game.preference as {
                 getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
             };
             return preference.getPreference(key) as BlueprintGamePreferenceValue;
@@ -490,7 +524,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
             key: BlueprintGamePreferenceKey,
             value: BlueprintGamePreferenceValue,
         ): Promise<void> => {
-            const preference = requireLiveGame(`Set ${key} Preference`).game.preference as {
+            const preference = requireLiveGame(null).game.preference as {
                 setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
             };
             preference.setPreference(key, value);

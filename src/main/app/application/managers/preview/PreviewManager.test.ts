@@ -28,11 +28,6 @@ vi.mock("child_process", async importOriginal => ({
 vi.mock("chokidar", () => ({
     default: { watch: () => ({ on: () => undefined, close: () => Promise.resolve() }) },
 }));
-// The key itself comes from a native binding and from secrets on disk. What these cases are about is
-// which launches ask for one at all, so a fixed answer says more than a real derivation would.
-vi.mock("../security/packKeyService", () => ({
-    resolvePackEncryptionKey: async () => "pack-key-for-this-machine",
-}));
 
 let tempDir = "";
 
@@ -96,6 +91,7 @@ describe("PreviewManager.launch while the workspace is frozen", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
     const entry = { kind: "surface", surfaceId: "main" } as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-preview-project");
@@ -173,6 +169,7 @@ describe("PreviewManager.stop while the artifact is still compiling", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         pluginManager: {
             listPlugins: async () => [],
             listRuntimePluginPackSources: async () => [],
@@ -320,6 +317,7 @@ describe("PreviewManager.stop while the runtime is still booting", () => {
         // A trusting ledger: these cases are about what the manager does once it is allowed to
         // start, not about who may start it. The refusal has its own tests.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         isPackaged: () => false,
         pluginManager: {
             listPlugins: async () => [],
@@ -390,6 +388,7 @@ describe("PreviewManager.resetPlayerData", () => {
         // find out - absence of a ledger is not permission. These cases reach `launch` only to put
         // a session into the state they are really about, so the answer here is simply yes.
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     } as unknown as ConstructorParameters<typeof PreviewManager>[0]);
 
     /** A compile that never resolves on its own, so its session stays in "compiling" until stopped. */
@@ -486,6 +485,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
     const makeManager = () => new PreviewManager({
         logger: { error: () => undefined },
         projectTrustManager: { isTrusted: () => true },
+        getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
         isPackaged: () => false,
         pluginManager: {
             listPlugins: async () => [],
@@ -552,7 +552,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
     it("runs loose files by default, protected project or not", async () => {
         // The everyday preview. Sealing the store on every launch would be paid on every story edit,
         // for an artifact nobody receives.
-        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
     });
 
     it("seals once this machine asks for it, and changes nothing else about the compile", async () => {
@@ -560,7 +560,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
         globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
         const sealed = await compileInputOfOneLaunch();
 
-        expect(sealed.encryptionKey).toBe("pack-key-for-this-machine");
+        expect(sealed.protectAssets).toBe(true);
         // Everything else is what it was, because "as shipped" has to mean the artifact a protected
         // build produces rather than a third kind of artifact only preview can make. The control
         // channel is exempt: a port and a token are minted per launch.
@@ -571,7 +571,7 @@ describe("PreviewManager and the shipped form of a protected project", () => {
         await writeProjectConfig(false);
         globalState[PREVIEW_AS_SHIPPED_SETTINGS_KEY] = { [normalizeProjectPath(projectDir)]: true };
 
-        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
     });
 
     it("belongs to one project, not to the machine", async () => {
@@ -579,12 +579,12 @@ describe("PreviewManager and the shipped form of a protected project", () => {
             [normalizeProjectPath(path.join(os.tmpdir(), "some-other-project"))]: true,
         };
 
-        expect((await compileInputOfOneLaunch()).encryptionKey).toBeUndefined();
+        expect((await compileInputOfOneLaunch()).protectAssets).toBe(false);
     });
 
     function withoutPerLaunchFields(input: Record<string, unknown>): Record<string, unknown> {
         const rest = { ...input };
-        delete rest.encryptionKey;
+        delete rest.protectAssets;
         delete rest.preview;
         return rest;
     }

@@ -121,7 +121,6 @@ export const properties = {
         /** The one-row picker section holding it, above the built-in stacks and the library. */
         projectSection: "Project",
         choose: "Choose font",
-        loadError: "The font could not be loaded ({error}). The preview uses a fallback until the asset is valid.",
         select: "Select Font",
     },
     imageFill: {
@@ -136,7 +135,6 @@ export const properties = {
         selectHint: "Asset browser opens on click",
         changeImage: "Change image",
         openEditor: "Click to open editor",
-        resolveError: "The image asset could not be resolved ({error}). The preview is inaccurate until it exists.",
         selectFillImage: "Select Fill Image",
         mode: {
             cover: "Cover",
@@ -163,6 +161,7 @@ export const properties = {
         // project. The two look identical from here, and only one of them is safe to act on.
         unknown: "Usage could not be determined",
         unknownDetail: "{location} could not be read",
+        unknownComputed: "{location} picks its asset by a name assembled at run time",
         count: {
             one: "{count} reference",
             other: "{count} references",
@@ -177,6 +176,8 @@ export const properties = {
             voice: "Voice",
             /** Project -> Design: the fonts the whole project defaults to. */
             design: "Design",
+            /** A plugin's own data that ships with the game, such as the Gallery catalogue. */
+            plugin: "Plugin",
         },
     },
     tags: {
@@ -196,6 +197,7 @@ export const properties = {
             loadAsset: "Failed to load asset",
             deleteFailed: "Failed to delete thumbnail",
             saveFailed: "Failed to save thumbnail",
+            saveFailedWithReason: "Failed to save thumbnail. {reason}",
             unknown: "Unknown error",
         },
     },

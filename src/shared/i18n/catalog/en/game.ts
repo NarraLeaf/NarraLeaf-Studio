@@ -38,6 +38,50 @@ export const game = {
         },
     },
     /**
+     * What the running game tells whoever is watching the run - the Dev Mode Issues panel, the log
+     * of a shipped build. Nodes are named by their canvas titles (`{node}` is already translated)
+     * and nothing carries an id; a raw `{error}` is the engine's or the host's own account.
+     */
+    run: {
+        voicePlayFailed: "The voice recording of this line could not be played.",
+        choiceVoicePlayFailed: "The voice recording of this option could not be played.",
+        savedVariableUndeclared: "“{node}”: the running story does not declare this saved variable.",
+        valueNotSerializable: "“{node}”: a saved variable can only hold a value that fits in a save file.",
+        variablesNotSerializable: "Saved and persistent variables can only hold values that fit in a save file.",
+        persistenceUnavailable: "Persistent variables are not available here.",
+        storyMissing: "“{node}”: the story it names is no longer in this project.",
+        sceneMissing: "“{node}”: the scene it names is no longer in this project.",
+        noChoiceMenu: "“{node}”: no menu is showing.",
+        noChoiceAtIndex: "“{node}”: the menu has no option {index}.",
+        saveCaptureFailed: "“{node}”: the screenshot for this save could not be taken. The save was written without one.",
+        relaunchUnavailable: "There is no running story to start again.",
+        // Why a load could not put a story on the stage; they sit inside `saveLoad.detail.*`.
+        storyNotRestartable: "The story that was running could not be started again.",
+        saveStoryMissing: "The story this save belongs to is not in this build.",
+        storyCannotStart: "A story cannot be started here.",
+        noGameToResume: "No game came up to resume into.",
+        // A reload or a relaunch that could not put the author back where they were.
+        resume: {
+            relaunchRowGone: "The row this run started from no longer exists; the scene started from its first row.",
+            sceneGone: "The scene being played no longer exists; the story started from the beginning.",
+            storyGone: "The story being played no longer exists; the game started from the beginning.",
+            rowGoneBefore: "The row being played no longer exists; play resumed from the row before it.",
+            rowGoneSceneStart: "The row being played no longer exists; play resumed from the start of the scene.",
+        },
+        // A language change while a playthrough is running.
+        language: {
+            noRestart: "The language changed during a playthrough and the game cannot restart here. Text on screen, the backlog and any voice already playing stay in the previous language.",
+            restartFresh: "The language changed; the game restarts without keeping the playthrough.",
+            saveFailed: "The language changed, but the playthrough could not be saved, so the game did not restart: {error}",
+            parked: "The playthrough was set aside for the language change; the game restarts.",
+            restoring: "A playthrough set aside for a language change is being restored.",
+            resumeFailed: "The playthrough could not be resumed after the language change: {error}",
+            resumeRefused: "The playthrough set aside for the language change was not accepted; it is still stored.",
+            restored: "The playthrough set aside for the language change was restored.",
+            returnFailed: "The game could not return to its start after the language change: {error}",
+        },
+    },
+    /**
      * What the game puts on screen when it cannot carry on drawing: a failure inside the game's
      * own rendering, or a pack it could not read at all.
      *

@@ -65,6 +65,7 @@ function cell(overrides: Partial<VersionSurface> = {}) {
         remoteNeedsSignIn: false,
         syncState: null,
         serverSession: null,
+        availableSession: null,
         signIn: null,
         checkRemote: vi.fn(),
         setRemote: vi.fn(() => Promise.resolve(true)),

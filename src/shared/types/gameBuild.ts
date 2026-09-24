@@ -248,7 +248,6 @@ export type BuildPreflightCode =
     | "build-dependency-unavailable"
     | "sidecar-target-missing"
     | "sidecar-crossbuild-exec-bit"
-    | "encryption-key-unavailable"
     | "web-unprotected"
     /**
      * Asset protection is on and the build has an Android or iOS target. The mobile packages carry

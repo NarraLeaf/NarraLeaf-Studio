@@ -192,6 +192,20 @@ function targetCandidates(
             candidates.push(...stageObjectCandidates(context, kind, query, labelKind));
         }
     }
+    // The libraries this verb can bring a subject out of, after everything already on stage - the
+    // order resolution reads them in, so the list leads with what a typed name would resolve to.
+    //
+    // A file and an object of the same name both stand, and are not folded into one row: they are two
+    // different things the line could mean, and the menu says which is which by picturing the file and
+    // drawing a glyph for the object (see `storyCandidateMark`). Hiding either would leave the author
+    // looking at a list that does not contain what they are about to type.
+    for (const assetType of type.assets ?? []) {
+        candidates.push(...refCandidates(
+            assetChoices(context, assetType, true),
+            query,
+            entry => ({ kind: "asset", assetType, assetId: entry.id }),
+        ));
+    }
     // Offer the typed name back only where a free name is legal - the same rule resolution applies,
     // so the list never offers a name that then fails. A never-empty list keeps Tab and Enter
     // single-meaning there.

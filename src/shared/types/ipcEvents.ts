@@ -1,7 +1,7 @@
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import type { ProjectTrustRecord } from "./projectTrust";
-import type { ProjectSessionLockOutcome } from "./projectSession";
+import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
@@ -112,6 +112,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
+    VcsProjectServerSession,
     VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -131,6 +132,21 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
+
+/**
+ * The project's asset library as one Dev Mode window sees it: a URL per asset id, and what kind of
+ * asset each one is.
+ *
+ * `types` is what lets a window warm an asset before anything draws it. A picture is warmed by
+ * decoding it and a typeface by registering it, and a URL alone does not say which - the packaged
+ * game reads the answer off its pack's manifest, and a Dev Mode window has no manifest. Values are
+ * the library's own `AssetType` strings. Optional because an id the workspace resolved without
+ * knowing its type is still worth a URL.
+ */
+export type AssetUrlDirectory = {
+    urls: Record<string, string>;
+    types?: Record<string, string>;
+};
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -176,6 +192,7 @@ export enum IPCEventType {
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
     appOpenLogsFolder = "app.openLogsFolder",
+    appOpenThirdPartyNotices = "app.openThirdPartyNotices",
     appProbeDownloadSource = "app.probeDownloadSource",
     appCacheInventory = "app.cacheInventory",
     appCacheClear = "app.cacheClear",
@@ -245,6 +262,7 @@ export enum IPCEventType {
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
     workspaceAcquireSessionLock = "workspace.acquireSessionLock",
+    workspaceSessionTakenOver = "workspace.sessionTakenOver",
     projectTrustQuery = "projectTrust.query",
     projectTrustGrant = "projectTrust.grant",
     projectTrustRevoke = "projectTrust.revoke",
@@ -294,6 +312,7 @@ export enum IPCEventType {
     devModeFullscreenSet = "devMode.fullscreen.set",
     devModeFullscreenChanged = "devMode.fullscreen.changed",
     devModeWindowFocusGet = "devMode.window.focusGet",
+    devModeProcessMemory = "devMode.processMemory.read",
     devModeWindowFocusChanged = "devMode.window.focusChanged",
     devModeScreenshotSave = "devMode.screenshot.save",
     devModeScreenshotOpenFolder = "devMode.screenshot.openFolder",
@@ -426,6 +445,7 @@ export enum IPCEventType {
     vcsSetRemote = "vcs.setRemote",
     vcsGetSyncState = "vcs.getSyncState",
     vcsGetServerSession = "vcs.getServerSession",
+    vcsUseServerSession = "vcs.useServerSession",
     vcsSignIn = "vcs.signIn",
     vcsSignOut = "vcs.signOut",
     vcsProbeServer = "vcs.probeServer",
@@ -514,8 +534,11 @@ export type RequestStatus<T> = {
     code?: string;
 };
 
+/**
+ * Which project's Dev Mode persistence store a request is about: the window's own, by path. The
+ * identifier the store is named by is the main process's to read - see `DevModeSaveProjectRef`.
+ */
 export type BlueprintPersistenceProjectRef = {
-    projectIdentifier?: string;
     projectPath: string;
 };
 
@@ -530,8 +553,12 @@ export type BlueprintPersistenceProjectRef = {
  *
  * `live-session` is the one kind main does **not** refuse operations for; the reasoning and the
  * predicate that says so are in `main/.../utils/workspaceFreeze.ts`.
+ *
+ * `taken-over` is the one kind main starts rather than learns about: its own heartbeat finds the
+ * project claimed by another Studio and tells the window (`workspaceSessionTakenOver`), and the
+ * window reports it back like any other freeze.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session" | "taken-over";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -1070,6 +1097,18 @@ export type IPCEvents = {
         response: void;
     };
     /**
+     * Open Studio's own third-party notice (`THIRD-PARTY-NOTICES.txt`) in the system's text editor.
+     *
+     * Takes no path for the reason the logs folder takes none: main names the one file itself, so
+     * this cannot be used to open anything else.
+     */
+    [IPCEventType.appOpenThirdPartyNotices]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
+    };
+    /**
      * Ask the host whether a mirror answers, for the Network settings panel.
      *
      * In main because the renderer never touches the network - not even to check a URL the user
@@ -1515,12 +1554,34 @@ export type IPCVcsEvents = {
         data: { projectPath: string },
         response: VcsSyncState;
     };
-    /** Local read: who this installation is signed in to this project's server as. */
+    /**
+     * Local read: the sign-in this project uses at its server, and the one it could.
+     *
+     * `session` is null for a project that does not use the sign-in held for its server - never
+     * asked, or answered no - and that sign-in is then `available`, so an interface can offer it.
+     */
     [IPCEventType.vcsGetServerSession]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: { projectPath: string },
-        response: { session: VcsServerSession | null };
+        response: VcsProjectServerSession;
+    };
+    /**
+     * Ask the author, in a window of Studio's own, whether this project uses the sign-in held for
+     * its server; answer with where that leaves it.
+     *
+     * The answer is the author's and the main process records it. Nothing in the payload can
+     * stand in for it - the payload names the project, and only the window's own.
+     *
+     * `remoteOrigin` asks about a server the project is not connected to yet: the one an author has
+     * just chosen for it, before anything on that server can be listed for this project. The answer
+     * is then about that server. Absent means the project's own.
+     */
+    [IPCEventType.vcsUseServerSession]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; remoteOrigin?: string },
+        response: VcsProjectServerSession;
     };
     /**
      * **Goes to the network**, twice: the sign-in endpoint and then the server itself.
@@ -1552,7 +1613,10 @@ export type IPCVcsEvents = {
         data: { certificatePath: string },
         response: { installed: boolean; output: string };
     };
-    /** Local: clears the stored token as well as Studio's record of whose it was. */
+    /**
+     * Local: this project stops using the sign-in held for its server. The sign-in stays on the
+     * machine for the projects that use it; `vcs.forgetServer` takes it off.
+     */
     [IPCEventType.vcsSignOut]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -1610,6 +1674,11 @@ export type IPCVcsEvents = {
      *
      * The outcome answers for the first step alone; the other two refuse by throwing,
      * with the same sentences `vcs.setRemote` and `vcs.push` already refuse with.
+     *
+     * From a project's window `projectPath` must be that window's project, and the project has to
+     * use the sign-in held for `remoteOrigin` - the author is asked if it does not. From a window
+     * with no project it is the launcher publishing a project it has just made, which must have no
+     * server yet and uses that sign-in from then on.
      */
     [IPCEventType.vcsPublishProject]: {
         type: IPCMessageType.request,
@@ -1622,7 +1691,12 @@ export type IPCVcsEvents = {
      *
      * The token carries the address of the endpoint that issued it and of the server it is
      * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
-     * are the corrections for a token that names neither, and are empty otherwise.
+     * are the corrections for a token that names neither, and are empty otherwise; an `authUrl`
+     * the token does not name is refused rather than used.
+     *
+     * Made from a project's window, the sign-in is that project's answer to the sign-in question
+     * and it uses the sign-in from then on. Made from anywhere else, it serves no project until one
+     * is asked.
      *
      * `description` is what the probe a moment ago answered, passed on so that adding a
      * server does not reach the same address twice for the same sentence.
@@ -1691,7 +1765,12 @@ export type IPCVcsEvents = {
         data: { projectPath: string },
         response: VcsSyncResult;
     };
-    /** No project session: there is no repository at `destination` until this finishes. */
+    /**
+     * No project session: there is no repository at `destination` until this finishes.
+     *
+     * From the wizard, which has no project, the copy is made with the sign-in held for that
+     * server and the new project uses it. From a project's window the copy is anonymous.
+     */
     [IPCEventType.vcsClone]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -2358,6 +2437,27 @@ export type IPCWorkspaceEvents = {
         response: ProjectSessionLockOutcome;
     };
     /**
+     * Main telling a workspace that another NarraLeaf Studio has taken its project over.
+     *
+     * Sent when this Studio's own heartbeat finds somebody else's claim where its own used to be -
+     * the other Studio judged this one gone (its heartbeat stood still for the whole staleness
+     * window: a suspended process, a debugger stopped at a breakpoint, a disk that would not take
+     * the write) and opened the project. From that moment the project is the other Studio's to
+     * write, and this window has to stop at once: its in-memory documents are whole files that
+     * would each be written back over whatever the other one saved.
+     *
+     * A message, not a request: the window stops writing on receipt, and main has nothing to wait
+     * for. The project is the window's own; `holder` is the same three facts the lock screen shows.
+     */
+    [IPCEventType.workspaceSessionTakenOver]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: {
+            holder: ProjectSessionHolder;
+        };
+        response: never;
+    };
+    /**
      * Whether this project may cause effects, asked of the only process that can answer.
      *
      * The renderer never decides this. A project's own code runs in a renderer - a puppet backend
@@ -2529,7 +2629,7 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
         data: {};
-        response: RequestStatus<{ urls: Record<string, string> }>;
+        response: RequestStatus<AssetUrlDirectory>;
     };
     [IPCEventType.workspaceResolveImageAssetUrl]: {
         type: IPCMessageType.request,
@@ -2734,6 +2834,22 @@ export type IPCDevModeEvents = {
             isFocused: boolean;
         };
     };
+    /**
+     * What the asking Dev Mode window's own renderer process holds in memory, for a runtime plugin
+     * granted `process.memory`.
+     *
+     * The window's process only, and the reason is the whole design: every other process around it
+     * is Studio's, so the packaged game's "every process of the app" would count Studio. Refused
+     * for any other kind of window, which has no game in it to measure.
+     */
+    [IPCEventType.devModeProcessMemory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            reading: import("./gameProcessMemory").GameProcessMemoryReading;
+        };
+    };
     [IPCEventType.devModeWindowFocusChanged]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
@@ -2829,9 +2945,7 @@ export type IPCDevModeEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {};
-        response: {
-            urls: Record<string, string>;
-        };
+        response: AssetUrlDirectory;
     };
     [IPCEventType.devModeResolveImageAssetUrl]: {
         type: IPCMessageType.request,
@@ -3787,9 +3901,16 @@ export type IPCUITemplateEvents = {
         },
         // `locales` are the language codes the scaffolded project ends up with a translation file
         // for; the creator registers them, because the registry lives in the `.nlproj` it is about
-        // to write and a template never carries one. `contentLocale` is the language the content
-        // itself turned out to be written in, when a variant was used.
-        response: { filesCopied: number; locales: string[]; contentLocale?: string };
+        // to write and a template never carries one. `dependencies` are the plugin ids the template
+        // declares its content is built on, recorded into the same file for the same reason.
+        // `contentLocale` is the language the content itself turned out to be written in, when a
+        // variant was used.
+        response: {
+            filesCopied: number;
+            locales: string[];
+            dependencies: string[];
+            contentLocale?: string;
+        };
     };
 };
 

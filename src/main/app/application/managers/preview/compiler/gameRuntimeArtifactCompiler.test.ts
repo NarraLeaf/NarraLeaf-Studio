@@ -3,13 +3,13 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { createRequire } from "module";
 import { fileURLToPath } from "url";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createProjectToken,
     createAssetOverlay,
-    derivePackKey,
     projectStamp,
     archiveReaderPath,
     OVERLAY_FILE_EXTENSION,
@@ -37,6 +37,7 @@ import type {
 } from "@shared/types/plugins";
 import { validatePluginManifest } from "@shared/utils/pluginManifest";
 import { buildDependencySourcePath } from "../../../../../buildWorker/pluginBuildDependencies";
+import { buildFatMachO } from "../../../../../buildWorker/fatMachO";
 import {
     compileGameRuntimeArtifact,
     type GameRuntimeArtifactCompileInput,
@@ -328,6 +329,80 @@ describe("game runtime artifact compiler", () => {
         )).resolves.toBe("sibling bytes");
     });
 
+    /*
+     * A backend folder is usually a checkout or an unzipped release, and a Mac user's has a Finder
+     * `.DS_Store` in every folder they opened. Whole-directory copying must not mean shipping those.
+     */
+    it("leaves host litter out of a puppet runtime, and says what it left", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const backendDir = path.join(projectPath, "runtimes", "puppet", "demo-backend");
+        for (const [relative, content] of Object.entries({
+            "index.js": "export default {};",
+            "shaders/blit.glsl": "void main() {}",
+            ".DS_Store": "finder",
+            "shaders/Thumbs.db": "explorer",
+            "shaders/._blit.glsl": "appledouble",
+            ".git/HEAD": "ref: refs/heads/main",
+            ".index.js.swp": "vim",
+        })) {
+            await fs.mkdir(path.dirname(path.join(backendDir, relative)), { recursive: true });
+            await fs.writeFile(path.join(backendDir, relative), content, "utf-8");
+        }
+        // What unzipping a backend archived on a Mac leaves beside it: not a backend at all.
+        const macosx = path.join(projectPath, "runtimes", "puppet", "__MACOSX", "demo-backend");
+        await fs.mkdir(macosx, { recursive: true });
+        await fs.writeFile(path.join(macosx, "._index.js"), "appledouble", "utf-8");
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47333));
+
+        expect(result.pack.puppetRuntimes).toEqual([{
+            name: "demo-backend",
+            entryRelativePath: "puppet/demo-backend/index.js",
+            files: ["shaders/blit.glsl"],
+        }]);
+        expect(await relativeFiles(path.join(result.appDir, "puppet", "demo-backend")))
+            .toEqual(["index.js", "shaders/blit.glsl"]);
+        const notice = result.notices.find(line => line.includes('puppet runtime "demo-backend"'));
+        expect(notice).toBeDefined();
+        for (const left of [".DS_Store", ".git", ".index.js.swp", "shaders/Thumbs.db", "shaders/._blit.glsl"]) {
+            expect(notice).toContain(left);
+        }
+    });
+
+    it("leaves host litter out of a model bundle, and says what it left", async () => {
+        const MODEL = "3c1d0a70-0000-4000-8000-00000000000c";
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeModelBundle(projectPath, MODEL, "Hiyori.model3.json", {
+            "Hiyori.model3.json": '{"FileReferences":{"Textures":["textures/body.png"]}}',
+            "textures/body.png": "texture bytes",
+            ".DS_Store": "finder",
+            "textures/desktop.ini": "explorer",
+            "textures/body.png~": "backup",
+        });
+
+        const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47334));
+
+        const keys = Object.keys(result.pack.assets.items).filter(key => key.startsWith(`${MODEL}/`)).sort();
+        expect(keys).toEqual([`${MODEL}/Hiyori.model3.json`, `${MODEL}/textures/body.png`]);
+        expect(await relativeFiles(path.join(result.appDir, "assets", MODEL)))
+            .toEqual(["Hiyori.model3.json", "textures/body.png"]);
+        const notice = result.notices.find(line => line.includes('model "Hiyori.model3.json"'));
+        expect(notice).toBeDefined();
+        for (const left of [".DS_Store", "textures/desktop.ini", "textures/body.png~"]) {
+            expect(notice).toContain(left);
+        }
+    });
+
     it("omits the puppet runtime list when the project installed none", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -439,6 +514,104 @@ describe("game runtime artifact compiler", () => {
             shutdownTimeoutMs: 3000,
             restart: { maxRetries: 3, backoffMs: 1000 },
         }]);
+    });
+
+    /*
+     * A universal Mac build is packed once per architecture and merged afterwards, and the merge
+     * refuses a thin image that is the same in both halves. koffi's two prebuilds are exactly that
+     * when copied as they are, which is how universal builds failed; one universal image made of
+     * both, in each directory koffi looks in, is universal in both halves and needs no exemption.
+     */
+    it("gives a universal Mac build one universal koffi image in each directory koffi looks in", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(
+            packagedCompileInput(projectPath, runtimeDistDir, ["macos-universal", "macos-arm64"]),
+        );
+
+        const koffiRoot = path.dirname(createRequire(__filename).resolve("koffi/package.json"));
+        const prebuild = (directory: string) => fs.readFile(path.join(koffiRoot, "build", "koffi", directory, "koffi.node"));
+        const staged = (platformKey: string, directory: string) => path.join(
+            result.appDir, "platform", platformKey, "koffi", "build", "koffi", directory, "koffi.node");
+
+        const forIntel = await fs.readFile(staged("macos-universal", "darwin_x64"));
+        const forAppleSilicon = await fs.readFile(staged("macos-universal", "darwin_arm64"));
+        expect(forIntel.equals(forAppleSilicon)).toBe(true);
+        expect(forIntel.readUInt32BE(0)).toBe(0xcafebabe);
+        expect(forIntel.readUInt32BE(4)).toBe(2);
+        for (const [index, directory] of ["darwin_x64", "darwin_arm64"].entries()) {
+            const offset = forIntel.readUInt32BE(8 + 20 * index + 8);
+            const size = forIntel.readUInt32BE(8 + 20 * index + 12);
+            expect(forIntel.subarray(offset, offset + size).equals(await prebuild(directory)), directory).toBe(true);
+        }
+        await expect(fs.access(path.join(result.appDir, "platform", "macos-universal", "koffi", "index.js")))
+            .resolves.toBeUndefined();
+
+        // A one-architecture package in the same build keeps koffi's own prebuild, as it is, and only that.
+        expect((await fs.readFile(staged("macos-arm64", "darwin_arm64"))).equals(await prebuild("darwin_arm64")))
+            .toBe(true);
+        await expect(fs.access(staged("macos-arm64", "darwin_x64"))).rejects.toThrow();
+    });
+
+    /*
+     * The same merge, reached through a plugin: a sidecar declared for macos-universal is copied into
+     * both halves as it is, so a thin executable there fails the build late, in a sentence that names
+     * neither plugin nor sidecar. It is refused at the copy instead, by name.
+     */
+    it("refuses a single-architecture executable in a universal Mac sidecar, and ships a universal one", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const thin = (cpuType: number) => {
+            const image = Buffer.alloc(64);
+            image.writeUInt32LE(0xfeedfacf, 0);
+            image.writeUInt32LE(cpuType, 4);
+            return image;
+        };
+        const universal = buildFatMachO([
+            { name: "x64", arch: "x64", image: thin(0x01000007) },
+            { name: "arm64", arch: "arm64", image: thin(0x0100000c) },
+        ]);
+        const sidecarTarget = { "macos-universal": { entry: "bin/start.sh", include: ["bin/start.sh", "bin/tool"] } };
+
+        const thinManifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool": thin(0x0100000c), "bin/start.sh": "#!/bin/sh" },
+            entry: "unused",
+            include: [],
+            targets: sidecarTarget,
+        });
+        await expect(compileGameRuntimeArtifact({
+            ...packagedCompileInput(projectPath, runtimeDistDir, ["macos-universal"]),
+            runtimePlugins: [pluginSource(thinManifest, pluginInstallDir)],
+        })).rejects.toThrow(
+            `Sidecar "${SIDECAR_ID}" of plugin "${SIDECAR_PLUGIN_ID}" (macos-universal): "bin/tool" is an arm64-only Mach-O image`,
+        );
+
+        await fs.rm(pluginInstallDir, { recursive: true, force: true });
+        const universalManifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool": universal, "bin/start.sh": "#!/bin/sh" },
+            entry: "unused",
+            include: [],
+            targets: sidecarTarget,
+        });
+        const result = await compileGameRuntimeArtifact({
+            ...packagedCompileInput(projectPath, runtimeDistDir, ["macos-universal"]),
+            runtimePlugins: [pluginSource(universalManifest, pluginInstallDir)],
+        });
+        const shipped = await fs.readFile(path.join(
+            result.appDir, "platform", "macos-universal", "sidecars", SIDECAR_PLUGIN_ID, SIDECAR_ID, "bin", "tool"));
+        expect(shipped.equals(universal)).toBe(true);
     });
 
     it("refuses to ship a sidecar file that does not match its declared digest", async () => {
@@ -790,7 +963,6 @@ describe("game runtime artifact compiler", () => {
         await fs.mkdir(pluginInstallDir, { recursive: true });
         await fs.writeFile(path.join(pluginInstallDir, "runtime.js"), "export default {};", "utf-8");
 
-        const packKey = derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16));
         const manifest = {
             manifestVersion: 2 as const,
             id: "acme.sample-plugin",
@@ -809,7 +981,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47330),
-            encryptionKey: packKey,
+            protectAssets: true,
             runtimePlugins: [{
                 manifest,
                 entry: "runtime.js",
@@ -858,6 +1030,75 @@ describe("game runtime artifact compiler", () => {
             archiveReaderPath(),
             path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         )).rejects.toThrow();
+    });
+
+    describe("the author's compiled scripts", () => {
+        async function createScriptProject(projectPath: string): Promise<void> {
+            await createMinimalProject(projectPath, {
+                blueprintDocument: {
+                    schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                    blueprints: {
+                        "bp-script": {
+                            id: "bp-script",
+                            name: "App",
+                            owner: { kind: "globalMain" },
+                            graphs: {
+                                eventIds: ["layer-script"],
+                                events: { "layer-script": { id: "layer-script", script: { scriptRef: "scripts/boot.ts" } } },
+                                functions: {},
+                            },
+                        },
+                    },
+                    ownerRecords: { globalMain: { blueprintId: "bp-script" } },
+                },
+            });
+            await writeAsset(projectPath, ASSET_ID, "local image bytes");
+            await writeProjectIcon(projectPath, "configured icon bytes");
+            await fs.mkdir(path.join(projectPath, "scripts"), { recursive: true });
+            await fs.writeFile(path.join(projectPath, "scripts", "boot.ts"), "export function onAppBoot() { return 'booted'; }\n", "utf-8");
+        }
+
+        it("are named relative to the page, and sit loose beside it in an unprotected build", async () => {
+            const projectPath = path.join(tempDir, "project");
+            const runtimeDistDir = path.join(tempDir, "runtime-dist");
+            await createRuntimeDist(runtimeDistDir);
+            await createScriptProject(projectPath);
+
+            const result = await compileGameRuntimeArtifact(previewCompileInput(projectPath, runtimeDistDir, 47352));
+
+            const entry = Object.values(result.pack.bundle.ui.scripts ?? {})[0];
+            expect(entry?.diagnostics).toBeUndefined();
+            expect(entry?.url).toBe("scripts/scripts_boot.js");
+            expect(await fs.readFile(path.join(result.appDir, "scripts", "scripts_boot.js"), "utf-8")).toContain("booted");
+        });
+
+        /*
+         * A protected build moves the interface code into the store so that reading the game's code
+         * takes opening the store first. The scripts were moved in and also left behind, so the
+         * package shipped them as plain text beside the store meant to hold them.
+         */
+        it("are inside the protected store and nowhere else", async () => {
+            const projectPath = path.join(tempDir, "project");
+            const runtimeDistDir = path.join(tempDir, "runtime-dist");
+            await createRuntimeDist(runtimeDistDir);
+            await createScriptProject(projectPath);
+
+            const result = await compileGameRuntimeArtifact({
+                ...previewCompileInput(projectPath, runtimeDistDir, 47353),
+                protectAssets: true,
+            });
+
+            await expect(fs.access(path.join(result.appDir, "scripts"))).rejects.toThrow();
+            const reader = await openAssetArchive(
+                path.join(result.appDir, ARCHIVE_READER_FILENAME),
+                path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
+            );
+            try {
+                expect((await reader.read("scripts/scripts_boot.js")).toString("utf-8")).toContain("booted");
+            } finally {
+                await reader.close();
+            }
+        });
     });
 
     it("refuses an output root that is not absolute", async () => {
@@ -992,7 +1233,7 @@ describe("game runtime artifact compiler", () => {
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
             debuggable: true,
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         expect(result.pack.debuggable).toBe(true);
@@ -1040,7 +1281,7 @@ describe("game runtime artifact compiler", () => {
             entry: { kind: "surface", surfaceId: "surface-main" },
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         const reader = await openAssetArchive(
@@ -1103,7 +1344,7 @@ describe("game runtime artifact compiler", () => {
             entry: { kind: "surface", surfaceId: "surface-main" },
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         const reader = await openAssetArchive(
@@ -1423,7 +1664,8 @@ function pluginSource(manifest: NormalizedPluginManifestV2, installDir: string):
  */
 async function writeSidecarPlugin(input: {
     installDir: string;
-    files: Record<string, string>;
+    /** Text, or bytes for a file whose first bytes are the point of the test. */
+    files: Record<string, string | Buffer>;
     entry: string;
     include: string[];
     sha256?: Record<string, string>;
@@ -1440,7 +1682,10 @@ async function writeSidecarPlugin(input: {
         await fs.writeFile(filePath, content, "utf-8");
     }
     const declared = input.sha256 ?? Object.fromEntries(
-        Object.entries(input.files).map(([relativePath, content]) => [relativePath, sha256OfText(content)]),
+        Object.entries(input.files).map(([relativePath, content]) => [
+            relativePath,
+            typeof content === "string" ? sha256OfText(content) : crypto.createHash("sha256").update(content).digest("hex"),
+        ]),
     );
     return {
         manifestVersion: 2,
@@ -1558,6 +1803,24 @@ function previewCompileInput(
             controlPort,
             controlToken: "token",
         },
+    };
+}
+
+/** A shipped build's compile, staging a payload per target the way the build worker asks for it. */
+function packagedCompileInput(
+    projectPath: string,
+    runtimeDistDir: string,
+    platformKeys: string[],
+): GameRuntimeArtifactCompileInput {
+    return {
+        projectPath,
+        runtimeDistDir,
+        runtimeVersion: "0.0.1-test",
+        entry: { kind: "surface", surfaceId: "surface-main" },
+        outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+        mode: "production",
+        packaging: true,
+        platformKeys,
     };
 }
 
@@ -1754,6 +2017,11 @@ async function listFilesRecursively(root: string): Promise<string[]> {
         }
     }
     return found;
+}
+
+/** {@link listFilesRecursively}, relative to `root`, `/`-separated and sorted. */
+async function relativeFiles(root: string): Promise<string[]> {
+    return (await listFilesRecursively(root)).map(file => path.relative(root, file).replace(/\\/g, "/")).sort();
 }
 
 /** A real UUID v4: the story reader refuses any id that is not one, exactly as the packer does. */
@@ -1986,7 +2254,7 @@ describe("weather clips in the pack", () => {
             mode: "production",
             packaging: true,
             platformKeys: ["windows-x64"],
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
             // No toolchain, and nowhere to put one.
         })).rejects.toThrow(/Asset protection could not compile this title's content codec/);
     });
@@ -2010,7 +2278,7 @@ describe("weather clips in the pack", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47380),
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
         });
 
         for (const name of ["index.html", "renderer.js", "renderer.css"]) {
@@ -2068,7 +2336,7 @@ describe("weather clips in the pack", () => {
             mode: "production",
             packaging: true,
             platformKeys: [hostKey, otherKey],
-            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            protectAssets: true,
             titleCompiler: toolchain as string,
         });
 

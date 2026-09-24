@@ -277,6 +277,20 @@ export const lint = {
             // not something the author can act on - the type is what says which plugin is missing.
             message: "{type} is not loaded, so this node will not run in the game",
         },
+        blueprintAssembledAssetName: {
+            title: "Asset name assembled at run time",
+            description: "An asset is chosen by a name the game puts together while it runs, and the game package does not carry it",
+            // The one sentence every surface prints about this: the canvas, the build and the delete
+            // dialog render these keys too. `{node}`, `{pin}`, `{prop}` and a node `{origin}` arrive in
+            // the reader's language, named the way the canvas and the inspector name them.
+            message: "\"{pin}\" on \"{node}\" receives an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
+            messageBinding: "\"{prop}\" on \"{element}\" is bound to an asset name assembled at run time (from \"{origin}\"). A game package carries only the assets whose names are written in the project, so nothing will be there in the released game. Choose the asset in the asset picker, or read one already chosen from a list row or a variable",
+            // The same two places, where the name comes from a node type nothing here can load.
+            // `{origin}` is the node type rather than a title: it is what names the plugin, the way
+            // `blueprintUnknownNode` names it.
+            messageUnloadedNode: "\"{pin}\" on \"{node}\" receives an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
+            messageUnloadedNodeBinding: "\"{prop}\" on \"{element}\" is bound to an asset name from {origin}, which is not loaded, so the asset it names will not be in the released game. Install or switch on the plugin that provides this node type, then build again",
+        },
         uiUnlocalizedText: {
             title: "Unlocalized text",
             description: "Text written straight onto a widget in a project that has a second language",
@@ -310,6 +324,11 @@ export const lint = {
             title: "Missing embedded page",
             description: "A Page widget embedding a page the project does not have",
             message: "This Page widget embeds a page the project does not have",
+        },
+        uiFrameLoop: {
+            title: "Circular embedded page",
+            description: "A Page widget embedding a page that leads back to it",
+            message: "This Page widget embeds a page that leads back to it",
         },
         uiListItemFieldMissing: {
             title: "Missing item field",
@@ -503,6 +522,9 @@ export const lint = {
         expand: "Expand",
         collapseAll: "Collapse all",
         expandAll: "Expand all",
+        // The last row of a rule that has far more findings than the report opens with. It names the
+        // rule's whole count, which is the number already on the heading above it.
+        showAll: "Show all {count}",
         // The gutter number of the row, spoken. Screen readers get "line 12"; the column itself is
         // bare digits, because that is what the scene editor's own gutter shows and the reader is
         // matching one against the other.
@@ -520,6 +542,15 @@ export const lint = {
         // order a reader scans in. No severity slot: the console prints the level in its own column
         // beside every line, and this used to repeat it inside the sentence.
         finding: "{location} {message} ({rule})",
+        // The shape of the sweep, printed after the findings and beside the summary - the end of a
+        // long log is the part an operator reads. A console cannot fold a rule away the way the
+        // report tab can, and a sweep is routinely one rule repeated thousands of times, so without
+        // these two lines the count of every other rule is unreadable in the stream.
+        byRule: "Findings by rule",
+        // The rule id, not its title: the id is the row in Project ▸ Project that retunes it, and
+        // it is what the finding lines above print too. No severity in the sentence - the console
+        // prints the level of every line in its own column, and this line carries the rule's.
+        ruleCount: "{rule}: {count}",
     },
     build: {
         // Printed on the build channel when the sweep begins, because it is the longest thing

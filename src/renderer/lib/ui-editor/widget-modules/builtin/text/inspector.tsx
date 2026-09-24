@@ -38,8 +38,8 @@ import {
   TATE_CHU_YOKO_MAX_LENGTH_LIMIT,
   isVerticalWritingMode,
 } from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
-import { getTextProps } from "./helpers";
-import { TextRunMarksEditor } from "./TextRunMarks";
+import { TextRunMarksEditor } from "@/lib/ui-editor/widget-modules/shared/text/TextRunMarks";
+import { getTextProps, TEXT_MARKED_LABEL } from "./helpers";
 import type {
   TextAlign,
   TextOrientation,
@@ -170,6 +170,7 @@ const TextBlueprintValueField = createBlueprintValueField({
     <TextRunMarksEditor
       documentService={data.documentService}
       element={liveElement}
+      label={TEXT_MARKED_LABEL}
       readOnly={readOnly}
     />
   ),

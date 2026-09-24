@@ -28,10 +28,15 @@ import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { projectSceneTimeline } from "./storyRuntimeDebugModel";
 import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHost";
-import type { Translator } from "@shared/i18n";
+import {
+    describeAssetResolutionFailure,
+    type AssetResolutionFailure,
+} from "@/lib/ui-editor/runtime/assetResolution";
+import type { TranslationKey, Translator } from "@shared/i18n";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import { authoredNameOrNull, scrubGeneratedIds } from "@shared/utils/generatedId";
 
 /**
  * Row lookups built straight off the Dev Mode bundle: characters as the compiler sees them (a name,
@@ -165,9 +170,23 @@ export function locateStoryBlock(
 /** Where a Game UI failure happened, in the terms the interface editor names things by. */
 export type SurfaceLocation = {
     surfaceId: string;
-    /** What the author called it, or the id when the document no longer has that surface. */
-    surfaceName: string;
+    /**
+     * What the author called it, or null when the document no longer has that surface (or never
+     * named it) - the place is then said as "a page no longer in this project", never as its id.
+     */
+    surfaceName: string | null;
 };
+
+/**
+ * The heading a surface location reads as: the surface by the author's name for it, or - for one the
+ * document no longer has - as a page that is gone. One function so the strip and the panel cannot
+ * say the same place two ways.
+ */
+export function surfacePlaceHeading(surface: SurfaceLocation, t: Translator["t"]): string {
+    return surface.surfaceName
+        ? t("devMode.issues.onSurface", { surface: surface.surfaceName })
+        : t("devMode.issues.onSurfaceGone");
+}
 
 /** A reported failure, with wherever it turned out to be. */
 export type LocatedRuntimeIssue = {
@@ -195,15 +214,16 @@ export type LocatedRuntimeIssue = {
 /**
  * Name the surface a failure came from.
  *
- * Falls back to the id rather than to nothing: a surface deleted since the bundle was built still
- * happened somewhere, and an id an author can search for beats "unknown".
+ * A surface the document no longer has still happened somewhere, so the location is kept - but it is
+ * named as gone rather than by its id, which the interface never shows and nothing an author can find
+ * answers to. The id stays on the location for the list's own keying.
  */
 export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefined): SurfaceLocation | null {
     if (!surfaceId) {
         return null;
     }
     const surface = bundle.ui?.uidoc?.surfaces.find(entry => entry.id === surfaceId);
-    return { surfaceId, surfaceName: surface?.name || surfaceId };
+    return { surfaceId, surfaceName: authoredNameOrNull(surface?.name) };
 }
 
 /**
@@ -221,6 +241,11 @@ export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefi
 export function blueprintDebugEventIssue(
     event: BlueprintDebugEvent,
     t: Translator["t"],
+    /**
+     * The project's global blueprint, so a stop in it can say so: it belongs to no surface, and an
+     * issue with neither a surface nor a blueprint to its name leaves the author nowhere to look.
+     */
+    context?: { globalBlueprintId?: string },
 ): GameAppRuntimeIssue | null {
     if (event.type === "node.input_missing") {
         // A warning: the graph carried on and only this node's effect was lost. Named through the
@@ -238,13 +263,28 @@ export function blueprintDebugEventIssue(
     if (event.type !== "execution.error") {
         return null;
     }
+    // A loop stopped for never waiting names the event it ran from and the node it was stopped at,
+    // in the author's language - the English sentence the executor wrote is for the game's log.
+    const stepLimit = event.stepLimit;
+    const inGlobalBlueprint = !event.surfaceId &&
+        context?.globalBlueprintId !== undefined &&
+        event.blueprintId === context.globalBlueprintId;
     return {
         level: "error",
-        message: event.message,
+        message: stepLimit
+            ? t(inGlobalBlueprint ? BLUEPRINT_STEP_LIMIT_GLOBAL_MESSAGE_KEY : BLUEPRINT_STEP_LIMIT_MESSAGE_KEY, {
+                head: resolveBlueprintNodeTitle(stepLimit.headName, t),
+                node: resolveBlueprintNodeTitle(stepLimit.nodeName, t),
+                steps: String(stepLimit.steps),
+            })
+            : event.message,
         origin: "interface",
         ...(event.surfaceId ? { surfaceId: event.surfaceId } : {}),
     };
 }
+
+const BLUEPRINT_STEP_LIMIT_MESSAGE_KEY = "blueprint.diagnostics.node.stepLimit" as TranslationKey;
+const BLUEPRINT_STEP_LIMIT_GLOBAL_MESSAGE_KEY = "blueprint.diagnostics.node.stepLimitGlobal" as TranslationKey;
 
 /**
  * A runtime plugin entry that would not load, as an issue.
@@ -282,6 +322,52 @@ export function runtimePluginFailureIssue(
         pluginName: failure.pluginName,
         message: t("devMode.issues.pluginEntryFailed", { plugin: failure.pluginName, error: failure.error }),
     };
+}
+
+/**
+ * The asset failures a ledger holds, as issues: one per distinct sentence on each surface.
+ *
+ * The ledger has one entry per failing drawing, and a gallery whose twelve cells are drawn from one
+ * template element fails twelve times in the same way. Collapsing here - on exactly the identity
+ * {@link runtimeIssueKey} gives the list - is what keeps "one issue per element, property and failure"
+ * true, and what lets the caller retire an issue by its key once no drawing is failing that way.
+ *
+ * An error rather than a warning: the author placed a picture and the player gets a blank space, so
+ * what ships is not what was made - the same reason a story row naming a missing image is an error.
+ */
+export function assetResolutionIssues(
+    failures: readonly AssetResolutionFailure[],
+    assetNames: Readonly<Record<string, string>> | undefined,
+    t: Translator["t"],
+): GameAppRuntimeIssue[] {
+    const issues = new Map<string, GameAppRuntimeIssue>();
+    for (const failure of failures) {
+        const message = describeAssetResolutionFailure(failure, assetNames, t);
+        const key = `${failure.site.surfaceId}\u0000${message}`;
+        if (!issues.has(key)) {
+            issues.set(key, { level: "error", origin: "interface", surfaceId: failure.site.surfaceId, message });
+        }
+    }
+    return [...issues.values()];
+}
+
+/**
+ * Take `retired` out of the list and put `arrived` in, the newest at the front.
+ *
+ * For a reporter that knows when a problem has ENDED, which the others do not: a row that threw
+ * cannot un-throw, but a picture that failed can be drawn after all. Retired by key rather than by
+ * entry id, so an entry that collapsed a repeat into itself is still found.
+ */
+export function reconcileRuntimeIssues(
+    current: readonly LocatedRuntimeIssue[],
+    retired: ReadonlySet<string>,
+    arrived: readonly LocatedRuntimeIssue[],
+): LocatedRuntimeIssue[] {
+    let next = retired.size > 0 ? current.filter(issue => !retired.has(runtimeIssueKey(issue))) : [...current];
+    for (const issue of arrived) {
+        next = appendRuntimeIssue(next, issue);
+    }
+    return next;
 }
 
 /**
@@ -364,7 +450,10 @@ export function locateRuntimeIssue(
     return {
         id,
         level: issue.level,
-        message: issue.message,
+        // Studio's own sentences carry no id; this is for the ones it did not write - an engine's
+        // error, a plugin's, an author's script - which reach the list verbatim. The stack keeps the
+        // raw text for whoever needs it.
+        message: scrubGeneratedIds(issue.message),
         origin: issue.origin,
         ...(issue.stack ? { stack: issue.stack } : {}),
         location: locateStoryBlock(bundle, issue.blockId),

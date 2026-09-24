@@ -35,6 +35,9 @@ import { Service } from "../Service";
 import { IStoryService, Services, WorkspaceContext, type StoryPluginActionRegistration } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { itemWrite, storeWrite, type FsWriteReport } from "../autosave/writeReport";
+import { ASSET_UNDECODABLE } from "../assets/assetReadFailure";
+import { withReadFailureReason } from "@/lib/workspace/assets/assetReadFailure";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -50,6 +53,7 @@ import {
 } from "@shared/story/migrateStoryDocument";
 import { findDeclarationBlock } from "@shared/types/story/declarations";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
+import { mintSceneRuntimeName, sceneRuntimeName } from "@shared/types/story/sceneRuntimeName";
 import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
@@ -133,6 +137,20 @@ type StoryStructureSnapshot = {
     entrySceneId?: StorySceneId;
     unassignedSceneIds?: StorySceneId[];
 };
+
+/**
+ * A motion asset that is in the list and could not be read.
+ *
+ * `code` is what the read answered, for a surface to word: the filesystem's code when the file could
+ * not be had, `ASSET_UNDECODABLE` when it was read and is not a motion this Studio can open. The
+ * message is for the log - it names the file's path, which is the motion's id.
+ */
+export class StoryAnimationReadError extends RendererError {
+    public constructor(message: string, public readonly code: string, cause?: unknown) {
+        super(message, { cause });
+        this.name = "StoryAnimationReadError";
+    }
+}
 
 export class StoryService extends Service<StoryService> implements IStoryService {
     private index: StoryLibraryIndex | null = null;
@@ -425,7 +443,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         const entry = this.getStoryEntry(storyId);
         if (!entry) {
-            throw new RendererError(`Story not found: ${storyId}`);
+            // The message is what every surface that asked shows, so it is the author's sentence:
+            // the id is all a missing story has, and an id names nothing an author can look for.
+            throw new RendererError(translate("story.readFailed.missing"), { cause: { storyId } });
         }
         const fs = this.getFileSystem();
         const path = this.getStoryDocumentPath(storyId);
@@ -442,7 +462,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 error: result.error,
                 severity: "degraded",
             });
-            throw new RendererError(result.error.message || `Failed to read story document: ${entry.name}`);
+            // Said by the story's name and what the read answered, the way the surfaces that asked
+            // show it. The read's own message - English, naming the file by the story's id - is in
+            // the anomaly record above.
+            throw new RendererError(
+                withReadFailureReason(
+                    translate("story.readFailed.named", { name: entry.name }),
+                    result.error.code === FsRejectErrorCode.INVALID_JSON ? ASSET_UNDECODABLE : result.error.code,
+                    translate,
+                ),
+                { cause: result.error },
+            );
         }
         try {
             const document = normalizeStoryDocument(result.data, new Date().toISOString());
@@ -465,12 +495,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
             // that into a sentence an author can act on. Rewrapping the text alone would leave that
             // reader nothing to recognise.
             //
-            // The text itself is the ladder's English sentence for every other reader, and the
-            // author's own language for those two - `showError` prints whatever it is handed, and
-            // the numbers are the whole point of handing it anything.
+            // The text itself is what every surface that asked shows - `showError` prints whatever
+            // it is handed - so it is the author's sentence: the two version refusals with their
+            // numbers, which are the whole point of saying anything, and otherwise that the story
+            // could not be read. The parser's English is in the anomaly record and the cause.
             throw new RendererError(
                 describeStoryDocumentRefusal(entry.name, error)
-                    ?? (error instanceof Error ? error.message : String(error)),
+                    ?? withReadFailureReason(
+                        translate("story.readFailed.named", { name: entry.name }),
+                        ASSET_UNDECODABLE,
+                        translate,
+                    ),
                 { cause: error },
             );
         }
@@ -721,14 +756,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         const result = await this.getFileSystem().readJSON<StoryAnimationAsset>(this.getAnimationAssetPath(animationId));
         if (!result.ok) {
-            throw new RendererError(result.error.message || `Failed to read story animation: ${entry.name}`);
+            throw new StoryAnimationReadError(
+                result.error.message || `Failed to read story animation: ${entry.name}`,
+                result.error.code === FsRejectErrorCode.INVALID_JSON ? ASSET_UNDECODABLE : result.error.code,
+                result.error,
+            );
         }
         try {
             const asset = normalizeStoryAnimationAsset(result.data, new Date().toISOString());
             this.animationAssets.set(animationId, asset);
             return asset;
         } catch (error) {
-            throw new RendererError(error instanceof Error ? error.message : String(error));
+            throw new StoryAnimationReadError(error instanceof Error ? error.message : String(error), ASSET_UNDECODABLE, error);
         }
     }
 
@@ -893,11 +932,6 @@ export class StoryService extends Service<StoryService> implements IStoryService
             this.emitPluginActionsChanged();
         }
         return removed;
-    }
-
-    /** Plugin ids currently contributing at least one story action, for the dependency scanner. */
-    public getContributingPluginIds(): string[] {
-        return [...new Set(this.pluginActionOwners.values())];
     }
 
     public getPluginAction(actionId: string): StoryPluginActionRegistration | undefined {
@@ -1141,17 +1175,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     public createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene {
         const now = new Date().toISOString();
+        const document = this.getStoryDocument(storyId);
         const scene = createStorySceneModel({
             id: this.getUuidService().generate(),
             name: this.cleanName(input.name, "New Scene"),
-            runtimeName: this.toRuntimeName(input.name),
+            runtimeName: this.mintRuntimeName(document, input.name),
             now,
         });
         // Where the scene is filed, resolved here rather than inside the mutation. A session states
         // the destination it settled on, never the rule it settled by: the fallback chapter's id is
         // minted on this machine, and every other machine minting its own would file the scene in a
         // chapter nobody else has.
-        const document = this.getStoryDocument(storyId);
         const existing = input.chapterId
             ? document.chapters.find(item => item.id === input.chapterId)
             : document.chapters[0];
@@ -1239,8 +1273,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
             if (!scene) {
                 return;
             }
+            // The internal name the scene compiled under a moment ago, pinned before the display
+            // name moves. A scene stored with an empty one compiles under its display name, so
+            // letting the rename through unpinned would move its variables - see
+            // `sceneRuntimeName`. Every machine in a session derives the same pin from the same
+            // record, which is why this one may be worked out on the receiving side.
+            scene.runtimeName = sceneRuntimeName(scene);
             scene.name = trimmed;
-            scene.runtimeName = scene.runtimeName || this.toRuntimeName(trimmed);
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
             changed = true;
         });
@@ -1624,7 +1663,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         // would be answering a question the sender already answered.
         const fields: LiveSceneFields = {
             name: nextName,
-            runtimeName: hasNameChange ? (current.runtimeName || this.toRuntimeName(nextName)) : current.runtimeName,
+            // Pinned to what the scene compiles under now, never derived from the new name: a rename
+            // must not move the scene's variables. See `applySceneName`.
+            runtimeName: hasNameChange ? sceneRuntimeName(current) : current.runtimeName,
             ...(hasDescriptionChange
                 ? { description: nextDescription }
                 : current.description === undefined ? {} : { description: current.description }),
@@ -2112,7 +2153,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const created = createStorySceneModel({
             id: this.getUuidService().generate(),
             name: this.cleanName(name, "New Scene"),
-            runtimeName: this.toRuntimeName(name),
+            runtimeName: this.mintRuntimeName(document, name),
             now,
         });
         const jumpBlock: StoryBlock | null = plan.needsJump
@@ -2537,16 +2578,23 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * still answers `ok` with `refused`, and a real failure is still `ok: false` with a code the
      * save-status surface already understands.
      */
-    private writeStoryFile(path: string, payload: string): Promise<FsRequestResult<void>> {
-        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8");
+    private writeStoryFile(path: string, payload: string, report: FsWriteReport): Promise<FsRequestResult<void>> {
+        return this.getFileSystem().writeFileNoFollowOrCreate(path, payload, "utf-8", report);
     }
+
+    /**
+     * Every file here is written again by the auto-saver when a write fails - {@link settleWrite}
+     * re-owes it - so each is reported as retried, by the name the author knows it by: a story or a
+     * motion by its own name, the two lists by the store's.
+     */
+    private static readonly LIBRARY_WRITE = storeWrite("workspace.shell.save.stores.story", "retried");
 
     private async writeLibraryIndex(): Promise<void> {
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getLibraryIndex(), null, 2);
         this.libraryIndexDirty = false;
         this.libraryStampsDirty = false;
-        const result = await this.writeStoryFile(this.getIndexPath(), payload);
+        const result = await this.writeStoryFile(this.getIndexPath(), payload, StoryService.LIBRARY_WRITE);
         this.settleWrite(result, () => {
             // Both, unconditionally. These bytes carried the authored index *and* every stamp, and a
             // write that did not land tells us nothing about which half mattered; re-owing the
@@ -2572,7 +2620,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDocumentDir(storyId);
         const payload = JSON.stringify(document, null, 2);
         this.dirtyDocuments.delete(storyId);
-        const result = await this.writeStoryFile(this.getStoryDocumentPath(storyId), payload);
+        const result = await this.writeStoryFile(
+            this.getStoryDocumentPath(storyId),
+            payload,
+            itemWrite(this.getStoryEntry(storyId)?.name, "workspace.shell.save.stores.story", "retried"),
+        );
         this.settleWrite(result, () => {
             this.dirtyDocuments.add(storyId);
         });
@@ -2582,7 +2634,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(this.getAnimationIndex(), null, 2);
         this.animationIndexDirty = false;
-        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload);
+        const result = await this.writeStoryFile(this.getAnimationIndexPath(), payload, StoryService.LIBRARY_WRITE);
         this.settleWrite(result, () => {
             this.animationIndexDirty = true;
         });
@@ -2592,7 +2644,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.ensureStoryDirs();
         const payload = JSON.stringify(asset, null, 2);
         this.dirtyAnimationAssets.delete(asset.id);
-        const result = await this.writeStoryFile(this.getAnimationAssetPath(asset.id), payload);
+        const result = await this.writeStoryFile(
+            this.getAnimationAssetPath(asset.id),
+            payload,
+            itemWrite(asset.name, "workspace.shell.save.stores.story", "retried"),
+        );
         this.settleWrite(result, () => {
             this.dirtyAnimationAssets.add(asset.id);
         });
@@ -2751,13 +2807,12 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return trimmed || undefined;
     }
 
-    private toRuntimeName(name: string): string {
-        const normalized = name
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "");
-        return normalized || `scene_${this.getUuidService().generate(true)}`;
+    /**
+     * The internal name for a scene about to join `document`, unique among the scenes already in it.
+     * Called only where a scene is made; see {@link mintSceneRuntimeName} for why never on a rename.
+     */
+    private mintRuntimeName(document: StoryDocument, name: string): string {
+        return mintSceneRuntimeName(name, document, () => `scene_${this.getUuidService().generate(true)}`);
     }
 
     private getFileSystem(): FileSystemService {

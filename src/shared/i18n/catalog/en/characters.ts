@@ -207,6 +207,9 @@ export const characters = {
             import: "Import",
             importing: "Importing…",
             failed: "Import failed",
+            // The picked file could not be read into a layer tree; one of `assets.reference.reason`
+            // may follow it. Never the parser's message or the file's path.
+            readFailed: "This PSD could not be read.",
             reason: {
                 hidden: "hidden in Photoshop",
                 blendSkipped: "skipped",

@@ -1,5 +1,6 @@
 import path from "path";
 import { compileGameRuntimeArtifact } from "@/app/application/managers/preview/compiler/gameRuntimeArtifactCompiler";
+import { describeWorkerFailure } from "@shared/build/buildRefusal";
 import type {
     CompileWorkerInboundMessage,
     CompileWorkerOutboundMessage,
@@ -14,8 +15,8 @@ import { setStepProgressReporter } from "./stepProgress";
  * protection on, pushes the native codec through many seconds of synchronous
  * CPU - off the Studio main process, so the window never freezes during a
  * preview launch or the pre-package compile of a build. All input arrives
- * pre-resolved as plain JSON (including the opaque pack key); the worker only
- * reads/writes files and returns the compile result.
+ * pre-resolved as plain JSON; the worker only reads/writes files and returns
+ * the compile result.
  *
  * It also runs the shipped-content audit, for the reason the audit exists at all: an edition that
  * leaves content out has to be checked against the package it produced, and this process is the one
@@ -90,7 +91,7 @@ parentPort.on("message", event => {
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })
         .catch((error: unknown) => {
-            const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
-            send({ type: "error", message: detail });
+            // A refusal is sent as its sentence; anything else is a defect and keeps its stack.
+            send({ type: "error", message: describeWorkerFailure(error) });
         });
 });

@@ -19,6 +19,9 @@ import {
     UILayout,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
+    uiElementTypeAcceptsUserChildren,
+    getUIStructuralChildSlot,
+    getUIStructuralSlotPointerProp,
     getUIComponentLink,
     isLinkedUIComponentElement,
     type UIComponentParam,
@@ -39,6 +42,7 @@ import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
 import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
 import { registerAutoSaver } from "../autosave/SaveStatusService";
+import { storeWrite } from "../autosave/writeReport";
 import { LocalBlueprintService } from "./LocalBlueprintService";
 import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import type { TranslationKey } from "@shared/i18n";
@@ -63,7 +67,7 @@ import {
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { isValidUIInsertParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { parentTakesAddedElements } from "@/lib/ui-editor/tree/resolveAddTarget";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
 import {
     cloneWidgetMainBlueprintForPaste,
@@ -673,7 +677,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
-        save: () => this.save(this.getDocument()),
+        save: () => this.writeDocument(this.getDocument()),
         onError: err => console.warn("[UIDocumentService] auto-save failed", err),
     });
     private afterMutateHook: (() => void) | null = null;
@@ -698,6 +702,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError("UI document not initialized");
         }
         return this.document;
+    }
+
+    /**
+     * The project's document: every page with its elements, and every component definition.
+     *
+     * The same object as {@link getDocument} here. It is its own method for the component editor,
+     * whose document service answers `getDocument` with a view of one definition - the definition's
+     * elements and none of the pages' - and answers this with the project's. Whatever asks where a
+     * Page widget's page leads (what that page places, what its own Page widgets draw) asks this.
+     */
+    public getPageDocument(): UIDocument {
+        return this.getDocument();
     }
 
     public async load(): Promise<UIDocument> {
@@ -759,7 +775,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return migrated;
     }
 
+    /**
+     * Write `document` now instead of waiting for the auto-save.
+     *
+     * A write that fails is handed back to the auto-saver, which retries it on its backoff. This
+     * cancels the saver's pending write because it supersedes it, and without handing it back the
+     * change would wait for the author's next edit - while the save-failure notice, told this file
+     * is one a saver retries, says it is being retried. Not before the document is loaded: a seed
+     * written while the project opens has nothing for the saver to write, and its failure fails the
+     * open.
+     */
     public async save(document: UIDocument): Promise<void> {
+        try {
+            await this.writeDocument(document);
+        } catch (error) {
+            if (this.document) {
+                this.autoSaver.schedule();
+            }
+            throw error;
+        }
+    }
+
+    private async writeDocument(document: UIDocument): Promise<void> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureDocumentDir();
         const documentPath = this.getDocumentPath();
@@ -810,7 +847,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * on `ok` alone - unchanged by the swap, and announced to the author on the latch's own channel.
      */
     private writeDocumentFile(fs: FileSystemService, path: string, data: string): Promise<FsRequestResult<void>> {
-        return fs.writeFileNoFollowOrCreate(path, data, "utf-8");
+        return fs.writeFileNoFollowOrCreate(
+            path,
+            data,
+            "utf-8",
+            storeWrite("workspace.shell.save.stores.uiDocument", "retried"),
+        );
     }
 
     /**
@@ -3529,9 +3571,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const document = this.getDocument();
         const component = (document.components ?? []).find(item => item.id === componentId);
         const target = component?.elements[targetParentId];
-        if (!component || !target || !uiElementTypeAcceptsChildren(target.type)) {
+        // The same answer a page gives (`parentTakesAddedElements`), asked of the definition's own elements.
+        if (!component || !target || !parentTakesAddedElements(
+            { ...document, elements: component.elements },
+            target,
+            payload.topLevelElementIds.map(id => payload.elements[id]),
+        )) {
             return { ok: false, reason: "invalid_target" };
         }
+        const fillsPartSlots = !uiElementTypeAcceptsUserChildren(target.type);
         if (beforeChildId != null) {
             const before = component.elements[beforeChildId];
             if (!before || before.parentId !== targetParentId) {
@@ -3563,13 +3611,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 }
                 const copy = stripElementForComponentDefinition(source);
                 copy.id = newId;
-                copy.parentId = payload.topLevelElementIds.includes(oldId)
+                const isTop = payload.topLevelElementIds.includes(oldId);
+                copy.parentId = isTop
                     ? targetParentId
                     : source.parentId && elementIdMap[source.parentId]
                       ? elementIdMap[source.parentId]
                       : null;
                 copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
                 liveComponent.elements[newId] = copy;
+                const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(liveParent.type, copy.extra) : null;
+                const pointer = partSlot ? getUIStructuralSlotPointerProp(liveParent.type, partSlot) : null;
+                if (pointer) {
+                    liveParent.props = { ...(liveParent.props ?? {}), [pointer]: newId };
+                }
             }
             const insertAt = beforeChildId ? liveParent.childrenIds.indexOf(beforeChildId) : -1;
             const withoutMoved = liveParent.childrenIds.filter(id => !newRootIds.includes(id));
@@ -3876,7 +3930,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         const allowed = collectSubtreeElementIds(document, effectiveRootId);
         const target = document.elements[targetParentId];
-        if (!target || !allowed.has(targetParentId) || !isValidUIInsertParent(target) || isLinkedUIComponentElement(target)) {
+        const pastedTops = payload.topLevelElementIds.map(id => payload.elements[id]);
+        if (!target || !allowed.has(targetParentId) || !parentTakesAddedElements(document, target, pastedTops)) {
             return { ok: false, reason: "invalid_target" };
         }
         if (beforeChildId != null) {
@@ -3885,6 +3940,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return { ok: false, reason: "invalid_target" };
             }
         }
+        // Past the check above, a target that takes no author's children is a widget taking back its
+        // own parts - a copied handle into a Slider whose handle is gone.
+        const fillsPartSlots = !uiElementTypeAcceptsUserChildren(target.type);
 
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
@@ -3942,7 +4000,17 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     }
                 }
 
-                if (isTop) {
+                const partSlot = isTop && fillsPartSlots ? getUIStructuralChildSlot(parentEl.type, copy.extra) : null;
+                if (partSlot) {
+                    // A part's layout is its place inside its widget, so it keeps it: a handle copied
+                    // from one Slider sits where a handle sits in the next. The widget is pointed at
+                    // it too, where it keeps its parts' ids - see `getUIStructuralSlotPointerProp`.
+                    copy.layout = roundUILayoutGeometryFields({ ...copy.layout });
+                    const pointer = getUIStructuralSlotPointerProp(parentEl.type, partSlot);
+                    if (pointer) {
+                        parentEl.props = { ...(parentEl.props ?? {}), [pointer]: newId };
+                    }
+                } else if (isTop) {
                     const mergeLookup = (id: string) => doc.elements[id] ?? payload.elements[id];
                     const patch = layoutPatchForReparent(doc, oldEl, targetParentId, mergeLookup);
                     let layout = { ...copy.layout, ...patch };

@@ -7,11 +7,11 @@ import { Services, type WorkspaceContext } from "@/lib/workspace/services/servic
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
 import {
     isActionable,
-    isUnmet,
     planDependencyRemedy,
     type DependencyRemedy,
     type DependencyRemedyStep,
 } from "@/lib/workspace/project/dependencyRemedy";
+import { isDependencyUnavailable } from "@/lib/workspace/project/dependencyStatusDisplay";
 import {
     PROJECT_DEPENDENCY_SCHEMA_VERSION,
     type DependencyResolutionEntry,
@@ -59,10 +59,10 @@ export interface ProjectDependencyRows {
  * The project's dependency table as a list of rows the plugin sidebar can act on.
  *
  * The table comes from the *persisted* resolution rather than a fresh scan: what the project
- * declares is what the author was handed, and a scan needs every plugin loaded to attribute usage -
- * which is exactly what is not true when a dependency is missing. Re-resolving is cheap (it reads
- * the installed list and compares versions) and writes nothing, so it happens on open and after a
- * run.
+ * declares is what a build packs and a headless run checks, and this screen is where the author is
+ * sent when that is not satisfied. A scan that drops a row persists it and re-resolves, so the row
+ * leaves this list with it. Re-resolving is cheap (it reads the installed list and compares
+ * versions) and writes nothing, so it happens on open and after a run.
  */
 export function useProjectDependencyRows(
     context: WorkspaceContext | null,
@@ -122,6 +122,7 @@ export function useProjectDependencyRows(
             id: plugin.pluginId,
             version: plugin.manifest.version,
             enabled: plugin.enabled,
+            status: plugin.status,
         }))).entries;
     }, [catalog.plugins, resolved]);
 
@@ -150,7 +151,7 @@ export function useProjectDependencyRows(
     }), [catalog.installedById, catalog.registryById, entries, registryKnown]);
 
     const actionable = useMemo(() => rows.filter(row => isActionable(row.remedy)), [rows]);
-    const unavailable = useMemo(() => rows.filter(row => isUnmet(row.entry)).length, [rows]);
+    const unavailable = useMemo(() => rows.filter(row => isDependencyUnavailable(row.entry)).length, [rows]);
 
     // Read through a ref so the run closure never captures a stale list: every step re-reads the
     // installed set, and the row objects it was handed are from before that.

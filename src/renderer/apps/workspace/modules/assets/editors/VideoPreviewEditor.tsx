@@ -4,6 +4,7 @@ import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
 import { useAssetBlobUrl } from "./useAssetBlobUrl";
+import { useAssetReadNotice } from "./useAssetReadNotice";
 
 interface VideoPreviewPayload {
     asset: Asset<AssetType.Video>;
@@ -13,7 +14,8 @@ interface VideoPreviewPayload {
 export function VideoPreviewEditor({ payload }: EditorComponentProps<VideoPreviewPayload>) {
     const { t } = useTranslation();
     const asset = payload?.asset;
-    const { url, loading, error } = useAssetBlobUrl(asset, "video/mp4");
+    const { url, loading, failure } = useAssetBlobUrl(asset, "video/mp4");
+    const notice = useAssetReadNotice(asset?.id, failure);
 
     if (!asset) {
         return null;
@@ -25,11 +27,11 @@ export function VideoPreviewEditor({ payload }: EditorComponentProps<VideoPrevie
             </div>
         );
     }
-    if (error || !url) {
+    if (notice || !url) {
         return (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-fg-muted">
                 <AlertCircle className="h-5 w-5 text-danger" />
-                <span>{error ?? t("assets.previewEditor.loadFailed")}</span>
+                <span>{notice ?? t("assets.previewEditor.loadFailed")}</span>
             </div>
         );
     }

@@ -7,7 +7,7 @@ import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import crypto from "crypto";
 import { app as electronApp } from "electron";
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../utils/unpatchedFs";
 import path from "path";
 import { PersistentState } from "../../../../shared/utils/persistentState";
 import { Manager } from "./manager";

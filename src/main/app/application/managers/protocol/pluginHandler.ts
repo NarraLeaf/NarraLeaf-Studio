@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import { getMimeType } from "@shared/utils/fs";
 import {

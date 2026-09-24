@@ -95,6 +95,10 @@ export const project = {
         live: "实时会话期间，项目自身的设置是只读的。这里还能编辑的，就是会话携带的那些。",
         frozen: "项目被冻结期间，项目自身的设置是只读的。",
     },
+    writeFailed: {
+        plain: "无法保存项目文件",
+        withReason: "无法保存项目文件；{reason}",
+    },
     details: {
         nameLabel: "应用名称",
         namePlaceholder: "应用名称",
@@ -224,6 +228,10 @@ export const project = {
         clearBackground: "保留透明",
         transparent: "无",
         icnsPreview: "ICNS 预览",
+        pickFailed: "无法打开文件选择器",
+        unsupported: "“{name}”不能用作图标",
+        readFailed: "无法读取“{name}”",
+        failed: "无法更新图标",
         target: {
             macos: "macOS",
             windows: "Windows",
@@ -514,10 +522,39 @@ export const project = {
         rescan: "重新扫描",
         scanning: "正在扫描项目…",
         empty: "没有插件依赖",
+        // 列表上方的横幅：行处于哪几种状态就各写一句，说明状态本身以及在哪里处理。
+        // 每句只写自己的原因，未安装的插件不会被说成「已安装版本不兼容」。用词与各行一致（即与插件面板一致）。
         banner: {
-            // 只说版本裁定，不借用作者那个开关的词：这条横幅说的插件都是 Studio 停用的，不是谁关掉的。
-            blocked: "部分插件未为本项目载入，已安装版本不兼容；请更新或重新安装",
-            warnings: "某个插件版本过旧，或某项可选依赖不可用",
+            missing: {
+                one: "本项目使用的 {count} 个插件未安装；请在插件面板中安装",
+                other: "本项目使用的 {count} 个插件未安装；请在插件面板中安装",
+            },
+            // 解除停用靠横幅旁的「重新扫描」按钮，句子以它结尾。
+            held: {
+                one: "{count} 个插件已为本项目停用，已安装的版本与本项目所依赖的版本不兼容；点击「重新扫描」以使用已安装的版本",
+                other: "{count} 个插件已为本项目停用，已安装的版本与本项目所依赖的版本不兼容；点击「重新扫描」以使用已安装的版本",
+            },
+            needsAuthorization: {
+                one: "本项目使用的 {count} 个插件待授权；请在插件面板中授权",
+                other: "本项目使用的 {count} 个插件待授权；请在插件面板中授权",
+            },
+            disabled: {
+                one: "本项目使用的 {count} 个插件已禁用；请在插件面板中启用",
+                other: "本项目使用的 {count} 个插件已禁用；请在插件面板中启用",
+            },
+            failed: {
+                one: "本项目使用的 {count} 个插件载入失败；错误信息见插件面板",
+                other: "本项目使用的 {count} 个插件载入失败；错误信息见插件面板",
+            },
+            outdated: {
+                one: "{count} 个插件的版本低于本项目所依赖的版本",
+                other: "{count} 个插件的版本低于本项目所依赖的版本",
+            },
+            // 仅数据的依赖处于另一个主版本：插件照常载入，没有被停用。
+            incompatible: {
+                one: "{count} 个插件的已安装版本与本项目所依赖的版本不兼容",
+                other: "{count} 个插件的已安装版本与本项目所依赖的版本不兼容",
+            },
         },
         status: {
             ready: "就绪",
@@ -535,7 +572,6 @@ export const project = {
         meta: {
             requires: "需要 {version}",
             installed: "已安装 {version}",
-            notInstalled: "未安装",
             builtIn: "内置",
             dataOnly: "仅数据",
         },

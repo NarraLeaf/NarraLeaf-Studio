@@ -1,11 +1,11 @@
 import type { ProjectTrustRecord } from "./projectTrust";
-import type { ProjectSessionLockOutcome } from "./projectSession";
+import type { ProjectSessionHolder, ProjectSessionLockOutcome } from "./projectSession";
 import type { ExternalScriptEditor, ScriptOpenTargetId } from "./scriptEditors";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import type { LibraryExchangeKind } from "../story/libraryExchange";
-import { BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
+import { AssetUrlDirectory, BlueprintPersistenceProjectRef, RendererErrorReport, RequestStatus, WorkspaceCloseStage, WorkspaceFreezeKind } from "./ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
@@ -29,6 +29,7 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { GameProcessMemoryReading } from "./gameProcessMemory";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
 import type {
     BuildPreflightFinding,
@@ -98,7 +99,7 @@ import type {
     TeamSubscribeOutcome,
 } from "./team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsProjectServerSession, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -347,6 +348,11 @@ export interface RendererPreloadedInterface {
          * project - not a normalised document, not an auto-save, not a checkpoint.
          */
         acquireSessionLock(): Promise<RequestStatus<ProjectSessionLockOutcome>>;
+        /**
+         * Another NarraLeaf Studio has taken this window's project over. From receipt, nothing this
+         * window holds may be written - see `workspace.sessionTakenOver`.
+         */
+        onSessionTakenOver(handler: (holder: ProjectSessionHolder) => void): AppEventToken;
         /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
         liveIntentTaken(): Promise<RequestStatus<void>>;
         /**
@@ -562,6 +568,11 @@ export interface RendererPreloadedInterface {
          */
         openLogsFolder(): Promise<RequestStatus<void>>;
         /**
+         * Open Studio's third-party notice in the system's text editor. Takes no path: the file is
+         * the one main knows, in the app's resources.
+         */
+        openThirdPartyNotices(): Promise<RequestStatus<void>>;
+        /**
          * Whether a download mirror answers. In the host because the renderer never opens a
          * network connection of its own, a URL the user just typed included.
          */
@@ -648,6 +659,11 @@ export interface RendererPreloadedInterface {
          */
         getWindowFocused(): Promise<RequestStatus<{ isFocused: boolean }>>;
         onWindowFocusChanged(handler: (payload: { isFocused: boolean }) => void): AppEventToken;
+        /**
+         * What this window's own renderer process holds in memory, for a runtime plugin granted
+         * `process.memory`. The window's process only: everything around it is Studio's.
+         */
+        readProcessMemory(): Promise<RequestStatus<{ reading: GameProcessMemoryReading }>>;
         /** Capture this window and write the picture into the project's Dev Mode data. */
         saveScreenshot(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<BlueprintScreenshotResult>>;
         openScreenshotsFolder(
@@ -692,7 +708,7 @@ export interface RendererPreloadedInterface {
         resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         /** Every asset the workspace can resolve, in one round trip, keyed by asset id. */
-        resolveAllAssetUrls(): Promise<RequestStatus<{ urls: Record<string, string> }>>;
+        resolveAllAssetUrls(): Promise<RequestStatus<AssetUrlDirectory>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
@@ -962,12 +978,25 @@ export interface RendererPreloadedInterface {
          */
         getSyncState(projectPath: string): Promise<RequestStatus<VcsSyncState>>;
         /**
-         * Who this installation is signed in to this project's server as, or null.
+         * The sign-in this project uses at its server, and the one it could.
          *
-         * A LOCAL read - no socket - so a panel may ask it on open. Null on a project
-         * whose server does not ask who is calling, which is every bare `loreserver`.
+         * A LOCAL read - no socket - so a panel may ask it on open. `session` is null on a
+         * project whose server does not ask who is calling, which is every bare `loreserver`,
+         * and on one that does not use the sign-in held for its server - never asked, or
+         * answered no - which then comes back as `available`.
          */
-        getServerSession(projectPath: string): Promise<RequestStatus<{ session: VcsServerSession | null }>>;
+        getServerSession(projectPath: string): Promise<RequestStatus<VcsProjectServerSession>>;
+        /**
+         * Ask whether this project uses the sign-in held for its server.
+         *
+         * The question goes up in a window of Studio's own and the main process records the
+         * answer; what comes back is where the project stands afterwards. Asks even where the
+         * answer was once no - calling this is the author asking again.
+         *
+         * `remoteOrigin` asks about a server the project is not connected to yet, and the answer is
+         * then about that server.
+         */
+        useServerSession(projectPath: string, remoteOrigin?: string): Promise<RequestStatus<VcsProjectServerSession>>;
         /**
          * Sign this installation in to this project's server with a token its operator
          * issued.
@@ -992,7 +1021,12 @@ export interface RendererPreloadedInterface {
          * project of its own.
          */
         trustAuthority(certificatePath: string): Promise<RequestStatus<{ installed: boolean; output: string }>>;
-        /** Clear the stored token and Studio's record of whose it was. Local. */
+        /**
+         * Stop this project using the sign-in held for its server. Local.
+         *
+         * Per project: the sign-in stays on this machine for the projects that use it, and
+         * taking it off altogether is `forgetServer`.
+         */
         signOut(projectPath: string): Promise<RequestStatus<{ session: null }>>;
         /**
          * Ask an `nlteam://` address what is behind it.
@@ -1380,7 +1414,7 @@ export interface RendererPreloadedInterface {
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
         /** `locale` picks the template's own copy of its content written in that language, if it has one. */
-        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; contentLocale?: string }>>;
+        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; dependencies: string[]; contentLocale?: string }>>;
     };
 
     assets: {

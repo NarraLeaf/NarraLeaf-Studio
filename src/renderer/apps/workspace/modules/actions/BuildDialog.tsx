@@ -56,8 +56,10 @@ import { BuildService } from "@/lib/workspace/services/core/BuildService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import { rescanProjectDependencies } from "@/lib/plugins/rescanDependencies";
 import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
 import type {
+    DependencyResolutionEntry,
     DependencyStatus,
     ProjectDependencyResolution,
     ProjectDependencyTable,
@@ -185,6 +187,8 @@ export type BuildPluginEntry = {
     suppressed?: boolean;
     /** False when the plugin is installed here but switched off, so it contributes nothing. */
     installedEnabled?: boolean;
+    /** The installed plugin's own state: waiting for its permissions, or failed to load. */
+    installedStatus?: DependencyResolutionEntry["installedStatus"];
 };
 
 /**
@@ -207,6 +211,7 @@ export function buildPluginEntries(
             status: entry.status,
             suppressed: entry.suppressed,
             installedEnabled: entry.installedEnabled,
+            ...(entry.installedStatus ? { installedStatus: entry.installedStatus } : {}),
         }));
     }
     return (table?.plugins ?? []).map(plugin => ({
@@ -435,8 +440,8 @@ export function BuildDialogContent({
     //
     // The Content section still writes, on its own (a switch cannot wait 250ms to admit it moved),
     // and joins here through `contentRevision`, which it bumps only after its write has landed - so
-    // the same "disk first, then judge" order holds for `encryption-key-unavailable` and
-    // `web-unprotected`.
+    // the same "disk first, then judge" order holds for `web-unprotected` and
+    // `mobile-unprotected`.
     useEffect(() => {
         let cancelled = false;
         const timer = setTimeout(() => {
@@ -1692,7 +1697,8 @@ export async function openBuildDialog(workspace: Workspace): Promise<void> {
                         throw new Error(message);
                     }
                     try {
-                        return buildPluginEntries(await dependencyService.rescanAndPersist());
+                        // The author's Rescan, so it releases a plugin held back for its version.
+                        return buildPluginEntries(await rescanProjectDependencies(context));
                     } catch (error) {
                         uiService.showNotification(error instanceof Error ? error.message : String(error), "error");
                         throw error;

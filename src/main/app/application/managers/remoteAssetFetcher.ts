@@ -3,7 +3,12 @@ import {
     REMOTE_ASSET_FETCH_TIMEOUT_MS,
     REMOTE_ASSET_MAX_BYTES,
 } from "@shared/constants/remoteAsset";
-import type { RemoteAssetFetchResult, RemoteAssetValidators } from "@shared/types/remoteAsset";
+import {
+    RemoteAssetFetchErrorCode,
+    remoteFetchCodeForStatus,
+    type RemoteAssetFetchResult,
+    type RemoteAssetValidators,
+} from "@shared/types/remoteAsset";
 import { applyDownloadRewrite } from "./downloadRewrites";
 
 /**
@@ -18,7 +23,22 @@ import { applyDownloadRewrite } from "./downloadRewrites";
  * it trusts - the URL here comes from the renderer, because the author typed it into a dialog a
  * moment ago. What the boundary buys is still real: the request is made, bounded and checked by
  * main, and the bytes are handed back rather than the address.
+ *
+ * Every refusal is a {@link RemoteAssetFetchError}. Its message is for the log - English, with the
+ * server's status line and the URL in it - and its `code` crosses to the renderer beside it, which is
+ * what the author's sentence is chosen from.
  */
+
+/** A refusal from this fetcher: the log's sentence, and the code the interface words. */
+export class RemoteAssetFetchError extends Error {
+    constructor(
+        public readonly code: RemoteAssetFetchErrorCode,
+        message: string,
+    ) {
+        super(message);
+        this.name = "RemoteAssetFetchError";
+    }
+}
 
 /** Reject anything that is not an absolute http(s) URL, before a request is attempted. */
 export function parseRemoteAssetUrl(url: string): URL {
@@ -26,10 +46,13 @@ export function parseRemoteAssetUrl(url: string): URL {
     try {
         parsed = new URL(url);
     } catch {
-        throw new Error(`Not a valid URL: ${url}`);
+        throw new RemoteAssetFetchError(RemoteAssetFetchErrorCode.InvalidUrl, `Not a valid URL: ${url}`);
     }
     if (!REMOTE_ASSET_ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
-        throw new Error(`A remote asset must be an http or https URL, not "${parsed.protocol}"`);
+        throw new RemoteAssetFetchError(
+            RemoteAssetFetchErrorCode.UnsupportedScheme,
+            `A remote asset must be an http or https URL, not "${parsed.protocol}"`,
+        );
     }
     return parsed;
 }
@@ -59,9 +82,19 @@ export async function fetchRemoteAsset(
     } catch (error) {
         // An abort is the timeout, and "aborted" tells the author nothing about what to do.
         if (controller.signal.aborted) {
-            throw new Error(`The server did not answer within ${REMOTE_ASSET_FETCH_TIMEOUT_MS / 1000}s`);
+            throw new RemoteAssetFetchError(
+                RemoteAssetFetchErrorCode.Timeout,
+                `The server did not answer within ${REMOTE_ASSET_FETCH_TIMEOUT_MS / 1000}s: ${url}`,
+            );
         }
-        throw new Error(error instanceof Error ? error.message : "Network error");
+        // Everything `fetch` itself rejects with is a request that got no answer: a name that does
+        // not resolve, a refused connection, a failed TLS handshake. Node puts which one in `cause`,
+        // which is kept for the log; the author is told the server could not be reached.
+        const cause = error instanceof Error && error.cause instanceof Error ? `: ${error.cause.message}` : "";
+        throw new RemoteAssetFetchError(
+            RemoteAssetFetchErrorCode.Unreachable,
+            `${error instanceof Error ? error.message : "Network error"}${cause} (${url})`,
+        );
     } finally {
         clearTimeout(timer);
     }
@@ -70,18 +103,21 @@ export async function fetchRemoteAsset(
         return { kind: "not-modified" };
     }
     if (!response.ok) {
-        throw new Error(`Request failed (${response.status} ${response.statusText})`);
+        throw new RemoteAssetFetchError(
+            remoteFetchCodeForStatus(response.status),
+            `Request failed (${response.status} ${response.statusText}): ${url}`,
+        );
     }
 
     // Checked twice: the declared length lets an oversized body be refused before it is read, and
     // the measured length is what actually arrived - a server may under-declare, or not declare.
     const declared = Number(response.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > REMOTE_ASSET_MAX_BYTES) {
-        throw new Error(sizeRefusal(declared));
+        throw new RemoteAssetFetchError(RemoteAssetFetchErrorCode.TooLarge, sizeRefusal(declared));
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.byteLength > REMOTE_ASSET_MAX_BYTES) {
-        throw new Error(sizeRefusal(bytes.byteLength));
+        throw new RemoteAssetFetchError(RemoteAssetFetchErrorCode.TooLarge, sizeRefusal(bytes.byteLength));
     }
 
     return {
@@ -89,8 +125,9 @@ export async function fetchRemoteAsset(
         bytes,
         etag: response.headers.get("etag") ?? undefined,
         lastModified: response.headers.get("last-modified") ?? undefined,
-        // Recorded for diagnostics only. What the asset *is* gets decided by the format validator
-        // reading the bytes, because a Content-Type is a claim and magic bytes are evidence.
+        // A claim, not evidence of what the bytes are: the renderer's format gate decides that from
+        // the bytes, and holds this only against them - a server declaring a web page or text has
+        // said the answer is not the file.
         contentType: response.headers.get("content-type") ?? undefined,
     };
 }

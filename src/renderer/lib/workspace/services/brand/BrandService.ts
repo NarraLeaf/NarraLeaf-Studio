@@ -23,6 +23,7 @@ import {
 } from "@shared/types/typography";
 import { LocalizationService } from "../localization/LocalizationService";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
+import { storeWrite } from "../autosave/writeReport";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -643,7 +644,7 @@ export class BrandService extends Service<BrandService> implements IBrandService
     }
 
     private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
+        return createProjectDocumentStorage(this.getContext(), storeWrite("workspace.shell.save.stores.brand", "retried"));
     }
 }
 

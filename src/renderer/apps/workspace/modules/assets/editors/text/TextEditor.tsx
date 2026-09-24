@@ -8,6 +8,8 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { assetLibraryFreezeScope } from "../../assetLiveSession";
 import {
@@ -460,7 +462,15 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
                 return;
             }
             if (!text.ok) {
-                setError(text.error?.message ?? tRef.current("assets.textEditor.loadFailed"));
+                // Worded from the read's code, never its message: that is English and names the
+                // asset's storage path, which is its id split into folders.
+                console.warn(`[assets] could not read ${asset.id}: ${text.error?.message ?? ""}`);
+                setError(describeAssetReadFailure(
+                    asset.id,
+                    resolveAssetDisplayName(context.services, asset.id),
+                    text.error?.code,
+                    tRef.current,
+                ));
                 setLoading(false);
                 return;
             }

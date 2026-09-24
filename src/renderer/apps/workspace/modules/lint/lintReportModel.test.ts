@@ -13,6 +13,7 @@ import {
     lintRuleDescriptionKey,
     lintRuleTitleKey,
     lintSeverityLabelKey,
+    showGroupsWholeForHits,
     unfoldGroupsWithHits,
     type LintGroupLabels,
 } from "./lintReportModel";
@@ -61,6 +62,20 @@ describe("lintLocationLabel", () => {
         expect(lintLocationLabel({ kind: "blueprint", blueprintId: "b1" }, "")).toBe("b1");
         expect(lintLocationLabel({ kind: "character", characterId: "c1", characterName: "" }, "")).toBe("c1");
     });
+
+    it("names a widget inside a component by the component's name and its own, and never by an id", () => {
+        const location: LintLocation = {
+            kind: "component",
+            componentId: "3f0c2d9e-8b1a-4c55-9d2e-7a6b5c4d3e2f",
+            componentName: "Card",
+            elementId: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
+            elementName: "Window",
+        };
+
+        expect(lintLocationLabel(location, "My Game")).toBe("Card / Window");
+        expect(lintLocationLabel({ ...location, elementName: undefined }, "My Game")).toBe("Card");
+        expect(lintLocationLabel({ ...location, componentName: "", elementName: undefined }, "My Game")).toBe("");
+    });
 });
 
 describe("lintLocationKey", () => {
@@ -81,6 +96,8 @@ describe("lintLocationKey", () => {
             lintLocationKey(storyLocation("x")),
             lintLocationKey({ kind: "blueprint", blueprintId: "x" }),
             lintLocationKey({ kind: "character", characterId: "x", characterName: "x" }),
+            lintLocationKey({ kind: "surface", surfaceId: "x", surfaceName: "x" }),
+            lintLocationKey({ kind: "component", componentId: "x", componentName: "x" }),
         ];
         expect(new Set(keys).size).toBe(keys.length);
     });
@@ -277,6 +294,125 @@ describe("flattenLintGroups", () => {
         expect(rows.map(row => row.kind)).toEqual(["group", "group", "entry"]);
         // The heading still counts what it is hiding, so folding never loses the number.
         expect(rows[0].group.entries).toHaveLength(2);
+    });
+});
+
+/**
+ * The report of a real project: one rule that is almost all of it.
+ *
+ * Measured on a shipped game - 151 errors and 9084 warnings, of which 9070 were `voice/missing`.
+ * Grouping by rule was already the default and did not help: every group opened whole, so the
+ * fourteen findings the other rules made were on the far side of nine thousand rows of the same
+ * sentence. These pin that the report opens at a length a reader can scroll, that the loud rule
+ * still states its own count, and that nothing is lost.
+ */
+describe("a rule that is almost the whole report", () => {
+    const LOUD = 9070;
+
+    function measuredReport(): LintReportEntry[] {
+        const entries: LintReportEntry[] = [];
+        for (let index = 0; index < LOUD; index += 1) {
+            entries.push(entry("voice/missing", "warning", storyLocation(`sc${index}`)));
+        }
+        // The fourteen findings that were unreachable, from rules that sort both sides of the loud
+        // one: by severity (errors lead) and by title within one severity.
+        for (let index = 0; index < 3; index += 1) {
+            entries.push(entry("blueprint/reference-missing", "error", { kind: "project" }));
+        }
+        entries.push(entry("blueprint/unknown-node", "error", { kind: "project" }));
+        for (let index = 0; index < 10; index += 1) {
+            entries.push(entry("assets/unused", "warning", { kind: "project" }));
+        }
+        return entries;
+    }
+
+    const groupsOf = (entries: LintReportEntry[]) => groupLintEntries(entries, "rule", labels);
+
+    it("opens the loud rule at its first findings and a row that opens the rest", () => {
+        const groups = groupsOf(measuredReport());
+        const rows = flattenLintGroups(groups);
+        const loud = groups.find(group => group.key === "voice/missing")!;
+
+        expect(loud.entries).toHaveLength(LOUD);
+        expect(rows.filter(row => row.kind === "entry" && row.group.key === "voice/missing")).toHaveLength(20);
+        expect(rows.filter(row => row.kind === "more" && row.group.key === "voice/missing")).toHaveLength(1);
+    });
+
+    it("puts every other rule's findings within one screenful of scrolling", () => {
+        const rows = flattenLintGroups(groupsOf(measuredReport()));
+
+        // Four groups, their findings, and one row that opens the rest of the loud one.
+        expect(rows).toHaveLength(4 + 3 + 1 + 10 + 20 + 1);
+        // And the last of them is not nine thousand rows down.
+        const last = rows.findIndex(row => row.kind === "entry" && row.group.key === "assets/unused");
+        expect(last).toBeLessThan(40);
+    });
+
+    it("keeps the loud rule's own count on its heading", () => {
+        const rows = flattenLintGroups(groupsOf(measuredReport()));
+        const heading = rows.find(row => row.kind === "group" && row.group.key === "voice/missing")!;
+
+        expect(heading.group.entries).toHaveLength(LOUD);
+    });
+
+    it("lays out the whole rule once the reader asks for it", () => {
+        const groups = groupsOf(measuredReport());
+        const rows = flattenLintGroups(groups, undefined, new Set(["voice/missing"]));
+
+        expect(rows.filter(row => row.kind === "entry" && row.group.key === "voice/missing")).toHaveLength(LOUD);
+        expect(rows.some(row => row.kind === "more")).toBe(false);
+    });
+
+    it("leaves a group that is only a little over the limit whole", () => {
+        const entries = Array.from({ length: 25 }, (_, index) =>
+            entry("voice/missing", "warning", storyLocation(`sc${index}`)));
+        const rows = flattenLintGroups(groupsOf(entries));
+
+        expect(rows.filter(row => row.kind === "entry")).toHaveLength(25);
+        expect(rows.some(row => row.kind === "more")).toBe(false);
+    });
+
+    it("counts every finding for the severity filter, previewed or not", () => {
+        const entries = measuredReport();
+
+        expect(filterLintEntries(entries, "warning")).toHaveLength(LOUD + 10);
+        expect(filterLintEntries(entries, "error")).toHaveLength(4);
+    });
+});
+
+/**
+ * A find has to be able to reach a hit the report is not drawing - otherwise it reports a match and
+ * then cannot scroll to it. It opens the group that holds one, and only that group.
+ */
+describe("showGroupsWholeForHits", () => {
+    const manyOf = (ruleId: LintRuleId, count: number) =>
+        Array.from({ length: count }, (_, index) => entry(ruleId, "warning", storyLocation(`sc${index}`)));
+
+    it("opens a group whose hit is below its preview", () => {
+        const groups = groupLintEntries(manyOf("voice/missing", 100), "rule", labels);
+        const whole = showGroupsWholeForHits(groups, new Set(), candidate =>
+            candidate === groups[0].entries[80]);
+
+        expect([...whole]).toEqual(["voice/missing"]);
+        const rows = flattenLintGroups(groups, undefined, whole);
+        expect(rows.filter(row => row.kind === "entry")).toHaveLength(100);
+    });
+
+    it("leaves a group whose hits are all inside its preview short", () => {
+        const groups = groupLintEntries(manyOf("voice/missing", 100), "rule", labels);
+        const collapsed = new Set<string>();
+        const whole = showGroupsWholeForHits(groups, collapsed, candidate =>
+            candidate === groups[0].entries[3]);
+
+        // The same set back, so a memo over it keeps its identity and the row list is not rebuilt.
+        expect(whole).toBe(collapsed);
+    });
+
+    it("leaves a group the reader already opened alone", () => {
+        const groups = groupLintEntries(manyOf("voice/missing", 100), "rule", labels);
+        const already = new Set(["voice/missing"]);
+
+        expect(showGroupsWholeForHits(groups, already, () => true)).toBe(already);
     });
 });
 

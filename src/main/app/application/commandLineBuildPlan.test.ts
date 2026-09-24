@@ -17,7 +17,7 @@ const WORKING_DIRECTORY = path.join(ROOT, "jobs", "42");
 const BASE: BuildCommandLineOptions = {
     requested: true,
     selector: PROJECT,
-    variantId: null,
+    variant: null,
     platform: null,
     format: null,
     arch: null,
@@ -26,13 +26,21 @@ const BASE: BuildCommandLineOptions = {
     userDataDir: null,
     signingPath: null,
     settings: [],
+    plugins: [],
     allowUnsigned: false,
     error: null,
 };
 
-function plan(options: Partial<BuildCommandLineOptions>, host: "windows" | "macos" | "linux" = "windows") {
+const RELEASE = { id: "main", name: "main" };
+
+function plan(
+    options: Partial<BuildCommandLineOptions>,
+    host: "windows" | "macos" | "linux" = "windows",
+    variant: { id: string; name: string } = RELEASE,
+) {
     return planCommandLineBuild({
         options: { ...BASE, ...options },
+        variant,
         projectPath: PROJECT,
         hostPlatform: host,
         hostArch: "x64",
@@ -51,6 +59,7 @@ describe("planCommandLineBuild", () => {
                 format: "zip",
                 arch: "x64",
                 variantId: "main",
+                variantName: "main",
             }),
         });
     });
@@ -137,10 +146,12 @@ describe("planCommandLineBuild", () => {
         expect(result.ok && result.plan.request.targets[0]).toEqual({ platform: "web", formats: ["zip"] });
     });
 
-    it("takes the named variant", () => {
-        const result = plan({ variantId: "demo" });
+    it("builds the variant it was handed by its id, and names it by its name", () => {
+        const demo = { id: "0d9b5f6e-2a41-4f5e-9c1d-7e3a8b6c5d42", name: "Demo" };
+        const result = plan({ variant: "demo" }, "windows", demo);
 
-        expect(result.ok && result.plan.request.appTagId).toBe("demo");
+        expect(result.ok && result.plan.request.appTagId).toBe(demo.id);
+        expect(result.ok && result.plan.variantName).toBe("Demo");
     });
 
     it("cross-builds for x64 by default", () => {

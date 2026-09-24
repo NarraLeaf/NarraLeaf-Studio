@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
-import { PluginAvatar, statusText } from "@/lib/plugins/ui/pluginPresentation";
-import { describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
-import { isUnmet, type DependencyRemedy, type DependencyRemedyStep } from "@/lib/workspace/project/dependencyRemedy";
+import { PluginAvatar } from "@/lib/plugins/ui/pluginPresentation";
+import { describeDependencyBanner, describeDependencyState } from "@/lib/workspace/project/dependencyStatusDisplay";
+import type { DependencyRemedy, DependencyRemedyStep } from "@/lib/workspace/project/dependencyRemedy";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import type { DependencyRow, DependencyRowOutcome } from "./useProjectDependencyRows";
 
@@ -67,7 +67,17 @@ export function DependencyInstallScreen({
     onRun,
 }: DependencyInstallScreenProps) {
     const { t, tn } = useTranslation();
-    const unavailable = rows.filter(row => isUnmet(row.entry)).length;
+    // The same sentences the dependency table under Project ▸ App writes, for the same reason: this
+    // screen used to say "N plugins are unavailable" over a row reading "Disabled · Enable", so the
+    // strip above the list and the row below it named the same fact two different ways.
+    const banner = describeDependencyBanner(rows.map(row => row.entry));
+    // The button is named after the step it would apply when every row it would act on shares one:
+    // a list of plugins the author switched off is enabled, not installed. A mixed set keeps the
+    // general name, which is the only honest one for "an install, an update and a switch".
+    const steps = new Set(actionable.flatMap(row => row.remedy.steps));
+    const runLabelKey: TranslationKey = steps.size === 1
+        ? STEP_LABEL_KEYS[[...steps][0]!]
+        : "plugins.dependencies.installAll";
 
     return (
         <>
@@ -99,8 +109,10 @@ export function DependencyInstallScreen({
                             className="border-b border-edge-subtle px-3 py-2 text-2xs text-fg-muted"
                             data-dependency-summary
                         >
-                            {unavailable > 0
-                                ? tn("plugins.dependencies.unavailable", unavailable, { count: unavailable })
+                            {banner
+                                ? banner.lines.map(line => (
+                                    <p key={line.key}>{tn(line.key, line.count, { count: line.count })}</p>
+                                ))
                                 : t("plugins.dependencies.allReady")}
                         </div>
                         {registryError ? (
@@ -137,7 +149,7 @@ export function DependencyInstallScreen({
                     onClick={() => onRun(actionable)}
                     data-dependency-install-all
                 >
-                    {t("plugins.dependencies.installAll")}
+                    {t(runLabelKey)}
                 </Button>
             </div>
         </>
@@ -161,10 +173,10 @@ function DependencyScreenRow({
     const { entry, remedy, name, installed, registryEntry } = row;
     const { dependency } = entry;
 
+    // The same word Project ▸ App writes for this row, including the two states the version verdict
+    // cannot see - waiting for authorization, and failed to load - which the entry carries from the
+    // installed list this panel holds.
     const state = describeDependencyState(entry);
-    // A word about the plugin itself, for the states the version verdict cannot see: waiting for
-    // authorization, and failed. Taken from the Plugins panel, which already names both.
-    const pluginState = !state && installed && installed.status !== "enabled" ? installed.status : null;
 
     // What is installed is stated only when something is: the state word beside the name already
     // says a plugin is missing, and saying it twice on one row reads as two different facts.
@@ -201,13 +213,6 @@ function DependencyScreenRow({
                         {state ? (
                             <span className={`shrink-0 text-2xs font-medium ${state.className}`} data-dependency-state>
                                 {t(state.labelKey)}
-                            </span>
-                        ) : pluginState ? (
-                            <span
-                                className={`shrink-0 text-2xs font-medium ${pluginState === "error" ? "text-danger" : "text-warning"}`}
-                                data-dependency-state
-                            >
-                                {statusText(pluginState, t)}
                             </span>
                         ) : null}
                     </div>
@@ -273,6 +278,8 @@ function describeObstacle(remedy: DependencyRemedy, t: Translator["t"]): string 
             return t("plugins.dependencies.noCompatibleVersion");
         case "needsStudio":
             return t("plugins.store.needsStudio", { range: remedy.studioRange ?? "" });
+        case "rescanInProject":
+            return t("plugins.dependencies.rescanInProject");
         default:
             return null;
     }

@@ -1,5 +1,6 @@
 import {
     useCallback,
+    useEffect,
     useMemo,
     useRef,
     useState,
@@ -21,7 +22,7 @@ import {
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
-import { collectSurfaceFlushElementIds } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
+import { collectSurfaceFlushElementIds, hasWidgetFlushBlueprint } from "@/lib/ui-editor/runtime/game/surfaceFlushTargets";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import {
@@ -30,6 +31,8 @@ import {
     type GameHostSurfaceBinding,
 } from "./gameHostApiOptions";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
+import type { AmbientSurfaceTargets } from "./ambientSurfaceEvents";
+import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { staticSurfaceHostAdapter, type SurfaceStateAccessors } from "./types";
 
 /**
@@ -80,6 +83,12 @@ export type GameUiSlotHostOptions = {
     startStory: GameHostSurfaceBinding["startStory"];
     setWidgetPatchesByScope: Dispatch<SetStateAction<WidgetPatchesByScope>>;
     widgetPatchesByScopeRef: MutableRefObject<WidgetPatchesByScope>;
+    /**
+     * Where a slot surface says it is live, so the game's window and preference events reach its
+     * heads as they reach a page's (see `ambientSurfaceEvents`). Absent on a host that raises none of
+     * those events, such as the story editor's preview.
+     */
+    ambientSurfaces?: AmbientSurfaceTargets;
 };
 
 export type StageSlotSurfaceRuntime = {
@@ -220,24 +229,31 @@ export function useStageSlotSurfaceRuntime(input: {
         [bundle.ui.localBlueprints, document, surface],
     );
     const flushSlotElements = useCallback(() => {
+        const runtime = hostAdapterRef.current?.blueprintRuntime;
         for (const elementId of flushElementIds) {
             const element = document.elements[elementId];
-            if (!element) {
+            if (!element || !runtime) {
                 continue;
             }
-            void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                elementId,
-                "flush",
-                {
-                    element: {
-                        surfaceId: surface.id,
-                        elementId,
-                        elementType: element.type,
-                    },
+            const payload = {
+                element: {
+                    surfaceId: surface.id,
+                    elementId,
+                    elementType: element.type,
                 },
-            );
+            };
+            // A widget whose own graph answers the flush runs it once per drawing on screen: in a row
+            // of the slot's list (a choice, an NVL line) it reads that row, rather than running once
+            // as a row nobody draws. One kept only for its value bindings has no graph to run in a
+            // row, so it stays a single flush rather than one per row for nothing.
+            const drawings = hasWidgetFlushBlueprint(bundle.ui.localBlueprints, surface.id, element)
+                ? runtime.drawings?.everyDrawingOf(elementId) ?? [{}]
+                : [{}];
+            for (const drawing of drawings) {
+                void runtime.dispatchElementBlueprintEvent(elementId, "flush", payload, drawing);
+            }
         }
-    }, [document, flushElementIds, surface.id]);
+    }, [bundle.ui.localBlueprints, document, flushElementIds, surface.id]);
 
     return { runtimeScopeId, hostAdapter, hostAdapterRef, flushSlotElements };
 }
@@ -275,6 +291,16 @@ export function StageSlotSurfaceBody(props: {
     const { runtimeScopeId, hostAdapter } = runtime;
     const [subscriptionsReady, setSubscriptionsReady] = useState(false);
     const handleRuntimeSubscriptionsReady = useCallback(() => setSubscriptionsReady(true), []);
+
+    // Live from the moment its graphs run - the same moment its lifecycle boundary is handed the
+    // core - until it leaves the stage.
+    const { ambientSurfaces } = options;
+    useEffect(() => {
+        if (!ambientSurfaces || !core || !subscriptionsReady) {
+            return undefined;
+        }
+        return ambientSurfaces.add({ surface, hostAdapter, runtimeScopeId });
+    }, [ambientSurfaces, core, hostAdapter, runtimeScopeId, subscriptionsReady, surface]);
     const getWidgetRuntimePatches = useCallback(
         () => widgetPatchesByScopeRef.current[runtimeScopeId] ?? NO_WIDGET_RUNTIME_PATCHES,
         [runtimeScopeId, widgetPatchesByScopeRef],
@@ -304,6 +330,28 @@ export function StageSlotSurfaceBody(props: {
         };
     }, [core, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
 
+    /**
+     * What a page placed in a Page widget on this surface runs on: the same runtime the game's pages
+     * and layers hand theirs, built from the capabilities this surface was given - a choice menu's
+     * own `Select Choice` included - so the embedded page shares the slot's host rather than getting
+     * a smaller one. Without it the page is drawn and none of its graphs run.
+     */
+    const { host, startStory, setWidgetPatchesByScope } = options;
+    const nestedSurfaceRuntime = useMemo(() => {
+        if (!core) {
+            return undefined;
+        }
+        return createNestedSurfaceHost({
+            core,
+            capabilities: host,
+            bundle,
+            startStory,
+            widgetPatches: { setByScope: setWidgetPatchesByScope, byScopeRef: widgetPatchesByScopeRef },
+            lifecycleRef,
+            ambientSurfaces,
+        });
+    }, [ambientSurfaces, bundle, core, host, lifecycleRef, setWidgetPatchesByScope, startStory, widgetPatchesByScopeRef]);
+
     return (
         <SurfaceLifecycleBoundary
             core={core}
@@ -325,6 +373,7 @@ export function StageSlotSurfaceBody(props: {
                     hostAdapter={hostAdapter}
                     blueprintBindingContext={bindingContext}
                     getWidgetRuntimePatches={getWidgetRuntimePatches}
+                    nestedSurfaceRuntime={nestedSurfaceRuntime}
                     surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
                     onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     surfacePointerEvents={surfacePointerEvents}

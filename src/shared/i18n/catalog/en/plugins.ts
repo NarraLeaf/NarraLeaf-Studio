@@ -69,6 +69,10 @@ export const plugins = {
         uninstalled: "Plugin uninstalled.",
         reloading: "Reloading plugin…",
         reloaded: "Plugin reloaded.",
+        // Starting a plugin whose last load failed: the record forgets the failure, and the loader
+        // serves it again.
+        starting: "Starting plugin…",
+        started: "Plugin started.",
     },
     error: {
         load: "Failed to load plugins",
@@ -95,9 +99,9 @@ export const plugins = {
          * warning leads to, so the screen confirms what brought the author to it rather than
          * restating it differently.
          *
-         * "Not available" covers all three of absent, withheld and switched off on purpose: it is
-         * the one thing true of every row the count includes, and each row then says which of the
-         * three it is.
+         * "Not available" covers all five of absent, withheld, waiting for its permissions, switched
+         * off and failed to start, on purpose: it is the one thing true of every row the count
+         * includes, and each row then says which of the five it is.
          */
         unavailable: {
             one: "{count} plugin this project needs is not available.",
@@ -114,6 +118,8 @@ export const plugins = {
         notInRegistry: "Not in the registry",
         /** Published, but not at a version this project can use. */
         noCompatibleVersion: "No compatible version",
+        /** A plugin held back for its version: the Rescan that releases it is in Project ▸ App, not here. */
+        rescanInProject: "Click Rescan in Project ▸ App to use the installed version.",
         task: {
             running: "Installing dependencies…",
             done: "Dependencies installed.",
@@ -133,7 +139,8 @@ export const plugins = {
             runtimeOnly: "Game runtime only",
             runtimeOnlyHint: "This plugin only extends the running game. It contributes nothing to the editor.",
             suppressed: "Off for this project",
-            suppressedHint: "The installed version is incompatible with the one this project was authored against. Update it, or update the project's dependency table from Project ▸ App.",
+            // Rescan is the one thing that releases the hold, so the hint names the button and where it is.
+            suppressedHint: "The installed version is incompatible with the one this project was authored against. Click Rescan in Project ▸ App to use the installed version.",
             failed: "Failed to load",
         },
         // A plugin that changed state while the workspace could not act on it.

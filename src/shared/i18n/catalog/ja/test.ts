@@ -81,6 +81,20 @@ export const test = {
         cancelled: "{title} 中止",
         errored: "{title} を実行できなかった",
     },
+    // 二つのストーリー検査が開始地点を読み取れないとき、「ゲームを始める」ノードごとに一件ずつ出す説明。
+    // {origin} はノードのカード名・ストーリーの行・リスト・ブループリント名、{target} は下の二語のどちらか。
+    entryPoint: {
+        target: {
+            story: "ストーリー",
+            scene: "シーン",
+        },
+        assembled: "「{blueprint}」の「ゲームを始める」が受け取る{target}は実行時に組み立てられる（「{origin}」から）",
+        unreadNode: "「{blueprint}」の「ゲームを始める」は{target}を「{origin}」から受け取るが、このテストはそのデータを読まない",
+        unreadPluginData: "「{blueprint}」の「ゲームを始める」は{target}を「{origin}」から受け取るが、このプロジェクトの {plugin} のデータを読み込めない",
+        engineRows: "「{blueprint}」の「ゲームを始める」は{target}を「{list}」の行から受け取り、その行は物語の再生中に埋まる",
+        undeclaredVariable: "「{blueprint}」の「ゲームを始める」は{target}を、プロジェクトで宣言されていない変数から受け取る",
+        unreadable: "「{blueprint}」の「ゲームを始める」は{target}を、このテストが追跡できない値から受け取る",
+    },
     builtin: {
         projectDiagnostics: {
             title: "プロジェクト診断",
@@ -131,7 +145,7 @@ export const test = {
             description: "条件を評価したうえで、各シーン・選択肢・エンディングに到達できるか",
             skipped: {
                 noEntryPoint: "開始位置を示すストーリーがない",
-                undecidableEntry: "Start Story ノードは実行時にシーンを決めるため、開始位置を読み取れない",
+                undecidableEntry: "「{blueprint}」の「ゲームを始める」から開始位置を読み取れない",
                 storiesUnread: "読み込めないストーリーがある",
             },
             finding: {
@@ -154,7 +168,7 @@ export const test = {
             skipped: {
                 noEndings: "開始地点のあるストーリーに /ending が一つもない",
                 noEntryPoint: "どのストーリーにも開始地点が設定されていない",
-                undecidableEntry: "Start Story ノードが実行時にシーンを決めるので、開始地点を読み取れない",
+                undecidableEntry: "「{blueprint}」の「ゲームを始める」から開始地点を読み取れない",
                 storiesUnread: "読み込めないストーリーがある",
             },
             finding: {

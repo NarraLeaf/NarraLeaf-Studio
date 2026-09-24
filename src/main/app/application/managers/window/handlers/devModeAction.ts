@@ -1,7 +1,7 @@
 import path from "path";
-import { screen, shell, type BrowserWindow } from "electron";
+import { app, screen, shell, type BrowserWindow } from "electron";
+import { summarizeGameProcessMemory } from "@shared/types/gameProcessMemory";
 import { AppHost, AppProtocol, UserDataNamespace } from "@shared/types/constants";
-import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import type {
     BlueprintOpenScreenshotsResult,
     BlueprintScreenshotResult,
@@ -18,11 +18,12 @@ import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { WeatherBakeOwner } from "../../weather/WeatherBakeManager";
 import { devModeScreenEffectQuality, screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import { IPCMessageType } from "@shared/types/ipc";
-import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { AssetUrlDirectory, IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { WindowAppType } from "@shared/types/window";
 import { requireWindowProject } from "../../../utils/windowProject";
+import { requireWindowProjectStore, type ProjectStoreRef } from "../../../utils/windowProjectStore";
 
 export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch> {
     readonly name = IPCEventType.devModeLaunch;
@@ -116,6 +117,29 @@ export class DevModeWindowFocusGetHandler extends IPCHandler<IPCEventType.devMod
 }
 
 /**
+ * What the Dev Mode window's own renderer holds in memory, for `app.game.process.memory()`.
+ *
+ * Narrowed to the calling window's process, where the packaged game counts every process it has:
+ * the processes around this window are Studio's, shared with everything else Studio has open, and
+ * a reading that included them would be a reading of Studio. The window has to be a Dev Mode one -
+ * no other window runs a game - so a caller that is not is told no rather than handed its own size.
+ */
+export class DevModeProcessMemoryHandler extends IPCHandler<IPCEventType.devModeProcessMemory> {
+    readonly name = IPCEventType.devModeProcessMemory;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<IPCEvents[IPCEventType.devModeProcessMemory]["response"]> {
+        if (window.getWindowType() !== WindowAppType.DevMode || window.win.isDestroyed()) {
+            return this.failed("Process memory is only reported to a Dev Mode window.");
+        }
+        const pid = window.win.webContents.getOSProcessId();
+        return this.success({
+            reading: summarizeGameProcessMemory(app.getAppMetrics(), { currentPid: pid, onlyPid: pid }),
+        });
+    }
+}
+
+/**
  * Where a Dev Mode window's screenshots go: the author's Dev Mode data, one folder per project.
  *
  * Not inside the project, for the reason the Dev Mode saves are not: this is the author's own
@@ -123,7 +147,7 @@ export class DevModeWindowFocusGetHandler extends IPCHandler<IPCEventType.devMod
  * screenshot button was pressed is a project directory nobody could commit. Named by the same
  * per-project function the saves use, so "reset this project's player data" reaches all of it.
  */
-function screenshotsDirectory(window: AppWindow, projectRef: DevModeSaveProjectRef): string {
+function screenshotsDirectory(window: AppWindow, projectRef: ProjectStoreRef): string {
     return path.join(
         window.app.storageManager.getNamespacePath(UserDataNamespace.DevModeScreenshots),
         devModeProjectDirectoryName(projectRef),
@@ -136,6 +160,9 @@ function screenshotsDirectory(window: AppWindow, projectRef: DevModeSaveProjectR
  * Written through the same helper the packaged game writes through, so an author who takes a
  * screenshot here gets the same file, named the same way, in a folder laid out the same way as the
  * one a player would get. What differs is the directory, and only the directory.
+ *
+ * Which project's folder is the window's own, found by the main process along with the identifier
+ * the folder is named by - see `requireWindowProjectStore` for why the caller names neither.
  */
 export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devModeScreenshotSave> {
     readonly name = IPCEventType.devModeScreenshotSave;
@@ -146,7 +173,7 @@ export class DevModeScreenshotSaveHandler extends IPCHandler<IPCEventType.devMod
         { projectRef }: IPCEvents[IPCEventType.devModeScreenshotSave]["data"],
     ): Promise<RequestStatus<BlueprintScreenshotResult>> {
         return this.tryUse(async () => writeScreenshotFile({
-            directory: screenshotsDirectory(window, projectRef),
+            directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
             capture: async () => (await window.win.webContents.capturePage()).toPNG(),
         }));
     }
@@ -162,7 +189,7 @@ export class DevModeScreenshotOpenFolderHandler
         { projectRef }: IPCEvents[IPCEventType.devModeScreenshotOpenFolder]["data"],
     ): Promise<RequestStatus<BlueprintOpenScreenshotsResult>> {
         return this.tryUse(async () => openScreenshotsFolder({
-            directory: screenshotsDirectory(window, projectRef),
+            directory: screenshotsDirectory(window, await requireWindowProjectStore(window, projectRef)),
             openPath: directory => shell.openPath(directory),
         }));
     }
@@ -359,7 +386,7 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
 
     public async handle(
         window: AppWindow<WindowAppType.DevMode>,
-    ): Promise<RequestStatus<{ urls: Record<string, string> }>> {
+    ): Promise<RequestStatus<AssetUrlDirectory>> {
         const workspaceWindow = findWorkspaceWindowFor(window);
         if (!workspaceWindow) {
             return { success: false, error: "Workspace window not available" };
@@ -384,7 +411,11 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
                     urls[assetId] = await promoteDevModeAssetGrant(window, url);
                 }
             }));
-            return { success: true, data: { urls } };
+            // The types travel untouched: promotion changes what a URL grants, not what the asset is.
+            return {
+                success: true,
+                data: resolved.data.types ? { urls, types: resolved.data.types } : { urls },
+            };
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };
         }

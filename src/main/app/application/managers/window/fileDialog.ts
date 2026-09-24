@@ -24,12 +24,14 @@
  * All of it lives in the main process and is injected into the page on demand: a Studio that is not
  * in this mode has no such global, no IPC event, and no renderer code for one.
  */
-import fs from "fs";
+import type { Stats } from "fs";
+import { unpatchedFs as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import { dialog } from "electron";
 import type { Translator } from "@shared/i18n";
 import { getMainTranslator } from "../../i18n";
 import type { AppWindow } from "./appWindow";
+import { describeFileDialog } from "./unattendedPrompt";
 
 /**
  * The translator a picker's own text is produced with.
@@ -114,6 +116,9 @@ export async function showOpenDialog(
     window: AppWindow,
     options: Electron.OpenDialogOptions,
 ): Promise<Electron.OpenDialogReturnValue> {
+    // Ahead of both answers, the system's and the scripted one: in a window nobody is looking at
+    // there is no one to pick a path, by hand or by driver.
+    window.refuseUnattendedPrompt(describeFileDialog("open", options.title));
     if (!isScripted(window)) {
         return dialog.showOpenDialog(window.win, options);
     }
@@ -145,6 +150,7 @@ export async function showSaveDialog(
     window: AppWindow,
     options: Electron.SaveDialogOptions,
 ): Promise<Electron.SaveDialogReturnValue> {
+    window.refuseUnattendedPrompt(describeFileDialog("save", options.title));
     if (!isScripted(window)) {
         return dialog.showSaveDialog(window.win, options);
     }
@@ -248,7 +254,7 @@ function absoluteOrNull(target: unknown): string | null {
     return path.isAbsolute(target) ? path.resolve(target) : null;
 }
 
-function statOrNull(target: string): fs.Stats | null {
+function statOrNull(target: string): Stats | null {
     try {
         return fs.statSync(target);
     } catch {

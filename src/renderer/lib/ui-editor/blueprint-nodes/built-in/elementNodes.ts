@@ -4,7 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER,
@@ -78,7 +78,9 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import { UI_DISPLAYABLE_WIDGET_TYPES } from "@shared/types/ui-editor/displayableWidgets";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import { widgetKindName } from "../widgetKindName";
 import type {
     BlueprintTextProperties,
     BlueprintTextPropertiesPatch,
@@ -88,8 +90,9 @@ import {
     type BlueprintNodeDef,
     type BlueprintNodePinDef,
 } from "../types";
+import type { BlueprintAssetNameFlow } from "../types";
 import { requireHostApi } from "./hostApi";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIDisplayableMotionValue } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -203,7 +206,9 @@ const textAllPropertyInputs: BlueprintNodePinDef[] = [
 
 const textAllPropertyOutputs: BlueprintNodePinDef[] = [
     out("text", "Text", "string"),
-    out("fontAssetId", "Font", "string"),
+    // The font the element holds, which the project picked or a checked Set Font wrote - unlike the
+    // text beside it, which the game may have put together.
+    { ...out("fontAssetId", "Font", "string"), assetName: "written" },
     out("fontSize", "Font Size", "float"),
     out("fontWeight", "Font Weight", "string"),
     out("color", "Color", BLUEPRINT_VALUE_TYPE_RGBA_COLOR),
@@ -219,9 +224,12 @@ function textReadNode(input: {
     displayName: string;
     keywords: string[];
     pins: BlueprintNodePinDef[];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Element",
         keywords: input.keywords,
@@ -263,10 +271,13 @@ function displayableReadNode(input: {
     hideInPalette?: boolean;
     elementTypes?: readonly string[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     const elementTarget = input.target === "element";
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: elementTarget ? "Element" : "Displayable",
         keywords: input.keywords,
@@ -294,10 +305,13 @@ function displayableVariantReadNode(input: {
     keywords: string[];
     target: "self" | "element";
     hideInPalette?: boolean;
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     const elementTarget = input.target === "element";
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: elementTarget ? "Element" : "Displayable",
         keywords: input.keywords,
@@ -372,14 +386,7 @@ function displayableAnimationControlNode(input: {
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function cleanTokenPart(value: string | undefined): string {
@@ -422,15 +429,18 @@ function writeAnimationTokenOutput(
 function resolveElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], expectedElementType: string): string {
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
-        throw new BlueprintGraphExecutionError("Element node requires a bound element input", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     if (ref.elementType !== expectedElementType) {
-        throw new BlueprintGraphExecutionError(`Element node expected ${expectedElementType}, got ${ref.elementType}`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(expectedElementType) }),
+            ctx.node.id,
+        );
     }
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-        throw new BlueprintGraphExecutionError("Element node can only target the current Surface", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
     }
-    return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
+    return addressWidgetFromExecution(ctx, ref.elementId);
 }
 
 function resolveDisplayableTargetElementId(
@@ -441,21 +451,21 @@ function resolveDisplayableTargetElementId(
     if (target === "self") {
         const elementId = ctx.executionOwner?.elementId;
         if (!elementId) {
-            throw new BlueprintGraphExecutionError("Displayable node requires a widget execution owner", ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
         }
-        return buildUIWidgetAddress(elementId, ctx.instanceKey);
+        return addressWidgetFromExecution(ctx, elementId);
     }
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
-        throw new BlueprintGraphExecutionError("Displayable Element node requires an Element input", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     if (!allowedElementTypes.includes(ref.elementType)) {
-        throw new BlueprintGraphExecutionError(`Displayable Element node cannot target ${ref.elementType}`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementUnsupported"), ctx.node.id);
     }
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-        throw new BlueprintGraphExecutionError("Displayable Element node can only target the current Surface", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
     }
-    return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
+    return addressWidgetFromExecution(ctx, ref.elementId);
 }
 
 function toStringValue(raw: unknown, fallback: string): string {
@@ -947,6 +957,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+        assetNames: "assembled",
         displayName: "Get Property",
         keywords: ["displayable", "property", "position", "size", "bounds", "visible"],
         pins: [out("value", "Value", "any")],
@@ -965,6 +976,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     displayableVariantReadNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
+        assetNames: "assembled",
         displayName: "Get Variant",
         keywords: ["displayable", "variant", "appearance", "state"],
         target: "self",
@@ -1073,6 +1085,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+        assetNames: "assembled",
         displayName: "Get Element Property",
         keywords: ["element", "displayable", "property", "position", "size", "bounds", "visible"],
         pins: [out("value", "Value", "any")],
@@ -1090,6 +1103,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     displayableVariantReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
+        assetNames: "assembled",
         displayName: "Get Element Variant",
         keywords: ["element", "displayable", "variant", "appearance", "state"],
         target: "element",
@@ -1121,6 +1135,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
+        assetNames: "assembled",
         displayName: "Get Text",
         keywords: ["text", "content", "value", "element"],
         pins: [out("text", "Text", "string")],
@@ -1150,6 +1165,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_FONT,
+        assetNames: "written",
         displayName: "Get Font",
         keywords: ["text", "font", "asset", "element"],
         pins: [out("fontAssetId", "Font", "string")],
@@ -1176,6 +1192,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_FONT_WEIGHT,
+        assetNames: "assembled",
         displayName: "Get Font Weight",
         keywords: ["text", "font", "weight", "bold", "element"],
         pins: [out("fontWeight", "Font Weight", "string")],
@@ -1206,6 +1223,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_ALIGN,
+        assetNames: "assembled",
         displayName: "Get Text Align",
         keywords: ["text", "align", "horizontal", "element"],
         pins: [out("textAlign", "Text Align", "string")],
@@ -1219,6 +1237,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_VERTICAL_ALIGN,
+        assetNames: "assembled",
         displayName: "Get Text Vertical Align",
         keywords: ["text", "align", "vertical", "element"],
         pins: [out("textVerticalAlign", "Vertical Align", "string")],
@@ -1248,6 +1267,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE,
+        assetNames: "assembled",
         displayName: "Get Wrap Mode",
         keywords: ["text", "wrap", "line", "element"],
         pins: [out("textWrapMode", "Wrap Mode", "string")],
@@ -1261,6 +1281,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_EFFECTS,
+        assetNames: "assembled",
         displayName: "Get Effects",
         keywords: ["text", "effects", "style", "element"],
         pins: [out("effects", "Effects", "json")],
@@ -1277,6 +1298,7 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_ALL_PROPERTIES,
+        assetNames: "assembled",
         displayName: "Get All Properties",
         keywords: ["text", "properties", "all", "element"],
         pins: textAllPropertyOutputs,

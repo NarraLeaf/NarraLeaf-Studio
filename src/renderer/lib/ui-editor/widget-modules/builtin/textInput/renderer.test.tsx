@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { UIHostAdapterBlueprintRuntime } from "@/lib/ui-editor/runtime/types";
+import { bindWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { TextInputRenderer } from "./renderer";
 
@@ -148,21 +149,21 @@ describe("TextInputRenderer submit and IME composition", () => {
     function renderLive(dispatch: (elementId: string, event: string, payload: unknown) => void) {
         const document = createDocument({ value: "" });
         const element = document.elements.textInput as UIElement;
+        const blueprintRuntime: UIHostAdapterBlueprintRuntime = {
+            ...createBlueprintRuntime(),
+            dispatchElementBlueprintEvent: async (elementId, event, payload) => {
+                dispatch(elementId, event, payload);
+            },
+        };
         render(
             <WidgetRuntimeStateProvider>
                 <TextInputRenderer
                     element={element}
                     document={document}
                     surface={document.surfaces[0]!}
-                    hostAdapter={{
-                        host: "app",
-                        blueprintRuntime: {
-                            ...createBlueprintRuntime(),
-                            dispatchElementBlueprintEvent: async (elementId, event, payload) => {
-                                dispatch(elementId, event, payload);
-                            },
-                        },
-                    }}
+                    hostAdapter={{ host: "app", blueprintRuntime }}
+                    // What the element tree hands every renderer: this element, in the page's drawing.
+                    dispatchEvent={bindWidgetEventDispatch(blueprintRuntime, element.id, {})}
                 />
             </WidgetRuntimeStateProvider>,
         );

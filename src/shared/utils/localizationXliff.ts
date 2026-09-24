@@ -14,6 +14,7 @@
  * Comments in English per project convention.
  */
 
+import type { ExchangeProblem } from "./exchangeProblem";
 import type {
     ParsedTranslationExchange,
     TranslationExchangeDocument,
@@ -292,12 +293,12 @@ function readNotes(notes: XmlElement[]): { context: string; note: string } {
 function readXliff12(root: XmlElement): ParsedTranslationExchange {
     const file = findElements(root, "file")[0];
     const rows: TranslationExchangeRow[] = [];
-    const errors: string[] = [];
+    const problems: ExchangeProblem[] = [];
 
     for (const unit of findElements(root, "trans-unit")) {
         const unitId = (unit.attributes.id || unit.attributes.resname || "").trim();
         if (!unitId) {
-            errors.push("A trans-unit has no id and was skipped");
+            problems.push({ code: "missingId" });
             continue;
         }
         const target = firstChildElement(unit, "target");
@@ -318,18 +319,18 @@ function readXliff12(root: XmlElement): ParsedTranslationExchange {
         rows,
         sourceLocale: file?.attributes["source-language"],
         targetLocale: file?.attributes["target-language"],
-        errors,
+        problems,
     };
 }
 
 function readXliff20(root: XmlElement): ParsedTranslationExchange {
     const rows: TranslationExchangeRow[] = [];
-    const errors: string[] = [];
+    const problems: ExchangeProblem[] = [];
 
     for (const unit of findElements(root, "unit")) {
         const unitId = (unit.attributes.id || unit.attributes.name || "").trim();
         if (!unitId) {
-            errors.push("A unit has no id and was skipped");
+            problems.push({ code: "missingId" });
             continue;
         }
         // A unit may be split into several segments; the text of the unit is
@@ -359,17 +360,16 @@ function readXliff20(root: XmlElement): ParsedTranslationExchange {
         rows,
         sourceLocale: root.attributes.srcLang,
         targetLocale: root.attributes.trgLang,
-        errors,
+        problems,
     };
 }
 
 export function parseTranslationXliff(text: string): ParsedTranslationExchange {
     const root = parseXml(text);
-    if (!root) {
-        return { rows: [], errors: ["Not a readable XML file"] };
-    }
-    if (root.name !== "xliff") {
-        return { rows: [], errors: [`Not an XLIFF file: the root element is <${root.name}>`] };
+    // Not XML at all, and XML that is some other document (an HTML page a download turned into),
+    // are one answer to the author: this is not an XLIFF file Studio can read.
+    if (!root || root.name !== "xliff") {
+        return { rows: [], problems: [{ code: "notFormat", format: "xliff" }] };
     }
     // By content, not by the version attribute: a 1.2 file mislabelled 2.0 is
     // still full of trans-units, and that is what can actually be read.
@@ -379,5 +379,5 @@ export function parseTranslationXliff(text: string): ParsedTranslationExchange {
     if (findElements(root, "unit").length > 0) {
         return readXliff20(root);
     }
-    return { rows: [], errors: ["This XLIFF file has no translation units"] };
+    return { rows: [], problems: [{ code: "noRows" }] };
 }

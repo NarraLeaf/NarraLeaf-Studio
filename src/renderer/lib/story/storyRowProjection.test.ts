@@ -381,3 +381,36 @@ describe("storyConditionSummary", () => {
         )).toBe("Gold is set");
     });
 });
+
+/**
+ * A stored scene reference is `scene:<id>`, and the row used to print exactly that - so a save
+ * slot's "place" assignment read `Location = scene:f306e2d5-…` wherever the row was projected
+ * (the version comparison's script halves among them), while the row editor beside it printed the
+ * scene's name. The interface never shows a uuid.
+ */
+describe("an assignment that stores a scene", () => {
+    const corridor: StoryScene = { id: "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33", name: "The corridor", runtimeName: "corridor", rootBlockIds: [], blocks: {} };
+    const assign = (value: string) => action({
+        action: "setVariable",
+        target: { scope: "saved", variableId: "place" },
+        value,
+    } as Extract<StoryBlock, { kind: "action" }>["payload"]);
+
+    it("reads as the scene's name", () => {
+        const sentence = storyRowSentence(assign(`scene:${corridor.id}`), { ...bare, scenes: { [corridor.id]: corridor } });
+
+        expect(sentence).toContain("The corridor");
+        expect(sentence).not.toContain(corridor.id);
+    });
+
+    it("reads as an unknown scene when the scene is gone, and still never as its id", () => {
+        const sentence = storyRowSentence(assign(`scene:${corridor.id}`), { ...bare, scenes: {} });
+
+        expect(sentence).not.toContain(corridor.id);
+        expect(sentence).toContain("unknown scene");
+    });
+
+    it("leaves a plain string alone", () => {
+        expect(storyRowSentence(assign("scenery"), { ...bare, scenes: { [corridor.id]: corridor } })).toContain("scenery");
+    });
+});

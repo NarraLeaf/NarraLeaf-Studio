@@ -7,9 +7,10 @@ import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
 } from "@shared/types/blueprint/graph";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 
 export const broadcastBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -37,27 +38,24 @@ export const broadcastBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const runtime = ctx.hostAdapter.blueprintRuntime;
             if (!runtime?.dispatchBroadcastEvent) {
-                throw new BlueprintGraphExecutionError("Broadcast runtime is unavailable", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.needsGame", { node: translate("blueprint.node.sendBroadcast") }),
+                    ctx.node.id,
+                );
             }
             const eventName = String(
-                resolveDataPinValue(ctx.graph, ctx.node.id, "event", ctx.params, ctx.blueprintLocals, 0, {
-                    hostAdapter: ctx.hostAdapter,
-                    eventPayload: ctx.eventPayload,
-                    listItemScope: ctx.listItemScope,
-                    instanceKey: ctx.instanceKey,
-                    executionOwner: ctx.executionOwner,
-                }) ?? "",
+                resolveNodeInput(ctx, "event") ?? "",
             ).trim();
             if (!eventName) {
-                throw new BlueprintGraphExecutionError("Missing broadcast event name", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.sendBroadcast"),
+                        pin: translate("blueprint.port.event"),
+                    }),
+                    ctx.node.id,
+                );
             }
-            const data = resolveDataPinValue(ctx.graph, ctx.node.id, "data", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const data = resolveNodeInput(ctx, "data");
             await runtime.dispatchBroadcastEvent(eventName, data, ctx.executionOwner?.elementId);
             return { nextPort: "next" };
         },

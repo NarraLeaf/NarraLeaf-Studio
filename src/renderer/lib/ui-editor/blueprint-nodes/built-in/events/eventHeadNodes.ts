@@ -60,7 +60,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
 import { inputActionParam } from "../inputActionNodes";
 
 const eventHeadExecute: BlueprintNodeDef["execute"] = () => ({ nextPort: "then" });
@@ -299,9 +299,12 @@ function widgetEventHead(input: {
     pins?: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
     scope?: BlueprintNodeDef["scope"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -321,9 +324,12 @@ function broadcastEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -343,9 +349,12 @@ function keyboardEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -367,9 +376,12 @@ function preferenceEventHead(input: {
     keywords: string[];
     pins: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: "Events",
         keywords: input.keywords,
@@ -482,12 +494,14 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     keyboardEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+        assetNames: "assembled",
         displayName: "Any Key Down",
         keywords: ["any", "key", "keyboard", "down", "press", "global", "input"],
         pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
     }),
     keyboardEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+        assetNames: "assembled",
         displayName: "Any Key Up",
         keywords: ["any", "key", "keyboard", "up", "release", "global", "input"],
         pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
@@ -710,12 +724,14 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_VALUE_CHANGED,
+        assetNames: "assembled",
         displayName: "Value Changed",
         keywords: ["text", "input", "value", "change", "type"],
         pins: [THEN_PIN, PIN_TEXT_VALUE, PIN_PREVIOUS_TEXT_VALUE],
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_TEXT_INPUT_SUBMIT,
+        assetNames: "assembled",
         displayName: "Submit",
         keywords: ["text", "input", "submit", "enter", "confirm"],
         pins: [THEN_PIN, PIN_TEXT_VALUE],
@@ -754,6 +770,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     preferenceEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+        assetNames: "assembled",
         displayName: "On Preference Changed",
         keywords: ["game", "preference", "setting", "changed", "bgm", "volume", "audio", "nlr"],
         pins: [THEN_PIN, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
@@ -768,6 +785,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     }),
     preferenceEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+        assetNames: "assembled",
         displayName: "On Any Preference Changed",
         keywords: ["game", "preference", "setting", "changed", "any", "audio", "nlr"],
         pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
@@ -834,6 +852,7 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+        assetNames: "assembled",
         displayName: "On Action",
         category: "Events",
         keywords: ["input", "action", "advance", "gesture", "click", "key", "bind", "binding"],

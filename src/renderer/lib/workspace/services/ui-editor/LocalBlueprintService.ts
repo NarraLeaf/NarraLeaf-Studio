@@ -45,6 +45,9 @@ import { blueprintHistoryScope, HistoryScopeKind, historyScopeParts, isHistorySc
 import { Service } from "../Service";
 import { Services, ILocalBlueprintService, WorkspaceContext } from "../services";
 import { FileSystemService } from "../core/FileSystem";
+import { describeFileWriteFailure } from "../core/writeFailureReason";
+import { itemWrite } from "../autosave/writeReport";
+import { translate } from "@/lib/i18n";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
@@ -80,6 +83,7 @@ import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import { ownerKeyBelongsToSurface } from "@shared/blueprint/ownerKey";
 import { SCRIPTS_DIR } from "@shared/project/scriptsDirectory";
 import { writeScriptDeclarations } from "./blueprint/scriptDeclarationFiles";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { anchorElementId, anchorSurfaceId, blueprintContract } from "@shared/blueprint/ownerShape";
 import {
@@ -241,6 +245,8 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     private readonly registeredHistoryScopes = new Map<string, () => void>();
     private historyLimit = DEFAULT_BLUEPRINT_HISTORY_LIMIT;
     private unsubscribeHistory: (() => void) | null = null;
+    private stopWatchingWidgetTypes: (() => void) | null = null;
+    private declarationsQueued: ReturnType<typeof setTimeout> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -265,6 +271,26 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 console.warn("[blueprint] could not write script declarations", error);
             });
         }
+        // Written again when the widget types change, because the project half names the widgets
+        // loaded plugins contribute and plugins load after a project opens: the write above has
+        // none of them, so a script typed against a plugin widget would read as a type error until
+        // something else rewrote the file. Coalesced, because a plugin registers its widgets one
+        // after another, and the same "has scripts" test as the write on open.
+        this.stopWatchingWidgetTypes?.();
+        this.stopWatchingWidgetTypes = widgetModuleRegistry.subscribe(() => {
+            if (this.declarationsQueued !== null) {
+                return;
+            }
+            this.declarationsQueued = setTimeout(() => {
+                this.declarationsQueued = null;
+                if (!this.hasScriptBlueprints()) {
+                    return;
+                }
+                void writeScriptDeclarations(ctx).catch(error => {
+                    console.warn("[blueprint] could not write script declarations", error);
+                });
+            }, 250);
+        });
 
         // The stacks live in HistoryService; re-shape its "some stack changed" event into the
         // blueprint-shaped one this service's subscribers already listen for.
@@ -437,6 +463,15 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public redoBlueprint(blueprintId: string): boolean {
         this.ensureBlueprintHistoryScope(blueprintId);
         return this.history().redo(blueprintHistoryScope(blueprintId));
+    }
+
+    public dispose(_ctx: WorkspaceContext): void {
+        this.stopWatchingWidgetTypes?.();
+        this.stopWatchingWidgetTypes = null;
+        if (this.declarationsQueued !== null) {
+            clearTimeout(this.declarationsQueued);
+            this.declarationsQueued = null;
+        }
     }
 
     public clearBlueprintHistory(blueprintId?: string): void {
@@ -845,13 +880,16 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const scriptRef = this.unusedScriptRef(name, this.widgetTypeOfOwner(owner));
         const absolute = this.getContext().project.resolve(scriptRef.split("/"));
+        // Thrown to the caller that asked for the script layer, which says it was not added. The file
+        // is the author's from here on, so it is named by the path they will find it at.
         const written = await fs.writeFileNoFollowOrCreate(
             absolute,
             renderStarterScript({ owner, widgetType: this.widgetTypeOfOwner(owner) }),
             "utf-8",
+            itemWrite(scriptRef, "workspace.shell.save.stores.uiGraph", "handledByWriter"),
         );
         if (!written.ok) {
-            throw new RendererError(`Could not create ${scriptRef}: ${written.error.message}`);
+            throw new RendererError(describeFileWriteFailure(scriptRef, written.error, translate), { cause: written.error });
         }
         // A refusal is reported as success - the write gate turns a frozen workspace into a no-op -
         // so the flag is the only thing that separates "written" from "silently dropped". Creating

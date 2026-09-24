@@ -211,8 +211,10 @@ export type GameBuildWorkerTarget = {
     fuses: GameBuildWorkerFuses;
     /**
      * Local Electron dist to package from. Only set when the target matches
-     * the host platform; cross builds leave it unset so electron-builder
-     * downloads (and caches) the right dist.
+     * the host in platform and arch (hostElectronServesTarget); every other
+     * target leaves it unset so electron-builder downloads (and caches) the
+     * right dist. Either way, what of it ships is decided by
+     * electronRuntimeFiles.ts rather than by what the directory holds.
      */
     electronDist?: string;
     /**
@@ -379,6 +381,12 @@ export type GameBuildWorkerConfig = {
      * a player is meant to read cannot live inside an archive. Unset when the project has none.
      */
     copyrightFile?: string;
+    /**
+     * Absolute path to the game's `THIRD-PARTY-NOTICES.txt`, shipped beside the executable where
+     * Electron's own licence files already are, for the reason `copyrightFile` is an extra file.
+     * Every desktop build has one.
+     */
+    thirdPartyNoticesFile?: string;
     /** Download mirror for Electron dists (cross builds); empty = official. */
     electronMirror?: string;
     /**

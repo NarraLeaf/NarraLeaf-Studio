@@ -1,5 +1,6 @@
 import { FsRequestResult } from "@shared/types/os";
 import type { FsWriteBatchEntry, FsWriteBatchOutcome } from "./core/FileSystem";
+import type { FsWriteReport } from "./autosave/writeReport";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
@@ -53,6 +54,7 @@ import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import type { HistoryLabel } from "./history/historyModel";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetCategory, AssetData, AssetType } from "./assets/assetTypes";
+import type { RefusableStatus } from "./assets/assetImportRefusal";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
@@ -177,6 +179,16 @@ import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 interface WorkspaceContext {
     project: Porject;
     services: ServiceRegistry;
+    /**
+     * Whether this window was opened to answer a command line - `--build`, `--test` or `--lint` -
+     * rather than for somebody to work in.
+     *
+     * Read from the window's props when the context is built, so a service knows it before its own
+     * `init` runs. Everything a workspace does *because an author is here* has to ask: a run is a
+     * machine passing through, and what it records about the person whose profile it borrowed is a
+     * fiction nobody can correct afterwards.
+     */
+    commandLineRun: boolean;
 }
 
 interface IService {
@@ -316,14 +328,20 @@ interface IFileSystemService extends IService {
     directorySize(path: string): Promise<FsRequestResult<DirectorySizeResult>>;
     read(path: string, encoding: FsTextEncoding): Promise<FsRequestResult<string>>;
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
-    write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
-    writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
+    /** `report` says what the file is and what a failure leads to. See `BaseFileSystemService.write`. */
+    write(path: string, data: string, encoding: FsTextEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
+    writeRaw(path: string, data: Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<void>>;
     /** N files, one grant, one result each. See `BaseFileSystemService.writeBatch`. */
     writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]>;
-    ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
-    writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    ensureRegularFile(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
+    writeFileNoFollow(path: string, data: string, encoding: BufferEncoding, report?: FsWriteReport): Promise<FsRequestResult<void>>;
     /** Write or create, without the write grant. See `BaseFileSystemService.writeFileNoFollowOrCreate`. */
-    writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    writeFileNoFollowOrCreate(
+        path: string,
+        data: string,
+        encoding: BufferEncoding,
+        report?: FsWriteReport,
+    ): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
     deleteDir(path: string): Promise<FsRequestResult<void>>;
@@ -1161,7 +1179,6 @@ interface IStoryService extends IService {
     deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
     registerPluginAction(registration: StoryPluginActionRegistration, ownerPluginId?: string): () => void;
-    getContributingPluginIds(): string[];
     unregisterPluginAction(actionId: string): boolean;
     getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;
     listPluginActions(): StoryPluginActionRegistration[];
@@ -1319,16 +1336,15 @@ interface IAssetService extends IService {
     list<T extends AssetType>(type: T): string[];
     fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
     exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
-    importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
-    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>>;
-    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
+    importRemoteAsset(category: AssetCategory, url: string, groupId?: string): Promise<RefusableStatus<Asset<AssetType, AssetSource.Remote>>>;
+    refreshRemoteAsset<T extends AssetType>(asset: Asset<T, AssetSource.Remote>): Promise<RefusableStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>>;
     hasRemoteSnapshot(assetId: string): Promise<boolean>;
 }
 
 interface IServiceAssetsService extends IService {
-    writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>>;
+    writeStore<T extends Record<string, any>>(namespace: string, data: T, report?: FsWriteReport): Promise<FsRequestResult<{ path: string }>>;
     readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>>;
-    writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>>;
+    writeFile(data: string | Buffer | Uint8Array, report?: FsWriteReport): Promise<FsRequestResult<string>>;
     readFile(fileId: string, encoding?: BufferEncoding): Promise<FsRequestResult<string>>;
     readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>>;
     deleteFile(fileId: string): Promise<FsRequestResult<void>>;
@@ -1641,8 +1657,10 @@ interface IProjectDependencyService extends IService {
     onResolutionChanged(handler: () => void): () => void;
     resolve(): Promise<ProjectDependencyResolution>;
     previewResolve(): Promise<ProjectDependencyResolution>;
-    rescan(): Promise<ProjectDependencyTable>;
-    rescanAndPersist(): Promise<ProjectDependencyResolution>;
+    rescan(trigger: import("./core/ProjectDependencyService").DependencyScanTrigger): Promise<ProjectDependencyTable>;
+    rescanAndPersist(
+        trigger: import("./core/ProjectDependencyService").DependencyScanTrigger,
+    ): Promise<ProjectDependencyResolution>;
 }
 
 export {

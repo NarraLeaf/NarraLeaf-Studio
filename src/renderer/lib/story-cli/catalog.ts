@@ -233,7 +233,12 @@ export function describeParamType(type: StoryCommandParamType): string {
         case "target": {
             const reserved = type.reserved?.length ? `, or ${type.reserved.join(" / ")}` : "";
             const refuses = type.refuses?.length ? ` (refuses ${type.refuses.join(", ")})` : "";
-            return `stage object: ${type.accepts.join(" / ")}${reserved}${refuses}`;
+            // A slot that reads a library creates its subject from a file, so the file kinds are named
+            // beside the stage kinds: a reader of this line has to know the name may be an asset's.
+            const assets = type.assets?.length
+                ? `, or an ${type.assets.join(" / ")} asset (creates it; name= says what it is called)`
+                : "";
+            return `stage object: ${type.accepts.join(" / ")}${reserved}${assets}${refuses}`;
         }
         case "content":
             return `new content, typed by what "${type.dependsOn}" resolved to`;

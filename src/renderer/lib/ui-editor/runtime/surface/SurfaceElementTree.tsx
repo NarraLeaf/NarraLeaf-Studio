@@ -1,27 +1,43 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import {
+    createContext,
+    memo,
+    useCallback,
+    useContext,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type CSSProperties,
+    type ReactNode,
+} from "react";
+import { AnimatePresence, useIsPresent, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
     type UIDocument,
     type UISurface,
+    type UISurfaceDesignSize,
     type UIElement,
     getUIComponentLink,
     isUIElementFlowLayoutChild,
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
-import { buildUIComponentInstanceKey, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentDocumentView } from "@shared/types/ui-editor/componentDocumentView";
 import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
-import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
-import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { isTrustedElementRenderer, type ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
+import type { UIHostAdapter, UIHostAdapterDrawings } from "@/lib/ui-editor/runtime/types";
+import { bindWidgetEventDispatch, type UIWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-runtime/BindingEvaluator";
 import {
     BlueprintValueRuntimeStore,
     mergeElementWithBlueprintValues,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { subscribeBlueprintStateWrites } from "@/lib/ui-editor/blueprint-runtime/blueprintStateWrites";
 import type { BlueprintStateReader } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
@@ -48,9 +64,29 @@ import {
     ElementAnimationPresence,
 } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
+import { FramePageBox } from "@/lib/ui-editor/runtime/surface/FramePageBox";
+import { fitFramePage } from "@/lib/ui-editor/runtime/surface/framePageFit";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
+import {
+    componentParamsKey,
+    isReusableElementType,
+    resolveElementReuseCache,
+    sameChildren,
+    sameDeps,
+    sameResolvedElement,
+    type ElementReuseCache,
+} from "@/lib/ui-editor/runtime/surface/elementReuse";
+import {
+    SurfaceTreeInteractivityContext,
+    SurfaceTreeLifecycleSignalsContext,
+    useSurfaceTreeInteractivity,
+    type SurfaceLifecycleSignals,
+    type SurfaceTreeInteractivity,
+} from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
+
+export type { SurfaceLifecycleSignals } from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -78,6 +114,15 @@ export type NestedSurfaceRuntimeInput = {
     parentHostAdapter: UIHostAdapter;
     runtimeScopeId: string;
     surfacePath: string[];
+    /**
+     * Raise one of the frame's own events - its Page Event - in the drawing the frame is in.
+     *
+     * The page inside a frame talks back to it through this. A frame is drawn in a row or a
+     * placement like any other widget, and the nested page's runtime cannot know which, so it is
+     * handed the frame's own dispatch rather than the frame's id: sent as the bare id, a page event
+     * from a frame in a list row reached the frame's graph with no row to read.
+     */
+    dispatchFrameEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
 };
 
 type VisibleNestedSurfaceRuntimeInput = NestedSurfaceRuntimeInput & {
@@ -92,13 +137,17 @@ export type NestedSurfaceRuntime = {
     getWidgetRuntimePatches?(input: NestedSurfaceRuntimeInput): Record<string, DevModeWidgetRuntimePatch> | undefined;
 };
 
-export type SurfaceLifecycleSignals = {
-    beforeSurfaceExit: number;
-    afterSurfaceEnter: number;
-};
-
 export type SurfaceElementTreeProps = {
     document: UIDocument;
+    /**
+     * The project's document, where a Page widget finds the page it draws - when `document` is a
+     * view of it that holds something else, as the component editor's is. Defaults to `document`.
+     *
+     * A page drawn in a frame is drawn from this rather than from whatever the frame was drawn
+     * from: a page is the same page wherever a frame shows it, and a view rebuilt for one drawing
+     * would hand the page's whole runtime a new document on every pass.
+     */
+    pageDocument?: UIDocument;
     surface: UISurface;
     rootElement: UIElement;
     rendererRegistry: ElementRendererRegistry;
@@ -110,6 +159,13 @@ export type SurfaceElementTreeProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath?: string[];
     editorChrome?: boolean;
+    /**
+     * Whether the tree takes pointer / keyboard input, and the surface's lifecycle signals.
+     *
+     * Handed to the tree's readers through context rather than down the walk - see
+     * `surfaceTreeContext` - so a change of either reaches the few things that read it without
+     * rebuilding every element.
+     */
     interactive?: boolean;
     keyboardInteractive?: boolean;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
@@ -152,38 +208,87 @@ export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
     if (props.blueprintBindingContext) {
         return <SurfaceValueRuntimeBoundary {...props} />;
     }
-    return renderSurfaceElementTreeWithValueRuntime(props, null);
+    const { interactive, keyboardInteractive, surfaceLifecycleSignals, ...treeProps } = props;
+    return provideSurfaceTreeInputs(
+        { interactive: interactive ?? true, keyboardInteractive: keyboardInteractive ?? interactive ?? true },
+        surfaceLifecycleSignals,
+        renderSurfaceElementTreeWithValueRuntime(treeProps, null),
+    );
+}
+
+/** The tree-wide inputs its readers take from context; see `surfaceTreeContext`. */
+function provideSurfaceTreeInputs(
+    interactivity: SurfaceTreeInteractivity,
+    surfaceLifecycleSignals: SurfaceLifecycleSignals | undefined,
+    tree: ReactNode,
+): ReactNode {
+    return (
+        <SurfaceTreeInteractivityContext.Provider value={interactivity}>
+            <SurfaceTreeLifecycleSignalsContext.Provider value={surfaceLifecycleSignals}>
+                {tree}
+            </SurfaceTreeLifecycleSignalsContext.Provider>
+        </SurfaceTreeInteractivityContext.Provider>
+    );
 }
 
 function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
+    // Split off before the memoised tree below sees them: they reach their readers through context,
+    // so a change of either must not count as a change of the tree's inputs.
+    const { interactive, keyboardInteractive, surfaceLifecycleSignals, ...treeProps } = props;
     const {
         document,
         surface,
         hostAdapter,
         blueprintBindingContext,
-    } = props;
+    } = treeProps;
+    const pointerInteractive = interactive ?? true;
+    const keysInteractive = keyboardInteractive ?? interactive ?? true;
+    const interactivity = useMemo<SurfaceTreeInteractivity>(
+        () => ({ interactive: pointerInteractive, keyboardInteractive: keysInteractive }),
+        [keysInteractive, pointerInteractive],
+    );
     // Kept as a value, not a write-only tick setter: it is the only thing that can tell the memo
     // below that the value runtime handed out different values for the same document.
     const [bindingTick, setBindingTick] = useState(0);
     const runtimeScopeId = hostAdapter.blueprintRuntime?.runtimeScopeId ?? null;
     /**
-     * The store is built by an effect rather than by `useMemo`, because `dispose()` is terminal:
-     * a disposed store answers every `sync` / `ensureElementValue` with an early return and has no
-     * way back. `React.StrictMode` - on in every unpackaged build, see `renderApp.tsx` - mounts,
-     * tears down, and mounts again, and that second mount re-runs the effects against the *same*
-     * instance the first mount captured. A memoized store would be killed by the throwaway
+     * The store's lifetime belongs to an effect rather than to `useMemo`, because `dispose()` is
+     * terminal: a disposed store answers every `sync` / `ensureElementValue` with an early return
+     * and has no way back. `React.StrictMode` - on in every unpackaged build, see `renderApp.tsx` -
+     * mounts, tears down, and mounts again, and that second mount re-runs the effects against the
+     * *same* instance the first mount captured. A memoized store would be killed by the throwaway
      * teardown and then synced while dead, so nothing on the surface would ever resolve and
-     * nothing would say so. Letting the effect own the instance means the remount gets a live one.
+     * nothing would say so. Letting the effect own the instance - adopting the one the first render
+     * was drawn with, and building a new one every time it runs again - means the remount gets a
+     * live one.
      */
-    const [valueRuntime, setValueRuntime] = useState<BlueprintValueRuntimeStore | null>(null);
+    const [valueRuntime, setValueRuntime] = useState<BlueprintValueRuntimeStore | null>(
+        // Built with the first render so the tree is drawn with it from the start. A store that has
+        // not been synced answers like no store at all - nothing resolves until `sync` below - so
+        // this draws exactly what `null` did, and saves handing the store over by redrawing every
+        // element on the page right after it mounted. Constructing one does nothing else, so a
+        // render React throws away leaves nothing behind.
+        () => new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1)),
+    );
+    const firstStoreAdoptedRef = useRef(false);
 
     useEffect(() => {
-        const store = new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1));
-        setValueRuntime(store);
+        // The first run adopts the store the first render was drawn with. Every later run builds its
+        // own: a new scope or surface wants a fresh one, and StrictMode's remount comes after a
+        // teardown that disposed the first - which is the case this effect exists to own.
+        const adopt = !firstStoreAdoptedRef.current && valueRuntime !== null;
+        firstStoreAdoptedRef.current = true;
+        const store = adopt ? valueRuntime : new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1));
+        if (!adopt) {
+            setValueRuntime(store);
+        }
         return () => {
             store.dispose();
             setValueRuntime(current => (current === store ? null : current));
         };
+        // `valueRuntime` is read only to adopt the first render's store; its later changes are this
+        // effect's own doing and must not re-run it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runtimeScopeId, surface.id]);
 
     useEffect(() => {
@@ -218,28 +323,45 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         const disposers = [
             blueprintBindingContext.surfaceState.subscribe(onStateChanged),
             blueprintBindingContext.globalState?.subscribe?.(onStateChanged),
+            // Variables - of any blueprint, persistent, saved - are read by the graph rather than
+            // handed to it, so they have no store to subscribe to here. Their writers announce the
+            // key instead, from whatever graph and host wrote, and only the bindings whose last run
+            // read that key run again.
+            subscribeBlueprintStateWrites((stateKey, origin) => {
+                valueRuntime.refreshStateReaders(stateKey, origin);
+            }),
         ].filter((dispose): dispose is () => void => Boolean(dispose));
         return () => {
             disposers.forEach(dispose => dispose());
         };
     }, [blueprintBindingContext, valueRuntime]);
 
-    return <SurfaceElementTreeContent {...props} valueRuntime={valueRuntime} bindingTick={bindingTick} />;
+    return provideSurfaceTreeInputs(
+        interactivity,
+        surfaceLifecycleSignals,
+        <SurfaceElementTreeContent {...treeProps} valueRuntime={valueRuntime} bindingTick={bindingTick} />,
+    );
 }
 
-type SurfaceElementTreeContentProps = SurfaceElementTreeProps & {
+/** A tree's props less the inputs it hands out through context. */
+type SurfaceElementTreeWalkProps = Omit<SurfaceElementTreeProps, "interactive" | "keyboardInteractive" | "surfaceLifecycleSignals">;
+
+type SurfaceElementTreeContentProps = SurfaceElementTreeWalkProps & {
     valueRuntime: BlueprintValueRuntimeStore | null;
     /** See {@link SurfaceValueRuntimeBoundary}: the value runtime's own "I changed" counter. */
     bindingTick: number;
 };
 
-function areSurfaceElementTreeInputsEqual(
-    previous: SurfaceElementTreeContentProps,
-    next: SurfaceElementTreeContentProps,
-): boolean {
-    // Only a host that promised its document is a snapshot may be told "nothing changed" - see
-    // `staticDocument`. Everyone else falls through to a plain re-render, exactly as before.
-    if (next.staticDocument !== true) {
+/**
+ * Whether this tree's props say everything about what it draws, so work done for them may be reused.
+ *
+ * One answer for both kinds of reuse the tree does - skipping a whole re-render when no prop moved,
+ * and handing back an unchanged element's node when some did - because they rest on the same
+ * promises, and two copies of the condition would be free to drift apart.
+ */
+function treeInputsAreTheWholeTruth(props: SurfaceElementTreeWalkProps): boolean {
+    // Only a host that promised its document is a snapshot - see `staticDocument`.
+    if (props.staticDocument !== true) {
         return false;
     }
     /**
@@ -251,7 +373,15 @@ function areSurfaceElementTreeInputsEqual(
      * memoise without one is what makes that promise safe to depend on - the failure it prevents is
      * a page whose bound widgets quietly stop updating, which nothing else here would catch.
      */
-    if (next.blueprintBindingContext && next.hostRenderTick === undefined) {
+    return !(props.blueprintBindingContext && props.hostRenderTick === undefined);
+}
+
+function areSurfaceElementTreeInputsEqual(
+    previous: SurfaceElementTreeContentProps,
+    next: SurfaceElementTreeContentProps,
+): boolean {
+    // Everyone else falls through to a plain re-render, exactly as before.
+    if (!treeInputsAreTheWholeTruth(next)) {
         return false;
     }
     const previousKeys = Object.keys(previous) as (keyof SurfaceElementTreeContentProps)[];
@@ -279,12 +409,30 @@ function areSurfaceElementTreeInputsEqual(
 const SurfaceElementTreeContent = memo(function SurfaceElementTreeContent(
     props: SurfaceElementTreeContentProps,
 ): ReactNode {
-    return renderSurfaceElementTreeWithValueRuntime(props, props.valueRuntime);
+    /**
+     * The nodes this tree built last time, per element, for the re-renders the memo above cannot
+     * skip - see `elementReuse`. Held for the life of the tree and started over whenever it is
+     * drawing a different document; absent altogether unless the tree's props are the whole truth.
+     */
+    const reuseRef = useRef<ElementReuseCache | null>(null);
+    let reuse: ElementReuseCache | null = null;
+    if (treeInputsAreTheWholeTruth(props)) {
+        reuse = resolveElementReuseCache(reuseRef.current, {
+            document: props.document,
+            surface: props.surface,
+            rendererRegistry: props.rendererRegistry,
+        });
+        reuseRef.current = reuse;
+    } else {
+        reuseRef.current = null;
+    }
+    return renderSurfaceElementTreeWithValueRuntime(props, props.valueRuntime, reuse);
 }, areSurfaceElementTreeInputsEqual);
 
 function renderSurfaceElementTreeWithValueRuntime(
-    props: SurfaceElementTreeProps,
+    props: SurfaceElementTreeWalkProps,
     valueRuntime: BlueprintValueRuntimeStore | null,
+    reuse: ElementReuseCache | null = null,
 ): ReactNode {
     const {
         document,
@@ -311,14 +459,13 @@ function renderSurfaceElementTreeWithValueRuntime(
         props.nestedSurfaceRuntime,
         props.surfacePath ?? [surface.id],
         editorChrome,
-        props.interactive ?? true,
-        props.keyboardInteractive ?? props.interactive ?? true,
         valueRuntime,
         [],
-        props.surfaceLifecycleSignals,
         props.blueprintLifecycleReady ?? true,
         null,
         props.animationPlan ?? null,
+        reuse,
+        props.pageDocument ?? document,
     );
 
     return (
@@ -345,6 +492,36 @@ function defaultFrameRuntimeScopeId(input: Omit<NestedSurfaceRuntimeInput, "runt
     return `${parentScope}/frame:${input.frameElement.id}${instancePart}->${input.targetSurface.id}`;
 }
 
+/**
+ * `value`, or the value last returned when `same` says the two are alike.
+ *
+ * For inputs rebuilt on every render that something downstream keys on by identity. Deterministic
+ * for given inputs, so recording it during render is safe to repeat.
+ */
+function useUnchangedIdentity<T>(value: T, same: (previous: T, next: T) => boolean): T {
+    const ref = useRef(value);
+    if (ref.current !== value && !same(ref.current, value)) {
+        ref.current = value;
+    }
+    return ref.current;
+}
+
+/** Equal as JSON: for the small plain records a frame's page is keyed on. */
+function sameJson(previous: unknown, next: unknown): boolean {
+    try {
+        return JSON.stringify(previous) === JSON.stringify(next);
+    } catch {
+        return false;
+    }
+}
+
+const NO_CHANGING_PAGES: ReadonlySet<string> = new Set();
+
+/** The design size of the page a frame's page box is sized for; see `NestedSurfaceRenderer`. */
+const FramePageBoxSizeContext = createContext<UISurfaceDesignSize | null>(null);
+
+const FILL_PAGE_CONTENT_STYLE: CSSProperties = { width: "100%", height: "100%" };
+
 function NestedSurfaceRenderer(props: {
     document: UIDocument;
     parentSurface: UISurface;
@@ -357,24 +534,41 @@ function NestedSurfaceRenderer(props: {
     useAppearanceInspectorPreview: boolean;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath: string[];
-    parentInteractive: boolean;
-    parentKeyboardInteractive: boolean;
+    /** The frame's own event dispatch, in the drawing the frame is in; see `NestedSurfaceRuntimeInput`. */
+    dispatchFrameEvent: UIWidgetEventDispatch;
 }) {
     const {
         document,
-        parentSurface,
         targetSurfaceId,
-        frameElement,
-        params,
         instanceKey,
         rendererRegistry,
         parentHostAdapter,
         useAppearanceInspectorPreview,
         nestedSurfaceRuntime,
         surfacePath,
-        parentInteractive,
-        parentKeyboardInteractive,
     } = props;
+    // The tree the frame is drawn in; the page inside takes input only when that tree does.
+    const {
+        interactive: parentInteractive,
+        keyboardInteractive: parentKeyboardInteractive,
+    } = useSurfaceTreeInteractivity();
+    // Every pass of the tree above hands these over as new objects - the frame is cloned for each
+    // pass, a component's surface is rebuilt for each drawing, a bound params object is merged anew
+    // - and the runtime input below is keyed on them. A new identity there tore the page's whole
+    // runtime down and put it back: its scope closed (cancelling whatever its graphs were running)
+    // and its Surface Init ran again, on every redraw of the page around the frame. So each keeps its
+    // last identity for as long as nothing in it changed.
+    const frameElement = useUnchangedIdentity(props.frameElement, sameResolvedElement);
+    const parentSurface = useUnchangedIdentity(props.parentSurface, sameJson);
+    const params = useUnchangedIdentity(props.params, sameJson);
+    // Rebound on every render of the tree above, so it is read through a ref: the runtime input
+    // below keys the nested page's whole runtime, and a new identity there would rebuild it.
+    const dispatchFrameEventRef = useRef(props.dispatchFrameEvent);
+    dispatchFrameEventRef.current = props.dispatchFrameEvent;
+    const dispatchFrameEvent = useCallback(
+        (eventName: string, payload?: Record<string, unknown>) => dispatchFrameEventRef.current(eventName, payload),
+        [],
+    );
     const prefersReducedMotion = useReducedMotion();
     const surfacePathKey = surfacePath.join("\0");
     const targetSurface = targetSurfaceId ? document.surfaces.find(surface => surface.id === targetSurfaceId) : undefined;
@@ -385,6 +579,21 @@ function NestedSurfaceRenderer(props: {
             : targetSurface && surfacePath.includes(targetSurface.id)
               ? "Page loop blocked"
               : null;
+    /**
+     * The page the box the frame's pages are drawn in is sized for.
+     *
+     * The frame's widget draws that box at the design size of the frame's page, fitted to the frame
+     * - and, while the frame is cleared and its last page plays out, at the size of the page it
+     * showed last (see `FrameRenderer`). Recorded during render, as the widget records it: the answer
+     * is the same however often a render repeats. Handed to the pages through a context rather than
+     * a prop because a page on its way out keeps the props it had when it started leaving, and the
+     * box can change size under it again before it has gone.
+     */
+    const pageBoxSurfaceRef = useRef<UISurface | null>(null);
+    if (targetSurface && !invalidLabel) {
+        pageBoxSurfaceRef.current = targetSurface;
+    }
+    const pageBox = pageBoxSurfaceRef.current?.designSize ?? null;
 
     const runtimeBaseInput = useMemo<Omit<NestedSurfaceRuntimeInput, "runtimeScopeId"> | null>(() => {
         if (invalidLabel || !targetSurface) {
@@ -399,8 +608,10 @@ function NestedSurfaceRenderer(props: {
             instanceKey,
             parentHostAdapter,
             surfacePath,
+            dispatchFrameEvent,
         };
     }, [
+        dispatchFrameEvent,
         document,
         frameElement,
         instanceKey,
@@ -426,7 +637,10 @@ function NestedSurfaceRenderer(props: {
         return { ...runtimeBaseInput, runtimeScopeId };
     }, [runtimeBaseInput, runtimeScopeId]);
 
-    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
+    // Read once per frame record: normalising builds a new object, and the effect below runs on
+    // this one's identity. Read on every render, a frame with an animation of its own set state from
+    // that effect on every render, and drew its page again and again for as long as it was shown.
+    const frameAnimation = useMemo(() => getUIFrameWidgetProps(frameElement).animation, [frameElement]);
     const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
     const [visibleInputs, setVisibleInputs] = useState<VisibleNestedSurfaceRuntimeInput[]>(() =>
         runtimeInput ? [runtimeInput] : []
@@ -436,6 +650,26 @@ function NestedSurfaceRenderer(props: {
     const pendingWaitInputRef = useRef<NestedSurfaceRuntimeInput | null>(null);
     const pendingUnderlayReadyKeyRef = useRef<string | null>(null);
     const pendingRemoveAfterEnterKeyRef = useRef<string | null>(null);
+    /**
+     * The pages still drawn that are no longer the frame's page: on their way out, or held on screen
+     * while the page replacing them arrives. While there are any, the frame is changing page, and a
+     * press nothing on the arriving page takes goes no further than the frame (see `FramePageBox`).
+     */
+    const [changingPageKeys, setChangingPageKeys] = useState<ReadonlySet<string>>(NO_CHANGING_PAGES);
+    const reportChangingPage = useCallback((runtimeScopeId: string, changing: boolean) => {
+        setChangingPageKeys(previous => {
+            if (previous.has(runtimeScopeId) === changing) {
+                return previous;
+            }
+            const next = new Set(previous);
+            if (changing) {
+                next.add(runtimeScopeId);
+            } else {
+                next.delete(runtimeScopeId);
+            }
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         visibleInputsRef.current = visibleInputs;
@@ -460,9 +694,13 @@ function NestedSurfaceRenderer(props: {
             return;
         }
         if (currentInput.runtimeScopeId === runtimeInput.runtimeScopeId) {
-            setVisibleInputs(prev => prev.map(input =>
-                input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input
-            ));
+            // Unchanged state when the input already is this one, so an effect that runs again for
+            // no reason does not draw the page again.
+            setVisibleInputs(prev =>
+                prev.some(input => input.runtimeScopeId === runtimeInput.runtimeScopeId && input !== runtimeInput)
+                    ? prev.map(input => (input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input))
+                    : prev,
+            );
             return;
         }
 
@@ -538,26 +776,31 @@ function NestedSurfaceRenderer(props: {
     }
 
     return (
-        <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
-            {visibleInputs.map((visibleInput, layerIndex) => (
-                <NestedSurfaceInstance
-                    key={visibleInput.runtimeScopeId}
-                    runtimeInput={visibleInput}
-                    layerIndex={layerIndex}
-                    rendererRegistry={rendererRegistry}
-                    parentHostAdapter={parentHostAdapter}
-                    useAppearanceInspectorPreview={useAppearanceInspectorPreview}
-                    nestedSurfaceRuntime={nestedSurfaceRuntime}
-                    surfacePath={surfacePath}
-                    reducedMotion={reducedMotion}
-                    active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
-                    parentInteractive={parentInteractive}
-                    parentKeyboardInteractive={parentKeyboardInteractive}
-                    onPrepaintReady={handleLayerPrepaintReady}
-                    onEnterComplete={handleLayerEnterComplete}
-                />
-            ))}
-        </AnimatePresence>
+        <FramePageBox changingPage={changingPageKeys.size > 0}>
+            <FramePageBoxSizeContext.Provider value={pageBox}>
+                <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
+                    {visibleInputs.map((visibleInput, layerIndex) => (
+                        <NestedSurfaceInstance
+                            key={visibleInput.runtimeScopeId}
+                            runtimeInput={visibleInput}
+                            layerIndex={layerIndex}
+                            rendererRegistry={rendererRegistry}
+                            parentHostAdapter={parentHostAdapter}
+                            useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                            nestedSurfaceRuntime={nestedSurfaceRuntime}
+                            surfacePath={surfacePath}
+                            reducedMotion={reducedMotion}
+                            active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
+                            parentInteractive={parentInteractive}
+                            parentKeyboardInteractive={parentKeyboardInteractive}
+                            onPrepaintReady={handleLayerPrepaintReady}
+                            onEnterComplete={handleLayerEnterComplete}
+                            onChangingPage={reportChangingPage}
+                        />
+                    ))}
+                </AnimatePresence>
+            </FramePageBoxSizeContext.Provider>
+        </FramePageBox>
     );
 }
 
@@ -575,6 +818,8 @@ function NestedSurfaceInstance(props: {
     parentKeyboardInteractive: boolean;
     onPrepaintReady: (runtimeScopeId: string) => void;
     onEnterComplete: (runtimeScopeId: string) => void;
+    /** Tells the frame whether this page is drawn without being the frame's page any more. */
+    onChangingPage: (runtimeScopeId: string, changing: boolean) => void;
 }) {
     const {
         runtimeInput,
@@ -590,10 +835,10 @@ function NestedSurfaceInstance(props: {
         parentKeyboardInteractive,
         onPrepaintReady,
         onEnterComplete,
+        onChangingPage,
     } = props;
     const [, setBindingTick] = useState(0);
     const [prepaintReady, setPrepaintReady] = useState(false);
-    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState<SurfaceLifecycleSignals>({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
@@ -602,8 +847,25 @@ function NestedSurfaceInstance(props: {
     const { document, targetSurface } = runtimeInput;
     const [, setRuntimePatchRenderTick] = useState(0);
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
-    const effectiveInteractive = parentInteractive && active && surfaceInteractive;
+    const pageBox = useContext(FramePageBoxSizeContext);
+    // Pointer input opens when the page is revealed, as its keys do - not when its enter animation
+    // finishes, which dropped every press made on a page still fading in - and closes the moment the
+    // presence group starts playing it out, whose last props would otherwise still say `active`.
+    // See `AppSurfaceLayer`, which follows the same rule for the pages and layers of the app itself.
+    const isPresent = useIsPresent();
+    const effectiveInteractive = parentInteractive && active && prepaintReady && isPresent;
     const effectiveKeyboardInteractive = parentKeyboardInteractive && active && prepaintReady;
+    // Drawn without being the frame's page: leaving, or held on screen while its replacement arrives.
+    // A layout effect so the frame stops handing presses on in the same commit that takes this page
+    // out of input, leaving no moment between the two in which a press could slip through.
+    const changingPage = !active || !isPresent;
+    useLayoutEffect(() => {
+        if (!changingPage) {
+            return undefined;
+        }
+        onChangingPage(runtimeInput.runtimeScopeId, true);
+        return () => onChangingPage(runtimeInput.runtimeScopeId, false);
+    }, [changingPage, onChangingPage, runtimeInput.runtimeScopeId]);
     const hostAdapter = useMemo(() => {
         const getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
         const nestedHostAdapter = nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput);
@@ -645,15 +907,22 @@ function NestedSurfaceInstance(props: {
         if (runtimeScopeId !== runtimeInput.runtimeScopeId) {
             return;
         }
-        setSurfaceInteractive(false);
         widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
         dispatchSurfaceTransitionEvent("beforeSurfaceExit");
+    };
+
+    // Brought back before its exit finished: arriving again from this moment, as a page of the app
+    // stack does (see `SurfaceLifecycleOrchestrator.returned`), rather than still exiting until the
+    // return's enter animation ends.
+    const handleReturn = (runtimeScopeId: string) => {
+        if (runtimeScopeId === runtimeInput.runtimeScopeId) {
+            surfaceTransitionStateRef.current = { isEntering: true, isExiting: false };
+        }
     };
 
     const handleEnterComplete = (runtimeScopeId: string) => {
         if (runtimeScopeId === runtimeInput.runtimeScopeId) {
             dispatchSurfaceTransitionEvent("afterSurfaceEnter");
-            setSurfaceInteractive(active);
         }
         onEnterComplete(runtimeScopeId);
     };
@@ -669,7 +938,6 @@ function NestedSurfaceInstance(props: {
         if (active) {
             return;
         }
-        setSurfaceInteractive(false);
         widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
     }, [active, runtimeInput.runtimeScopeId, widgetRuntimeStore]);
 
@@ -733,13 +1001,37 @@ function NestedSurfaceInstance(props: {
         reducedMotion,
         delays: animationDelays,
     }).exit;
+    // Every page the frame draws is placed in the frame's box itself, not after the one before it.
+    // During a change the page leaving and the page arriving are both drawn, and in flow the second
+    // of them sat just below the box, where the frame clips it: the leaving page vanished the moment
+    // the change began, and a page held until its replacement finished arriving hid that arrival
+    // until it jumped in at the end. Placed over each other, they play their animations in the
+    // order the layer's z-index gives them. At rest a frame draws one page, at the box's origin
+    // and at its own design size, where flow put it too.
+    const designSize = targetSurface.designSize;
+    // A page of another design size - on its way out of a frame now sized for the page after it -
+    // is fitted into the box the way the frame fits a page, rather than drawn at the box's scale,
+    // so it stays where it was in the frame for as long as it is still on screen.
+    const fit = pageBox && (pageBox.width !== designSize.width || pageBox.height !== designSize.height)
+        ? fitFramePage(designSize, pageBox)
+        : null;
     const surfaceStyle: CSSProperties = {
-        position: "relative",
-        width: targetSurface.designSize.width,
-        height: targetSurface.designSize.height,
+        position: "absolute",
+        left: fit?.left ?? 0,
+        top: fit?.top ?? 0,
+        width: fit?.width ?? designSize.width,
+        height: fit?.height ?? designSize.height,
         overflow: "hidden",
         backgroundColor: getSurfaceBackgroundColor(targetSurface),
     };
+    const contentStyle: CSSProperties = fit
+        ? {
+              width: designSize.width,
+              height: designSize.height,
+              transform: `scale(${fit.scale})`,
+              transformOrigin: "top left",
+          }
+        : FILL_PAGE_CONTENT_STYLE;
 
     return (
         <SurfaceAnimationLayer
@@ -750,14 +1042,18 @@ function NestedSurfaceInstance(props: {
             surfaceId={targetSurface.id}
             surfaceKind={targetSurface.kind}
             style={surfaceStyle}
-            contentStyle={{ width: "100%", height: "100%" }}
+            contentStyle={contentStyle}
             presentZIndex={10 + layerIndex}
             exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
             exitHoldMs={timings.exitMs}
             interactive={effectiveInteractive}
+            // A page on its way out takes no press, so one made over it reaches whatever is drawn
+            // beneath: the page arriving in its place, or else the frame's page box, which keeps it.
+            inertWhileLeaving
             resolveExit={resolveExit}
             onPrepaintReady={handlePrepaintReady}
             onBeforeExit={handleBeforeExit}
+            onReturn={handleReturn}
             onEnterComplete={handleEnterComplete}
         >
             <SurfaceBackgroundImageLayer surface={targetSurface} />
@@ -827,6 +1123,10 @@ function applyWidgetRuntimePatches(
     return next;
 }
 
+/** Characters no id or path segment may contain, so two different keys can never read the same. */
+const REUSE_KEY_PATH_SEPARATOR = "\u0000";
+const REUSE_KEY_ADDRESS_SEPARATOR = "\u0001";
+
 function cloneElementRenderSnapshot(element: UIElement): UIElement {
     return {
         ...element,
@@ -837,6 +1137,39 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
         valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
         extra: element.extra ? { ...element.extra } : undefined,
     };
+}
+
+/**
+ * One row a widget is drawing, announced to the runtime for as long as it is on screen.
+ *
+ * A layout effect rather than a plain one: a row's widgets run their Init in a microtask queued from
+ * their own layout effects, and an Init that broadcasts straight away has to find the rows already
+ * announced - a plain effect would land after paint, after the broadcast went out to no rows.
+ */
+function ListRowDrawing(props: {
+    drawings: UIHostAdapterDrawings;
+    listElementId: string;
+    instanceKey: string;
+    listItemScope: UIListItemScope;
+}) {
+    const { drawings, listElementId, instanceKey, listItemScope } = props;
+    useLayoutEffect(
+        () => drawings.registerListRow(listElementId, { instanceKey, listItemScope }),
+        // A scope object is rebuilt on every render of the list; its fields are what say it moved.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [
+            drawings,
+            listElementId,
+            instanceKey,
+            listItemScope.index,
+            listItemScope.count,
+            listItemScope.key,
+            listItemScope.item,
+            listItemScope.selected,
+            listItemScope.struct,
+        ],
+    );
+    return null;
 }
 
 function ComponentInstancePlaceholder({ message }: { message: string }) {
@@ -850,18 +1183,29 @@ function ComponentInstancePlaceholder({ message }: { message: string }) {
 function renderLinkedComponentInstanceContent(input: {
     instanceElement: UIElement;
     document: UIDocument;
+    /** Where a page drawn by a frame inside the definition comes from; see `renderElementTree`. */
+    pageDocument: UIDocument;
+    /** The surfaces the placement is drawn inside, outermost first. */
+    surfacePath: string[];
     hostAdapter: UIHostAdapter;
     rendererRegistry: ElementRendererRegistry;
     useAppearanceInspectorPreview: boolean;
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     instanceKey: string;
+    /**
+     * The list row the placement is drawn in, or null outside one.
+     *
+     * Handed to the definition's insides rather than stopped at the placement: a card placed in a
+     * gallery row is part of that row, and its graph and its field bindings are asking about the
+     * row the same way a plain text in the row is. It used to be dropped here, so a component could
+     * be placed in a list and never read the row it was in - and an event bubbling back out of it
+     * reached the row's own widgets without the row either.
+     */
+    listItemScope: UIListItemScope | null;
     componentPath: string[];
     valueRuntime: BlueprintValueRuntimeStore | null;
-    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
     blueprintLifecycleReady?: boolean;
-    interactive?: boolean;
-    keyboardInteractive?: boolean;
     animationPlan: SurfaceAnimationPlan | null;
 }): ReactNode | null {
     const link = getUIComponentLink(input.instanceElement);
@@ -875,41 +1219,19 @@ function renderLinkedComponentInstanceContent(input: {
     if (input.componentPath.includes(component.id)) {
         return <ComponentInstancePlaceholder message="Component loop blocked" />;
     }
-    const root = component.elements[component.rootElementId];
-    if (!root) {
+    // The definition is drawn against the project's document with its own surface added - see
+    // `buildUIComponentDocumentView` for why added rather than swapped in.
+    const view = buildUIComponentDocumentView(input.document, component);
+    if (!view) {
         return <ComponentInstancePlaceholder message="Component root missing" />;
     }
+    const { surface: virtualSurface, root: rootSnapshot, document: virtualDocument } = view;
+    const root = component.elements[component.rootElementId]!;
 
-    const rootWidth = Math.max(1, Math.abs(root.layout.width));
-    const rootHeight = Math.max(1, Math.abs(root.layout.height));
+    const rootWidth = virtualSurface.designSize.width;
+    const rootHeight = virtualSurface.designSize.height;
     const instanceWidth = Math.max(1, Math.abs(input.instanceElement.layout.width));
     const instanceHeight = Math.max(1, Math.abs(input.instanceElement.layout.height));
-    const virtualSurface: UISurface = {
-        id: buildUIComponentSurfaceId(component.id),
-        name: component.name,
-        host: "app",
-        kind: "appSurface",
-        designSize: { width: rootWidth, height: rootHeight },
-        rootElementId: root.id,
-    };
-    const rootSnapshot: UIElement = {
-        ...cloneElementRenderSnapshot(root),
-        parentId: null,
-        layout: {
-            ...root.layout,
-            x: 0,
-            y: 0,
-        },
-    };
-    const virtualDocument: UIDocument = {
-        ...input.document,
-        surfaces: [virtualSurface],
-        elements: {
-            ...input.document.elements,
-            ...component.elements,
-            [root.id]: rootSnapshot,
-        },
-    };
     const componentInstanceKey = buildUIComponentInstanceKey(input.instanceKey, input.instanceElement.id);
     // The one point that holds both the instance element and the document, so the one point that can
     // answer "what does THIS placement supply". Everything below runs the shared definition and can
@@ -974,10 +1296,14 @@ function renderLinkedComponentInstanceContent(input: {
                     input.useAppearanceInspectorPreview,
                     null,
                     input.widgetRuntimePatches,
-                    null,
+                    input.listItemScope,
                     componentInstanceKey,
                     input.nestedSurfaceRuntime,
-                    [virtualSurface.id],
+                    // The way down, extended rather than started over. A Page widget refuses a page
+                    // already on this path, and a definition that restarted the path forgot the page
+                    // it is placed on: a card holding a frame onto the page the card sits on drew
+                    // that page, which placed the card, which drew the page, without end.
+                    [...input.surfacePath, virtualSurface.id],
                     // A definition's insides answer the player, but never the author's pointer.
                     //
                     // This was a flat `false` from when a component was a picture: nothing inside
@@ -994,14 +1320,13 @@ function renderLinkedComponentInstanceContent(input: {
                     // there, which is the half of the original `false` worth keeping - an author
                     // edits the definition, not one drawing of it.
                     liveContent,
-                    input.interactive ?? true,
-                    input.keyboardInteractive ?? input.interactive ?? true,
                     input.valueRuntime,
                     [...input.componentPath, component.id],
-                    input.surfaceLifecycleSignals,
                     input.blueprintLifecycleReady ?? true,
                     componentParams,
                     componentAnimationPlan,
+                    null,
+                    input.pageDocument,
                 )}
             </div>
         </div>
@@ -1022,17 +1347,26 @@ function renderElementTree(
     instanceKey = "",
     nestedSurfaceRuntime?: NestedSurfaceRuntime,
     surfacePath: string[] = [surface.id],
+    /**
+     * Whether this tree's wrappers carry the editor's element chrome - element ids, pointer and key
+     * handling. Whether the tree takes input *right now* is not an argument: it changes for the whole
+     * tree at once and is read from context (see `surfaceTreeContext`).
+     */
     editorChrome = true,
-    interactive = true,
-    keyboardInteractive = interactive,
     valueRuntime: BlueprintValueRuntimeStore | null = null,
     componentPath: string[] = [],
-    surfaceLifecycleSignals?: SurfaceLifecycleSignals,
     blueprintLifecycleReady = true,
     /** Resolved params of the component instance this subtree belongs to; null outside one. */
     componentParams: Record<string, string> | null = null,
     /** Enter/exit timings for this Surface, or null when the host wants a static tree. */
     animationPlan: SurfaceAnimationPlan | null = null,
+    /** Last pass's nodes, when this tree may reuse them - see `elementReuse`. */
+    reuse: ElementReuseCache | null = null,
+    /**
+     * The project's document, which a page drawn in a frame is drawn from. The same as `document`
+     * except where `document` is a view - a component definition's, or the component editor's.
+     */
+    pageDocument: UIDocument = document,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[buildUIWidgetAddress(element.id, instanceKey)];
@@ -1050,9 +1384,35 @@ function renderElementTree(
                   listItemScope ?? null,
               )
             : patched;
-    const resolved = cloneElementRenderSnapshot(
-        mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey)
-    );
+    const merged = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey);
+    const renderer = rendererRegistry.get(merged.type);
+    // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
+    // instance key and (for the switch) per-part variant overrides - so the tree must not also
+    // render them here, or every part would be drawn twice.
+    const rendersOwnChildren =
+        isListLikeWidgetType(merged.type)
+        || merged.type === "nl.slider"
+        || merged.type === UI_SWITCH_ELEMENT_TYPE;
+    const nodeKey = `${merged.id}${instanceKey ? `:${instanceKey}` : ""}`;
+    /**
+     * Where last pass's node for this element is kept, or null when it may not be reused.
+     *
+     * Only for a renderer Studio ships, a type that places nothing of its own, and an element that
+     * is not a component placement - see `elementReuse` for why each. Keyed by the component path as
+     * well as the address, because one component's insides are drawn in several places.
+     */
+    const reuseKey =
+        reuse
+        && isTrustedElementRenderer(renderer)
+        && isReusableElementType(merged.type, rendersOwnChildren)
+        && !getUIComponentLink(merged)
+            ? `${componentPath.join(REUSE_KEY_PATH_SEPARATOR)}${REUSE_KEY_ADDRESS_SEPARATOR}${nodeKey}`
+            : null;
+    const previous = reuseKey ? reuse?.entries.get(reuseKey) : undefined;
+    const resolved =
+        previous && sameResolvedElement(previous.resolved, merged)
+            ? previous.resolved
+            : cloneElementRenderSnapshot(merged);
 
     // An animated element is kept mounted through its exit, so "hidden" cannot mean "gone" here: the
     // presence wrapper at the bottom of this function decides when it actually leaves the tree.
@@ -1072,7 +1432,25 @@ function renderElementTree(
         const childIds = options?.childrenIds ?? resolved.childrenIds;
         const childScope = options?.listItemScope === undefined ? listItemScope : options.listItemScope;
         const childInstanceKey = options?.instanceKey ?? instanceKey;
-        return childIds.map(childId => {
+        // A widget drawing its children as a row of its own - a new scope under a new key - is making
+        // a drawing the document cannot see, so it is announced to the runtime for as long as it is
+        // drawn: an event that is not raised in any one drawing (a broadcast, a window event) reaches
+        // the row's widgets through that announcement, row by row. Here rather than in the list so
+        // every widget that repeats a template announces its rows the same way.
+        const drawings = hostAdapter.blueprintRuntime?.drawings;
+        const announcesRow =
+            drawings && options?.listItemScope && options.instanceKey && options.instanceKey !== instanceKey
+                ? (
+                      <ListRowDrawing
+                          key={`row-drawing:${options.instanceKey}`}
+                          drawings={drawings}
+                          listElementId={resolved.id}
+                          instanceKey={options.instanceKey}
+                          listItemScope={options.listItemScope}
+                      />
+                  )
+                : null;
+        const rendered = childIds.map(childId => {
             const childElement = options?.elementOverrides?.[childId] ?? document.elements[childId];
             if (!childElement) {
                 return null;
@@ -1091,44 +1469,85 @@ function renderElementTree(
                 nestedSurfaceRuntime,
                 surfacePath,
                 editorChrome,
-                interactive,
-                keyboardInteractive,
                 valueRuntime,
                 componentPath,
-                surfaceLifecycleSignals,
                 blueprintLifecycleReady,
                 componentParams,
                 animationPlan,
+                // A widget placing its own children does it from inside its own render, later than
+                // this walk and from data this walk cannot see - so what it places is never reused.
+                rendersOwnChildren ? null : reuse,
+                pageDocument,
             );
         })
         .filter((node): node is ReactNode => node !== null);
+        return announcesRow ? [announcesRow, ...rendered] : rendered;
     };
 
-    // Widgets that place their own children call `renderChildren` themselves - with slot ids, an
-    // instance key and (for the switch) per-part variant overrides - so the tree must not also
-    // render them here, or every part would be drawn twice.
-    const rendersOwnChildren =
-        isListLikeWidgetType(resolved.type)
-        || resolved.type === "nl.slider"
-        || resolved.type === UI_SWITCH_ELEMENT_TYPE;
+    // The element's own events, bound to the drawing it is in - the same one `EditorNodeWrapper`
+    // below dispatches its pointer events with.
+    const dispatchEvent = bindWidgetEventDispatch(hostAdapter.blueprintRuntime, resolved.id, {
+        listItemScope: listItemScope ?? null,
+        instanceKey,
+        componentId,
+        componentParams,
+    });
+
     const children = rendersOwnChildren ? [] : renderChildren();
 
-    const renderer = rendererRegistry.get(resolved.type);
+    /**
+     * Everything the node below reads besides the element and its children.
+     *
+     * Paths and params are folded to strings because they are rebuilt on every pass with the same
+     * contents; every other entry is an identity the host keeps stable when nothing changed.
+     */
+    const reuseDeps: readonly unknown[] | null = reuseKey
+        ? [
+              renderer,
+              runtimePatch,
+              animationTiming,
+              document,
+              surface,
+              hostAdapter,
+              rendererRegistry,
+              useAppearanceInspectorPreview,
+              blueprintBindingContext,
+              listItemScope ?? null,
+              instanceKey,
+              nestedSurfaceRuntime,
+              surfacePath.join(REUSE_KEY_PATH_SEPARATOR),
+              editorChrome,
+              valueRuntime,
+              blueprintLifecycleReady,
+              componentParamsKey(componentParams),
+              animationPlan,
+              pageDocument,
+          ]
+        : null;
+    if (
+        previous
+        && reuseDeps
+        && resolved === previous.resolved
+        && sameDeps(previous.deps, reuseDeps)
+        && sameChildren(previous.children, children)
+    ) {
+        return previous.node;
+    }
     const linkedComponentContent = renderLinkedComponentInstanceContent({
         instanceElement: resolved,
         document,
+        pageDocument,
+        surfacePath,
         hostAdapter,
         rendererRegistry,
         useAppearanceInspectorPreview,
         widgetRuntimePatches,
         nestedSurfaceRuntime,
         instanceKey,
+        listItemScope: listItemScope ?? null,
         componentPath,
         valueRuntime,
-        surfaceLifecycleSignals,
         blueprintLifecycleReady,
-        interactive,
-        keyboardInteractive,
         animationPlan,
     });
     const content = linkedComponentContent ?? (renderer
@@ -1141,7 +1560,7 @@ function renderElementTree(
               renderChildren,
               renderSurface: options => (
                   <NestedSurfaceRenderer
-                      document={document}
+                      document={pageDocument}
                       parentSurface={surface}
                       targetSurfaceId={options.targetSurfaceId}
                       frameElement={options.frameElement}
@@ -1152,12 +1571,12 @@ function renderElementTree(
                       useAppearanceInspectorPreview={useAppearanceInspectorPreview}
                       nestedSurfaceRuntime={nestedSurfaceRuntime}
                       surfacePath={surfacePath}
-                      parentInteractive={interactive}
-                      parentKeyboardInteractive={keyboardInteractive}
+                      dispatchFrameEvent={dispatchEvent}
                   />
               ),
               instanceKey,
               listItemScope: listItemScope ?? null,
+              dispatchEvent,
               runtimeData: blueprintBindingContext
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,
@@ -1180,7 +1599,6 @@ function renderElementTree(
             : isUIElementFlowLayoutChild(document, resolved)
               ? "flow"
               : "absolute";
-    const nodeKey = `${resolved.id}${instanceKey ? `:${instanceKey}` : ""}`;
     const animatedContent =
         animationTiming && animated && animationTiming.selfAnimated ? (
             <ElementAnimationLayer timing={animationTiming} reducedMotion={animationPlan?.reducedMotion === true}>
@@ -1202,8 +1620,9 @@ function renderElementTree(
                 runtimePatch?.layout && Object.prototype.hasOwnProperty.call(runtimePatch.layout, "opacity"),
             )}
             hostAdapter={hostAdapter}
-            interactive={editorChrome && interactive}
-            keyboardInteractive={editorChrome && keyboardInteractive}
+            // The chrome half only; whether the tree takes input right now is read from context.
+            interactive={editorChrome}
+            keyboardInteractive={editorChrome}
             useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
@@ -1225,21 +1644,24 @@ function renderElementTree(
                     componentParams={componentParams}
                     listItemScope={listItemScope}
                     instanceKey={instanceKey || undefined}
-                    surfaceLifecycleSignals={surfaceLifecycleSignals}
                 />
             ) : null}
             {animatedContent}
         </EditorNodeWrapper>
     );
 
-    if (!animated || !animationTiming) {
-        return node;
+    const built =
+        !animated || !animationTiming ? (
+            node
+        ) : (
+            <ElementAnimationPresence key={nodeKey} timing={animationTiming} visible={visible}>
+                {node}
+            </ElementAnimationPresence>
+        );
+    if (reuse && reuseKey && reuseDeps) {
+        reuse.entries.set(reuseKey, { resolved, deps: reuseDeps, children, node: built });
     }
-    return (
-        <ElementAnimationPresence key={nodeKey} timing={animationTiming} visible={visible}>
-            {node}
-        </ElementAnimationPresence>
-    );
+    return built;
 }
 
 function extractStyleOverrides(element: UIElement): CSSProperties | undefined {

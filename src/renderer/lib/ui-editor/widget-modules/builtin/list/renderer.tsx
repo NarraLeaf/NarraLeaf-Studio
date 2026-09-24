@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
     buildUIListItemInstanceKey,
     getUIListChildSlot,
+    isUIListItemTemplateChild,
     isUIListScrolledToEnd,
     resolveUIListScrollMetrics,
 } from "@shared/types/ui-editor/list";
@@ -18,6 +19,8 @@ import { makeDefaultStructItem, readUIStructFieldValue } from "@shared/types/ui-
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import type { UIWidgetEventDispatch } from "@/lib/ui-editor/runtime/widgetEventDispatch";
+import { useWidgetEventDispatch } from "@/lib/ui-editor/widget-modules/shared/useWidgetEventDispatch";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
@@ -64,29 +67,45 @@ function listItemProps(item: unknown): Record<string, unknown> {
         : { value: item };
 }
 
+/**
+ * Item Render: the list's own event, raised once for each row as it is drawn.
+ *
+ * It carries the row the way Item Click does - its scope and its drawing's key - because a handler
+ * answering "this row is being drawn" is asking about that row. Without them `Get Item Field` read
+ * nothing, and a write to the row's own label went to the label's template, which no row draws: the
+ * one event built for per-row decoration could not decorate a row.
+ */
 function ListItemRenderEvent(props: {
     runtime: BlueprintRuntime | undefined;
-    elementId: string;
+    dispatchEvent: UIWidgetEventDispatch;
     scope: UIListItemScope;
+    instanceKey: string;
 }) {
-    const { runtime, elementId, scope } = props;
+    const { runtime, dispatchEvent, scope, instanceKey } = props;
     useEffect(() => {
         if (!runtime) {
             return;
         }
-        void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope));
-    }, [elementId, runtime, scope.count, scope.index, scope.item, scope.key]);
+        void dispatchEvent("itemRender", listItemEventPayload(scope), { listItemScope: scope, instanceKey });
+    }, [dispatchEvent, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
 
+/**
+ * List Item Refresh: raised on each widget of the row template, in that row.
+ *
+ * On the row's widgets rather than on the list, so it goes through the list's dispatch pointed at
+ * each of them: that keeps the component the list is authored in, which a row of it is still inside.
+ */
 function ListItemRefreshEvent(props: {
     runtime: BlueprintRuntime | undefined;
+    dispatchEvent: UIWidgetEventDispatch;
     elementIds: readonly string[];
     scope: UIListItemScope;
     instanceKey: string;
 }) {
-    const { runtime, elementIds, scope, instanceKey } = props;
+    const { runtime, dispatchEvent, elementIds, scope, instanceKey } = props;
     const elementKey = elementIds.join("\0");
     useEffect(() => {
         if (!runtime) {
@@ -97,12 +116,9 @@ function ListItemRefreshEvent(props: {
             props: listItemProps(scope.item),
         };
         for (const elementId of elementIds) {
-            void runtime.dispatchElementBlueprintEvent(elementId, "listItemRefresh", payload, {
-                listItemScope: scope,
-                instanceKey,
-            });
+            void dispatchEvent("listItemRefresh", payload, { elementId, listItemScope: scope, instanceKey });
         }
-    }, [elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
+    }, [dispatchEvent, elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
@@ -303,6 +319,10 @@ function resolveAuthoredThumbLayout(
 
 export function ListRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren, runtimeData } = props;
+    // The drawing this list is itself part of - a row of an enclosing list, a component placement.
+    // Every row key extends it, so a row of this list names which of those it is in.
+    const outerInstanceKey = props.instanceKey;
+    const dispatchEvent = useWidgetEventDispatch(props.dispatchEvent);
     const p = getListProps(element);
     const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -349,18 +369,18 @@ export function ListRenderer(props: WidgetRendererProps) {
             const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
             const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
             const payload = resolveUIListScrollMetrics(viewportSize, contentSize, offset);
-            void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
+            void dispatchEvent("scroll", {
                 ...payload,
             });
             const isAtEnd = isUIListScrolledToEnd(payload);
             if (isAtEnd && !reachedScrollEndRef.current) {
-                void runtime.dispatchElementBlueprintEvent(element.id, "scrollEnd", payload);
+                void dispatchEvent("scrollEnd", payload);
             }
             reachedScrollEndRef.current = isAtEnd;
         };
         viewport.addEventListener("scroll", dispatchScroll, { passive: true });
         return () => viewport.removeEventListener("scroll", dispatchScroll);
-    }, [element.id, horizontalScrollbar, hostAdapter.blueprintRuntime]);
+    }, [dispatchEvent, horizontalScrollbar, hostAdapter.blueprintRuntime]);
     const boundItems = resolveBoundItems(p, runtimeData);
     const itemStruct = resolveUIStruct(document, p.itemStructId);
     // Placeholder rows carry the declared shape at its empty values rather than `{index: n}`: a
@@ -375,11 +395,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         ? [...runtimeListItems]
         : boundItems ?? (p.items.length > 0 ? p.items : placeholderItems);
     const count = Math.min(128, items.length);
-    const itemTemplateIds = element.childrenIds.filter(childId => {
-        const child = document.elements[childId];
-        const slot = getUIListChildSlot(child?.extra);
-        return slot == null || slot === "itemTemplate";
-    });
+    const itemTemplateIds = element.childrenIds.filter(childId => isUIListItemTemplateChild(document.elements[childId]));
     const itemTemplateDescendantIds = useMemo(
         () => collectElementDescendants(document, itemTemplateIds),
         [document, itemTemplateIds.join("\0")],
@@ -490,8 +506,7 @@ export function ListRenderer(props: WidgetRendererProps) {
             if (!blueprintRuntime) {
                 return;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
+            void dispatchEvent(
                 eventName,
                 {
                     ...listItemEventPayload(scope),
@@ -501,10 +516,10 @@ export function ListRenderer(props: WidgetRendererProps) {
                 // asking about that row, so Get Item Field resolves there exactly as it does while
                 // the row is being drawn. Without it the only way to read the row that was clicked
                 // was to pull the item off the payload and index into it by hand.
-                { listItemScope: scope, instanceKey: `list-${element.id}-${scope.key}` },
+                { listItemScope: scope, instanceKey: buildUIListItemInstanceKey(outerInstanceKey, element.id, scope.key) },
             );
         },
-        [blueprintRuntime, element.id],
+        [blueprintRuntime, dispatchEvent, element.id, outerInstanceKey],
     );
     const handleListItemClick = useCallback(
         (scope: UIListItemScope) => {
@@ -534,7 +549,7 @@ export function ListRenderer(props: WidgetRendererProps) {
     const rowStaggerMs = Math.max(0, (p.itemAnimation?.childStaggerSeconds ?? 0) * 1000);
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, itemStruct, p.itemKeyFieldId);
-        const instanceKey = buildUIListItemInstanceKey(element.id, key);
+        const instanceKey = buildUIListItemInstanceKey(outerInstanceKey, element.id, key);
         // On the canvas nothing is selected: `selectedIndex` defaults to a row, and drawing the
         // template in its selected state would show the author a row most rows will never look like.
         const selected = isRuntime && i === selectedIndex;
@@ -556,9 +571,10 @@ export function ListRenderer(props: WidgetRendererProps) {
         };
         const rowChildren = (
             <>
-                <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} />
+                <ListItemRenderEvent runtime={blueprintRuntime} dispatchEvent={dispatchEvent} scope={scope} instanceKey={instanceKey} />
                 <ListItemRefreshEvent
                     runtime={blueprintRuntime}
+                    dispatchEvent={dispatchEvent}
                     elementIds={itemTemplateDescendantIds}
                     scope={scope}
                     instanceKey={instanceKey}
@@ -873,17 +889,17 @@ export function ListRenderer(props: WidgetRendererProps) {
         );
     };
 
+    // Drawn once per list, in the list's own drawing - not per row, and not under a key of their own,
+    // which would name a drawing no graph addressing the scrollbar could name back.
     const hasAuthoredScrollbar = Boolean(scrollbarTrackElement && scrollbarThumbElement && renderChildren);
     const authoredScrollbar =
         showScrollbar && hasAuthoredScrollbar && scrollbarTrackElement && scrollbarThumbElement && renderChildren ? (
             <>
                 {renderChildren({
                     childrenIds: [scrollbarTrackElement.id],
-                    instanceKey: `scrollbar-${element.id}`,
                 })}
                 {renderChildren({
                     childrenIds: [scrollbarThumbElement.id],
-                    instanceKey: `scrollbar-${element.id}`,
                     elementOverrides: {
                         [scrollbarThumbElement.id]: {
                             ...scrollbarThumbElement,

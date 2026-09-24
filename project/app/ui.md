@@ -225,11 +225,24 @@ surface "Gallery" id=demo-gallery kind=appSurface size=1920x1080
   indented under it is inside it. The name is what the outline shows; the id is
   yours to choose and is what a blueprint refers to.
 - **`<key> = <value>`** sets a prop. A dotted key writes one key of one object:
-  `imageFill.assetId = art-1`. `layout.` / `style.` / `extra.` reach the element's
-  other bags, and `animation = {…}` its enter/exit record.
+  `imageFill.assetId = art-1`. The first segment decides where the line goes:
+  `layout.` / `style.` / `extra.` reach the element's other bags, `animation` is
+  the element's own enter/exit record (`animation = {…}`, or `animation.enter =
+  fade` for one field of it), and `props.` is a prop whatever it is called.
+- **`props.animation = {…}`** is a Page widget's (`nl.frame`) override of how the
+  page it shows enters and leaves inside it; unset, the page's own animation
+  plays. It needs the prefix because it is the same shape of record as the
+  element's own: written bare, `animation = {…}` on a Page widget is not an error,
+  it makes the widget itself fade in and out and leaves the page's animation
+  alone. `show` prints the override with the prefix, and `ui widget nl.frame`
+  lists it that way.
 - **`bind <prop> = blueprint <id>`** points a prop at a value blueprint;
   **`bind <prop> = field <fieldId>`** reads it from the list row the element is
-  being drawn for. `ui widget <type>` lists which props accept either.
+  being drawn for. `ui widget <type>` lists which props accept either. One more
+  is open to every type and is not in that list: `bind layout.visible = field
+  <fieldId>`, whether the element is drawn at all for this row - the lock on a
+  gallery cell, say. It reads a row's field and nothing else; a value blueprint
+  for it is refused, because nothing would evaluate one.
 - **`component <componentId> [param=value …]`** makes the element an instance of
   a component definition.
 
@@ -258,6 +271,30 @@ node project/app/blueprint.js apply back.bp --project <dir> --write
 #   blueprint "Gallery back" owner=widgetMain surface=demo-gallery element=demo-gallery-back
 ```
 
+## A plugin's widgets
+
+The catalogue is Studio's widgets. A plugin's widget joins it only when the run is
+handed the plugin:
+
+```sh
+node project/app/ui.js widget acme.rating.meter --plugin D:/path/to/acme.rating
+node project/app/ui.js check gauge.ui --project D:/path/to/project --plugin D:/path/to/acme.rating
+```
+
+`--plugin` takes a plugin's own directory - the one holding its `manifest.json` -
+and may be given more than once. The plugin's studio entry is run the way Studio
+runs it, with an `app` that records the widgets it registers and answers every
+other call with nothing, and each widget goes into the same registry the editor
+reads, through the same declaration checks. So what the editor refuses about a
+plugin widget, this refuses too: a child under a widget that declares part slots
+is `ui.not_a_part` unless its `extra.partSlot` names one of them, exactly as a
+Slider's child must carry its own marker.
+
+The plugin's code runs in this process with this process's rights - Studio's
+permission gate is not here - so pass only a plugin you would build yourself.
+Without `--plugin`, a plugin's widget type is `ui.unknown_widget_type`, and the
+hint says to pass it.
+
 ## Checking
 
 ```sh
@@ -281,6 +318,25 @@ blueprint is evaluated for the element that owns it, so the prop shows nothing a
 all - the shipped skeleton had exactly this on two texts of its Confirm page, and
 nothing caught it because every check asked the blueprint who owned it rather
 than asking the element what it pointed at.
+
+Two more are errors for the same reason Studio's project lint makes them errors
+(`ui/frame-target-missing` and `ui/frame-loop`, answered by the same shared
+model): a Page widget that does not draw the page it names.
+
+- **`ui.frame_target_missing`** - the page is not in the document.
+- **`ui.frame_loop`** - the page leads back to the widget, so drawing it would
+  draw the widget again inside itself and the game shows "Page loop blocked"
+  instead. A page leads back when it is the widget's own page, when it places
+  the component the widget is in, or when a Page widget or a component placed on
+  it does, at any depth. So a card whose Page widget names the page the card is
+  placed on is refused, and so is the same card in a list row or inside another
+  component.
+
+A Page widget inside a component definition is checked where it is written, and
+named by the component (`"Card / Window" in component "Card"`). Checking a file
+reports these for every block the file writes, and for any the file would create
+elsewhere - placing a card on a page is written on the page, while the widget
+that then leads back sits in the card.
 
 Three findings are notes rather than refusals, deliberately:
 
@@ -324,7 +380,15 @@ Four things to know before using it:
   replaces its element tree entire, including elements the file does not mention -
   `ui.element_dropped` and `ui.orphaned_blueprint` name them first. Blocks the
   file does not contain are left alone, so a file may be one surface out of
-  twelve. Structs and actions are merged by id rather than replaced.
+  twelve. Structs and actions are merged by id rather than replaced. A blueprint
+  hanging off a dropped element is `blueprint remove`'s to take away, before the
+  apply.
+- **An item shape goes with the last list that named it.** That is the editor's
+  own rule: a struct no list names is invisible to an author, and left in the
+  table it would be picked up again, under its old name, the next time somebody
+  declares the same fields. So a shape the apply stops naming is dropped and the
+  summary says so. A shape the file itself declares is kept whether or not
+  anything names it yet, and one nothing named before the apply is left alone.
 - **Close the project in Studio first.** Nothing reloads this file on its own,
   and a running Studio will write its own copy over yours on the next save.
 - **The document must already be at the current interface schema version.**

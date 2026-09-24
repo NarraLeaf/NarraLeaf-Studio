@@ -81,6 +81,7 @@ export const pluginPermission = {
             node: "プラグイン自身のコードがゲームの一部として動く",
         },
         buildDependencyHosts: "{hosts} からダウンロードする",
+        studioApi: "Studio API：{capability}",
         /**
          * API 名ではなくプレイヤーのデータを主語にして書く。信頼するかどうかを決める人にとって
          * 「state.write」は何も意味しない。
@@ -98,6 +99,7 @@ export const pluginPermission = {
             menu: "ゲームウィンドウのメニューバーを提供する",
             storyCompile: "ストーリーのコンパイルに加わり、自分が書いていない行にも演出を足す",
             diagnostics: "ゲームのキャッシュが使っているメモリ量を読む",
+            processMemory: "ゲームが使っているコンピューターのメモリ量を読む",
         },
     },
     button: {

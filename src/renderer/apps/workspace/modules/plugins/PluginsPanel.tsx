@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import { Badge, Button } from "@/lib/components/elements";
 import { ContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
+import { pluginRecordActions } from "@/lib/plugins/ui/pluginRecordActions";
 import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
 import { filterInstalled, filterStore, usePluginCatalog } from "@/lib/plugins/ui/usePluginCatalog";
 import { activateWorkspacePlugin, deactivateWorkspacePlugin } from "@/lib/plugins/pluginRuntime";
@@ -23,7 +24,7 @@ import { PluginRestartHint } from "./PluginRestartHint";
 import { PluginTaskLine } from "./PluginTaskLine";
 import { ACTIVITY_LABEL_KEYS, ACTIVITY_TONES } from "./pluginActivityLabels";
 import { useProjectDependencyRows } from "./useProjectDependencyRows";
-import { useWorkspacePluginActivity, type PluginActivity } from "./useWorkspacePluginActivity";
+import { canReloadInWorkspace, useWorkspacePluginActivity, type PluginActivity } from "./useWorkspacePluginActivity";
 
 type PluginsTab = "installed" | "store";
 
@@ -142,6 +143,26 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
     }, [catalog, context, live, t]);
 
     /**
+     * Give a plugin whose last load failed another go.
+     *
+     * Enabling a plugin is what forgets a recorded failure - the main process serves a descriptor
+     * only for a record with no failure on it, so nothing can be started until that is cleared -
+     * and enabling one that is already on is the whole of it. Doing it in one press keeps the
+     * switch meaning what it says: the author who wanted the plugin off would otherwise have to
+     * press Disable first, and stopping there leaves a plugin off because they appeared to say so.
+     *
+     * A second failure is reported as one: the catalog re-reads the list whichever way the start
+     * went, so the plugin goes back to reading as failed rather than as the record described it a
+     * moment before the attempt.
+     */
+    const retry = useCallback((pluginId: string) => {
+        void catalog.runTask(t("plugins.task.starting"), async () => {
+            await catalog.apply.setEnabled(pluginId, true);
+            catalog.setTask({ status: "success", message: t("plugins.task.started") });
+        });
+    }, [catalog, t]);
+
+    /**
      * Restart the workspace: flush every pending save, then reload this window.
      *
      * A reload rather than reopening the project through `workspace.openRecent`, which would find
@@ -170,20 +191,29 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
         const items: ContextMenuDef = [];
 
-        if (plugin.status === "needsAuthorization") {
+        const actions = pluginRecordActions(plugin, live);
+
+        if (actions.authorize) {
             items.push({ id: "authorize", label: t("plugins.authorize"), onClick: () => catalog.approve(plugin.pluginId) });
-        } else if (plugin.status !== "error") {
+        }
+        if (actions.retry) {
+            items.push({ id: "retry", label: t("common.retry"), onClick: () => retry(plugin.pluginId) });
+        }
+        if (actions.toggle) {
             items.push({
                 id: "toggle",
-                label: plugin.enabled ? t("common.disable") : t("common.enable"),
-                onClick: () => catalog.setEnabled(plugin.pluginId, !plugin.enabled),
+                label: actions.toggle === "enable" ? t("common.enable") : t("common.disable"),
+                onClick: () => catalog.setEnabled(plugin.pluginId, actions.toggle === "enable"),
             });
         }
         if (hasUpdate(plugin, entry) && isCompatible(entry)) {
             items.push({ id: "update", label: t("plugins.store.update"), onClick: () => catalog.installFromStore(plugin.pluginId) });
         }
-        // Reloading a plugin that is not running here would be a no-op dressed as an action.
-        if (live && activity.activityOf(plugin) !== "off" && plugin.manifest.entries.studio) {
+        // Reloading a plugin that is not running here would be a no-op dressed as an action, and so
+        // would reloading one whose record carries a failure: the main process serves a descriptor
+        // only for a record with no failure on it, which is what Try again above clears.
+        if (live && canReloadInWorkspace(activity.activityOf(plugin)) && plugin.manifest.entries.studio
+            && plugin.status !== "error") {
             items.push({ id: "reload", label: t("plugins.workspace.reload"), onClick: () => reload(plugin.pluginId) });
         }
         // Uninstall is the one action a recovery window may not offer. That mode exists because
@@ -198,7 +228,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
 
         const disabled = busy ? items.map(item => ("separator" in item ? item : { ...item, disabled: true })) : items;
         setMenu({ items: disabled, position: { x: rect.right, y: rect.bottom } });
-    }, [activity, busy, catalog, live, registryById, reload, t, uninstall]);
+    }, [activity, busy, catalog, live, registryById, reload, retry, t, uninstall]);
 
     const openPanelMenu = useCallback((event: React.MouseEvent) => {
         event.preventDefault();
@@ -249,6 +279,7 @@ export function PluginsPanel({ panelId, payload }: PanelComponentProps<PluginsPa
                         onUninstall={uninstall}
                         onInstall={catalog.installFromStore}
                         onReload={reload}
+                        onRetry={retry}
                     />
                 </motion.div>
             ) : null}

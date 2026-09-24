@@ -16,7 +16,7 @@
  * here without a second edit that could disagree with the first.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { FieldLabel, Select, Slider, type SelectOption } from "@/lib/components/elements";
@@ -30,6 +30,7 @@ import {
 } from "@/lib/workspace/project/configuration";
 import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import { NumberField } from "./NumberField";
+import { useConfigSlice } from "./useConfigSlice";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
@@ -52,35 +53,16 @@ function fromPercent(percent: number): number {
 
 export function ProjectPreferencesSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
     const { t } = useTranslation();
-    const [preferences, setPreferences] = useState<PlayerPreferences>(
-        () => normalizePlayerPreferences(config.app?.preferences),
-    );
-    const [saving, setSaving] = useState<PlayerPreferenceKey | null>(null);
-
-    // The panel is keep-alive and the config can be replaced underneath it (a VCS restore, another
-    // surface writing the same file), so the stored value stays the source of truth for the rows.
-    useEffect(() => {
-        setPreferences(normalizePlayerPreferences(config.app?.preferences));
-    }, [config]);
-
-    const commit = useCallback(async (key: PlayerPreferenceKey, value: PlayerPreferences[PlayerPreferenceKey]) => {
-        if (saving) {
-            return;
-        }
-        const previous = preferences;
-        setSaving(key);
-        setPreferences(current => ({ ...current, [key]: value }));
-        try {
-            const updated = await projectService.updatePlayerPreferences({ [key]: value });
-            setPreferences(normalizePlayerPreferences(updated.app?.preferences));
-            onConfigChange(updated);
-        } catch (error) {
-            setPreferences(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(null);
-        }
-    }, [onConfigChange, preferences, projectService, saving, uiService]);
+    // Read from the panel's config on every render rather than copied into state once: the panel is
+    // keep-alive and the config can be replaced underneath it (a VCS restore, another surface writing
+    // the same file), so the stored value stays the source of truth for the rows.
+    const stored = useMemo(() => normalizePlayerPreferences(config.app?.preferences), [config.app?.preferences]);
+    const { value: preferences, commit } = useConfigSlice<PlayerPreferences>({
+        stored,
+        write: patch => projectService.updatePlayerPreferences(patch),
+        onConfigChange,
+        uiService,
+    });
 
     return (
         // The one line that used to be a paragraph at the top of a page of its own. It is the
@@ -104,8 +86,7 @@ export function ProjectPreferencesSection({ projectService, uiService, config, o
                                     key={key}
                                     spec={PLAYER_PREFERENCE_SPECS[key]}
                                     preferences={preferences}
-                                    saving={saving === key}
-                                    onCommit={value => void commit(key, value)}
+                                    onCommit={value => void commit({ [key]: value } as Partial<PlayerPreferences>)}
                                 />
                             ))}
                         </div>
@@ -119,12 +100,10 @@ export function ProjectPreferencesSection({ projectService, uiService, config, o
 function PreferenceRow({
     spec,
     preferences,
-    saving,
     onCommit,
 }: {
     spec: PlayerPreferenceSpec;
     preferences: PlayerPreferences;
-    saving: boolean;
     onCommit: (value: PlayerPreferences[PlayerPreferenceKey]) => void;
 }) {
     const { t } = useTranslation();
@@ -139,7 +118,6 @@ function PreferenceRow({
                 title={title}
                 description={description}
                 checked={preferences[spec.key] as boolean}
-                loading={saving}
                 onChange={onCommit}
             />
         );
@@ -159,7 +137,7 @@ function PreferenceRow({
                     className="min-w-0"
                     options={options}
                     value={preferences[spec.key] as string}
-                    disabled={freeze.writes(saving).disabled}
+                    disabled={freeze.writes().disabled}
                     ariaLabel={title}
                     onChange={value => onCommit(String(value) as PlayerPreferences[PlayerPreferenceKey])}
                 />
@@ -177,7 +155,7 @@ function PreferenceRow({
                 stored={stored}
                 min={toPercent(spec.min)}
                 max={toPercent(spec.max)}
-                disabled={freeze.writes(saving).disabled}
+                disabled={freeze.writes().disabled}
                 tooltip={freeze.writes()["data-tip"]}
                 onCommit={percent => onCommit(fromPercent(percent))}
             />
@@ -192,7 +170,7 @@ function PreferenceRow({
                 min={percentEdited ? toPercent(spec.min) : spec.min}
                 max={percentEdited ? toPercent(spec.max) : spec.max}
                 unit={t(`project.preferences.unit.${spec.display.unit}`)}
-                disabled={freeze.writes(saving).disabled}
+                disabled={freeze.writes().disabled}
                 ariaLabel={title}
                 onCommit={value => onCommit(percentEdited ? fromPercent(value) : value)}
             />

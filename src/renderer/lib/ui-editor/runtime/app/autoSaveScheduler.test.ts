@@ -8,7 +8,16 @@ import {
 import { AutoSaveScheduler } from "./autoSaveScheduler";
 
 function entry(slot: number, timestamp: number): AutoSaveEntry {
-    return { id: autoSaveSlotId(slot), slot, timestamp, createdAt: timestamp, metadata: null };
+    return {
+        id: autoSaveSlotId(slot),
+        slot,
+        timestamp,
+        createdAt: timestamp,
+        preview: null,
+        line: "",
+        speaker: "",
+        metadata: null,
+    };
 }
 
 function harness(overrides?: {
@@ -156,7 +165,7 @@ describe("AutoSaveScheduler", () => {
     it("rejects an explicit write when no game is running", async () => {
         const { scheduler } = harness({ playing: false });
 
-        await expect(scheduler.writeNow()).rejects.toThrow("no game is running");
+        await expect(scheduler.writeNow()).rejects.toThrow("“Auto Save” needs a running game.");
     });
 
     it("surfaces a failed explicit write to its caller", async () => {

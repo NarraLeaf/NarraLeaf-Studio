@@ -18,6 +18,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Badge, Button, EmptyState, IconButton, Input } from "@/lib/components/elements";
 import { cn } from "@/lib/utils/cn";
 import { PluginAvatar, PluginStatusBadge, hasUpdate, isCompatible } from "@/lib/plugins/ui/pluginPresentation";
+import { pluginRecordActions } from "@/lib/plugins/ui/pluginRecordActions";
 import { filterInstalled, filterStore, usePluginCatalog } from "@/lib/plugins/ui/usePluginCatalog";
 import { useStoreIcon } from "@/lib/plugins/ui/useStoreIcon";
 import type { PluginCatalogTask } from "@/lib/plugins/ui/usePluginCatalog";
@@ -132,7 +133,7 @@ export function PluginsTab() {
                                     busy={busy}
                                     onOpen={() => setDetailId(plugin.pluginId)}
                                     onAuthorize={() => catalog.approve(plugin.pluginId)}
-                                    onToggle={() => catalog.setEnabled(plugin.pluginId, !plugin.enabled)}
+                                    onToggle={enabled => catalog.setEnabled(plugin.pluginId, enabled)}
                                     onUninstall={() => uninstall(plugin.pluginId)}
                                     onUpdate={() => catalog.installFromStore(plugin.pluginId)}
                                 />
@@ -204,12 +205,14 @@ function InstalledRow({
     busy: boolean;
     onOpen: () => void;
     onAuthorize: () => void;
-    onToggle: () => void;
+    onToggle: (enabled: boolean) => void;
     onUninstall: () => void;
     onUpdate: () => void;
 }) {
     const { t } = useTranslation();
-    const needsAuth = plugin.status === "needsAuthorization";
+    // No window here runs a plugin, so there is nothing to retry: Enable clears a recorded failure
+    // on its way past, and the next project to open is what tries the plugin again.
+    const actions = pluginRecordActions(plugin, false);
     const updateAvailable = hasUpdate(plugin, entry);
     // An update this build cannot take is still announced, but as a fact rather
     // than a button — the main process would refuse the install anyway.
@@ -236,7 +239,7 @@ function InstalledRow({
                 </span>
             </button>
             <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                {needsAuth ? (
+                {actions.authorize ? (
                     <Button size="sm" variant="primary" onClick={onAuthorize} disabled={busy} className="gap-1">
                         <ShieldCheck className="h-3.5 w-3.5" />
                         {t("plugins.authorize")}
@@ -248,13 +251,13 @@ function InstalledRow({
                                 {t("plugins.store.update")}
                             </Button>
                         ) : null}
-                        {plugin.status !== "error" ? (
+                        {actions.toggle ? (
                             <RowIconButton
-                                title={plugin.enabled ? t("common.disable") : t("common.enable")}
+                                title={actions.toggle === "enable" ? t("common.enable") : t("common.disable")}
                                 disabled={busy}
-                                onClick={onToggle}
+                                onClick={() => onToggle(actions.toggle === "enable")}
                             >
-                                {plugin.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                                {actions.toggle === "disable" ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
                             </RowIconButton>
                         ) : null}
                     </>

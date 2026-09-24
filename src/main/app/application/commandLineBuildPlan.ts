@@ -1,5 +1,4 @@
 import path from "path";
-import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import {
     defaultGameBuildArch,
     GAME_BUILD_ARCHS_BY_PLATFORM,
@@ -38,7 +37,10 @@ export type CommandLineBuildPlan = {
     format: GameBuildFormat;
     /** Absent for the web and mobile platforms, which have no CPU architecture. */
     arch?: GameBuildArch;
+    /** The variant's stored id, which is what the pipeline addresses it by. Never printed. */
     variantId: string;
+    /** The variant's name, as the project spells it: what the log and the report say was built. */
+    variantName: string;
     outputDir: string;
     allowUnsigned: boolean;
     /** Absolute, or null when the launch asked for no report file. */
@@ -80,20 +82,24 @@ function isPlatform(candidate: string): candidate is GameBuildPlatform {
 /**
  * Turn a parsed command line into one build request, or say why it cannot be one.
  *
- * `projectPath` is already resolved against the disk by the caller - this decides everything else:
- * which platform, which format, which architecture, and where the artifacts land.
+ * `projectPath` is already resolved against the disk by the caller, and so is `variant` - finding a
+ * name in the project's list takes the project's variants document, which this does not read. This
+ * decides everything else: which platform, which format, which architecture, and where the artifacts
+ * land.
  *
  * `workingDirectory` is what a relative `--build-output` or `--build-report` is resolved against.
  * The process's own, always: a launch names paths the way the shell that wrote it does.
  */
 export function planCommandLineBuild(input: {
     options: BuildCommandLineOptions;
+    /** The variant `--build-variant` named, already found by name; the release variant when it named none. */
+    variant: { id: string; name: string };
     projectPath: string;
     hostPlatform: GameBuildDesktopPlatform;
     hostArch: string;
     workingDirectory: string;
 }): CommandLineBuildPlanResult {
-    const { options, projectPath, hostPlatform, hostArch, workingDirectory } = input;
+    const { options, variant, projectPath, hostPlatform, hostArch, workingDirectory } = input;
 
     const platformName = options.platform ?? hostPlatform;
     if (!isPlatform(platformName)) {
@@ -136,7 +142,6 @@ export function planCommandLineBuild(input: {
         return { ok: false, reason: settings.reason };
     }
 
-    const variantId = options.variantId ?? APP_TAG_ID_RELEASE;
     const outputDir = options.outputDir
         ? path.resolve(workingDirectory, options.outputDir)
         : path.join(projectPath, "dist");
@@ -146,7 +151,7 @@ export function planCommandLineBuild(input: {
         plan: {
             request: {
                 targets: [{ platform, formats: [format], ...(arch ? { arch } : {}) }],
-                appTagId: variantId,
+                appTagId: variant.id,
                 outputDir,
                 // Never. `openWhenDone` reveals the output folder in the file manager, which on a
                 // machine somebody is using is a window appearing out of nowhere - and on a build
@@ -156,7 +161,8 @@ export function planCommandLineBuild(input: {
             platform,
             format,
             ...(arch ? { arch } : {}),
-            variantId,
+            variantId: variant.id,
+            variantName: variant.name,
             outputDir,
             allowUnsigned: options.allowUnsigned,
             reportPath: options.reportPath ? path.resolve(workingDirectory, options.reportPath) : null,

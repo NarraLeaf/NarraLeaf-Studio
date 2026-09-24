@@ -35,6 +35,14 @@ import {
 } from "./runtimePluginApi";
 import type { RuntimePluginHost } from "./runtimePluginHost";
 import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
+import { narrowWidgetEventDispatchForPlugin } from "../widgetEventDispatch";
+import {
+    notifyContributedWidgetsChanged,
+    registerContributedWidgetSource,
+    type ContributedWidgetDeclaration,
+} from "@shared/types/ui-editor/contributedWidgets";
+import { sanitizeContributedWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { scriptEventsOfContributedLogicApi } from "@/lib/ui-editor/blueprint-runtime/script/scriptEventDispatch";
 
 export const RUNTIME_PLUGIN_MODULE_GLOBAL = "__NLS_RUNTIME_PLUGIN_MODULE__";
 
@@ -90,7 +98,33 @@ const runtimeNodeOwners = new Map<string, string>();
  * the host-facing binding built by {@link bindWidgetRenderer}, never the plugin's own
  * function: the narrowing has to be in place before anything can reach the registry.
  */
-const runtimeWidgetRenderers = new Map<string, { ownerPluginId: string; renderer: ElementRendererDefinition }>();
+const runtimeWidgetRenderers = new Map<string, {
+    ownerPluginId: string;
+    renderer: ElementRendererDefinition;
+    /** What the def declared, already held to the plugin's own heads. */
+    logicApi: WidgetLogicApi | undefined;
+}>();
+
+function declarationOf(type: string, entry: { ownerPluginId: string; logicApi: WidgetLogicApi | undefined }): ContributedWidgetDeclaration {
+    return { type, ownerPluginId: entry.ownerPluginId, logicApi: entry.logicApi };
+}
+
+/**
+ * The widgets runtime entries registered, behind the shared capability lookups.
+ *
+ * The game's half of what the workspace does from its widget module registry: the dispatcher, the
+ * element wrapper and the Init lifecycle read a widget's events through `getWidgetLogicApi`, and a
+ * game has no widget module to read a plugin's from - only the def its runtime entry registered.
+ * Children are not answered here: the game draws whatever children an element has, and the
+ * question of where an author may put one is the editor's.
+ */
+registerContributedWidgetSource({
+    get: type => {
+        const entry = runtimeWidgetRenderers.get(type);
+        return entry ? declarationOf(type, entry) : undefined;
+    },
+    list: () => Array.from(runtimeWidgetRenderers, ([type, entry]) => declarationOf(type, entry)),
+});
 
 /**
  * Load-once cache keyed by plugin id + version + entry URL. Game environments
@@ -208,30 +242,19 @@ function narrowWidgetRendererProps(
     props: ElementRendererProps,
     game: RuntimePluginGame,
 ): RuntimeWidgetRendererProps {
-    const blueprintRuntime = props.hostAdapter.blueprintRuntime;
-    const listItemScope = props.listItemScope ?? null;
-    const instanceKey = props.instanceKey;
     return {
         element: props.element,
         surface: props.surface,
         document: props.document,
         children: props.children,
-        instanceKey,
-        listItemScope,
+        instanceKey: props.instanceKey,
+        listItemScope: props.listItemScope ?? null,
         renderChildren: props.renderChildren,
         runtimeData: props.runtimeData,
-        dispatchEvent: (eventName, payload, options) => {
-            if (!blueprintRuntime) {
-                return Promise.resolve();
-            }
-            // The row is carried, not merely described: a handler answering a click on a
-            // repeated row is asking about that row, and an unscoped dispatch would run
-            // the author's graph against whichever one drew last.
-            return blueprintRuntime.dispatchElementBlueprintEvent(props.element.id, eventName, payload, {
-                listItemScope: options && "listItemScope" in options ? options.listItemScope : listItemScope,
-                instanceKey: options?.instanceKey ?? instanceKey,
-            });
-        },
+        // The element tree's binding, narrowed: this element in the row and the placement it is
+        // drawn in. Rebuilt here from the host's runtime it carried the row but not the placement,
+        // and an event from a plugin widget inside a card never found the card's graph.
+        dispatchEvent: narrowWidgetEventDispatchForPlugin(props.dispatchEvent),
         game,
     };
 }
@@ -317,10 +340,24 @@ function createRuntimePluginApp(
         if (existing && existing.ownerPluginId !== pluginId) {
             throw new Error(`Widget type already registered by another owner: ${type}`);
         }
+        const sanitized = sanitizeContributedWidgetLogicApi(pluginId, def.logicApi);
+        for (const problem of sanitized.problems) {
+            log(
+                "warning",
+                `widget ${type}, event "${problem.eventId}": ${problem.message}. A widget event names the head `
+                    + "nodes that start on it in `headNodeTypes`: a built-in widget event head, or a node type "
+                    + "this plugin registers.",
+            );
+        }
+        for (const problem of scriptEventsOfContributedLogicApi(sanitized.logicApi).problems) {
+            log("warning", `widget ${type}, event "${problem.eventId}": ${problem.message}.`);
+        }
         runtimeWidgetRenderers.set(type, {
             ownerPluginId: pluginId,
             renderer: bindWidgetRenderer(type, def.render, game),
+            logicApi: sanitized.logicApi,
         });
+        notifyContributedWidgetsChanged();
     };
 
     const readData = <T,>(namespace: string): T | null => {
@@ -595,6 +632,16 @@ function buildCapabilityDomains(
             // launch and must handle anyway. Withholding the member instead would make a normal
             // moment indistinguishable from a shell that cannot report at all.
             domains.diagnostics = { imageCache: () => backend.imageCache() };
+        }
+    }
+
+    if (declared.has("process.memory")) {
+        const backend = host.process;
+        if (!backend) {
+            // The web export: one tab of somebody else's browser, with no processes of its own.
+            unavailable("process.memory");
+        } else {
+            domains.process = { memory: () => backend.memory() };
         }
     }
 

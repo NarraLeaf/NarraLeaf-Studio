@@ -29,7 +29,7 @@ import {
     registerPendingDelayTimer,
     skipDelayTimerToken,
 } from "./flowTimerTokens";
-import { resolveDataPinValue, resolveIfCondition } from "./graphParamResolvers";
+import { dataPinRuntimeOf, resolveIfCondition, resolveNodeInput } from "./graphParamResolvers";
 
 const DEFAULT_MAX_ITERATIONS = 1000;
 const IF_ELSE_DYNAMIC_BRANCH_PINS_KEY = "__ifElseBranchPins";
@@ -91,13 +91,7 @@ function clearState(ctx: BehaviorNodeExecutionContext): void {
 }
 
 function resolveInput(ctx: BehaviorNodeExecutionContext, pinId: string, fallback?: unknown): unknown {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, pinId);
     return value === undefined ? fallback : value;
 }
 
@@ -307,11 +301,7 @@ function executeSkipDelay(ctx: BehaviorNodeExecutionContext) {
 }
 
 function executeBooleanBranch(ctx: BehaviorNodeExecutionContext, truePort: string, falsePort: string) {
-    const conditionValue = resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        executionOwner: ctx.executionOwner,
-    });
+    const conditionValue = resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, dataPinRuntimeOf(ctx));
     return { nextPort: Boolean(conditionValue) ? truePort : falsePort };
 }
 
@@ -331,11 +321,7 @@ function executeIfElse(ctx: BehaviorNodeExecutionContext) {
     const conditionPins = ["condition", ...dynamicConditionPins];
     for (const conditionPinId of conditionPins) {
         const conditionValue = conditionPinId === "condition"
-            ? resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
-                  hostAdapter: ctx.hostAdapter,
-                  eventPayload: ctx.eventPayload,
-                  executionOwner: ctx.executionOwner,
-              })
+            ? resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, dataPinRuntimeOf(ctx))
             : resolveInput(ctx, conditionPinId, false);
         if (toBlueprintBoolean(conditionValue)) {
             return { nextPort: thenPortForIfElseConditionPin(conditionPinId) };
@@ -528,6 +514,7 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+        assetNames: "forward",
         displayName: "For Each",
         category: "Flow",
         keywords: ["for", "each", "loop", "array", "json"],
@@ -637,14 +624,7 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "value", kind: "input", semantic: "data", valueType: "any", label: "Value" },
         ],
         execute: ctx => {
-            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-                valueExecution: ctx.valueExecution,
-            });
+            const value = resolveNodeInput(ctx, "value");
             ctx.valueExecution?.returnValue(value);
             // Producing the return value ends this execution path (no `next`).
             return { nextPort: undefined };

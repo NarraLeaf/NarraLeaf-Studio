@@ -1,11 +1,27 @@
 import { IPCMessageType, Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import { WINDOW_PROJECT_MISMATCH_CODE } from "@shared/types/window";
-import { reportWindowProjectRefusal } from "../../utils/windowProjectRefusal";
+import {
+    WINDOW_PROJECT_MISMATCH_CODE,
+    WINDOW_SERVER_OFF_LIMITS_CODE,
+    WINDOW_SIGN_IN_UNUSED_CODE,
+} from "@shared/types/window";
+import { reportWindowProjectRefusal, type WindowRefusalReason } from "../../utils/windowProjectRefusal";
 import { IPCHandler } from "./handlers/IPCHandler";
 import { IPCHost } from "./ipcHost";
 import { getDeniedApiCapability } from "./permissions";
 import type { AppWindow } from "./appWindow";
+
+/**
+ * The refusal codes the registry reports on, and what each is reported as.
+ *
+ * A code rather than a class or a sentence, because the code is what survives the trip through
+ * `RequestStatus` - and a refusal raised in a handler file nobody here has read is still recognised.
+ */
+const WINDOW_REFUSALS: ReadonlyMap<string, WindowRefusalReason> = new Map<string, WindowRefusalReason>([
+    [WINDOW_PROJECT_MISMATCH_CODE, "project"],
+    [WINDOW_SIGN_IN_UNUSED_CODE, "sign-in-unused"],
+    [WINDOW_SERVER_OFF_LIMITS_CODE, "server-off-limits"],
+]);
 
 /**
  * Process-wide IPC handler registry.
@@ -16,6 +32,10 @@ import type { AppWindow } from "./appWindow";
  * checks run after routing. Requests arriving from an unknown or destroyed
  * window (e.g. during shutdown) resolve as a clean failure instead of
  * hanging or throwing.
+ *
+ * A window that has started closing is neither: it is off the open list, but
+ * its page is still running its unload handlers. Only the handlers that declare
+ * `servesClosingWindow` answer it; to every other channel it is gone.
  */
 export class IPCRegistry {
     private readonly ipc: IPCHost;
@@ -24,6 +44,7 @@ export class IPCRegistry {
     constructor(
         namespace: Namespace,
         private readonly resolveWindow: (sender: Electron.WebContents) => AppWindow | undefined,
+        private readonly resolveClosingWindow: (sender: Electron.WebContents) => AppWindow | undefined = () => undefined,
     ) {
         this.ipc = new IPCHost(namespace);
     }
@@ -52,7 +73,7 @@ export class IPCRegistry {
 
     private registerRequest(handler: IPCHandler<IPCEventType>): void {
         this.ipc.handleGlobal(handler.name as never, async (sender, data): Promise<RequestStatus<unknown>> => {
-            const window = this.resolveLiveWindow(sender);
+            const window = this.resolveLiveWindow(sender, handler);
             if (!window) {
                 return this.ipc.failed(new Error(`No live window for IPC request: ${handler.name}`));
             }
@@ -74,7 +95,7 @@ export class IPCRegistry {
 
     private registerMessage(handler: IPCHandler<IPCEventType>): void {
         this.ipc.onMessageGlobal(handler.name as never, (sender, data) => {
-            const window = this.resolveLiveWindow(sender);
+            const window = this.resolveLiveWindow(sender, handler);
             if (!window) {
                 console.warn(`Dropped IPC message ${handler.name}: no live window for sender`);
                 return;
@@ -96,7 +117,8 @@ export class IPCRegistry {
     }
 
     /**
-     * Report a refusal raised by `requireWindowProject`, wherever it was raised.
+     * Report a refusal raised by `requireWindowProject`, or by the Team channels' check of which
+     * window may speak to a server as the account, wherever it was raised.
      *
      * Read here rather than at each guarded handler, and that is the point: the guard is spreading
      * across the handler files one tranche at a time, and a rule that each of them must also
@@ -107,13 +129,18 @@ export class IPCRegistry {
      * the one refusal in the app that no interface has a remedy for.
      */
     private noteProjectRefusal(window: AppWindow, request: string, result: RequestStatus<unknown> | undefined): void {
-        if (result && result.success === false && result.code === WINDOW_PROJECT_MISMATCH_CODE) {
-            reportWindowProjectRefusal(window, request);
+        if (!result || result.success !== false || typeof result.code !== "string") {
+            return;
+        }
+        const reason = WINDOW_REFUSALS.get(result.code);
+        if (reason !== undefined) {
+            reportWindowProjectRefusal(window, request, reason);
         }
     }
 
-    private resolveLiveWindow(sender: Electron.WebContents): AppWindow | undefined {
-        const window = this.resolveWindow(sender);
+    private resolveLiveWindow(sender: Electron.WebContents, handler: IPCHandler<IPCEventType>): AppWindow | undefined {
+        const window = this.resolveWindow(sender)
+            ?? (handler.servesClosingWindow ? this.resolveClosingWindow(sender) : undefined);
         if (!window || window.isDestroyed()) {
             return undefined;
         }

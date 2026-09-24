@@ -24,10 +24,11 @@
  */
 
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { addressWidgetFromExecution } from "@/lib/ui-editor/blueprint-nodes/built-in/widgetTarget";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { listScriptLayers, scriptLayerKey } from "@shared/blueprint/blueprintLayers";
-import { scriptEventExportName, type ScriptEventId } from "./scriptEvents";
+import { scriptExportNameOf } from "./scriptEventDispatch";
 import type { GameScriptContext, ScriptListRow, ScriptSelf, ScriptWidgetType } from "./scriptContext";
 
 /** A mounted script: its module namespace, and where it came from for a message that names a file. */
@@ -98,14 +99,38 @@ export async function mountCompiledScripts(
  * the first thing tried here and the policy refused every script - worth stating, because the
  * refusal names the blob URL and so names nothing an author would recognise.
  *
+ * A packaged game names its scripts relative to its own page (`scripts/<file>.js`), because the
+ * page is served from a different place by every shell that runs a pack - the runtime's scheme on
+ * the desktop, the author's web host, a WebView's asset loader. So the name is resolved against the
+ * document here rather than left to `import()`, whose base for a relative specifier is the calling
+ * script's URL and not the page's. Dev Mode's `file:` URLs are absolute and come through unchanged.
+ *
  * The query is cache-busting. Dev Mode reloads on every save and rewrites the file in place, and a
  * second import of the same URL answers from the module map with the previous revision's code - so
  * the author's edit would appear not to have taken.
  */
 async function importAsModule(url: string): Promise<Record<string, unknown>> {
-    const versioned = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
-    state().urls.push(url);
+    const resolved = resolveScriptModuleUrl(url, typeof document === "undefined" ? undefined : document.baseURI);
+    const versioned = `${resolved}${resolved.includes("?") ? "&" : "?"}v=${Date.now()}`;
+    state().urls.push(resolved);
     return (await import(/* @vite-ignore */ versioned)) as Record<string, unknown>;
+}
+
+/**
+ * The URL a compiled script is imported from: the bundle's name for it, resolved against the page.
+ *
+ * An absolute URL is returned as it is. With no page to resolve against, a relative name is returned
+ * as it is too, and the import that follows fails with that name in its message.
+ */
+export function resolveScriptModuleUrl(url: string, baseUri: string | undefined): string {
+    if (!baseUri) {
+        return url;
+    }
+    try {
+        return new URL(url, baseUri).href;
+    } catch {
+        return url;
+    }
 }
 
 /** Drop every mounted script, so a session's modules do not outlive it. */
@@ -123,17 +148,18 @@ export function unmountCompiledScripts(): void {
  * A **script event id**, not the id the dispatch raised. Those are two vocabularies and they differ
  * on every head named after its widget - a slider raises `valueChanged` and its head is
  * `sliderValueChanged` - so a caller translates first through `scriptEventDispatch.ts`. Passing the
- * dispatch's own id here is what made 81 declared handler names unreachable.
+ * dispatch's own id here is what made 81 declared handler names unreachable. A string rather than
+ * the typed id, because a plugin widget's own events are script events under names its plugin chose.
  */
 export function resolveScriptHandler(
     layerKey: string,
-    eventId: ScriptEventId,
+    eventId: string,
 ): ((...args: unknown[]) => unknown) | null {
     const mounted = state().modules[layerKey];
     if (!mounted) {
         return null;
     }
-    const handler = mounted.module[scriptEventExportName(eventId)];
+    const handler = mounted.module[scriptExportNameOf(eventId)];
     return typeof handler === "function" ? (handler as (...args: unknown[]) => unknown) : null;
 }
 
@@ -148,7 +174,7 @@ export function resolveScriptHandler(
  */
 export function resolveScriptLayerHandlers(
     blueprint: Blueprint | undefined,
-    eventId: ScriptEventId,
+    eventId: string,
 ): Array<{ layerKey: string; handler: (...args: unknown[]) => unknown }> {
     const out: Array<{ layerKey: string; handler: (...args: unknown[]) => unknown }> = [];
     if (!blueprint) {
@@ -196,11 +222,68 @@ export type BuildGameScriptContextInput = {
     self: ScriptSelf;
     hostAdapter: UIHostAdapter;
     hostApi: BlueprintHostApiRuntime;
+    /**
+     * The drawing the handler is running in - a list row, a component placement - or undefined on
+     * the page. Every element id the script hands `ctx.host` is read from here.
+     */
+    instanceKey?: string;
     /** This drawing's own store, with the lifetime a graph `Var` has. */
     vars: Record<string, unknown>;
     signal?: AbortSignal;
     stopPropagation: () => void;
 };
+
+/**
+ * The widget methods whose first argument is not an element id. Everything else in `host.widget`
+ * names a widget first, so everything else is bound to the drawing.
+ */
+const WIDGET_METHODS_NOT_NAMING_AN_ELEMENT: ReadonlySet<string> = new Set<keyof BlueprintHostApiRuntime["widget"]>([
+    "stopDisplayableAnimation",
+]);
+
+/**
+ * The host API a script is handed: the adapter's own, with every element id the script names read
+ * from the drawing its handler is running in.
+ *
+ * A script writes `ctx.host.widget.setVisible("viewer", true)` with the element's own id, as
+ * `ctx.self.elementId` is - it has no other id to write, and an address is not something an author
+ * should have to know exists. The raw host API takes an *address*, so handed the bare id it wrote
+ * the element's template, which is the drawing no list row and no placement is: from Item Click the
+ * pressed row's label never changed, and from inside a card the card never did. This is the
+ * translation the widget nodes make through `addressWidgetFromExecution`, and it is the same call,
+ * so a node and a script on one slot mean the same widget by the same id - the row's own label in
+ * the row, a panel beside the list as the panel, the list itself as the list.
+ *
+ * Only the methods that name a widget change. Everything else is the host API as it is - including
+ * a family a host does not carry at all, which stays absent rather than becoming a wrapper around
+ * nothing.
+ */
+export function bindHostApiToDrawing(
+    hostApi: BlueprintHostApiRuntime,
+    hostAdapter: UIHostAdapter,
+    instanceKey: string | undefined,
+): BlueprintHostApiRuntime {
+    const addressOf = (elementId: string) => addressWidgetFromExecution({ hostAdapter, instanceKey }, elementId);
+    const bound: BlueprintHostApiRuntime = { ...hostApi };
+    if (hostApi.widget) {
+        bound.widget = Object.fromEntries(
+            Object.entries(hostApi.widget).map(([name, method]) => [
+                name,
+                WIDGET_METHODS_NOT_NAMING_AN_ELEMENT.has(name) || typeof method !== "function"
+                    ? method
+                    : (elementId: string, ...rest: unknown[]) =>
+                          (method as (elementId: string, ...rest: unknown[]) => unknown)(addressOf(elementId), ...rest),
+            ]),
+        ) as BlueprintHostApiRuntime["widget"];
+    }
+    if (hostApi.pointer) {
+        bound.pointer = {
+            ...hostApi.pointer,
+            moveToElementCenter: (elementId, options) => hostApi.pointer.moveToElementCenter(addressOf(elementId), options),
+        };
+    }
+    return bound;
+}
 
 /**
  * Assemble the context a UI event handler is given.
@@ -239,7 +322,7 @@ export function buildGameScriptContext(input: BuildGameScriptContextInput): Game
 
     return {
         self: input.self,
-        host: input.hostApi,
+        host: bindHostApiToDrawing(input.hostApi, input.hostAdapter, input.instanceKey),
         broadcast,
         surface,
         vars: input.vars,
@@ -253,11 +336,16 @@ export function buildGameScriptContext(input: BuildGameScriptContextInput): Game
  *
  * `elementId` is the element's own id and never the widget address - the address is how the runtime
  * finds this drawing's widget, and an author who was handed one would have to know to pass it back.
- * The instance key travels separately, on the host API the ctx carries.
+ * The drawing travels separately, bound into the host API the ctx carries ({@link bindHostApiToDrawing}).
+ *
+ * `componentParams` are the placement's resolved params, which a component element's `self.params`
+ * is. They used to be left behind here, so a script on a card read `{}` for every param the
+ * placement set - what `Get Component Param` reads in a graph on the same element.
  */
 export function scriptSelfOf(input: {
     surfaceId?: string;
     componentId?: string;
+    componentParams?: Readonly<Record<string, string>>;
     elementId?: string;
     widgetType?: string;
     row?: ScriptListRow | null;
@@ -268,7 +356,7 @@ export function scriptSelfOf(input: {
             componentId: input.componentId,
             elementId: input.elementId,
             widgetType: (input.widgetType ?? "nl.container") as ScriptWidgetType,
-            params: {},
+            params: input.componentParams ?? {},
             row: input.row ?? null,
         };
     }

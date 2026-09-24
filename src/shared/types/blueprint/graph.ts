@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import { isContributedWidgetEventHeadType } from "@shared/types/ui-editor/contributedWidgets";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import {
     resolveGlobalLifecycleEventHeadTypes,
@@ -508,8 +509,25 @@ export function listBlueprintEventDispatchHeadTypes(): readonly string[] {
     return [...EVENT_DISPATCH_HEAD_TYPES];
 }
 
-/** True if this node type can start an event-graph execution chain for UI dispatch. */
+/**
+ * True if this node type can start an event-graph execution chain for UI dispatch.
+ *
+ * The built-in heads, and the heads a loaded plugin's widget names for its own events - a node its
+ * plugin registered, which is how a plugin widget's event gets a head with pins of its own. Those are
+ * dispatch heads for the same reason the built-in ones are: the dispatcher starts graphs on them and
+ * their outputs are the event's payload.
+ */
 export function isBlueprintEventDispatchHeadType(nodeType: string): boolean {
+    return EVENT_DISPATCH_HEAD_TYPES.has(nodeType) || isContributedWidgetEventHeadType(nodeType);
+}
+
+/**
+ * The built-in half of {@link isBlueprintEventDispatchHeadType} alone.
+ *
+ * For code that answers *for the host's own node types*: a plugin names its heads, and a name it
+ * picked must not change how a node Studio defines resolves its outputs.
+ */
+export function isBuiltinBlueprintEventDispatchHeadType(nodeType: string): boolean {
     return EVENT_DISPATCH_HEAD_TYPES.has(nodeType);
 }
 

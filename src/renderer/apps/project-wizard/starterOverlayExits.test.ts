@@ -31,6 +31,7 @@ import {
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
     BLUEPRINT_NODE_TYPE_PAGE_CLEAR,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
@@ -74,8 +75,12 @@ const blueprints = Object.values(
  *
  * Not the title (nothing is ever under it), and not the Game UI slot surfaces — a dialogue band or
  * a quick menu is drawn by the stage rather than opened over it, so there is no page to close.
+ *
+ * Extra is in the list although it is only ever reached from the title, where the pair degrades to
+ * the `Go back` alone: what is asserted is that a screen has one way off it and that both routes
+ * agree, which is as true of a screen with nothing underneath.
  */
-const SCREENS = ["Log", "Config", "Load", "Save", "Scenes"] as const;
+const SCREENS = ["Log", "Config", "Load", "Save", "Extra"] as const;
 
 function surfaceNamed(name: string): Surface {
     const surface = document.surfaces.find(candidate => candidate.name === name);
@@ -187,7 +192,24 @@ describe("every starter screen leaves a running game the same way", () => {
         expect(graphs, `${screenName} has ${graphs.length} graphs answering ${actionId}`).toHaveLength(1);
 
         const graph = graphs[0]!;
-        assertClearsThenSteps(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION).id, "then");
+        const head = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
+        const first = next(graph, head.id, "then");
+        if (first.type === BLUEPRINT_NODE_TYPE_FLOW_IF) {
+            // A screen that can hold something open over its own content closes that first, and
+            // only leaves when nothing is open - Extra's CG viewer, the one case there is. The way
+            // off the screen is then one side of that gate, and it is the same pair. Which side is
+            // "nothing is open" depends on what the gate reads, and that - with the other side
+            // closing the viewer - is asserted where the viewer is (`starterExtraScreen.test.ts`).
+            expect(screenName).toBe("Extra");
+            const leaving = (["true", "false"] as const).filter(side => {
+                const out = graph.edges.find(edge => edge.from.nodeId === first.id && edge.from.port === side);
+                return out ? graph.nodes[out.to.nodeId]?.type === BLUEPRINT_NODE_TYPE_PAGE_CLEAR : false;
+            });
+            expect(leaving, "exactly one side of Extra's gate leaves the screen").toHaveLength(1);
+            assertClearsThenSteps(graph, first.id, leaving[0]!);
+            return;
+        }
+        assertClearsThenSteps(graph, head.id, "then");
     });
 
     it.each(SCREENS)("%s answers its Back button the same way Escape does", screenName => {

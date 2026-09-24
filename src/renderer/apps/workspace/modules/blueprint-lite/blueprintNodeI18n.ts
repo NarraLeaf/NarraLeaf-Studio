@@ -949,6 +949,21 @@ export function resolveBlueprintNodeTitle(displayName: string, t: Translate): st
     return key ? t(key) : displayName;
 }
 
+/**
+ * The catalogue key a node title is drawn with, or undefined for a title drawn verbatim.
+ *
+ * For a reader that cannot translate where it runs - a project check rule may not build prose - and
+ * so hands the key on to whoever renders its finding.
+ */
+export function blueprintNodeTitleKey(displayName: string): TranslationKey | undefined {
+    return NODE_TITLE_KEYS[displayName];
+}
+
+/** The catalogue key a pin label is drawn with, when the whole label has one; see {@link blueprintNodeTitleKey}. */
+export function blueprintLabelKey(text: string): TranslationKey | undefined {
+    return PORT_LABEL_KEYS[text];
+}
+
 /** Localize a palette category name, falling back to the original English text when unmapped. */
 export function resolveBlueprintCategoryLabel(category: string, t: Translate): string {
     const key = CATEGORY_KEYS[category];

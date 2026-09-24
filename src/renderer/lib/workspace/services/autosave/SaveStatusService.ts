@@ -1,5 +1,5 @@
-import type { TranslationKey } from "@shared/i18n";
-import type { DocumentCorruptError } from "@shared/documents/types";
+import type { InterpolationParams, TranslationKey } from "@shared/i18n";
+import type { DocumentCorruptError, DocumentKind } from "@shared/documents/types";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { translate } from "@/lib/i18n";
 import {
@@ -12,8 +12,12 @@ import { Services, type WorkspaceContext } from "../services";
 import { ConsoleService } from "../core/ConsoleService";
 import { FileSystemService, type FsWriteOutcome } from "../core/FileSystem";
 import { UIService } from "../core/UIService";
+import { describeWriteFailureReason } from "../core/writeFailureReason";
 import { NotificationType } from "../ui/types";
 import type { DebouncedSaver, SaveState } from "./DebouncedSaver";
+import type { SavedFileName } from "./writeReport";
+
+type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
 
 /** The console channel this service writes to. Registered as a built-in by ConsoleService. */
 export const STORAGE_CONSOLE_CHANNEL = "storage";
@@ -21,7 +25,11 @@ export const STORAGE_CONSOLE_CHANNEL = "storage";
 /** The workspace-wide answer to "is my work on disk?". Worst state across every registered saver. */
 export type SaveStatus = SaveState;
 
-/** One file that could not be written, and how long that has been true. */
+/**
+ * One file that could not be written and that a saver is still trying to write, and how long that
+ * has been true. Only files some saver retries are held here: this is the set of writes still owed,
+ * which is what turns the status bar red and what "Retry now" replays.
+ */
 export type SaveFailure = {
     path: string;
     code: FsRejectErrorCode;
@@ -52,13 +60,124 @@ type RegisteredSaver = {
 const TRANSIENT_FS_ERROR_CODES: ReadonlySet<FsRejectErrorCode> = new Set([
     FsRejectErrorCode.IO_ERROR,
     FsRejectErrorCode.IPC_ERROR,
+    FsRejectErrorCode.NO_SPACE,
     FsRejectErrorCode.UNKNOWN,
 ]);
 
-function fileNameOf(path: string): string {
-    const parts = path.split(/[\\/]/);
-    return parts[parts.length - 1] || path;
+/**
+ * The notice's title: what could not be saved, by the name the author knows it by.
+ *
+ * Never the path's last segment. For an asset's content that segment is the tail of the asset's id;
+ * for a story it is `storydoc.json`; for everything else it is a file name Studio chose and the
+ * author never sees. A write whose writer did not say what it was is titled without naming a file,
+ * which is less than it could say and nothing that is untrue.
+ */
+export function describeSaveFailureTitle(name: SavedFileName | undefined, t: Translate = translate): string {
+    if (!name) {
+        return t("workspace.shell.save.failedTitleUnnamed");
+    }
+    return "item" in name
+        ? t("workspace.shell.save.failedTitleNamed", { name: name.item })
+        : t("workspace.shell.save.failedTitle", { name: t(name.store) });
 }
+
+/**
+ * The toast's second line: what the disk said when that is something the author can act on, then
+ * what becomes of the change - retried in the background, retried in vain until the author fixes
+ * something, or not saved and not tried again.
+ *
+ * `retried` is the writer's answer (see `WriteFailureFollowUp`), never a guess from the error. The
+ * notice used to say every failed write was still being retried, and for a file no saver writes - an
+ * asset folder list, a panel layout - nothing was.
+ *
+ * Never the error's own message. That is the system's, in English whatever the interface speaks; it
+ * names the scratch file an atomic write renames from rather than the file in the title; and before
+ * the protocol handler passed the filesystem's code through, it was the one-use grant URL the write
+ * had gone to. The console line keeps it in full.
+ */
+export function describeSaveFailureDetail(
+    failure: Pick<SaveFailure, "code" | "transient"> & { retried: boolean },
+    t: Translate = translate,
+): string {
+    const retry = t(!failure.retried
+        ? "workspace.shell.save.failedDetailNotSaved"
+        : failure.transient
+            ? "workspace.shell.save.failedDetailTransient"
+            : "workspace.shell.save.failedDetailPermanent");
+    const reason = describeWriteFailureReason(failure, t);
+    return reason ? t("workspace.shell.save.failedDetailWithReason", { reason, retry }) : retry;
+}
+
+/**
+ * The store each document kind belongs to, for the notice that says one could not be read.
+ *
+ * A `Record` over the whole union, so a new document kind fails to compile here instead of reaching
+ * the author as its file name.
+ */
+const UNREADABLE_DOCUMENT_STORE: Record<DocumentKind, TranslationKey> = {
+    project: "workspace.shell.save.stores.project",
+    "story-index": "workspace.shell.save.stores.story",
+    story: "workspace.shell.save.stores.story",
+    "story-animation-index": "workspace.shell.save.stores.story",
+    "story-animation": "workspace.shell.save.stores.story",
+    "ui-document": "workspace.shell.save.stores.uiDocument",
+    "ui-graphs": "workspace.shell.save.stores.uiGraph",
+    variables: "workspace.shell.save.stores.variables",
+    "audio-tracks": "workspace.shell.save.stores.audioTracks",
+    brand: "workspace.shell.save.stores.brand",
+    "app-tags": "workspace.shell.save.stores.appTags",
+    dlc: "workspace.shell.save.stores.dlc",
+    dictionary: "workspace.shell.save.stores.dictionary",
+    "transform-presets": "workspace.shell.save.stores.transformPresets",
+    "save-schema": "workspace.shell.save.stores.saveSchema",
+    "asset-sets": "workspace.shell.save.stores.assetSets",
+    localization: "workspace.shell.save.stores.localization",
+    "localization-keys": "workspace.shell.save.stores.localization",
+    voice: "workspace.shell.save.stores.voice",
+    "assets-metadata": "workspace.shell.save.stores.assets",
+    "assets-groups": "workspace.shell.save.stores.assets",
+    characters: "workspace.shell.save.stores.characters",
+};
+
+/** The title of the notice for a document that is on disk and could not be understood. */
+export function describeUnreadableDocumentTitle(kind: DocumentKind, t: Translate = translate): string {
+    return t("workspace.shell.save.unreadableTitle", { name: t(UNREADABLE_DOCUMENT_STORE[kind]) });
+}
+
+/**
+ * The second line of that notice: what is wrong with the file, as something the author can act on,
+ * then that it was left as it was.
+ *
+ * Never the error's `reason`. That is the parser's English (`not valid JSON: Unexpected token } in
+ * JSON at position 41273`), and the console line keeps it. Never the quarantine copy's path either:
+ * it is a folder Studio made, named by a timestamp and - for a story - by the story's id. The copy is
+ * said to exist, and the console line says where.
+ */
+export function describeUnreadableDocumentDetail(
+    error: Pick<DocumentCorruptError, "defect">,
+    quarantined: boolean,
+    t: Translate = translate,
+): string {
+    const reason = t(error.defect === "newerVersion"
+        ? "workspace.shell.save.unreadableReason.newerVersion"
+        : "workspace.shell.save.unreadableReason.damaged");
+    return t(quarantined
+        ? "workspace.shell.save.unreadableDetailQuarantined"
+        : "workspace.shell.save.unreadableDetail", { reason });
+}
+
+/**
+ * One sticky notice about files that could not be written, and every path it currently speaks for.
+ *
+ * Keyed by what the notice says rather than by path, because one change can fail on several files
+ * that the author knows as one thing: a new asset folder is written to the folder list and to the
+ * row order beside it, and both are "the asset library". Two notices with the same title would read
+ * as the same failure reported twice.
+ */
+type FailureNotice = {
+    id: string;
+    paths: Set<string>;
+};
 
 /**
  * The single answer to "did my work reach the disk?".
@@ -79,8 +198,11 @@ export class SaveStatusService extends Service<SaveStatusService> {
     /** Open editors holding words the documents have not been told about. See {@link registerPendingEdit}. */
     private readonly pendingEdits = new Set<() => void>();
     private readonly failures = new Map<string, SaveFailure>();
-    /** path → notification id, so one failing file raises one toast rather than one per retry. */
-    private readonly toasts = new Map<string, string>();
+    /**
+     * Sticky notices for failed writes, by what they say. One failing file raises one notice rather
+     * than one per retry, and files the author knows as one thing share it. See {@link FailureNotice}.
+     */
+    private readonly notices = new Map<string, FailureNotice>();
     /** path → notification id for documents that could not be *read*. See {@link reportUnreadableDocument}. */
     private readonly corruptToasts = new Map<string, string>();
     private readonly listeners = new Set<() => void>();
@@ -114,7 +236,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         };
 
         this.failures.clear();
-        this.toasts.clear();
+        this.notices.clear();
         this.corruptToasts.clear();
         this.frozenToast = null;
     }
@@ -125,7 +247,7 @@ export class SaveStatusService extends Service<SaveStatusService> {
         this.unobserveFreeze?.();
         this.unobserveFreeze = null;
         this.failures.clear();
-        this.toasts.clear();
+        this.notices.clear();
         this.corruptToasts.clear();
         this.frozenToast = null;
         this.pendingEdits.clear();
@@ -270,9 +392,9 @@ export class SaveStatusService extends Service<SaveStatusService> {
      * Retry now instead of waiting out the backoff. Safe to call when nothing is owed.
      *
      * Clears the failure table first, then writes. Anything still broken is re-reported by the
-     * write observer within the same call, so nothing is hidden - but a one-off failure from a write
-     * no saver owns (an export, an asset copy) stops pinning the status bar red forever, which it
-     * otherwise would, since only a later successful write to that same path can clear it.
+     * write observer within the same call, so nothing is hidden. Only files a saver retries are in
+     * that table - a write nothing retries never turns the status bar red, since nothing is owed and
+     * this could not replay it.
      */
     public async retryNow(): Promise<void> {
         for (const path of [...this.failures.keys()]) {
@@ -293,8 +415,12 @@ export class SaveStatusService extends Service<SaveStatusService> {
      * drives the status bar and {@link retryNow} clears it - none of which is true here. A file we
      * cannot parse will not become parseable because we tried again, and the one thing that must
      * not happen is the service treating it as "clean" and writing a default over it.
+     *
+     * Answers whether a notice went up just now, so that a service throwing the failure on to whoever
+     * asked can mark it as already said (see `markReportedToAuthor`). False when this document's
+     * notice is already up - the asker is then the one to say it - or when there is no interface.
      */
-    public reportUnreadableDocument(error: DocumentCorruptError, quarantinePath: string | null): void {
+    public reportUnreadableDocument(error: DocumentCorruptError, quarantinePath: string | null): boolean {
         this.logStorage("error", translate("workspace.shell.save.consoleUnreadable", {
             kind: error.kind,
             path: error.path,
@@ -307,23 +433,19 @@ export class SaveStatusService extends Service<SaveStatusService> {
         // One toast per document: loading is retried on every project switch and on every panel that
         // opens the same locale, and a toast per attempt would bury the workspace in duplicates.
         if (this.corruptToasts.has(error.path)) {
-            return;
+            return false;
         }
         const notifications = this.getNotifications();
         if (!notifications) {
-            return;
+            return false;
         }
         const id = notifications.showSticky({
             type: NotificationType.Error,
-            message: translate("workspace.shell.save.unreadableTitle", { file: fileNameOf(error.path) }),
-            detail: quarantinePath
-                ? translate("workspace.shell.save.unreadableDetailQuarantined", {
-                    reason: error.reason,
-                    path: quarantinePath,
-                })
-                : translate("workspace.shell.save.unreadableDetail", { reason: error.reason }),
+            message: describeUnreadableDocumentTitle(error.kind),
+            detail: describeUnreadableDocumentDetail(error, quarantinePath !== null),
         });
         this.corruptToasts.set(error.path, id);
+        return true;
     }
 
     /**
@@ -352,6 +474,13 @@ export class SaveStatusService extends Service<SaveStatusService> {
         // "not saved" over a shell whose whole purpose is not saving would be noise the author
         // cannot act on.
         if (refusal.reason.kind === "recovery") {
+            return;
+        }
+        // A project another Studio has taken over is said once, by the screen that replaces the
+        // editor, and there is no editor left under it to go on producing saves. A toast about a
+        // save that "did not happen" would repeat that screen in a smaller voice, and is the
+        // mechanism for freezes the author entered and can leave - neither of which is true here.
+        if (refusal.reason.kind === "taken-over") {
             return;
         }
 
@@ -396,15 +525,41 @@ export class SaveStatusService extends Service<SaveStatusService> {
         }
     }
 
+    /**
+     * Report one write's outcome the way its writer said a failure would go (see
+     * `WriteFailureFollowUp`). A write whose writer said nothing is treated as one nothing retries:
+     * that is true of any failed write the moment it fails, where "still retrying" is only true of
+     * the ones a saver owns.
+     */
     private handleWriteOutcome(outcome: FsWriteOutcome): void {
         if (outcome.ok) {
             this.clearFailure(outcome.path);
             return;
         }
-        this.recordFailure(outcome.path, outcome.error?.code ?? FsRejectErrorCode.UNKNOWN, outcome.error?.message ?? "");
+        const code = outcome.error?.code ?? FsRejectErrorCode.UNKNOWN;
+        const message = outcome.error?.message ?? "";
+        const followUp = outcome.report?.afterFailure ?? "notRetried";
+        if (followUp === "retried") {
+            this.recordFailure(outcome.path, code, message, outcome.report?.name);
+            return;
+        }
+        this.logStorage("error", translate("workspace.shell.save.consoleFailedNotRetried", {
+            path: outcome.path,
+            code,
+            error: message,
+        }));
+        if (followUp === "notRetried") {
+            // Not in `failures`: nothing is owed and nothing will write the file again, so the
+            // status bar has no save to wait for and "Retry now" nothing to replay.
+            this.raiseNotice(outcome.path, outcome.report?.name, {
+                code,
+                transient: TRANSIENT_FS_ERROR_CODES.has(code),
+                retried: false,
+            });
+        }
     }
 
-    private recordFailure(path: string, code: FsRejectErrorCode, message: string): void {
+    private recordFailure(path: string, code: FsRejectErrorCode, message: string, name: SavedFileName | undefined): void {
         const existing = this.failures.get(path);
         const failure: SaveFailure = {
             path,
@@ -423,44 +578,75 @@ export class SaveStatusService extends Service<SaveStatusService> {
             attempt: String(failure.attempts),
         }));
 
-        // One sticky toast per path: the backoff will keep retrying, and a toast per attempt would
-        // bury the workspace under duplicates of the same sentence.
-        if (!this.toasts.has(path)) {
-            const notifications = this.getNotifications();
-            if (notifications) {
-                const id = notifications.showSticky({
-                    type: NotificationType.Error,
-                    message: translate("workspace.shell.save.failedTitle", { file: fileNameOf(path) }),
-                    detail: failure.transient
-                        ? translate("workspace.shell.save.failedDetailTransient", { error: message })
-                        : translate("workspace.shell.save.failedDetailPermanent", { error: message }),
-                    actions: [
-                        {
-                            label: translate("workspace.shell.save.retry"),
-                            onClick: () => {
-                                void this.retryNow();
-                            },
-                        },
-                    ],
-                });
-                this.toasts.set(path, id);
-            }
-        }
-
+        this.raiseNotice(path, name, { code, transient: failure.transient, retried: true });
         this.notifyChanged();
     }
 
+    /**
+     * Put up the sticky notice for a failed write, or add the path to the one already saying the
+     * same thing: the backoff keeps retrying, and a toast per attempt - or per file of one change -
+     * would bury the workspace under duplicates of the same sentence.
+     */
+    private raiseNotice(
+        path: string,
+        name: SavedFileName | undefined,
+        detail: { code: FsRejectErrorCode; transient: boolean; retried: boolean },
+    ): void {
+        const title = describeSaveFailureTitle(name);
+        // A notice that offers a retry and one that says nothing will be retried are two different
+        // statements even under one title, so they are never merged.
+        const key = `${detail.retried ? "retried" : "notRetried"}|${title}`;
+        const existing = this.notices.get(key);
+        if (existing) {
+            existing.paths.add(path);
+            return;
+        }
+        const notifications = this.getNotifications();
+        if (!notifications) {
+            return;
+        }
+        const id = notifications.showSticky({
+            type: NotificationType.Error,
+            message: title,
+            detail: describeSaveFailureDetail(detail),
+            // Only where something will write the file again. For a write nothing retries, the
+            // button would flush every saver, none of which writes this file.
+            actions: detail.retried
+                ? [
+                    {
+                        label: translate("workspace.shell.save.retry"),
+                        onClick: () => {
+                            void this.retryNow();
+                        },
+                    },
+                ]
+                : undefined,
+        });
+        this.notices.set(key, { id, paths: new Set([path]) });
+    }
+
+    /**
+     * A write to `path` landed, or a retry is about to try it again: it is no longer owed, and a
+     * notice that spoke only for it comes down. A notice still speaking for another file stays up.
+     */
     private clearFailure(path: string, options: { announce?: boolean } = {}): void {
-        if (!this.failures.delete(path)) {
+        const owed = this.failures.delete(path);
+        let noticed = false;
+        for (const [key, notice] of [...this.notices]) {
+            if (!notice.paths.delete(path)) {
+                continue;
+            }
+            noticed = true;
+            if (notice.paths.size === 0) {
+                this.notices.delete(key);
+                this.getNotifications()?.close(notice.id);
+            }
+        }
+        if (!owed && !noticed) {
             return;
         }
         if (options.announce !== false) {
             this.logStorage("success", translate("workspace.shell.save.consoleRecovered", { path }));
-        }
-        const toastId = this.toasts.get(path);
-        if (toastId) {
-            this.toasts.delete(path);
-            this.getNotifications()?.close(toastId);
         }
         this.notifyChanged();
     }
@@ -508,7 +694,8 @@ export async function registerAutoSaver(
 }
 
 /**
- * The one line a document service adds to the `corrupt` arm of a load result.
+ * The one line a document service adds to the `corrupt` arm of a load result. Answers whether a
+ * notice went up just now; see {@link SaveStatusService.reportUnreadableDocument}.
  *
  * Swallows its own failures on purpose: this runs on a load path that has already gone wrong, and
  * the news is the unreadable document, not that the console service was torn down while we were
@@ -517,11 +704,12 @@ export async function registerAutoSaver(
 export function reportUnreadableDocument(
     ctx: WorkspaceContext,
     result: { error: DocumentCorruptError; quarantinePath: string | null },
-): void {
+): boolean {
     try {
-        ctx.services.get<SaveStatusService>(Services.SaveStatus)
+        return ctx.services.get<SaveStatusService>(Services.SaveStatus)
             .reportUnreadableDocument(result.error, result.quarantinePath);
     } catch (error) {
         console.warn("[SaveStatus] could not report an unreadable document", error);
+        return false;
     }
 }

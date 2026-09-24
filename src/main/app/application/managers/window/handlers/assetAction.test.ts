@@ -45,6 +45,8 @@ function makeWindow(overrides: { protectedPath?: boolean } = {}) {
     return {
         win: {},
         getApp: () => appDouble(),
+        // A window somebody is looking at: the picker opens (see `unattendedPrompt.ts`).
+        refuseUnattendedPrompt: () => undefined,
         app: {
             storageManager: {
                 isPathProtected: vi.fn(async () => overrides.protectedPath ?? false),

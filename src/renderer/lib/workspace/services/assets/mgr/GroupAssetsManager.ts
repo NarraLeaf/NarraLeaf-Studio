@@ -10,6 +10,12 @@ import { AssetsService } from "../../core/AssetsService";
 import type { AssetDeleteOptions } from "../assetDeleteGuard";
 import { reconcileAssetOrder } from "../assetOrder";
 import { normalizeAssetGroupRecords } from "../assetCategoryShards";
+import {
+    ASSET_LIBRARY_WRITE,
+    assetFolderWriteFailure,
+    assetFolderWriteReport,
+    type AssetFolderWriteOptions,
+} from "../assetLibraryWrite";
 
 /** An empty group map — one record per category, in sidebar order. */
 function emptyGroupMap(): AssetGroupMap {
@@ -70,7 +76,8 @@ export class GroupAssetsManager {
     public async createGroup(
         category: AssetCategory,
         name: string,
-        parentGroupId?: string
+        parentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
@@ -84,17 +91,24 @@ export class GroupAssetsManager {
             updatedAt: Date.now(),
         };
 
+        // Written before it is held, so a folder whose write failed is never in the list - the same
+        // outcome `renameGroup` and `moveGroupToParent` reach by putting their record back. Held
+        // first, it stayed on screen under a notice saying the change was not saved, and the next
+        // folder edit that did reach the disk wrote it out after all: a folder the author had been
+        // told was not created, appearing on the next open. The typed name is not kept.
+        const writeResult = await this.writeAssetsGroupsMetadata(category, options, {
+            ...this.assetsGroups[category],
+            [id]: group,
+        });
+        if (!writeResult.ok) {
+            return assetFolderWriteFailure(writeResult, options);
+        }
+
         this.assetsGroups[category][id] = group;
         this.dirtyGroupCategories.add(category);
-
-        // Save to filesystem
-        const writeResult = await this.writeAssetsGroupsMetadata(category);
-        if (!writeResult.ok) {
-            return {
-                success: false,
-                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
-            };
-        }
+        // After the record is held: the order file lists the folders in memory, and this one is
+        // only there now.
+        this.assetsService.markOrderDirty(category);
 
         this.assetsService.getEvents().emit("groupsUpdated", { category, groupId: id });
 
@@ -143,7 +157,7 @@ export class GroupAssetsManager {
         category: AssetCategory,
         groupId: string,
         recursive: boolean = false,
-        options?: AssetDeleteOptions,
+        options?: AssetDeleteOptions & AssetFolderWriteOptions,
     ): Promise<RequestStatus<void>> {
         this.assertGroups();
 
@@ -199,7 +213,8 @@ export class GroupAssetsManager {
         this.dirtyGroupCategories.add(category);
 
         // Save changes
-        const writeResult = await this.writeAssetsGroupsMetadata(category);
+        const writeResult = await this.writeAssetsGroupsMetadata(category, options);
+        this.assetsService.markOrderDirty(category);
         for (const type of ASSET_CATEGORY_TYPES[category]) {
             this.assetsService.markDirty(type);
         }
@@ -210,10 +225,7 @@ export class GroupAssetsManager {
         // the files are already off the disk - so the panel has to stop drawing the folder either
         // way, and only the write of the folder list is what failed.
         if (!writeResult.ok) {
-            return {
-                success: false,
-                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
-            };
+            return assetFolderWriteFailure(writeResult, options);
         }
 
         return {
@@ -225,7 +237,8 @@ export class GroupAssetsManager {
     public async renameGroup(
         category: AssetCategory,
         groupId: string,
-        newName: string
+        newName: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
@@ -244,17 +257,15 @@ export class GroupAssetsManager {
         group.updatedAt = Date.now();
         this.dirtyGroupCategories.add(category);
 
-        const writeResult = await this.writeAssetsGroupsMetadata(category);
+        const writeResult = await this.writeAssetsGroupsMetadata(category, options);
         if (!writeResult.ok) {
-            // The old name goes back, unlike `createGroup`: the row is drawn from this record, and
-            // the caller's message names the name the author started from as the one still on screen.
+            // The old name goes back: the row is drawn from this record, and the caller's message
+            // names the name the author started from as the one still on screen.
             group.name = previousName;
             group.updatedAt = previousUpdatedAt;
-            return {
-                success: false,
-                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
-            };
+            return assetFolderWriteFailure(writeResult, options);
         }
+        this.assetsService.markOrderDirty(category);
 
         this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 
@@ -267,7 +278,8 @@ export class GroupAssetsManager {
     public async moveGroupToParent(
         category: AssetCategory,
         groupId: string,
-        newParentGroupId?: string
+        newParentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
@@ -294,17 +306,15 @@ export class GroupAssetsManager {
         group.updatedAt = Date.now();
         this.dirtyGroupCategories.add(category);
 
-        const writeResult = await this.writeAssetsGroupsMetadata(category);
+        const writeResult = await this.writeAssetsGroupsMetadata(category, options);
         if (!writeResult.ok) {
             // Put back for the reason `renameGroup` restores its name: the tree is drawn from this
             // record, and a folder left hanging under a parent it is not filed under reopens elsewhere.
             group.parentGroupId = previousParentGroupId;
             group.updatedAt = previousUpdatedAt;
-            return {
-                success: false,
-                error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
-            };
+            return assetFolderWriteFailure(writeResult, options);
         }
+        this.assetsService.markOrderDirty(category);
 
         this.assetsService.getEvents().emit("groupsUpdated", { category, groupId });
 
@@ -357,7 +367,8 @@ export class GroupAssetsManager {
     public async duplicateGroup(
         category: AssetCategory,
         groupId: string,
-        newParentGroupId?: string
+        newParentGroupId?: string,
+        options?: AssetFolderWriteOptions,
     ): Promise<RequestStatus<AssetGroup>> {
         this.assertGroups();
 
@@ -370,7 +381,7 @@ export class GroupAssetsManager {
         }
 
         // Create new group with the same name (with " Copy" suffix)
-        const newGroupResult = await this.createGroup(category, `${originalGroup.name} Copy`, newParentGroupId);
+        const newGroupResult = await this.createGroup(category, `${originalGroup.name} Copy`, newParentGroupId, options);
         if (!newGroupResult.success || !newGroupResult.data) {
             return newGroupResult;
         }
@@ -394,7 +405,7 @@ export class GroupAssetsManager {
         );
 
         for (const childGroup of childGroups) {
-            await this.duplicateGroup(category, childGroup.id, newGroup.id);
+            await this.duplicateGroup(category, childGroup.id, newGroup.id, options);
         }
 
         return {
@@ -403,22 +414,33 @@ export class GroupAssetsManager {
         };
     }
 
-    private async writeAssetsGroupsMetadata(category: AssetCategory): Promise<FsRequestResult<void>> {
+    /**
+     * Write one category's folder list: what is held, or `records` when the caller has not committed
+     * them yet (see `createGroup`).
+     *
+     * The row order lives in a sibling file, not in this one, so an older Studio keeps reading this
+     * shard byte-for-byte as it always has - and it is the caller that queues the order file, once
+     * the records it lists are the ones held. Queued from here, before the write, a folder edit that
+     * failed and was put back still sent an order file out beside it, and a read-only `assets`
+     * folder refused that one too: two failures reported for one edit.
+     */
+    private async writeAssetsGroupsMetadata(
+        category: AssetCategory,
+        options?: AssetFolderWriteOptions,
+        records?: AssetGroupMap[AssetCategory],
+    ): Promise<FsRequestResult<void>> {
         this.assertGroups();
 
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const data = JSON.stringify(this.assetsGroups[category]);
-
-        // The row order lives in a sibling file, not in this one, so an older Studio keeps reading
-        // this shard byte-for-byte as it always has.
-        this.assetsService.markOrderDirty(category);
+        const data = JSON.stringify(records ?? this.assetsGroups[category]);
 
         // Off the write-grant route with its sibling order shard - see `AssetOrderManager.write` for
         // why both could only take it until `writeFileNoFollowOrCreate` existed.
         return await filesystemService.writeFileNoFollowOrCreate(
             this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category)),
             data,
-            "utf-8"
+            "utf-8",
+            assetFolderWriteReport(options),
         );
     }
 
@@ -478,14 +500,20 @@ export class GroupAssetsManager {
      *
      * Best-effort by construction: a refused write reports success without touching the disk, so
      * there is nothing here to assert on. A genuine failure still reaches the author - every write
-     * through `FileSystemService` is observed by `SaveStatusService`.
+     * through `FileSystemService` is observed by `SaveStatusService`, which says the asset library
+     * could not be saved.
      */
     private async createMissingGroupShards(categories: readonly AssetCategory[], data: AssetGroupMap): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
         await Promise.all(categories.map(async category => {
             const path = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category));
-            const result = await filesystemService.writeFileNoFollowOrCreate(path, JSON.stringify(data[category]), "utf-8");
+            const result = await filesystemService.writeFileNoFollowOrCreate(
+                path,
+                JSON.stringify(data[category]),
+                "utf-8",
+                ASSET_LIBRARY_WRITE,
+            );
             if (!result.ok) {
                 console.warn(
                     `[assets] could not create the assets groups shard (${category}): ${path}: ${result.error.code} ${result.error.message}`
@@ -521,6 +549,7 @@ export class GroupAssetsManager {
         if (parentGroupId === undefined) {
             // We may have deleted some groups, ensure metadata flushed
             await this.writeAssetsGroupsMetadata(category);
+            this.assetsService.markOrderDirty(category);
         }
     }
 

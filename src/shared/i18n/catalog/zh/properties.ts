@@ -116,7 +116,6 @@ export const properties = {
         projectDefault: "项目默认字体",
         projectSection: "项目",
         choose: "选择字体",
-        loadError: "字体无法加载（{error}）；在资产有效之前，预览使用回退字体",
         select: "选择字体",
     },
     imageFill: {
@@ -131,7 +130,6 @@ export const properties = {
         selectHint: "点击打开资产浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "图片资产无法解析（{error}）；在该资产存在之前，预览不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -156,6 +154,7 @@ export const properties = {
         none: "未找到任何引用",
         unknown: "无法确定使用情况",
         unknownDetail: "{location} 无法读取",
+        unknownComputed: "{location} 的资产名称在运行时拼出",
         count: {
             one: "{count} 处引用",
             other: "{count} 处引用",
@@ -169,6 +168,7 @@ export const properties = {
             character: "角色",
             voice: "配音",
             design: "设计",
+            plugin: "插件",
         },
     },
     tags: {
@@ -188,6 +188,7 @@ export const properties = {
             loadAsset: "加载资产失败",
             deleteFailed: "删除缩略图失败",
             saveFailed: "保存缩略图失败",
+            saveFailedWithReason: "保存缩略图失败；{reason}",
             unknown: "未知错误",
         },
     },

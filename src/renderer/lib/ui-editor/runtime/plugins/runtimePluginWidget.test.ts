@@ -20,6 +20,7 @@ import type { NormalizedPluginManifestV2, RuntimePluginDescriptor } from "@share
 import { ElementRendererRegistry, type ElementRendererProps } from "../ElementRendererRegistry";
 import type { UIHostAdapter } from "../types";
 import { WidgetRenderBoundary } from "../WidgetRenderBoundary";
+import { bindWidgetEventDispatch, type UIWidgetDrawing } from "../widgetEventDispatch";
 import { loadRuntimePlugins } from "./loadRuntimePlugins";
 import type { RuntimePluginGame, RuntimeWidgetRendererProps } from "./runtimePluginApi";
 
@@ -140,17 +141,23 @@ function liveAdapter(dispatch: ReturnType<typeof vi.fn>): UIHostAdapter {
     };
 }
 
-function hostProps(widgetType: string, hostAdapter: UIHostAdapter): ElementRendererProps {
+/** What the element tree hands a renderer drawn in `drawing`, dispatch binding included. */
+function hostProps(
+    widgetType: string,
+    hostAdapter: UIHostAdapter,
+    drawing: UIWidgetDrawing = { instanceKey: "list-badge-row-2", listItemScope: ROW },
+): ElementRendererProps {
     const document = documentWith(widgetType);
     return {
         element: document.elements.badge,
         surface: SURFACE,
         document,
         hostAdapter,
-        instanceKey: "list-badge-row-2",
-        listItemScope: ROW,
+        instanceKey: drawing.instanceKey,
+        listItemScope: drawing.listItemScope,
         renderChildren: () => [],
         runtimeData: { surfaceState: { get: () => undefined } },
+        dispatchEvent: bindWidgetEventDispatch(hostAdapter.blueprintRuntime, "badge", drawing),
     };
 }
 
@@ -254,6 +261,48 @@ describe("plugin widget renderers", () => {
             listItemScope: other,
             instanceKey: "k",
         });
+    });
+
+    it("raises its own event slots in the component placement it is drawn in", async () => {
+        const { widgetType, registry } = await loadWidgetPlugin();
+        const dispatch = vi.fn(async () => undefined);
+        const drawing: UIWidgetDrawing = {
+            listItemScope: null,
+            instanceKey: "component:card-2",
+            componentId: "card",
+            componentParams: { slot: "2" },
+        };
+
+        drawWidget(registry, widgetType, hostProps(widgetType, liveAdapter(dispatch), drawing));
+        await capture().props!.dispatchEvent!("mouseClick");
+
+        // Without the component the dispatcher looks the element up on the page, where a widget
+        // authored inside a definition does not exist, and the event is dropped.
+        expect(dispatch).toHaveBeenCalledWith("badge", "mouseClick", undefined, {
+            listItemScope: null,
+            instanceKey: "component:card-2",
+            componentId: "card",
+            componentParams: { slot: "2" },
+        });
+    });
+
+    it("cannot point its dispatch at another element or at the event control", async () => {
+        const { widgetType, registry } = await loadWidgetPlugin();
+        const dispatch = vi.fn(async () => undefined);
+
+        drawWidget(registry, widgetType, hostProps(widgetType, liveAdapter(dispatch)));
+        // A plugin ships JavaScript and can pass anything; what the host takes from the options is
+        // the row and nothing else.
+        await capture().props!.dispatchEvent!("mouseClick", undefined, {
+            elementId: "root",
+            eventControl: { isPropagationStopped: () => true },
+        } as never);
+
+        expect(dispatch).toHaveBeenCalledWith("badge", "mouseClick", undefined, {
+            listItemScope: ROW,
+            instanceKey: "list-badge-row-2",
+        });
+        expect((dispatch.mock.calls[0] as unknown[])[3]).not.toHaveProperty("eventControl");
     });
 
     it("puts a boundary in front of the plugin, naming the type it stands for", async () => {

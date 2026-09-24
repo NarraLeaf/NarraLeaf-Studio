@@ -75,6 +75,21 @@ function icnsTypes(icns: Buffer): string[] {
     return types;
 }
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Width and height from a PNG's IHDR, or null when the bytes are not a PNG at all. */
+function pngDimensions(data: Buffer): { width: number; height: number } | null {
+    if (data.length < 24 || !data.subarray(0, 8).equals(PNG_SIGNATURE) || data.toString("ascii", 12, 16) !== "IHDR") {
+        return null;
+    }
+    return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
+}
+
+/** The pixel edge each .icns chunk type stands for, as Apple defines them. */
+const ICNS_CHUNK_EDGE: Record<string, number> = {
+    ic11: 32, ic12: 64, ic07: 128, ic08: 256, ic13: 256, ic09: 512, ic14: 512, ic10: 1024,
+};
+
 describe("desktopIconExtension", () => {
     it("names a container for the two platforms that want one", () => {
         expect(desktopIconExtension("windows")).toBe(".ico");
@@ -106,6 +121,49 @@ describe("ensureDesktopIcon", () => {
         expect(result.iconPath).toBe(path.join(root, DESKTOP_ICON_DIR, "macos", "icon.icns"));
         expect(icnsTypes(await fs.readFile(result.iconPath)))
             .toEqual(["ic11", "ic12", "ic07", "ic08", "ic13", "ic09", "ic14", "ic10"]);
+    });
+
+    it("fills every .ico entry with an image of the size its directory declares", async () => {
+        const { root, icon } = await project();
+        const ico = await fs.readFile(
+            (await ensureDesktopIcon({ sourceIconPath: icon, platform: "windows", projectPath: root })).iconPath,
+        );
+
+        for (let index = 0; index < ico.readUInt16LE(4); index++) {
+            const entry = 6 + index * 16;
+            const size = ico[entry] || 256;
+            const data = ico.subarray(ico.readUInt32LE(entry + 12), ico.readUInt32LE(entry + 12) + ico.readUInt32LE(entry + 8));
+            if (size >= 256) {
+                expect(pngDimensions(data), `${size} entry`).toEqual({ width: size, height: size });
+            } else {
+                // A 32-bit DIB whose height counts the colour rows and the AND mask together.
+                expect(pngDimensions(data), `${size} entry`).toBe(null);
+                expect([data.readUInt32LE(0), data.readInt32LE(4), data.readInt32LE(8), data.readUInt16LE(14)])
+                    .toEqual([40, size, size * 2, 32]);
+            }
+        }
+    });
+
+    it("fills every .icns chunk with a PNG of the edge its type stands for", async () => {
+        const { root, icon } = await project();
+        const icns = await fs.readFile(
+            (await ensureDesktopIcon({ sourceIconPath: icon, platform: "macos", projectPath: root })).iconPath,
+        );
+
+        expect(icns.toString("ascii", 0, 4)).toBe("icns");
+        expect(icns.readUInt32BE(4)).toBe(icns.length);
+        let offset = 8;
+        while (offset < icns.length) {
+            const type = icns.toString("ascii", offset, offset + 4);
+            const length = icns.readUInt32BE(offset + 4);
+            const edge = ICNS_CHUNK_EDGE[type];
+            expect(edge, `chunk ${type}`).toBeDefined();
+            expect(pngDimensions(icns.subarray(offset + 8, offset + length)), `chunk ${type}`)
+                .toEqual({ width: edge, height: edge });
+            offset += length;
+        }
+        // The chunk lengths account for the file exactly: nothing trails the last one.
+        expect(offset).toBe(icns.length);
     });
 
     it("stops at the source's own size rather than writing a blurry 1024", async () => {

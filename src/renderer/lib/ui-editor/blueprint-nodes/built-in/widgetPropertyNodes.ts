@@ -4,7 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
-import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
+import { addressWidgetFromExecution } from "./widgetTarget";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
@@ -42,11 +42,13 @@ import {
 } from "@shared/types/blueprint/graph";
 import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type { ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { widgetKindName } from "../widgetKindName";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSurfaceOptions";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import { WIDGET_OWN_GRAPH_OWNER_KINDS } from "../types";
 
@@ -119,14 +121,7 @@ function elementIn(target: WidgetTarget): BlueprintNodePinDef {
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-        valueExecution: ctx.valueExecution,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 function resolveTargetElementId(
@@ -137,24 +132,24 @@ function resolveTargetElementId(
     if (mode === "self") {
         const elementId = ctx.executionOwner?.elementId;
         if (!elementId) {
-            throw new BlueprintGraphExecutionError(`${target.label} node requires a widget execution owner`, ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
         }
-        return buildUIWidgetAddress(elementId, ctx.instanceKey);
+        return addressWidgetFromExecution(ctx, elementId);
     }
     const ref = normalizeBlueprintElementRefValue(readPin(ctx, "element"));
     if (!ref) {
-        throw new BlueprintGraphExecutionError(`${target.label} Element node requires an Element input`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noElement"), ctx.node.id);
     }
     if (ref.elementType !== target.elementType) {
         throw new BlueprintGraphExecutionError(
-            `${target.label} Element node expected ${target.elementType}, got ${ref.elementType}`,
+            translate("blueprint.runtimeError.elementWrongKind", { kind: widgetKindName(target.elementType) }),
             ctx.node.id,
         );
     }
     if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
-        throw new BlueprintGraphExecutionError(`${target.label} Element node can only target the current Surface`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.elementOutOfScope"), ctx.node.id);
     }
-    return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
+    return addressWidgetFromExecution(ctx, ref.elementId);
 }
 
 function toBooleanValue(raw: unknown, fallback: boolean): boolean {
@@ -198,11 +193,14 @@ function readNode(input: {
     mode: TargetMode;
     category?: string;
     hideInPalette?: boolean;
+    /** See `BlueprintNodeDeclaration.assetNames`; every read here says which, even the harmless ones. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     const elementTarget = input.mode === "element";
     const outputs = input.outputs ?? (input.output ? [input.output] : []);
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: input.category ?? (elementTarget ? "Element" : input.target.label),
         keywords: input.keywords,
@@ -309,6 +307,8 @@ function commonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
                 target,
                 mode,
                 hideInPalette: true,
+                // Whatever Set Variant last wrote, which may be anything.
+                assetNames: "assembled",
             }),
             writeNode({
                 type: `${prefix}.setVariant`,
@@ -343,6 +343,7 @@ function buttonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
             output: out("label", "Label", "string"),
             target,
             mode,
+            assetNames: "assembled",
         }),
         writeNode({
             type: `${prefix}.setLabel`,
@@ -484,6 +485,9 @@ function imageNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             target,
             mode,
             category,
+            // The picture the element holds: picked on it, or set by a Set Image Asset or a binding,
+            // and each of those is itself checked where it writes.
+            assetNames: "written",
         }),
         writeNode({
             type: types.setAsset,
@@ -525,6 +529,7 @@ function imageNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             output: out("fitMode", "Fit Mode", "string"),
             target,
             mode,
+            assetNames: "assembled",
             category,
         }),
         writeNode({
@@ -648,6 +653,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             output: out("targetSurfaceId", "Page", "string"),
             target,
             mode,
+            assetNames: "assembled",
         }),
         writeNode({
             type: setPageType,
@@ -726,6 +732,7 @@ function nodesForTarget(target: WidgetTarget): BlueprintNodeDef[] {
 export const imageAssetBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
+        assetNames: "written",
         displayName: "Image Asset",
         category: "Image",
         keywords: ["image", "asset", "literal", "resource", "picture"],

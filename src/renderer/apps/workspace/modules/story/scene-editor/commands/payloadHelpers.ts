@@ -120,6 +120,31 @@ export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetPa
     };
 }
 
+/**
+ * The name the element a `/show <asset>` brings into existence takes on stage, when the line does not
+ * say one.
+ *
+ * The same rule `/image` follows, because it is the same act: the file's own name without its
+ * extension, numbered off anything already on stage under that word. Every later row addresses the
+ * object by it, so it has to be a word the author recognises and one nothing else answers to.
+ *
+ * A target that resolved to something already on stage creates nothing and is left alone - naming it
+ * would put a key on the row that the row does not define.
+ */
+export function deriveShownObjectName() {
+    return (args: Readonly<Record<string, StoryCommandValue | undefined>>, context: StoryCommandContext): Record<string, StoryCommandValue> => {
+        const target = args.target;
+        if (args.name || target?.kind !== "target" || target.target.type !== "asset") {
+            return {};
+        }
+        const { assetType, assetId, name } = target.target;
+        // An asset set answers with no file to strip an extension from, so the set's own name stands -
+        // which is the word the author typed and the one they will look for on the row.
+        const stem = assetBaseName(context, assetType, assetId) ?? name.trim() ?? assetType;
+        return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[assetType] ?? []) } };
+    };
+}
+
 /** The asset's display name without its extension - `forest.png` → `forest` - or null when unknown. */
 function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStageObjectKind, assetId: string): string | null {
     // An ambience overlay's clip comes out of the video library, so it names itself off the same list.
@@ -202,6 +227,12 @@ export function displayableTargetRef(target: ReturnType<typeof asTarget>): Story
             label: target.name,
             ...(target.sourceBlockId ? { sourceBlockId: target.sourceBlockId } : {}),
         };
+    }
+    // A file named where a thing on stage would be. There is no row for a reference to bind to - the
+    // row holding this one is the one that creates the object - so the caller writes the name it
+    // chose instead of a reference, and this arm keeps the function total.
+    if (target.type === "asset") {
+        return { name: target.name, label: target.name };
     }
     // Audio, video and vfx are not Displayables and no caller's `accepts` list offers them; this arm
     // exists to keep the function total, not because a line can reach it.

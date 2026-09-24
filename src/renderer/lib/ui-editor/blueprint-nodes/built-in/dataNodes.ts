@@ -53,9 +53,10 @@ import {
     BLUEPRINT_VALUE_TYPE_RECT,
     BLUEPRINT_VALUE_TYPE_VECTOR2D,
 } from "@shared/types/blueprint/valueTypes";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import type { BlueprintAssetNameFlow, BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { writeBlueprintMemoValue } from "../memoValues";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
@@ -63,10 +64,7 @@ const JSON_OBJECT_INPUT_PINS_KEY = "__jsonObjectInputPins";
 const JSON_ARRAY_INPUT_PINS_KEY = "__jsonArrayInputPins";
 
 const dataOnlyExecute: BlueprintNodeDef["execute"] = ctx => {
-    throw new BlueprintGraphExecutionError(
-        "Data nodes are pure and must not sit on the execution path",
-        ctx.node.id,
-    );
+    throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.pureOnExecPath"), ctx.node.id);
 };
 
 const anyIn = (id: string, label: string): BlueprintNodePinDef => ({
@@ -129,9 +127,12 @@ function dataNode(input: {
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
     role?: BlueprintNodeDef["role"];
     hideInPalette?: boolean;
+    /** See `BlueprintNodeDeclaration.assetNames`. */
+    assetNames?: BlueprintAssetNameFlow;
 }): BlueprintNodeDef {
     return {
         type: input.type,
+        ...(input.assetNames ? { assetNames: input.assetNames } : {}),
         displayName: input.displayName,
         category: input.category ?? "Data",
         keywords: input.keywords,
@@ -157,6 +158,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         // Synchronous rather than latent on purpose: latent nodes are barred from inline story values,
         // and there is nothing to await here. Function graphs stay pure, so a Memo cannot go in one.
         type: BLUEPRINT_NODE_TYPE_DATA_MEMO,
+        assetNames: "forward",
         displayName: "Memo",
         category: "Data",
         keywords: ["memo", "cache", "hold", "keep", "store", "reuse", "fan out", "share"],
@@ -170,28 +172,14 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
             { id: "result", kind: "output", semantic: "data", valueType: "any", label: "Value" },
         ],
         execute(ctx) {
-            const value = resolveDataPinValue(
-                ctx.graph,
-                ctx.node.id,
-                "value",
-                ctx.params,
-                ctx.blueprintLocals,
-                0,
-                {
-                    hostAdapter: ctx.hostAdapter,
-                    eventPayload: ctx.eventPayload,
-                    listItemScope: ctx.listItemScope,
-                    instanceKey: ctx.instanceKey,
-                    executionOwner: ctx.executionOwner,
-                    valueExecution: ctx.valueExecution,
-                },
-            );
+            const value = resolveNodeInput(ctx, "value");
             writeBlueprintMemoValue(ctx.blueprintLocals, ctx.node.id, value);
             return { nextPort: "next" };
         },
     },
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL,
+        assetNames: "written",
         displayName: "Literal",
         keywords: ["literal", "value", "const"],
         hideInPalette: true,
@@ -201,6 +189,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+        assetNames: "written",
         displayName: "String",
         keywords: ["literal", "string", "text", "value", "const"],
         role: "dataLiteral",
@@ -252,6 +241,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL_NULL,
+        assetNames: "written",
         displayName: "Null",
         keywords: ["literal", "null", "none", "empty", "value", "const"],
         role: "dataLiteral",
@@ -368,6 +358,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+        assetNames: "written",
         displayName: "JSON",
         keywords: ["literal", "json", "object", "array", "value", "const"],
         role: "dataLiteral",
@@ -396,6 +387,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+        assetNames: "forward",
         displayName: "To JSON",
         keywords: ["convert", "cast", "json", "object", "array"],
         pins: [anyIn("value", "Value"), out("result", "JSON", "json")],
@@ -462,18 +454,21 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
+        assetNames: "assembled",
         displayName: "Parse JSON",
         keywords: ["parse", "json", "string", "object", "array"],
         pins: [stringIn("value", "Text"), out("result", "JSON", "json")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
+        assetNames: "assembled",
         displayName: "Stringify JSON",
         keywords: ["stringify", "json", "serialize", "string"],
         pins: [jsonIn("value", "JSON"), out("result", "Text", "string")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
+        assetNames: "forward",
         displayName: "Get JSON Field",
         keywords: ["json", "field", "path", "dot", "get", "read"],
         pins: [
@@ -494,6 +489,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+        assetNames: "forward",
         displayName: "Set JSON Field",
         keywords: ["json", "field", "path", "dot", "set", "write"],
         pins: [
@@ -505,6 +501,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
+        assetNames: "forward",
         displayName: "Remove JSON Field",
         keywords: ["json", "field", "path", "dot", "remove", "delete"],
         pins: [
@@ -515,6 +512,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+        assetNames: "forward",
         displayName: "Make Object",
         keywords: ["json", "object", "make", "map", "struct", "field", "record"],
         pins: [out("result", "Object", "json")],
@@ -533,6 +531,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
+        assetNames: "forward",
         displayName: "Make Array",
         keywords: ["json", "array", "make", "list", "items", "collection"],
         pins: [out("result", "Array", BLUEPRINT_VALUE_TYPE_ARRAY)],
@@ -561,6 +560,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     dataNode({
         // Superseded by Object Merge; see the note on JSON Array Length.
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+        assetNames: "forward",
         displayName: "Merge JSON Object",
         hideInPalette: true,
         keywords: ["json", "object", "merge", "combine"],
@@ -568,6 +568,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
+        assetNames: "forward",
         displayName: "Clone JSON",
         keywords: ["json", "clone", "copy", "deep"],
         pins: [jsonIn("value", "JSON"), out("result", "JSON", "json")],

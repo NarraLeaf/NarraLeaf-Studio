@@ -1,9 +1,9 @@
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import type { CustomFieldProps, SelectFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
+import type { CustomFieldProps, SelectFieldDefinition, SelectOption } from "@/apps/workspace/modules/properties/framework/types";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
-import { findUIElementSurfaceId, getUIFrameTargetInvalidReason } from "@shared/types/ui-editor/frame";
+import { buildUIFrameGraph, findUIFrameHost } from "@shared/types/ui-editor/frame";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { i18nStore, translate, useTranslation } from "@/lib/i18n";
@@ -62,25 +62,44 @@ function FrameAnimationField({ data }: CustomFieldProps<UIInspectorData>) {
     );
 }
 
-function pageOptions(data: UIInspectorData, noneLabel: string) {
-    const document = data.documentService.getDocument();
-    const sourceSurfaceId = data.surfaceId || findUIElementSurfaceId(document, data.element.id) || "";
-    return [
-        { value: NO_PAGE_VALUE, label: noneLabel },
-        ...document
-            .surfaces
-            .filter(surface => surface.kind === "appSurface")
-            .filter(surface => {
-                const reason = getUIFrameTargetInvalidReason({
-                    document,
-                    sourceSurfaceId,
-                    frameElementId: data.element.id,
-                    targetSurfaceId: surface.id,
-                });
-                return reason === null;
-            })
-            .map(surface => ({ value: surface.id, label: surface.name })),
-    ];
+/**
+ * The pages this Page widget may draw.
+ *
+ * Read off the project's document rather than the one this inspector edits: in a component editor
+ * that one is a view of the definition, holding its elements and none of the pages', and where a
+ * page leads - what it places, what its own Page widgets draw - is read off the pages.
+ *
+ * A page that leads back to the widget stays in the list, marked and not selectable, rather than
+ * leaving it: a page missing from a list reads as a page that does not exist, where a marked one
+ * says why it cannot be picked. That covers a page whose Page widget shows this one, and - for a
+ * widget inside a component - a page the component is placed on, directly or through pages and
+ * placements of its own. The page the widget is on is left out, as it always was. A target that
+ * already leads back (written before the check could see it, or by a tool) stays selectable, so the
+ * field still shows what is stored and says what is wrong with it.
+ */
+function pageOptions(data: UIInspectorData, labels: { none: string; leadsBack: string }): SelectOption[] {
+    const document = data.documentService.getPageDocument();
+    const host = findUIFrameHost(document, data.element.id);
+    const current = getFrameProps(data.element).targetSurfaceId;
+    const graph = buildUIFrameGraph(document);
+    const pages: SelectOption[] = [];
+    for (const surface of document.surfaces) {
+        if (surface.kind !== "appSurface") {
+            continue;
+        }
+        const reason = host
+            ? graph.targetInvalidReason({ host, frameElementId: data.element.id, targetSurfaceId: surface.id })
+            : null;
+        if (reason === "self") {
+            continue;
+        }
+        pages.push(
+            reason === "cycle"
+                ? { value: surface.id, label: surface.name, secondaryLabel: labels.leadsBack, disabled: surface.id !== current }
+                : { value: surface.id, label: surface.name },
+        );
+    }
+    return [{ value: NO_PAGE_VALUE, label: labels.none }, ...pages];
 }
 
 export function createFrameInspector(ctx: InspectorContext) {
@@ -101,7 +120,10 @@ export function createFrameInspector(ctx: InspectorContext) {
                         id: "frame.targetSurfaceId",
                         type: "select",
                         label: t("widgets.frame.page"),
-                        options: data => pageOptions(data, t("common.none")),
+                        options: data => pageOptions(data, {
+                            none: t("common.none"),
+                            leadsBack: t("widgets.frame.leadsBackHere"),
+                        }),
                         getValue: data => getFrameProps(data.element).targetSurfaceId ?? NO_PAGE_VALUE,
                         setValue: (data, value) => {
                             const targetSurfaceId = value === NO_PAGE_VALUE ? null : String(value);

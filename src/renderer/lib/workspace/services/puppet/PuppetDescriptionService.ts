@@ -69,6 +69,7 @@ import {
     type SurfacePuppetUnavailableReason,
 } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { isProjectTrusted } from "@/lib/workspace/projectTrust";
+import { storeWrite } from "../autosave/writeReport";
 
 /** The box a model is mounted into when nobody asked for a particular one. */
 const DEFAULT_PROBE_SIZE: PuppetSize = { width: 512, height: 512 };
@@ -540,7 +541,12 @@ export class PuppetDescriptionService
         };
         try {
             await filesystem.createDir(context.project.resolve(ProjectNameConvention.EditorPuppetDescriptionCache));
-            await filesystem.write(this.cachePath(plan.cacheKey), JSON.stringify(record), "utf-8");
+            await filesystem.write(
+                this.cachePath(plan.cacheKey),
+                JSON.stringify(record),
+                "utf-8",
+                storeWrite("workspace.shell.save.stores.characters", "handledByWriter"),
+            );
         } catch {
             // A cache that cannot be written costs a re-probe next time and nothing else.
         }

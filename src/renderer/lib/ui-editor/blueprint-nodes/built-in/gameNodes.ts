@@ -94,6 +94,8 @@ import {
     readSaveCapture,
     storeSaveCapture,
 } from "./saveCaptureStore";
+import type { TranslationKey } from "@shared/i18n";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import type {
@@ -105,7 +107,7 @@ import { resolveLocalizedStoredText } from "@shared/types/localization";
 import { buildSaveMetadataFromFields, readSaveMetadataFields } from "@shared/saves/saveSchemaModel";
 import type { SaveSchemaField } from "@shared/types/saveSchema";
 import { saveSchemaPinId } from "../effectivePins";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 import {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
@@ -244,6 +246,8 @@ type GamePreferenceNodeMeta = {
     setterDisplayName?: string;
     pinId: string;
     pinLabel: string;
+    /** The same label in the author's language, for the errors a setter raises about its value. */
+    pinLabelKey: TranslationKey;
     valueType: "boolean" | "float" | "string";
     defaultValue: BlueprintGamePreferenceValue;
     min?: number;
@@ -260,6 +264,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Auto Forward",
         pinId: "autoForward",
         pinLabel: "Auto Forward",
+        pinLabelKey: "blueprint.port.autoForward",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "auto", "forward", "dialog", "nlr"],
@@ -274,6 +279,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Auto Forward Delay",
         pinId: "autoForwardDelay",
         pinLabel: "Auto Forward Delay",
+        pinLabelKey: "blueprint.port.autoForwardDelay",
         valueType: "float",
         defaultValue: 3000,
         min: 0,
@@ -290,6 +296,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Text Fade In",
         pinId: "textRevealDuration",
         pinLabel: "Text Fade In",
+        pinLabelKey: "blueprint.port.textRevealDuration",
         valueType: "float",
         defaultValue: 0,
         min: 0,
@@ -303,6 +310,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip",
         pinId: "skip",
         pinLabel: "Skip",
+        pinLabelKey: "blueprint.port.skip",
         valueType: "boolean",
         defaultValue: true,
         keywords: ["game", "preference", "skip", "dialog", "nlr"],
@@ -318,6 +326,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip Read Text",
         pinId: "skipReadText",
         pinLabel: "Skip Read Text",
+        pinLabelKey: "blueprint.port.skipReadText",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "read", "text", "unread", "dialog"],
@@ -333,6 +342,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Mute When Unfocused",
         pinId: "muteOnWindowBlur",
         pinLabel: "Mute When Unfocused",
+        pinLabelKey: "blueprint.port.muteWhenUnfocused",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "mute", "focus", "blur", "window", "audio", "silence", "background"],
@@ -349,6 +359,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skipping",
         pinId: "skipping",
         pinLabel: "Skipping",
+        pinLabelKey: "blueprint.port.skipping",
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "skipping", "mode", "hold", "fast", "forward"],
@@ -365,6 +376,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         getterDisplayName: "Is Dialog Shown",
         pinId: "isShown",
         pinLabel: "Is Shown",
+        pinLabelKey: "blueprint.port.isShown",
         valueType: "boolean",
         defaultValue: true,
         keywords: [
@@ -380,6 +392,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Game Speed",
         pinId: "gameSpeed",
         pinLabel: "Game Speed",
+        pinLabelKey: "blueprint.port.gameSpeed",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -392,6 +405,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         getterDisplayName: "Get Sentence Speed",
         pinId: "cps",
         pinLabel: "CPS",
+        pinLabelKey: "blueprint.port.cps",
         valueType: "float",
         defaultValue: 10,
         min: 0,
@@ -406,6 +420,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Voice Volume",
         pinId: "voiceVolume",
         pinLabel: "Voice Volume",
+        pinLabelKey: "blueprint.port.voiceVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -419,6 +434,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Voice Fade Duration",
         pinId: "voiceFadeDuration",
         pinLabel: "Voice Fade",
+        pinLabelKey: "blueprint.port.voiceFade",
         valueType: "float",
         defaultValue: 0,
         min: 0,
@@ -432,6 +448,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Voice End Mode",
         pinId: "voiceEndMode",
         pinLabel: "Voice End Mode",
+        pinLabelKey: "blueprint.port.voiceEndMode",
         valueType: "string",
         defaultValue: "stop",
         keywords: ["game", "preference", "voice", "end", "mode", "fade", "stop", "none", "audio", "nlr"],
@@ -444,6 +461,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set BGM Volume",
         pinId: "bgmVolume",
         pinLabel: "BGM Volume",
+        pinLabelKey: "blueprint.port.bgmVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -463,6 +481,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set SFX Volume",
         pinId: "soundVolume",
         pinLabel: "SFX Volume",
+        pinLabelKey: "blueprint.port.sfxVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -476,6 +495,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Global Volume",
         pinId: "globalVolume",
         pinLabel: "Global Volume",
+        pinLabelKey: "blueprint.port.globalVolume",
         valueType: "float",
         defaultValue: 1,
         min: 0,
@@ -489,6 +509,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip Delay",
         pinId: "skipDelay",
         pinLabel: "Skip Delay",
+        pinLabelKey: "blueprint.port.skipDelay",
         valueType: "float",
         defaultValue: 500,
         min: 0,
@@ -502,6 +523,7 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         setterDisplayName: "Set Skip Interval",
         pinId: "skipInterval",
         pinLabel: "Skip Interval",
+        pinLabelKey: "blueprint.port.skipInterval",
         valueType: "float",
         defaultValue: 100,
         min: 0,
@@ -529,13 +551,7 @@ function resolveStartStoryTarget(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     key: "storyId" | "sceneId" | "startBlockId" | "surfaceId",
 ): string {
-    const wired = resolveDataPinValue(ctx.graph, ctx.node.id, key, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const wired = resolveNodeInput(ctx, key);
     const fromPin = typeof wired === "string" ? wired.trim() : "";
     // `startBlockId` has no picker, so params never supplies it.
     return fromPin || (key === "startBlockId" ? "" : String(ctx.params[key] ?? "").trim());
@@ -543,21 +559,7 @@ function resolveStartStoryTarget(
 
 /** Wired pin wins over the Track picker; see trackVolumePin. */
 function readTrackVolumeTarget(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
-    const wired = resolveDataPinValue(
-        ctx.graph,
-        ctx.node.id,
-        BLUEPRINT_SOUND_PARAM_TRACK,
-        ctx.params,
-        ctx.blueprintLocals,
-        0,
-        {
-            hostAdapter: ctx.hostAdapter,
-            eventPayload: ctx.eventPayload,
-            listItemScope: ctx.listItemScope,
-            instanceKey: ctx.instanceKey,
-            executionOwner: ctx.executionOwner,
-        },
-    );
+    const wired = resolveNodeInput(ctx, BLUEPRINT_SOUND_PARAM_TRACK);
     const fromPin = typeof wired === "string" ? wired.trim() : "";
     return fromPin || readBlueprintAudioTrackParam(ctx.params);
 }
@@ -565,13 +567,7 @@ function readTrackVolumeTarget(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
 type GameNodeContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
 function readGamePin(ctx: GameNodeContext, pinId: string): unknown {
-    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    return resolveNodeInput(ctx, pinId);
 }
 
 /**
@@ -583,7 +579,7 @@ function readGamePin(ctx: GameNodeContext, pinId: string): unknown {
  */
 function requireGameLocals(ctx: GameNodeContext): Record<string, unknown> {
     if (!ctx.blueprintLocals) {
-        throw new BlueprintGraphExecutionError("There is no execution scope to hold the game", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.cannotRunHere"), ctx.node.id);
     }
     return ctx.blueprintLocals;
 }
@@ -606,8 +602,7 @@ function resolveSaveId(ctx: GameNodeContext): string {
     if (slot) {
         if (slot.source === "run") {
             throw new BlueprintGraphExecutionError(
-                "This node needs a save in storage. The slot it was given names the running game, "
-                + "which only Start Game can inherit from.",
+                translate("blueprint.runtimeError.slotIsRunningGame", { node: translate("blueprint.node.startGame") }),
                 ctx.node.id,
             );
         }
@@ -615,7 +610,7 @@ function resolveSaveId(ctx: GameNodeContext): string {
     }
     const id = String(readGamePin(ctx, "id") ?? "").trim();
     if (!id) {
-        throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.noSave"), ctx.node.id);
     }
     return id;
 }
@@ -639,8 +634,11 @@ async function resolveInheritedSave(
         const captured = readSaveCapture(requireGameLocals(ctx), slot);
         if (captured === null) {
             throw new BlueprintGraphExecutionError(
-                "Inherit From names a captured game this run is not holding. A capture belongs to "
-                + "the chain that took it, so Current Game has to run in the same one as Start Game.",
+                translate("blueprint.runtimeError.captureNotHeld", {
+                    pin: translate("blueprint.port.inheritFrom"),
+                    capture: translate("blueprint.node.currentGame"),
+                    start: translate("blueprint.node.startGame"),
+                }),
                 ctx.node.id,
             );
         }
@@ -649,7 +647,7 @@ async function resolveInheritedSave(
     const stored = await api.game.readSaveGame(slot.id);
     if (stored === null || stored === undefined) {
         throw new BlueprintGraphExecutionError(
-            `Inherit From names save "${slot.id}", which is not in storage`,
+            translate("blueprint.runtimeError.saveNotStored", { pin: translate("blueprint.port.inheritFrom") }),
             ctx.node.id,
         );
     }
@@ -669,13 +667,7 @@ function cloneJsonValue(value: unknown): unknown {
 }
 
 function resolveSaveMetadata(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): unknown {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "metadata", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, "metadata");
     return cloneJsonValue(value);
 }
 
@@ -684,21 +676,7 @@ function resolveSaveSchemaPin(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     field: SaveSchemaField,
 ): unknown {
-    return resolveDataPinValue(
-        ctx.graph,
-        ctx.node.id,
-        saveSchemaPinId(field.id),
-        ctx.params,
-        ctx.blueprintLocals,
-        undefined,
-        {
-            hostAdapter: ctx.hostAdapter,
-            eventPayload: ctx.eventPayload,
-            listItemScope: ctx.listItemScope,
-            instanceKey: ctx.instanceKey,
-            executionOwner: ctx.executionOwner,
-        },
-    );
+    return resolveNodeInput(ctx, saveSchemaPinId(field.id));
 }
 
 /**
@@ -730,13 +708,7 @@ function resolveSaveMetadataToWrite(ctx: Parameters<NonNullable<BlueprintNodeDef
 }
 
 function resolveSaveScreenshot(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): boolean {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "screenshot", ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, "screenshot");
     return value === true;
 }
 
@@ -749,16 +721,19 @@ function hasDataInputValue(ctx: Parameters<NonNullable<BlueprintNodeDef["execute
 
 function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number {
     const portId = hasDataInputValue(ctx, "cps") || !hasDataInputValue(ctx, "speed") ? "cps" : "speed";
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, portId, ctx.params, ctx.blueprintLocals, 10, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const value = resolveNodeInput(ctx, portId);
     const cps = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(cps) || cps <= 0) {
-        throw new BlueprintGraphExecutionError("CPS must be a positive number", ctx.node.id);
+    if (!Number.isFinite(cps)) {
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.cps") }),
+            ctx.node.id,
+        );
+    }
+    if (cps <= 0) {
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.valueAbove", { name: translate("blueprint.port.cps"), min: "0" }),
+            ctx.node.id,
+        );
     }
     return cps;
 }
@@ -767,36 +742,36 @@ function resolvePreferenceValue(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
     meta: GamePreferenceNodeMeta,
 ): BlueprintGamePreferenceValue {
-    const resolvedValue = resolveDataPinValue(ctx.graph, ctx.node.id, meta.pinId, ctx.params, ctx.blueprintLocals, 0, {
-        hostAdapter: ctx.hostAdapter,
-        eventPayload: ctx.eventPayload,
-        listItemScope: ctx.listItemScope,
-        instanceKey: ctx.instanceKey,
-        executionOwner: ctx.executionOwner,
-    });
+    const resolvedValue = resolveNodeInput(ctx, meta.pinId);
     const value = resolvedValue === undefined ? meta.defaultValue : resolvedValue;
+    const name = translate(meta.pinLabelKey);
     if (meta.valueType === "boolean") {
         if (typeof value !== "boolean") {
-            throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be a boolean`, ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.valueNotBoolean", { name }), ctx.node.id);
         }
         return value;
     }
     if (meta.valueType === "string") {
         const text = String(value ?? "").trim();
         if (meta.key === "voiceEndMode" && text !== "fade" && text !== "stop" && text !== "none") {
-            throw new BlueprintGraphExecutionError('Voice End Mode must be "fade", "stop", or "none"', ctx.node.id);
+            throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.voiceEndModeInvalid", { name }), ctx.node.id);
         }
         return text as BlueprintGamePreferenceValue;
     }
     const numberValue = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(numberValue)) {
-        throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be a finite number`, ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.valueNotNumber", { name }), ctx.node.id);
     }
     if (typeof meta.min === "number") {
         const invalid = meta.minExclusive ? numberValue <= meta.min : numberValue < meta.min;
         if (invalid) {
-            const suffix = meta.minExclusive ? `greater than ${meta.min}` : `${meta.min} or greater`;
-            throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be ${suffix}`, ctx.node.id);
+            throw new BlueprintGraphExecutionError(
+                translate(
+                    meta.minExclusive ? "blueprint.runtimeError.valueAbove" : "blueprint.runtimeError.valueAtLeast",
+                    { name, min: String(meta.min) },
+                ),
+                ctx.node.id,
+            );
         }
     }
     return numberValue;
@@ -805,6 +780,8 @@ function resolvePreferenceValue(
 function createPreferenceGetterNode(meta: GamePreferenceNodeMeta): BlueprintNodeDef {
     return {
         type: meta.getterType,
+        // A player's setting. Only the one string-valued preference has anything to say here.
+        ...(meta.valueType === "string" ? { assetNames: "assembled" as const } : {}),
         displayName: meta.getterDisplayName,
         category: "Game",
         keywords: meta.keywords,
@@ -949,18 +926,18 @@ const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const trackId = readTrackVolumeTarget(ctx);
             if (!trackId) {
-                throw new BlueprintGraphExecutionError("Set Track Volume: pick a track", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickTrack", { node: translate("blueprint.node.setTrackVolume") }),
+                    ctx.node.id,
+                );
             }
-            const raw = resolveDataPinValue(ctx.graph, ctx.node.id, "volume", ctx.params, ctx.blueprintLocals, 1, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const raw = resolveNodeInput(ctx, "volume");
             const volume = typeof raw === "number" ? raw : Number(raw);
             if (!Number.isFinite(volume)) {
-                throw new BlueprintGraphExecutionError("Volume must be a finite number", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.valueNotNumber", { name: translate("blueprint.port.volume") }),
+                    ctx.node.id,
+                );
             }
             // Clamping rather than rejecting is the host's job (and the engine's) - a slider bound
             // to 0..100 asking for 100 means "as loud as it goes", not "fail the graph".
@@ -997,6 +974,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+        assetNames: "assembled",
         displayName: "List Auto Saves",
         category: "Game",
         keywords: ["game", "auto", "autosave", "save", "list", "entries", "slots", "recent", "continue"],
@@ -1034,6 +1012,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
+        assetNames: "assembled",
         displayName: "Get Latest Auto Save",
         category: "Game",
         keywords: ["game", "auto", "autosave", "save", "latest", "newest", "continue", "resume", "id"],
@@ -1085,6 +1064,7 @@ const autoSaveBlueprintNodes: BlueprintNodeDef[] = [
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+        assetNames: "assembled",
         displayName: "Get Nametag",
         category: "Game",
         keywords: ["game", "dialog", "nametag", "speaker", "character", "nlr"],
@@ -1110,6 +1090,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
+        assetNames: "assembled",
         displayName: "Get Speaker Avatar",
         category: "Game",
         keywords: ["game", "dialog", "avatar", "portrait", "speaker", "character", "face", "expression", "nlr"],
@@ -1197,6 +1178,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+        assetNames: "assembled",
         displayName: "Get Dialog Text",
         category: "Game",
         keywords: [
@@ -1251,6 +1233,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
+        assetNames: "written",
         displayName: "Get Character",
         category: "Game",
         keywords: ["game", "character", "cast", "name", "color", "colour", "avatar", "portrait", "profile", "nlr"],
@@ -1460,6 +1443,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+        assetNames: "assembled",
         displayName: "Get Notifications",
         category: "Game",
         keywords: ["game", "notification", "toast", "message", "nlr"],
@@ -1586,13 +1570,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         execute(ctx) {
-            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "textId", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const wired = resolveNodeInput(ctx, "textId");
             const textId = String(wired ?? "").trim();
             return {
                 outputValues: {
@@ -1641,17 +1619,11 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             // With the runtime, because the index that picks a choice almost always comes from the
             // `Item Click` head that heard the click, and an event head's outputs live in the event
             // payload. Without it the pin resolved to null and every wired Select Choice threw.
-            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "index", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const wired = resolveNodeInput(ctx, "index");
             const index = Number(wired ?? ctx.params.index);
             if (!Number.isInteger(index) || index < 0) {
                 throw new BlueprintGraphExecutionError(
-                    "Select Choice: index must be a non-negative integer",
+                    translate("blueprint.runtimeError.valueNotIndex", { name: translate("blueprint.port.index") }),
                     ctx.node.id,
                 );
             }
@@ -1693,10 +1665,16 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             const sceneId = resolveStartStoryTarget(ctx, "sceneId");
             const startBlockId = resolveStartStoryTarget(ctx, "startBlockId");
             if (!storyId) {
-                throw new BlueprintGraphExecutionError("Pick a Story, or wire a Story Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickStory", { node: translate("blueprint.node.startGame") }),
+                    ctx.node.id,
+                );
             }
             if (!sceneId) {
-                throw new BlueprintGraphExecutionError("Pick a Scene, or wire a Scene Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickScene", { node: translate("blueprint.node.startGame") }),
+                    ctx.node.id,
+                );
             }
             const api = requireHostApi(ctx);
             // Resolved before the launch, so a slot naming nothing refuses the whole thing rather
@@ -1733,7 +1711,10 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const surfaceId = resolveStartStoryTarget(ctx, "surfaceId");
             if (!surfaceId) {
-                throw new BlueprintGraphExecutionError("Pick a Page, or wire a Page Id", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.pickPage", { node: translate("blueprint.node.quitGame") }),
+                    ctx.node.id,
+                );
             }
             await requireHostApi(ctx).game.quit(surfaceId);
             return { nextPort: undefined };
@@ -1899,6 +1880,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * same slot writes the id once here instead of three times.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
+        assetNames: "assembled",
         displayName: "Save Slot",
         category: "Game",
         keywords: ["game", "save", "slot", "id", "storage", "reference", "handle"],
@@ -1909,7 +1891,13 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         execute(ctx) {
             const id = String(readGamePin(ctx, "id") ?? "").trim();
             if (!id) {
-                throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
+                throw new BlueprintGraphExecutionError(
+                    translate("blueprint.runtimeError.inputEmpty", {
+                        node: translate("blueprint.node.saveSlot"),
+                        pin: translate("blueprint.port.id"),
+                    }),
+                    ctx.node.id,
+                );
             }
             return { outputValues: { slot: toBlueprintSaveSlot("stored", id) } };
         },
@@ -1928,6 +1916,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * why it is not a way to remember a checkpoint across events: what does that is a save.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
+        assetNames: "assembled",
         displayName: "Current Game",
         category: "Game",
         keywords: ["game", "save", "current", "run", "capture", "slot", "snapshot", "inherit"],
@@ -1938,15 +1927,14 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             if (isSaveCaptureLimitReached(requireGameLocals(ctx))) {
                 throw new BlueprintGraphExecutionError(
-                    "Current Game has already captured this run several times over. A capture is a "
-                    + "whole playthrough; taking one per loop iteration is not what this is for.",
+                    translate("blueprint.runtimeError.captureRepeated", { node: translate("blueprint.node.currentGame") }),
                     ctx.node.id,
                 );
             }
             const captured = await requireHostApi(ctx).game.captureRun();
             if (captured === null || captured === undefined) {
                 throw new BlueprintGraphExecutionError(
-                    "There is no game running to capture",
+                    translate("blueprint.runtimeError.noGameToCapture", { node: translate("blueprint.node.currentGame") }),
                     ctx.node.id,
                 );
             }
@@ -1958,6 +1946,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+        assetNames: "assembled",
         displayName: "List Saves",
         category: "Game",
         keywords: ["game", "save", "list", "ids", "slots", "storage"],
@@ -2199,6 +2188,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * would reject a great many saves that load perfectly.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+        assetNames: "assembled",
         displayName: "Get Save Line",
         category: "Game",
         keywords: ["game", "save", "line", "sentence", "text", "speaker", "character", "slot", "summary"],
@@ -2275,6 +2265,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
          * the author has in front of them and the only one that could be recognised.
          */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_STORY,
+        assetNames: "assembled",
         displayName: "Get Save Story",
         category: "Game",
         keywords: [
@@ -2330,6 +2321,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+        assetNames: "assembled",
         displayName: "Get Save Preview",
         category: "Game",
         keywords: ["game", "save", "preview", "image", "screenshot", "slot"],

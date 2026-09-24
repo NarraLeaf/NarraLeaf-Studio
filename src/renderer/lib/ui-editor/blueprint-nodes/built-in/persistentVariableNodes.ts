@@ -3,40 +3,34 @@
  * Comments in English per project convention.
  */
 
-import type { LiteralValue } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
+import { translate } from "@/lib/i18n";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
-import { resolveDataPinValue } from "./graphParamResolvers";
+import { resolveNodeInput } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
-
-function cloneLiteralValue(value: LiteralValue | undefined): unknown {
-    if (value === undefined) {
-        return undefined;
-    }
-    if (typeof structuredClone === "function") {
-        return structuredClone(value);
-    }
-    return JSON.parse(JSON.stringify(value)) as unknown;
-}
+import { persistentStateKey } from "../../blueprint-runtime/blueprintStateWrites";
 
 function resolvePersistentVariable(
     ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
 ): VariableRegistryEntry {
     const id = String(ctx.params.persistentVariableId ?? "").trim();
     if (!id) {
-        throw new BlueprintGraphExecutionError("Pick a persistent variable", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.pickPersistentVariable"), ctx.node.id);
     }
     const variable = ctx.persistentVariables?.[id];
     if (!variable) {
-        throw new BlueprintGraphExecutionError("Persistent variable not found", ctx.node.id);
+        throw new BlueprintGraphExecutionError(translate("blueprint.runtimeError.persistentVariableMissing"), ctx.node.id);
     }
     if (!variable.storageKey.trim()) {
-        throw new BlueprintGraphExecutionError("Persistent variable storage key is empty", ctx.node.id);
+        throw new BlueprintGraphExecutionError(
+            translate("blueprint.runtimeError.persistentVariableNoKey", { name: variable.name }),
+            ctx.node.id,
+        );
     }
     return variable;
 }
@@ -65,12 +59,15 @@ export const persistentVariableBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const variable = resolvePersistentVariable(ctx);
-            const stored = await api.persistence.get(variable.storageKey);
+            // A value binding that reaches this through a Fn shows the value; it has to hear the
+            // next write to it.
+            ctx.valueExecution?.trackState?.(persistentStateKey(variable.storageKey));
+            // No default applied here: the persistence scope answers an unwritten variable with its
+            // default for every reader (`ScopeStoreBridge.persistenceGet`). A fallback here never
+            // ran anyway - the host hands a graph `null` for "nothing stored", not `undefined`.
             return {
                 nextPort: "next",
-                outputValues: {
-                    value: stored === undefined ? cloneLiteralValue(variable.defaultValue) : stored,
-                },
+                outputValues: { value: await api.persistence.get(variable.storageKey) },
             };
         },
     },
@@ -97,13 +94,7 @@ export const persistentVariableBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const variable = resolvePersistentVariable(ctx);
-            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-            });
+            const value = resolveNodeInput(ctx, "value");
             await api.persistence.set(variable.storageKey, value);
             return { nextPort: "next" };
         },

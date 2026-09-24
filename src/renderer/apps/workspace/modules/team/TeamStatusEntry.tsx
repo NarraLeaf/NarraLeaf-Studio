@@ -67,9 +67,12 @@ export function TeamStatusEntry() {
     }
 
     const { remote, serverSession } = surface;
+    // Named from the sign-in this project could use as readily as from the one it does: the
+    // server is the same server either way.
+    const known = serverSession ?? surface.availableSession;
     const name = remote === null
         ? null
-        : serverSession ? serverDisplayName(serverSession) : serverHost(remote);
+        : known ? serverDisplayName(known) : serverHost(remote);
     // What the server itself answered wins over what the last local check left behind: the
     // sentence a reader needs is the one about the thing that is actually wrong, and "that server
     // does not hold this project" outranks anything a sync state can say about a branch.

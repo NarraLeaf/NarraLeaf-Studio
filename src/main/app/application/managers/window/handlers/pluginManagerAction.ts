@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import os from "os";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";

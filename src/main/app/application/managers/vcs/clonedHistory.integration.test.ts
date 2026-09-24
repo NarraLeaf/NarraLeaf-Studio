@@ -63,13 +63,19 @@ function online(root: string): LoreGlobals {
 /** A manager with the sign-in a real one would have; see `merge.integration.test.ts` on why. */
 function fakeApp(): BaseApp {
     const noop = () => undefined;
+    // What the manager records - which project uses the test sign-in, chiefly - kept for the life
+    // of this app, over the one setting it is seeded with.
+    const written = new Map<string, unknown>();
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
+        projectTrustManager: { isTrusted: () => true, recordArrival: noop, forgetArrival: noop },
         getGlobalState: () => ({
             get: (key: string) => {
+                if (written.has(key)) return written.get(key);
                 const session = loreTestSession();
                 return key === "versionControl.serverSessions" && session ? [session] : undefined;
             },
+            set: (key: string, value: unknown) => { written.set(key, value); },
         }),
     } as unknown as BaseApp;
 }
@@ -109,7 +115,7 @@ describe.skipIf(!remoteEnabled)("a cloned project", () => {
         const destination = path.join(tmp("nl-clonehist-clone-"), "project");
         const manager = new VcsManager(fakeApp());
         try {
-            await manager.cloneRepository(url, destination);
+            await manager.cloneRepository(url, destination, { useSignIn: true });
         } finally {
             await manager.closeProject(destination);
         }

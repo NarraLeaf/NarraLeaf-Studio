@@ -313,7 +313,6 @@ export const build = {
         "sidecar-crossbuild-exec-bit":
             "{plugin} の {sidecar} プログラムは、実行できない状態のまま {platform} の成果物に入る。"
             + "{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
-        "encryption-key-unavailable": "アセットの保護が有効だが、その鍵を読めなかった",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
         "mobile-unprotected": "Android と iOS のパッケージにアセットの保護は効かない",
         "progress-carry-unsupported":
@@ -465,10 +464,18 @@ export const build = {
      * それで拒んでいたら、どのバリアントのビルドも誰も解決できない URL の後ろに置かれてしまう。
      */
     contentCoverageGap: "{location} を読めなかったので、{variant} のビルドが何を除外するかを決められない",
-    contentComputedPinGap: "{location} はアセットを計算結果から受け取るため、このビルドは必要なアセットを判別できない",
     contentComputedPinSummary: {
-        one: "ビルドを中止した：アセットを計算結果から受け取るピンが {count} 個ある。ピンでアセットを選択する。詳細はコンソール。",
-        other: "ビルドを中止した：アセットを計算結果から受け取るピンが {count} 個ある。各ピンでアセットを選択する。詳細はコンソール。",
+        other: "ビルドを中止した：実行時に組み立てられるアセット名が {count} 件ある。詳細はコンソール。",
+    },
+    contentUnloadedNodeSummary: {
+        other: "ビルドを中止した：読み込まれていないノード型から来るアセット名が {count} 件ある。詳細はコンソール。",
+    },
+    /**
+     * パッケージのビルドでスクリプトがコンパイルできなかったとき。メインプロセスが書く、ビルド失敗の
+     * 1 行目。その後にファイルごとのコンパイラ自身の行（ファイル・行・列つき）が続く。
+     */
+    scriptsNotCompiled: {
+        other: "コンパイルできないスクリプトが {count} 件ある",
     },
     /** ドキュメント 1 件ではなく索引全体が欠けているときに `{location}` に入る言葉。 */
     contentCoverageWholeProject: "プロジェクト",

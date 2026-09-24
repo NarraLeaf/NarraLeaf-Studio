@@ -27,6 +27,7 @@ import {
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import type { GameMenuSpec } from "@shared/types/gameMenu";
+import type { GameProcessMemoryReading } from "@shared/types/gameProcessMemory";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { CompiledNlrStory } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
@@ -126,6 +127,12 @@ export type RuntimePluginShellBackends = {
      * would be a shell refusing something it can do rather than a shell that lacks the machinery.
      */
     navigation?: RuntimePluginNavigationBackend;
+    /**
+     * What the game's processes hold in memory, asked of the process that can see them. Absent on
+     * a shell with no processes of its own - the web export - which is what removes
+     * `app.game.process` there.
+     */
+    processMemory?: () => Promise<GameProcessMemoryReading>;
     log?: (level: RuntimePluginLogLevel, message: string) => void;
 };
 
@@ -154,6 +161,30 @@ const ENGINE_EVENTS: readonly EventKey[] = [
 
 function describeError(error: unknown): string {
     return error instanceof Error ? (error.stack ?? error.message) : String(error);
+}
+
+/**
+ * One request at a time to the far side, however often it is asked.
+ *
+ * A call made while another is still on its way gets that one's answer rather than a second trip:
+ * two readings a few milliseconds apart are the same reading, and a plugin polling faster than the
+ * main process can answer would otherwise stack requests behind each other without bound.
+ */
+export function coalesceInFlight<T>(read: () => Promise<T>): () => Promise<T> {
+    let inFlight: Promise<T> | null = null;
+    return () => {
+        if (!inFlight) {
+            const request = read();
+            inFlight = request;
+            const clear = () => {
+                if (inFlight === request) {
+                    inFlight = null;
+                }
+            };
+            request.then(clear, clear);
+        }
+        return inFlight;
+    };
 }
 
 /**
@@ -758,6 +789,11 @@ export class RuntimePluginHostController {
                     this.menuActions?.setSpec(spec);
                 },
             };
+        }
+
+        const processMemory = this.shell.processMemory;
+        if (processMemory) {
+            host.process = { memory: coalesceInFlight(processMemory) };
         }
 
         const persistence = this.shell.persistence;

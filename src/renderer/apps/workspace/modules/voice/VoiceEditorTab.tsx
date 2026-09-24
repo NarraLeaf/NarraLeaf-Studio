@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AudioLines, CheckCircle2, ListMusic, Mic, PenLine } from "lucide-react";
 import type { EditorComponentProps } from "../types";
-import { Select, type SelectOption } from "@/lib/components/elements";
+import { EmptyState, Select, type SelectOption } from "@/lib/components/elements";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -26,7 +26,8 @@ import { useTableFind } from "@/apps/workspace/components/ui/useTableFind";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
-import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
+import { VoiceService, type VoiceUnitPatch } from "@/lib/workspace/services/voice/VoiceService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { deriveVoiceUnitState, type VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { formatVoiceDuration, readAudioDuration } from "@/lib/workspace/services/voice/audioDuration";
 import type { StoryTranslationRow } from "@/lib/workspace/services/localization/localizationModel";
@@ -43,6 +44,7 @@ import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { describeAssetReadFailure } from "@/lib/workspace/assets/assetReadFailure";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -89,6 +91,10 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     );
     const localizationService = useMemo(
         () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
+        [context, isInitialized],
+    );
+    const projectService = useMemo(
+        () => (context && isInitialized ? context.services.get<ProjectService>(Services.Project) : null),
         [context, isInitialized],
     );
 
@@ -151,14 +157,26 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         return storyService.onLibraryChanged(read);
     }, [storyService]);
 
-    // Voice configuration (casting + display names).
+    // Voice configuration (casting + display names, and whether this language is still voiced).
+    // The manifest's own events are heard too: a collaborator, a restored version or an edit on disk
+    // changes the list without going through the voice service, and this table has to notice when
+    // its language leaves it.
     useEffect(() => {
         if (!voiceService) {
             return;
         }
-        setConfig(voiceService.getConfiguration());
-        return voiceService.onConfigChanged(setConfig);
-    }, [voiceService]);
+        const read = () => setConfig(voiceService.getConfiguration());
+        read();
+        const offVoice = voiceService.onConfigChanged(setConfig);
+        const offProject = projectService?.onConfigChanged(read);
+        return () => {
+            offVoice();
+            offProject?.();
+        };
+    }, [voiceService, projectService]);
+
+    /** False once this table's language has left the voiced list; see the localization table. */
+    const localeInProject = !config || config.voicedLocales.some(entry => entry.code === locale);
 
     // Character roster (speaker names).
     useEffect(() => {
@@ -247,9 +265,9 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         };
     }, [voiceService, storyService, localizationService, storyId, locale, speakerNameFor, characters, config?.voiceChoices]);
 
-    // Voice document for this language.
+    // Voice document for this language, read again if the language comes back to the list.
     useEffect(() => {
-        if (!voiceService || !locale) {
+        if (!voiceService || !locale || !localeInProject) {
             setVoiceDoc(null);
             return;
         }
@@ -268,7 +286,31 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             disposed = true;
             unsubscribe();
         };
-    }, [voiceService, locale]);
+    }, [voiceService, locale, localeInProject]);
+
+    /** The last refusal said, so edits refused for one reason are said once. Cleared by one that lands. */
+    const refusedEditRef = useRef<string | null>(null);
+
+    /**
+     * Write one edit, and say so when the library will not take it - a language that has left the
+     * list, or a library that could not be read. Thrown out of an event handler, the refusal only
+     * ever reached the log.
+     */
+    const writeUnit = useCallback((unitId: string, sourceText: string, patch: VoiceUnitPatch) => {
+        if (!voiceService) {
+            return;
+        }
+        try {
+            voiceService.updateUnit(locale, unitId, sourceText, patch);
+            refusedEditRef.current = null;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (refusedEditRef.current !== message) {
+                refusedEditRef.current = message;
+                uiService?.showError(error instanceof Error ? error : message);
+            }
+        }
+    }, [voiceService, locale, uiService]);
 
     const stopPlayback = useCallback(() => {
         audioRef.current?.pause();
@@ -312,7 +354,10 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         try {
             const result = await assetsService.fetch(asset);
             if (!result.success) {
-                uiService?.showNotification(result.error || t("workspace.voice.table.clipMissing"), "warning");
+                // By the clip's name and why, as every asset preview words a read that failed. The
+                // read's own message is English and names the clip's storage path.
+                console.warn("[voice] could not read the take", result.error);
+                uiService?.showNotification(describeAssetReadFailure(asset.id, asset.name, result.code, t), "warning");
                 return;
             }
             const blob = new Blob([new Uint8Array((result.data as { data: Uint8Array }).data)]);
@@ -333,7 +378,7 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
     }, [playingUnitId, stopPlayback, assetsService, uiService, t]);
 
     const assignAsset = useCallback((unitId: string, sourceText: string, assetId: string) => {
-        voiceService?.updateUnit(locale, unitId, sourceText, { assetId });
+        writeUnit(unitId, sourceText, { assetId });
         // Measured after the link lands, not before it: the link is the author's action and must not
         // wait on decoding a header. A patch carrying only `duration` never re-stamps the source
         // hash, so this cannot quietly un-stale the line it just measured.
@@ -348,14 +393,14 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
             }
             const duration = await readAudioDuration(new Uint8Array((result.data as { data: Uint8Array }).data));
             if (duration !== undefined) {
-                voiceService?.updateUnit(locale, unitId, sourceText, { duration });
+                writeUnit(unitId, sourceText, { duration });
             }
         })();
-    }, [voiceService, assetsService, locale]);
+    }, [writeUnit, assetsService]);
 
     const setNote = useCallback((unitId: string, sourceText: string, note: string) => {
-        voiceService?.updateUnit(locale, unitId, sourceText, { note });
-    }, [voiceService, locale]);
+        writeUnit(unitId, sourceText, { note });
+    }, [writeUnit]);
 
     /**
      * Library name -> asset id, for the audio the project already holds.
@@ -632,6 +677,20 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
         return null;
     }
 
+    // The language left the voiced list while this table was open: nothing is shown that could be
+    // edited, and the second line says the assignments are still on disk.
+    if (!localeInProject) {
+        return (
+            <div className="flex h-full min-h-0 flex-col items-center justify-center bg-surface">
+                <EmptyState
+                    icon={<Mic className="h-6 w-6" />}
+                    title={t("workspace.voice.panel.languageGone")}
+                    description={t("workspace.voice.panel.removeConfirmDetail")}
+                />
+            </div>
+        );
+    }
+
     const auditionQueueEmpty = mode === "audition" && auditionFilter === "pending" && counts.clips > 0 && visibleRows.length === 0;
 
     return (
@@ -763,7 +822,11 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                             const next = event.target.value.trim();
                                             const current = config?.cast[group.characterId!]?.[locale] ?? "";
                                             if (next !== current) {
-                                                void voiceService?.setCastName(group.characterId!, locale, next);
+                                                // The project file's write reports nothing itself (see
+                                                // `ProjectFileWriteError`): this is the one place that can
+                                                // say the name was not kept.
+                                                void voiceService?.setCastName(group.characterId!, locale, next)
+                                                    .catch(error => uiService?.showError(error instanceof Error ? error : String(error)));
                                             }
                                         }}
                                         onKeyDown={event => {
@@ -809,9 +872,9 @@ export function VoiceEditorTab({ tabId, payload, active }: EditorComponentProps<
                                             currentAssetId: unit?.assetId ?? matchingAssetIdFor(row),
                                         });
                                     }}
-                                    onRemove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { assetId: "" })}
-                                    onApprove={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { status: "approved" })}
-                                    onReturn={() => voiceService?.updateUnit(locale, row.unitId, row.sourceText, { status: "linked" })}
+                                    onRemove={() => writeUnit(row.unitId, row.sourceText, { assetId: "" })}
+                                    onApprove={() => writeUnit(row.unitId, row.sourceText, { status: "approved" })}
+                                    onReturn={() => writeUnit(row.unitId, row.sourceText, { status: "linked" })}
                                     onDropAsset={assetId => assignAsset(row.unitId, row.sourceText, assetId)}
                                 />
                             );

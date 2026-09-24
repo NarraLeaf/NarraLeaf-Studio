@@ -1359,36 +1359,8 @@ describe("built-in blueprint nodes", () => {
         });
         expect(localsFromStored.captured).toBe(42);
 
-        delete store["settings.volume"];
-        const localsFromDefault: Record<string, unknown> = {};
-        await executeGraph({
-            graph: {
-                id: "getDefault",
-                entries: { main: { start: { nodeId: "get", port: "in" } } },
-                nodes: {
-                    get: {
-                        id: "get",
-                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
-                        params: { persistentVariableId: "volume" },
-                    },
-                    capture: {
-                        id: "capture",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "captured" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "get", port: "next" }, to: { nodeId: "capture", port: "in" } },
-                    { from: { nodeId: "get", port: "value" }, to: { nodeId: "capture", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "get", port: "in" } },
-            hostAdapter: createPersistenceHostAdapter(store),
-            blueprintLocals: localsFromDefault,
-            persistentVariables,
-        });
-        expect(localsFromDefault.captured).toBe(7);
-        expect(store["settings.volume"]).toBeUndefined();
+        // What an unwritten variable reads as is the persistence scope's answer, not this node's:
+        // `persistentDefaultOnFirstRead.test.ts` runs the node against the real host for that.
 
         await executeGraph({
             graph: {
@@ -1900,7 +1872,7 @@ describe("built-in blueprint nodes", () => {
         it("refuses when nothing is asking to close the window", async () => {
             // No dispatch at all - a macro run by hand, or a graph under the wrong head.
             await expect(runKeepWindowOpen({})).rejects.toThrow(
-                /Keep Window Open: there is no close request to cancel/,
+                /“Keep Window Open” runs only below “On Window Close Requested”/,
             );
         });
 
@@ -1910,7 +1882,7 @@ describe("built-in blueprint nodes", () => {
             const eventControl = createEventControl();
 
             await expect(runKeepWindowOpen({ eventName: "keyDown", eventControl })).rejects.toThrow(
-                /Keep Window Open: there is no close request to cancel/,
+                /“Keep Window Open” runs only below “On Window Close Requested”/,
             );
             expect(eventControl.isPropagationStopped()).toBe(false);
         });
@@ -2079,7 +2051,7 @@ describe("built-in blueprint nodes", () => {
                 entry: { start: { nodeId: "head", port: "in" } },
                 hostAdapter: createPageNavigationHostAdapter([]),
                 blueprintLocals: {},
-            })).rejects.toThrow(/no game running/);
+            })).rejects.toThrow(/there is no running game to capture/);
         });
 
         /**
@@ -3017,8 +2989,14 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterAutoSave.afterAutoSave).toBe("continued");
 
         const autoSaves: AutoSaveEntry[] = [
-            { id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, metadata: { chapter: 2 } },
-            { id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, metadata: null },
+            {
+                id: "@autosave.1", slot: 1, timestamp: 2_000, createdAt: 1_000, preview: null,
+                line: "We came back.", speaker: "Narra", metadata: { chapter: 2 },
+            },
+            {
+                id: "@autosave.0", slot: 0, timestamp: 1_500, createdAt: 500, preview: null,
+                line: "", speaker: "", metadata: null,
+            },
         ];
         const localsFromAutoList: Record<string, unknown> = {};
         await executeGraph({
@@ -3222,7 +3200,7 @@ describe("built-in blueprint nodes", () => {
             entry: { start: { nodeId: "restore", port: "in" } },
             hostAdapter: createGameSaveHostAdapter({ restoredIds: [] }),
             blueprintLocals: {},
-        })).rejects.toThrow(/entry id is required/);
+        })).rejects.toThrow("“Restore From History”: “Entry Id” is empty.");
     });
 
     it("reads the lines ahead of the play head and steps forward into them", async () => {
@@ -5759,7 +5737,7 @@ describe("built-in blueprint nodes", () => {
             },
             entry: { start: { nodeId: "choose", port: "in" } },
             hostAdapter: createGameSaveHostAdapter({ chosenIndexes }),
-        })).rejects.toThrow("Select Choice: index must be a non-negative integer");
+        })).rejects.toThrow("“Index” must be a whole number, 0 or greater.");
     });
 
     it("exposes Blueprint Value nodes through the editor palette facade", () => {
@@ -6491,7 +6469,7 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter,
                 executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
             }),
-        )).rejects.toThrow("cannot target nl.slider");
+        )).rejects.toThrow("This node cannot act on this kind of widget.");
         expect(setVariantCalled).toBe(false);
     });
 
@@ -7786,7 +7764,7 @@ describe("fn blueprint nodes", () => {
                 params: { fnRef: "fn:bp-a:head" },
                 hostAdapter: { host: "player" },
             }),
-        ).rejects.toThrow(/Fn runtime is unavailable/);
+        ).rejects.toThrow("“Call Fn” needs a running game.");
 
         await expect(
             callDef.execute({
@@ -7804,7 +7782,7 @@ describe("fn blueprint nodes", () => {
                     },
                 },
             }),
-        ).rejects.toThrow(/Pick a function/);
+        ).rejects.toThrow("“Call Fn”: pick a function.");
     });
 
     it("resolves fn head parameter pins with per-pin labels and types", () => {

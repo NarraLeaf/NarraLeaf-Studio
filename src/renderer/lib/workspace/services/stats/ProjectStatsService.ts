@@ -196,6 +196,15 @@ export class ProjectStatsService extends Service<ProjectStatsService> {
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         this.disposed = false;
+        // A command-line run records nothing. Every figure here is a claim about how a person
+        // worked - when they last had this project open, how long they were active in it, how its
+        // word count moved - and a build agent opening the project is none of those things. Left to
+        // itself it stamped `lastActiveAt` on every run, and on a profile that had never seen the
+        // project it invented a whole record for it, so the author's dashboard reported writing
+        // sessions nobody had. The same reasoning keeps a run out of the recent-projects list.
+        if (ctx.commandLineRun) {
+            return;
+        }
         // The service is a singleton, so a project opened after another one in the same window
         // would otherwise inherit the previous project's idle clock.
         this.lastInteractionAt = null;

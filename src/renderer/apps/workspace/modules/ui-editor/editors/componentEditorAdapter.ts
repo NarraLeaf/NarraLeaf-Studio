@@ -54,6 +54,8 @@ function isComponentEditorWrapperRoot(element: UIElement, componentRootId: strin
 export class ComponentDocumentServiceAdapter {
     public readonly surfaceId: string;
     private readonly virtualRootId: string;
+    /** The last document built, and the base document and revision it was built from. */
+    private built: { base: UIDocument; revision: number; document: UIDocument } | null = null;
 
     public constructor(
         private readonly base: UIDocumentService,
@@ -63,8 +65,29 @@ export class ComponentDocumentServiceAdapter {
         this.virtualRootId = getComponentEditorRootId(componentId);
     }
 
+    /**
+     * The component shown as a document of its own: one surface, a virtual root, and the
+     * component's elements.
+     *
+     * The same object until the base document changes, as the base service's own document is.
+     * Built fresh on every read, the editor tab got a new surface on every render and everything it
+     * keeps per surface ran again - its whole canvas was re-rendered on each selection change
+     * anywhere in the workspace, while the tab was not even on screen. The base changes either in
+     * place, which moves its revision, or by being replaced (loaded, saved, restored from history),
+     * which changes the object; both are checked.
+     */
     public getDocument(): UIDocument {
         const baseDocument = this.base.getDocument();
+        const revision = this.base.getRevision();
+        if (this.built && this.built.base === baseDocument && this.built.revision === revision) {
+            return this.built.document;
+        }
+        const document = this.buildDocument(baseDocument);
+        this.built = { base: baseDocument, revision, document };
+        return document;
+    }
+
+    private buildDocument(baseDocument: UIDocument): UIDocument {
         const component = this.base.getComponent(this.componentId);
         if (!component) {
             return {
@@ -117,9 +140,27 @@ export class ComponentDocumentServiceAdapter {
         }
         return {
             ...baseDocument,
-            surfaces: [surface],
+            // The project's pages stay listed beside the definition's own surface. Everything in this
+            // editor that asks the document about a page by id - a Page widget's picker and the page
+            // it draws on the canvas, its "open the page" button, what a paste says it could not
+            // resolve - is asking about the project's pages, not about the definition. With the
+            // definition's surface alone, a Page widget authored here could not be pointed at any
+            // page, and one pasted in drew "Missing Page". The pages' elements are not carried: the
+            // canvas draws a page from the project's own document (`pageDocument`), and this
+            // document's elements are the definition's.
+            surfaces: [surface, ...baseDocument.surfaces],
             elements,
         };
+    }
+
+    /**
+     * The project's document rather than this editor's view of it.
+     *
+     * The view carries the definition's elements and none of the pages', so a question about where
+     * a page leads - what it places, what its own Page widgets draw - has nothing to walk in it.
+     */
+    public getPageDocument(): UIDocument {
+        return this.base.getDocument();
     }
 
     public getRevision(): number {

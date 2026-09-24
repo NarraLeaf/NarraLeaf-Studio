@@ -49,6 +49,7 @@ import {
     writeUiDocument,
     type BlueprintIndex,
 } from "./project";
+import { CliPluginError, loadCliPlugin } from "./plugins";
 import { didYouMean } from "./text";
 import { findUsages, formatPropValues, formatUsages, readSkeletonDocument, repoRoot } from "./usage";
 
@@ -77,6 +78,8 @@ const USAGE = `ui - query the widget catalogue, read an interface, write one as 
 
 Common flags
   --project <dir>             Project directory (the one holding editor/ui/uidoc.json).
+  --plugin <dir>              A plugin's directory. Its widgets join the catalogue for this run, so
+                              a project using them can be checked. Repeatable. Runs its studio entry.
   --json                      Machine-readable output.
 
 A file named without a directory - title.ui rather than ./title.ui - lives in ${SCRATCH_DIR_NAME}/ at the
@@ -88,7 +91,8 @@ root of this checkout, which git ignores. So the editing loop is three commands 
 
 Exit codes: 0 clean, 1 problems found, 2 bad usage or unreadable input.`;
 
-type FlagKind = "string" | "boolean";
+/** `list` is a flag that may be given more than once, each time with a value. */
+type FlagKind = "string" | "boolean" | "list";
 
 type CommandSpec = {
     flags: Record<string, FlagKind>;
@@ -99,12 +103,14 @@ type Args = {
     command: string;
     positional: string[];
     flags: Record<string, string | boolean>;
+    /** The values of the flags given more than once by design, in the order given. */
+    lists: Record<string, string[]>;
 };
 
 /** Bad usage, as opposed to a project that cannot be read. Both leave with 2. */
 class UsageError extends Error {}
 
-const COMMON_FLAGS: Record<string, FlagKind> = { json: "boolean", help: "boolean" };
+const COMMON_FLAGS: Record<string, FlagKind> = { json: "boolean", help: "boolean", plugin: "list" };
 
 const COMMANDS: Record<string, CommandSpec> = {
     widgets: {
@@ -141,15 +147,30 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         return 2;
     }
     try {
-        const args = parseArgs(argv, booleanFlagsOf(spec));
+        const args = parseArgs(argv, booleanFlagsOf(spec), listFlagsOf(spec));
         validateFlags(args, spec);
+        loadPlugins(args, io);
         return spec.run(args, io);
     } catch (error) {
-        if (error instanceof ProjectIoError || error instanceof UsageError) {
+        if (error instanceof ProjectIoError || error instanceof UsageError || error instanceof CliPluginError) {
             io.err(error.message);
             return 2;
         }
         throw error;
+    }
+}
+
+/**
+ * Load every `--plugin` before the command reads anything, so its widgets are in the catalogue the
+ * command asks. What the loader had to leave out is said on stderr, where it cannot be mistaken for
+ * the command's own output.
+ */
+function loadPlugins(args: Args, io: CliIo): void {
+    for (const dir of args.lists.plugin ?? []) {
+        const loaded = loadCliPlugin(dir);
+        for (const note of loaded.notes) {
+            io.err(note);
+        }
     }
 }
 
@@ -382,7 +403,7 @@ function commandCheck(args: Args, io: CliIo): number {
     io.out(formatDiagnostics(result.diagnostics, { fileName: file, source }));
     if (!projectDir) {
         io.out(
-            "\nNo --project: bindings, components and dropped elements were not checked, because none of them "
+            "\nNo --project: bindings, components, Page widget targets and dropped elements were not checked, because none of them "
                 + "can be answered without the document this file is going into.",
         );
     }
@@ -475,6 +496,14 @@ function numberFlag(args: Args, name: string): number | undefined {
     return parsed;
 }
 
+function listFlagsOf(spec: CommandSpec): Set<string> {
+    return new Set(
+        Object.entries({ ...COMMON_FLAGS, ...spec.flags })
+            .filter(([, kind]) => kind === "list")
+            .map(([name]) => name),
+    );
+}
+
 function booleanFlagsOf(spec: CommandSpec): Set<string> {
     return new Set(
         Object.entries({ ...COMMON_FLAGS, ...spec.flags })
@@ -485,6 +514,11 @@ function booleanFlagsOf(spec: CommandSpec): Set<string> {
 
 function validateFlags(args: Args, spec: CommandSpec): void {
     const declared = { ...COMMON_FLAGS, ...spec.flags };
+    for (const [name, values] of Object.entries(args.lists)) {
+        if (values.some(value => value.length === 0)) {
+            throw new UsageError(`"--${name}" needs a value.`);
+        }
+    }
     for (const [name, value] of Object.entries(args.flags)) {
         const kind = declared[name];
         if (!kind) {
@@ -503,8 +537,13 @@ function validateFlags(args: Args, spec: CommandSpec): void {
     }
 }
 
-export function parseArgs(argv: readonly string[], booleanFlags: ReadonlySet<string> = new Set()): Args {
+export function parseArgs(
+    argv: readonly string[],
+    booleanFlags: ReadonlySet<string> = new Set(),
+    listFlags: ReadonlySet<string> = new Set(),
+): Args {
     const flags: Record<string, string | boolean> = {};
+    const lists: Record<string, string[]> = {};
     const positional: string[] = [];
     for (let i = 0; i < argv.length; i += 1) {
         const token = argv[i];
@@ -514,6 +553,18 @@ export function parseArgs(argv: readonly string[], booleanFlags: ReadonlySet<str
         }
         const body = token.slice(2);
         const equals = body.indexOf("=");
+        const name = equals >= 0 ? body.slice(0, equals) : body;
+        if (listFlags.has(name)) {
+            // A list flag always takes a value: the one after `=`, or the next token. Missing is an
+            // empty value, which validation refuses by name.
+            const next = argv[i + 1];
+            const value = equals >= 0 ? body.slice(equals + 1) : next !== undefined && !next.startsWith("--") ? next : "";
+            if (equals < 0 && value !== "") {
+                i += 1;
+            }
+            (lists[name] ??= []).push(value);
+            continue;
+        }
         if (equals >= 0) {
             flags[body.slice(0, equals)] = body.slice(equals + 1);
             continue;
@@ -530,7 +581,7 @@ export function parseArgs(argv: readonly string[], booleanFlags: ReadonlySet<str
         }
         flags[body] = true;
     }
-    return { command: positional.shift() ?? "", positional, flags };
+    return { command: positional.shift() ?? "", positional, flags, lists };
 }
 
 export { COMMANDS, USAGE };

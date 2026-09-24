@@ -3,6 +3,7 @@ import type { CommandLineRunJob } from "./commandLineRun";
 import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
 import type { ServerTrustPromptProps, ServerTrustPromptResult } from "./serverTrust";
 import type { ProjectTrustPromptProps, ProjectTrustPromptResult } from "./projectTrust";
+import type { ServerSessionPromptProps, ServerSessionPromptResult } from "./serverSession";
 
 export enum WindowAppType {
     Launcher = "launcher",
@@ -13,6 +14,7 @@ export enum WindowAppType {
     PluginPermissionPrompt = "plugin-permission",
     ServerTrustPrompt = "server-trust",
     ProjectTrustPrompt = "project-trust",
+    ServerSessionPrompt = "server-session",
     Raw = "raw",
 }
 
@@ -135,10 +137,17 @@ export type WindowProps = {
     [WindowAppType.DevMode]: {
         projectPath: string;
         entry: import("./devMode").DevModeEntry;
+        /**
+         * When the author asked for this run and when its window was made, for the zero of the
+         * window's performance timeline (see `gameLaunchTiming`). Absent from a window opened by a
+         * Studio that predates it, which then measures from its own page.
+         */
+        launch?: import("./gameLaunchTiming").GameLaunchTiming;
     },
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptProps,
     [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptProps,
+    [WindowAppType.ServerSessionPrompt]: ServerSessionPromptProps,
     [WindowAppType.Raw]: {
     },
 }
@@ -154,6 +163,26 @@ export type WindowProps = {
  * on what happened.
  */
 export const WINDOW_PROJECT_MISMATCH_CODE = "window/project-mismatch";
+
+/**
+ * A window asked a server something as this installation's account, and its project does not use
+ * that account's sign-in there.
+ *
+ * A sign-in serves a (server, project) pair only once the author has said so, and a project window
+ * reaches a server as the account only for a project that did. Studio's own screens do not ask in
+ * that state - they read whether the project uses the sign-in first, and put the question to the
+ * author where one is due - so like {@link WINDOW_PROJECT_MISMATCH_CODE} this arrives from a
+ * renderer that has gone wrong or is being driven, and it is a code for the same reasons.
+ */
+export const WINDOW_SIGN_IN_UNUSED_CODE = "window/sign-in-unused";
+
+/**
+ * A window asked a server something that no window of its kind asks.
+ *
+ * Dev Mode, the prompts and the raw window never speak to a server; Settings and the project wizard
+ * only ever list what one holds. A request from one of them outside that is not one Studio makes.
+ */
+export const WINDOW_SERVER_OFF_LIMITS_CODE = "window/server-off-limits";
 
 /**
  * What happens to a window that was opened *from* another one when that other one goes away.
@@ -231,5 +260,6 @@ export type WindowCloseResults = {
     [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.ServerTrustPrompt]: ServerTrustPromptResult;
     [WindowAppType.ProjectTrustPrompt]: ProjectTrustPromptResult;
+    [WindowAppType.ServerSessionPrompt]: ServerSessionPromptResult;
     [WindowAppType.Raw]: null;
 };

@@ -16,6 +16,7 @@ import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
+import { stateWriteReaches } from "./blueprintStateWrites";
 
 type ActiveBindingInput = {
     key: string;
@@ -44,6 +45,10 @@ type BindingRuntimeEntry = {
     dependencies: BlueprintValueDependency[];
     dependencySnapshotKey: string;
     listItemSnapshotKey: string;
+    /** What the last run read besides widget props; see {@link BlueprintValueRuntimeStore.refreshStateReaders}. */
+    stateReads: readonly string[];
+    /** What the run in progress has read so far, while one is; a write can arrive before it finishes. */
+    readsInFlight: Set<string> | null;
 };
 
 export type BlueprintValueResolved = {
@@ -80,9 +85,28 @@ function collectSurfaceElements(document: UIDocument, surface: UISurface): UIEle
     return out;
 }
 
+/**
+ * The asset id inside an `ImageAsset`, or the value untouched when it is not one.
+ *
+ * Everything that hands out a picture answers with the wire envelope `{kind:"imageAsset",assetId}` -
+ * a node's `ImageAsset|null` output, a list row's `image` field - while the prop that draws one is a
+ * bare id and so declares itself `string`. Unwrapping here rather than at either caller is what
+ * makes the two routes to a bound picture agree: a row's own field and a value blueprint reach the
+ * same widget, and before this only the first of them arrived as an id at all.
+ */
+function unwrapImageAssetValue(value: unknown): unknown {
+    return value && typeof value === "object" && !Array.isArray(value) && (value as { kind?: unknown }).kind === "imageAsset"
+        ? (value as { assetId?: unknown }).assetId
+        : value;
+}
+
 function coerceValue(value: unknown, valueType: ActiveBindingInput["valueType"]): unknown {
     if (valueType === "string") {
-        return value == null ? "" : String(value);
+        // An envelope that reached a string binding is a picture on its way to a prop that names
+        // one by id; `String()` on it produces "[object Object]", which resolves to no asset and
+        // draws nothing, with no failure anywhere to read.
+        const unwrapped = unwrapImageAssetValue(value);
+        return unwrapped == null ? "" : String(unwrapped);
     }
     if (valueType === "float") {
         const n = typeof value === "number" ? value : Number(value);
@@ -344,6 +368,8 @@ export class BlueprintValueRuntimeStore {
                         dependencies: [],
                         dependencySnapshotKey: "",
                         listItemSnapshotKey: "",
+                        stateReads: [],
+                        readsInFlight: null,
                     };
                     this.entries.set(key, entry);
                     this.startInitial(entry);
@@ -409,6 +435,8 @@ export class BlueprintValueRuntimeStore {
                 dependencies: [],
                 dependencySnapshotKey: "",
                 listItemSnapshotKey,
+                stateReads: [],
+                readsInFlight: null,
             };
             this.entries.set(key, entry);
             this.startInitial(entry);
@@ -451,6 +479,33 @@ export class BlueprintValueRuntimeStore {
         }
     }
 
+    /**
+     * Re-run every binding whose last run read the state `stateKey` names, now that it was written.
+     *
+     * The half of a binding's promise the state stores never covered: a variable - a page's, the
+     * global blueprint's, a persistent or a saved one - is read by the graph, not handed to it, so a
+     * binding showing one kept showing the value it first read however often the variable was set.
+     * The graph's own reads are what decide who re-runs, so a write reaches the bindings that show
+     * that variable and no others.
+     *
+     * `origin` is the entry whose own evaluation made the write, when one did; it is left alone, or a
+     * binding that writes what it reads would re-run itself forever.
+     */
+    public refreshStateReaders(stateKey: string, origin?: unknown): void {
+        if (this.disposed) {
+            return;
+        }
+        for (const entry of this.entries.values()) {
+            if (!entry.started || entry === origin) {
+                continue;
+            }
+            const reached = (read: string) => stateWriteReaches(read, stateKey);
+            if (entry.stateReads.some(reached) || (entry.readsInFlight !== null && [...entry.readsInFlight].some(reached))) {
+                this.queueEvaluate(entry);
+            }
+        }
+    }
+
     private startInitial(entry: BindingRuntimeEntry): void {
         if (entry.started || entry.running) {
             return;
@@ -481,6 +536,8 @@ export class BlueprintValueRuntimeStore {
     }
 
     private async evaluate(entry: BindingRuntimeEntry): Promise<void> {
+        const readsInFlight = new Set<string>();
+        entry.readsInFlight = readsInFlight;
         try {
             const result = await evaluateBlueprintValue({
                 blueprintDocument: entry.input.blueprintDocument,
@@ -492,6 +549,10 @@ export class BlueprintValueRuntimeStore {
                 listItemScope: entry.input.listItemScope ?? null,
                 instanceKey: entry.input.instanceKey,
                 hostAdapter: entry.input.hostAdapter,
+                stateOrigin: entry,
+                onStateRead: stateKey => {
+                    readsInFlight.add(stateKey);
+                },
             });
             entry.dependencies = result.dependencies;
             entry.dependencySnapshotKey = buildDependencySnapshotKey(entry.input.document, result.dependencies);
@@ -519,6 +580,13 @@ export class BlueprintValueRuntimeStore {
             }
         } catch (err) {
             console.warn("[BlueprintValueRuntime] evaluation skipped", err);
+        } finally {
+            // Kept even from a run that failed: what it read before failing is what could make the
+            // next run succeed.
+            entry.stateReads = [...readsInFlight];
+            if (entry.readsInFlight === readsInFlight) {
+                entry.readsInFlight = null;
+            }
         }
     }
 }
@@ -556,14 +624,11 @@ function resolveListItemFieldValue(
     if (raw === undefined) {
         return { resolved: false };
     }
-    // An image field carries the `{kind:"imageAsset"}` envelope every other picture-bearing value
-    // uses; a target that wants the bare id says so with `valueType: "string"`, so unwrap here
-    // rather than teaching each target about a shape only this path can produce.
-    const unwrapped =
-        raw && typeof raw === "object" && !Array.isArray(raw) && (raw as { kind?: unknown }).kind === "imageAsset"
-            ? (raw as { assetId?: unknown }).assetId
-            : raw;
-    return { resolved: true, value: coerceValue(unwrapped, target.valueType) };
+    // Unwrapped for every target type, not only the string ones `coerceValue` handles: a field
+    // binding is the one route where a picture can reach a target that names no type of its own,
+    // and a target that wanted the envelope would have to ask for it rather than be handed a shape
+    // only this path can produce.
+    return { resolved: true, value: coerceValue(unwrapImageAssetValue(raw), target.valueType) };
 }
 
 /**

@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator, SUPPORTED_LOCALES } from "@shared/i18n";
 import { FsRejectErrorCode } from "@shared/types/os";
-import { freezeProjectWrites, refuseFrozenWrite, thawProjectWrites } from "@/lib/app/writeFreeze";
+import { freezeProjectWrites, refuseFrozenWrite, thawForeignProjectWrites, thawProjectWrites } from "@/lib/app/writeFreeze";
 import type { FsWriteOutcome } from "../core/FileSystem";
 import { Services, type WorkspaceContext } from "../services";
 import { DebouncedSaver } from "./DebouncedSaver";
-import { SaveStatusService } from "./SaveStatusService";
+import {
+    describeSaveFailureDetail,
+    describeSaveFailureTitle,
+    describeUnreadableDocumentDetail,
+    describeUnreadableDocumentTitle,
+    SaveStatusService,
+} from "./SaveStatusService";
+import { itemWrite, storeWrite, type FsWriteReport } from "./writeReport";
+import { DocumentCorruptError } from "@shared/documents/types";
 
 type Harness = {
     service: SaveStatusService;
@@ -59,10 +68,14 @@ async function makeHarness(): Promise<Harness> {
 
 const PROJECT = "D:/projects/my-game";
 
-const failure = (path: string, code = FsRejectErrorCode.IO_ERROR): FsWriteOutcome => ({
+/** How an auto-saved document reports its writes - the interface document, here. */
+const RETRIED = storeWrite("workspace.shell.save.stores.uiDocument", "retried");
+
+const failure = (path: string, code = FsRejectErrorCode.IO_ERROR, report: FsWriteReport | undefined = RETRIED): FsWriteOutcome => ({
     path,
     ok: false,
     error: { code, message: "no space left on device" },
+    report,
 });
 
 describe("SaveStatusService", () => {
@@ -149,10 +162,9 @@ describe("SaveStatusService", () => {
 
     it("retryNow re-reports what is still broken and drops what is not", async () => {
         const { service, emitWrite } = await makeHarness();
-        // A write nobody owns a saver for: only a later successful write to the same path could
-        // ever clear it, so without this escape hatch it would pin the status bar red for the rest
-        // of the session.
-        emitWrite(failure("/project/export/one-off.zip"));
+        // No saver is registered here, so nothing re-reports this path during the flush: only a
+        // later successful write to it could otherwise clear it.
+        emitWrite(failure("/project/editor/uidoc.json"));
         expect(service.getStatus()).toBe("failed");
 
         await service.retryNow();
@@ -243,6 +255,24 @@ describe("SaveStatusService while the workspace is frozen", () => {
         expect(showSticky).not.toHaveBeenCalled();
     });
 
+    it("adds no notice over the screen a takeover puts up, and still logs every refusal", async () => {
+        // The screen that replaces the editor is the one account of it. A toast saying a save "did
+        // not happen" would repeat that in a smaller voice - and point at a freeze the author could
+        // leave, which this one is not.
+        const { showSticky, log } = await makeHarness();
+        freezeProjectWrites({
+            projectPath: PROJECT,
+            reason: { kind: "taken-over", holder: { hostname: "studio-two", startedAt: "2026-09-21T09:14:00.000Z", sameHost: false } },
+        });
+
+        refuseFrozenWrite(`${PROJECT}/editor/story/index.json`);
+        refuseFrozenWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+
+        expect(showSticky).not.toHaveBeenCalled();
+        expect(log).toHaveBeenCalledTimes(2);
+        thawForeignProjectWrites("D:/projects/somewhere-else");
+    });
+
     it("takes the notice down when the workspace thaws", async () => {
         const { close } = await makeHarness();
         freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
@@ -284,5 +314,237 @@ describe("SaveStatusService while the workspace is frozen", () => {
             expect(working).toHaveBeenCalledTimes(1);
             expect(log).toHaveBeenCalled();
         });
+    });
+});
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+/** The tail of an asset id as its content path ends: 28 hex digits, after two folders of two. */
+const HEX_ID_TAIL = /[0-9a-f]{16,}/i;
+
+const ASSET_CONTENT = "D:/projects/my-game/assets/content/51/43/dcd8e1f24b6c4a2f9e0d7b3a1c5e8f90";
+const GROUPS_SHARD = "D:/projects/my-game/assets/assets.groups.image.json";
+const ORDER_SHARD = "D:/projects/my-game/assets/assets.order.image.json";
+const ASSET_LIBRARY = storeWrite("workspace.shell.save.stores.assets", "notRetried");
+
+type Shown = { message: string; detail: string; actions?: unknown[] };
+const shown = (showSticky: ReturnType<typeof vi.fn>, index = 0) => showSticky.mock.calls[index][0] as Shown;
+
+describe("what the save-failure notice says", () => {
+    const PROJECT_FILE = "D:/projects/my-game/My Game.nlproj";
+
+    it("leaves a file its writer reports to that writer: no notice, nothing owed, one console line", async () => {
+        const { service, emitWrite, showSticky, log } = await makeHarness();
+
+        emitWrite(failure(
+            PROJECT_FILE,
+            FsRejectErrorCode.PERMISSION_DENIED,
+            storeWrite("workspace.shell.save.stores.project", "handledByWriter"),
+        ));
+
+        // Nothing retries this file, so a notice saying it is being retried - or a status bar
+        // saying a save is owed - would be false. Its writer tells the author instead.
+        expect(showSticky).not.toHaveBeenCalled();
+        expect(service.getStatus()).toBe("clean");
+        expect(service.getFailures()).toHaveLength(0);
+        expect(log).toHaveBeenCalledWith("storage", "error", expect.stringContaining("not retried"), expect.anything());
+    });
+
+    it("says a write nothing retries was not saved, offers no retry, and owes nothing", async () => {
+        const { service, emitWrite, showSticky, log } = await makeHarness();
+
+        emitWrite(failure(GROUPS_SHARD, FsRejectErrorCode.PERMISSION_DENIED, ASSET_LIBRARY));
+
+        expect(showSticky).toHaveBeenCalledTimes(1);
+        expect(shown(showSticky)).toMatchObject({
+            message: "Could not save the asset library",
+            detail: "The file is read-only, or Studio is not allowed to write to it. The change was not saved.",
+        });
+        // "Retry now" flushes the savers, and none of them writes this file.
+        expect(shown(showSticky).actions).toBeUndefined();
+        // Nothing is owed: the status bar has no save to wait for.
+        expect(service.getStatus()).toBe("clean");
+        expect(service.getFailures()).toHaveLength(0);
+        expect(log).toHaveBeenCalledWith("storage", "error", expect.stringContaining("not retried"), expect.anything());
+    });
+
+    it("keeps the retry sentence and the button for a file a saver still owes", async () => {
+        const { service, emitWrite, showSticky } = await makeHarness();
+
+        emitWrite(failure("D:/projects/my-game/editor/ui/uidoc.json", FsRejectErrorCode.PERMISSION_DENIED));
+
+        expect(shown(showSticky)).toMatchObject({
+            message: "Could not save the interface document",
+            detail: "The file is read-only, or Studio is not allowed to write to it. Retrying fails until this is fixed.",
+        });
+        expect(shown(showSticky).actions).toHaveLength(1);
+        expect(service.getStatus()).toBe("failed");
+    });
+
+    it("says one thing once when two files the author knows as one both fail", async () => {
+        const { emitWrite, showSticky, close } = await makeHarness();
+
+        // One new folder writes the folder list and the row order beside it.
+        emitWrite(failure(GROUPS_SHARD, FsRejectErrorCode.PERMISSION_DENIED, ASSET_LIBRARY));
+        emitWrite(failure(ORDER_SHARD, FsRejectErrorCode.PERMISSION_DENIED, ASSET_LIBRARY));
+        expect(showSticky).toHaveBeenCalledTimes(1);
+
+        // The notice stays while any file it speaks for is still failing.
+        emitWrite({ path: GROUPS_SHARD, ok: true });
+        expect(close).not.toHaveBeenCalled();
+        emitWrite({ path: ORDER_SHARD, ok: true });
+        expect(close).toHaveBeenCalledWith("toast-1");
+    });
+
+    it("titles an asset's content by the asset's name, never by the tail of its id", async () => {
+        const { emitWrite, showSticky } = await makeHarness();
+
+        emitWrite(failure(
+            ASSET_CONTENT,
+            FsRejectErrorCode.PERMISSION_DENIED,
+            itemWrite("room-warm.png", "workspace.shell.save.stores.assets", "notRetried"),
+        ));
+
+        expect(shown(showSticky).message).toBe("Could not save “room-warm.png”");
+        expect(shown(showSticky).message).not.toMatch(HEX_ID_TAIL);
+    });
+
+    it("names no file for a write whose writer did not say what it was, and promises no retry", async () => {
+        const { service, emitWrite, showSticky } = await makeHarness();
+
+        emitWrite({ path: ASSET_CONTENT, ok: false, error: { code: FsRejectErrorCode.IO_ERROR, message: "EIO" } });
+
+        // Before, this was "Could not save dcd8e1f24b6c4a2f9e0d7b3a1c5e8f90" and "Still retrying in
+        // the background" - the id's tail, and a retry nothing was running.
+        expect(shown(showSticky)).toMatchObject({ message: "Could not save a file", detail: "The change was not saved." });
+        expect(service.getStatus()).toBe("clean");
+    });
+
+    it("names what the disk said and never prints the system's message", async () => {
+        const { emitWrite, showSticky } = await makeHarness();
+
+        emitWrite({
+            path: "D:/projects/my-game/editor/uidoc.json",
+            ok: false,
+            error: {
+                code: FsRejectErrorCode.PERMISSION_DENIED,
+                message: "EPERM: operation not permitted, rename 'D:/projects/my-game/assets/content/51/43/dcd8e1f24b6c4a2f9e0d7b3a1c5e8f90.nltmp'",
+            },
+            report: RETRIED,
+        });
+        emitWrite({
+            path: "D:/projects/my-game/editor/story.json",
+            ok: false,
+            error: { code: FsRejectErrorCode.IPC_ERROR, message: "Failed to write file to app://fs/3f2a9c: Internal Server Error" },
+            report: storeWrite("workspace.shell.save.stores.story", "retried"),
+        });
+
+        const [readOnly, transport] = showSticky.mock.calls.map(call => (call[0] as Shown).detail);
+        expect(readOnly).toBe("The file is read-only, or Studio is not allowed to write to it. Retrying fails until this is fixed.");
+        expect(transport).toBe("Still retrying in the background.");
+    });
+
+    it("titles an unreadable document by its store, never by its file name", () => {
+        const t = createTranslator("en").t;
+        expect(describeUnreadableDocumentTitle("assets-metadata", t)).toBe("Could not read the asset library");
+        expect(describeUnreadableDocumentTitle("app-tags", t)).toBe("Could not read the build variants");
+    });
+
+    it("puts the store's name on the notice for a document that could not be read", async () => {
+        const { service, showSticky } = await makeHarness();
+
+        service.reportUnreadableDocument(new DocumentCorruptError({
+            kind: "brand",
+            path: "editor/brand.json",
+            reason: "not valid JSON: Unexpected token",
+            text: "{",
+        }), null);
+
+        expect(shown(showSticky).message).toBe("Could not read the brand palette");
+        expect(shown(showSticky).message).not.toContain("brand.json");
+    });
+
+    it("says what is wrong with an unreadable document in the author's terms, not the parser's", async () => {
+        const { service, showSticky } = await makeHarness();
+
+        const raised = service.reportUnreadableDocument(new DocumentCorruptError({
+            kind: "story",
+            path: "editor/story/stories/5322b0e3-f48d-4b77-bfcd-7406613191ce/storydoc.json",
+            reason: "not valid JSON: Unexpected token } in JSON at position 41273",
+            text: "{",
+        }), ".nlstudio/quarantine/2026-09-21T11-30-00-000Z/editor/story/stories/5322b0e3-f48d-4b77-bfcd-7406613191ce/storydoc.json");
+
+        expect(raised).toBe(true);
+        expect(shown(showSticky).detail).toBe(
+            "The file is damaged or is not in a format Studio can read. The file is unchanged, and a copy of it has been kept.",
+        );
+        // The same document again: the notice is already up, so the caller is told it said nothing.
+        expect(service.reportUnreadableDocument(new DocumentCorruptError({
+            kind: "story",
+            path: "editor/story/stories/5322b0e3-f48d-4b77-bfcd-7406613191ce/storydoc.json",
+            reason: "not valid JSON",
+            text: "{",
+        }), null)).toBe(false);
+        expect(showSticky).toHaveBeenCalledTimes(1);
+    });
+
+    it("tells a document a newer Studio saved from a damaged one", () => {
+        const t = createTranslator("en").t;
+        expect(describeUnreadableDocumentDetail({ defect: "newerVersion" }, false, t))
+            .toBe("It was saved by a newer version of NarraLeaf Studio. The file is unchanged. Nothing was written over it.");
+    });
+
+    it.each(SUPPORTED_LOCALES.filter(locale => locale !== "en"))("says why a document could not be read in %s, with no English", locale => {
+        const t = createTranslator(locale).t;
+        for (const defect of ["damaged", "newerVersion"] as const) {
+            for (const quarantined of [true, false]) {
+                const line = describeUnreadableDocumentDetail({ defect }, quarantined, t);
+                expect(line.replace(/NarraLeaf|Studio/g, "")).not.toMatch(/[A-Za-z]{2,}/);
+                expect(line).not.toMatch(/\{\w+\}|\.nlstudio|quarantine/);
+            }
+        }
+    });
+
+    it.each(SUPPORTED_LOCALES)("carries no URL, no id and no unfilled placeholder in any wording (%s)", locale => {
+        const t = createTranslator(locale).t;
+        const details = Object.values(FsRejectErrorCode).flatMap(code => [
+            describeSaveFailureDetail({ code, transient: true, retried: true }, t),
+            describeSaveFailureDetail({ code, transient: false, retried: true }, t),
+            describeSaveFailureDetail({ code, transient: true, retried: false }, t),
+        ]);
+        expect(describeSaveFailureDetail({ code: FsRejectErrorCode.NO_SPACE, transient: true, retried: true }, t))
+            .toContain(t("workspace.shell.save.reason.diskFull"));
+        const titles = [
+            describeSaveFailureTitle(undefined, t),
+            describeSaveFailureTitle({ store: "workspace.shell.save.stores.assets" }, t),
+            describeSaveFailureTitle({ item: "room-warm.png" }, t),
+            describeUnreadableDocumentTitle("characters", t),
+        ];
+        for (const line of [...details, ...titles]) {
+            expect(line).not.toMatch(/app:\/\//);
+            expect(line).not.toMatch(UUID);
+            expect(line).not.toMatch(HEX_ID_TAIL);
+            expect(line).not.toMatch(/\{\w+\}/);
+        }
+    });
+
+    it.each(SUPPORTED_LOCALES.filter(locale => locale !== "en"))("says it in %s, with no English but the names it was given", locale => {
+        const t = createTranslator(locale).t;
+        const lines = [
+            ...Object.values(FsRejectErrorCode).flatMap(code => [
+                describeSaveFailureDetail({ code, transient: true, retried: true }, t),
+                describeSaveFailureDetail({ code, transient: false, retried: true }, t),
+                describeSaveFailureDetail({ code, transient: false, retried: false }, t),
+            ]),
+            describeSaveFailureTitle(undefined, t),
+            describeSaveFailureTitle({ store: "workspace.shell.save.stores.assets" }, t),
+            describeSaveFailureTitle({ store: "workspace.shell.save.stores.panelLayout" }, t),
+            describeSaveFailureTitle({ item: "room-warm.png" }, t),
+            describeUnreadableDocumentTitle("assets-groups", t),
+        ];
+        for (const line of lines) {
+            // "Studio" and "DLC" are names; "room-warm.png" is the asset's.
+            const stripped = line.replace(/room-warm\.png|Studio|DLC/g, "");
+            expect(stripped).not.toMatch(/[A-Za-z]{3,}/);
+        }
     });
 });

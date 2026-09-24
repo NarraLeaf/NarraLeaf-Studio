@@ -290,7 +290,13 @@ describe("getCommandCandidates", () => {
         // The headline of the generic verbs: `/show` is one pick from everything on stage.
         // Puppet characters are in the list like any other: `/show` puts a model on stage the same way
         // it puts a sprite there, and the box is the engine's regardless of who draws its inside.
-        expect(values("/show |")).toEqual(["Alice", "Bob", "Doll", "Ghost", "hero", "portrait", "title", "intro", "fx", "rain"]);
+        // The pictures and clips come last, in the order resolution reads them: what is on stage wins
+        // a shared name, so the list leads with what a typed name would resolve to.
+        expect(values("/show |")).toEqual([
+            "Alice", "Bob", "Doll", "Ghost",
+            "hero", "portrait", "title", "intro", "fx", "rain",
+            "forest_day", "forest_night", "city rain",
+        ]);
         expect(values("/show he|")).toEqual(["hero"]);
         expect(values("/swap |")).toEqual(["hero", "portrait", "title"]);
         // The sound controls lead with the reserved BGM channel - the explicit spelling of the default -
@@ -454,6 +460,12 @@ describe("candidate marks", () => {
             { kind: "stageObject", objectKind: "video" },
             { kind: "stageObject", objectKind: "layer" },
             { kind: "stageObject", objectKind: "vfx" },
+            // The libraries this verb can bring a subject out of. A file carries its id so the menu
+            // draws the picture itself, which is the whole of what tells it from an object of the
+            // same name: a thing on stage draws a glyph, because there is no picture behind it.
+            { kind: "asset", assetType: "image", assetId: "i1" },
+            { kind: "asset", assetType: "image", assetId: "i2" },
+            { kind: "asset", assetType: "image", assetId: "i3" },
         ]);
     });
 
@@ -492,6 +504,7 @@ describe("candidate marks", () => {
         // The two trailing numbers are the overlay knobs `/show` carries for an ambience target;
         // they are offered on every `/show`, and refused with a reason on anything else.
         expect(marks("/show Alice smile |")).toEqual([
+            { kind: "text" },
             { kind: "options", lead: "left" },
             { kind: "options", lead: "fade" },
             { kind: "number", duration: true },

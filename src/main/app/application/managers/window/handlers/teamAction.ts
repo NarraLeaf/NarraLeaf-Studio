@@ -17,11 +17,20 @@
  * window**, not to Studio: two windows may be looking at different projects on the same
  * server, and the last one to stop looking is what ends a subscription.
  *
+ * **Every one of them but letting go asks first who the window is.** They all speak with the
+ * account's sign-in, and that sign-in serves a (server, project) pair only once the author has said
+ * so for that project. The pipe cannot tell one method from another and does not try; what it can
+ * tell is the window, and `teamWindowReach.ts` is the whole of what each kind of window may reach -
+ * the launcher as the account, Settings and the wizard a listing, a workspace only for a project
+ * that uses the sign-in at that server, nothing else anything. A refusal carries a code the IPC
+ * registry reports on, the way it reports a window naming a project that is not its own.
+ * `team.unsubscribe` is the exception, because it only takes this window's own interest away.
+ *
  * The sixth is {@link TeamTransferHandler}, and it is here because a file is the one thing
  * a call cannot carry - see the note on `IPCEventType.teamTransfer`. It is also the only
- * one of the six that reads a path, so it is the only one with anything to check: a path
- * it is given must be inside the project this window has open, which is the same boundary
- * every other file the window touches is held to.
+ * one of the six that reads a path, so it has a second thing to check: a path it is given
+ * must be inside the project this window has open, which is the same boundary every other
+ * file the window touches is held to.
  */
 import path from "node:path";
 
@@ -29,7 +38,9 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import type { TeamCallOutcome, TeamConnection, TeamSubscribeOutcome } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
+import { WindowAppType } from "@shared/types/window";
 
+import { requireTeamReach, TeamReachRefusedError } from "../../team/teamWindowReach";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -48,11 +59,19 @@ export class TeamOpenHandler extends IPCHandler<IPCEventType.teamOpen> {
         window: AppWindow,
         { remoteOrigin }: IPCEvents[IPCEventType.teamOpen]["data"],
     ): Promise<RequestStatus<TeamConnection>> {
-        return this.tryUse(() => window.app.getTeamManager().open(remoteOrigin));
+        return this.tryUse(() => {
+            requireTeamReach(window, remoteOrigin, { op: "open" });
+            return window.app.getTeamManager().open(remoteOrigin);
+        });
     }
 }
 
-/** Where every server Studio knows about stands, for a list that draws all of them. */
+/**
+ * Where every server Studio knows about stands, for a list that draws all of them.
+ *
+ * The launcher's question: it is the picture of every server this machine is signed in to, and a
+ * project's window is about one server rather than all of them.
+ */
 export class TeamConnectionsHandler extends IPCHandler<IPCEventType.teamConnections> {
     readonly name = IPCEventType.teamConnections;
     readonly type = IPCMessageType.request;
@@ -60,7 +79,10 @@ export class TeamConnectionsHandler extends IPCHandler<IPCEventType.teamConnecti
     public async handle(
         window: AppWindow,
     ): Promise<RequestStatus<{ connections: TeamConnection[] }>> {
-        return this.tryUse(() => ({ connections: window.app.getTeamManager().connections() }));
+        return this.tryUse(() => {
+            requireTeamReach(window, null, { op: "connections" });
+            return { connections: window.app.getTeamManager().connections() };
+        });
     }
 }
 
@@ -80,8 +102,13 @@ export class TeamCallHandler extends IPCHandler<IPCEventType.teamCall> {
         window: AppWindow,
         { remoteOrigin, method, params }: IPCEvents[IPCEventType.teamCall]["data"],
     ): Promise<RequestStatus<TeamCallOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getTeamManager().call(remoteOrigin, method, params));
+        return this.tryUse(async () => {
+            const { letGo } = requireTeamReach(window, remoteOrigin, { op: "call", method });
+            const team = window.app.getTeamManager();
+            return letGo
+                ? team.letGo(remoteOrigin, method, params)
+                : team.call(remoteOrigin, method, params);
+        });
     }
 }
 
@@ -94,8 +121,10 @@ export class TeamSubscribeHandler extends IPCHandler<IPCEventType.teamSubscribe>
         window: AppWindow,
         { remoteOrigin, topic }: IPCEvents[IPCEventType.teamSubscribe]["data"],
     ): Promise<RequestStatus<TeamSubscribeOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getTeamManager().subscribe(window, remoteOrigin, topic));
+        return this.tryUse(async () => {
+            requireTeamReach(window, remoteOrigin, { op: "subscribe" });
+            return window.app.getTeamManager().subscribe(window, remoteOrigin, topic);
+        });
     }
 }
 
@@ -104,6 +133,11 @@ export class TeamSubscribeHandler extends IPCHandler<IPCEventType.teamSubscribe>
  *
  * Best effort on purpose: a window that is closed without getting here is tidied up by
  * the manager, which watches for windows going. This is the tidy path, not the only one.
+ *
+ * **Not asked who the window is.** It takes away only this window's own interest - the manager
+ * keys every holder by the window that asked - and it is sent at exactly the moment a project has
+ * stopped using the sign-in, when the Team panel stops following the server. Refusing it then
+ * would keep the topic subscribed for a window that is no longer told anything on it.
  */
 export class TeamUnsubscribeHandler extends IPCHandler<IPCEventType.teamUnsubscribe> {
     readonly name = IPCEventType.teamUnsubscribe;
@@ -127,6 +161,11 @@ export class TeamUnsubscribeHandler extends IPCHandler<IPCEventType.teamUnsubscr
  * by hand: a source or a destination outside the window's own project is refused, and a
  * window with no project - a launcher, a wizard - has no project to be inside and is
  * refused everything.
+ *
+ * And the server is held to the rule every other Team request is: bytes go to or come from a
+ * server for a project that uses the sign-in held there. `status` names no server - it reads what
+ * is moving on this machine - and is answered to a workspace whatever its project uses, because a
+ * transfer it started outlives the answer that allowed it.
  */
 export class TeamTransferHandler extends IPCHandler<IPCEventType.teamTransfer> {
     readonly name = IPCEventType.teamTransfer;
@@ -137,6 +176,13 @@ export class TeamTransferHandler extends IPCHandler<IPCEventType.teamTransfer> {
         request: IPCEvents[IPCEventType.teamTransfer]["data"],
     ): Promise<RequestStatus<TeamTransferOutcome>> {
         return this.tryUse(async () => {
+            if (request.action === "status") {
+                if (window.getWindowType() !== WindowAppType.Workspace) {
+                    throw new TeamReachRefusedError({ kind: "none" }, { op: "transfer" });
+                }
+            } else {
+                requireTeamReach(window, request.remoteOrigin, { op: "transfer" });
+            }
             const named = fileNamedBy(request);
             if (named !== null && !withinProject(window, named)) {
                 return {

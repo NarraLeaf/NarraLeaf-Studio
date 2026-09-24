@@ -30,13 +30,21 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { VcsChangeKind, VcsFileChange, VcsServerProject, VcsServerSession, VcsSyncState } from "@shared/types/vcs";
 import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
-import type { DocumentNameContext } from "@/lib/vcs/documentName";
-import { documentNameOf, renderDocumentName } from "@/lib/vcs/documentName";
-import { useDocumentNames } from "@/lib/vcs/storyTitles";
+import type { DocumentName, DocumentNameContext } from "@/lib/vcs/documentName";
+import {
+    documentNameOf,
+    documentNameSourcesFor,
+    numberRepeatedNames,
+    renderDocumentName,
+} from "@/lib/vcs/documentName";
+import { readableStoragePath } from "@/lib/vcs/identifierDisplay";
+import { useDocumentNames } from "@/lib/vcs/nameSources";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
@@ -291,9 +299,9 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 {onRevision && (
                     /* Vertical because 48px has no room for `#12` horizontally, and the label is the
                        other half of the indicator - a tint alone does not say WHICH version.
-                       `writingMode` inline rather than as a utility class: narraleaf-react injects a
-                       Tailwind v4 sheet over this app, and betting on a generated utility here has
-                       burned us before. */
+                       `writingMode` is written as an inline style: nothing else in Studio's own
+                       chrome sets text sideways, so a utility class for it would exist for this one
+                       span. */
                     <span
                         className="text-2xs tabular-nums text-primary"
                         style={{ writingMode: "vertical-rl" }}
@@ -621,23 +629,18 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
  * the refresh is the way to the other half. The rail therefore runs no document comparison at all,
  * rather than running one whenever a row was opened.
  */
-/**
- * The one side this rail is ever about.
- *
- * The rail lists what has changed on disk, so the titles it needs are the ones on disk. Held as a
- * module constant rather than written at the call site because `useDocumentNames` keys its read on
- * the identity of the sides it is given.
- */
-const WORKING_TREE_SIDES = { before: null, after: { at: "working-tree" } } as const;
-
 export function ChangesSection({ surface }: { surface: VersionSurface }) {
-    // Named the way the comparison names them, so one story is not `Demo` in the comparison and an
-    // id in the rail beside it.
-    const names = useDocumentNames(WORKING_TREE_SIDES);
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { status } = surface;
     const view = useMemo(() => (status ? buildChangeList(status.files) : null), [status]);
+    const names = useRailNames(surface, view?.rows ?? null);
+    // Numbered over the rows actually drawn, so two stand-ins on the list read "Story 1" and
+    // "Story 2" rather than one word twice (`numberRepeatedNames`).
+    const rowNames = useMemo(
+        () => numberRepeatedNames((view?.rows ?? []).map(file => documentNameOf(file.path, names))),
+        [view, names],
+    );
 
     return (
         <div data-vcs-seam="change-list" className="border-b border-edge px-3 py-2">
@@ -693,8 +696,8 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
 
             {view !== null && view.rows.length > 0 && (
                 <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
-                    {view.rows.map(file => (
-                        <ChangeRow key={file.path} file={file} names={names} />
+                    {view.rows.map((file, position) => (
+                        <ChangeRow key={file.path} file={file} name={rowNames[position]} names={names} />
                     ))}
                     {view.hidden > 0 && (
                         <p className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -705,6 +708,38 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
             )}
         </div>
     );
+}
+
+/**
+ * What the rail's rows are named from.
+ *
+ * Read the way the comparison reads its names (`nameSources.ts`), so one scene is not `Demo` in the
+ * comparison and a stand-in in the rail beside it, and one imported picture is `Forest Clearing` in
+ * both. Two things are particular to the rail:
+ *
+ *  - **The older side is the head.** A deleted asset's record is gone from the working tree along
+ *    with its bytes, so the only place its name still exists is the version this list is measured
+ *    against - which is also what the comparison tab would read it from.
+ *  - **It re-reads whenever the list does.** The rail's rows are the working tree's, and they are
+ *    renamed and imported underneath it; names read once at mount would call a picture imported a
+ *    minute later by its stand-in until the panel was closed. Only the libraries the listed paths
+ *    are named from are read (`documentNameSourcesFor`), so a list of three edited scenes costs one
+ *    story index per side and never the asset shards.
+ */
+function useRailNames(surface: VersionSurface, rows: readonly VcsFileChange[] | null): DocumentNameContext {
+    const head = surface.state.kind === "current" ? surface.state.head : null;
+    const sides = useMemo<ComparisonSides>(
+        () => ({
+            before: head === null ? null : { at: "revision", revision: head },
+            after: { at: "working-tree" },
+        }),
+        [head],
+    );
+    const sources = useMemo(
+        () => documentNameSourcesFor((rows ?? []).flatMap(file => (file.fromPath ? [file.path, file.fromPath] : [file.path]))),
+        [rows],
+    );
+    return useDocumentNames(sides, { sources, refreshKey: surface.status });
 }
 
 /**
@@ -721,30 +756,35 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
  * not on `frozen`) - so switching it off would take away the only way to see what is uncommitted
  * precisely while the author is unable to commit it.
  *
- * The path is split so the FILE NAME survives a narrow column and the directory is what gets cut - and
- * cut at its head, not its tail, because the distinguishing end of a path here is the last thing on it
- * (`editor/story/chapter-01.json` against `editor/story/chapter-02.json` differ in the one character an
- * ordinary trailing ellipsis would eat). Overflowing to the left is what `direction: rtl` on the
- * directory box buys; the inner span puts the characters back in reading order, which an
- * all-neutral directory name (`2026/07`) would otherwise get wrong. Inline rather than as utilities:
- * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
- * has burned us before.
+ * The row draws the thing's NAME, never its path: the comparison's naming layer answers for it
+ * (`documentName.ts`), numbered apart by the list above where two stand-ins would read the same. The
+ * path goes in the tooltip where it is one an author could look for, and nowhere when it carries an
+ * id - a story's folder, an asset's shard - because the interface never shows one.
  */
-function ChangeRow({ file, names }: { file: VcsFileChange; names: DocumentNameContext }) {
+function ChangeRow({ file, name: named, names }: {
+    file: VcsFileChange;
+    name: DocumentName;
+    names: DocumentNameContext;
+}) {
     const { t } = useTranslation();
-    // What the author calls this thing, not the file it is stored in. The rail has no comparison
-    // to read a story's title out of, so a document that has a name of its own is qualified by its
-    // id rather than given a title this surface cannot see - the whole path is in the tooltip.
-    const name = renderDocumentName(documentNameOf(file.path, names), t);
+    // What the author calls this thing, not the file it is stored in: a scene's title, an asset's
+    // name, the name of a kind - through the same layer the comparison names its rows with.
+    const name = renderDocumentName(named, t);
     const Icon = CHANGE_ICONS[file.kind];
     // Not cast to `TranslationKey`: the template resolves to a union of the five literal keys, so a
     // renamed or missing one is a type error here rather than a string that renders as itself.
     const kindLabel = t(`workspace.shell.versionControl.changeKind.${file.kind}`);
-    // The whole repository-relative path, plus where a move or copy came from - the row itself has no
-    // room for an origin, and dropping it would make a move indistinguishable from an add.
-    const title = file.fromPath
-        ? `${file.path}\n${t("workspace.shell.versionControl.changeFromPath", { path: file.fromPath })}`
-        : file.path;
+    // The path, where it is one an author could look for, plus where a move or copy came from - the
+    // row itself has no room for an origin, and dropping it would make a move indistinguishable from
+    // an add. The origin is NAMED, like the row: a moved asset's old path is its id.
+    const title = [
+        readableStoragePath(file.path),
+        file.fromPath
+            ? t("workspace.shell.versionControl.changeFrom", {
+                name: renderDocumentName(documentNameOf(file.fromPath, names), t),
+            })
+            : null,
+    ].filter(Boolean).join("\n") || undefined;
 
     return (
         <div
@@ -861,8 +901,8 @@ export function CommitForm({ surface }: { surface: VersionSurface }) {
                 one press away from recording.
 
                 Not asked at all while a session stands. `serverSession` is what
-                `VcsManager.getServerSession` answered for THIS project's remote, and that is the
-                same `storedServerSession(remoteOrigin)` lookup `resolveIdentity` makes before
+                `VcsManager.getServerSession` answered for THIS project's remote - the sign-in this
+                project uses, which is the same lookup `resolveIdentity` makes before
                 preferring the account over anything in settings - so a name typed here while it is
                 non-null is a name nothing will ever record. Worse, the section above is at that
                 moment saying "Signed in as Ada Lovelace" three lines up, so the panel was asking
@@ -1037,6 +1077,19 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
     return held;
 }
 
+/**
+ * Whether the author has said this project uses the sign-in held for a server.
+ *
+ * Read off the listing's `usedBy`, which the main process works out from the recorded answers for
+ * the account signed in there now - the same record that decides what this window may ask that
+ * server. An empty path answers no: a window that cannot name its project cannot find it listed.
+ */
+function projectUsesSignInAt(server: VcsServerSession, projectPath: string): boolean {
+    if (projectPath === "") return false;
+    const own = normalizeProjectPath(projectPath);
+    return (server.usedBy ?? []).some(user => normalizeProjectPath(user.path) === own);
+}
+
 export function ServerPickerDialog({ surface, isOpen, onClose }: {
     surface: VersionSurface;
     isOpen: boolean;
@@ -1050,6 +1103,51 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
     const [name, setName] = useState("");
     const [adding, setAdding] = useState(false);
     const running = surface.busy !== null;
+
+    /**
+     * The servers whose sign-in the author has said, while this dialog was up, this project uses.
+     *
+     * **Why the dialog asks at all.** What a server holds is read over the account's sign-in, and a
+     * project reaches a server that way only once the author has said it uses the sign-in there - the
+     * main process refuses anything else from a project's window. Choosing where a project goes is
+     * exactly the moment that question is about, so it is put when a server is chosen here, and the
+     * list follows the answer. Asked later - when Create is pressed - it would come after the author
+     * had typed a name against a list they could not see.
+     *
+     * Added to rather than replaced: a server read again from the listing, or the project's own
+     * sign-in re-read after the answer, must not take away one the author has just said yes to.
+     */
+    const [agreed, setAgreed] = useState<ReadonlySet<string>>(() => new Set());
+    /** The server a question is up about, or null. */
+    const [asking, setAsking] = useState<string | null>(null);
+    const projectPath = context?.project.getConfig().projectPath ?? "";
+
+    useEffect(() => {
+        if (!isOpen) setAgreed(new Set());
+    }, [isOpen]);
+
+    /** Whether this project uses the sign-in held for this server, by any of the three reckonings. */
+    const usesSignIn = (remoteOrigin: string): boolean =>
+        agreed.has(remoteOrigin)
+        || surface.serverSession?.remoteOrigin === remoteOrigin
+        || servers.some(server => server.remoteOrigin === remoteOrigin && projectUsesSignInAt(server, projectPath));
+
+    /**
+     * Choose a server, and put the sign-in question about it where the project does not use it yet.
+     *
+     * Choosing the row that is already chosen asks too: the dialog opens on the project's own server,
+     * and pressing it is how an author who has not answered for it says they want to.
+     */
+    const choose = (remoteOrigin: string) => {
+        setChoice(remoteOrigin);
+        if (asking !== null || usesSignIn(remoteOrigin)) return;
+        setAsking(remoteOrigin);
+        void surface.askToUseServer(remoteOrigin)
+            .then(uses => {
+                if (uses) setAgreed(current => new Set([...current, remoteOrigin]));
+            })
+            .finally(() => setAsking(null));
+    };
 
     useEffect(() => {
         if (!isOpen) return;
@@ -1079,7 +1177,9 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
 
     /** The server chosen out of the list, as opposed to nothing chosen yet. */
     const picked = choice === NO_SERVER || choice === UNKNOWN_SERVER ? null : choice;
-    const held = useServerProjects(isOpen ? picked : null);
+    /** Whether what the chosen server holds may be read for this project - see {@link agreed}. */
+    const pickedUsable = picked !== null && usesSignIn(picked);
+    const held = useServerProjects(isOpen && pickedUsable ? picked : null);
 
     /**
      * The project on that server that IS this project, or null because it is not there yet.
@@ -1115,7 +1215,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
 
     /** What this project will answer to on the destination, whichever of the two acts it is. */
     const chosenName = mine !== null ? mine.name : wanted;
-    const ready = picked !== null && chosenName !== "" && nameProblem === null && !held.reading;
+    const ready = picked !== null && chosenName !== "" && nameProblem === null && !held.reading && asking === null;
 
     /**
      * Put this project on the chosen server: record it there, point at it, send it.
@@ -1147,7 +1247,9 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                     onAdded={session => {
                         // Chosen as well as listed: somebody who just added a server did it
                         // to use it, and leaving the list unselected would ask them to pick
-                        // the row they were looking at a moment ago.
+                        // the row they were looking at a moment ago. Signing in from inside a
+                        // project is also that project's answer, so there is nothing to ask.
+                        setAgreed(current => new Set([...current, session.remoteOrigin]));
                         void reload().then(() => setChoice(session.remoteOrigin));
                     }}
                     onClose={() => setAdding(false)}
@@ -1210,7 +1312,7 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                                 key={server.remoteOrigin}
                                 session={server}
                                 chosen={choice === server.remoteOrigin}
-                                onChoose={() => setChoice(server.remoteOrigin)}
+                                onChoose={() => choose(server.remoteOrigin)}
                                 data-server-choice={server.remoteOrigin}
                             />
                         ))}
@@ -1241,6 +1343,16 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                                 <p className="text-xs text-fg-subtle">{t(`${key}.reading`)}</p>
                             )}
 
+                            {/* The project does not use the sign-in here, so what the server holds
+                                is not read - and the name is asked for the way it is where a list
+                                could not be read. Pressing the row puts the question; pressing
+                                Create puts it too. Said as the state it is, not as a problem. */}
+                            {!pickedUsable && asking === null && (
+                                <p data-vcs-seam="picker-sign-in-unused" className="text-xs text-fg-subtle">
+                                    {t("workspace.shell.team.signInUnused")}
+                                </p>
+                            )}
+
                             {!held.reading && held.problem !== null && (
                                 // The list could not be read, so the dialog knows nothing about
                                 // what is on that server - and asks for a name the way it did
@@ -1255,7 +1367,10 @@ export function ServerPickerDialog({ surface, isOpen, onClose }: {
                                 </p>
                             )}
 
-                            {!held.reading && mine === null && (
+                            {/* Not while the sign-in question is up: what the author is asked for
+                                here depends on the answer - a server that already holds this
+                                project needs no name at all. */}
+                            {!held.reading && mine === null && asking === null && (
                                 <>
                                     <FieldLabel>{t(`${key}.nameLabel`)}</FieldLabel>
                                     <Input
@@ -1385,10 +1500,12 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
     }
 
     const face = serverFace(syncState);
-    // The name the server answers to. `serverSession` is null for a server this machine has no
-    // account on - a copy somebody sent, or one that was signed out of - and that is the single
-    // case with no name to read: its address is then all there is to call it by.
-    const name = surface.serverSession ? serverDisplayName(surface.serverSession) : serverHost(remote);
+    // The name the server answers to, from whichever sign-in this machine holds for it - the one
+    // this project uses, or the one it could. A server this machine has no account on - a copy
+    // somebody sent, or one that was signed out of - is the single case with no name to read: its
+    // address is then all there is to call it by.
+    const known = surface.serverSession ?? surface.availableSession;
+    const name = known ? serverDisplayName(known) : serverHost(remote);
 
     return (
         <div data-vcs-seam="server" data-help-topic="versionServer" className="border-b border-edge px-3 py-2">

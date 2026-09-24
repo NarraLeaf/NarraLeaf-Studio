@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import { constants as fsConstants } from "fs";
 import path from "path";
 import type {
@@ -9,6 +9,7 @@ import type {
     GameBuildPlatform,
 } from "@shared/types/gameBuild";
 import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
+import { MIN_ICON_SOURCE_EDGE } from "@shared/utils/iconRecipe";
 import { signingNotarizes } from "@shared/types/signing";
 import type {
     AppleNotarizationFields,
@@ -56,8 +57,12 @@ const SEMVER_PATTERN =
  * author's icon, blurry", which is what the warning says. It used to be the
  * packager's own floor for converting a PNG, back when the packager did the
  * converting; nothing refuses a build over it now.
+ *
+ * It is the icon panel's line too, read from the same constant: the panel
+ * warning about a master and the build warning about the same file are one
+ * judgement, and two numbers could drift apart.
  */
-export const MIN_ICON_SIZE = 512;
+export const MIN_ICON_SIZE = MIN_ICON_SOURCE_EDGE;
 
 export function isValidProjectVersion(version: string): boolean {
     return SEMVER_PATTERN.test(version);

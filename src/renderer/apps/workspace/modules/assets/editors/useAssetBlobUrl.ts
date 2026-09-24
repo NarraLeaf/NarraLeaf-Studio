@@ -4,32 +4,38 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { AssetReadFailure } from "./useAssetReadNotice";
+
+type AssetBlobState = { url: string | null; bytes: Uint8Array | null; loading: boolean; failure: AssetReadFailure | null };
 
 /**
  * Fetch an asset's bytes and expose them as an object URL (revoked on unmount / asset change),
  * plus the raw bytes for consumers that decode themselves (waveforms, JSON text). Shared by the
  * simple preview editors - the image/audio editors predate it and manage their own fetch.
+ *
+ * A read that fails answers what it failed with - the read's code - and not its message, which is
+ * English and names the asset's storage path. `useAssetReadNotice` words it.
  */
 export function useAssetBlobUrl<T extends AssetType>(
     asset: Asset<T, AssetSource> | undefined,
     mimeType?: string,
-): { url: string | null; bytes: Uint8Array | null; loading: boolean; error: string | null } {
+): AssetBlobState {
     const { context } = useWorkspace();
-    const [state, setState] = useState<{ url: string | null; bytes: Uint8Array | null; loading: boolean; error: string | null }>({
+    const [state, setState] = useState<AssetBlobState>({
         url: null,
         bytes: null,
         loading: true,
-        error: null,
+        failure: null,
     });
     const urlRef = useRef<string | null>(null);
 
     useEffect(() => {
         let mounted = true;
         if (!context || !asset) {
-            setState({ url: null, bytes: null, loading: false, error: null });
+            setState({ url: null, bytes: null, loading: false, failure: null });
             return;
         }
-        setState(previous => ({ ...previous, loading: true, error: null }));
+        setState(previous => ({ ...previous, loading: true, failure: null }));
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         void assetsService
             .fetch(asset)
@@ -38,7 +44,8 @@ export function useAssetBlobUrl<T extends AssetType>(
                     return;
                 }
                 if (!result.success) {
-                    setState({ url: null, bytes: null, loading: false, error: String(result.error ?? "Failed to load asset") });
+                    console.warn(`[assets] could not read ${asset.id}: ${result.error ?? ""}`);
+                    setState({ url: null, bytes: null, loading: false, failure: { code: result.code } });
                     return;
                 }
                 const bytes = result.data.data as Uint8Array;
@@ -48,11 +55,12 @@ export function useAssetBlobUrl<T extends AssetType>(
                     URL.revokeObjectURL(urlRef.current);
                 }
                 urlRef.current = url;
-                setState({ url, bytes, loading: false, error: null });
+                setState({ url, bytes, loading: false, failure: null });
             })
             .catch(error => {
                 if (mounted) {
-                    setState({ url: null, bytes: null, loading: false, error: String(error) });
+                    console.warn(`[assets] could not read ${asset.id}`, error);
+                    setState({ url: null, bytes: null, loading: false, failure: {} });
                 }
             });
         return () => {

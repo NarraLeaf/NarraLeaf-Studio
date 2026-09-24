@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Asset, AssetGroup, AssetSource } from '@/lib/workspace/services/assets/types';
 import { REMOTE_ASSET_ALLOWED_PROTOCOLS } from '@shared/constants/remoteAsset';
-import type { RequestStatus } from '@shared/types/ipcEvents';
+import type { RefusableStatus } from '@/lib/workspace/services/assets/assetImportRefusal';
 import {
     ASSET_CATEGORY_EXTENSIONS,
     ASSET_CATEGORY_TYPES,
@@ -18,6 +18,7 @@ import { isProjectTrusted } from '@/lib/workspace/projectTrust';
 import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
 import { UIService } from '@/lib/workspace/services/core/UIService';
 import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
+import { describeReferenceGapSites } from '@/lib/workspace/services/references/assetNameGapText';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
@@ -25,7 +26,6 @@ import { getInterface } from '@/lib/app/bridge';
 import { useTranslation } from '@/lib/i18n';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
 import { assetLibraryFreezeScope } from '../assetLiveSession';
-import type { Translator } from '@shared/i18n';
 import {
     assetSelectionKey,
     resolveAssetActionTargets,
@@ -50,6 +50,10 @@ import type { MediaSupportService } from '@/lib/workspace/services/media/MediaSu
 import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
 import { toPersistedEol } from '../editors/text/textDocumentPreferences';
+import { describeAssetExportFailure } from './assetExportFailure';
+import { describeFolderEditFailure, isReportedLibraryWrite } from './assetActionFailure';
+import { describeAssetImportRefusal, summarizeImportFailures } from '@/lib/workspace/assets/importFailure';
+import { extname } from '@shared/utils/path';
 
 export type { ContextMenuTargetState };
 
@@ -141,19 +145,6 @@ function parseFileUriList(dataTransfer?: DataTransfer): string[] {
                 return [];
             }
         });
-}
-
-function summarizeImportFailures(errors: Array<string | undefined>, t: Translator["t"]): string {
-    const messages = errors.filter((message): message is string => typeof message === "string" && message.length > 0);
-    if (messages.length === 0) {
-        return t("assets.unknownError");
-    }
-
-    const visibleMessages = messages.slice(0, 3);
-    const remaining = messages.length - visibleMessages.length;
-    return remaining > 0
-        ? `${visibleMessages.join("\n")}\n${t("assets.import.moreFailures", { count: remaining })}`
-        : visibleMessages.join("\n");
 }
 
 /**
@@ -386,19 +377,27 @@ export function useAssetActions({
                         });
 
                         if (!result.success) {
-                            // This bucket fell over, so every file in it is still outstanding.
-                            failures.push(...bucket.paths.map(path => ({ path, error: result.error })));
-                            uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
+                            // This bucket fell over, so every file in it is still outstanding. Its
+                            // sentence is the importer's - English, naming paths - so it goes to the log.
+                            console.warn("[assets] an import batch failed", result.error);
+                            failures.push(...bucket.paths.map(path => ({ path })));
+                            uiService.showAlert(t("assets.import.failedTitle"), t("assets.unknownError"));
                             completed += bucket.paths.length;
                             continue;
                         }
 
                         // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets
-                        // a failure be named by file rather than by a bare error string.
+                        // a failure be named by file. Its reason is the refusal, worded here: the
+                        // importer's own `error` is English and names the asset's storage path.
                         const perFile = result.data ?? [];
-                        failures.push(...perFile.flatMap((assetResult, index) =>
-                            assetResult.success ? [] : [{ path: bucket.paths[index], error: assetResult.error }]
-                        ));
+                        failures.push(...perFile.flatMap((assetResult, index) => {
+                            if (assetResult.success) {
+                                return [];
+                            }
+                            console.warn(`[assets] could not import ${bucket.paths[index]}`, assetResult.error);
+                            const reason = describeAssetImportRefusal(assetResult.refusal, t);
+                            return [{ path: bucket.paths[index], ...(reason ? { error: reason } : {}) }];
+                        }));
                         for (const [index, assetResult] of perFile.entries()) {
                             if (!assetResult.success || !assetResult.data) {
                                 continue;
@@ -415,8 +414,10 @@ export function useAssetActions({
                                 if (!entryResult.success) {
                                     // Named as a failure of that file. The folder is in the library,
                                     // but nothing records which file in it draws, and a model that
-                                    // will not draw is not an import that worked.
-                                    failures.push({ path: bucket.paths[index], error: entryResult.error });
+                                    // will not draw is not an import that worked. Nothing here is the
+                                    // author's to act on, so it is listed by name and logged.
+                                    console.warn(`[assets] could not record the entry of ${asset.name}`, entryResult.error);
+                                    failures.push({ path: bucket.paths[index] });
                                 }
                             }
                         }
@@ -424,11 +425,17 @@ export function useAssetActions({
                     }
 
                     // Anything the bucketing could not place (dropped onto a section that does not take
-                    // it) never reached an importer, and is reported rather than silently swallowed.
+                    // it) never reached an importer, and is reported rather than silently swallowed -
+                    // as the extension this section does not take, which is what placed nothing.
                     const attempted = new Set(buckets.flatMap(bucket => bucket.paths));
                     failures.push(...paths
                         .filter(path => !attempted.has(path))
-                        .map(path => ({ path, error: t("assets.import.noMatchingFiles") })));
+                        .map(path => {
+                            // A file with no extension at all is listed by name alone.
+                            const ext = extname(path).slice(1).toLowerCase();
+                            const reason = ext ? describeAssetImportRefusal({ kind: "wrongType", ext }, t) : null;
+                            return reason ? { path, error: reason } : { path };
+                        }));
 
                     importQueue?.finish(failures);
                     reportedPerFile = true;
@@ -440,7 +447,9 @@ export function useAssetActions({
                         for (const asset of importedAssets) {
                             const moveResult = await svc.moveAssetToGroup(asset, groupId);
                             if (!moveResult.success) {
-                                moveErrors.push(`${asset.name}: ${moveResult.error || t("assets.unknownError")}`);
+                                // By name: the service's reason names the folder by its id.
+                                console.warn(`[assets] could not file ${asset.name}: ${moveResult.error}`);
+                                moveErrors.push(`- ${asset.name}`);
                             }
                         }
                         if (moveErrors.length > 0) {
@@ -453,7 +462,10 @@ export function useAssetActions({
                     if (failures.length > 0 && !importQueue) {
                         uiService.showAlert(
                             importedAssets.length > 0 ? t("assets.import.someFailedTitle") : t("assets.import.failedTitle"),
-                            summarizeImportFailures(failures.map(failure => failure.error), t)
+                            summarizeImportFailures(
+                                failures.map(failure => ({ path: failure.path, reason: failure.error ?? null })),
+                                t,
+                            ),
                         );
                     }
                 });
@@ -463,7 +475,9 @@ export function useAssetActions({
             onActionComplete();
         } catch (error) {
             console.error("Failed to import assets", error);
-            const message = error instanceof Error ? error.message : t("assets.unknownError");
+            // What threw is a service's or the platform's sentence, for the log. Nothing in it is the
+            // author's to act on, and it can name the asset's storage path.
+            const message = t("assets.unknownError");
             // Only when no file ever got a verdict of its own. `finish` replaces the strip's list
             // outright, and the moves, the scratch sweep and `onActionComplete` all run after the
             // per-file one has already been handed over - so blaming every path from here would
@@ -474,7 +488,7 @@ export function useAssetActions({
                 // leaves the strip a retry instead of a progress bar that never moves again. The
                 // files that failed to convert are carried through as well; they never had an
                 // importer to be turned away by.
-                importQueue?.finish([...preFailures, ...paths.map(path => ({ path, error: message }))]);
+                importQueue?.finish([...preFailures, ...paths.map(path => ({ path }))]);
             }
             uiService.showAlert(t("assets.import.failedTitle"), message);
         } finally {
@@ -490,12 +504,11 @@ export function useAssetActions({
         if (files && files.length > 0) {
             const fileArray = Array.from(files);
             const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
-            if (!grantResult.success) {
-                uiService.showAlert(t("assets.import.unableTitle"), grantResult.error || t("assets.import.fileAccessFailed"));
-                return;
-            }
-            if (!grantResult.data.ok) {
-                uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
+            // Either way it is the one sentence: the grant's own message is the platform's English and
+            // names the dropped paths, and there is nothing in it for the author to act on.
+            if (!grantResult.success || !grantResult.data.ok) {
+                console.warn("[assets] could not be granted the dropped files", grantResult);
+                uiService.showAlert(t("assets.import.unableTitle"), t("assets.import.fileAccessFailed"));
                 return;
             }
 
@@ -582,11 +595,9 @@ export function useAssetActions({
                     return;
                 }
             } catch (error) {
+                // What threw is the probe's or the platform's English; it stays in the log.
                 console.error("Failed to check the files before importing", error);
-                uiService.showAlert(
-                    t("assets.import.unableTitle"),
-                    error instanceof Error ? error.message : t("assets.unknownError"),
-                );
+                uiService.showAlert(t("assets.import.unableTitle"), t("assets.unknownError"));
                 return;
             } finally {
                 notifyLoading(false);
@@ -709,36 +720,43 @@ export function useAssetActions({
 
         try {
             await withAssetsService(async (assetsService) => {
-                let result: RequestStatus<Asset<AssetType, AssetSource.Remote>> = {
-                    success: false,
-                    error: t("assets.unknownError"),
-                };
+                let result: RefusableStatus<Asset<AssetType, AssetSource.Remote>> = { success: false };
                 await assetsService.transaction(async (svc) => {
                     result = await svc.importRemoteAsset(category, trimmed, groupId);
                 });
                 importQueue?.progress({ completed: 1, total: 1 });
-                importQueue?.finish(result.success ? [] : [{ path: trimmed, error: result.error }]);
+                // The refusal worded here, as a local file's is: the importer's own `error` is
+                // English, quotes the server's status line, and can name the snapshot's storage path.
+                let reason: string | null = null;
+                if (!result.success) {
+                    console.warn(`[assets] could not import ${trimmed}`, result.error);
+                    reason = describeAssetImportRefusal(result.refusal, t);
+                }
+                importQueue?.finish(result.success ? [] : [{ path: trimmed, ...(reason ? { error: reason } : {}) }]);
                 reportedVerdict = true;
 
                 if (!result.success && !importQueue) {
                     context.services.get<UIService>(Services.UI).showAlert(
                         t("assets.import.remoteFailedTitle"),
-                        result.error || t("assets.unknownError")
+                        reason ?? t("assets.unknownError"),
                     );
                 }
             });
 
             onActionComplete();
         } catch (error) {
+            // What threw is a service's or the platform's sentence, for the log.
             console.error("Failed to import remote asset", error);
-            const message = error instanceof Error ? error.message : t("assets.unknownError");
             // Only if the run never reached a verdict. Then the strip is told the URL is outstanding,
             // and it keeps the address, which is the only thing standing between a failure and
             // typing it back in.
             if (!reportedVerdict) {
-                importQueue?.finish([{ path: trimmed, error: message }]);
+                importQueue?.finish([{ path: trimmed }]);
             }
-            context.services.get<UIService>(Services.UI).showAlert(t("assets.import.remoteFailedTitle"), message);
+            context.services.get<UIService>(Services.UI).showAlert(
+                t("assets.import.remoteFailedTitle"),
+                t("assets.unknownError"),
+            );
         } finally {
             notifyLoading(false);
         }
@@ -761,25 +779,25 @@ export function useAssetActions({
             if (!groupName) return;
 
             await withAssetsService(async (assetsService) => {
-                const result = await assetsService.createGroup(category, groupName, parentGroupId);
+                // The one notice for a folder that could not be written is this one: it can say which
+                // change was lost and why, where the save-status surface could only say the asset
+                // library was not saved. So the write is declared as this caller's to report, and that
+                // surface only logs it. The folder is not in the list - it is held only once written.
+                const result = await assetsService.createGroup(category, groupName, parentGroupId, { callerReports: true });
                 if (result.success) {
                     return;
                 }
-                // Names the action and nothing else. The write that failed here raises the workspace's
-                // own save failure too, which is already on screen with the file and a retry, so the
-                // reason is covered; what it cannot say is which action was lost. The row is drawn from
-                // memory whether or not the write landed, so without this the author is looking at a
-                // group that is not on disk.
+                const notice = describeFolderEditFailure(t("assets.createGroup.failed"), result, t);
                 contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                    t("assets.createGroup.failed"),
+                    notice.message,
                     "error",
+                    { detail: notice.detail },
                 );
             });
             onActionComplete();
         } catch (error) {
             console.error("Failed to create asset group", error);
-            // Same sentence as the refusal above, for the same reason: whichever way it ended, the
-            // group the author is looking at is not there.
+            // The same title as the refusal above; there is no reason an author could act on.
             contextRef.current?.services.get<UIService>(Services.UI).showNotification(
                 t("assets.createGroup.failed"),
                 "error",
@@ -858,10 +876,9 @@ export function useAssetActions({
             onActionComplete();
         } catch (error) {
             console.error("Failed to create the text file", error);
-            ctx.services.get<UIService>(Services.UI).showAlert(
-                t("assets.newTextFile.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
-            );
+            // The title alone: what fell over here is not the write, whose refusal is answered above
+            // in the author's words, and the error's own message is the log's.
+            ctx.services.get<UIService>(Services.UI).showNotification(t("assets.newTextFile.failedTitle"), "error");
         } finally {
             notifyLoading(false);
         }
@@ -921,10 +938,20 @@ export function useAssetActions({
 
         // Named per row rather than counted: a paste of a dozen rows where three did not arrive is
         // read by looking for the three, and the list re-renders looking almost right either way.
+        //
+        // By name alone. The service's reasons are written for the log - English, naming records by
+        // id - and a row that failed only because the library's file could not be written is left
+        // out: a paste writes several of those files, and the save-status surface has already said
+        // so under one title for all of them.
         const pasteFailures: string[] = [];
         let pastedCount = 0;
-        const noteFailure = (name: string, error?: string) => {
-            pasteFailures.push(`${name}: ${error || t("assets.unknownError")}`);
+        const noteFailure = (name: string, result: { code?: string; error?: string }) => {
+            if (result.error) {
+                console.warn(`[assets] paste refused ${name}: ${result.error}`);
+            }
+            if (!isReportedLibraryWrite(result)) {
+                pasteFailures.push(`- ${name}`);
+            }
         };
 
         try {
@@ -937,7 +964,7 @@ export function useAssetActions({
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(a.name, moveResult.error);
+                                noteFailure(a.name, moveResult);
                             }
                         }
                         // Move groups
@@ -946,7 +973,7 @@ export function useAssetActions({
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(g.name, moveResult.error);
+                                noteFailure(g.name, moveResult);
                             }
                         }
                         setClipboard(null);
@@ -955,7 +982,7 @@ export function useAssetActions({
                         for (const a of clipboard.assets) {
                             const dupResult = await svc.duplicateAsset(a);
                             if (!dupResult.success || !dupResult.data) {
-                                noteFailure(a.name, dupResult.error);
+                                noteFailure(a.name, dupResult);
                                 continue;
                             }
                             // A copy that was made but not moved is still a row the author cannot find
@@ -964,7 +991,7 @@ export function useAssetActions({
                             if (moveResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(a.name, moveResult.error);
+                                noteFailure(a.name, moveResult);
                             }
                         }
                         // Duplicate groups (recursively copies all assets and child groups)
@@ -973,7 +1000,7 @@ export function useAssetActions({
                             if (dupResult.success) {
                                 pastedCount += 1;
                             } else {
-                                noteFailure(g.name, dupResult.error);
+                                noteFailure(g.name, dupResult);
                             }
                         }
                     }
@@ -996,10 +1023,12 @@ export function useAssetActions({
         } catch (error) {
             console.error("Failed to paste assets", error);
             // The run stopped where it stopped, so the count still says whether anything arrived;
-            // the rows it stopped before are the ones the author will not find.
-            context.services.get<UIService>(Services.UI).showAlert(
+            // the rows it stopped before are the ones the author will not find. The rows already
+            // refused are named, and the error itself - the log's - is not.
+            context.services.get<UIService>(Services.UI).showNotification(
                 pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
+                "error",
+                pasteFailures.length > 0 ? { detail: pasteFailures.join("\n") } : undefined,
             );
         } finally {
             notifyLoading(false);
@@ -1023,21 +1052,28 @@ export function useAssetActions({
         if (!newName) return;
 
         await withAssetsService(async (assetsService) => {
+            // A folder's rename reports its own write, as a new folder does (see `handleCreateGroup`):
+            // this notice names the row and says why, and the save-status surface only logs it. An
+            // asset's rename is a record edit that goes out with the next shard write, which that
+            // surface reports; it is only refused here when the asset is gone.
             const result = target.isGroup
-                ? await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName)
+                ? await assetsService.renameGroup(
+                    target.category,
+                    (target.item as AssetGroup).id,
+                    newName,
+                    { callerReports: true },
+                )
                 : await assetsService.renameAsset(target.item as Asset, newName);
             if (result.success) {
                 return;
             }
-            // Names the row and nothing else. A rename is only refused when the write fails, and
-            // that already puts the workspace's own save failure on screen with the file and a
-            // retry, so carrying the reason here would print the same sentence twice.
-            //
             // The name is the one the author started from: `renameGroup` puts the record back when
             // the write fails, so that is what the row still says.
+            const notice = describeFolderEditFailure(t("assets.rename.failed", { name: initialName }), result, t);
             context.services.get<UIService>(Services.UI).showNotification(
-                t("assets.rename.failed", { name: initialName }),
+                notice.message,
                 "error",
+                { detail: notice.detail },
             );
         });
 
@@ -1162,17 +1198,23 @@ export function useAssetActions({
             // looked up here, so the list the author is shown and the list the delete is checked
             // against cannot drift apart. "No references found" and "could not look for references"
             // stay different answers: an empty index reports every asset as unused.
-            const { checked: referencesChecked, references: referencesByAsset } =
+            const { checked: referencesChecked, references: referencesByAsset, gaps: coverageGaps } =
                 (await withAssetsService(assetsService => assetsService.findAssetReferences(
                     affectedAssets.map(asset => asset.id),
                     affectedAssets.map(asset => asset.type),
                 )))
-                ?? { checked: false, references: new Map<string, AssetReference[]>() };
+                ?? { checked: false, references: new Map<string, AssetReference[]>(), gaps: undefined };
 
             if (!referencesChecked) {
+                // Where the check stopped, when it read the project and stopped somewhere in it:
+                // the node that picks its asset by a computed value is what the author can go and
+                // change. A check that read nothing at all has no places to name.
+                const where = describeReferenceGapSites(coverageGaps ?? [], t, REFERENCE_PREVIEW_LIMIT);
                 const proceedUnverified = await uiService.showDestructiveConfirm(
                     t("assets.delete.unverifiedTitle"),
-                    t("assets.delete.unverifiedMessage"),
+                    where ? `${t("assets.delete.unverifiedMessage")}
+
+${where}` : t("assets.delete.unverifiedMessage"),
                     t("assets.delete.action"),
                 );
                 if (!proceedUnverified) {
@@ -1225,6 +1267,14 @@ export function useAssetActions({
             // The author has now seen the reference list and said go ahead, so this is the one place
             // allowed through the service guard. Every other caller — a group cascade, anything
             // programmatic — is refused by default.
+            // Named by the row the author picked, not by the service's reason: that reason is written
+            // for the log and names the record by id ("Asset not found: <id>"), which on screen is a
+            // UUID standing where the file's name should be. The reasons go to the console.
+            //
+            // A folder whose only failure was writing the folder list is not named. Its files are
+            // gone either way, and the records of those files go out in the same gesture: the
+            // save-status surface reports the library's writes under one title, and naming the row
+            // here as well would say one failure twice.
             const deleteFailures: string[] = [];
             await withAssetsService(async (assetsService) => {
                 await assetsService.transaction(async (svc) => {
@@ -1232,23 +1282,27 @@ export function useAssetActions({
                         const result = t.isGroup
                             ? await svc.deleteGroup(t.category, (t.item as AssetGroup).id, true, { allowReferenced: true })
                             : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
-                        if (!result.success && result.error) {
-                            deleteFailures.push(result.error);
+                        if (!result.success) {
+                            console.warn("[assets] delete refused", t.item.id, result.error);
+                            if (!isReportedLibraryWrite(result)) {
+                                deleteFailures.push(t.item.name);
+                            }
                         }
                     }));
                 });
             });
             if (deleteFailures.length > 0) {
-                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
+                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.map(name => `- ${name}`).join("\n"));
             }
             onActionComplete();
             return deleteFailures.length === 0;
         } catch (error) {
             console.error("Failed to delete asset", error);
-            // The whole run fell over, so there is no per-row list to read and one line is the
-            // answer. Resolved again here because the service handle above is inside the `try`.
+            // The whole run fell over, so there is no per-row list to read and the title is the
+            // answer - the same one the per-row refusals go under. Not the error's message, which is
+            // the log's. Resolved again here because the service handle above is inside the `try`.
             contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                t("assets.delete.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
+                t("assets.delete.failedTitle"),
                 "error",
             );
             return false;
@@ -1297,7 +1351,9 @@ export function useAssetActions({
                     fileName: single.relativePath.split("/").pop() ?? single.relativePath,
                 });
                 if (!saved.success) {
-                    uiService.showNotification(t("assets.export.failed", { error: saved.error ?? t("assets.unknownError") }), "error");
+                    uiService.showNotification(t("assets.export.failed", {
+                        error: describeAssetExportFailure({ code: saved.code, reason: saved.error }, t),
+                    }), "error");
                     return;
                 }
                 if (!saved.data.canceled) {
@@ -1313,7 +1369,9 @@ export function useAssetActions({
             })));
 
             if (!result.success) {
-                uiService.showNotification(t("assets.export.failed", { error: result.error ?? t("assets.unknownError") }), "error");
+                uiService.showNotification(t("assets.export.failed", {
+                    error: describeAssetExportFailure({ code: result.code, reason: result.error }, t),
+                }), "error");
                 return;
             }
             if (result.data.canceled) {
@@ -1335,12 +1393,14 @@ export function useAssetActions({
             );
             uiService.showAlert(
                 t("assets.export.partialTitle"),
-                failures.map(failure => `- ${failure.relativePath}: ${failure.reason}`).join("\n"),
+                failures.map(failure => `- ${failure.relativePath}: ${describeAssetExportFailure(failure, t)}`).join("\n"),
             );
         } catch (error) {
             console.error("Failed to export assets", error);
+            // Not the error's message: the one thrown on this side names the record it could not
+            // turn into a path by its id ("Invalid asset storage id: <id>"). It is in the console.
             uiService.showNotification(
-                t("assets.export.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
+                t("assets.export.failed", { error: t("assets.export.reason.copyFailed") }),
                 "error",
             );
         } finally {

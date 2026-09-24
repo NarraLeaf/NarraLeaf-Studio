@@ -250,6 +250,8 @@ describe("voice takes, while a session owns them", () => {
         expect(op.op).toBe("set-takes");
         expect(op.op === "set-takes" ? op.units.map(entry => entry.unitId) : []).toEqual(["text-a"]);
         expect(summary).toMatchObject({ applied: 1, unknown: 1 });
+        // The approval for a line with no take went nowhere, and the import says so.
+        expect(summary.skipped).toEqual([{ code: "noTake" }]);
     });
 
     it("applies an arriving effect without consulting the sink", async () => {

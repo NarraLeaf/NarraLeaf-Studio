@@ -1,11 +1,19 @@
 import { EventEmitter } from "events";
+import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { spawn } from "child_process";
 import { WebSocketServer } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CommandLineRunEvent, CommandLineRunJob } from "@shared/types/commandLineRun";
 import type { GameTestEventPayload } from "@shared/types/gameTest";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { PREVIEW_AS_SHIPPED_SETTINGS_KEY } from "../../utils/previewAsShipped";
+import { RUN_DLC_ON_SETTINGS_KEY } from "../../utils/runDlc";
+import { RUN_VARIANT_SETTINGS_KEY } from "../../utils/runVariant";
+import { defaultTestEdition } from "../../utils/testEdition";
 import { forgetWorkspaceFreeze, reportWorkspaceFreeze } from "../../utils/workspaceFreeze";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
@@ -165,15 +173,27 @@ function captureEvents() {
                 payloads.push(data as GameTestEventPayload);
             }
         },
+        // A window an author is at: opened for no headless job.
+        getProps: () => ({}),
     } as never);
     return payloads;
 }
 
-const makeManager = () => new GameTestManager({
+/**
+ * A manager over a stand-in app.
+ *
+ * `previewAsShippedFor` is the one project this machine's "Preview as shipped" setting is on for;
+ * absent, the profile never touched it - which is what a build agent's profile looks like.
+ * `settings` are any other global settings the profile holds, by key.
+ */
+const makeManager = (
+    options: { previewAsShippedFor?: string; settings?: Record<string, unknown> } = {},
+) => new GameTestManager({
     logger: { error: () => undefined },
     // A trusting ledger: these cases are about what the manager does once it is allowed to
     // start, not about who may start it. The refusal has its own tests.
     projectTrustManager: { isTrusted: () => true },
+    getProjectSessionLockManager: () => ({ heldElsewhere: () => null }),
     isPackaged: () => false,
     pluginManager: {
         listPlugins: async () => [],
@@ -183,7 +203,11 @@ const makeManager = () => new GameTestManager({
     getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
     getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
     // Every host resolves which edition it is running as; this profile picked none.
-    getGlobalState: () => ({ get: () => undefined }),
+    getGlobalState: () => ({
+        get: (key: string) => key === PREVIEW_AS_SHIPPED_SETTINGS_KEY && options.previewAsShippedFor
+            ? { [normalizeProjectPath(options.previewAsShippedFor)]: true }
+            : options.settings?.[key],
+    }),
     getAppInfo: () => ({ version: "0.0.0-test" }),
 } as unknown as ConstructorParameters<typeof GameTestManager>[0]);
 
@@ -442,6 +466,15 @@ describe("GameTestManager.launch spawn environment", () => {
         const openEnv = (vi.mocked(spawn).mock.calls[0][2] as { env: Record<string, string> }).env;
         expect(openEnv.NARRALEAF_TEST_NETWORK).toBeUndefined();
     });
+
+    it("tells every game it launches that a test is driving it", async () => {
+        // The runtime keeps a driven window painting when it is minimized or covered. Without it a
+        // walkthrough whose game ended up behind another window stood still until the idle deadline
+        // failed it - about one unattended run in thirty, and every run whose window was minimized.
+        await makeManager().launch({ projectPath, runId: "run-1" });
+        const env = (vi.mocked(spawn).mock.calls[0][2] as { env: Record<string, string> }).env;
+        expect(env.NARRALEAF_TEST_DRIVEN).toBe("1");
+    });
 });
 
 /**
@@ -532,5 +565,257 @@ describe("GameTestManager's held control channel", () => {
         await vi.waitFor(() => expect(events.some(payload => payload.event.kind === "exit")).toBe(true));
         const exit = events.find(payload => payload.event.kind === "exit");
         expect(exit?.event).toEqual({ kind: "exit", exit: { reason: "crashed", code: 0, signal: null } });
+    });
+});
+
+/**
+ * Which path a test's game takes for its content, and who decided.
+ *
+ * A run an author starts asks the machine's "Preview as shipped" setting. A headless `--test` run
+ * asks its own line and nothing else: a build agent never set the setting, so reading it would mean
+ * CI never exercised the sealed path that only shipping takes, and a developer's machine did, so the
+ * same line would test something different there. What the headless run chose is read off the
+ * window's props, which main wrote when it opened the window.
+ */
+describe("GameTestManager: how a test's game holds its content", () => {
+    const PROJECT_NAME = "Sealed Corridor";
+    let projectPath = "";
+    let children: (EventEmitter & Record<string, unknown>)[] = [];
+
+    function fakeChild() {
+        const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        child.pid = 4242;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = vi.fn(() => true);
+        children.push(child);
+        return child;
+    }
+
+    /** The project's window, opened for `commandLineRun` or for an author when it is absent. */
+    function projectWindow(commandLineRun?: CommandLineRunJob) {
+        const logged: Extract<CommandLineRunEvent, { kind: "log" }>[] = [];
+        vi.mocked(findWorkspaceWindow).mockReturnValue({
+            sendIpcEvent: () => undefined,
+            getProps: () => ({ projectPath, ...(commandLineRun ? { commandLineRun } : {}) }),
+            reportCommandLineRunEvent: (event: CommandLineRunEvent) => {
+                if (event.kind === "log") {
+                    logged.push(event);
+                }
+            },
+        } as never);
+        return logged;
+    }
+
+    const headlessTest = (asShipped: boolean): CommandLineRunJob => ({
+        kind: "test",
+        testId: "narraleaf-studio:walkthrough",
+        parameters: {},
+        asShipped,
+        edition: defaultTestEdition(),
+        plugins: [],
+    });
+
+    /** What the compile was handed, which is where "sealed" and "loose" part ways. */
+    const compiledSealed = () => vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls[0][1].protectAssets;
+
+    beforeEach(async () => {
+        projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-game-test-sealing-"));
+        await fs.writeFile(
+            path.join(projectPath, getProjectConfigFileName(PROJECT_NAME)),
+            encodeProjectConfig({ name: PROJECT_NAME, app: { security: { encryptAssets: true } } } as never),
+        );
+        children = [];
+        vi.mocked(spawn).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue(
+            { appDir: path.join(os.tmpdir(), "app"), copiedAssetCount: 12 } as never,
+        );
+    });
+
+    afterEach(async () => {
+        for (const child of children) {
+            child.exitCode = 0;
+            child.emit("exit", 0, null);
+        }
+        await fs.rm(projectPath, { recursive: true, force: true });
+    });
+
+    it("seals a headless run that asked for the shipped form, on a machine that never set the setting", async () => {
+        const logged = projectWindow(headlessTest(true));
+
+        await makeManager().launch({ projectPath, runId: "run-1" });
+
+        expect(compiledSealed()).toBe(true);
+        // On the command-line log, where a job reads it, and not as verbose noise.
+        expect(logged).toContainEqual(expect.objectContaining({
+            level: "info",
+            source: "Test",
+            message: "assets: sealed in a protected store, as this project's release build holds them (--test-as-shipped)",
+        }));
+        // With the compile's time, which is where the two paths differ by cost.
+        expect(logged.map(line => line.message))
+            .toContainEqual(expect.stringMatching(/^game compiled: 12 asset\(s\) in \d+\.\d s$/));
+    });
+
+    it("runs a headless run loose by default, even on a machine whose setting says to seal", async () => {
+        const logged = projectWindow(headlessTest(false));
+
+        await makeManager({ previewAsShippedFor: projectPath }).launch({ projectPath, runId: "run-1" });
+
+        expect(compiledSealed()).toBe(false);
+        expect(logged.map(line => line.message)).toContain(
+            "assets: loose files; this project's release build seals them, which --test-as-shipped would test",
+        );
+    });
+
+    it("still asks the machine's setting for a run an author started, and keeps it off the command-line log", async () => {
+        const logged = projectWindow();
+
+        await makeManager({ previewAsShippedFor: projectPath }).launch({ projectPath, runId: "run-1" });
+        expect(compiledSealed()).toBe(true);
+
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockClear();
+        await makeManager().launch({ projectPath, runId: "run-2" });
+        expect(compiledSealed()).toBe(false);
+
+        // No headless job, so nobody is reading a command-line log.
+        expect(logged).toEqual([]);
+    });
+});
+
+/**
+ * Which build a test's game is: the variant it is assembled as, and the DLC installed beside it.
+ *
+ * The same split as the content's form above. An author's run reads the machine's "Run as" and "Run
+ * with DLC" choices; a headless `--test` run reads what its line named and nothing else, so the same
+ * line tests the same build on an agent that never chose anything and on a developer's machine that
+ * chose a demo with every DLC ticked.
+ */
+describe("GameTestManager: which build a test's game is", () => {
+    const DEMO_ID = "5f0c2b1e-8d3a-4c77-9a2e-6b1d0f4e9c21";
+    let projectPath = "";
+    let children: (EventEmitter & Record<string, unknown>)[] = [];
+
+    function fakeChild() {
+        const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        child.pid = 4343;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.kill = vi.fn(() => true);
+        children.push(child);
+        return child;
+    }
+
+    function projectWindow(commandLineRun?: CommandLineRunJob) {
+        const logged: string[] = [];
+        vi.mocked(findWorkspaceWindow).mockReturnValue({
+            sendIpcEvent: () => undefined,
+            getProps: () => ({ projectPath, ...(commandLineRun ? { commandLineRun } : {}) }),
+            reportCommandLineRunEvent: (event: CommandLineRunEvent) => {
+                if (event.kind === "log") {
+                    logged.push(event.message);
+                }
+            },
+        } as never);
+        return logged;
+    }
+
+    /** A profile whose author chose the demo and ticked every DLC for this project. */
+    const authorChoseDemoWithDlc = () => ({
+        [RUN_VARIANT_SETTINGS_KEY]: { [normalizeProjectPath(projectPath)]: DEMO_ID },
+        [RUN_DLC_ON_SETTINGS_KEY]: { [normalizeProjectPath(projectPath)]: ["epilogue", "voices"] },
+    });
+
+    const compiled = () => vi.mocked(compileGameRuntimeArtifactInWorker).mock.calls[0][1];
+
+    beforeEach(async () => {
+        projectPath = await fs.mkdtemp(path.join(os.tmpdir(), "nls-game-test-edition-"));
+        await fs.writeFile(
+            path.join(projectPath, getProjectConfigFileName("Corridor")),
+            encodeProjectConfig({ name: "Corridor" } as never),
+        );
+        await fs.mkdir(path.join(projectPath, "editor"), { recursive: true });
+        await fs.writeFile(path.join(projectPath, "editor", "app-tags.json"), JSON.stringify({
+            schemaVersion: 1,
+            tags: [{ id: DEMO_ID, name: "Demo", overrides: {} }],
+        }));
+        await fs.writeFile(path.join(projectPath, "editor", "dlc.json"), JSON.stringify({
+            schemaVersion: 1,
+            dlcs: [
+                { id: "epilogue", name: "Epilogue", attachTo: "main" },
+                { id: "voices", name: "Voice pack", attachTo: DEMO_ID },
+            ],
+        }));
+        children = [];
+        vi.mocked(spawn).mockReset();
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockReset();
+        vi.mocked(spawn).mockImplementation(() => fakeChild() as never);
+        vi.mocked(compileGameRuntimeArtifactInWorker).mockResolvedValue(
+            { appDir: path.join(os.tmpdir(), "app"), copiedAssetCount: 3 } as never,
+        );
+    });
+
+    afterEach(async () => {
+        for (const child of children) {
+            child.exitCode = 0;
+            child.emit("exit", 0, null);
+        }
+        await fs.rm(projectPath, { recursive: true, force: true });
+    });
+
+    it("runs a headless line that named nothing as the release build with no DLC, whatever the author chose", async () => {
+        const logged = projectWindow({
+            kind: "test",
+            testId: "narraleaf-studio:walkthrough",
+            parameters: {},
+            asShipped: false,
+            edition: defaultTestEdition(),
+            plugins: [],
+        });
+
+        await makeManager({ settings: authorChoseDemoWithDlc() }).launch({ projectPath, runId: "run-1" });
+
+        // No variant stated at all, as an author's run with nothing chosen states none.
+        expect(compiled().appTag).toBeUndefined();
+        expect(compiled().includedDlc).toEqual([]);
+        // Said on the log a job keeps, right after the line about the content.
+        const assets = logged.findIndex(line => line.startsWith("assets: "));
+        expect(assets).toBeGreaterThanOrEqual(0);
+        expect(logged.slice(assets + 1, assets + 3)).toEqual(["variant: main, the release build", "DLC: none"]);
+    });
+
+    it("runs the build a headless line named, and says so", async () => {
+        const logged = projectWindow({
+            kind: "test",
+            testId: "narraleaf-studio:walkthrough",
+            parameters: {},
+            asShipped: false,
+            edition: { variant: { id: DEMO_ID, name: "Demo" }, dlc: [{ id: "voices", name: "Voice pack" }] },
+            plugins: [],
+        });
+
+        // A profile that chose nothing: the line alone decides.
+        await makeManager().launch({ projectPath, runId: "run-1" });
+
+        expect(compiled().appTag).toEqual({ id: DEMO_ID, name: "Demo" });
+        expect(compiled().includedDlc).toEqual(["voices"]);
+        expect(logged).toContain('variant: "Demo" (--test-variant)');
+        expect(logged).toContain('DLC: "Voice pack" (--test-dlc)');
+    });
+
+    it("still reads the author's own choices for a run an author started, and logs nothing for a job", async () => {
+        const logged = projectWindow();
+
+        await makeManager({ settings: authorChoseDemoWithDlc() }).launch({ projectPath, runId: "run-1" });
+
+        expect(compiled().appTag).toEqual({ id: DEMO_ID, name: "Demo" });
+        expect(compiled().includedDlc).toEqual(["epilogue", "voices"]);
+        expect(logged).toEqual([]);
     });
 });

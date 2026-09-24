@@ -176,6 +176,17 @@ declare module "@narraleaf/script" {
     	 * the global blueprint, which belongs to no surface.
     	 */
     	surfaceId?: string;
+    	/**
+    	 * Present when the graph was stopped for running its whole step budget without once
+    	 * waiting - a loop that would otherwise have held the window forever. The node it was
+    	 * stopped at and the event head the run started from, by the English names their
+    	 * definitions declare, so a host can word the stop itself and name both.
+    	 */
+    	stepLimit?: {
+    		steps: number;
+    		nodeName: string;
+    		headName: string;
+    	};
     };
     type BlueprintOpenExternalRequest = {
     	url: string;
@@ -341,6 +352,30 @@ declare module "@narraleaf/script" {
     	timestamp: number;
     	/** When this slot was first written, epoch milliseconds. */
     	createdAt: number;
+    	/**
+    	 * The picture stored with this slot, addressed the way \`Get Save Preview\` addresses it; null
+    	 * when the record holds none.
+    	 *
+    	 * The same answer as that node's, from the same bytes, rather than a second one: the entry is
+    	 * read out of the record anyway, so carrying the picture along costs nothing and spares a list
+    	 * of slots a per-row graph call whose only job would be to ask again.
+    	 */
+    	preview: BlueprintImageAsset | null;
+    	/**
+    	 * The last sentence the slot was left on, and who spoke it - the same two strings
+    	 * {@link SaveRecordLine} publishes, read from the same engine metadata.
+    	 *
+    	 * They ride the row for the reason \`preview\` does. A row is what a list draws, and a value
+    	 * blueprint on that row may only read the row's own fields: \`Get Save Line\` is effectful, so a
+    	 * list-built save screen could not reach it at all and had nothing per-row to say beyond the
+    	 * time. What is in a scheduled auto-save is decided by the scheduler, not by an author, so
+    	 * \`metadata\` is empty for every one of them and the line is the only thing that tells two of
+    	 * them apart.
+    	 *
+    	 * Empty strings for a slot whose record carries none - a save taken before any line played.
+    	 */
+    	line: string;
+    	speaker: string;
     	/** Whatever the writer attached as user metadata (null when none). */
     	metadata: unknown;
     };
@@ -1382,6 +1417,16 @@ declare module "@narraleaf/script" {
     	text: string;
     	/** Speaker nametag for a say entry; null for menu entries or narration. */
     	character: string | null;
+    	/**
+    	 * The speaker's dialog avatar, as the project declares it; null for narration, a menu row, and a
+    	 * speaker this build has no character for.
+    	 *
+    	 * The character's own picture rather than the differential they wore on this line. Which
+    	 * differential that was is stage state, and a line already read is off the stage - the engine
+    	 * records who spoke and what they said, and nothing that survives a load records what they were
+    	 * wearing while they said it.
+    	 */
+    	avatar: BlueprintImageAsset | null;
     	/** Resolved voice clip URL for a say entry; null when absent. Not addressable - see \`voiceId\`. */
     	voice: string | null;
     	/**
@@ -1395,6 +1440,25 @@ declare module "@narraleaf/script" {
     	/** True while the entry is the line currently being shown (not yet committed). */
     	isPending: boolean;
     };
+    type BlueprintValueDependency = {
+    	surfaceId: string;
+    	elementId: string;
+    	propPath: string;
+    };
+    type BehaviorGraphValueExecution = {
+    	returnValue(value: unknown): void;
+    	trackDependency?(dependency: BlueprintValueDependency): void;
+    	/**
+    	 * Record that this evaluation read game state other than a widget prop - a variable of any
+    	 * kind - under the key its writers announce (\`blueprintStateWrites\`), so the binding is re-run
+    	 * when that key is written. Present only while a value binding is being evaluated, and carried
+    	 * into the body of any Fn it calls.
+    	 */
+    	trackState?(stateKey: string): void;
+    	/** Who is evaluating, so writes this evaluation makes do not re-run it; see \`blueprintStateWrites\`. */
+    	stateOrigin?: unknown;
+    };
+    type BehaviorGraphValueTracking = Pick<BehaviorGraphValueExecution, "trackDependency" | "trackState" | "stateOrigin">;
     type BehaviorGraphEventControl = {
     	stopPropagation(): void;
     	isPropagationStopped(): boolean;
@@ -1407,6 +1471,25 @@ declare module "@narraleaf/script" {
     	componentParams?: Record<string, string>;
     	eventControl?: BehaviorGraphEventControl;
     	allowClosedScopeExecution?: boolean;
+    };
+    type UIHostAdapterDrawings = {
+    	/** Announce one row a list is drawing. Returns the retraction, for when the row goes away. */
+    	registerListRow: (listElementId: string, row: {
+    		instanceKey: string;
+    		listItemScope: UIListItemScope;
+    	}) => () => void;
+    	/**
+    	 * Every drawing of \`elementId\` on screen, each as the options an event run in it carries.
+    	 *
+    	 * An element drawn once, for the page, has one drawing with nothing to name: \`[{}]\`. An element
+    	 * in a list row has one per row the list is drawing - none while the list is empty.
+    	 */
+    	everyDrawingOf: (elementId: string) => UIHostAdapterElementEventOptions[];
+    	/**
+    	 * The options naming the drawing a widget address is in: its key, the component that holds the
+    	 * element and the params of the placement, and the row, when the row is on screen to read.
+    	 */
+    	optionsForAddress: (address: string) => UIHostAdapterElementEventOptions | undefined;
     };
     type UIHostAdapterBlueprintRuntime = {
     	surfaceId: string;
@@ -1451,8 +1534,16 @@ declare module "@narraleaf/script" {
     		callerComponentParams?: Record<string, string>;
     		/** Which drawing the call came from, so the body's widget writes land on it. */
     		callerInstanceKey?: string;
+    		/** The list row the call came from, so the body reads the row the caller was answering for. */
+    		callerListItemScope?: UIListItemScope | null;
     		signal?: AbortSignal;
     		callerExecutionId?: string;
+    		/**
+    		 * The caller's value-binding bookkeeping, when the caller is a binding being evaluated: what
+    		 * the body reads is what the binding shows, so the body records its reads where the caller's
+    		 * own go.
+    		 */
+    		valueExecution?: BehaviorGraphValueTracking;
     	}) => Promise<{
     		returns: Record<string, unknown>;
     	}>;
@@ -1462,6 +1553,18 @@ declare module "@narraleaf/script" {
     	};
     	/** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
     	hostApi?: BlueprintHostApiRuntime;
+    	/**
+    	 * The widget address of \`elementId\` as a graph running in the drawing \`instanceKey\` means it.
+    	 *
+    	 * Asked of the runtime because the answer needs the document - whether the element is inside
+    	 * the row or the placement the graph is running in, or outside it - and a running graph does
+    	 * not hold one. The rule is \`resolveUIWidgetAddressFromDrawing\`; every node reaches it through
+    	 * \`addressWidgetFromExecution\`. A runtime without it (a test double) keeps every target in the
+    	 * running drawing, which is what addressing did before the rule.
+    	 */
+    	resolveWidgetAddress?: (elementId: string, instanceKey: string | undefined) => string;
+    	/** The drawings on screen, for fanning out an event no drawing raised. See {@link UIHostAdapterDrawings}. */
+    	drawings?: UIHostAdapterDrawings;
     };
     type StoryVariableRuntimeAccess = {
     	/** Resolve \`variableId\` to its stored value, or the declared default when unset. */
@@ -1487,7 +1590,11 @@ declare module "@narraleaf/script" {
     	"nl.nvl.list",
     	"nl.nvl.texts"
     ];
-    type ScriptWidgetType = (typeof SCRIPT_WIDGET_TYPES)[number];
+    type BuiltinScriptWidgetType = (typeof SCRIPT_WIDGET_TYPES)[number];
+    interface PluginScriptWidgets {
+    }
+    type PluginScriptWidgetType = Extract<keyof PluginScriptWidgets, string>;
+    type ScriptWidgetType = BuiltinScriptWidgetType | PluginScriptWidgetType;
     type ScriptListRow = Pick<UIListItemScope, "item" | "index" | "count" | "key" | "selected">;
     type ScriptSelf = {
     	kind: "project";
@@ -1522,6 +1629,12 @@ declare module "@narraleaf/script" {
     } ? T : undefined;
     type GameScriptContext<Self extends ScriptSelf = ScriptSelf> = {
     	self: Self;
+    	/**
+    	 * The blueprint host API. Name a widget by its element id - \`ctx.self.elementId\`, or any id on
+    	 * the page - and it is read from the drawing this handler runs in, as a widget node reads it:
+    	 * inside a list row or a component placement, an element of that row or placement means this
+    	 * one's copy of it, and anything outside means the one on the page.
+    	 */
     	host: BlueprintHostApiRuntime;
     	broadcast: SurfaceBound<Self, ScriptBroadcast>;
     	surface: SurfaceBound<Self, ScriptSurfaceTransition>;
@@ -1741,8 +1854,11 @@ declare module "@narraleaf/script" {
     export type ScriptEventPayload<E extends ScriptEventId> = {
     	readonly [K in keyof (typeof SCRIPT_EVENT_PAYLOADS)[E]]: DecodePin<(typeof SCRIPT_EVENT_PAYLOADS)[E][K]>;
     };
-    /** \`mouseClick\` is exported as \`onMouseClick\`; the rule, not a table. */
-    export type ScriptEventExportName<E extends ScriptEventId> = \`on\${Capitalize<E>}\`;
+    /**
+     * \`mouseClick\` is exported as \`onMouseClick\`; the rule, not a table. Over any event name, because a
+     * plugin widget's own events follow the same rule under names its plugin chose.
+     */
+    export type ScriptEventExportName<E extends string> = \`on\${Capitalize<E>}\`;
     export declare function scriptEventExportName<E extends ScriptEventId>(eventId: E): ScriptEventExportName<E>;
     /**
      * Which script event each head node starts. The folded pairs share an entry; see the file comment.
@@ -2208,8 +2324,36 @@ declare module "@narraleaf/script" {
     	kind: "project";
     }, E>;
     export type SurfaceHandler<E extends (typeof SCRIPT_EVENTS_BY_ANCHOR)["surface"][number]> = ScriptEventHandler<SurfaceSelf, E>;
-    export type WidgetHandler<W extends ScriptWidgetType, E extends (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number]> = ScriptEventHandler<ElementSelf<W>, E>;
-    export type ComponentWidgetHandler<W extends ScriptWidgetType, E extends Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>> = ScriptEventHandler<ComponentElementSelf<W>, E>;
+    /**
+     * The events a script on widget type \`W\` may export, each with the \`event\` argument it is handed.
+     *
+     * Studio's own widgets answer from {@link SCRIPT_EVENTS_BY_WIDGET}; a plugin's widget answers from
+     * {@link PluginScriptWidgets}, which the project's declarations fill in. Split and joined rather than
+     * chosen between, so a \`W\` that is a union - a caller that does not know the element - is still
+     * every event any of them has, the loose answer {@link ScriptModuleFor} documents.
+     */
+    export type WidgetScriptEvents<W extends ScriptWidgetType> = BuiltinWidgetScriptEvents<Extract<W, BuiltinScriptWidgetType>> & ContributedWidgetScriptEvents<Extract<W, PluginScriptWidgetType>>;
+    type BuiltinWidgetScriptEvents<W extends BuiltinScriptWidgetType> = {
+    	[E in (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number]]: ScriptEventPayload<E>;
+    };
+    type ContributedWidgetScriptEvents<W extends PluginScriptWidgetType> = [
+    	W
+    ] extends [
+    	never
+    ] ? {} : PluginScriptWidgets[W];
+    /** The id of an event a script on widget type \`W\` may export. */
+    export type WidgetEventId<W extends ScriptWidgetType> = Extract<keyof WidgetScriptEvents<W>, string>;
+    /**
+     * The \`event\` argument of one widget event, for the declaration form of a handler:
+     *
+     *     export function onRated(ctx: WidgetCtx<"acme.rating.stars">, event: WidgetEvent<"acme.rating.stars", "rated">) {}
+     *
+     * On Studio's own widgets it is the same type as {@link ScriptEvent}; it exists for the widgets a
+     * plugin contributes, whose events are not in that vocabulary.
+     */
+    export type WidgetEvent<W extends ScriptWidgetType, E extends WidgetEventId<W>> = WidgetScriptEvents<W>[E];
+    export type WidgetHandler<W extends ScriptWidgetType, E extends WidgetEventId<W>> = (ctx: GameScriptContext<ElementSelf<W>>, event: WidgetScriptEvents<W>[E]) => void | Promise<void>;
+    export type ComponentWidgetHandler<W extends ScriptWidgetType, E extends Exclude<WidgetEventId<W>, ComponentExcludedEvent>> = (ctx: GameScriptContext<ComponentElementSelf<W>>, event: WidgetScriptEvents<W>[E]) => void | Promise<void>;
     /** A module's optional named exports, one per event the slot admits. */
     export type ScriptEventExports<Self extends ScriptSelf, E extends ScriptEventId> = {
     	[K in E as ScriptEventExportName<K>]?: ScriptEventHandler<Self, K>;
@@ -2231,8 +2375,12 @@ declare module "@narraleaf/script" {
     	kind: "project";
     }, (typeof SCRIPT_EVENTS_BY_ANCHOR)["project"][number]>;
     export type SurfaceScriptModule = ScriptEventExports<SurfaceSelf, (typeof SCRIPT_EVENTS_BY_ANCHOR)["surface"][number]>;
-    export type WidgetScriptModule<W extends ScriptWidgetType> = ScriptEventExports<ElementSelf<W>, (typeof SCRIPT_EVENTS_BY_WIDGET)[W][number]>;
-    export type ComponentWidgetScriptModule<W extends ScriptWidgetType> = ScriptEventExports<ComponentElementSelf<W>, Exclude<(typeof SCRIPT_EVENTS_BY_WIDGET)[W][number], ComponentExcludedEvent>>;
+    export type WidgetScriptModule<W extends ScriptWidgetType> = {
+    	[K in WidgetEventId<W> as ScriptEventExportName<K>]?: WidgetHandler<W, K>;
+    };
+    export type ComponentWidgetScriptModule<W extends ScriptWidgetType> = {
+    	[K in Exclude<WidgetEventId<W>, ComponentExcludedEvent> as ScriptEventExportName<K>]?: ComponentWidgetHandler<W, K>;
+    };
     export type StoryScriptModule<Mode extends "action" | "value" | "condition" = "action"> = {
     	default: Mode extends "value" ? StoryValueHandler : Mode extends "condition" ? StoryConditionHandler : StoryActionHandler;
     };

@@ -18,7 +18,8 @@
  * mis-scoped call site look like it worked.
  */
 
-import type { StoryLiteralValue, StorySavedVariableDefinition, StoryVariableValueType } from "../types/story/document";
+import type { StoryDocument, StoryLiteralValue, StorySavedVariableDefinition, StoryVariableValueType } from "../types/story/document";
+import { savedVariableDefs, storyPersistentDefs } from "../types/story/declarations";
 import type { VariableRegistryEntry } from "../types/variables/registry";
 
 export type MergedPersistentSource = "registry" | "story";
@@ -116,4 +117,68 @@ export function buildMergedPersistentView(
 /** The set of persistent storage keys the compiler validates references against. */
 export function mergedPersistentStorageKeys(view: MergedPersistentView): Set<string> {
     return new Set(view.entries.map(entry => entry.storageKey));
+}
+
+/**
+ * What each declared persistent variable reads as before anything has stored a value for it, keyed
+ * by storage key - the table a running game's persistence scope answers unwritten reads from.
+ *
+ * The registry entry wins where a story row declares the same key, as it does everywhere else the
+ * two are joined by key: the row is the older surface, and the declaration migration copies its
+ * default into the registry before retiring it, so the two can only differ on a document that
+ * migration could not write.
+ */
+export function persistentDefaultsByStorageKey(view: MergedPersistentView): Record<string, StoryLiteralValue> {
+    const defaults: Record<string, StoryLiteralValue> = {};
+    for (const entry of view.entries) {
+        if (entry.defaultValue !== undefined && !Object.prototype.hasOwnProperty.call(defaults, entry.storageKey)) {
+            defaults[entry.storageKey] = entry.defaultValue;
+        }
+    }
+    return defaults;
+}
+
+/**
+ * {@link persistentDefaultsByStorageKey} for everything one build declares: the registry baked into
+ * the bundle, and the persistent declaration rows of every story it carries.
+ *
+ * Every story rather than the one about to run, because the table outlives any one story: a title
+ * screen reads persistent variables before a story has been chosen, and the same scope serves every
+ * story the player starts after it.
+ */
+export function declaredPersistentDefaults(bundle: {
+    ui: { persistentVariables?: Readonly<Record<string, VariableRegistryEntry>> };
+    storyLibrary?: { documents: Readonly<Record<string, StoryDocument>> };
+}): Record<string, StoryLiteralValue> {
+    return persistentDefaultsByStorageKey(buildMergedPersistentView(
+        Object.values(bundle.ui.persistentVariables ?? {}),
+        Object.values(bundle.storyLibrary?.documents ?? {}).flatMap(document => Object.values(storyPersistentDefs(document))),
+    ));
+}
+
+/**
+ * What each saved variable one build declares opens at, keyed by the id a blueprint node names it by
+ * (a registry entry's id, or a story declaration row's block id - both minted as UUIDs by their own
+ * surface, so the two cannot collide). `null` for a variable declared with no default.
+ *
+ * For a reader with no playthrough to ask - a title screen reading `Get Saved Var` before any story
+ * has started, or been compiled. Every story rather than the one about to run, for the reason
+ * {@link declaredPersistentDefaults} gives: the screen reads before a story is chosen. Built from the
+ * documents themselves, not from a compile, so the answer does not depend on whether one has run.
+ */
+export function declaredSavedDefaults(bundle: {
+    ui: { savedVariables?: Readonly<Record<string, VariableRegistryEntry>> };
+    storyLibrary?: { documents: Readonly<Record<string, StoryDocument>> };
+}): Record<string, StoryLiteralValue | null> {
+    const view = buildMergedVariableView(
+        Object.values(bundle.ui.savedVariables ?? {}),
+        Object.values(bundle.storyLibrary?.documents ?? {}).flatMap(document => Object.values(savedVariableDefs(document))),
+    );
+    const defaults: Record<string, StoryLiteralValue | null> = {};
+    for (const entry of view.entries) {
+        if (!Object.prototype.hasOwnProperty.call(defaults, entry.id)) {
+            defaults[entry.id] = entry.defaultValue ?? null;
+        }
+    }
+    return defaults;
 }

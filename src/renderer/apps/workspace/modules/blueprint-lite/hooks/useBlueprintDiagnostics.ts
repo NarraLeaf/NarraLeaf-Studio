@@ -22,6 +22,7 @@ export function useBlueprintDiagnostics(
             options?.widgetSurfaceId,
             options?.widgetBlueprintEvents,
             options?.isComponentDefinitionGraph,
+            options?.assetNameGaps,
         ],
     );
 }

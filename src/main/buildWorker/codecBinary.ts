@@ -9,11 +9,11 @@
  * surgery.
  *
  * A macOS universal target has no image of its own, and cannot: it is one
- * package that runs on two architectures. It gets a fat one built here from the
- * two thin ones, which also happens to be what electron-builder's universal
- * merge needs - it packs the two slices separately and refuses a file that
- * differs between them unless it is told which is which. One fat file is the
- * same file in both, so there is nothing to tell it.
+ * package that runs on two architectures. It gets a fat one built from the two
+ * thin ones (fatMachO.ts), which also happens to be what electron-builder's
+ * universal merge needs - it packs the two slices separately and refuses a file
+ * that is the same thin image in both. One fat file is already universal in
+ * both, so there is nothing to tell it.
  */
 
 import fs from "fs/promises";
@@ -21,6 +21,7 @@ import { createRequire } from "module";
 import path from "path";
 import { archiveReaderPathFor } from "@narraleaf/bindings";
 import { unpackAsarPath } from "../utils/asarPath";
+import { assertMachOSlice, buildFatMachO, type MachOArch } from "./fatMachO";
 
 /** Studio's platform names against the ones the codec package's directories use. */
 const CODEC_PLATFORM_NAMES: Readonly<Record<string, string>> = {
@@ -124,10 +125,31 @@ export function codecPlacementsFor(
 }
 
 /**
+ * The architecture a macOS codec image is meant to be, or null for another
+ * platform's image, which goes in unexamined.
+ */
+function macImageArch(slice: string): MachOArch | null {
+    switch (slice) {
+        case "darwin-x64":
+            return "x64";
+        case "darwin-arm64":
+            return "arm64";
+        default:
+            return null;
+    }
+}
+
+/**
  * Put the images at `sources` in place as one shipped copy.
  *
  * A single image is moved as it is; two are wrapped in a fat container, slice for
  * slice, so each keeps the signature it was built with.
+ *
+ * A macOS image is checked for the architecture its name promises before it is
+ * placed, whether it goes in alone or as half of a universal copy. A protected
+ * build compiles each image for the title rather than copying a prebuild, so the
+ * image is only as right as the compiler was asked to make it - and an image for
+ * the wrong Mac is a package that starts on one kind of Mac and not the other.
  */
 export async function placeCodecBinary(
     placement: CodecPlacement,
@@ -143,14 +165,24 @@ export async function placeCodecBinary(
         if (!file) {
             throw new Error(`no ${slice} image was produced for ${placement.platformKey}`);
         }
-        return file;
+        return { slice, file };
     });
-    await fs.mkdir(path.dirname(placement.destination), { recursive: true });
     if (files.length === 1) {
-        await fs.copyFile(files[0], placement.destination);
+        const [{ slice, file }] = files;
+        const arch = macImageArch(slice);
+        if (arch) {
+            assertMachOSlice({ name: `the ${slice} codec image`, arch, image: await fs.readFile(file) });
+        }
+        await fs.mkdir(path.dirname(placement.destination), { recursive: true });
+        await fs.copyFile(file, placement.destination);
         return;
     }
-    await fs.writeFile(placement.destination, buildFatMachO(await Promise.all(files.map(file => fs.readFile(file)))));
+    const image = universalImage(await Promise.all(files.map(async ({ slice, file }) => ({
+        slice,
+        image: await fs.readFile(file),
+    }))));
+    await fs.mkdir(path.dirname(placement.destination), { recursive: true });
+    await fs.writeFile(placement.destination, image);
 }
 
 /** Put the prebuilt image for `codecTarget` at `destination`. */
@@ -159,54 +191,19 @@ export async function writeSupportBinary(codecTarget: string, destination: strin
         await fs.copyFile(archiveReaderPathFor(codecTarget), destination);
         return;
     }
-    const slices = await Promise.all(UNIVERSAL_CODEC_SLICES.map(slice => fs.readFile(archiveReaderPathFor(slice))));
-    await fs.writeFile(destination, buildFatMachO(slices));
+    await fs.writeFile(destination, universalImage(await Promise.all(UNIVERSAL_CODEC_SLICES.map(async slice => ({
+        slice,
+        image: await fs.readFile(archiveReaderPathFor(slice)),
+    })))));
 }
 
-/*
- * Mach-O's fat container, which is a header and the unchanged thin files after
- * it. Every field is big-endian regardless of what the slices are, which is the
- * one thing about this format that is easy to get wrong.
- *
- * The slices go in byte for byte, so each keeps its own signature: a signature
- * covers its own slice and knows nothing about the wrapper. That matters because
- * the arm64 image is ad-hoc signed at build time and macOS will not load it
- * otherwise.
- */
-const FAT_MAGIC = 0xcafebabe;
-const FAT_HEADER_LEN = 8;
-const FAT_ARCH_LEN = 20;
-/* 2^14, the alignment Apple uses for arm64 and for current x86_64 images alike. */
-const SLICE_ALIGN_POW = 14;
-
-function buildFatMachO(slices: Buffer[]): Buffer {
-    const header = Buffer.alloc(FAT_HEADER_LEN + FAT_ARCH_LEN * slices.length);
-    header.writeUInt32BE(FAT_MAGIC, 0);
-    header.writeUInt32BE(slices.length, 4);
-
-    const alignment = 1 << SLICE_ALIGN_POW;
-    const placed: { offset: number; slice: Buffer }[] = [];
-    let cursor = header.length;
-    slices.forEach((slice, index) => {
-        cursor = Math.ceil(cursor / alignment) * alignment;
-        const at = FAT_HEADER_LEN + FAT_ARCH_LEN * index;
-        /* cputype and cpusubtype are read off the slice rather than assumed: the
-         * subtype in particular carries capability bits this has no business
-         * guessing, and getting it wrong makes the loader skip the slice. */
-        header.writeUInt32BE(slice.readUInt32LE(4), at);
-        header.writeUInt32BE(slice.readUInt32LE(8), at + 4);
-        header.writeUInt32BE(cursor, at + 8);
-        header.writeUInt32BE(slice.length, at + 12);
-        header.writeUInt32BE(SLICE_ALIGN_POW, at + 16);
-        placed.push({ offset: cursor, slice });
-        cursor += slice.length;
-    });
-
-    const image = Buffer.alloc(cursor);
-    header.copy(image, 0);
-    for (const { offset, slice } of placed) {
-        slice.copy(image, offset);
-    }
-    return image;
+/** One universal image from the macOS images named by their codec target. */
+function universalImage(images: readonly { slice: string; image: Buffer }[]): Buffer {
+    return buildFatMachO(images.map(({ slice, image }) => {
+        const arch = macImageArch(slice);
+        if (!arch) {
+            throw new Error(`${slice} cannot be part of a universal macOS image`);
+        }
+        return { name: `the ${slice} codec image`, arch, image };
+    }));
 }
-

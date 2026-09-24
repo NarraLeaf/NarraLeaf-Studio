@@ -23,6 +23,7 @@
  * Comments in English per project convention.
  */
 
+import type { ExchangeProblem } from "./exchangeProblem";
 import { parseTranslationCsv, serializeTranslationCsv } from "./localizationCsv";
 import { parseTranslationJson, serializeTranslationJson } from "./localizationJsonExchange";
 import { parseTranslationPo, serializeTranslationPo } from "./localizationPo";
@@ -68,8 +69,11 @@ export type ParsedTranslationExchange = {
      */
     sourceLocale?: string;
     targetLocale?: string;
-    /** Problems worth telling the author about. Rows may still be present. */
-    errors: string[];
+    /**
+     * Problems worth telling the author about, as codes the interface words. Rows may still be
+     * present: a skipped entry is a problem beside the rows that did read.
+     */
+    problems: ExchangeProblem[];
 };
 
 /**
@@ -137,7 +141,7 @@ function serializeBody(format: TranslationExchangeFormat, document: TranslationE
     }
 }
 
-/** Read one exchange file. Never throws: a file Studio cannot read reports errors and no rows. */
+/** Read one exchange file. Never throws: a file Studio cannot read reports problems and no rows. */
 export function parseTranslationExchange(
     format: TranslationExchangeFormat,
     text: string,

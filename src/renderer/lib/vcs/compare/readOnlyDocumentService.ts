@@ -45,6 +45,9 @@ export class ReadOnlyDocumentError extends Error {
 function readers(document: UIDocument, context: WorkspaceContext | null): Record<string, unknown> {
     return {
         getDocument: (): UIDocument => document,
+        // A comparison holds one whole version of the project's document, pages and definitions
+        // alike, so the pages a Page widget reads are in the document it already has.
+        getPageDocument: (): UIDocument => document,
         getRevision: (): number => 0,
         getSurfaceContentRevision: (): number => 0,
         getComponentContentRevision: (): number => 0,

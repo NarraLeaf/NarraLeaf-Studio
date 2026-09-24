@@ -1,6 +1,6 @@
 # AssetSelector
 
-面向工作区（Workspace）的模态资源选择器：按 `AssetType` 列出项目内资源，支持搜索、筛选、分组树、多选、本机导入、图片悬停预览，以及调用方提供的**虚拟分组**（内置项、预设等）。
+面向工作区（Workspace）的模态资产选择器：按 `AssetType` 列出项目内资产，支持搜索、筛选、分组树、多选、本机导入、图片悬停预览，以及调用方提供的**虚拟分组**（内置项、预设等）。
 
 实现文件：`AssetSelector.tsx`（通过 `createPortal` 渲染到 `document.body`）。
 
@@ -12,8 +12,8 @@
 |------|------|
 | `useWorkspace()` | 必须处于 Workspace 上下文内，用于 `context`、`isInitialized`。 |
 | `useAssetData` | 加载 `assets` / `groups`，提供 `loadAssets`、loading / error。 |
-| `useAssetFilters` | 提供筛选配置与 `filteredAssets` / `filteredGroups`（仅作用于**项目资源**）。 |
-| `AssetsService` | 图片预览默认走 `fetch`；导入走 `importLocalAssets`。 |
+| `useAssetFilters` | 提供筛选配置与 `filteredAssets` / `filteredGroups`（仅作用于**项目资产**）。 |
+| `AssetsService` | 图片预览默认走 `fetch`；导入走 `importFromPaths`。 |
 
 若不在 Workspace 内挂载，数据与导入行为可能不可用（与 `context` 一致）。
 
@@ -42,14 +42,14 @@ import {
 | Prop | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `visible` | `boolean` | （必填） | 是否显示选择器。 |
-| `assetType` | `AssetType` | （必填） | 当前选择的资源类型；标题默认图标与文案与此一致。 |
+| `assetType` | `AssetType` | （必填） | 当前选择的资产类型；标题默认图标与文案与此一致。 |
 | `multiple` | `boolean` | `false` | 单选：点击一项即 `onConfirm` 并关闭；多选：底部显示 Choose / Clear。 |
 | `selectedIds` | `string[]` | `[]` | 受控初始选中 id；在 `selectedIds` 或 `visible` 变化时会同步到内部 `selection`。 |
 | `anchorRef` | `RefObject<HTMLElement \| null>` | 未传 | 有锚点时面板为 `position: absolute`，宽度在 320–480px 间随锚点宽度；无锚点时居中，宽约 420px。 |
 | `title` | `string` | 按类型 | 覆盖默认标题 `Select {Images|Audio|…}`。 |
 | `className` | `string` | `""` | 追加到面板根节点 class。 |
 | `virtualGroups` | `AssetSelectorVirtualGroup[]` | 未传 | 虚拟分组（见下文）。 |
-| `virtualGroupsPlacement` | `"before" \| "after"` | `"before"` | 虚拟分组相对项目资源树的位置。 |
+| `virtualGroupsPlacement` | `"before" \| "after"` | `"before"` | 虚拟分组相对项目资产树的位置。 |
 | `resolveAssetPreviewUrl` | `(asset) => Promise<string \| null \| undefined>` | 未传 | 图片预览 URL 解析（见下文）。 |
 | `onClose` | `() => void` | （必填） | 关闭（含点遮罩、点关闭按钮、单选确认后）。 |
 | `onConfirm` | `(assets: Asset[]) => void` | （必填） | 单选：长度为 1；多选：点击 Choose 时传入当前选中项（顺序与 `selection` 迭代顺序相关）。 |
@@ -58,7 +58,7 @@ import {
 
 ## 虚拟分组：`AssetSelectorVirtualGroup`
 
-用于在项目资源树之外，由**调用方**注入可折叠区块（例如「内置字体」「预设贴图」）。
+用于在项目资产树之外，由**调用方**注入可折叠区块（例如「内置字体」「预设贴图」）。
 
 ```ts
 export interface AssetSelectorVirtualGroup {
@@ -71,7 +71,7 @@ export interface AssetSelectorVirtualGroup {
 
 ### 与项目列表的差异
 
-| 能力 | 项目资源 | 虚拟分组内 `assets` |
+| 能力 | 项目资产 | 虚拟分组内 `assets` |
 |------|----------|---------------------|
 | 顶部 **FilterSystem**（筛选芯片） | ✅ 参与 | ❌ 不参与；需调用方按业务自行缩减传入的 `assets` |
 | **搜索框** | ✅ 按 name / description / tags 子串匹配（不区分大小写） | ✅ 同一套规则过滤各组内条目 |
@@ -87,7 +87,7 @@ export interface AssetSelectorVirtualGroup {
 
 ### 头部「items」计数
 
-当存在 `virtualGroups` 时，副标题为 **`typeAssets.length + 各组 assets 长度之和`**。若虚拟 id 与项目资源重复，计数可能语义重复；调用方应保持 id 唯一。
+当存在 `virtualGroups` 时，副标题为 **`typeAssets.length + 各组 assets 长度之和`**。若虚拟 id 与项目资产重复，计数可能语义重复；调用方应保持 id 唯一。
 
 ---
 
@@ -128,13 +128,13 @@ export interface AssetSelectorVirtualGroup {
 
 ---
 
-## 项目资源列表结构（简要）
+## 项目资产列表结构（简要）
 
 1. **`virtualGroupsPlacement === "before"`** 时先渲染虚拟分组块。
-2. 根级 **AssetGroup**（`parentGroupId` 为空）：可折叠文件夹，内含该组下资源及子组递归。
-3. `shouldRenderGroup`：仅当组内（含子组）存在当前 **搜索 + 筛选** 下可见资源时显示该文件夹，避免空壳文件夹。
-4. 根级 **`groupId` 为空** 的资源与根文件夹同级展示（无「Ungrouped」标题）。
-5. **孤儿资源**：`filteredTypeGroups` 为空 Map，但仍有 `displayedAssets` 且无法挂在 null 桶时，扁平列出（与分组元数据缺失等边界相关）。
+2. 根级 **AssetGroup**（`parentGroupId` 为空）：可折叠文件夹，内含该组下资产及子组递归。
+3. `shouldRenderGroup`：仅当组内（含子组）存在当前 **搜索 + 筛选** 下可见资产时显示该文件夹，避免空壳文件夹。
+4. 根级 **`groupId` 为空** 的资产与根文件夹同级展示（无「Ungrouped」标题）。
+5. **孤儿资产**：`filteredTypeGroups` 为空 Map，但仍有 `displayedAssets` 且无法挂在 null 桶时，扁平列出（与分组元数据缺失等边界相关）。
 6. **`virtualGroupsPlacement === "after"`** 时在项目树之后渲染虚拟分组。
 
 ---
@@ -152,13 +152,15 @@ export interface AssetSelectorVirtualGroup {
 
 ## 本机导入
 
-工具栏 **Import from disk** 调用 `assetsService.importLocalAssets(assetType)`，成功后 `loadAssets()`，并把新资源 id 并入当前 `selection`（多选语义下便于直接 Choose）。
+工具栏 **Import from disk** 先按类型打开系统对话框（模型等目录型资产选文件夹，其余按 `AssetExtensions[assetType]` 过滤选文件），再调用 `assetsService.importFromPaths(assetType, paths)`，成功后 `loadAssets()`，并把新资产 id 并入当前 `selection`（多选语义下便于直接 Choose）。
+
+进度与失败走资产面板同一个导入条（`ImportQueueStrip` + `useImportQueue`），画在筛选区下方：导入中显示进度，结束后逐个列出未能导入的文件（悬停看原因，原因由 `describeAssetImportRefusal` 按界面语言措辞），带「重试」。对话框本身打不开时发一条 `workspace.shell.fileDialogFailed` 通知。重新打开选择器时清空上一次的失败列表。
 
 ---
 
-## 虚拟资源 `Asset` 形状示例
+## 虚拟资产 `Asset` 形状示例
 
-虚拟条目须满足 `Asset` 类型，以便与选择器、预览、`onConfirm` 一致。本地资源最小示例（`AssetSource.Local`）：
+虚拟条目须满足 `Asset` 类型，以便与选择器、预览、`onConfirm` 一致。本地资产最小示例（`AssetSource.Local`）：
 
 ```ts
 import { AssetSource } from "@/lib/workspace/services/assets/types";
@@ -183,7 +185,7 @@ const builtinImage: Asset<AssetType.Image, AssetSource.Local> = {
 
 ## 完整示例
 
-### 1. 最简单选（仅项目资源）
+### 1. 最简单选（仅项目资产）
 
 ```tsx
 const [open, setOpen] = useState(false);
@@ -302,8 +304,8 @@ const virtualGroups = useMemo(() => {
 | 文件 | 作用 |
 |------|------|
 | `SearchBox.tsx` | 搜索输入。 |
-| `FilterSystem.tsx` | 项目资源筛选芯片。 |
-| `../state/useAssetData.ts` | 资源与分组数据。 |
+| `FilterSystem.tsx` | 项目资产筛选芯片。 |
+| `../state/useAssetData.ts` | 资产与分组数据。 |
 | `../state/useAssetFilters.ts` | 过滤后的 assets/groups。 |
 
 ---

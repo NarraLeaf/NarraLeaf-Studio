@@ -11,11 +11,14 @@ export const devMode = {
     openInStudioFailed: "该项目没有打开的工作区窗口",
     issues: {
         title: "问题",
-        empty: "没有出错的地方",
+        // See the English catalog: both of these count only what the running game reported, and name
+        // the run so that neither reads as a verdict on the whole project.
+        empty: "本次运行没有出错的地方",
         sessionFailure: "会话启动失败",
         atLine: "第 {line} 行 · {scene}",
         inScene: "位于 {scene}",
         onSurface: "位于界面 {surface}",
+        onSurfaceGone: "位于已不在本项目中的界面",
         // See the English catalog: the third kind of place, and why an excluded plugin is named.
         onPlugin: "插件 {plugin}",
         pluginNotDeclared: "{plugin} 已安装，但不在本项目的插件依赖中；本次会话与构建都不包含它。在「项目 ▸ 应用」中重新扫描依赖表",
@@ -23,11 +26,16 @@ export const devMode = {
         // See the English catalog: a plugin that does run here, whose runtime entry threw.
         pluginEntryFailed: "{plugin} 载入失败：{error}。本次会话不会注册它的蓝图节点与控件",
         pluginListFailed: "无法读取运行时插件列表：{error}。本次会话不会载入任何插件",
+        // See the English catalog: a widget asked for an asset and drew nothing.
+        assetMissing: "“{element}”的“{property}”引用了本项目中已不存在的资产",
+        assetUnreadable: "“{element}”的“{property}”引用的资产无法读取",
+        assetUnreadableNamed: "“{element}”的“{property}”引用的资产“{asset}”无法读取",
+        assetNotAsset: "“{element}”的“{property}”的值不是资产",
         noLocation: "无法定位到具体的行",
         viaPlayHead: "播放到此处",
         stack: "调用栈",
         dismissAll: "全部关闭（{count}）",
-        summary: "{errors} 个错误 · {warnings} 个警告",
+        summary: "本次运行 {errors} 个错误 · {warnings} 个警告",
     },
     // See the English catalog: the panels are named for their subject, one word each.
     devtools: {

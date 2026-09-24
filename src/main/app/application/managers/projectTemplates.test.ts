@@ -103,7 +103,25 @@ describe("scaffoldProjectFromTemplate", () => {
     it("produces a plain project for a manifest-only template", async () => {
         await writeFile(path.join(templatesDir, "meta", "template.json"), JSON.stringify({ name: "Meta" }));
 
-        expect(await scaffoldProjectFromTemplate(templatesDir, "meta", projectDir)).toEqual({ filesCopied: 0, locales: [] });
+        expect(await scaffoldProjectFromTemplate(templatesDir, "meta", projectDir))
+            .toEqual({ filesCopied: 0, locales: [], dependencies: [] });
+    });
+
+    it("hands back the plugin ids the template declares, and drops what is not one", async () => {
+        // The project's dependency table is otherwise derived by scanning for types a *loaded*
+        // plugin owns, which says nothing about a plugin the author has never switched on. A
+        // template that ships graphs built on one declares it here instead.
+        await writeFile(path.join(templatesDir, "needs", "content", "keep.txt"), "x");
+        await writeFile(
+            path.join(templatesDir, "needs", "template.json"),
+            JSON.stringify({ name: "Needs", dependencies: ["narraleaf.gallery", "../evil", 7, "narraleaf.gallery"] }),
+        );
+
+        const result = await scaffoldProjectFromTemplate(templatesDir, "needs", projectDir);
+
+        expect(result.dependencies).toEqual(["narraleaf.gallery"]);
+        expect((await listProjectTemplates(templatesDir)).find(entry => entry.id === "needs")?.dependencies)
+            .toEqual(["narraleaf.gallery"]);
     });
 
     it("reports the languages the template ships a translation for, and only those", async () => {

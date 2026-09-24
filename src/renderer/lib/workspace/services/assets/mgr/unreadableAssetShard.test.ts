@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { AssetOrderManager } from "./AssetOrderManager";
 import { AssetsMetadataManager } from "./AssetsMetadataManager";
 import { AssetsService } from "../../core/AssetsService";
 import { AssetType } from "../assetTypes";
 import { Services } from "../../services";
 import { clearWorkspaceAnomalies, getWorkspaceAnomalies } from "@/lib/workspace/recovery/anomalyLog";
+import { i18nStore } from "@/lib/i18n";
 
 /**
  * What an open does with `assets/assets.metadata.<type>.json` when the file is there and will not
@@ -53,6 +54,8 @@ function createHarness(files: Record<string, string> = {}) {
     const writes: { path: string; data: string }[] = [];
     const copies: { from: string; to: string }[] = [];
     const reported: { path: string; quarantinePath: string | null }[] = [];
+    /** The sticky notices raised straight from the library - the refused write's. */
+    const notices: { message: string; detail?: string }[] = [];
     const present = { ...files };
 
     const suffixOf = (path: string): string | undefined =>
@@ -137,6 +140,17 @@ function createHarness(files: Record<string, string> = {}) {
                     return {
                         reportUnreadableDocument(error: { path: string }, quarantinePath: string | null) {
                             reported.push({ path: error.path, quarantinePath });
+                            return true;
+                        },
+                    };
+                }
+                if (serviceId === Services.UI) {
+                    return {
+                        notifications: {
+                            showSticky(notice: { message: string; detail?: string }) {
+                                notices.push(notice);
+                                return `toast-${notices.length}`;
+                            },
                         },
                     };
                 }
@@ -148,7 +162,7 @@ function createHarness(files: Record<string, string> = {}) {
     const service = new AssetsService();
     service.setContext(context as any);
 
-    return { service, context, writes, copies, present, reported };
+    return { service, context, writes, copies, present, reported, notices };
 }
 
 /** The order `AssetsService.init` brings the metadata and order managers up in. */
@@ -174,6 +188,10 @@ function wroteTo(writes: { path: string }[], suffix: string): boolean {
 }
 
 describe("a metadata shard that cannot be read", () => {
+    afterEach(() => {
+        i18nStore.setLocale("en");
+    });
+
     it("leaves the file exactly as it was found", async () => {
         const truncated = '{"a1":{"id":"a1","type":"image","name":"a1"';
         const harness = createHarness({ ...emptyMetadataShards(), [IMAGE_SHARD]: truncated });
@@ -216,6 +234,20 @@ describe("a metadata shard that cannot be read", () => {
         expect(harness.reported).toHaveLength(1);
         expect(harness.reported[0].path).toContain(IMAGE_SHARD);
         expect(harness.reported[0].quarantinePath).toContain("quarantine");
+    });
+
+    it("says a refused edit was not saved by the section's name, never the file's", async () => {
+        for (const [locale, section] of [["en", "Images"], ["zh", "图片"], ["ja", "画像"]] as const) {
+            i18nStore.setLocale(locale);
+            const harness = createHarness({ ...emptyMetadataShards(), [IMAGE_SHARD]: "{ not json at all" });
+            await initAssets(harness);
+
+            await (harness.service as any).writeAssetsMetadata(AssetType.Image);
+
+            expect(harness.notices).toHaveLength(1);
+            expect(harness.notices[0].detail).toContain(section);
+            expect(`${harness.notices[0].message} ${harness.notices[0].detail}`).not.toMatch(/assets\.metadata|\.json|\{\w+\}/);
+        }
     });
 
     it("refuses every write to that shard, and keeps the debt queued", async () => {

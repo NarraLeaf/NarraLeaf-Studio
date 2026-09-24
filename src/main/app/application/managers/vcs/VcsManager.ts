@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../utils/unpatchedFs";
 import path from "path";
 import type {
     VcsAvailability,
@@ -16,6 +16,7 @@ import type {
     VcsMergeSideChoice,
     VcsMergeState,
     VcsPasswordSignInOutcome,
+    VcsProjectServerSession,
     VcsPublishOutcome,
     VcsRepositoryInfo,
     VcsPushResult,
@@ -27,6 +28,7 @@ import type {
     VcsServerProbe,
     VcsServerReach,
     VcsServerSession,
+    VcsSessionUse,
     VcsSignInResult,
     VcsStatus,
     VcsSyncResult,
@@ -90,6 +92,23 @@ import {
     type TeamSessionCall,
 } from "./serverProjectsSession";
 import { forgetServerToken, recallServerToken, rememberServerToken } from "./serverTokens";
+// Pure policy over the global state, with nothing of Lore's in it: which project may act as which
+// account. See that module's header for the rule.
+import {
+    readSessionUses,
+    SESSION_USES_KEY,
+    sessionStanding,
+    sessionUseProjectKey,
+    sessionUsers,
+    shouldAskForSessionUse,
+    withoutSessionUse,
+    withoutSessionUsesAt,
+    withSessionUse,
+    type SessionAskMode,
+    type SessionStanding,
+} from "./serverSessionScope";
+import { projectDistrustedRefusal } from "../../utils/projectTrustGate";
+import { normalizeProjectPath } from "@shared/utils/recentProject";
 
 /**
  * Owns Lore state for open projects.
@@ -175,6 +194,56 @@ interface VcsSession {
  * refuse the author their commit.
  */
 export type PendingSaveFlush = (projectPath: string) => Promise<void>;
+
+/**
+ * Ask the author whether one project uses the sign-in this installation holds for its server.
+ *
+ * Injected for the reason {@link PendingSaveFlush} is: only the window layer can put a question
+ * on screen, and this manager holds a `BaseApp`. The answer must come from a window that does not
+ * render the project - the project's own content is in the workspace, and a question it could
+ * answer is not a question - which is why this is a function the host implements rather than
+ * anything a renderer can call.
+ *
+ * `true` and `false` are answers and are recorded. `null` is a window closed without one: nothing
+ * is recorded, the request goes ahead without the sign-in, and the next request asks again.
+ */
+export type ServerSessionAsker = (request: {
+    projectPath: string;
+    session: VcsServerSession;
+}) => Promise<boolean | null>;
+
+/**
+ * A server asked for a sign-in this project does not use, though this installation holds one.
+ *
+ * Never asked about, or answered no. Coded so the rail can say that - and point at the one row that
+ * changes it - where the backend's own sentence (`No token stored`) reads as though nobody had ever
+ * signed in. The backend's sentence is kept as the message, for the log and for anything that
+ * matches on it.
+ */
+export class VcsSignInUnusedError extends Error {
+    readonly code = VcsErrorCode.SignInUnused;
+
+    constructor(detail: string) {
+        super(detail);
+        this.name = "VcsSignInUnusedError";
+    }
+}
+
+/**
+ * A request about a server, from a project that is not trusted.
+ *
+ * The address such a request reaches is the one the project's own `.lore/config.toml` names, so it
+ * belongs with the other things an untrusted project may not make Studio do. Coded so the interface
+ * can say it the way every other control that stops for an untrusted project does.
+ */
+export class VcsProjectDistrustedError extends Error {
+    readonly code = VcsErrorCode.ProjectDistrusted;
+
+    constructor(message: string) {
+        super(message);
+        this.name = "VcsProjectDistrustedError";
+    }
+}
 
 /**
  * What Studio writes when nobody typed a message.
@@ -493,6 +562,11 @@ export class VcsManager extends Manager {
      * a call after the drain costs.
      */
     private shuttingDown = false;
+    /**
+     * Sign-in questions on screen, keyed by server and project, so that two requests arriving
+     * while one is open wait for the same answer rather than raising a second window over the first.
+     */
+    private readonly sessionQuestions = new Map<string, Promise<boolean | null>>();
 
     /**
      * How this manager reaches a server over its session, for the two questions publishing
@@ -503,11 +577,16 @@ export class VcsManager extends Manager {
      * after this one. A thunk closes over that manager and reads it when a publish runs,
      * long after both exist. Absent only in a test that does not publish; the product always
      * wires it.
+     *
+     * `askSessionUse` is the sign-in question, handed in for the same reason. Absent, nothing
+     * is ever asked and a project uses only what it was already granted - the safe reading for a
+     * test, and for anything that runs with no window to ask in.
      */
     constructor(
         app: BaseApp,
         private readonly flushPendingSaves?: PendingSaveFlush,
         private readonly teamSessionCall?: TeamSessionCall,
+        private readonly askSessionUse?: ServerSessionAsker,
     ) {
         super(app);
     }
@@ -871,9 +950,12 @@ export class VcsManager extends Manager {
      * caller that passes one is passing a finished identity, not a name to decorate.
      * The two settings are composed by {@link composeVcsIdentity}, which owns the
      * `Name <email>` shape and the four ways those two fields can be empty.
+     *
+     * `signedIn` is the sign-in the project uses ({@link projectServerSession}), never simply
+     * the one held for its server: a project that does not use a sign-in records the author's
+     * own name, which is what the panel beside the commit box says it will.
      */
-    private resolveIdentity(explicit?: string, remoteOrigin?: string | null): string {
-        const signedIn = this.storedServerSession(remoteOrigin);
+    private resolveIdentity(explicit?: string, signedIn?: VcsServerSession | null): string {
         const state = this.app.getGlobalState();
         const configuredName = state.get("versionControl.authorName");
         const configuredEmail = state.get("versionControl.authorEmail");
@@ -895,12 +977,18 @@ export class VcsManager extends Manager {
      * session under a random identifier fails with `No token stored` - which reads as a token
      * nobody ever presented, and is one presented under a different key.
      *
-     * A project with no signed-in server falls back to the author's identity, because a bare
-     * server has no session to look up and records whatever it is told. That fallback is what
-     * keeps Studio working against a `loreserver` with nothing in front of it.
+     * **This is also the whole of what keeps one project's calls apart from another's.** The
+     * backend presents the stored session for any call that carries the account id, whichever
+     * repository it is for, so the account id goes only on calls from a project the author said
+     * uses it - `signedIn` is that answer, and nothing a caller passes can stand in for it. A
+     * renderer-supplied identity never reaches an online call for the same reason.
+     *
+     * A project with no sign-in falls back to the author's identity, because a bare server has no
+     * session to look up and records whatever it is told. That fallback is what keeps Studio
+     * working against a `loreserver` with nothing in front of it.
      */
-    private resolveOnlineIdentity(remoteOrigin: string | null): string {
-        return this.storedServerSession(remoteOrigin)?.account.userId ?? this.resolveIdentity();
+    private onlineIdentity(signedIn: VcsServerSession | null): string {
+        return signedIn?.account.userId ?? this.resolveIdentity();
     }
 
     /**
@@ -919,13 +1007,31 @@ export class VcsManager extends Manager {
      * it again and run the call a second time. Once, and only for the failure that says the
      * backend has no session - a refusal from the server itself is an answer, and repeating
      * it would be a second refusal a moment later.
+     *
+     * `signedIn` is the sign-in the calling project uses, and null where it uses none: a project
+     * the author has not said uses a sign-in does not get the token presented on its behalf.
+     *
+     * `remoteOrigin` is the server the call went to, and it is only for naming the failure: where
+     * that server asked for a sign-in, this installation holds one for it, and the project does not
+     * use it, the refusal is said as exactly that ({@link VcsSignInUnusedError}) rather than as the
+     * backend's sentence about a token, which reads as though nobody had ever signed in.
      */
-    private async withServerSession<T>(remoteOrigin: string | null, run: () => Promise<T>): Promise<T> {
+    private async withServerSession<T>(
+        signedIn: VcsServerSession | null,
+        run: () => Promise<T>,
+        remoteOrigin: string | null = null,
+    ): Promise<T> {
         try {
             return await run();
         } catch (error) {
-            if (remoteOrigin === null || !isMissingBackendSession(error)) throw error;
-            if (!(await this.presentStoredToken(remoteOrigin))) throw error;
+            if (!isMissingBackendSession(error)) throw error;
+            if (signedIn === null) {
+                if (remoteOrigin !== null && this.storedServerSession(remoteOrigin) !== null) {
+                    throw new VcsSignInUnusedError(error instanceof Error ? error.message : String(error));
+                }
+                throw error;
+            }
+            if (!(await this.presentStoredToken(signedIn))) throw error;
             return run();
         }
     }
@@ -937,10 +1043,14 @@ export class VcsManager extends Manager {
      * nothing from the author. False for every way it cannot happen - no session, no token
      * this process can unseal, no Lore build, a server that refused it - and the caller
      * then reports the failure it already had rather than one from here.
+     *
+     * The session is read again rather than taken as given: a sign-in replaced by another account
+     * since the caller looked is not the one the caller was allowed to present.
      */
-    private async presentStoredToken(remoteOrigin: string): Promise<boolean> {
+    private async presentStoredToken(signedIn: VcsServerSession): Promise<boolean> {
+        const remoteOrigin = signedIn.remoteOrigin;
         const session = this.storedServerSession(remoteOrigin);
-        if (session === null) return false;
+        if (session === null || session.account.userId !== signedIn.account.userId) return false;
         const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
         if (token === null) return false;
         const backend = await requireVcsBackend().catch(() => null);
@@ -965,6 +1075,123 @@ export class VcsManager extends Manager {
             );
             return false;
         }
+    }
+
+    // -- which project uses which sign-in --------------------------------------------------
+
+    /** The answers given so far, one row per (server, project). See `serverSessionScope.ts`. */
+    private sessionUses(): VcsSessionUse[] {
+        return readSessionUses(this.app.getGlobalState().get(SESSION_USES_KEY));
+    }
+
+    /** Where one project stands with the sign-in held for one server. */
+    private sessionStandingOf(projectPath: string, remoteOrigin: string | null | undefined): SessionStanding {
+        return sessionStanding({
+            sessions: this.storedServerSessions(),
+            uses: this.sessionUses(),
+            remoteOrigin,
+            projectPath,
+        });
+    }
+
+    /**
+     * The sign-in one project uses at one server, or null.
+     *
+     * A read: it never asks. Used wherever the answer decides something without the author having
+     * pressed anything - whose name a version records, what a panel draws - and by the requests
+     * that did ask, once {@link settleSessionUse} has recorded the answer.
+     */
+    private projectServerSession(
+        projectPath: string,
+        remoteOrigin: string | null | undefined,
+    ): VcsServerSession | null {
+        const standing = this.sessionStandingOf(projectPath, remoteOrigin);
+        return standing.kind === "granted" ? standing.session : null;
+    }
+
+    /** Write one pair's answer. `userId` null is a no. */
+    private recordSessionUse(projectPath: string, remoteOrigin: string, userId: string | null): void {
+        this.app.getGlobalState().set(SESSION_USES_KEY, withSessionUse(this.sessionUses(), {
+            remoteOrigin,
+            projectPath,
+            userId,
+            at: Date.now(),
+        }));
+        this.app.logger.info(
+            "[Vcs]",
+            userId === null ? "A project does not use the sign-in for" : "A project uses the sign-in for",
+            remoteOrigin, "-", path.basename(projectPath),
+        );
+    }
+
+    /**
+     * The sign-in one project uses at one server, having asked the author first where this request
+     * is one that may ask.
+     *
+     * Asked outside every per-project queue, and that is deliberate: the question waits on a
+     * person, and a queue held for as long as they think about it would stop every read the version
+     * rail makes of this project in the meantime. Callers therefore settle this first and then do
+     * their work, which reads the recorded answer with {@link projectServerSession}.
+     *
+     * The answer is recorded for the account that was shown. If the sign-in at that address was
+     * replaced while the window was open, nothing is recorded: the author agreed to an account that
+     * is no longer the one a request would carry.
+     */
+    private async settleSessionUse(
+        projectPath: string,
+        remoteOrigin: string | null,
+        mode: SessionAskMode,
+    ): Promise<VcsServerSession | null> {
+        const standing = this.sessionStandingOf(projectPath, remoteOrigin);
+        if (standing.kind === "granted") return standing.session;
+        if (standing.kind === "none" || remoteOrigin === null) return null;
+        const ask = this.askSessionUse;
+        if (!shouldAskForSessionUse(standing, mode) || ask === undefined) return null;
+
+        // A newline cannot occur in an origin, so this cannot be made to collide by naming a
+        // directory cleverly.
+        const key = `${remoteOrigin}\n${sessionUseProjectKey(projectPath)}`;
+        let question = this.sessionQuestions.get(key);
+        if (question === undefined) {
+            const asking: Promise<boolean | null> = ask({ projectPath: projectRoot(projectPath), session: standing.session })
+                .catch((error: unknown) => {
+                    this.app.logger.warn("[Vcs] Could not ask about a sign-in:", error);
+                    return null;
+                })
+                .finally(() => {
+                    if (this.sessionQuestions.get(key) === asking) this.sessionQuestions.delete(key);
+                });
+            this.sessionQuestions.set(key, asking);
+            question = asking;
+        }
+        const answer = await question;
+        if (answer === null) return null;
+
+        const now = this.storedServerSession(remoteOrigin);
+        if (now === null || now.account.userId !== standing.session.account.userId) return null;
+        this.recordSessionUse(projectPath, remoteOrigin, answer ? now.account.userId : null);
+        return answer ? now : null;
+    }
+
+    /**
+     * Refuse a request about a server from a project that is not trusted.
+     *
+     * The server such a request reaches is the one named in the project's own `.lore/config.toml`,
+     * which makes it an address the project chose - the kind of thing `DISTRUSTED_OPERATIONS` is
+     * for. Asked of the path this manager is given, so it is only as good as the handler's check
+     * that the path is the calling window's own project (`requireWindowProject`).
+     */
+    private refuseDistrustedServerUse(projectPath: string): void {
+        const refused = projectDistrustedRefusal(this.app, projectPath, "server connection");
+        if (refused) {
+            this.app.logger.warn("[Vcs]", refused, "-", path.basename(projectPath));
+            throw new VcsProjectDistrustedError(refused);
+        }
+    }
+
+    /** The server a project names, read under its queue: a local read of the repository's config. */
+    private async remoteOriginOf(projectPath: string): Promise<string | null> {
+        return this.serialize(projectPath, async () => (await this.sessionFor(projectPath)).session.remoteOrigin);
     }
 
     /** The session recorded for this server, if this installation has signed in to it. */
@@ -1060,7 +1287,7 @@ export class VcsManager extends Manager {
 
             const { session, backend } = await this.sessionFor(projectPath);
             return backend.commitWorkingTree(
-                { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) },
+                { ...session.globals, identity: this.resolveIdentity(options.identity, this.projectServerSession(session.root, session.remoteOrigin)) },
                 { message, kind },
             );
         });
@@ -1110,6 +1337,14 @@ export class VcsManager extends Manager {
         revision: string,
         options: VcsRestoreOptions = {},
     ): Promise<VcsRestoreResult> {
+        // A session's version is fetched from the server, which is a request that needs the sign-in
+        // - so it is where the sign-in question is put for a project that has not answered it, and
+        // put before the queue for the reason `settleSessionUse` gives. Every other restore reads
+        // only what this repository already holds.
+        if (options.purpose === "live-session") {
+            this.refuseDistrustedServerUse(projectPath);
+            await this.settleSessionUse(projectPath, await this.remoteOriginOf(projectPath), "first-use");
+        }
         return this.serialize(projectPath, async () => {
             // First and inside the lock, exactly as for a commit: an auto-save still owed would
             // otherwise land on top of the restored bytes moments after they were written.
@@ -1120,7 +1355,8 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
+            const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, signedIn) };
 
             // Which of the two acts this is. The mechanics below are identical; what differs is the
             // two sentences the revisions carry - permanent repository content that a collaborator
@@ -1140,11 +1376,18 @@ export class VcsManager extends Manager {
              * why nothing gets to open a socket without somebody having asked - joining a room is
              * somebody asking.
              */
-            const readGlobals = live ? { ...globals, offline: false } : globals;
+            //
+            // The account id rather than the version's author, as on every online call: a caller's
+            // `identity` names who a revision is by and must never decide whose session a request
+            // is made under. See `onlineIdentity`.
+            const readGlobals = live
+                ? { ...globals, offline: false, identity: this.onlineIdentity(signedIn) }
+                : globals;
 
             const entries = await this.withServerSession(
-                live ? session.remoteOrigin : null,
+                live ? signedIn : null,
                 () => backend.listFilesAt(readGlobals, session.store, session.repositoryId, revision),
+                live ? session.remoteOrigin : null,
             );
             const plan = planRevisionRestore({
                 revision: entries,
@@ -1170,7 +1413,7 @@ export class VcsManager extends Manager {
             );
 
             const applied = await this.withServerSession(
-                live ? session.remoteOrigin : null,
+                live ? signedIn : null,
                 () => applyRevisionRestore({
                     projectPath: session.root,
                     plan,
@@ -1183,6 +1426,7 @@ export class VcsManager extends Manager {
                         ),
                     },
                 }),
+                live ? session.remoteOrigin : null,
             );
 
             let recordFailure: string | null = null;
@@ -1723,6 +1967,15 @@ export class VcsManager extends Manager {
      */
     public async setRemote(projectPath: string, url: string | null): Promise<void> {
         const root = projectRoot(projectPath);
+        // Connecting registers the repository on the server, which is a request made as this
+        // project - so an untrusted project may not, and one that has not been asked whether it uses
+        // the sign-in held for that server is asked here, before anything is closed or written.
+        // Disconnecting reaches nothing and needs neither.
+        const origin = url ? parseVcsRemoteUrl(url)?.origin ?? null : null;
+        if (url) {
+            this.refuseDistrustedServerUse(root);
+            await this.settleSessionUse(root, origin, "first-use");
+        }
         // Read BEFORE the session is closed, and needed only for the connect path: the
         // registration has to carry this project's own repository id, or the name on the
         // server would resolve to a different repository than the one that pushes to it.
@@ -1744,9 +1997,9 @@ export class VcsManager extends Manager {
                     {
                         ...this.globalsFor(root, { online: true }),
                         // Registering the repository is an online call like any other, so it
-                        // needs the account id when the server it is being registered on is one
-                        // this installation has signed in to.
-                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(url)?.origin ?? null),
+                        // needs the account id when this project uses a sign-in for the server it
+                        // is being registered on.
+                        identity: this.onlineIdentity(this.projectServerSession(root, origin)),
                     },
                     { url, repositoryId },
                 );
@@ -1771,7 +2024,7 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Who this installation is signed in to this project's server as, or null.
+     * Which sign-in this project uses at its server, and which one it could.
      *
      * **Two stores have to agree**, and asking only one of them is how this goes wrong. Studio
      * records the account a token named; the backend records the token itself, in a per-user
@@ -1780,13 +2033,61 @@ export class VcsManager extends Manager {
      * connection that will be refused - so the backend is asked, and a record it does not
      * recognise is dropped rather than shown.
      *
+     * **A sign-in held for the server is not one the project uses.** Where the author has not said
+     * this project uses it, or has said it does not, `session` is null and the sign-in comes back
+     * as `available` - so the panel can offer it by name instead of saying nobody is signed in. It
+     * never asks: see {@link useServerSession} for the one call here that does.
+     *
      * A purely local read: no socket, so a panel may ask on opening.
      */
-    public async getServerSession(projectPath: string): Promise<VcsServerSession | null> {
+    public async getServerSession(projectPath: string): Promise<VcsProjectServerSession> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            return this.confirmStoredSession(backend, session);
+            const standing = this.sessionStandingOf(session.root, session.remoteOrigin);
+            switch (standing.kind) {
+                case "granted":
+                    return {
+                        session: await this.confirmStoredSession(backend, session, standing.session),
+                        available: null,
+                        declined: false,
+                    };
+                case "none":
+                    return { session: null, available: null, declined: false };
+                default:
+                    return { session: null, available: standing.session, declined: standing.kind === "declined" };
+            }
         });
+    }
+
+    /**
+     * Ask the author whether this project uses the sign-in held for its server, and answer with
+     * where that leaves it.
+     *
+     * What the Team panel's "use this sign-in" row does. It asks even where the answer was once no:
+     * pressing it is the author asking again. The question goes up in a window of its own and the
+     * answer is recorded here - nothing the caller sends can stand in for it.
+     *
+     * `remoteOrigin` puts the same question about a server the project is not connected to: the
+     * server picker, where an author has just chosen where the project goes and what that server
+     * holds cannot be read for this project until they have said it uses the sign-in there. The
+     * answer comes back about that server, from the record alone - nothing is shown as signed in
+     * on the strength of it, so the backend is not asked to confirm it.
+     */
+    public async useServerSession(projectPath: string, remoteOrigin?: string): Promise<VcsProjectServerSession> {
+        this.refuseDistrustedServerUse(projectPath);
+        const own = await this.remoteOriginOf(projectPath);
+        const asked = remoteOrigin ?? own;
+        await this.settleSessionUse(projectPath, asked, "explicit");
+        if (asked === own) return this.getServerSession(projectPath);
+        const standing = this.sessionStandingOf(projectPath, asked);
+        switch (standing.kind) {
+            case "granted":
+                return { session: standing.session, available: null, declined: false };
+            case "none":
+                return { session: null, available: null, declined: false };
+            default:
+                return { session: null, available: standing.session, declined: standing.kind === "declined" };
+        }
     }
 
     /**
@@ -1796,10 +2097,10 @@ export class VcsManager extends Manager {
      * token for a collaborator and hands it over, and the collaborator pastes it here. A token
      * lasts weeks, so this is not something anybody does daily.
      *
-     * Signing in is a machine-level act rather than a project-level one - the backend stores
-     * the session per user, not per repository - so one sign-in serves every project pointed
-     * at the same server. The project is still where it happens, because the server address is
-     * the project's and there is nowhere else to learn it.
+     * The session is the machine's - the backend stores it per user, not per repository - and it
+     * becomes the sign-in held for that server. **It serves this project and no other until the
+     * author says so**: signing in here is this project's answer, and every other project pointed
+     * at the same server is asked the first time it needs it.
      *
      * **The token never comes back out of this method.** It goes to the backend's store and is
      * not written to the global state, not logged and not returned.
@@ -1812,6 +2113,7 @@ export class VcsManager extends Manager {
         projectPath: string,
         options: { authUrl: string; token: string },
     ): Promise<VcsSignInResult> {
+        this.refuseDistrustedServerUse(projectPath);
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
             if (!session.remoteOrigin) {
@@ -1834,6 +2136,7 @@ export class VcsManager extends Manager {
             const others = this.storedServerSessions()
                 .filter((stored) => stored.remoteOrigin !== signedIn.remoteOrigin);
             this.writeStoredServerSessions([...others, signedIn]);
+            this.recordSessionUse(session.root, signedIn.remoteOrigin, signedIn.account.userId);
             this.app.logger.info(
                 "[Vcs] Signed in", signedIn.remoteOrigin, "at", signedIn.authUrl,
                 "as", signedIn.account.username || signedIn.account.displayName,
@@ -1887,26 +2190,21 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Take this account back off the machine.
+     * Stop this project using the sign-in held for its server.
      *
-     * Clears the backend's stored token as well as Studio's record of who it belonged to.
-     * Doing only the second would leave a token on the machine that nothing in the interface
-     * mentions, which is the opposite of what somebody signing out is asking for.
+     * **Per project, not per server.** The sign-in is the machine's and other projects may use it;
+     * signing out here is this project's answer changing to no, recorded like any other no, and
+     * the other projects - and the sign-in itself - are left as they were. Taking the account off
+     * the machine altogether is {@link forgetServer}, which Settings does and which says which
+     * projects it will affect.
+     *
+     * Local: nothing is sent, and the backend's store is not touched.
      */
     public async signOut(projectPath: string): Promise<void> {
         return this.serialize(projectPath, async () => {
-            const { session, backend } = await this.sessionFor(projectPath);
-            const stored = this.storedServerSession(session.remoteOrigin);
-            if (!stored) return;
-
-            await backend.signOutOfServer(session.globals, {
-                authUrl: stored.authUrl,
-                userId: stored.account.userId,
-            });
-            this.writeStoredServerSessions(
-                this.storedServerSessions().filter((other) => other.remoteOrigin !== stored.remoteOrigin),
-            );
-            this.app.logger.info("[Vcs] Signed out of", stored.remoteOrigin);
+            const { session } = await this.sessionFor(projectPath);
+            if (!session.remoteOrigin || this.storedServerSession(session.remoteOrigin) === null) return;
+            this.recordSessionUse(session.root, session.remoteOrigin, null);
         });
     }
 
@@ -1937,9 +2235,36 @@ export class VcsManager extends Manager {
      * the machine, and Settings lists them with nothing open. Confirming each one against
      * the backend's store is deliberately not done here - that is a call per server, and
      * this answers a panel that opens.
+     *
+     * Each carries `usedBy`, the projects the author said use it, so the list that offers to sign
+     * out of a server says which projects that signs out.
      */
     public listServers(): VcsServerSession[] {
-        return this.storedServerSessions();
+        const uses = this.sessionUses();
+        if (uses.length === 0) return this.storedServerSessions();
+        const names = this.recentProjectNames();
+        return this.storedServerSessions().map((session) => ({
+            ...session,
+            usedBy: sessionUsers(uses, session, (projectPath) => names.get(normalizeProjectPath(projectPath)) ?? null),
+        }));
+    }
+
+    /**
+     * What the recent-projects list calls each project, keyed by project identity.
+     *
+     * The name an author sees in the launcher, so a list of the projects a sign-in serves reads the
+     * way the list they open those projects from does. A project not in it is named by its folder.
+     */
+    private recentProjectNames(): Map<string, string> {
+        const stored = this.app.getGlobalState().get("app.recentProjects");
+        const names = new Map<string, string>();
+        if (!Array.isArray(stored)) return names;
+        for (const entry of stored as Array<{ path?: unknown; name?: unknown }>) {
+            if (typeof entry?.path === "string" && typeof entry.name === "string" && entry.name.trim()) {
+                names.set(normalizeProjectPath(entry.path), entry.name.trim());
+            }
+        }
+        return names;
     }
 
     /**
@@ -1968,6 +2293,15 @@ export class VcsManager extends Manager {
              * then the session records the address alone, exactly as it did before.
              */
             description?: VcsServerDescription;
+            /**
+             * The project this sign-in was made from, where it was made from one.
+             *
+             * The window's own project, never a name the request carried: signing in from inside a
+             * project is that project's answer to the question every other project is asked, so it
+             * uses the sign-in from then on. Absent from Settings and the launcher, whose sign-ins
+             * serve no project until one is asked.
+             */
+            forProject?: string;
         },
     ): Promise<{ session: VcsServerSession; servers: VcsServerSession[] }> {
         const backend = await requireVcsBackend();
@@ -2003,6 +2337,9 @@ export class VcsManager extends Manager {
             signedIn,
         ];
         this.writeStoredServerSessions(servers);
+        if (options.forProject) {
+            this.recordSessionUse(options.forProject, signedIn.remoteOrigin, signedIn.account.userId);
+        }
         // Sealed here rather than at the sign-in, because this is the one path that
         // has the token and knows which server it turned out to be for. A machine
         // that cannot seal keeps none, and the calls that want one say so.
@@ -2060,6 +2397,9 @@ export class VcsManager extends Manager {
     /**
      * Take a server off this machine, the stored token with it.
      *
+     * **Per server, not per project**: every project that used this sign-in stops, and their
+     * answers go too. Stopping one project is {@link signOut}.
+     *
      * The record goes even where the backend could not be asked to drop its token. An
      * entry that cannot be removed because the machine is offline is a worse answer than
      * a token left behind: the second is written to the log and can be cleared by signing
@@ -2088,6 +2428,9 @@ export class VcsManager extends Manager {
             .filter((other) => other.remoteOrigin !== stored.remoteOrigin);
         this.writeStoredServerSessions(servers);
         forgetServerToken(this.app.getGlobalState(), stored.remoteOrigin);
+        // Every project's answer about this server goes with it, the noes included. A server added
+        // again later is a new question for each project, asked about whichever account it is then.
+        this.app.getGlobalState().set(SESSION_USES_KEY, withoutSessionUsesAt(this.sessionUses(), stored.remoteOrigin));
         this.app.logger.info("[Vcs] Removed server", stored.remoteOrigin);
         return servers;
     }
@@ -2187,13 +2530,34 @@ export class VcsManager extends Manager {
      * {@link publishToRemote}, which cannot save it: a registration refused because the
      * SAME id is already there is swallowed as "already done", which is true of the
      * repository and false of the name.
+     *
+     * **Whose sign-in, and where to.** `remoteOrigin` is the caller's, and publishing ends by
+     * rewriting the project's own `.lore/config.toml` to point at it - every later send and get
+     * goes wherever that says. So it is bounded two ways. It has to be a server this installation
+     * holds a sign-in for, which the credential check below already required. And the project has
+     * to use that sign-in: from a project's own window that is the author's answer to the sign-in
+     * question, asked here if it has not been given (and asked again if it was no - choosing a
+     * server to put the project on is asking again); from a window with no project, which is the
+     * launcher making a project for the server the author picked, it is `newProject`, and it is
+     * only good for a project that has no server yet. Neither path can move a project that is
+     * already connected somewhere without the author saying so in a window of Studio's own.
      */
     public async publishProject(
         projectPath: string,
         remoteOrigin: string,
         name: string,
+        options: {
+            /**
+             * The caller is the launcher's server tab publishing a project the wizard has just made
+             * for this server. The act is the author's choice of server and account, so the project
+             * uses that sign-in from here on - which is why it is refused for a project that is
+             * already connected to a server.
+             */
+            newProject?: boolean;
+        } = {},
     ): Promise<VcsPublishOutcome> {
         const root = projectRoot(projectPath);
+        this.refuseDistrustedServerUse(root);
         const repositoryId = readRepositoryId(root);
         if (repositoryId === undefined) {
             throw new Error(`${root} is not under version control, so there is nothing to publish`);
@@ -2205,6 +2569,19 @@ export class VcsManager extends Manager {
         // machine that cannot ask says so rather than opening a socket to find out.
         if (this.serverCredentials(remoteOrigin) === null) {
             return { ok: false, problem: { kind: "no-token" } };
+        }
+
+        if (options.newProject) {
+            if (await this.getRemote(root) !== null) {
+                throw new Error(
+                    `${root} is already connected to a server. Choose another server for it from its own window.`,
+                );
+            }
+            const held = this.storedServerSession(remoteOrigin);
+            if (held === null) return { ok: false, problem: { kind: "no-token" } };
+            this.recordSessionUse(root, remoteOrigin, held.account.userId);
+        } else if (await this.settleSessionUse(root, remoteOrigin, "explicit") === null) {
+            return { ok: false, problem: { kind: "declined" } };
         }
         const call = this.teamSessionCall;
         if (call === undefined) {
@@ -2300,10 +2677,8 @@ export class VcsManager extends Manager {
     private async confirmStoredSession(
         backend: VcsBackend,
         session: VcsSession,
+        stored: VcsServerSession,
     ): Promise<VcsServerSession | null> {
-        const stored = this.storedServerSession(session.remoteOrigin);
-        if (!stored) return null;
-
         const live = await backend.readServerSessions(session.globals).catch(() => null);
         // A read that failed says nothing about whether the session exists, so the record
         // stands. Only an answer that came back and did not contain it is evidence.
@@ -2364,14 +2739,29 @@ export class VcsManager extends Manager {
      * never on a timer.
      */
     public async getSyncState(projectPath: string): Promise<VcsSyncState> {
+        await this.prepareServerRequest(projectPath);
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            return this.withServerSession(session.remoteOrigin, () => backend.readSyncState({
+            const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
+            return this.withServerSession(signedIn, () => backend.readSyncState({
                 ...session.globals,
                 offline: false,
-                identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            }));
+                identity: this.onlineIdentity(signedIn),
+            }), session.remoteOrigin);
         });
+    }
+
+    /**
+     * What every request to a project's own server does before it starts: refuse an untrusted
+     * project, and put the sign-in question to one that has never answered it.
+     *
+     * Outside the project's queue, for the reason {@link settleSessionUse} gives. The request then
+     * reads the recorded answer inside the queue, so a server address changed in between is simply
+     * read afresh: the answer is looked up for whatever the project names by then.
+     */
+    private async prepareServerRequest(projectPath: string): Promise<void> {
+        this.refuseDistrustedServerUse(projectPath);
+        await this.settleSessionUse(projectPath, await this.remoteOriginOf(projectPath), "first-use");
     }
 
     /**
@@ -2387,14 +2777,16 @@ export class VcsManager extends Manager {
      * Nothing is written locally, so a failure leaves the project exactly as it was.
      */
     public async push(projectPath: string): Promise<VcsPushResult> {
+        await this.prepareServerRequest(projectPath);
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            const result = await this.withServerSession(session.remoteOrigin, () => backend.pushToRemote({
+            const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
+            const result = await this.withServerSession(signedIn, () => backend.pushToRemote({
                 ...session.globals,
                 offline: false,
-                // The account id, not the author's name - see `resolveOnlineIdentity`.
-                identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            })).catch((error: unknown) => {
+                // The account id, not the author's name - see `onlineIdentity`.
+                identity: this.onlineIdentity(signedIn),
+            }), session.remoteOrigin).catch((error: unknown) => {
                 if (isDivergedBranch(error)) {
                     throw new VcsBranchDivergedError(error instanceof Error ? error.message : String(error));
                 }
@@ -2426,6 +2818,7 @@ export class VcsManager extends Manager {
      * names the remedy, which is to submit a version first.
      */
     public async sync(projectPath: string): Promise<VcsSyncResult> {
+        await this.prepareServerRequest(projectPath);
         return this.serialize(projectPath, async () => {
             if (this.flushPendingSaves) {
                 await this.flushPendingSaves(projectPath).catch((error) => {
@@ -2438,7 +2831,8 @@ export class VcsManager extends Manager {
             // backend looks a signed-in session up for. The revision an automatic merge records
             // therefore carries the account id while a session is in force; the author's own
             // commits do not, because those are offline and go through `resolveIdentity`.
-            const globals = { ...session.globals, identity: this.resolveOnlineIdentity(session.remoteOrigin) };
+            const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
+            const globals = { ...session.globals, identity: this.onlineIdentity(signedIn) };
 
             // Offline and non-scanning, so establishing the precondition costs neither a
             // socket nor the staged-state side effect a scan would have (§4.17). This
@@ -2450,8 +2844,9 @@ export class VcsManager extends Manager {
             }
 
             const result = await this.withServerSession(
-                session.remoteOrigin,
+                signedIn,
                 () => backend.syncFromRemote({ ...globals, offline: false }),
+                session.remoteOrigin,
             );
             this.app.logger.info(
                 "[Vcs] Synced", session.root,
@@ -2602,7 +2997,7 @@ export class VcsManager extends Manager {
             }
 
             const { session, backend } = await this.sessionFor(projectPath);
-            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
+            const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, this.projectServerSession(session.root, session.remoteOrigin)) };
 
             // **Tier two, and it is written BEFORE anything is settled and after the flush above.**
             // The composed bytes are an answer neither side wrote, so they go into the working tree
@@ -2717,13 +3112,38 @@ export class VcsManager extends Manager {
     public async cloneRepository(
         repositoryUrl: string,
         destination: string,
-        options: { onProgress?: (transferred: number, total: number) => void } = {},
+        options: {
+            onProgress?: (transferred: number, total: number) => void;
+            /**
+             * Make the copy with the sign-in held for that server, and let the project it becomes
+             * go on using it.
+             *
+             * Set only where fetching a project is itself the author's choice of server and
+             * account - the wizard, which has no project of its own and fetches from a server the
+             * author picked. Unset, the copy is made as whatever the destination already uses,
+             * which for a new folder is nothing: a clone is a new (server, project) pair, and the
+             * handler decides whether the request that made it may answer for it.
+             */
+            useSignIn?: boolean;
+        } = {},
     ): Promise<{ root: string; branch: string; fileCount: number }> {
         const root = projectRoot(destination);
         const remoteOrigin = parseVcsRemoteUrl(repositoryUrl)?.origin ?? null;
         return this.serialize(root, async () => {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
+            let signedIn = this.projectServerSession(root, remoteOrigin);
+            let answeredHere = false;
+            if (signedIn === null && options.useSignIn && remoteOrigin !== null) {
+                const held = this.storedServerSession(remoteOrigin);
+                if (held !== null) {
+                    // Recorded before the copy, because the copy is the first request made as this
+                    // project; taken back below if the copy fails and leaves nothing behind.
+                    this.recordSessionUse(root, remoteOrigin, held.account.userId);
+                    signedIn = held;
+                    answeredHere = true;
+                }
+            }
             // On the trust ledger before the copy rather than after it, for the reason the package
             // import records first: a working tree that lands unrecorded would be met later as a
             // mere folder rather than as somebody else's code, and a clone carries a puppet backend
@@ -2736,19 +3156,24 @@ export class VcsManager extends Manager {
             }
             let cloned: { branch: string; fileCount: number };
             try {
-                cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
+                cloned = await this.withServerSession(signedIn, () => backend.cloneInto(
                     {
                         ...globals,
-                        // Online, so the account id if this installation has signed in to the
-                        // server the copy is coming from.
-                        identity: this.resolveOnlineIdentity(remoteOrigin),
+                        // Online, so the account id where the copy is made with a sign-in.
+                        identity: this.onlineIdentity(signedIn),
                     },
                     { repositoryUrl, onProgress: options.onProgress },
-                ));
+                ), remoteOrigin);
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
             } catch (error) {
                 if (recorded && await directoryHoldsNothing(root)) {
                     this.app.projectTrustManager.forgetArrival(root);
+                }
+                if (answeredHere && remoteOrigin !== null && await directoryHoldsNothing(root)) {
+                    this.app.getGlobalState().set(
+                        SESSION_USES_KEY,
+                        withoutSessionUse(this.sessionUses(), remoteOrigin, root),
+                    );
                 }
                 // Logged here because nothing else does: the handler turns this into a
                 // refusal the wizard prints, and a clone that failed used to leave the log
@@ -2799,7 +3224,7 @@ export class VcsManager extends Manager {
                 );
             });
 
-            await this.fetchRevisionHistory(backend, root, remoteOrigin);
+            await this.fetchRevisionHistory(backend, root, signedIn);
             return { root, ...cloned };
         });
     }
@@ -2824,15 +3249,15 @@ export class VcsManager extends Manager {
     private async fetchRevisionHistory(
         backend: VcsBackend,
         root: string,
-        remoteOrigin: string | null,
+        signedIn: VcsServerSession | null,
     ): Promise<void> {
         const globals = {
             ...this.globalsFor(root, { online: true }),
-            identity: this.resolveOnlineIdentity(remoteOrigin),
+            identity: this.onlineIdentity(signedIn),
         };
         try {
             const graph = await this.withServerSession(
-                remoteOrigin,
+                signedIn,
                 () => backend.readRevisionGraph(globals),
             );
             this.app.logger.info("[Vcs] Fetched history for", root, `${graph.size} revision(s)`);

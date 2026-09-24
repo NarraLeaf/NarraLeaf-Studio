@@ -164,8 +164,43 @@ export type PluginWidgetModule = {
     readonly type: string;
     /** Widget type this one specialises. */
     readonly extends?: string;
-    /** Event and effect capabilities, shared with the blueprint tooling. */
+    /**
+     * The events this widget raises, and whether it has a blueprint of its own to raise them on.
+     *
+     * With `supportsPrivateBlueprint: true` the element gets a blueprint like a built-in widget's,
+     * the properties panel lists `events`, and each event starts the graphs whose head is one of its
+     * `headNodeTypes` when `render` calls `dispatchEvent(event.id, payload)` - or, for the pointer,
+     * key and lifecycle events, when the host raises them as it does for its own widgets.
+     *
+     * A head is either one a built-in widget uses for the same event (`blueprint.event.head.mouseClick`,
+     * `blueprint.event.head.init`, `blueprint.event.head.onBroadcast`, ...) or an event-head node this
+     * plugin registers through `app.services.blueprintNodes` with `role: "eventHead"`; its output pins
+     * read the fields of the payload of the same name. An event naming neither is dropped with a
+     * console warning, because nothing could start on it. The runtime entry declares the same object
+     * on its `app.game.widgets.register`, or the game does not know the events exist.
+     */
     readonly logicApi?: WidgetLogicApi;
+    /**
+     * Whether an author may put other elements inside this widget, as they can inside a Container.
+     *
+     * When true the canvas, the layer outline and the insert commands let elements be placed in it,
+     * and `render` receives them already drawn as `children` - placing them is the widget's own job.
+     * Absent or false, it is a leaf.
+     */
+    readonly acceptsChildren?: boolean;
+    /**
+     * The parts this widget builds for itself, when it holds those and nothing else - as the built-in
+     * Slider holds its track and handle.
+     *
+     * Each entry names a slot. `createDefaultChildElements` builds the parts, and each part says which
+     * slot it fills with `extra: { partSlot: "<slot>" }`. The widget then holds exactly those: the
+     * canvas, the layer outline, paste and the insert tool put nothing else inside it, a part cannot
+     * be dragged out of it, and the interface command line refuses a child that names no declared slot.
+     * An author can still select, restyle and delete a part. Declaring slots makes `acceptsChildren`
+     * irrelevant - a widget with parts takes nothing else - and `render` receives the parts as
+     * `children`, like any other children.
+     */
+    readonly partSlots?: readonly string[];
     readonly displayName: string;
     readonly icon: LucideIcon;
     createDefaultElement(): Partial<UIElement>;

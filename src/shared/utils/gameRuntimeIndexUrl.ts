@@ -1,15 +1,18 @@
 import {
     GAME_RUNTIME_CRASH_POLICY_QUERY_PARAM,
     GAME_RUNTIME_CRASH_QUERY_PARAM,
+    GAME_RUNTIME_LAUNCH_QUERY_PARAM,
     GAME_RUNTIME_LOG_PATH_QUERY_PARAM,
     GAME_RUNTIME_PROTOCOL,
     normalizeGameCrashPolicy,
     type GameCrashPolicy,
 } from "@shared/types/gameRuntime";
+import { normalizeGameLaunchTiming, type GameLaunchTiming } from "@shared/types/gameLaunchTiming";
 
 /**
  * The address of the game's own page, carrying the two things the crash screen has to know before
- * it can read anything, and the failure to draw when there is one.
+ * it can read anything, the failure to draw when there is one, and when the process began - the
+ * zero the page's performance timeline is placed against.
  *
  * One module for both ends so the spelling cannot drift: the desktop shell composes the address,
  * the page takes it apart, and neither knows the parameter names by heart.
@@ -21,12 +24,16 @@ export interface GameRuntimeIndexUrlInput {
     logPath: string | null;
     /** The death to draw, when this load is replacing a page whose process died. */
     crashDetails?: string | null;
+    /** When the process started and what it did before the page; see `gameLaunchTiming`. */
+    launch?: GameLaunchTiming | null;
 }
 
 export interface GameRuntimeIndexUrlParams {
     policy: GameCrashPolicy;
     logPath: string | null;
     crashDetails: string | null;
+    /** Null where the shell says nothing - the web export - or said something unreadable. */
+    launch: GameLaunchTiming | null;
 }
 
 export function buildGameRuntimeIndexUrl(input: GameRuntimeIndexUrlInput): string {
@@ -37,6 +44,9 @@ export function buildGameRuntimeIndexUrl(input: GameRuntimeIndexUrlInput): strin
     }
     if (input.crashDetails) {
         params.set(GAME_RUNTIME_CRASH_QUERY_PARAM, input.crashDetails);
+    }
+    if (input.launch) {
+        params.set(GAME_RUNTIME_LAUNCH_QUERY_PARAM, JSON.stringify(input.launch));
     }
     return `${GAME_RUNTIME_PROTOCOL}://runtime/index.html?${params.toString()}`;
 }
@@ -56,7 +66,20 @@ export function readGameRuntimeIndexUrl(search: string): GameRuntimeIndexUrlPara
         policy: normalizeGameCrashPolicy(policy),
         logPath: params.get(GAME_RUNTIME_LOG_PATH_QUERY_PARAM),
         crashDetails: params.get(GAME_RUNTIME_CRASH_QUERY_PARAM),
+        launch: readLaunchParam(params.get(GAME_RUNTIME_LAUNCH_QUERY_PARAM)),
     };
+}
+
+/** A launch timing that does not parse is no launch timing: the page falls back to its own origin. */
+function readLaunchParam(raw: string | null): GameLaunchTiming | null {
+    if (!raw) {
+        return null;
+    }
+    try {
+        return normalizeGameLaunchTiming(JSON.parse(raw));
+    } catch {
+        return null;
+    }
 }
 
 /**

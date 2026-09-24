@@ -21,12 +21,14 @@ import { readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/in
 import { isTouchStrokeInFlight } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
-import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
+import { bindWidgetEventDispatch } from "./widgetEventDispatch";
+import { uiDrawingAttributeValue } from "./surfaceMeasurement";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
 import type { UIStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+import { useSurfaceTreeInteractivity } from "@/lib/ui-editor/runtime/surface/surfaceTreeContext";
 
 /** Shared so an element with no offsets keeps one object identity and never re-poses on it. */
 const ZERO_APPEARANCE_OFFSETS = { x: 0, y: 0 };
@@ -63,6 +65,12 @@ type EditorNodeWrapperProps = {
     styleOverrides?: CSSProperties;
     hasRuntimeOpacityOverride?: boolean;
     hostAdapter?: UIHostAdapter;
+    /**
+     * Whether this node may take pointer / keyboard input at all. What it takes is this AND the
+     * enclosing tree's interactivity, which changes for the whole tree at once and so is read from
+     * context rather than handed to every wrapper (see `surfaceTreeContext`). Outside a tree the
+     * context says yes, and these alone decide.
+     */
     interactive?: boolean;
     keyboardInteractive?: boolean;
     useAppearanceInspectorPreview?: boolean;
@@ -150,8 +158,8 @@ export function EditorNodeWrapper({
     styleOverrides,
     hasRuntimeOpacityOverride = false,
     hostAdapter,
-    interactive = true,
-    keyboardInteractive = interactive,
+    interactive: ownInteractive = true,
+    keyboardInteractive: ownKeyboardInteractive = ownInteractive,
     useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
@@ -159,8 +167,10 @@ export function EditorNodeWrapper({
     componentParams,
     children,
 }: EditorNodeWrapperProps) {
+    const treeInteractivity = useSurfaceTreeInteractivity();
+    const interactive = ownInteractive && treeInteractivity.interactive;
+    const keyboardInteractive = ownKeyboardInteractive && treeInteractivity.keyboardInteractive;
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
-    const surfacePassive = useSurfacePassive();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const interactionDisabled = Boolean(
@@ -298,22 +308,17 @@ export function EditorNodeWrapper({
         }
     }, [displayableMotion, resetMotionId]);
     // The element tree resolves component params afresh on every render, so its object identity
-    // moves even when the values did not. Keying the memo on the signature keeps the dispatch
-    // options - and therefore the handlers built from them - stable across those renders; when two
-    // signatures match, the captured object holds the same values by construction.
+    // moves even when the values did not. Keying the memo on the signature keeps the dispatch - and
+    // therefore the handlers built from it - stable across those renders; when two signatures match,
+    // the captured object holds the same values by construction.
+    //
+    // The same binding the renderer inside this node is handed as `dispatchEvent`, so a pointer
+    // event and an event the widget raises itself name the drawing the same way.
     const componentParamsSig = componentParams ? JSON.stringify(componentParams) : "";
-    const eventOptions = useMemo(
-        () =>
-            listItemScope || instanceKey || componentId || componentParamsSig
-                ? {
-                      listItemScope: listItemScope ?? null,
-                      instanceKey,
-                      componentId,
-                      componentParams: componentParams ?? undefined,
-                  }
-                : undefined,
+    const dispatchInDrawing = useMemo(
+        () => bindWidgetEventDispatch(blueprintRuntime, element.id, { listItemScope, instanceKey, componentId, componentParams }),
         // eslint-disable-next-line react-hooks/exhaustive-deps -- componentParamsSig stands in for componentParams
-        [componentId, componentParamsSig, instanceKey, listItemScope],
+        [blueprintRuntime, componentId, componentParamsSig, element.id, instanceKey, listItemScope],
     );
 
     const isDirectElementEvent = useCallback(
@@ -364,15 +369,10 @@ export function EditorNodeWrapper({
             if (!getWidgetLogicEvent(element.type, eventName) && !isPointerPositionElementEvent(eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
-                eventName,
-                payload,
-                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
-            );
+            void dispatchInDrawing(eventName, payload, eventControl ? { eventControl } : undefined);
             return true;
         },
-        [blueprintRuntime, element.id, element.type, eventOptions, interactive, isDirectElementEvent],
+        [blueprintRuntime, dispatchInDrawing, element.type, interactive, isDirectElementEvent],
     );
 
     const dispatchMountedWidgetEvent = useCallback(
@@ -383,15 +383,10 @@ export function EditorNodeWrapper({
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(
-                element.id,
-                eventName,
-                payload,
-                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
-            );
+            void dispatchInDrawing(eventName, payload, eventControl ? { eventControl } : undefined);
             return true;
         },
-        [blueprintRuntime, element.id, element.type, eventOptions, keyboardInteractive],
+        [blueprintRuntime, dispatchInDrawing, element.type, keyboardInteractive],
     );
 
     useEffect(() => {
@@ -649,9 +644,10 @@ export function EditorNodeWrapper({
             width: normalizedWidth,
             height: normalizedHeight,
             opacity: motionControlsOpacity ? undefined : effectiveOpacity,
-            // A passive surface stays click-through all the way down. Setting it on the shell alone
-            // does nothing, because this very line is what takes the clicks back.
-            pointerEvents: (isRoot && !isComponentRoot) || surfacePassive ? "none" : "auto",
+            // A click stops where the picture is. A surface that must take no input at all is taken out
+            // of hit testing as a whole instead (`GameSurfaceRenderer`'s `passive`), because this
+            // line, and every other box that takes pointer events back, would undo it one level down.
+            pointerEvents: isRoot && !isComponentRoot ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
@@ -679,7 +675,6 @@ export function EditorNodeWrapper({
         placedEnteredOffsets.x,
         placedEnteredOffsets.y,
         styleOverrides,
-        surfacePassive,
         wrapperCursor,
     ]);
 
@@ -850,6 +845,9 @@ export function EditorNodeWrapper({
         <motion.div
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
+            // Which drawing this is, for measuring one row or one placement rather than whichever
+            // copy of the element the page happens to hold first. See `surfaceMeasurement`.
+            data-ui-drawing={interactive && instanceKey ? uiDrawingAttributeValue(instanceKey) : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""} ${isEnteredHere ? "ui-editor-node-entered" : ""}`}
             style={motionStyle}
             initial={false}

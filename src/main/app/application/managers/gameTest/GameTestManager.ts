@@ -1,4 +1,5 @@
 import { refuseDistrustedOperation } from "../../utils/projectTrustGate";
+import { refuseProjectHeldElsewhere } from "../../utils/projectSessionGate";
 import crypto from "crypto";
 import net from "net";
 import path from "path";
@@ -17,22 +18,25 @@ import type {
     GameTestLogLevel,
 } from "@shared/types/gameTest";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
+import type { CommandLineRunJob } from "@shared/types/commandLineRun";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
 import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
+import { listScriptCompileFailures } from "../devMode/pipeline/scriptCompiler";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
+import { defaultTestEdition, testEditionLogLines } from "../../utils/testEdition";
 import {
     formatPreviewProcessOutput,
     hostSidecarPlatformKey,
     resolvePreviewRunnerBinaryForApp,
 } from "../preview/PreviewManager";
 import { selectProjectRuntimePlugins, type RuntimePluginPackSelection } from "../preview/selectRuntimePlugins";
-import { resolvePackEncryptionKey } from "../security/packKeyService";
-import { resolveRunSealing, runSealingLogLine } from "../../utils/runSealing";
+import { resolveRunSealing, runSealingLogLine, type RunSealingChoice } from "../../utils/runSealing";
 import { currentDownloadRewrites } from "../downloadRewrites";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 
@@ -96,6 +100,19 @@ const CONTROL_EVENT_FRAME = "test:event";
 const NETWORK_BLOCKED_ENV_VAR = "NARRALEAF_TEST_NETWORK";
 
 /**
+ * Set on every game a test launches: this window is being driven, not watched.
+ *
+ * Read by the game runtime, which then keeps the window running at full speed when it is not on
+ * screen. Chromium stops painting and throttles timers in a window that is minimized, off-screen or
+ * covered by another one, and a story waits on painted frames to enter its first scene and finish
+ * every transition - so a test's game that ended up behind the author's editor, or behind any window
+ * another program opened, stopped where it stood while the test went on clicking at it and failed a
+ * minute later for "no longer advancing". The window is the harness's, not a player's, and whether
+ * it is on top says nothing about the game.
+ */
+const TEST_DRIVEN_ENV_VAR = "NARRALEAF_TEST_DRIVEN";
+
+/**
  * A test's game session runs the main app surface, which is what Run > Preview launches too.
  *
  * `GameTestLaunchRequest` deliberately carries no entry: a test asks for "this project's game", and
@@ -134,6 +151,16 @@ type GameTestSession = {
     sawMainRuntimeError: boolean;
     /** Guards the "exactly one exit event per session" invariant. */
     exitEmitted: boolean;
+    /**
+     * The headless job the project's window was opened for, or null for a window an author is at.
+     *
+     * Captured when the launch arrives, off the window's props - which main set when it opened the
+     * window and the renderer has no way to change. It decides three things: where this run's "as
+     * shipped" answer comes from (see {@link sealingChoiceFor}), which build its game is (see {@link
+     * editionFor}), and that the host's own lines about the game also go on the command-line log,
+     * which is the only thing a job reads.
+     */
+    commandLineRun: CommandLineRunJob | null;
     /**
      * Why the launch could not produce a game, in the author's words.
      *
@@ -323,7 +350,8 @@ export class GameTestManager {
         const projectPath = path.resolve(request.projectPath);
         const key = this.projectKey(projectPath);
 
-        const distrusted = refuseDistrustedOperation(this.app, projectPath, "test run");
+        const distrusted = refuseDistrustedOperation(this.app, projectPath, "test run")
+            ?? refuseProjectHeldElsewhere(this.app, projectPath, "test run");
         if (distrusted) {
             return Promise.resolve({ ok: false, reason: distrusted });
         }
@@ -356,6 +384,7 @@ export class GameTestManager {
             startFailed: false,
             sawMainRuntimeError: false,
             exitEmitted: false,
+            commandLineRun: findWorkspaceWindow(this.app, projectPath)?.getProps().commandLineRun ?? null,
             failureReason: null,
         };
         this.sessions.set(key, session);
@@ -474,18 +503,23 @@ export class GameTestManager {
             }
             const sealing = await resolveRunSealing({
                 projectPath: session.projectPath,
-                settings: this.app.getGlobalState(),
-                resolveKey: () => resolvePackEncryptionKey(this.app.getUserDataDir(), session.projectPath),
+                choice: this.sealingChoiceFor(session),
             });
             const sealingLine = runSealingLogLine(sealing);
             if (sealingLine) {
-                this.emitConsole(session, "verbose", sealingLine);
+                // Not verbose on a headless run: which path the content took is the one fact about
+                // the game a job asked for by name, and it should not read as noise beside the rest.
+                this.emitConsole(session, sealing.by === "command-line" ? "info" : "verbose", sealingLine);
             }
-            const encryptionKey = sealing.kind === "sealed" ? sealing.key : undefined;
             this.ensureNotCancelled(session);
 
-            const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
-            const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
+            const edition = await this.editionFor(session);
+            for (const line of edition.logLines) {
+                // Beside the line about the content, and at the same level: which build ran is the
+                // other fact about the game a job asked for by name.
+                this.emitConsole(session, "info", line);
+            }
+            const compileStartedAt = Date.now();
             const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath: session.projectPath,
                 entry: TEST_LAUNCH_ENTRY,
@@ -499,20 +533,20 @@ export class GameTestManager {
                     controlPort: session.controlPort,
                     controlToken: session.controlToken,
                 },
-                // What edition this run is. Read from the machine's own setting rather than taken
-                // from the launch request: nothing about a run needs the renderer's word for it, and
-                // the three launch surfaces keep the shapes they had. `packaging` stays off - this
-                // folds the variant without planning what a package would leave out.
-                ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
-                // And which DLC it has installed, from the same setting. A walkthrough test that ran
-                // with content the author had not ticked would pass on a game nobody ships - and the
-                // default, none, is the package every player starts from.
-                includedDlc: runDlc,
+                // What edition this run is, and which DLC it has installed - see `editionFor` for
+                // who decides. Never taken from the launch request: nothing about a run needs the
+                // renderer's word for it, and the three launch surfaces keep the shapes they had.
+                // `packaging` stays off - this folds the variant without planning what a package
+                // would leave out.
+                ...(edition.appTag ? { appTag: edition.appTag } : {}),
+                // A walkthrough test that ran with content nobody asked for would pass on a game
+                // nobody ships - and the default, none, is the package every player starts from.
+                includedDlc: edition.includedDlc,
                 runtimePlugins: pluginSelection.selected,
                 // "preview" and not "production": a test needs the control server, which a shipped
                 // pack deliberately does not have.
                 mode: "preview",
-                encryptionKey,
+                protectAssets: sealing.kind === "sealed",
                 platformKeys: [hostSidecarPlatformKey()],
                 hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
@@ -523,7 +557,19 @@ export class GameTestManager {
             });
             session.compileWorker = null;
             this.ensureNotCancelled(session);
-            this.emitConsole(session, "verbose", `game compiled: ${artifact.copiedAssetCount} asset(s)`);
+            // With its time: a sealed compile re-writes the whole store and is the one step whose
+            // cost depends on the path taken, so this is where the two paths are told apart by cost.
+            this.emitConsole(
+                session,
+                "verbose",
+                `game compiled: ${artifact.copiedAssetCount} asset(s) in ${formatSeconds(Date.now() - compileStartedAt)}`,
+            );
+            // A test runs with a script that did not compile, as a preview does, and says so: the
+            // layer does nothing, and a result read without this line would be about a game the
+            // author did not write.
+            for (const message of listScriptCompileFailures(artifact.pack?.bundle?.ui?.scripts)) {
+                this.emitConsole(session, "error", message);
+            }
 
             const binary = resolvePreviewRunnerBinaryForApp(this.app);
             // The last point at which a cancel is free: everything from here to the end of this
@@ -536,6 +582,7 @@ export class GameTestManager {
                 env: {
                     ...process.env,
                     NARRALEAF_STUDIO_PREVIEW: "1",
+                    [TEST_DRIVEN_ENV_VAR]: "1",
                     // Honoured by the game runtime, not here. Setting it is main's entire share of
                     // the no-network test: the game must fail the way a player's would.
                     ...(request.network === "blocked" ? { [NETWORK_BLOCKED_ENV_VAR]: "blocked" } : {}),
@@ -820,8 +867,79 @@ export class GameTestManager {
         }
     }
 
+    /**
+     * Where this session's "as shipped" answer comes from.
+     *
+     * A headless `--test` run takes it from its own line and from nothing else - see `runSealing.ts`
+     * for why the machine's setting is not a fallback. Any other headless job (a build, a lint, a
+     * listing) never launches a test's game; were one to, it would not have asked for the shipped
+     * form, and that is what it gets.
+     */
+    private sealingChoiceFor(session: GameTestSession): RunSealingChoice {
+        const job = session.commandLineRun;
+        if (!job) {
+            return { by: "preview-setting", settings: this.app.getGlobalState() };
+        }
+        return { by: "command-line", asShipped: job.kind === "test" && job.asShipped };
+    }
+
+    /**
+     * Which build this session's game is: the variant it is assembled as, and the DLC beside it.
+     *
+     * The same two sources as {@link sealingChoiceFor}, for the same reason. A run an author starts
+     * reads the machine's "Run as" and "Run with DLC" choices, which are that author's. A headless
+     * `--test` run reads what its line named - resolved against the project before the window opened
+     * - and never the machine's: a build agent never made a choice and a developer did, so reading
+     * them would make one line test two builds. A line that named nothing runs the release variant
+     * with no DLC. Any other headless job never launches a test's game; were one to, it would get the
+     * same default, since nothing about it asked for anything else.
+     *
+     * Only a headless run says which build it is, on the command-line log - the one record a job keeps
+     * of what was tested. An author sees their choice on the Run button.
+     */
+    private async editionFor(session: GameTestSession): Promise<{
+        appTag: { id: string; name: string } | null;
+        includedDlc: string[];
+        logLines: string[];
+    }> {
+        const job = session.commandLineRun;
+        if (!job) {
+            const variant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
+            return {
+                appTag: variant ? { id: variant.id, name: variant.name } : null,
+                includedDlc: await resolveRunDlc(this.app.getGlobalState(), session.projectPath),
+                logLines: [],
+            };
+        }
+        const edition = job.kind === "test" ? job.edition : defaultTestEdition();
+        return {
+            // The release variant is assembled by stating no variant at all, exactly as an author's
+            // run with nothing chosen is - so the default here compiles the same bytes as that one.
+            appTag: edition.variant.id === APP_TAG_ID_RELEASE ? null : { ...edition.variant },
+            includedDlc: edition.dlc.map(part => part.id),
+            logLines: testEditionLogLines(edition),
+        };
+    }
+
+    /**
+     * A line of the host's own about this session's game.
+     *
+     * On a headless run it goes on the command-line log as well. The test decides what of its game
+     * it reports, and the built-in ones report the playthrough rather than the launch - so without
+     * this, what a job most needs to know about the game it launched (how its content was held, how
+     * long the compile took, why the launch failed) would reach a console nobody can see.
+     */
     private emitConsole(session: GameTestSession, level: GameTestLogLevel, message: string): void {
         this.emitEvent(session, { kind: "console", level, source: "Test", message });
+        if (session.commandLineRun) {
+            findWorkspaceWindow(this.app, session.projectPath)?.reportCommandLineRunEvent({
+                kind: "log",
+                timestamp: Date.now(),
+                level,
+                source: "Test",
+                message,
+            });
+        }
     }
 
     /**
@@ -958,6 +1076,11 @@ function allocateLocalPort(): Promise<number> {
             server.close(error => (error ? reject(error) : resolve(port)));
         });
     });
+}
+
+/** `6.4 s`: one decimal, which is as fine as a compile is worth reading at. */
+function formatSeconds(ms: number): string {
+    return `${(ms / 1000).toFixed(1)} s`;
 }
 
 function delay(ms: number): Promise<void> {

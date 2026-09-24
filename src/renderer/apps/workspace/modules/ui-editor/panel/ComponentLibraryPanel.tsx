@@ -270,7 +270,12 @@ export function ComponentLibraryPanel({
     return (
         <div
             ref={panelRef}
-            className="shrink-0 border-t border-edge bg-surface-sunken"
+            // Shrinkable rather than fixed: this section and the input actions below it sit under
+            // the surface list, which takes what is left. Both were `shrink-0` with a body capped
+            // at `max-h-72`, so on a short window the two of them claimed the whole column and the
+            // list - the panel's actual subject - was left 16px tall with every page clipped out of
+            // sight. Now the list keeps its floor and the libraries give up their scroll area first.
+            className="flex min-h-0 shrink flex-col border-t border-edge bg-surface-sunken"
             tabIndex={0}
             // The Delete key is a third route to the same deletion the toolbar button and the
             // context-menu row both refuse while frozen; a keystroke has no control to grey out,
@@ -285,7 +290,7 @@ export function ComponentLibraryPanel({
         >
             <button
                 type="button"
-                className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
+                className="flex h-9 w-full shrink-0 items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
                 onClick={() => setOpen(value => !value)}
             >
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
@@ -294,7 +299,7 @@ export function ComponentLibraryPanel({
                 <span className="text-2xs font-normal text-fg-subtle">{components.length}</span>
             </button>
             {open ? (
-                <div className="space-y-2 border-t border-edge p-2">
+                <div className="flex min-h-0 flex-1 flex-col space-y-2 border-t border-edge p-2">
                     <div className="flex items-center gap-1">
                         <div className="relative min-w-0 flex-1">
                             <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle" />
@@ -340,7 +345,7 @@ export function ComponentLibraryPanel({
                         </div>
                     ) : null}
 
-                    <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                    <div className="min-h-0 max-h-72 flex-1 overflow-y-auto space-y-2 pr-1">
                         {filteredComponents.length === 0 ? (
                             <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                                 {components.length === 0 ? t("uiEditor.componentLibrary.emptyCreate") : t("uiEditor.componentLibrary.noMatches")}

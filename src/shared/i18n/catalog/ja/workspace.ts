@@ -24,6 +24,10 @@ export const workspace = {
             progress: "{total} 件中 {completed} 件が翻訳済み",
             staleCount: "確認が必要なもの {count} 件",
             importSummary: "翻訳 {applied} 件を読み込んだ（変更なし {unchanged}、対応不明 {unknown}、空のため飛ばした {skippedEmpty}）",
+            readFailed: "{name} の翻訳を読み込めなかった",
+            alreadyAdded: "{name} はすでに言語の一覧にある",
+            sourceLocked: "{name} は原文の言語。先にほかの言語を取り除くか、別の言語を原文の言語にする",
+            languageGone: "この言語はもう言語の一覧にない",
         },
         settings: {
             menu: "言語の設定…",
@@ -32,6 +36,9 @@ export const workspace = {
             fallbackLabel: "代わりに使う言語",
             fallbackHint: "この言語に翻訳の無い項目は、まずこの言語を使い、次に原文の言語を使う",
             fallbackLoops: "ここに戻ってくる",
+            fallbackSelf: "この言語自身は代わりに使う言語にできない",
+            fallbackGone: "代わりに使う言語がもう言語の一覧にない",
+            fallbackLoop: "{fallback} は {name} に戻ってくる",
         },
         exchange: {
             exportMenu: "翻訳を書き出す…",
@@ -53,9 +60,7 @@ export const workspace = {
             exportAction: "書き出す",
             exportDone: "{count} 行を {path} に書き出した",
             exportEmpty: "書き出すものがない",
-            importFailed: "ファイルを読めなかった",
             importUnsupported: "Studio が読めるのは CSV、XLIFF、PO、JSON",
-            importNoRows: "このファイルに翻訳の単位がない",
             importWarnings: "{count} 件を飛ばした。最初のもの：{first}",
             localeMismatch: "このファイルは {declared} 向け。{name} に読み込むか",
             localeMismatchDetail: "ファイルが何と宣言していても、翻訳は選んだ言語に読み込まれる",
@@ -80,6 +85,7 @@ export const workspace = {
             keyNamePlaceholder: "キー（menu.start…）",
             keySourcePlaceholder: "原文",
             invalidKeyName: "キー名に使えるのは英数字と、その間に置くドット、アンダースコア、ハイフン",
+            keyExists: "「{name}」というキーはすでにある",
             removeKey: "キーを取り除く",
             removeKeyConfirm: "{name} を取り除くか",
             removeKeyConfirmDetail: "このキーの既存の翻訳は言語ファイルに残る",
@@ -142,7 +148,12 @@ export const workspace = {
             importFailed: "音声ファイルを読み込めなかった",
             importScript: "収録台本を読み込む…",
             importScriptSummary: "{applied} 行を反映した（変更なし {unchanged}、ボイス対象外 {unknown}）",
-            importScriptFailed: "その収録台本を読めなかった",
+            importScriptSkipped: {
+                other: "{count} 行を飛ばした",
+            },
+            readFailed: "{name} のボイスの割り当てを読み込めなかった",
+            alreadyAdded: "{name} はすでにボイスの言語の一覧にある",
+            languageGone: "このボイスの言語はもう一覧にない",
             namingTitle: "収録ファイル名のパターン",
             namingHint: "使える語：{tokens}。読み込んだ音声はこの名前で行と対応づける",
             namingReset: "既定に戻す",
@@ -333,6 +344,9 @@ export const workspace = {
         destination: "サーバー",
         projectOnServer: "プロジェクト名：{name}",
         noAccountHere: "この端末はこのサーバーのアカウントを持っていない",
+        signInUnused: "このプロジェクトはこのサーバーのサインインを使っていない",
+        useSignIn: "{name} のサインインを使う…",
+        signOutHint: "サインアウトするのはこのプロジェクトだけで、このサインインを使うほかのプロジェクトには影響しない",
         // 設定を開く。サーバーの追加とサインアウトはそこで行う。
         manage: "サーバーを管理…",
         // サーバーに尋ねた結果。対処できることがあるときだけ表示する。問題のない
@@ -360,6 +374,7 @@ export const workspace = {
         liveBlockedMerge: "マージを完了するとライブセッションを開始・参加できる",
         liveBlockedRecovery: "リカバリモードではライブセッションを利用できない",
         liveBlockedSession: "このワークスペースはすでにライブセッションに参加している",
+        liveBlockedTakenOver: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
         // ルームの中でこのウィンドウがどちら側か。参加していないときに人数を出す位置に置く。
         liveHost: "ホスト",
         liveGuest: "ゲスト",
@@ -502,6 +517,15 @@ export const workspace = {
         projectLockedTitle: "このプロジェクトは別の NarraLeaf Studio で開かれている",
         projectLockedHere: "この端末で {time} から開かれており、閉じると再試行できる",
         projectLockedElsewhere: "{host} で {time} から開かれており、そちらを閉じると再試行できる",
+        // 同じプロジェクトを、このウィンドウで開いている間に別の Studio が引き継いだ場合。以後ここでの変更は書き込まれない。
+        // 時刻は引き継がれた時点。
+        projectTakenOverTitle: "このプロジェクトは現在、別の NarraLeaf Studio で開かれている",
+        projectTakenOverHere: "この端末で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
+        projectTakenOverElsewhere: "{host} で {time} から開かれており、このウィンドウでの変更は保存されない。そちらを閉じると再試行できる",
+        // 同じく引き継がれたが、気づいた時点で相手はすでにプロジェクトを閉じていた場合。時刻は相手が開いた時点。
+        projectDisplacedTitle: "このプロジェクトは別の NarraLeaf Studio で開かれた",
+        projectDisplacedHere: "この端末で {time} に開かれ、このウィンドウでの変更は保存されない。再試行するとプロジェクトを開き直す",
+        projectDisplacedElsewhere: "{host} で {time} に開かれ、このウィンドウでの変更は保存されない。再試行するとプロジェクトを開き直す",
         openLauncher: "ランチャーを開く",
         panelRenderError: "このパネルで描画のエラーが起きた",
         mainEditorRegion: "メインのエディタ",
@@ -704,18 +728,51 @@ export const workspace = {
         // 流れる行。書き込みの失敗は間隔を空けて諦めずに再試行するので、「失われた」ではなく
         // 「まだ試している」と書く。
         save: {
-            failedTitle: "{file} を保存できなかった",
-            failedDetailTransient: "裏で再試行を続けている。{error}",
-            failedDetailPermanent: "これが直るまで、再試行しても変わらない。{error}",
+            // 作者が知っている名前で呼び、パスでは呼ばない。`{name}` は下のストア名、
+            // `failedTitleNamed` は作者が付けた名前（アセット、ストーリー）。書き込み側が何かを
+            // 言わなかったときは、ファイルを名指ししない。
+            failedTitle: "{name}を保存できなかった",
+            failedTitleNamed: "「{name}」を保存できなかった",
+            failedTitleUnnamed: "ファイルを保存できなかった",
+            // 最初の 2 つは自動保存が書き込みを続けるファイル用。3 つ目はもう書き込まれない
+            // ファイル用で、再試行は出さない。
+            failedDetailTransient: "裏で再試行を続けている",
+            failedDetailPermanent: "これが直るまで、再試行しても変わらない",
+            failedDetailNotSaved: "この変更は保存されていない",
+            failedDetailWithReason: "{reason}。{retry}",
+            // 作者が求めた書き込みを、求めた画面が自分で報告する：書き出し、テキストファイル、サムネイル。
+            // プロジェクトを開いたときに読めなかったストア。メモリ上は空なので、書き込むとファイルを
+            // 空で上書きしてしまう。そのため書き込みを断る。
+            refusedUnreadable: "{name}を読めなかった。変更は保存されない",
+            fileFailed: {
+                plain: "「{name}」を保存できなかった",
+                withReason: "「{name}」を保存できなかった。{reason}",
+            },
+            storeFailed: {
+                plain: "{name}を保存できなかった",
+                withReason: "{name}を保存できなかった。{reason}",
+            },
+            reason: {
+                permissionDenied: "ファイルが読み取り専用か、Studio に書き込み権限がない",
+                folderMissing: "保存先のフォルダーが存在しない",
+                diskFull: "ディスクの空き容量がない",
+            },
             retry: "いますぐ再試行",
             consoleFailed: "書き込み失敗（{code}、{attempt} 回目）：{path} · {error}",
+            consoleFailedNotRetried: "書き込み失敗（{code}、再試行なし）：{path} · {error}",
             consoleRecovered: "書き込み成功：{path}",
             flushFailed: "{label} を書き出せなかった：{error}",
             // 読む側。ディスクにはあるが解釈できないドキュメント。「Studio が作業を食べたのか」という
             // 不安に対して、まず起きなかったことを言う。
-            unreadableTitle: "{file} を読めなかった",
-            unreadableDetail: "{reason} ファイルは変わっていない。上書きもしていない",
-            unreadableDetailQuarantined: "{reason} ファイルは変わっていない。その複製が {path} にある",
+            // `{reason}` は下の `unreadableReason` のどれかで、パーサー自身のメッセージは出さない。
+            // 取っておいた複製はあることだけを言い、場所はコンソールの行に書く。
+            unreadableTitle: "{name}を読めなかった",
+            unreadableDetail: "{reason}。ファイルは変わっていない。上書きもしていない",
+            unreadableDetailQuarantined: "{reason}。ファイルは変わっていない。複製も残してある",
+            unreadableReason: {
+                damaged: "ファイルが壊れているか、Studio で読めない形式",
+                newerVersion: "新しいバージョンの NarraLeaf Studio で保存されている",
+            },
             consoleUnreadable: "読み込み失敗（{kind}）：{path} · {reason}",
             consoleQuarantined: "読めなかったファイルの複製を {path} に残した",
             // ワークスペースが凍結しているため断られた書き込み。失敗ではない。何も壊れておらず、
@@ -751,11 +808,83 @@ export const workspace = {
                 characters: "キャラクター",
                 project: "プロジェクトの設定",
                 assets: "アセットのライブラリ",
+                // Studio 自身の状態で、作者のプロジェクトではない。「保存できなかった」の通知で使う。
+                projectIcon: "プロジェクトのアイコン",
+                panelLayout: "パネルのレイアウト",
+                recentColors: "最近使った色",
+                pluginData: "プラグインのデータ",
                 // ドキュメントの保存先ではない。作者が編集中の行で、その文字はまだドキュメントに
                 // 渡っていない。
                 openEditors: "編集中の行",
             },
         },
+        // プロジェクトに取り込めなかったファイル。アセット、翻訳ファイル、収録台本、ストーリーの
+        // スクリプト。{name} はファイル自身の名前で、パスではない。理由は下の reason から、作者が
+        // 対処できるものだけを選ぶ。読み取りや取り込み自身のメッセージは出さない。
+        import: {
+            failed: "「{name}」を読み込めなかった",
+            withReason: "{headline}。{reason}",
+            reason: {
+                missing: "ファイルがもう存在しない",
+                accessDenied: "Studio にファイルの読み取り権限がない",
+                empty: "ファイルが空",
+                // unit_id は書き出したファイルの列名で、翻訳者が見るとおりに書く。
+                noIdColumn: "ファイルに unit_id 列がない",
+                notFormat: "読み取れる {format} ファイルではない",
+                noRows: "ファイルに読み込める項目がない",
+                wrongType: "ここでは .{ext} ファイルを読み込めない",
+                cannotDisplay: "NarraLeaf では .{ext} ファイルを表示できない。{first} か {second} に変換してから読み込む",
+                cannotPlay: "NarraLeaf では .{ext} ファイルを再生できない。{first} か {second} に変換してから読み込む",
+                cannotUse: "NarraLeaf では .{ext} ファイルを使えない。{first} か {second} に変換してから読み込む",
+                mismatch: "拡張子は .{ext} だが、中身は {actual} 形式",
+                copyFailed: "プロジェクトフォルダーにコピーできなかった",
+                projectReadOnly: "Studio にプロジェクトフォルダーへの書き込み権限がない",
+                notAFolder: "モデルはフォルダーごと読み込む",
+                emptyFolder: "フォルダーが空",
+                copyIncomplete: "フォルダー内の一部のファイルをプロジェクトにコピーできなかった",
+                projectNotAccepting: "プロジェクトはいま変更を受け付けていない",
+            },
+            // URL がアセットにならなかった理由、またはリモートアセットの取得元を確認できなかった理由。
+            // サーバーとアドレスについて述べ、ステータス行や URL そのものは引用しない。
+            remote: {
+                invalidUrl: "このアドレスは有効な URL ではない",
+                unsupportedScheme: "ダウンロードできるのは http と https のアドレスだけ",
+                unreachable: "サーバーに接続できなかった",
+                timeout: "サーバーが {seconds} 秒以内に応答しなかった",
+                notFound: "サーバーのこのアドレスにファイルがない",
+                accessDenied: "サーバーがこのファイルのダウンロードを許可していない",
+                serverError: "サーバーでエラーが起きた。時間をおいて再試行する",
+                refused: "サーバーがリクエストを受け付けなかった",
+                tooLarge: "ファイルがリモートアセットの上限 {limit} MB を超えている",
+                noContent: "サーバーが中身を返さなかった",
+                bundle: "モデルは URL から読み込めない",
+                // {codecs} と {container} はファイル自身が名乗る形式名（HEVC、AVI）。ダウンロードした
+                // ファイルはその場で変換できないので、変換したものをローカルから読み込む。
+                unplayableCodecs: "NarraLeaf では {codecs} を再生できない。変換したファイルをローカルから読み込む",
+                unplayableContainer: "NarraLeaf では {container} ファイルを開けない。変換したファイルをローカルから読み込む",
+                unplayableFormat: "NarraLeaf ではこのファイルの形式を開けない。変換したファイルをローカルから読み込む",
+                unplayableNoStreams: "ファイルに NarraLeaf で再生できる音声も映像もない",
+                // サインインページ、同意画面、成功として返されたエラーページ。
+                webPage: "このアドレスが返したのはファイルではなくウェブページ",
+                // テキストや文書、または読み込み先の区分のどの形式にも当たらないバイト列。
+                unrecognizedImage: "このアドレスが返した内容は NarraLeaf が認識できる画像形式ではない",
+                unrecognizedMedia: "このアドレスが返した内容は NarraLeaf が認識できる音声・動画形式ではない",
+                unrecognizedFont: "このアドレスが返した内容は NarraLeaf が認識できるフォント形式ではない",
+            },
+            // 翻訳ファイルや収録台本で飛ばした項目。残りは読み込む。位置はファイル自身の数え方で、
+            // 表の行、JSON 配列の項目、PO ファイルの行。
+            skipped: {
+                missingId: "ID のない項目がある",
+                missingIdAtRow: "{n} 行目に ID がない",
+                missingIdAtEntry: "{n} 番目の項目に ID がない",
+                notEntry: "翻訳ではない項目がある",
+                notEntryAtEntry: "{n} 番目の項目は翻訳ではない",
+                unreadableLine: "{n} 行目を読み取れない",
+                noTake: "未収録の台詞の行がある。その行のメモと状態は反映していない",
+                noTakeAtRow: "{n} 行目の台詞は未収録。メモと状態は反映していない",
+            },
+        },
+        fileDialogFailed: "ファイルのダイアログを開けなかった",
         // 作業ツリーの読み直し。ディスク上のバイト列が、エディタの表示と一致しなくなったとき
         // （凍結を解いた、バージョンを復元した）。普通は何も見えないのが正しく、
         // 一部を読み戻せなかったときだけ口を開く。そのときパネルが古いままになるから。
@@ -915,8 +1044,8 @@ export const workspace = {
                 moved: "移動",
                 copied: "複製",
             },
-            // 移動や複製の元。`{path}` は行そのものと同じくリポジトリからの相対パス。
-            changeFromPath: "{path} から",
+            // 移動や複製の元（行のツールチップ）。`{name}` は行と同じ付け方をした元の名前で、パスではない。
+            changeFrom: "{name} から",
             // バージョンの記録を止める唯一の変更。だから名指しし、パスの順ではなく一覧の先頭に並べる。
             changeConflict: "未解決の衝突",
             // 一覧には上限がある。黙って 50 件で止まった一覧は「これで全部」と読まれ、作者は
@@ -1054,6 +1183,7 @@ export const workspace = {
                     // プロジェクトへ接続することなので、名前を出す。
                     alreadyPublished: "このプロジェクトはそのサーバーでは既に {name} という名前で、そのサーバーは一つのプロジェクトに一つの名前しか認めない。",
                     unknown: "そのサーバーはプロジェクトを登録しなかった。",
+                    declined: "このプロジェクトはこのサーバーのサインインを使っていないため、プロジェクトは登録されなかった。",
                     // 拒否ではない。このプロジェクトは以前そのサーバーに置かれていて（複製した
                     // プロジェクトフォルダは同じリポジトリを持ち歩く）、そのときの名前で登録されている。
                     // 作者が入力した名前とアドレスの名前が違うので、黙って済ませない。

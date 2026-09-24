@@ -1,6 +1,12 @@
 import crypto from "crypto";
 import type { LocaleCode } from "@shared/i18n";
-import fs from "fs/promises";
+// Two modules on purpose. `studioArchiveFs` is the patched one, and it reads only what Studio ships:
+// the runtime bundle, which a packaged Studio keeps inside its own app.asar where only the patched
+// module can reach it, and the koffi addon from Studio's own dependencies. Everything else here - the
+// author's project and the app directory the compile writes - goes through `fs`, which is unpatched:
+// see unpatchedFs.ts for what the patch does to an author's file named like an archive.
+import studioArchiveFs from "fs/promises";
+import { unpatchedFsPromises as fs } from "../../../../../utils/unpatchedFs";
 import { createRequire } from "module";
 import path from "path";
 import { unpackAsarPath } from "../../../../../utils/asarPath";
@@ -56,6 +62,7 @@ import {
     writeSupportBinary,
     type CodecPlacement,
 } from "../../../../../buildWorker/codecBinary";
+import { buildFatMachO, machOKind, thinMachOArch, type MachOArch } from "../../../../../buildWorker/fatMachO";
 import { ensureZigToolchain } from "../../../../../buildWorker/zigToolchain";
 import { compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "../../../../../buildWorker/mainProcessBytecode";
 import {
@@ -83,6 +90,7 @@ import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { countBuildStep } from "../../../../../buildWorker/stepProgress";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
+import { isHostLitter } from "@shared/utils/hostLitter";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
@@ -95,7 +103,6 @@ import {
     type ShippedAssetReportEntry,
 } from "@shared/types/gameBuild";
 import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
-import { GAME_RUNTIME_PROTOCOL } from "@shared/types/gameRuntime";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
@@ -114,6 +121,14 @@ const REQUIRED_RUNTIME_FILES = ["main.js", "bindings.js", "vendor.js", "preload.
 // renderer pair is shared verbatim. Its index.html is generated per pack (see
 // webShell.ts), not copied from the runtime dist.
 const WEB_REQUIRED_RUNTIME_FILES = ["renderer.js", "renderer.css", "web.js"] as const;
+
+/**
+ * The runtime files a pack for this shell carries, whether loose or sealed into the store. The
+ * game's third-party notice is assembled from exactly these (see managers/build/thirdPartyNotices).
+ */
+export function shippedRuntimeFiles(shell: "electron" | "web"): readonly string[] {
+    return shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES;
+}
 const OPTIONAL_RUNTIME_FILES = ["main.js.map", "preload.js.map", "renderer.js.map", "renderer.css.map"] as const;
 // Build marker written by project/build/build-runtime.js. It attests that the
 // dist was produced by the runtime build script in production mode; it is
@@ -143,6 +158,11 @@ export type GameRuntimePluginSource = {
     entryPath: string;
     /** Absolute path of the plugin package root; sidecar `include` paths resolve against it. */
     installPath: string;
+    /**
+     * One of the plugins Studio ships. A built-in plugin's bundled npm packages are Studio's to name
+     * in a game's third-party notice; a third-party plugin's are its author's. Absent is not built-in.
+     */
+    builtIn?: boolean;
 };
 
 export type GameRuntimeArtifactCompileInput = {
@@ -338,11 +358,14 @@ export type GameRuntimeArtifactCompileInput = {
      */
     shell?: "electron" | "web";
     /**
-     * Opaque pack key for asset protection. When set, packaged output is
-     * protected via @narraleaf/bindings; when absent, output is written
-     * verbatim (protection off).
+     * Seal this artifact's payload into the protected store instead of writing it as loose files.
+     *
+     * A switch and nothing more. Everything the store is sealed with is made by the codec package
+     * inside this compile - from the distribution key when there is one (see `distribution`),
+     * fresh for this run otherwise - and bound into the binaries that ship beside it, so there is
+     * no key for a caller to supply.
      */
-    encryptionKey?: string;
+    protectAssets?: boolean;
     /**
      * The app id this build ships under, as the build resolved it. Only the
      * production electron shell reads it, to name the per-user directory the
@@ -519,7 +542,7 @@ export async function compileGameRuntimeArtifact(
     if (shell === "web" && mode !== "production") {
         throw new Error("Web artifact compile is production-only");
     }
-    if (shell === "web" && input.encryptionKey) {
+    if (shell === "web" && input.protectAssets) {
         throw new Error("Web artifact compile does not support asset protection");
     }
     // The first thing done with the output root is to delete `<root>/app` recursively. A relative
@@ -538,7 +561,7 @@ export async function compileGameRuntimeArtifact(
 
     const engineVersion = await assertRuntimeDistReady(input.runtimeDistDir, shell);
     await fs.rm(appDir, { recursive: true, force: true });
-    if (!input.encryptionKey) {
+    if (!input.protectAssets) {
         // Loose items live under assets/; the sealed store needs no such dir.
         await fs.mkdir(assetsDir, { recursive: true });
     }
@@ -564,7 +587,7 @@ export async function compileGameRuntimeArtifact(
      * Electron opens main.js and the preload itself, before anything of ours
      * could answer for them.
      */
-    const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
+    const sealsShell = input.protectAssets === true && shell !== "web";
     // A shipped desktop game hardens its launch guard by shipping main.js as bytecode. Preview and
     // the experimental debuggable build stay readable source so an author can inspect and step
     // through the real main process; the web shell has no main.js at all.
@@ -591,7 +614,7 @@ export async function compileGameRuntimeArtifact(
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
     // of protected builds. Two different questions, and they do not share a switch.
-    const needsSupportBinary = Boolean(input.encryptionKey)
+    const needsSupportBinary = input.protectAssets === true
         || Boolean(input.distribution && shell !== "web");
     /*
      * Where each target's copy of the support binary goes, and which prebuilt
@@ -664,7 +687,7 @@ export async function compileGameRuntimeArtifact(
     const titleCompile = await resolveTitleCompile({
         wanted: placements.length > 0 && Boolean(input.packaging),
         /* Named so the sentence tells the author which switch to reach for. */
-        reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
+        reason: input.protectAssets ? "Asset protection" : "Shipping a build that can accept patches",
         ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
         ...(input.hostCacheRoot ? { cacheRoot: input.hostCacheRoot } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
@@ -697,14 +720,17 @@ export async function compileGameRuntimeArtifact(
         ...(input.packaging ? { packaging: true } : {}),
         ...(input.includedDlc ? { includedDlc: input.includedDlc } : {}),
         // The author's compiled scripts go into the app dir beside everything else the page loads,
-        // and are named by the runtime's own scheme: `<scheme>://runtime/<path>` is served from the
-        // store when the build is sealed and from the loose app dir otherwise, which is the same
-        // door every other runtime file goes through. A `file:` URL - Dev Mode's answer - would be
-        // refused by the shipped page's policy, and a blob by every host's.
+        // and are named relative to that page. The runtime resolves the name against the document
+        // before importing it (`scriptRuntime.ts`), so one name reaches the file in every shell that
+        // serves this pack: `<scheme>://runtime/scripts/...` on the desktop, served from the store
+        // when the build is sealed and from the app dir otherwise, and the site's own `scripts/`
+        // directory in a web export and inside both mobile shells. The pack's scheme spelled out
+        // here instead is a URL no browser can import, which left every script dead in a web
+        // export. A `file:` URL - Dev Mode's answer - is refused by the shipped page's policy, and a
+        // blob by every host's.
         scriptOutput: {
             directory: path.join(appDir, COMPILED_SCRIPTS_DIR),
-            toUrl: filePath =>
-                `${GAME_RUNTIME_PROTOCOL}://runtime/${COMPILED_SCRIPTS_DIR}/${encodeURIComponent(path.basename(filePath))}`,
+            toUrl: filePath => `${COMPILED_SCRIPTS_DIR}/${encodeURIComponent(path.basename(filePath))}`,
         },
         // The declarations, not the count. A pack that merely carries a plugin can still drop a
         // scene; one that carries a plugin able to start a story cannot.
@@ -749,7 +775,7 @@ export async function compileGameRuntimeArtifact(
     // Bound before anything is written into it. A build with a distribution key
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
-    if (input.distribution && needsSupportBinary && !input.encryptionKey) {
+    if (input.distribution && needsSupportBinary && !input.protectAssets) {
         await prepareArchiveReader(images, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
@@ -759,7 +785,7 @@ export async function compileGameRuntimeArtifact(
 
     // Everything below either writes loose files or streams into the store; on
     // any failure the store handle is released so a failed compile leaks nothing.
-    const target: PackTarget = input.encryptionKey
+    const target: PackTarget = input.protectAssets
         ? {
             kind: "sealed",
             /*
@@ -785,7 +811,7 @@ export async function compileGameRuntimeArtifact(
      * thing. Once placed, the app dir holds what ships and the images do not
      * matter.
      */
-    if (input.encryptionKey) {
+    if (input.protectAssets) {
         await placeCodecImages(placements, images);
     }
 
@@ -807,16 +833,20 @@ export async function compileGameRuntimeArtifact(
         for (const fileName of SEALED_SHELL_FILES) {
             await target.writer.add(
                 gameRuntimeBundleRuntimeEntry(fileName),
-                await fs.readFile(path.join(input.runtimeDistDir, fileName)),
+                await studioArchiveFs.readFile(path.join(input.runtimeDistDir, fileName)),
             );
         }
     }
 
     // The author's compiled scripts, into the store when the build is sealed. They were written
     // loose into the app dir by the assembly above, before a store existed to write into; a sealed
-    // runtime serves `<scheme>://runtime/scripts/...` from the store, so the loose copy is not
-    // what it would read. Every file under the directory rather than the bundle's list: two
-    // blueprints on one script share one file, and the directory is the set of files there are.
+    // runtime serves `<scheme>://runtime/scripts/...` from the store. Every file under the
+    // directory rather than the bundle's list: two layers on one script share one file, and the
+    // directory is the set of files there are.
+    //
+    // Then the loose copy goes, the way a plugin's runtime entry never has one in a sealed build.
+    // Left in place it shipped the author's code as plain text beside the store that was meant to
+    // hold it - a protected build whose scripts anyone could read with a text editor.
     if (target.kind === "sealed") {
         const scriptsDir = path.join(appDir, COMPILED_SCRIPTS_DIR);
         const names = await fs.readdir(scriptsDir).catch(() => [] as string[]);
@@ -826,6 +856,7 @@ export async function compileGameRuntimeArtifact(
                 await fs.readFile(path.join(scriptsDir, name)),
             );
         }
+        await fs.rm(scriptsDir, { recursive: true, force: true });
     }
 
     // The marker is written either way, but on a sealed artifact it reaches only half as far: the
@@ -833,7 +864,7 @@ export async function compileGameRuntimeArtifact(
     // game, because the gate that decides in time reads the loose manifest and a shipped protected
     // build cannot have a text edit standing between a stranger and its content.
     const debuggable = input.debuggable === true;
-    if (debuggable && input.encryptionKey) {
+    if (debuggable && input.protectAssets) {
         notices.push(
             "asset protection is on: this artifact accepts a debugging switch only while its app "
             + "directory is run directly, never as the packaged game",
@@ -847,6 +878,7 @@ export async function compileGameRuntimeArtifact(
             target,
             include: shipped?.include ?? null,
             ...(input.assetReplacements ? { assetReplacements: input.assetReplacements } : {}),
+            onNotice: message => notices.push(message),
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -906,6 +938,7 @@ export async function compileGameRuntimeArtifact(
             appDir,
             projectPath: input.projectPath,
             target,
+            onNotice: message => notices.push(message),
         });
 
         // What this payload can say about DLC, as the assembler stated it - the one place that
@@ -1140,7 +1173,7 @@ async function assertRuntimeDistReady(
     const missing: string[] = [];
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         try {
-            await fs.access(path.join(runtimeDistDir, fileName));
+            await studioArchiveFs.access(path.join(runtimeDistDir, fileName));
         } catch {
             missing.push(fileName);
         }
@@ -1158,6 +1191,7 @@ async function assertRuntimeDistReady(
     try {
         manifest = await readJson<{ mode?: unknown; engineVersion?: unknown }>(
             path.join(runtimeDistDir, RUNTIME_BUILD_MANIFEST_FILENAME),
+            studioArchiveFs,
         );
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
@@ -1282,7 +1316,7 @@ async function copyRuntimeFiles(
         // preload is opened by Electron in a sandboxed context that cannot load it this way, and the
         // renderer three go into the store (above). See mainProcessBytecode.ts.
         if (fileName === "main.js" && reseedGuard) {
-            const source = reseedGuardMaskTable(await fs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
+            const source = reseedGuardMaskTable(await studioArchiveFs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
             if (bytecodeMain) {
                 await fs.writeFile(path.join(appDir, MAIN_BYTECODE_FILENAME), compileMainToBytecode(source));
                 await fs.writeFile(path.join(appDir, fileName), renderMainBytecodeBootstrap(), "utf8");
@@ -1291,7 +1325,7 @@ async function copyRuntimeFiles(
             }
             continue;
         }
-        await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
+        await studioArchiveFs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {
         // Sourcemaps are a preview-session debugging aid; shipped games leave
@@ -1333,10 +1367,7 @@ async function copyRuntimeFiles(
  * from the unpacked tree both, with one line in the packager log and no error. `systemCursor.ts`
  * knows to look here when the bare specifier does not resolve.
  *
- * Only the prebuild for the target is copied. The package carries eighteen of them and weighs 24 MB;
- * a game needs exactly one, and shipping the rest would put an ARM Linux binary inside every Windows
- * installer. A target with no prebuild copies nothing and the game degrades to "this host cannot
- * move the cursor", which is honest and is what the build console already warned about.
+ * Which prebuilds go into it, and in what form, is set out at copyKoffiPackage.
  */
 const KOFFI_PACKAGE_FILES = ["package.json", "index.js", "indirect.js"] as const;
 /** Kept in step with `SHIPPED_KOFFI_DIRECTORY` in `@shared/utils/systemCursor`. */
@@ -1353,7 +1384,8 @@ const SHIPPED_KOFFI_DIR_NAME = "koffi";
  * unmovable, on all three platforms, with nothing anywhere saying why. Hence a table and a test
  * rather than string surgery.
  *
- * A macOS universal build needs both slices, which is why this answers a list.
+ * A macOS universal build needs both directories, which is why this answers a list - and each of
+ * them gets one universal image made of both prebuilds; see copyKoffiPackage.
  */
 const KOFFI_PLATFORM_DIRECTORIES: Readonly<Record<string, string>> = {
     windows: "win32",
@@ -1390,13 +1422,22 @@ export function koffiPrebuildDirectories(platformKey: string | undefined): strin
  * the way `bindings.js`/`vendor.js` ship for the addon.
  *
  * Only the prebuilds for the target are copied. The package carries eighteen of them and weighs
- * 24 MB; a game needs one (two for a universal macOS build), and shipping the rest would put an ARM
- * Linux binary inside every Windows installer.
+ * 24 MB; a game needs one, and shipping the rest would put an ARM Linux binary inside every Windows
+ * installer.
+ *
+ * A universal macOS build is the exception, and it gets one universal image rather than the two
+ * prebuilds. koffi loads `darwin_<process.arch>`, so the package needs both directories; but the
+ * package is packed once per architecture and merged afterwards, and a thin image that is the same
+ * in both halves is one the merge refuses, since it cannot be right for both machines. The two
+ * prebuilds made into one universal image, written into each directory, are already universal in
+ * both halves: the merge leaves them alone, and whichever directory koffi opens, the loader picks
+ * the slice for the machine it is on. The cost is the image twice over, about 3 MB.
  *
  * A target koffi has no prebuild for is not an error - the game degrades to "this host cannot move
  * the cursor", which the build console already warned about for non-desktop targets. It does say so
  * on the compile log, because the previous version of this said nothing and that is how it shipped
- * broken.
+ * broken. A universal build missing either prebuild ships neither: half of one would be the thin
+ * image the merge refuses.
  */
 async function copyKoffiPackage(destinationDir: string, platformKey: string | undefined): Promise<void> {
     const directories = koffiPrebuildDirectories(platformKey);
@@ -1412,33 +1453,54 @@ async function copyKoffiPackage(destinationDir: string, platformKey: string | un
         console.warn("[Compile] koffi is not resolvable from this installation", error);
         return;
     }
-    const targetRoot = path.join(destinationDir, SHIPPED_KOFFI_DIR_NAME);
-    const copied: string[] = [];
+    const prebuildPath = (directory: string): string => path.join(packageRoot, "build", "koffi", directory, "koffi.node");
+    const missing: string[] = [];
     for (const directory of directories) {
-        const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
         try {
-            await fs.access(prebuild);
+            await studioArchiveFs.access(prebuildPath(directory));
         } catch {
-            continue;
+            missing.push(directory);
         }
-        await fs.mkdir(path.join(targetRoot, "build", "koffi", directory), { recursive: true });
-        await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
-        copied.push(directory);
     }
-    if (copied.length === 0) {
-        console.warn(
-            `[Compile] koffi ships no prebuild for ${directories.join(", ")}; the game cannot move the cursor`,
-        );
+    if (missing.length > 0) {
+        console.warn(`[Compile] koffi ships no prebuild for ${missing.join(", ")}; the game cannot move the cursor`);
         return;
+    }
+    const targetRoot = path.join(destinationDir, SHIPPED_KOFFI_DIR_NAME);
+    const shippedPath = (directory: string): string => path.join(targetRoot, "build", "koffi", directory, "koffi.node");
+    if (directories.length === 1) {
+        const [directory] = directories;
+        await fs.mkdir(path.dirname(shippedPath(directory)), { recursive: true });
+        await studioArchiveFs.copyFile(prebuildPath(directory), shippedPath(directory));
+    } else {
+        const universal = buildFatMachO(await Promise.all(directories.map(async directory => ({
+            name: `koffi's ${directory} prebuild`,
+            arch: koffiDirectoryArch(directory),
+            image: await studioArchiveFs.readFile(prebuildPath(directory)),
+        }))));
+        for (const directory of directories) {
+            await fs.mkdir(path.dirname(shippedPath(directory)), { recursive: true });
+            await fs.writeFile(shippedPath(directory), universal);
+        }
     }
     for (const fileName of KOFFI_PACKAGE_FILES) {
         await copyOptionalFile(path.join(packageRoot, fileName), path.join(targetRoot, fileName));
     }
 }
 
+/** The architecture a koffi prebuild directory is for, of the two a universal build is made of. */
+function koffiDirectoryArch(directory: string): MachOArch {
+    const arch = directory.slice(directory.lastIndexOf("_") + 1);
+    if (arch !== "x64" && arch !== "arm64") {
+        throw new Error(`koffi's ${directory} prebuild cannot be part of a universal macOS image`);
+    }
+    return arch;
+}
+
+/** One of Studio's own shipped files, if this install has it. Both callers read Studio's own files. */
 async function copyOptionalFile(sourcePath: string, targetPath: string): Promise<void> {
     try {
-        await fs.copyFile(sourcePath, targetPath);
+        await studioArchiveFs.copyFile(sourcePath, targetPath);
     } catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
             return;
@@ -1787,6 +1849,8 @@ async function copyProjectAssets(input: {
      */
     include: ReadonlySet<string> | null;
     assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
+    /** Where a bundle asset reports the files it left out (see listBundleFiles). */
+    onNotice?: (message: string) => void;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     /*
@@ -1910,18 +1974,23 @@ async function copyAssetBundle(input: {
     normalized: ReturnType<typeof normalizeAssetRecord>;
     sourceDir: string;
     authoredEntry?: string;
+    onNotice?: (message: string) => void;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const { normalized, sourceDir } = input;
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
 
     let files: string[];
+    const litter: string[] = [];
     try {
-        files = sortBundlePaths(await listBundleFiles(sourceDir));
+        files = sortBundlePaths(await listBundleFiles(sourceDir, "", litter));
     } catch (error) {
         throw new Error(
             `Failed to read model bundle "${normalized.name}" (${normalized.id}) at ${sourceDir}: ` +
             `${error instanceof Error ? error.message : String(error)}`,
         );
+    }
+    if (litter.length > 0) {
+        input.onNotice?.(leftOutLitterNotice(`model "${normalized.name}"`, litter));
     }
     if (files.length === 0) {
         throw new Error(`Model bundle "${normalized.name}" (${normalized.id}) is empty at ${sourceDir}`);
@@ -2000,13 +2069,26 @@ async function copyAssetBundle(input: {
     return manifest;
 }
 
-/** Every regular file under `root`, relative and `/`-separated. */
-async function listBundleFiles(root: string, prefix = ""): Promise<string[]> {
+/**
+ * Every regular file under `root` that ships, relative and `/`-separated.
+ *
+ * Host litter is not part of the bundle, wherever in the tree it sits: a Finder `.DS_Store`, an
+ * Explorer `Thumbs.db`, macOS's `._` twins, an editor's swap file, a `.git` checkout the folder was
+ * cloned as (see hostLitter.ts). These folders reach a project whole, from an export on somebody's
+ * disk, and the reason a bundle ships every file - only its manifest knows which ones matter - says
+ * nothing about files no manifest can name. `litter`, when given, collects what was passed over so
+ * the caller can say so in the build log.
+ */
+async function listBundleFiles(root: string, prefix = "", litter?: string[]): Promise<string[]> {
     const collected: string[] = [];
     for (const dirent of await fs.readdir(root, { withFileTypes: true })) {
         const relative = prefix ? `${prefix}/${dirent.name}` : dirent.name;
+        if (isHostLitter(dirent.name)) {
+            litter?.push(relative);
+            continue;
+        }
         if (dirent.isDirectory()) {
-            collected.push(...await listBundleFiles(path.join(root, dirent.name), relative));
+            collected.push(...await listBundleFiles(path.join(root, dirent.name), relative, litter));
         } else if (dirent.isFile()) {
             const normalized = normalizeBundlePath(relative);
             if (normalized) {
@@ -2015,6 +2097,12 @@ async function listBundleFiles(root: string, prefix = ""): Promise<string[]> {
         }
     }
     return collected;
+}
+
+/** The build-log line for litter a folder copy passed over. */
+function leftOutLitterNotice(what: string, litter: readonly string[]): string {
+    return `left out of ${what}: ${litter.join(", ")} - files a file manager, editor or version `
+        + "control leaves in a folder, never part of what a game reads";
 }
 
 function readAuthoredBundleEntry(rawAsset: AssetMetadataRecord): string | undefined {
@@ -2171,6 +2259,8 @@ async function copyPuppetRuntimes(input: {
     appDir: string;
     projectPath: string;
     target: PackTarget;
+    /** Where a backend reports the files it left out (see listBundleFiles). */
+    onNotice?: (message: string) => void;
 }): Promise<GameRuntimePackPuppetRuntimeEntry[]> {
     const root = path.join(input.projectPath, ...PUPPET_RUNTIMES_PROJECT_DIR);
     let dirents;
@@ -2180,9 +2270,15 @@ async function copyPuppetRuntimes(input: {
         return [];
     }
     const entries: GameRuntimePackPuppetRuntimeEntry[] = [];
-    for (const dirent of dirents.filter(item => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+    // A `__MACOSX` or `.git` beside the backends is not a backend, and would only earn a warning below.
+    const backends = dirents.filter(item => item.isDirectory() && !isHostLitter(item.name));
+    for (const dirent of backends.sort((a, b) => a.name.localeCompare(b.name))) {
         const sourceDir = path.join(root, dirent.name);
-        const files = sortBundlePaths(await listBundleFiles(sourceDir));
+        const litter: string[] = [];
+        const files = sortBundlePaths(await listBundleFiles(sourceDir, "", litter));
+        if (litter.length > 0) {
+            input.onNotice?.(leftOutLitterNotice(`puppet runtime "${dirent.name}"`, litter));
+        }
         if (!files.includes(PUPPET_RUNTIME_ENTRY_FILE)) {
             console.warn(
                 "[gameRuntimeArtifactCompiler]",
@@ -2399,6 +2495,9 @@ async function copyPluginSidecars(input: {
                     `${error instanceof Error ? error.message : String(error)}`,
                 );
             }
+            if (runningPlatformKeysFor(platformKey).length > 1) {
+                await assertServesEveryMachine(targetPath, `${where}: "${include}"`);
+            }
         }
         entries.push({
             id: sidecar.id,
@@ -2417,6 +2516,33 @@ async function copyPluginSidecars(input: {
         });
     }
     return entries;
+}
+
+/**
+ * Refuse machine code that runs on only one of the machines a universal package serves.
+ *
+ * A `macos-universal` target is one file set for both kinds of Mac, so its executables and
+ * libraries have to be universal images as well. A thin one would be the same thin image in both
+ * halves of the package, which the universal merge refuses only after both halves are packed, in a
+ * sentence that names neither the plugin nor the sidecar - and which could only ever have run on one
+ * kind of Mac. Anything that is not a thin Mach-O image (a universal one, a script, data) passes.
+ */
+async function assertServesEveryMachine(file: string, label: string): Promise<void> {
+    const handle = await fs.open(file, "r");
+    const head = Buffer.alloc(8);
+    try {
+        await handle.read(head, 0, head.length, 0);
+    } finally {
+        await handle.close();
+    }
+    if (machOKind(head) === "thin") {
+        const arch = thinMachOArch(head);
+        throw new Error(
+            `${label} is ${arch === "other" ? "a single-architecture" : `an ${arch}-only`} Mach-O image, and a `
+            + "macos-universal sidecar runs on both kinds of Mac: ship a universal binary for that target "
+            + "(lipo -create the x64 and arm64 builds)",
+        );
+    }
 }
 
 /**
@@ -2790,8 +2916,8 @@ async function readOptionalJson<T>(filePath: string): Promise<T | null> {
     }
 }
 
-async function readJson<T>(filePath: string): Promise<T> {
-    const raw = await fs.readFile(filePath, "utf-8");
+async function readJson<T>(filePath: string, files: Pick<typeof fs, "readFile"> = fs): Promise<T> {
+    const raw = await files.readFile(filePath, "utf-8");
     try {
         return JSON.parse(raw) as T;
     } catch (error) {

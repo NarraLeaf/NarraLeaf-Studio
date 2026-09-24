@@ -32,6 +32,7 @@ import {
     getPuppetPreviewHeight,
     setPuppetPreviewHeight,
 } from "../characterEditorPaneState";
+import { describePuppetPreviewFailure } from "./puppetPreviewFailure";
 
 export function PuppetPreview(props: {
     request: PuppetDescriptionRequest | null;
@@ -42,7 +43,11 @@ export function PuppetPreview(props: {
     const { context } = useWorkspace();
     const hostRef = useRef<HTMLDivElement | null>(null);
     const sessionRef = useRef<PuppetModelSession | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    /**
+     * Whether the last mount failed, and the sentence saying why when there is one an author can act
+     * on (see `describePuppetPreviewFailure`); `reason: null` is a failure with nothing more to say.
+     */
+    const [failure, setFailure] = useState<{ reason: string | null } | null>(null);
     const [ready, setReady] = useState(false);
 
     const panelState = useMemo(
@@ -91,7 +96,7 @@ export function PuppetPreview(props: {
     useEffect(() => {
         const host = hostRef.current;
         const pending = latest.current;
-        setError(null);
+        setFailure(null);
         setReady(false);
         if (!context || !host || !requestKey || !pending) {
             return;
@@ -118,7 +123,8 @@ export function PuppetPreview(props: {
             setReady(true);
         }).catch((reason: unknown) => {
             if (!cancelled) {
-                setError(reason instanceof Error ? reason.message : String(reason));
+                console.warn("[puppet] the preview could not be drawn", reason);
+                setFailure({ reason: describePuppetPreviewFailure(reason, pending.backend.trim(), t) });
             }
         });
         return () => {
@@ -127,6 +133,8 @@ export function PuppetPreview(props: {
             sessionRef.current = null;
             surface.remove();
         };
+        // `t` is read when a mount fails, not a reason to mount again.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [context, requestKey]);
 
     /**
@@ -180,14 +188,16 @@ export function PuppetPreview(props: {
                 style={{ height }}
             >
                 <div ref={hostRef} className="absolute inset-0" />
-                {error !== null && (
+                {failure !== null && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center">
                         <span className="text-2xs text-fg-subtle">{t("characters.editor.puppet.previewFailed")}</span>
-                        {/* The reason as well as the fact. `openSession` rejects with the *planned*
-                            unavailability - "the runtime X is not installed in this project", "the bundle
-                            names no entry" - and swallowing that left the author with one sentence that
-                            fitted every cause and pointed at none of them. */}
-                        <span className="max-w-full break-words text-2xs text-fg-subtle/70">{error}</span>
+                        {/* The reason as well as the fact, where there is one: `openSession` rejects
+                            with the *planned* unavailability - no runtime installed, no model - and one
+                            sentence that fitted every cause pointed at none of them. Worded here rather
+                            than shown as thrown, which was English and could name an `app://` address. */}
+                        {failure.reason !== null && (
+                            <span className="max-w-full break-words text-2xs text-fg-subtle/70">{failure.reason}</span>
+                        )}
                     </div>
                 )}
             </div>

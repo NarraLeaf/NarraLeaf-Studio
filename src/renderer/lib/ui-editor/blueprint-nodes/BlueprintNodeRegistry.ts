@@ -21,6 +21,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
+import { contributedWidgetNamesHead } from "@shared/types/ui-editor/contributedWidgets";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
@@ -168,9 +169,10 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
 function matchesBlueprintNodeScopeValue(
     scope: NonNullable<BlueprintNodeDef["scope"]>,
     ctx: BlueprintPaletteContext,
+    def: BlueprintNodeGraphContextDef,
 ): boolean {
     if (scope.anyOf && scope.anyOf.length > 0) {
-        return scope.anyOf.some(item => matchesBlueprintNodeScopeValue(item, ctx));
+        return scope.anyOf.some(item => matchesBlueprintNodeScopeValue(item, ctx, def));
     }
     if (scope.ownerKinds && scope.ownerKinds.length > 0) {
         if (!scope.ownerKinds.includes(ctx.owner.kind)) {
@@ -184,19 +186,53 @@ function matchesBlueprintNodeScopeValue(
         const t = ctx.widgetElementType;
         // A scope naming `nl.text` also covers the types that specialise it: a Dialog Sentence has
         // a text widget's props, so the text nodes are the right ones for its private blueprint.
-        if (!t || !scope.widgetElementTypes.some(scopeType => isWidgetTypeOf(t, scopeType))) {
+        if (!t) {
+            return false;
+        }
+        if (!scope.widgetElementTypes.some(scopeType => isWidgetTypeOf(t, scopeType)) && !pluginWidgetNamesHead(def, t)) {
             return false;
         }
     }
     return true;
 }
 
+/**
+ * Whether a plugin's widget has put this head in its own scope by naming it.
+ *
+ * An event head's widget scope is not a list anybody wrote: the catalogue derives it from which
+ * widget types name the head in their logic API (`widgetTypesForHead`). That derivation runs when the
+ * catalogue is built, before any plugin is loaded, so a plugin widget that declares a Mouse Click or
+ * an Init event is asked the same question here, when the palette is.
+ */
+function pluginWidgetNamesHead(def: BlueprintNodeGraphContextDef, widgetType: string): boolean {
+    return def.role === "eventHead" && contributedWidgetNamesHead(widgetType, def.type);
+}
+
+/**
+ * Where an event head a plugin registered belongs: the blueprints of the plugin widgets that name it.
+ *
+ * Only those, because only those can start it - a plugin head fires when a widget raises an event
+ * whose `headNodeTypes` include it, and nothing else in the host ever raises one. The declaration
+ * cannot say so itself (a plugin's `scope` is not taken, see `toEditorBlueprintNodeDef`), and left
+ * unscoped the head was offered on every page and in the global blueprint, where it would sit and
+ * never run.
+ */
+function matchesPluginEventHeadPlacement(def: BlueprintNodeGraphContextDef, ctx: BlueprintPaletteContext): boolean {
+    if (def.role !== "eventHead" || blueprintNodeRegistry.isBuiltIn(def.type)) {
+        return true;
+    }
+    return isWidgetEventGraph(ctx.owner) && contributedWidgetNamesHead(ctx.widgetElementType, def.type);
+}
+
 function matchesBlueprintNodeScope(def: BlueprintNodeGraphContextDef, ctx: BlueprintPaletteContext): boolean {
+    if (!matchesPluginEventHeadPlacement(def, ctx)) {
+        return false;
+    }
     const scope = def.scope;
     if (!scope) {
         return true;
     }
-    return matchesBlueprintNodeScopeValue(scope, ctx);
+    return matchesBlueprintNodeScopeValue(scope, ctx, def);
 }
 
 function listCompatibleMagicElementRefs(

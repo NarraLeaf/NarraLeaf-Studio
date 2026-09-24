@@ -147,7 +147,7 @@ function view(base: StoryDocument = BASE, head: StoryDocument = HEAD) {
             <SplitComparisonView
                 entry={entry}
                 name="A Story"
-                directory={null}
+                path={null}
                 baseLabel="#3"
                 headLabel="#7"
                 content={{

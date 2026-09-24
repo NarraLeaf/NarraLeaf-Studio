@@ -1,5 +1,10 @@
 import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
+import {
+    CONTRIBUTED_WIDGET_PART_SLOT_KEY,
+    getContributedWidget,
+    getContributedWidgetPartSlots,
+} from "./contributedWidgets";
 import type { UIInputActionDef, UISurfaceActionEnablement } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
@@ -191,12 +196,33 @@ const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.containe
 /** Types that accept ordinary user-inserted children. Structural part parents can be narrower. */
 const UI_USER_CHILD_PARENT_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", ...UI_LIST_LIKE_WIDGET_TYPES]);
 
+/**
+ * Whether a plugin's widget said it holds children, and which kind of parent it is.
+ *
+ * Its own declaration on the widget module, read through the realm's plugin registrations rather
+ * than copied into the sets above, so a plugin switched off stops accepting children the moment it
+ * stops being drawn. Two answers, as the built-in widgets have: `acceptsChildren` is the Container
+ * one - it takes whatever an author puts in it - and `partSlots` is the Slider one - it holds the
+ * parts it built and nothing else (see {@link getUIStructuralChildSlot} for how a part is told
+ * from anything else).
+ */
+function contributedWidgetParentKind(elementType: string): "none" | "user" | "parts" {
+    const declared = getContributedWidget(elementType);
+    if (!declared) {
+        return "none";
+    }
+    if ((declared.partSlots?.length ?? 0) > 0) {
+        return "parts";
+    }
+    return declared.acceptsChildren === true ? "user" : "none";
+}
+
 export function uiElementTypeAcceptsChildren(elementType: string): boolean {
-    return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType);
+    return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType) || contributedWidgetParentKind(elementType) !== "none";
 }
 
 export function uiElementTypeAcceptsUserChildren(elementType: string): boolean {
-    return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType);
+    return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType) || contributedWidgetParentKind(elementType) === "user";
 }
 
 export type UIElement = {
@@ -360,7 +386,8 @@ export function isUIFlowLayoutParentElement(element: UIElement): boolean {
  * A table rather than a chain of `parent.type === "nl.x" && getUIXChildSlot(...)` tests, because
  * every such chain that misses a row fails silently. The switch had to be added to four of them by
  * hand and a fifth - the tree-move planner - was missed, which is how a thumb could be dragged out
- * of its own switch. A new part-owning widget is one row here.
+ * of its own switch. A new part-owning widget is one row here - a built-in one; a plugin's widget
+ * says it owns parts in its own declaration, which {@link getUIStructuralChildSlot} reads after this.
  */
 // The type argument goes on `new Map`, not on the const: inference from the entries alone widens to
 // the FIRST reader's return type and then rejects the second.
@@ -369,13 +396,55 @@ const UI_STRUCTURAL_SLOT_READERS = new Map<string, (extra: Record<string, unknow
     ["nl.switch", getUISwitchChildSlot],
 ]);
 
-/** The structural slot `extra` claims inside `parentType`, or null when that pairing has no slots. */
+/**
+ * The prop a built-in part owner keeps each of its parts' ids in, by slot.
+ *
+ * The slot marker says which part a child is; this prop is how the widget and its properties panel
+ * find it. The renderer falls back to the marker when the prop names nothing, the panel does not -
+ * so a part that arrives in a slot by any route other than the widget building it (a paste into an
+ * emptied slot) has to be pointed at here too, or the panel reports the slot empty and its repair
+ * button builds a second part over the first. A plugin's widget finds its parts by marker alone and
+ * has no row.
+ */
+const UI_STRUCTURAL_SLOT_POINTER_PROPS = new Map<string, Readonly<Record<string, string>>>([
+    ["nl.slider", { track: "trackElementId", handle: "handleElementId" }],
+    ["nl.switch", { track: "trackElementId", thumb: "thumbElementId" }],
+]);
+
+/** The prop that holds the id of `parentType`'s part in `slot`, or null when the widget keeps none. */
+export function getUIStructuralSlotPointerProp(parentType: string | undefined, slot: string): string | null {
+    if (parentType == null) {
+        return null;
+    }
+    return UI_STRUCTURAL_SLOT_POINTER_PROPS.get(parentType)?.[slot] ?? null;
+}
+
+/**
+ * The structural slot `extra` claims inside `parentType`, or null when that pairing has no slots.
+ *
+ * A type the table does not know is looked up among the widgets loaded plugins contribute: one that
+ * declares `partSlots` is a part owner exactly like the rows above, and a child is one of its parts
+ * when `extra.partSlot` names one of the slots it declared. This is the whole extension - every
+ * rule that keeps a part in its widget and keeps anything else out already reads this function and
+ * `uiElementTypeAcceptsUserChildren`, so a plugin's parts are held by the same code as a switch's.
+ */
 export function getUIStructuralChildSlot(
     parentType: string | undefined,
     extra: Record<string, unknown> | undefined,
 ): string | null {
-    const read = parentType != null ? UI_STRUCTURAL_SLOT_READERS.get(parentType) : undefined;
-    return read ? read(extra) : null;
+    if (parentType == null) {
+        return null;
+    }
+    const read = UI_STRUCTURAL_SLOT_READERS.get(parentType);
+    if (read) {
+        return read(extra);
+    }
+    const slots = getContributedWidgetPartSlots(parentType);
+    if (slots.length === 0) {
+        return null;
+    }
+    const claimed = extra?.[CONTRIBUTED_WIDGET_PART_SLOT_KEY];
+    return typeof claimed === "string" && slots.includes(claimed) ? claimed : null;
 }
 
 /**

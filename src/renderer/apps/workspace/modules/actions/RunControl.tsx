@@ -550,6 +550,9 @@ export function RunControl() {
      * run that starts before the scan lands would pack the stale answer, which is the bug.
      * Skipped on a frozen workspace, for the reason the export path documents - nobody asked for
      * this write, and it is bookkeeping rather than the thing being run.
+     *
+     * An automatic scan: a plugin Studio holds back from the project for its version stays held
+     * through any number of runs, until the author presses Rescan.
      */
     const refreshDependenciesForRun = async () => {
         if (!context || getProjectWriteFreeze() !== null) {
@@ -558,7 +561,7 @@ export function RunControl() {
         try {
             await context.services
                 .get<ProjectDependencyService>(Services.ProjectDependency)
-                .rescanAndPersist();
+                .rescanAndPersist("automatic");
         } catch (error) {
             console.warn("[run] plugin dependency rescan failed", error);
         }

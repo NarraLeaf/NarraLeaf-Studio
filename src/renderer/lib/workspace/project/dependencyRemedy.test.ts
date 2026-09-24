@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasUnmetDependency, isUnmet, planDependencyRemedy } from "./dependencyRemedy";
+import { planDependencyRemedy } from "./dependencyRemedy";
 import type { DependencyResolutionEntry, ProjectPluginDependency } from "@shared/types/pluginDependencies";
 import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
 
@@ -115,11 +115,30 @@ describe("planDependencyRemedy", () => {
         expect(plan(withheld, published("2.0.0")).steps).toEqual(["update", "enable"]);
     });
 
-    it("offers nothing when the published version is no more usable than the installed one", () => {
+    it("offers no update when the published version is no more usable than the installed one", () => {
         // Authored against major 1, the registry has moved to major 2: installing it would trade
-        // one stated incompatibility for the same one at a higher number.
+        // one stated incompatibility for the same one at a higher number. A data-only dependency
+        // is not withheld, so the registry's answer is the row's.
+        const dataOnly = entry({
+            dependency: dependency({ hard: false }),
+            status: "incompatible",
+            suppressed: false,
+            installedVersion: "2.0.0",
+        });
+        expect(plan(dataOnly, published("2.1.0"))).toEqual({ steps: [], obstacle: "noCompatibleVersion" });
+    });
+
+    /**
+     * A withheld plugin that no update here can bring back - the usual case being a built-in whose
+     * major moved with Studio - is released by the author's Rescan in Project ▸ App, and the row says
+     * so instead of reporting a registry that could not have helped.
+     */
+    it("leads a withheld plugin no update resolves to Rescan, whatever the registry answered", () => {
         const withheld = entry({ status: "incompatible", suppressed: true, installedVersion: "2.0.0" });
-        expect(plan(withheld, published("2.1.0"))).toEqual({ steps: [], obstacle: "noCompatibleVersion" });
+        const rescan = { steps: [], obstacle: "rescanInProject" };
+        expect(plan(withheld, published("2.1.0"))).toEqual(rescan);
+        expect(plan(withheld, null)).toEqual(rescan);
+        expect(plan(withheld, null, { registryKnown: false })).toEqual(rescan);
     });
 
     it("leaves an outdated plugin alone when nothing newer is published", () => {
@@ -140,33 +159,5 @@ describe("planDependencyRemedy", () => {
         const older = entry({ status: "outdated", installedVersion: "1.0.0", dependency: dependency({ authoredVersion: "1.2.0" }) });
         expect(plan(older, published("1.2.0"), { installedStatus: "needsAuthorization" }).steps)
             .toEqual(["update"]);
-    });
-});
-
-describe("isUnmet", () => {
-    it("counts the three states in which the plugin contributes nothing", () => {
-        expect(isUnmet(entry({ status: "missing", suppressed: true, installedVersion: undefined }))).toBe(true);
-        expect(isUnmet(entry({ status: "incompatible", suppressed: true }))).toBe(true);
-        expect(isUnmet(entry({ installedEnabled: false }))).toBe(true);
-    });
-
-    /**
-     * The predicate behind a warning raised whenever a project opens, so the false positive matters
-     * more than the false negative: an outdated plugin loads and the project works, and a warning
-     * about it is one the author learns to close without reading.
-     */
-    it("does not count a plugin that is merely older than the project expects", () => {
-        expect(isUnmet(entry({ status: "outdated", installedVersion: "1.0.0" }))).toBe(false);
-        expect(hasUnmetDependency([entry(), entry({ status: "outdated" })])).toBe(false);
-    });
-
-    it("counts a soft dependency the same way: its data is there and nothing reads it", () => {
-        const dataOnly = entry({
-            dependency: dependency({ hard: false }),
-            status: "missing",
-            suppressed: false,
-            installedVersion: undefined,
-        });
-        expect(isUnmet(dataOnly)).toBe(true);
     });
 });

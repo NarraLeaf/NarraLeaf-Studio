@@ -5,6 +5,7 @@ import {
     useRef,
     useState,
     type ReactNode,
+    type SyntheticEvent,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { DevTools, Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
@@ -51,10 +52,12 @@ import {
     GameLocalizationContext,
     type GameLocalizationRuntime,
 } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
+import { AssetResolutionReporterContext } from "@/lib/ui-editor/runtime/useAssetResolutionReport";
 import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import { setActiveProjectLocale } from "@shared/typography/projectFonts";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
+import { resolveDefaultCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
 import {
     clearCharacterAvatarAssets,
     registerCharacterAvatarAssets,
@@ -71,42 +74,28 @@ import {
     BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
 } from "@shared/types/blueprint/hostApi";
 import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
-import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
-import type {
-    NestedSurfaceRuntime,
-    SurfaceBlueprintBindingContext,
-} from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/pageAnimation";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createBlueprintDevtoolsApi,
-    createDevModeBlueprintHostApi,
     type BlueprintLayerShowRequest,
     type BlueprintStoryEnding,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import {
     useBlueprintRuntimeCore,
     type BlueprintRuntimeCore,
 } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import type { BlueprintScriptIssue } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
-import {
-    executeLifecycleCommands,
-    SurfaceLifecycleOrchestrator,
-} from "./lifecycle/surfaceLifecycleOrchestrator";
+import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import {
     dispatchGlobalBlueprintEvent,
     invokeBlueprintFnCall,
-    dispatchSurfaceBlueprintEvent,
-    dispatchWidgetsBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
-import {
-    createEventPropagationControl,
-    getOrCreateDomEventPropagationControl,
-} from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { createEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import {
     compiledStoryCacheKey,
     reuseCompiledStory,
@@ -123,6 +112,7 @@ import {
     createStudioPreloadScheduler,
     type StudioPreloadScheduler,
 } from "@/lib/ui-editor/runtime/game/studioPreloadStrategy";
+import { createImageCacheWarmWatcher } from "@/lib/ui-editor/runtime/game/studioPreloadTimeline";
 import {
     isStoryVisited,
     readStoryVisitedIds,
@@ -165,7 +155,9 @@ import {
 } from "./AppSurfaceLayer";
 import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
-import { buildGameHostApiOptions, type GameHostCapabilities } from "./gameHostApiOptions";
+import type { GameHostCapabilities } from "./gameHostApiOptions";
+import { buildPageHostAdapterBundle, cacheHostAdapterBundles } from "./hostAdapterBundles";
+import { createNestedSurfaceHost } from "./nestedSurfaceHost";
 import { createFocusMuteController, type FocusMuteOutput } from "./focusMute";
 import {
     createGameUiSlotComponents,
@@ -192,8 +184,9 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
-import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
-import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
+import { createStoryStartGate, publishMenuEnvironmentMount, surfacesMayDraw } from "./storyBootGate";
+import { errorMessage, normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
+import { needsRunningGame, refusal } from "./runtimeRefusals";
 import { createPlayHead, type PlayHead } from "./playHead";
 import { clearStoryPosition, recordStoryRow, recordStoryScene } from "./lastStoryPosition";
 import {
@@ -207,11 +200,25 @@ import {
 import { openStoryPersistence } from "./storyPersistence";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
-import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
-import type { BlueprintKeyboardEventLike } from "@shared/types/blueprint/graph";
-import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
 import { resolveKeyboardDispatchScope } from "@/lib/ui-editor/runtime/input/keyboardDispatchScope";
-import { resolveSurfaceInputActionHits } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import { listenForGameKeys, resolveKeyboardOwnerEntry, type KeyboardOwner } from "./keyboardOwner";
+import { announceSavedVariableWrites } from "./savedVariableWrites";
+import { copyDeclaredSavedDefaults, readSavedVariableForScreen } from "./savedVariableReads";
+import { declaredSavedDefaults } from "@shared/variables/mergedPersistentView";
+import {
+    AmbientSurfaceTargets,
+    dispatchAmbientSurfaceEvent,
+    listAmbientSurfaceTargets,
+    type AmbientSurfaceDispatch,
+    type AmbientSurfaceTarget,
+} from "./ambientSurfaceEvents";
+import { answerGlobalInputActions, type GlobalBlueprintDispatch } from "./globalInputActions";
+import { offerUnclaimedPointerInput, RUNTIME_PLUGIN_OVERLAY_ATTR } from "./globalPointerInput";
+import { UI_TOUCH_GESTURE_EVENT } from "@/lib/ui-editor/runtime/input/touchGesture";
+import {
+    GlobalInputActionContext,
+    type GlobalInputActionAnswerer,
+} from "@/lib/ui-editor/runtime/input/globalInputActionContext";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
 import {
@@ -228,6 +235,7 @@ import {
     readReachedEndings,
 } from "./endingsRecord";
 import { createGameBootReporter } from "./bootTiming";
+import { GameTimelineName, gameTimelineNow, recordGameSpan, timeGameSpan } from "./gameTimeline";
 import { withDeadline } from "./frameTiming";
 import { NavigationController } from "./navigation/NavigationController";
 import { useSurfaceNavigation } from "./navigation/useSurfaceNavigation";
@@ -237,7 +245,8 @@ import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
 import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
-import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
+import { SurfaceStackBox } from "./SurfaceStackBox";
+import type { AppNavEntry, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
     GameAppHost,
@@ -249,7 +258,7 @@ import type {
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
 import { usePlaytime } from "./usePlaytime";
-import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
+import { readSavedGameLine, readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import type { WeatherSeedRef } from "@shared/weather/model";
 import { weatherSpecForStage } from "@shared/weather/stage";
 
@@ -309,6 +318,33 @@ class NlrSessionSupersededError extends Error {
 }
 
 export type GameAppNavEntry = AppNavEntry;
+
+/** A page or layer that has been asked for and has not painted yet, for `nl.surface.mount`. */
+type SurfaceMountStart = { start: number; surfaceId: string; kind: "page" | "layer" };
+
+/**
+ * How many surfaces may be waiting for their first paint at once before the oldest is forgotten.
+ *
+ * A surface that is asked for and never paints - replaced mid-open, torn down with its session - is
+ * never measured, and without a ceiling each of those would be kept for the rest of the session.
+ * Real stacks hold a handful; this is a leak guard, not a limit anyone reaches.
+ */
+const SURFACE_MOUNTS_TRACKED = 64;
+
+function noteSurfaceMountStart(
+    starts: Map<string, SurfaceMountStart>,
+    key: string,
+    surfaceId: string,
+    kind: SurfaceMountStart["kind"],
+): void {
+    if (starts.size >= SURFACE_MOUNTS_TRACKED) {
+        const oldest = starts.keys().next().value;
+        if (oldest !== undefined) {
+            starts.delete(oldest);
+        }
+    }
+    starts.set(key, { start: gameTimelineNow(), surfaceId, kind });
+}
 
 function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | undefined): UISurface | null {
     if (surfaceId) {
@@ -506,6 +542,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, [bundle.localization, core]);
     /**
+     * Where a widget says what became of an asset it asked for (see `GameAppHost.reportAssetResolution`).
+     *
+     * Handed to widgets through context rather than on the host adapter: every surface this app
+     * draws - pages, layers, stage slots, a frame's nested surface - builds an adapter of its own,
+     * and a capability threaded through each of them is one that a new kind of surface forgets. The
+     * context reaches all of them because all of them render beneath this component.
+     */
+    const assetResolutionReporter = host.reportAssetResolution ?? null;
+    /**
      * The same answer, for readers that are not components.
      *
      * The blueprint evaluator resolves an asset set on a node the moment a pin is read, which
@@ -585,6 +630,25 @@ export function GameApp(props: GameAppProps): ReactNode {
         return bundle.storyLibrary?.characters.find(entry => entry.name === sourceName)?.id ?? null;
     }, [bundle.storyLibrary]);
     /**
+     * The speaking character's dialog avatar, from the same authored name.
+     *
+     * The backlog's picture per line. Joined on the source name for the reason above - that is what
+     * a history entry records - and resolved through the one function `Get Character` also asks, so
+     * the face a row shows and the face a graph reads are the same face.
+     */
+    const resolveSpeakerAvatar = useCallback((sourceName: string): BlueprintImageAsset | null => {
+        const summary = bundle.storyLibrary?.characters.find(entry => entry.name === sourceName);
+        return toBlueprintImageAsset(resolveDefaultCharacterAvatarAssetId(summary));
+    }, [bundle.storyLibrary]);
+    /**
+     * Read through a ref, because the callbacks that ask are built once per host: see
+     * `LiveGameUiCallbackDeps.resolveSpeakerAvatar`.
+     */
+    const resolveSpeakerAvatarRef = useRef(resolveSpeakerAvatar);
+    useEffect(() => {
+        resolveSpeakerAvatarRef.current = resolveSpeakerAvatar;
+    }, [resolveSpeakerAvatar]);
+    /**
      * Mirror the project's character table into blueprint global state, so `Get Character` can
      * answer without the graph reaching into the bundle.
      *
@@ -604,13 +668,16 @@ export function GameApp(props: GameAppProps): ReactNode {
                 id: entry.id,
                 name: entry.name,
                 color: entry.color,
-                avatarAssetId: entry.defaultAvatarAssetId,
+                avatarAssetId: resolveDefaultCharacterAvatarAssetId(entry),
             });
             return info ? [info] : [];
         });
         core.scopeBridge.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, table);
     }, [bundle.storyLibrary, core]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
+    // The table itself; the state beside it is only what makes a write re-render. Every writer sets
+    // this first and never the other way round - see `WidgetPatchesByScope` for why an effect
+    // copying the state back into it would lose writes.
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const navigation = useMemo(() => new NavigationController(), []);
     const navState = useSurfaceNavigation(navigation);
@@ -622,7 +689,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const layerState = useLayerStack(layerStack);
     const layers = layerState.layers;
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
-    const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
     /**
@@ -665,6 +731,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
+    /** Per nav entry or layer key, when it was asked for - see `nl.surface.mount`. */
+    const surfaceMountStartsRef = useRef(new Map<string, SurfaceMountStart>());
     const studioPageHiddenForGameRef = useRef(false);
     const gameHiddenNavKeysRef = useRef(gameHiddenNavKeys);
     const lifecycleRef = useRef(new SurfaceLifecycleOrchestrator());
@@ -676,6 +744,12 @@ export function GameApp(props: GameAppProps): ReactNode {
     // in-flight boot) when nlrSession / hostAdapterBundle identities churn — the boot itself
     // mutates nlrSession, which would otherwise self-cancel before nlrPreloadDone is ever set.
     const runBootRef = useRef<(() => Promise<void>) | null>(null);
+    /**
+     * Puts a menu's environment back under the page a run was quit to - see where it is written,
+     * beside the boot. A ref for the boot's reason and one more: `quitGame`, the one caller, is
+     * declared long before the functions this is built from.
+     */
+    const remountMenuEnvironmentRef = useRef<(() => void) | null>(null);
     /**
      * The boot's phases, written to the page's performance timeline and handed to the host.
      *
@@ -851,6 +925,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrDialogClickTargets = useMemo(() => createDialogClickTargets(), []);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    /** Saved-variable writes the engine reports, announced to value bindings; see `savedVariableWrites`. */
+    const nlrSavedVariableTokenRef = useRef<{ cancel(): void } | null>(null);
+    /**
+     * The live surfaces this component does not draw itself - the stage's and the frames' - which
+     * register here so the window and preference events reach them too (see `ambientSurfaceEvents`).
+     */
+    const [ambientSurfaces] = useState(() => new AmbientSurfaceTargets());
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
     // is re-bound to whichever LiveGame is live; `currentActionListenersRef` is a stable fan-out so
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
@@ -1104,10 +1185,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     const applyFocusMuteRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
-        widgetPatchesByScopeRef.current = widgetPatchesByScope;
-    }, [widgetPatchesByScope]);
-
-    useEffect(() => {
         studioPageHiddenForGameRef.current = studioPageHiddenForGame;
     }, [studioPageHiddenForGame]);
 
@@ -1125,6 +1202,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         ): GameAppNavEntry => {
             navEntrySeqRef.current += 1;
             const key = `${surfaceId}:${navEntrySeqRef.current}`;
+            noteSurfaceMountStart(surfaceMountStartsRef.current, key, surfaceId, "page");
             return {
                 key,
                 runtimeScopeId: key,
@@ -1142,7 +1220,6 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => {
         const surface = findSurface(bundle, host.entrySurfaceId);
         setPrepaintReadyKeys(new Set());
-        setInteractionReadyKeys(new Set());
         navigation.reset(surface ? createNavEntry(surface.id, "forward", false) : null);
         layerStack.clear();
         widgetPatchesByScopeRef.current = {};
@@ -1219,6 +1296,17 @@ export function GameApp(props: GameAppProps): ReactNode {
     );
 
     const handleSurfaceLayerPrepaintReady = useCallback((entryKey: string) => {
+        // The first paint this surface was allowed: its fonts and pictures are in and it can be
+        // drawn. Once per entry - a surface that prepaints again (a hot reload) is not opening.
+        const mount = surfaceMountStartsRef.current.get(entryKey);
+        if (mount) {
+            surfaceMountStartsRef.current.delete(entryKey);
+            recordGameSpan(GameTimelineName.surfaceMount, mount.start, gameTimelineNow(), {
+                surfaceId: mount.surfaceId,
+                surface: findSurface(currentBundleRef.current, mount.surfaceId)?.name ?? null,
+                kind: mount.kind,
+            });
+        }
         markSurfacePrepaintReady(entryKey);
         navigation.markPrepaintReady(entryKey);
     }, [markSurfacePrepaintReady, navigation]);
@@ -1241,26 +1329,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack.notifyExitComplete();
     }, [layerStack]);
 
-    const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
-        setInteractionReadyKeys(prev => {
-            const alreadyReady = prev.has(entryKey);
-            if (alreadyReady === ready) {
-                return prev;
-            }
-            const next = new Set(prev);
-            if (ready) {
-                next.add(entryKey);
-            } else {
-                next.delete(entryKey);
-            }
-            return next;
-        });
-    }, []);
-
-    const resetSurfaceInteractionReadiness = useCallback(() => {
-        setInteractionReadyKeys(prev => (prev.size === 0 ? prev : new Set()));
-    }, []);
-
     const isGameHiddenEntry = useCallback((entry: GameAppNavEntry | null | undefined): boolean => {
         return Boolean(entry && studioPageHiddenForGameRef.current && gameHiddenNavKeysRef.current.has(entry.key));
     }, []);
@@ -1271,13 +1339,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = true;
         setGameHiddenNavKeys(hiddenKeys);
         setStudioPageHiddenForGame(true);
-        resetSurfaceInteractionReadiness();
         navigation.hideAllForGame();
         // Layers are not serialised, so nothing about them survives a load, and the two callers of
         // this are exactly the moments the game takes the screen: starting a story and applying a
         // save. A layer left standing across either would belong to a run that no longer exists.
         layerStack.clear();
-    }, [layerStack, navigation, resetSurfaceInteractionReadiness]);
+    }, [layerStack, navigation]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -1301,7 +1368,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         const currentHiddenForGame = isGameHiddenEntry(currentEntry);
         const presentation = options?.presentation ?? (studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage");
-        resetSurfaceInteractionReadiness();
         return navigation.open({
             fromSurface: from,
             targetSurface: target,
@@ -1316,7 +1382,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1333,7 +1398,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         const from = findSurface(bundle, currentEntry.surfaceId);
         const target = findSurface(bundle, nextEntryBase.surfaceId);
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        resetSurfaceInteractionReadiness();
         return navigation.close({
             fromSurface: from,
             targetSurface: target,
@@ -1347,7 +1411,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1390,7 +1453,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         const from = findSurface(bundle, currentEntry.surfaceId);
         const target = findSurface(bundle, nextEntryBase.surfaceId);
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        resetSurfaceInteractionReadiness();
         return navigation.close({
             fromSurface: from,
             targetSurface: target,
@@ -1403,7 +1465,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         isGameHiddenEntry,
         navigation,
         prefersReducedMotion,
-        resetSurfaceInteractionReadiness,
     ]);
 
     /**
@@ -1424,7 +1485,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * `Show Layer`. The owner is whichever surface asked, which is what makes the layer die with it.
      */
     const showLayer = useCallback((request: BlueprintLayerShowRequest): string => {
-        return mountSurfaceLayer(layerStack, {
+        const key = mountSurfaceLayer(layerStack, {
             surfaceId: request.surfaceId,
             props: request.props,
             modal: request.modal,
@@ -1432,6 +1493,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             group: request.group,
             ownerScopeId: request.ownerScopeId,
         });
+        noteSurfaceMountStart(surfaceMountStartsRef.current, key, request.surfaceId, "layer");
+        return key;
     }, [layerStack]);
 
     const hideLayer = useCallback(async (handle: string): Promise<void> => {
@@ -1533,6 +1596,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         textReadTrackerRef.current = null;
     }, []);
 
+    // A closing window never unmounts this component, so the tracker's own detach does not run and
+    // its debounce timer dies with the page: the lines finished just before the close would be
+    // unread next time. `beforeunload` is the last point a write can still be sent, and the one
+    // the playtime clock flushes from (see `usePlaytime`).
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+        const onBeforeUnload = () => textReadTrackerRef.current?.flush();
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, []);
+
     const isCurrentTextReadInGame = useCallback((): boolean => {
         return textReadTrackerRef.current?.isCurrentTextRead() === true;
     }, []);
@@ -1556,7 +1632,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             return;
         }
         if (!core) {
-            throw new Error("Clear Text Read: runtime is not ready");
+            throw needsRunningGame("blueprint.node.clearTextRead");
         }
         await core.scopeBridge.persistenceSet(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
@@ -1604,34 +1680,32 @@ export function GameApp(props: GameAppProps): ReactNode {
      * `/save` rows a legacy document still carries - so a screen and a row always mean the same
      * variable by the same id.
      *
-     * `found` distinguishes the three ways this can come back empty (no game, an id this story does
-     * not declare, a namespace the compile never built) from a variable that genuinely holds null.
-     * A variable that exists but has never been written reads as `found` with its declared default,
-     * which is what the story would see too.
+     * `found` distinguishes the three ways this can come back without a playthrough behind it (no
+     * game, an id this story does not declare, a namespace the compile never built) from a variable
+     * the playthrough holds. Those three still answer the variable's declared default as the value -
+     * a title screen reads saved variables before any story has run, or been compiled, and "not
+     * written yet reads the default" is the rule every other variable scope keeps. The defaults come
+     * from the build's own documents (registry plus every story's `/save` rows), not from a compile.
      */
+    const declaredSavedDefaultsRef = useRef<{
+        bundle: GameAppHost["bundle"];
+        defaults: Record<string, StoryLiteralValue | null>;
+    } | null>(null);
     const getSavedVariableInGame = useCallback((variableId: string): { value: unknown; found: boolean } => {
-        const id = String(variableId ?? "").trim();
-        const compiled = nlrCompiledRef.current;
+        const bundleNow = currentBundleRef.current;
+        if (declaredSavedDefaultsRef.current?.bundle !== bundleNow) {
+            declaredSavedDefaultsRef.current = {
+                bundle: bundleNow,
+                defaults: copyDeclaredSavedDefaults(declaredSavedDefaults(bundleNow)),
+            };
+        }
         const liveGame = nlrLiveGameRef.current;
-        const definition = id ? compiled?.savedVariables?.[id] : undefined;
-        if (!liveGame || !compiled?.savedNamespaceName || !definition) {
-            return { value: null, found: false };
-        }
-        try {
-            const storable = liveGame.getStorable();
-            if (!storable.hasNamespace(compiled.savedNamespaceName)) {
-                return { value: null, found: false };
-            }
-            const namespace = storable.getNamespace(compiled.savedNamespaceName);
-            // `has` rather than a nullish check on the read: a variable holding null, false or 0 is
-            // set, and falling back to the default for those would report the opposite of the truth.
-            const stored = namespace.has(definition.storageKey)
-                ? namespace.get(definition.storageKey)
-                : definition.defaultValue ?? null;
-            return { value: stored ?? null, found: true };
-        } catch {
-            return { value: null, found: false };
-        }
+        return readSavedVariableForScreen({
+            variableId,
+            compiled: nlrCompiledRef.current,
+            storable: liveGame ? () => liveGame.getStorable() : null,
+            declaredDefaults: declaredSavedDefaultsRef.current.defaults,
+        });
     }, []);
 
     /**
@@ -1655,21 +1729,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         const compiled = nlrCompiledRef.current;
         const liveGame = nlrLiveGameRef.current;
         if (!liveGame || !compiled?.savedNamespaceName) {
-            throw new Error("Set Saved Var: game runtime is not available");
+            throw needsRunningGame("blueprint.node.setSavedVar");
         }
         const definition = id ? compiled.savedVariables?.[id] : undefined;
         if (!definition) {
-            throw new Error("Set Saved Var: this story declares no such saved variable");
+            throw refusal("game.run.savedVariableUndeclared", "blueprint.node.setSavedVar");
         }
         // The same guard the story's own writes take (`assertSerializable`). A function or a symbol
         // in a namespace does not fail here - it fails when the save is written, on a screen the
         // player is looking at, with nothing to say which write put it there.
         if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
-            throw new Error("Set Saved Var: saved variables must hold serializable values");
+            throw refusal("game.run.valueNotSerializable", "blueprint.node.setSavedVar");
         }
         const storable = liveGame.getStorable();
         if (!storable.hasNamespace(compiled.savedNamespaceName)) {
-            throw new Error("Set Saved Var: game runtime is not available");
+            throw needsRunningGame("blueprint.node.setSavedVar");
         }
         storable.getNamespace(compiled.savedNamespaceName).set(definition.storageKey, value);
     }, []);
@@ -1953,7 +2027,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             ? await collectGameProgressVariables(defs.saved, readSavedProgressValue)
             : {};
         const persistentVariables = core
-            ? await collectGameProgressVariables(defs.persistent, key => core.scopeBridge.persistenceGetAsync(key))
+            ? await collectGameProgressVariables(defs.persistent, key => core.scopeBridge.persistenceStoredAsync(key))
             : {};
         const anchorSceneId = currentSceneIdRef.current
             ?? (gameEnteredRef.current ? activeStoryRequestRef.current?.sceneId ?? null : null);
@@ -2023,9 +2097,10 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Save Game node was ignoring its Capture pin.
      */
     const reportSaveCaptureFailure = useCallback((id: string, reason: string): void => {
-        const message = `Save Game: screenshot capture failed for "${id}": ${reason}`;
+        const message = translate("game.run.saveCaptureFailed", { node: translate("blueprint.node.saveGame") });
         core?.debug.emit({ type: "devtools.log", level: "warn", message });
-        host.log("warning", message);
+        // The log keeps the slot and the engine's reason, which is what whoever reads a log is after.
+        host.log("warning", `${message} (${id}: ${reason})`);
     }, [core, host.log]);
 
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
@@ -2119,6 +2194,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         choiceMenus,
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
+        resolveSpeakerAvatar: sourceName => resolveSpeakerAvatarRef.current(sourceName),
     }), [requireActiveLiveGame]);
 
     /**
@@ -2155,6 +2231,23 @@ export function GameApp(props: GameAppProps): ReactNode {
     useEffect(() => () => soundTransport.dispose(), [soundTransport]);
 
     /**
+     * A take that would not play, said to both channels a host has.
+     *
+     * Reported as an issue and not only logged: `Play Voice` answers false either way, and a replay
+     * button that does nothing with nothing anywhere saying why is the silence the Issues panel is for.
+     * A voice unit is its line's text id, so the compile's own bindings name the row it belongs to,
+     * and the panel puts the report under that line. The engine's reason stays in the log line; it
+     * can carry the take's URL, which is not something to show an author.
+     */
+    const reportVoicePlayFailure = useCallback((unitId: string, error: unknown, kind: "line" | "option"): void => {
+        const message = translate(kind === "line" ? "game.run.voicePlayFailed" : "game.run.choiceVoicePlayFailed");
+        const current = hostRef.current;
+        current.log("warning", `${message} (${errorMessage(error)})`);
+        const blockId = nlrCompiledRef.current?.actionIdBindings.find(binding => binding.textId === unitId)?.blockId;
+        current.reportIssue?.({ level: "warning", message, origin: "session", ...(blockId ? { blockId } : {}) });
+    }, []);
+
+    /**
      * Replay one line's take in the dub language currently in force.
      *
      * A fresh `Sound` per replay rather than the scene table's instance: the audio manager keys a
@@ -2172,10 +2265,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
             return true;
         } catch (error) {
-            host.log("warning", `Play Voice: ${error instanceof Error ? error.message : String(error)}`);
+            reportVoicePlayFailure(unitId, error, "line");
             return false;
         }
-    }, [host]);
+    }, [reportVoicePlayFailure]);
 
     /**
      * Speak one choice option, at most one instance of that option at a time.
@@ -2199,10 +2292,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
                 return await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
             },
-            onError: error => hostRef.current?.log(
-                "warning",
-                `Play Choice Voice: ${error instanceof Error ? error.message : String(error)}`,
-            ),
+            onError: (error, unitId) => reportVoicePlayFailure(unitId, error, "option"),
         });
     }
 
@@ -2222,7 +2312,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, []);
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
-        const liveGame = requireActiveLiveGame("Skip To Next Choice");
+        const liveGame = requireActiveLiveGame("devMode.devtools.skipToNextChoice");
         await fastForwardToNextChoice(liveGame, choiceMenus);
     }, [requireActiveLiveGame]);
 
@@ -2345,11 +2435,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         relaunch: async ({ sceneId, startBlockId, snapshotId }) => {
             const request = activeStoryRequestRef.current;
             if (!request) {
-                throw new Error("Relaunch: no active story");
+                throw new Error(translate("game.run.relaunchUnavailable"));
             }
             const start = startStoryInGameRef.current;
             if (!start) {
-                throw new Error("Relaunch: runtime is not ready");
+                throw new Error(translate("game.run.relaunchUnavailable"));
             }
             const targetSceneId = sceneId ?? request.sceneId;
             // The row a relaunch names was chosen when the run began, and the author has been editing
@@ -2380,7 +2470,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
         if (!targetSurfaceId) {
-            throw new Error("Quit Game: surfaceId is required");
+            throw refusal("blueprint.runtimeError.pickPage", "blueprint.node.quitGame");
         }
         rejectPendingGameStarts(new NlrSessionSupersededError("Quit Game"));
         // The run ends here, and the screen changes hands in two steps.
@@ -2403,6 +2493,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrSavedVariableTokenRef.current?.cancel();
+        nlrSavedVariableTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         playHead.reset();
@@ -2440,6 +2532,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // while something is still arriving over it. In `finally` because a page that failed to
             // open must not leave a dead stage painted over whatever the player is looking at.
             setStageRetainedForQuit(false);
+            // The page the run was quit to is a menu, and a menu stands on an environment of its
+            // own - the one just torn down belonged to the run.
+            remountMenuEnvironmentRef.current?.();
         }
     }, [
         clearCurrentDialogState,
@@ -2605,8 +2700,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeLanguageChangeConfiguration(bundle.languageChange),
         [bundle.languageChange],
     );
-    const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
-        const liveGame = requireActiveLiveGame("Save Game");
+    const writeSaveNow = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
+        const liveGame = requireActiveLiveGame("blueprint.node.saveGame");
         let capture: string | undefined;
         if (screenshot === true) {
             if (typeof liveGame.capturePng !== "function") {
@@ -2639,6 +2734,12 @@ export function GameApp(props: GameAppProps): ReactNode {
         reportSaveCaptureFailure,
         requireActiveLiveGame,
     ]);
+    /** The write, as `nl.save.write` on the performance timeline - capture, serialize and file. */
+    const writeSave = useCallback((id: string, metadata?: unknown, screenshot?: boolean) => timeGameSpan(
+        GameTimelineName.saveWrite,
+        () => writeSaveNow(id, metadata, screenshot),
+        outcome => ({ slot: id, screenshot: screenshot === true, ok: outcome.ok }),
+    ), [writeSaveNow]);
 
     /**
      * The running playthrough as bytes, for a slot that names it.
@@ -2704,8 +2805,8 @@ export function GameApp(props: GameAppProps): ReactNode {
      * throws outright when there is no game runtime, which is a caller mistake rather than an
      * outcome of loading.
      */
-    const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
-        const liveGame = requireActiveLiveGame("Load Save");
+    const loadSaveNow = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
+        const liveGame = requireActiveLiveGame("blueprint.node.loadSave");
 
         /**
          * The live game every step below talks to, read fresh rather than captured.
@@ -2804,7 +2905,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     if (switchedStory && storyBeforeLoad) {
                         const start = startStoryInGameRef.current;
                         if (!start) {
-                            throw new Error("the story that was running cannot be started again");
+                            throw new Error(translate("game.run.storyNotRestartable"));
                         }
                         await start({
                             storyId: storyBeforeLoad.storyId,
@@ -2855,11 +2956,11 @@ export function GameApp(props: GameAppProps): ReactNode {
                 switchStory: async target => {
                     const found = resolveSavedScene(target.storyId, target.sceneId);
                     if (!found) {
-                        throw new Error(`the story holding scene ${target.sceneId} is not in this build`);
+                        throw new Error(translate("game.run.saveStoryMissing"));
                     }
                     const start = startStoryInGameRef.current;
                     if (!start) {
-                        throw new Error("the story cannot be started here");
+                        throw new Error(translate("game.run.storyCannotStart"));
                     }
                     switchedStory = true;
                     await start({ storyId: found.storyId, sceneId: target.sceneId }, { forceReinit: true });
@@ -2875,7 +2976,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 relaunch: async target => {
                     const start = startStoryInGameRef.current;
                     if (!start) {
-                        throw new Error("the story cannot be started here");
+                        throw new Error(translate("game.run.storyCannotStart"));
                     }
                     const found = resolveSavedScene(target.storyId, target.sceneId);
                     // Reported rather than thrown: nothing has been touched yet, and a throw here
@@ -2978,6 +3079,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         saveBuild,
         saveCompatibilityConfig,
     ]);
+    /**
+     * The load, as `nl.save.load` on the performance timeline: from the request to the player being
+     * back on the stage, or to the refusal that left them where they were.
+     */
+    const loadSave = useCallback((id: string): Promise<SaveLoadOutcome> => timeGameSpan(
+        GameTimelineName.saveLoad,
+        () => loadSaveNow(id),
+        outcome => ({
+            slot: id,
+            outcome: !outcome.ok ? "failed" : outcome.value.status === "loaded" ? "loaded" : "refused",
+        }),
+    ), [loadSaveNow]);
 
     /**
      * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
@@ -2991,7 +3104,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const loadSaveAction = useCallback(async (id: string): Promise<void> => {
         const outcome = await loadSave(id);
         if (outcome.status === "refused") {
-            throw new Error(`Load Save: "${id}" was not applied. ${outcome.detail}`);
+            throw new Error(translate("game.saveLoad.notApplied", { id, detail: outcome.detail }));
         }
     }, [loadSave]);
 
@@ -3127,7 +3240,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     await quitGame(entrySurfaceId);
                 }
             } catch (error) {
-                reportLocaleRestart("error", `The game could not be returned to its start after the language change: ${normalizeError(error)}`);
+                reportLocaleRestart("error", translate("game.run.language.returnFailed", { error: errorMessage(error) }));
             } finally {
                 setLocaleResumePending(false);
             }
@@ -3177,7 +3290,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 await settle();
                 while (!hasLiveGame()) {
                     if (Date.now() > deadline) {
-                        throw new Error("no game runtime came up to resume into");
+                        throw new Error(translate("game.run.noGameToResume"));
                     }
                     await settle();
                 }
@@ -3195,7 +3308,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // Contained here rather than raised: the caller is a boot, and a boot that reports
             // itself as failed takes the whole stage down with it. Nothing that can go wrong in a
             // resume is worse than the title screen the player gets by falling through it.
-            reportLocaleRestart("error", `The playthrough could not be resumed after the language change: ${normalizeError(error)}`);
+            reportLocaleRestart("error", translate("game.run.language.resumeFailed", { error: errorMessage(error) }));
         } finally {
             uncover();
         }
@@ -3298,6 +3411,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                 slot: parseAutoSaveSlotIndex(id) ?? 0,
                 timestamp: Number.isFinite(updatedAt) ? updatedAt : 0,
                 createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+                // Registered exactly as `Get Save Preview` registers it, from the record this loop
+                // has already read: the id it mints is what the image widget resolves, and a slot
+                // whose record carries no capture keeps a null rather than an id that resolves to
+                // nothing.
+                preview: toBlueprintImageAsset(
+                    record.metadata.capture
+                        ? registerDevModeSavePreviewImage(id, record.metadata.capture)
+                        : null,
+                ),
+                // Read from the record this loop already holds, through the reader `Get Save Line`
+                // uses, so a row and that node say the same thing about the same slot.
+                ...readSavedGameLine(record.savedGame),
                 metadata: record.metadata.user ?? null,
             };
         }));
@@ -3389,17 +3514,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!record) {
             return null;
         }
-        const savedGame = record.savedGame;
-        const meta =
-            savedGame && typeof savedGame === "object"
-                ? (savedGame as { meta?: unknown }).meta
-                : undefined;
-        const fields = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
-        const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
-        return {
-            line: toText(fields.lastSentence),
-            speaker: toText(fields.lastSpeaker),
-        };
+        return readSavedGameLine(record.savedGame);
     }, [host.saveStore]);
 
     /**
@@ -3490,24 +3605,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         const storyId = String(request.storyId ?? "").trim();
         const sceneId = String(request.sceneId ?? "").trim();
         if (!storyId) {
-            throw new Error("Start Game: storyId is required");
+            throw refusal("blueprint.runtimeError.pickStory", "blueprint.node.startGame");
         }
         if (!sceneId) {
-            throw new Error("Start Game: sceneId is required");
+            throw refusal("blueprint.runtimeError.pickScene", "blueprint.node.startGame");
         }
         const storyDocument =
             bundle.storyLibrary?.documents[storyId] ??
             Object.values(bundle.storyLibrary?.documents ?? {}).find(document => document.id === storyId);
         if (!storyDocument) {
+            // The ids are for whoever reads the log; the author is told which node, in their words.
             const indexedStoryIds = bundle.storyLibrary?.index.stories.map(story => story.id).join(", ") || "(none)";
             const documentStoryIds = Object.values(bundle.storyLibrary?.documents ?? {}).map(document => document.id).join(", ") || "(none)";
-            throw new Error(
-                `Start Game: story not found: ${storyId}. ` +
-                `Bundle index story ids: ${indexedStoryIds}. Bundle document ids: ${documentStoryIds}.`,
+            host.log(
+                "error",
+                `[${host.id}] Start Game: story not found: ${storyId}. `
+                + `Bundle index story ids: ${indexedStoryIds}. Bundle document ids: ${documentStoryIds}.`,
             );
+            throw refusal("game.run.storyMissing", "blueprint.node.startGame");
         }
         if (!storyDocument.scenes[sceneId]) {
-            throw new Error(`Start Game: scene not found: ${sceneId}`);
+            throw refusal("game.run.sceneMissing", "blueprint.node.startGame");
         }
         // Row-precise launch ("play from here"): compute the settled stage at the target row and hand
         // the compiler a launch spec, so the entry scene pre-poses there and plays the real story on.
@@ -3601,6 +3719,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
+            // What lets a reference that did not resolve be told as "no longer in this project" or as
+            // "could not be read" and name the asset. A packaged game's table is empty by design.
+            assetNames: bundle.storyLibrary?.assetNames,
             // Forwarded, and the size and frame rate decided here: a weather clip is baked to the
             // project's own stage at the project's own rate, both of which this component knows and
             // the compiler deliberately does not. A host with no baker passes nothing and its
@@ -3711,7 +3832,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [bundle, core, host, readTextLocale, readVoiceLocale]);
 
     /**
-     * The compile, timed when it is the boot's.
+     * The compile, timed: as the boot's `story` phase during the boot, and as `nl.story.compile`
+     * for every start after it.
      *
      * A wrapper rather than a mark inside the compile because a cache hit is a compile too: it
      * takes no time, and a phase that is absent from the timeline whenever the story was reused
@@ -3721,7 +3843,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         request: DevModeStartStoryRequest,
     ): Promise<CompiledNlrStory> => {
         if (!bootInFlightRef.current) {
-            return compileStoryDocument(request);
+            const detail = {
+                storyId: String(request.storyId ?? ""),
+                sceneId: request.sceneId ? String(request.sceneId) : null,
+            };
+            return timeGameSpan(GameTimelineName.storyCompile, () => compileStoryDocument(request), () => detail);
         }
         bootReporter.begin("story");
         try {
@@ -3928,7 +4054,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         options: { storyRequest: DevModeStartStoryRequest | null },
     ): Promise<string> => {
         if (!activeSurface || !core || !gameHostCapabilities) {
-            throw new Error("Start Game: active surface is not available");
+            throw needsRunningGame("blueprint.node.startGame");
         }
         rejectPendingGameStarts(new NlrSessionSupersededError("NLR environment superseded by a newer session"));
         activeStoryRequestRef.current = options.storyRequest;
@@ -3958,6 +4084,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             reducedMotion: prefersReducedMotion === true,
+            ambientSurfaces,
         };
         const slots = createGameUiSlotComponents({
             uidoc: bundle.ui.uidoc,
@@ -3970,6 +4097,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Studio plans the warming, and hands the player urls rather than bytes. Built per session
         // because it is handed to `new Game()` and holds the compile it plans from - a hot reload
         // points the same scheduler at the new one through `useCompiled`.
+        // The session being replaced stops writing to the timeline: whatever it was still waiting to
+        // warm belongs to a player that is about to be unmounted.
+        preloadSchedulerRef.current?.useWarmWatcher(null);
         const preloadScheduler = createStudioPreloadScheduler({
             gateOnWholeScene: preloadGatesWholeScene(normalizePreloadConfiguration(bundle.preload).behavior),
         });
@@ -4002,6 +4132,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         // scene a row-precise launch enters through, above all. It has to be set after the game
         // exists, which is after the scheduler, because the engine's own strategy reads its config.
         preloadScheduler.useFallback(createDefaultPreloadStrategy(game));
+        // What each warm costs, on the page's performance timeline. Read through the live game on
+        // every question, because the player - and the cache it owns - only exists once it mounts.
+        preloadScheduler.useWarmWatcher(createImageCacheWarmWatcher(() => game.getLiveGame().getGameState()));
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
         // two views of one storage in the engine, so the buses' own restore is the more specific
@@ -4105,6 +4238,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         return sessionId;
     }, [
         activeSurface,
+        ambientSurfaces,
         bootReporter,
         bundle,
         clearGameHiddenStudioPages,
@@ -4181,7 +4315,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         const liveGame = nlrLiveGameRef.current;
         const sessionId = nlrLiveGameSessionIdRef.current;
         if (!liveGame || !sessionId) {
-            throw new Error("Start Game: game environment is not ready");
+            throw needsRunningGame("blueprint.node.startGame");
         }
         // Normally already settled — the boot step waited on it. It can still be pending when the
         // environment was mounted without a boot gate, and entering before the warm-up lands would
@@ -4222,7 +4356,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         options?: { forceReinit?: boolean; inheritSavedGame?: unknown },
     ): Promise<void> => {
         if (!activeSurface || !core) {
-            throw new Error("Start Game: active surface is not available");
+            throw needsRunningGame("blueprint.node.startGame");
         }
         const storyId = String(request.storyId ?? "").trim();
         const sceneId = String(request.sceneId ?? "").trim();
@@ -4306,22 +4440,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         return () => onTestControlsChanged(null);
     }, [activeSurface, core, nextInGame, nlrSession, onTestControlsChanged, selectChoiceInGame, startStoryInGame]);
 
-    const createHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
+    const buildHostAdapterBundle = useCallback((entry: AppSurfaceLayerNavEntry, surface: UISurface) => {
         if (!core || !gameHostCapabilities) {
             return null;
         }
-        const runtimeScopeId = entry.runtimeScopeId;
-        let hostAdapter: UIHostAdapter | null = null;
-        const hostApi = createDevModeBlueprintHostApi(buildGameHostApiOptions(gameHostCapabilities, {
-            document: bundle.ui.uidoc,
-            scope: core.scopeBridge,
-            emit: event => core.debug.emit(event),
-            activeSurfaceId: surface.id,
-            runtimeScopeId,
-            pageProps: entry.props,
-            // How the page was pushed decides it: an entry opened as a game overlay is drawn over a
-            // running playthrough, and one opened as a page is not.
-            isGameOverlay: () => entry.presentation === "gameOverlay",
+        return buildPageHostAdapterBundle({
+            core,
+            capabilities: gameHostCapabilities,
+            bundle,
             // The gate, not the runtime's own start - the same one a slot surface gets. Start Game
             // is a button on a page, and in Dev Mode that page is drawn while the story is still
             // compiling behind it; without the wait the press takes the slow path and races the
@@ -4331,34 +4457,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 setByScope: setWidgetPatchesByScope,
                 byScopeRef: widgetPatchesByScopeRef,
             },
-            resolveHostAdapter: () => hostAdapter,
-        }));
-        hostAdapter = createDevModeBlueprintHostAdapter({
-            bundle,
-            surface,
-            runtimeScopeId,
-            scopeBridge: core.scopeBridge,
-            debug: core.debug,
-            hostApi,
-            executionManager: core.executionManager,
-        });
-        const bindingContext: SurfaceBlueprintBindingContext = {
-            blueprintDocument: bundle.ui.localBlueprints,
-            persistentVariables: bundle.ui.persistentVariables,
-            surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
-            debug: core.debug,
-            coalescer: core.bindingDebugCoalescer,
-            globalState: {
-                get: key => core.scopeBridge.globalGet(key),
-                subscribe: listener => core.scopeBridge.subscribeGlobals(listener),
-            },
-            pageProps: entry.props,
-        };
-        return {
-            hostAdapter,
-            bindingContext,
-            runtimeScopeId,
-        } satisfies HostAdapterBundle;
+        }, entry, surface);
     }, [
         bundle,
         core,
@@ -4370,12 +4469,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         widgetPatchesByScopeRef,
     ]);
 
+    /**
+     * The host an entry is drawn with - its layer's, and the one every dispatch below reaches it
+     * through. One per entry: see `hostAdapterBundles` for what went wrong while there were two.
+     */
+    const hostAdapterBundleFor = useMemo(
+        () => cacheHostAdapterBundles(buildHostAdapterBundle),
+        [buildHostAdapterBundle],
+    );
+
+    /**
+     * The active page's host, for everything this component dispatches to the page itself: key
+     * presses and the actions they raise, the menu bar, window and preference events, a close
+     * request. The very bundle the page's layer draws with, so a graph run from any of those reads
+     * and writes the page the player is looking at.
+     */
     const hostAdapterBundle = useMemo(() => {
         if (!activeEntry || !activeSurface) {
             return null;
         }
-        return createHostAdapterBundle(activeEntry, activeSurface);
-    }, [activeEntry, activeSurface, createHostAdapterBundle]);
+        return hostAdapterBundleFor(activeEntry, activeSurface);
+    }, [activeEntry, activeSurface, hostAdapterBundleFor]);
 
     /*
      * The menu bar: the port the rows act through, the controller that draws them, and the seam a
@@ -4533,6 +4647,26 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [menuController, pluginHost]);
 
+    /**
+     * The environment a menu stands on.
+     *
+     * Initialises the environment (gameReady) and fully warms the scene the project's Start Game
+     * would enter - fetched and decoded - but does NOT enter the game; the player stays on the menu.
+     * Getting the target right is the whole point: a warm environment for the wrong scene has to be
+     * recompiled and remounted on start. A project with no such scene gets an empty one.
+     *
+     * A menu needs this even though nothing is being played on it: it is what a button's click
+     * sound plays through, what a volume slider moves, and what Load and Continue read a save into.
+     */
+    const mountMenuEnvironment = async (): Promise<void> => {
+        const defaultScene = resolveStagePreloadTarget(bundle);
+        if (defaultScene) {
+            await initDefaultSceneEnvironment(defaultScene);
+        } else {
+            await startEmptyNlrEnvironment();
+        }
+    };
+
     // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
     // preload the configured default scene (or launch directly into a story entry), otherwise
     // boot an empty NLR environment. gameReady fires here, once, at boot.
@@ -4565,17 +4699,26 @@ export function GameApp(props: GameAppProps): ReactNode {
                 snapshotId: host.bootAction.snapshotId,
             });
         } else {
-            // Menu launch: initialise the environment (gameReady) and fully warm the scene the
-            // project's Start Game would enter — fetched and decoded — but do NOT enter the game;
-            // the player stays on the menu. Getting the target right is the whole point: a warm
-            // environment for the wrong scene has to be recompiled and remounted on start.
-            const defaultScene = resolveStagePreloadTarget(bundle);
-            if (defaultScene) {
-                await initDefaultSceneEnvironment(defaultScene);
-            } else {
-                await startEmptyNlrEnvironment();
-            }
+            await mountMenuEnvironment();
         }
+    };
+
+    /**
+     * The same menu launch, for the page a run was just quit to.
+     *
+     * `quitGame` tears the run's environment down, which is right - it holds the playthrough that
+     * ended - and nothing used to mount another. So from the first Return to title on, the title
+     * screen stood on no game at all: its buttons' sounds were skipped, a volume slider changed
+     * nothing, and Load and Continue failed outright with "game runtime is not available".
+     */
+    remountMenuEnvironmentRef.current = () => {
+        void publishMenuEnvironmentMount({
+            mount: mountMenuEnvironment,
+            pendingBoot: nlrBootPromiseRef,
+            isSuperseded: err => err instanceof NlrSessionSupersededError,
+            onSuperseded: err => host.log("info", `[${host.id}] menu environment superseded: ${normalizeError(err)}`),
+            onFailure: err => reportFailure(err, { prefix: `[${host.id}] the menu's game environment could not be mounted: ` }),
+        });
     };
 
     // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps are
@@ -4743,140 +4886,105 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [layerStack, unrenderedLayerKeysToken]);
 
     /**
-     * Whether the active page may hear a key.
+     * The entry that hears a key, page or layer, if it can hear one now.
      *
-     * The *page* half of the keyboard dispatch only - the global blueprint's heads are not gated on
-     * this, see `resolveKeyboardDispatchScope`. A page that is not drawn is not a page anyone is
-     * pressing a key at, and while a layer owns the keyboard an Escape belongs to that layer rather
-     * than to the page under it.
+     * The *owner* half of the keyboard dispatch only - the global blueprint's heads are not gated on
+     * this, see `resolveKeyboardDispatchScope`. Whose keys they are is the composite's answer above;
+     * this only asks whether that entry is drawn and far enough in. A page that is not drawn is not a
+     * page anyone is pressing a key at, and a layer is ready on the same terms its element tree takes
+     * keys on (see `AppSurfaceLayer`'s `keyboardInteractive`), so its surface heads and its elements'
+     * heads start and stop hearing together.
      */
-    const activeSurfaceKeyboardReady = Boolean(
-        activeEntry &&
-        prepaintReadyKeys.has(activeEntry.key) &&
-        isPageEntryDrawn({
-            entryKey: activeEntry.key,
-            pagesHiddenForGame: studioPageHiddenForGame,
-            gameHiddenKeys: gameHiddenNavKeys,
-        }) &&
-        compositeInput.keyboardOwnerKey === activeEntry.key,
-    );
+    const keyboardOwnerEntry = resolveKeyboardOwnerEntry<AppSurfaceLayerNavEntry>({
+        keyboardOwnerKey: compositeInput.keyboardOwnerKey,
+        page: activeEntry && activeSurface
+            ? {
+                entry: activeEntry,
+                surface: activeSurface,
+                ready: prepaintReadyKeys.has(activeEntry.key) && isPageEntryDrawn({
+                    entryKey: activeEntry.key,
+                    pagesHiddenForGame: studioPageHiddenForGame,
+                    gameHiddenKeys: gameHiddenNavKeys,
+                }),
+            }
+            : null,
+        layers: visibleLayers.map(({ layer, surface: layerSurface }) => ({
+            entry: layer,
+            surface: layerSurface,
+            ready: renderedLayerKeys.has(layer.key) && prepaintReadyKeys.has(layer.key),
+        })),
+    });
+    const keyboardOwnerHost = keyboardOwnerEntry
+        ? hostAdapterBundleFor(keyboardOwnerEntry.entry, keyboardOwnerEntry.surface)
+        : null;
 
     /**
-     * The page half's target, read at dispatch time rather than closed over.
+     * The owner half's target, read when a key arrives rather than closed over.
      *
-     * One listener serves both halves so their order is fixed - global first, then the page - and a
-     * listener re-registered whenever the active page changed would keep swapping that order. So the
-     * effect below depends only on the host, and the page it may reach comes from here.
+     * One listener serves both halves so their order is fixed - global first, then the owner - and a
+     * listener re-registered whenever the owner changed would keep swapping that order. So the effect
+     * below depends only on the host, and the entry a key may reach comes from here.
      */
-    const keyboardSurfaceRef = useRef<UISurface | null>(null);
-    keyboardSurfaceRef.current = activeSurfaceKeyboardReady ? activeSurface : null;
+    const keyboardOwnerRef = useRef<KeyboardOwner | null>(null);
+    keyboardOwnerRef.current = keyboardOwnerEntry && keyboardOwnerHost
+        ? { surface: keyboardOwnerEntry.surface, host: keyboardOwnerHost }
+        : null;
 
+    /**
+     * Every live surface a preference, fullscreen, focus or close-request event reaches, in the order
+     * it reaches them (see `ambientSurfaceEvents`): the layers from the topmost down, the page, then
+     * the pages drawn in frames and the surfaces on the stage, which register themselves.
+     *
+     * A layer is live on the terms it takes keys on - drawn, and far enough in that its graphs run -
+     * so its heads start and stop hearing with the rest of it. The page is reached as it always has
+     * been. Read as the event arrives, like the keyboard owner above, so the listeners below do not
+     * have to be re-registered whenever the composite changes.
+     */
+    const ambientTargetsRef = useRef<() => AmbientSurfaceTarget[]>(() => []);
+    ambientTargetsRef.current = () => listAmbientSurfaceTargets({
+        layers: visibleLayers.map(({ layer, surface: layerSurface }) => ({
+            entry: layer,
+            surface: layerSurface,
+            live: renderedLayerKeys.has(layer.key) && prepaintReadyKeys.has(layer.key),
+        })),
+        page: activeEntry && activeSurface ? { entry: activeEntry, surface: activeSurface } : null,
+        hostAdapterBundleFor,
+        registered: ambientSurfaces,
+    });
+
+    /**
+     * The runtime every page drawn in a Page widget runs on, on the pages and layers of this game.
+     * The slot surfaces build theirs with the same function from the same session inputs (see
+     * `StageSlotSurfaceBody`), so an embedded page is the same live page wherever it is placed.
+     */
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!core || !gameHostCapabilities) {
             return undefined;
         }
-        const globalState = {
-            get: (key: string) => core.scopeBridge.globalGet(key),
-            subscribe: (listener: () => void) => core.scopeBridge.subscribeGlobals(listener),
-        };
-        return {
-            createHostAdapter: input => {
-                const runtimeScopeId = input.runtimeScopeId;
-                let nestedHostAdapter: UIHostAdapter | null = null;
-                const hostApi = createDevModeBlueprintHostApi(buildGameHostApiOptions(gameHostCapabilities, {
-                    document: bundle.ui.uidoc,
-                    scope: core.scopeBridge,
-                    emit: event => core.debug.emit(event),
-                    activeSurfaceId: input.targetSurface.id,
-                    runtimeScopeId,
-                    pageProps: input.params,
-                    // Inherited rather than decided: a frame is drawn inside a page, so whether it
-                    // is over a running game is that page's answer, not one of its own.
-                    isGameOverlay: () =>
-                        input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
-                    // As the page around it; see `createStoryStartGate`.
-                    startStory: storyStartGate,
-                    widgetPatches: {
-                        setByScope: setWidgetPatchesByScope,
-                        byScopeRef: widgetPatchesByScopeRef,
-                    },
-                    resolveHostAdapter: () => nestedHostAdapter,
-                    frame: {
-                        params: input.params,
-                        emit: async (eventName, data) => {
-                            await input.parentHostAdapter.blueprintRuntime?.dispatchElementBlueprintEvent(
-                                input.frameElement.id,
-                                "pageEvent",
-                                { event: eventName, data },
-                            );
-                        },
-                    },
-                }));
-                nestedHostAdapter = createDevModeBlueprintHostAdapter({
-                    bundle,
-                    surface: input.targetSurface,
-                    runtimeScopeId,
-                    scopeBridge: core.scopeBridge,
-                    debug: core.debug,
-                    hostApi,
-                    executionManager: core.executionManager,
-                });
-                return nestedHostAdapter;
+        return createNestedSurfaceHost({
+            core,
+            capabilities: gameHostCapabilities,
+            bundle,
+            // As the page around it; see `createStoryStartGate`.
+            startStory: storyStartGate,
+            widgetPatches: {
+                setByScope: setWidgetPatchesByScope,
+                byScopeRef: widgetPatchesByScopeRef,
             },
-            createBindingContext: input => ({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceState: core.scopeBridge.getSurfaceStore(input.runtimeScopeId),
-                debug: core.debug,
-                coalescer: core.bindingDebugCoalescer,
-                globalState,
-                pageProps: input.params,
-            }),
-            mountSurface: input => {
-                const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
-                const executor = {
-                    openScope: (scopeId: string) => core.executionManager.openScope(scopeId),
-                    closeScope: (scopeId: string, reason: string) => core.executionManager.closeScope(scopeId, reason),
-                    dispatchSurfaceEvent: (command: { eventName: "surfaceInit" | "surfaceUnmount" | "beforeSurfaceExit" | "afterSurfaceEnter"; scopeId: string; surfaceId: string; allowClosedScopeExecution?: boolean }) => {
-                        void dispatchSurfaceBlueprintEvent({
-                            blueprintDocument: bundle.ui.localBlueprints,
-                            persistentVariables: bundle.ui.persistentVariables,
-                            surfaceId: command.surfaceId,
-                            runtimeScopeId: command.scopeId,
-                            eventName: command.eventName,
-                            hostAdapter: input.hostAdapter,
-                            debug: core.debug,
-                            getSurfaceState: key => surfaceStore.get(key),
-                            setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                            executionManager: core.executionManager,
-                            ...(command.allowClosedScopeExecution ? { allowClosedScopeExecution: true } : {}),
-                        });
-                    },
-                    setTransitionState: () => undefined,
-                    bumpLifecycleSignal: () => undefined,
-                    clearInteraction: () => undefined,
-                };
-                executeLifecycleCommands(
-                    lifecycleRef.current.surfaceReady(input.runtimeScopeId, input.targetSurface.id),
-                    executor,
-                );
-                return () => {
-                    executeLifecycleCommands(
-                        lifecycleRef.current.surfaceUnmounted(input.runtimeScopeId, input.targetSurface.id),
-                        executor,
-                    );
-                };
-            },
-            getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
-        };
+            lifecycleRef,
+            ambientSurfaces,
+        });
     }, [
+        ambientSurfaces,
         bundle,
         core,
         // One dependency where sixty used to be: the capabilities memo is rebuilt whenever any
         // callback in it is, so a frame's host follows exactly what it followed before.
         gameHostCapabilities,
+        lifecycleRef,
         setWidgetPatchesByScope,
         startStoryInGame,
+        storyStartGate,
         widgetPatchesByScopeRef,
     ]);
 
@@ -5056,6 +5164,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrSavedVariableTokenRef.current?.cancel();
+        nlrSavedVariableTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
         playHead.reset();
@@ -5092,6 +5202,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrCharacterPromptTokenRef.current = null;
         nlrPreferenceTokenRef.current?.cancel();
         nlrPreferenceTokenRef.current = null;
+        nlrSavedVariableTokenRef.current?.cancel();
+        nlrSavedVariableTokenRef.current = null;
         // Not nlrCompiledRef: mountNlrSession sets it for the new session before this fires.
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
@@ -5155,95 +5267,88 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!scope.global || !core || !hostAdapterBundle) {
             return;
         }
-        const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
-            // Typing into a text field must not also drive the game's global keys — otherwise
-            // entering a name would advance dialogue on space and open the menu on Escape. The
-            // widget's own keyboard event still fires: it arrives through DOM bubbling, not here.
-            if (isTextEntryTarget(event.target)) {
-                return;
-            }
-            const payload = keyboardBlueprintPayload(event);
-            const eventControl = getOrCreateDomEventPropagationControl(event);
-            // Inert for a key today, and kept anyway. An element head is a subscription rather than
-            // a claim, so nothing a widget runs can silence the surface any more - the one case that
-            // ever mattered, typing into a text field, is answered unconditionally above. What still
-            // reaches here is `Keep Window Open`, which stops propagation while a close request is
-            // being answered; a key arriving inside that window has no business starting anything.
-            if (eventControl.isPropagationStopped()) {
-                return;
-            }
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName,
-                eventPayload: payload,
-                eventControl,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: key => surfaceStore.get(key),
-                setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                executionManager: core.executionManager,
-            }).then(() => {
-                const surface = keyboardSurfaceRef.current;
-                if (!surface || eventControl.isPropagationStopped()) {
-                    return;
-                }
-                return dispatchSurfaceBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
-                    persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: surface.id,
-                    runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                    eventName,
-                    eventPayload: payload,
-                    eventControl,
-                    hostAdapter: hostAdapterBundle.hostAdapter,
-                    debug: core.debug,
-                    getSurfaceState: key => surfaceStore.get(key),
-                    setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                    executionManager: core.executionManager,
-                });
-            }).then(() => {
-                // The keyboard half of the surface's declared actions.
-                //
-                // Here rather than beside the pointer half in `GameSurfaceRenderer`, because a key
-                // press is not aimed at anything: it belongs to whichever surface currently owns the
-                // keys, and that is a fact about the whole composite that only this level knows. For
-                // the same reason nothing consumes here - `consume` decides how far down the lanes
-                // under a pointer an input travels, and a key has no lanes under it.
-                const surface = keyboardSurfaceRef.current;
-                if (!surface || eventName !== "keyDown" || eventControl.isPropagationStopped()) {
-                    return undefined;
-                }
-                const actionHits = resolveSurfaceInputActionHits({
-                    vocabulary: bundle.ui.uidoc.actions,
-                    enablements: surface.actions,
-                    signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
-                });
-                return Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
-                    persistentVariables: bundle.ui.persistentVariables,
-                    surfaceId: surface.id,
-                    runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                    eventName: UI_SURFACE_INPUT_ACTION_EVENT,
-                    eventPayload: { ...hit.payload },
-                    hostAdapter: hostAdapterBundle.hostAdapter,
-                    debug: core.debug,
-                    getSurfaceState: key => surfaceStore.get(key),
-                    setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                    executionManager: core.executionManager,
-                }))).then(() => undefined);
-            }).catch(err => host.log("error", normalizeError(err)));
-        };
-        const onKeyDown = (event: KeyboardEvent) => dispatchKeyboardEvent("keyDown", event);
-        const onKeyUp = (event: KeyboardEvent) => dispatchKeyboardEvent("keyUp", event);
-        window.addEventListener("keydown", onKeyDown);
-        window.addEventListener("keyup", onKeyUp);
-        return () => {
-            window.removeEventListener("keydown", onKeyDown);
-            window.removeEventListener("keyup", onKeyUp);
-        };
+        // The keyboard half of the surfaces' declared actions lives in there too. Here rather than
+        // beside the pointer half in `GameSurfaceRenderer`, because a key press is not aimed at
+        // anything: it belongs to whichever entry currently owns the keys, and that is a fact about
+        // the whole composite that only this level knows.
+        return listenForGameKeys(window, {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            vocabulary: bundle.ui.uidoc.actions,
+            core,
+            globalHost: hostAdapterBundle,
+            readKeyboardOwner: () => keyboardOwnerRef.current,
+            onError: err => host.log("error", normalizeError(err)),
+        });
     }, [bundle, core, host, hostAdapterBundle]);
+
+    /**
+     * The pointer half of the global blueprint's input actions: what a lane calls to hand the global
+     * an action before answering it itself (see `GlobalInputActionContext`).
+     *
+     * The same function the key listener above calls, with the same blueprint, core and host, so an
+     * `On Action` on the global blueprint runs identically whether a key or a click raised it. Kept
+     * stable and reading through a ref, because every surface on screen reads it through context and
+     * a page opening must not re-render all of them; null only while there is no game to dispatch
+     * into, which is also when the key listener is not installed.
+     */
+    const globalBlueprintDispatchRef = useRef<GlobalBlueprintDispatch | null>(null);
+    globalBlueprintDispatchRef.current = host.ready && core && hostAdapterBundle
+        ? {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            core,
+            globalHost: hostAdapterBundle,
+        }
+        : null;
+    const hostLogRef = useRef(host.log);
+    hostLogRef.current = host.log;
+    const answerGlobalPointerActions = useCallback<GlobalInputActionAnswerer>(async (payloads, eventControl) => {
+        const dispatch = globalBlueprintDispatchRef.current;
+        if (!dispatch) {
+            return;
+        }
+        try {
+            await answerGlobalInputActions(dispatch, payloads, eventControl);
+        } catch (err) {
+            hostLogRef.current("error", normalizeError(err));
+        }
+    }, []);
+    const globalInputActionAnswerer = globalBlueprintDispatchRef.current ? answerGlobalPointerActions : null;
+
+    /**
+     * The same, for a pointer input that reached no lane: one that landed where no surface has
+     * content, which a page lets through to the stage and the stage may have nothing to take. The
+     * game's drawing root hears what bubbles up to it, which is exactly that - see
+     * `globalPointerInput`. State rather than a ref so the touch listener below is attached once the
+     * root exists, which is not on the first render.
+     */
+    const [gameRoot, setGameRoot] = useState<HTMLDivElement | null>(null);
+    const offerPointerInputToGlobal = useCallback((event: Event) => {
+        if (!gameRoot || !globalBlueprintDispatchRef.current) {
+            return;
+        }
+        offerUnclaimedPointerInput({
+            event,
+            root: gameRoot,
+            document: bundle.ui.uidoc,
+            scale,
+            answer: answerGlobalPointerActions,
+        });
+    }, [answerGlobalPointerActions, bundle.ui.uidoc, gameRoot, scale]);
+    const offerSyntheticPointerInputToGlobal = useCallback(
+        (event: SyntheticEvent) => offerPointerInputToGlobal(event.nativeEvent),
+        [offerPointerInputToGlobal],
+    );
+    useEffect(() => {
+        if (!gameRoot) {
+            return undefined;
+        }
+        // Native, because the touch recogniser's event has a private name React has no prop for;
+        // lanes listen for it the same way, on their own shells, and stop it when they take it.
+        gameRoot.addEventListener(UI_TOUCH_GESTURE_EVENT, offerPointerInputToGlobal);
+        return () => gameRoot.removeEventListener(UI_TOUCH_GESTURE_EVENT, offerPointerInputToGlobal);
+    }, [gameRoot, offerPointerInputToGlobal]);
 
     /**
      * Skipping. Studio's loop, not the engine's - see `skipRunController` for why the binding had to
@@ -5427,93 +5532,55 @@ export function GameApp(props: GameAppProps): ReactNode {
         stageAdvanceHolderRef.current?.sync(stageCovered);
     });
 
+    /**
+     * What the four ambient events below are dispatched with: the global blueprint on the active
+     * page's host, as it always has been, and then every live surface - read from
+     * `ambientTargetsRef` as each event arrives, so a layer opened or a stage surface drawn after a
+     * listener was registered is still reached.
+     */
+    const ambientDispatch = useMemo<AmbientSurfaceDispatch | null>(() => {
+        if (!host.ready || !core || !hostAdapterBundle) {
+            return null;
+        }
+        return {
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistentVariables: bundle.ui.persistentVariables,
+            document: bundle.ui.uidoc,
+            core,
+            globalHost: hostAdapterBundle,
+            readTargets: () => ambientTargetsRef.current(),
+        };
+    }, [bundle, core, host.ready, hostAdapterBundle]);
+
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface) {
+        if (!ambientDispatch) {
             dispatchPreferenceChangeRef.current = null;
             return;
         }
         dispatchPreferenceChangeRef.current = (key, value, previousValue) => {
             const eventPayload = { key, value: value ?? null, previousValue: previousValue ?? null };
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName: "gamePreferenceChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "gamePreferenceChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).catch(err => host.log("error", normalizeError(err)));
+            dispatchAmbientSurfaceEvent(ambientDispatch, "gamePreferenceChanged", eventPayload)
+                .catch(err => host.log("error", normalizeError(err)));
         };
         return () => {
             dispatchPreferenceChangeRef.current = null;
         };
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     // Window fullscreen transitions come from the main process, so they also cover
     // fullscreen toggled outside the game. Unlike the preference subscription this
     // one is owned by the host, so the effect can subscribe directly.
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeFullscreenChanged) {
+        if (!ambientDispatch || !host.subscribeFullscreenChanged) {
             return;
         }
         return host.subscribeFullscreenChanged(isFullscreen => {
-            const eventPayload = { isFullscreen };
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName: "windowFullscreenChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFullscreenChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).then(() => dispatchWidgetsBlueprintEvent({
-                document: bundle.ui.uidoc,
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFullscreenChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).catch(err => host.log("error", normalizeError(err)));
+            dispatchAmbientSurfaceEvent(ambientDispatch, "windowFullscreenChanged", { isFullscreen })
+                .catch(err => host.log("error", normalizeError(err)));
         });
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     /**
      * The window gaining or losing the player's attention, as a fact this app keeps.
@@ -5615,97 +5682,36 @@ export function GameApp(props: GameAppProps): ReactNode {
     // fullscreen dispatch above and owned by the host in the same way, so the two ambient window
     // events reach a graph by one route.
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeWindowFocusChanged) {
+        if (!ambientDispatch || !host.subscribeWindowFocusChanged) {
             return;
         }
         return host.subscribeWindowFocusChanged(isFocused => {
-            const eventPayload = { isFocused };
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-            void dispatchGlobalBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                eventName: "windowFocusChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            }).then(() => dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFocusChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).then(() => dispatchWidgetsBlueprintEvent({
-                document: bundle.ui.uidoc,
-                blueprintDocument: bundle.ui.localBlueprints,
-                persistentVariables: bundle.ui.persistentVariables,
-                surfaceId: activeSurface.id,
-                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                eventName: "windowFocusChanged",
-                eventPayload,
-                hostAdapter: hostAdapterBundle.hostAdapter,
-                debug: core.debug,
-                getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                executionManager: core.executionManager,
-            })).catch(err => host.log("error", normalizeError(err)));
+            dispatchAmbientSurfaceEvent(ambientDispatch, "windowFocusChanged", { isFocused })
+                .catch(err => host.log("error", normalizeError(err)));
         });
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     // The user asked to close the window; the main process holds the close open until the blueprint
-    // decides. A shared event control travels through the global then surface dispatch, so a Stop
-    // Event Bubble node in either cancels the close. Absent that, the window closes. Scoped like the
-    // keyboard heads (global + surface): the widget dispatch path does not thread the event control.
-    // Owned by the host, so the effect subscribes directly (like fullscreen).
+    // decides. A shared event control travels through the global blueprint and then every live
+    // surface from the top down, so `Keep Window Open` in any of them cancels the close and the
+    // surfaces under it are not asked. Absent that, the window closes. Surface heads only: the widget
+    // dispatch path does not thread the event control. Owned by the host, so the effect subscribes
+    // directly (like fullscreen).
     useEffect(() => {
-        if (!host.ready || !core || !hostAdapterBundle || !activeSurface || !host.subscribeCloseRequested) {
+        if (!ambientDispatch || !host.subscribeCloseRequested) {
             return;
         }
         return host.subscribeCloseRequested(async () => {
             const eventControl = createEventPropagationControl();
-            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
             try {
-                await dispatchGlobalBlueprintEvent({
-                    blueprintDocument: bundle.ui.localBlueprints,
-                    persistentVariables: bundle.ui.persistentVariables,
-                    eventName: "windowCloseRequested",
-                    eventControl,
-                    hostAdapter: hostAdapterBundle.hostAdapter,
-                    debug: core.debug,
-                    getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                    setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                    executionManager: core.executionManager,
-                });
-                if (!eventControl.isPropagationStopped()) {
-                    await dispatchSurfaceBlueprintEvent({
-                        blueprintDocument: bundle.ui.localBlueprints,
-                        persistentVariables: bundle.ui.persistentVariables,
-                        surfaceId: activeSurface.id,
-                        runtimeScopeId: hostAdapterBundle.runtimeScopeId,
-                        eventName: "windowCloseRequested",
-                        eventControl,
-                        hostAdapter: hostAdapterBundle.hostAdapter,
-                        debug: core.debug,
-                        getSurfaceState: stateKey => surfaceStore.get(stateKey),
-                        setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
-                        executionManager: core.executionManager,
-                    });
-                }
+                await dispatchAmbientSurfaceEvent(ambientDispatch, "windowCloseRequested", undefined, eventControl);
             } catch (err) {
                 host.log("error", normalizeError(err));
             }
             // Default is to close; a handler that ran `Keep Window Open` cancels it.
             return !eventControl.isPropagationStopped();
         });
-    }, [activeSurface, bundle, core, host, hostAdapterBundle]);
+    }, [ambientDispatch, host]);
 
     if (!activeSurface || !activeEntry) {
         return renderPlaceholder?.() ?? null;
@@ -5744,8 +5750,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         // remount the whole frame subtree (StageViewportFrame and everything inside it).
         return (
             <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
-                {renderFrame({ activeSurface, gameViewport, children: null })}
-                {renderOverlays?.(overlayContext())}
+                <AssetResolutionReporterContext.Provider value={assetResolutionReporter}>
+                    {renderFrame({ activeSurface, gameViewport, children: null })}
+                    {renderOverlays?.(overlayContext())}
+                </AssetResolutionReporterContext.Provider>
             </GameLocalizationContext.Provider>
         );
     }
@@ -5813,6 +5821,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                         preferenceListenersRef.current.forEach(listener => listener());
                     },
                 );
+                nlrSavedVariableTokenRef.current?.cancel();
+                nlrSavedVariableTokenRef.current = nlrSession?.compiled
+                    ? announceSavedVariableWrites(liveGame.getStorable(), nlrSession.compiled)
+                    : null;
                 detachTextReadTracker();
                 const dialogGameState = liveGame.getGameState();
                 if (dialogGameState) {
@@ -5963,8 +5975,17 @@ export function GameApp(props: GameAppProps): ReactNode {
     // PLAYER's own OS preference still lands — `useReducedMotion` above reads the media query
     // directly and is unaffected by this config. The host frame around it stays Studio chrome.
     const content = (
+        <GlobalInputActionContext.Provider value={globalInputActionAnswerer}>
         <MotionConfig reducedMotion="never">
-            <div className="nl-motion-keep relative h-full w-full overflow-hidden">
+            <div
+                ref={setGameRoot}
+                className="nl-motion-keep relative h-full w-full overflow-hidden"
+                onClick={offerSyntheticPointerInputToGlobal}
+                onDoubleClick={offerSyntheticPointerInputToGlobal}
+                onAuxClick={offerSyntheticPointerInputToGlobal}
+                onContextMenu={offerSyntheticPointerInputToGlobal}
+                onWheel={offerSyntheticPointerInputToGlobal}
+            >
                 {nlrStageLayer}
                 {/* Runtime plugin overlays: above the game stage, below the app surface
                     system (menus, save screens, every authored page). This is as low as a
@@ -5972,12 +5993,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                     Player and its only injection point (Player children) is itself stacked
                     above that dialogue, so there is no DOM position under it to occupy. */}
                 {pluginHost ? (
-                    <div className="pointer-events-none absolute inset-0" style={{ zIndex: 5 }}>
+                    <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{ zIndex: 5 }}
+                        {...{ [RUNTIME_PLUGIN_OVERLAY_ATTR]: "" }}
+                    >
                         <RuntimePluginOverlayLayer store={pluginHost.overlays} log={host.log} />
                     </div>
                 ) : null}
-                {/* Surface system starts only after the NLR environment boot preload finishes. */}
-                <div className="pointer-events-none absolute inset-0 z-10">
+                {/* Surface system starts only after the NLR environment boot preload finishes. The box
+                    also guards the stage while a page or layer plays its exit - see `SurfaceStackBox`. */}
+                <SurfaceStackBox className="absolute inset-0 z-10">
                     <AnimatePresence
                         custom={navState.direction}
                         initial={false}
@@ -5997,7 +6023,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     surface={surface}
                                     rendererRegistry={rendererRegistry}
                                     scale={scale}
-                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    hostAdapterBundleFor={hostAdapterBundleFor}
                                     widgetPatchesByScope={widgetPatchesByScope}
                                     widgetPatchesByScopeRef={widgetPatchesByScopeRef}
                                     widgetRuntimeStore={widgetRuntimeStore}
@@ -6007,7 +6033,6 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     reducedMotion={prefersReducedMotion === true}
                                     active={compositeInput.interactiveKeys.has(entry.key)}
                                     keyboardOwner={compositeInput.keyboardOwnerKey === entry.key}
-                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
                                 />
@@ -6043,7 +6068,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     surface={surface}
                                     rendererRegistry={rendererRegistry}
                                     scale={scale}
-                                    createHostAdapterBundle={createHostAdapterBundle}
+                                    hostAdapterBundleFor={hostAdapterBundleFor}
                                     widgetPatchesByScope={widgetPatchesByScope}
                                     widgetPatchesByScopeRef={widgetPatchesByScopeRef}
                                     widgetRuntimeStore={widgetRuntimeStore}
@@ -6054,22 +6079,24 @@ export function GameApp(props: GameAppProps): ReactNode {
                                     active={compositeInput.interactiveKeys.has(layer.key)}
                                     keyboardOwner={compositeInput.keyboardOwnerKey === layer.key}
                                     scrim={layer.scrim}
-                                    onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                     onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                     onEnterComplete={markActiveEnterComplete}
                                 />
                             ))
                             : null}
                     </AnimatePresence>
-                </div>
+                </SurfaceStackBox>
             </div>
         </MotionConfig>
+        </GlobalInputActionContext.Provider>
     );
 
     return (
         <GameLocalizationContext.Provider value={gameLocalizationRuntime}>
-            {renderFrame({ activeSurface, gameViewport, children: content })}
-            {renderOverlays?.(overlayContext())}
+            <AssetResolutionReporterContext.Provider value={assetResolutionReporter}>
+                {renderFrame({ activeSurface, gameViewport, children: content })}
+                {renderOverlays?.(overlayContext())}
+            </AssetResolutionReporterContext.Provider>
         </GameLocalizationContext.Provider>
     );
 }
