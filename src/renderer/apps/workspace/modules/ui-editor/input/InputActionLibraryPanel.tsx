@@ -216,14 +216,17 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     return (
         <div
             ref={rootRef}
-            className={`shrink-0 border-t bg-surface-sunken transition-colors ${
+            // Shrinkable, for the reason spelled out in `ComponentLibraryPanel`: the surface list
+            // above these two sections is what the panel is for, and a fixed-height library pair
+            // left it 16px tall on a short window.
+            className={`flex min-h-0 shrink flex-col border-t bg-surface-sunken transition-colors ${
                 highlighted ? "border-primary/45 bg-primary/5" : "border-edge"
             }`}
             data-help-topic="inputActions"
         >
             <button
                 type="button"
-                className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
+                className="flex h-9 w-full shrink-0 items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
                 onClick={() => setOpen(value => !value)}
             >
                 <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
@@ -232,7 +235,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
                 <span className="text-2xs font-normal text-fg-subtle">{actions.length}</span>
             </button>
             {open ? (
-                <div className="space-y-2 border-t border-edge p-2">
+                <div className="flex min-h-0 flex-1 flex-col space-y-2 border-t border-edge p-2">
                     <button
                         type="button"
                         className="flex min-h-7 w-full items-center justify-center gap-1 rounded-md border border-edge text-xs text-fg-muted hover:bg-fill hover:text-fg"
@@ -242,7 +245,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
                         <Plus className="h-3.5 w-3.5" aria-hidden />
                         {t("uiEditor.inputActions.create")}
                     </button>
-                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    <div className="min-h-0 max-h-72 flex-1 space-y-2 overflow-y-auto pr-1">
                         {actions.length === 0 ? (
                             <div className="rounded-md border border-dashed border-edge px-3 py-4 text-center text-xs text-fg-subtle">
                                 {t("uiEditor.inputActions.empty")}
