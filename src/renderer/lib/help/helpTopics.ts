@@ -59,6 +59,7 @@ export const HELP_TOPIC_IDS = [
     "puppetRuntimes",
     "audio",
     "audioClips",
+    "videoClips",
     "voice",
     "localization",
     "brand",
@@ -284,6 +285,18 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
             "assets.audio.clear-markers",
         ],
         related: ["audio", "assets"],
+    },
+    {
+        id: "videoClips",
+        section: "content",
+        shortcuts: [
+            "assets.video.play-pause",
+            "assets.video.previous-frame",
+            "assets.video.next-frame",
+            "assets.video.loop",
+            "assets.video.audition-seam",
+        ],
+        related: ["assets", "audioClips"],
     },
     {
         id: "voice",

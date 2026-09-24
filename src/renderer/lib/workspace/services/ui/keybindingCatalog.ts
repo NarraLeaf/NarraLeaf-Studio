@@ -39,6 +39,7 @@ import {
     History,
     IndentDecrease,
     IndentIncrease,
+    IterationCw,
     Keyboard,
     Locate,
     Maximize2,
@@ -65,6 +66,8 @@ import {
     Square,
     SquareDashed,
     SquareDashedMousePointer,
+    StepBack,
+    StepForward,
     Trash2,
     Undo2,
     Ungroup,
@@ -323,6 +326,25 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     entry("assets.audio.zoom-in", "=", "assets.audio.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
     entry("assets.audio.zoom-out", "-", "assets.audio.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
     entry("assets.audio.zoom-fit", "0", "assets.audio.keybindings.zoomFit", CATEGORY.assets, Maximize2),
+
+    // --- Video preview -------------------------------------------------------
+    // The audio preview's keys wherever the two do the same thing, so moving between the two tabs
+    // costs nothing. The arrows step whole frames here rather than a tenth of a second: a frame is
+    // the unit a picture is inspected in.
+    entry("assets.video.play-pause", "space", "assets.video.keybindings.playPause", CATEGORY.assets, Play),
+    entry("assets.video.audition-seam", "shift+space", "assets.video.keybindings.auditionSeam", CATEGORY.assets, IterationCw),
+    entry("assets.video.to-start", "home", "assets.video.keybindings.toStart", CATEGORY.assets, SkipBack),
+    entry("assets.video.to-end", "end", "assets.video.keybindings.toEnd", CATEGORY.assets, SkipForward),
+    entry("assets.video.previous-frame", "arrowleft", "assets.video.keybindings.previousFrame", CATEGORY.assets, StepBack),
+    entry("assets.video.next-frame", "arrowright", "assets.video.keybindings.nextFrame", CATEGORY.assets, StepForward),
+    entry("assets.video.back-second", "shift+arrowleft", "assets.video.keybindings.backSecond", CATEGORY.assets, ChevronsLeft),
+    entry("assets.video.forward-second", "shift+arrowright", "assets.video.keybindings.forwardSecond", CATEGORY.assets, ChevronsRight),
+    entry("assets.video.loop", "r", "assets.video.keybindings.loop", CATEGORY.assets, Repeat),
+    entry("assets.video.select-all", "mod+a", "assets.video.keybindings.selectAll", CATEGORY.assets, SquareDashedMousePointer),
+    entry("assets.video.clear-selection", "escape", "assets.video.keybindings.clearSelection", CATEGORY.assets, SquareDashed),
+    entry("assets.video.zoom-in", "=", "assets.video.keybindings.zoomIn", CATEGORY.assets, ZoomIn),
+    entry("assets.video.zoom-out", "-", "assets.video.keybindings.zoomOut", CATEGORY.assets, ZoomOut),
+    entry("assets.video.zoom-fit", "0", "assets.video.keybindings.zoomFit", CATEGORY.assets, Maximize2),
 
     // --- Translation and voice tables ---------------------------------------
     // Two tables, one command, one chord. They are separate entries rather than one shared id

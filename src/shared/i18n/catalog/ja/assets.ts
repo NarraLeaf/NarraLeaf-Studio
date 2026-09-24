@@ -590,6 +590,42 @@ export const assets = {
             auditionSeam: "ループのつなぎ目を試聴",
         },
     },
+    // 動画プレビューの再生、表示、ステータスバー。動画ファイルにもその記録にも触れない。
+    // フレームを保存すると画像アセットが新しく作られる。
+    video: {
+        loading: "動画を読み込んでいる…",
+        loadError: "動画を読み込めなかった",
+        editor: {
+            previousFrame: "前のフレーム",
+            nextFrame: "次のフレーム",
+            speed: "再生速度",
+            zoom: "表示倍率",
+            zoomFit: "全体表示",
+            saveFrame: "このフレームを画像として保存",
+            frameSaved: "フレームを {name} として保存した",
+            frameSaveFailed: "フレームを保存できなかった",
+            open: "開く",
+            frame: "{frame} / {total} フレーム",
+            transparent: "透過あり",
+        },
+        // キーボードショートカットの設定表と「?」の一覧に出る。
+        keybindings: {
+            playPause: "再生と一時停止",
+            auditionSeam: "ループのつなぎ目を確認",
+            toStart: "先頭へ",
+            toEnd: "末尾へ",
+            previousFrame: "前のフレームへ",
+            nextFrame: "次のフレームへ",
+            backSecond: "1 秒戻す",
+            forwardSecond: "1 秒進める",
+            loop: "ループを切り替え",
+            selectAll: "クリップ全体を選択",
+            clearSelection: "選択を解除",
+            zoomIn: "タイムラインを拡大",
+            zoomOut: "タイムラインを縮小",
+            zoomFit: "タイムラインにクリップ全体を表示",
+        },
+    },
     image: {
         loading: "画像を読み込んでいる…",
         loadError: "画像を読み込めなかった",

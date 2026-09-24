@@ -667,6 +667,42 @@ export const assets = {
             auditionSeam: "Audition loop seam",
         },
     },
+    // The video preview's transport, view and status bar. It writes nothing to the clip or its
+    // record; saving a frame creates a new image asset.
+    video: {
+        loading: "Loading video…",
+        loadError: "Failed to load video",
+        editor: {
+            previousFrame: "Previous frame",
+            nextFrame: "Next frame",
+            speed: "Playback speed",
+            zoom: "Zoom",
+            zoomFit: "Fit",
+            saveFrame: "Save frame as image",
+            frameSaved: "Frame saved as {name}",
+            frameSaveFailed: "The frame could not be saved",
+            open: "Open",
+            frame: "Frame {frame} of {total}",
+            transparent: "Transparent",
+        },
+        // Shown in the keybinding settings table and the "?" cheat sheet.
+        keybindings: {
+            playPause: "Play or pause",
+            auditionSeam: "Preview loop seam",
+            toStart: "Go to start",
+            toEnd: "Go to end",
+            previousFrame: "Previous frame",
+            nextFrame: "Next frame",
+            backSecond: "Back one second",
+            forwardSecond: "Forward one second",
+            loop: "Toggle loop",
+            selectAll: "Select whole clip",
+            clearSelection: "Clear selection",
+            zoomIn: "Zoom timeline in",
+            zoomOut: "Zoom timeline out",
+            zoomFit: "Fit whole clip in timeline",
+        },
+    },
     image: {
         loading: "Loading image…",
         loadError: "Failed to load image",

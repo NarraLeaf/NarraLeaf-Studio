@@ -421,6 +421,23 @@ export const help = {
                 + "- Scrolling with Option (Alt) held magnifies the waveform vertically. Only the display changes.\n"
                 + "- Playback, movement, marking and zooming all have keyboard actions.",
         },
+        videoClips: {
+            title: "Inspecting a video",
+            body:
+                "Opening a video asset shows the picture, a timeline of its frames and, when the clip has sound, "
+                + "its waveform. Nothing here changes the file.\n"
+                + "\n"
+                + "- Dragging along the ruler scrubs through the clip. Dragging below it selects a range, and play "
+                + "repeats the range while Loop is on.\n"
+                + "- The arrow keys step one frame at a time. The frame number and frame rate are in the status bar.\n"
+                + "- Preview loop seam plays the last two seconds and carries on into the first two, the way a "
+                + "looping clip turns around in the game.\n"
+                + "- The zoom menu sets the picture's size. Scrolling with Command (Ctrl) held zooms at the pointer, "
+                + "and double-clicking switches between the fitted view and actual pixels.\n"
+                + "- A clip with transparent pixels is shown over a checkerboard.\n"
+                + "- Save frame as image adds the frame on screen to the image assets at the clip's own resolution, "
+                + "for use as a poster or a still.",
+        },
         voice: {
             title: "Voice-over",
             body:

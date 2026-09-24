@@ -60,6 +60,23 @@ export function readCssColor(element: HTMLElement, token: string, fallback: stri
     return value.length > 0 ? value : fallback;
 }
 
+/**
+ * The theme colours the media previews' canvases paint with, read off `element`'s computed style.
+ *
+ * Read at draw time rather than cached, so a theme switch takes effect on the next repaint. The
+ * fallbacks only apply to an element outside the themed tree.
+ */
+export function readCanvasPalette(element: HTMLElement) {
+    return {
+        wave: readCssColor(element, "--color-fg-muted", "#8a8a8a"),
+        subtle: readCssColor(element, "--color-fg-subtle", "#6a6a6a"),
+        primary: readCssColor(element, "--color-primary", "#40a8c4"),
+        edge: readCssColor(element, "--color-edge", "#3a3a3a"),
+        fg: readCssColor(element, "--color-fg", "#f0f0f0"),
+        sunken: readCssColor(element, "--color-surface-sunken", "#1a1a1a"),
+    };
+}
+
 /** Choose a tick spacing whose labels stay readable at the current zoom. */
 function chooseTickSeconds(secondsPerPixel: number): number {
     const targetSeconds = secondsPerPixel * 80; // ~80px between labels
@@ -169,13 +186,14 @@ export function WaveformView({
         context.setTransform(dpr, 0, 0, dpr, 0, 0);
         context.clearRect(0, 0, width, height);
 
-        const styleHost = canvas.parentElement ?? canvas;
-        const waveColor = readCssColor(styleHost, "--color-fg-muted", "#8a8a8a");
-        const subtleColor = readCssColor(styleHost, "--color-fg-subtle", "#6a6a6a");
-        const primaryColor = readCssColor(styleHost, "--color-primary", "#40a8c4");
-        const edgeColor = readCssColor(styleHost, "--color-edge", "#3a3a3a");
-        const fgColor = readCssColor(styleHost, "--color-fg", "#f0f0f0");
-        const sunkenColor = readCssColor(styleHost, "--color-surface-sunken", "#1a1a1a");
+        const {
+            wave: waveColor,
+            subtle: subtleColor,
+            primary: primaryColor,
+            edge: edgeColor,
+            fg: fgColor,
+            sunken: sunkenColor,
+        } = readCanvasPalette(canvas.parentElement ?? canvas);
 
         const waveHeight = height - WAVE_TOP;
         const visibleSamples = Math.max(1, view.end - view.start);
