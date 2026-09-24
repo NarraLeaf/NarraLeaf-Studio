@@ -335,8 +335,8 @@ export class BaseApp {
         }
 
         // Like the zoom above and unlike the theme: there is no single switch to flip. Each window
-        // carries its own icon and the tray carries a third, so the new mark has to be pushed to
-        // all of them.
+        // carries its own icon, the tray carries another and the Dock a third, so the new mark has
+        // to be pushed to all of them.
         if (key === WINDOW_ICON_KEY) {
             this.refreshWindowIcons();
         }
@@ -466,7 +466,7 @@ export class BaseApp {
      * The file the current icon preference resolves to, or null where there is nothing to set.
      *
      * macOS returns null because it has no per-window icon at all - `BrowserWindow.setIcon` does
-     * not exist there, and the Dock tile is application-wide (`configurePlatformAppIcon`).
+     * not exist there, and the Dock tile is application-wide (`getDockIconPath`).
      */
     public getWindowIconPath(): string | null {
         if (process.platform === "darwin") {
@@ -476,7 +476,7 @@ export class BaseApp {
         // Windows prefers the .ico, whose several sizes let the taskbar pick one rather than
         // downsample a single bitmap; everything else prefers the PNG. Each entry offers both, and
         // the default mark is appended behind the chosen one - so an icon whose files never made
-        // it into the build leaves Studio wearing NarraLeaf's mark rather than Electron's.
+        // it into the build leaves Studio wearing its own default rather than Electron's.
         const order = (entry: WindowIconEntry): string[] =>
             process.platform === "win32" ? [entry.ico, entry.png] : [entry.png, entry.ico];
         const chosen = resolveWindowIcon(this.globalState.get(WINDOW_ICON_KEY));
@@ -503,7 +503,7 @@ export class BaseApp {
      *
      * The open windows are the obvious half. The tray is the half that gets forgotten: it is built
      * once at startup and holds its own copy of the image, so a window-only refresh leaves Studio
-     * wearing two different marks at once.
+     * wearing two different marks at once. The Dock is the macOS half, and the only one there.
      */
     public refreshWindowIcons(): void {
         for (const window of this.windowManager.getWindows()) {
@@ -513,14 +513,26 @@ export class BaseApp {
         }
 
         this.trayManager?.refreshIcon();
+        this.configurePlatformAppIcon();
     }
 
+    /**
+     * The Dock tile the current icon preference resolves to, or null off macOS.
+     *
+     * The Apple-grid PNG rather than the .icns Studio is installed with: `app.dock.setIcon` takes one
+     * bitmap and draws it as given, with no mask and no inset, so the image has to carry the grid
+     * itself. It lasts while Studio runs - Finder, Launchpad and a Dock tile of a Studio that is not
+     * running show the installed icon, which no running app can change without breaking its own
+     * signature. The default is appended behind the chosen one for the reason `getWindowIconPath`
+     * gives.
+     */
     public getDockIconPath(): string | null {
         if (process.platform !== "darwin") {
             return null;
         }
 
-        return this.resolveExistingResource("app-icon-mac.png", "app-icon.png", "app-icon.icns");
+        const chosen = resolveWindowIcon(this.globalState.get(WINDOW_ICON_KEY));
+        return this.resolveExistingResource(...new Set([chosen.png, resolveWindowIcon(null).png]));
     }
 
     /**
@@ -536,7 +548,7 @@ export class BaseApp {
     public getDefaultGameIconPath(opaque = false): string | null {
         return opaque
             ? this.resolveExistingResource("app-icon-opaque.png", "app-icon.png")
-            : this.resolveExistingResource("app-icon.png", "app-icon.ico");
+            : this.resolveExistingResource("app-icon.png", "studio-icon/leaf.ico");
     }
 
     public getDistDir(): string {

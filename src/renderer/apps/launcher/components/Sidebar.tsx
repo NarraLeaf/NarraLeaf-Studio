@@ -5,7 +5,7 @@ import { useUpdateState } from "@/lib/app/useUpdateState";
 import { getAppInfo } from "@/lib/renderApp";
 import { useTranslation } from "@/lib/i18n";
 import { UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
-import { useProductIconSrc } from "@/lib/appearance/useProductIcon";
+import { PRODUCT_MARK_SRC } from "@/lib/appearance/productMark";
 
 /**
  * The tabs, in the order they are read.
@@ -43,7 +43,6 @@ function IconLearning() {
  */
 export function Sidebar({ active, onChange }: SidebarProps) {
     const { t } = useTranslation();
-    const productIconSrc = useProductIconSrc();
     const update = useUpdateState();
 
     const openSettings = () => {
@@ -98,7 +97,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
         <div className="h-full flex flex-col gap-3 p-3">
             {/* App Info */}
             <div className="flex items-center gap-2 px-2 py-3">
-                <img src={productIconSrc} className="w-6 h-6" alt="app" />
+                <img src={PRODUCT_MARK_SRC} className="w-6 h-6" alt="app" />
                 <div className="flex flex-col leading-tight">
                     <span className="text-sm text-fg">NarraLeaf Studio</span>
                     {updateOffer ? (
