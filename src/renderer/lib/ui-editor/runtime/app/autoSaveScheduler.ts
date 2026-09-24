@@ -15,6 +15,15 @@
  * - **Rotate, never grow.** Writes go round a fixed ring of reserved ids
  *   (see `@shared/types/saves`), oldest first, so autosaving forever costs a
  *   bounded amount of disk.
+ *
+ * There is deliberately no `dispose`, for the reason `PlaytimeClock` has none either. A scheduler
+ * that can be switched off permanently is one an effect cleanup will eventually switch off by
+ * accident: `React.StrictMode` - on in every unpackaged build, which is every Dev Mode run - mounts,
+ * tears down and remounts, so the throwaway pass's cleanup lands on the instance the surviving mount
+ * goes on using. MEASURED: that is why Dev Mode never wrote an autosave at all while a shipped build
+ * wrote them correctly, and why `Auto Save` answered "needs a running game" over a stage that was
+ * plainly playing. Stopping the timer is the owner's job and `clearInterval` already does it, so
+ * nothing here needs a one-way switch; every operation on this class is repeatable.
  */
 
 import {
@@ -44,7 +53,6 @@ export class AutoSaveScheduler {
     /** Next ring slot to overwrite, or null until resolved from what is stored. */
     private cursor: number | null = null;
     private inFlight: Promise<void> | null = null;
-    private disposed = false;
 
     constructor(private readonly deps: AutoSaveSchedulerDeps) {}
 
@@ -63,7 +71,7 @@ export class AutoSaveScheduler {
      * because the queued one would only save a moment that already passed.
      */
     public async tick(): Promise<void> {
-        if (this.disposed || this.inFlight || !this.storyAdvanced) {
+        if (this.inFlight || !this.storyAdvanced) {
             return;
         }
         if (!this.deps.getConfig().enabled || !this.deps.isPlaying()) {
@@ -81,9 +89,6 @@ export class AutoSaveScheduler {
      * Rejects when no game is running, matching every other save node.
      */
     public async writeNow(): Promise<void> {
-        if (this.disposed) {
-            throw needsRunningGame("blueprint.node.autoSave");
-        }
         // Let an in-flight scheduled write finish first rather than racing it
         // into the same slot; its failure is not this caller's problem.
         await this.inFlight?.catch(() => undefined);
@@ -91,10 +96,6 @@ export class AutoSaveScheduler {
             throw needsRunningGame("blueprint.node.autoSave");
         }
         await this.runWrite({ rethrow: true });
-    }
-
-    public dispose(): void {
-        this.disposed = true;
     }
 
     private async runWrite(options?: { rethrow?: boolean }): Promise<void> {
