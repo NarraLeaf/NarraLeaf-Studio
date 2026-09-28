@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { StoryTransformProps } from "@shared/types/story";
 import { CharacterEntrancePreview } from "./CharacterEntrancePreview";
@@ -7,8 +7,8 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 
 /**
  * The measurements this box has to get right, because everything an author reads off it depends on
- * them: the frame is the project's own resolution in shape, and the sprite inside is the artwork at
- * its own pixels against the design width.
+ * them: the frame is the project's own resolution in shape, the sprite inside is the artwork at its
+ * own pixels against the design width, and she stands where the engine would stand her.
  *
  * The first two used to be wrong in the same direction. The sprite was drawn at the full width of
  * the frame - the compiler asked the engine for `autoFit` on every character - so a 1600px sprite and
@@ -94,9 +94,9 @@ function characterWithArt(id: string, artwork: { width: number; height: number }
  * Mount the box and wait for her picture. jsdom decodes nothing, so the picture's load is reported
  * by hand - with the canvas the compositor actually drew, which is what a browser would decode.
  */
-async function mountWithPicture(character: Character, value: StoryTransformProps | undefined) {
+async function mountWithPicture(character: Character, value: StoryTransformProps | undefined, onCommit = () => undefined) {
     const view = render(
-        <CharacterEntrancePreview character={character} value={value} stageSize={STAGE} onCommit={() => undefined} />,
+        <CharacterEntrancePreview character={character} value={value} stageSize={STAGE} onCommit={onCommit} />,
     );
     const image = await waitFor(() => {
         const found = view.container.querySelector("img");
@@ -112,7 +112,7 @@ async function mountWithPicture(character: Character, value: StoryTransformProps
     act(() => {
         image.dispatchEvent(new Event("load"));
     });
-    return { view, frame: image.parentElement as HTMLElement, drawn };
+    return { view, box: view.container.firstElementChild as HTMLElement, frame: image.parentElement as HTMLElement, drawn };
 }
 
 function percent(value: string): number {
@@ -168,5 +168,54 @@ describe("CharacterEntrancePreview", () => {
         expect(drawn).toEqual({ width: 480, height: 500 });
         expect(percent(frame.style.width)).toBeCloseTo(25, 3);
         expect(frame.style.aspectRatio).toBe("480 / 500");
+    });
+
+    it("draws the offsets the engine adds to her alignment", async () => {
+        const character = characterWithArt("offsets", { width: 1600, height: 1586 });
+        const { frame, view } = await mountWithPicture(character, NARRA_DEFAULTS);
+
+        // The skeleton lowers Narra by 50 design pixels so her feet reach the floor; the engine folds
+        // that into the percentage it positions her with (50% - 50/1080), and so must this.
+        expect(percent(frame.style.left)).toBeCloseTo(50, 4);
+        expect(percent(frame.style.bottom)).toBeCloseTo(50 - (50 / 1080) * 100, 4);
+
+        view.rerender(
+            <CharacterEntrancePreview
+                character={character}
+                value={{ position: { xalign: 0.25, yalign: 0.1, xoffset: 96 } }}
+                stageSize={STAGE}
+                onCommit={() => undefined}
+            />,
+        );
+        expect(percent(frame.style.left)).toBeCloseTo(25 + (96 / 1920) * 100, 4);
+        expect(percent(frame.style.bottom)).toBeCloseTo(10, 4);
+    });
+
+    it("places her under the pointer, and keeps the offsets she carries", async () => {
+        const onCommit = vi.fn();
+        const { box, frame } = await mountWithPicture(
+            characterWithArt("placed", { width: 1600, height: 1586 }),
+            NARRA_DEFAULTS,
+            onCommit,
+        );
+        // jsdom lays nothing out: give the box the stage's own size, so a pixel is a design pixel.
+        box.getBoundingClientRect = () => ({
+            x: 0, y: 0, left: 0, top: 0, right: 1920, bottom: 1080, width: 1920, height: 1080, toJSON: () => ({}),
+        });
+        box.setPointerCapture = () => undefined;
+        box.hasPointerCapture = () => true;
+
+        // A quarter of the way across, halfway up.
+        fireEvent.pointerDown(box, { button: 0, pointerId: 1, clientX: 480, clientY: 540 });
+        expect(percent(frame.style.left)).toBeCloseTo(25, 2);
+        expect(percent(frame.style.bottom)).toBeCloseTo(50, 2);
+
+        fireEvent.pointerUp(box, { pointerId: 1 });
+        // The alignment takes up the offset, so what is stored draws her exactly where she was put.
+        expect(onCommit).toHaveBeenCalledTimes(1);
+        expect(onCommit).toHaveBeenCalledWith({
+            zoom: 0.624,
+            position: { xalign: 0.25, yalign: 0.5463, yoffset: -50 },
+        });
     });
 });
