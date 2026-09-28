@@ -7,7 +7,10 @@ import { SampleSubject } from "@/lib/story/previewSubject";
 import { useCompositedSprite } from "@/lib/workspace/hooks/useCompositedSprite";
 import type { Character } from "@/lib/workspace/services/character/Character";
 
-/** Longest edge of the composite asked for; the preview box is never wider than this. */
+/**
+ * Longest edge of the picture asked for, which is plenty for a box the width of a side panel. It sets
+ * how sharply she is drawn and never how big: her size comes from the artwork's own pixels.
+ */
 const SPRITE_COMPOSITE_PX = 512;
 /** Screen pixels of horizontal drag per 1.0 of zoom - the sensitivity the Story Motion stage uses. */
 const ZOOM_DRAG_PX = 180;
@@ -24,10 +27,11 @@ function clampAlign(value: number): number {
  * dragging, and read the numbers off the channel list underneath.
  *
  * **The mapping is the runtime's, not an approximation.** The box is the project's own resolution in
- * shape; a sprite is drawn at its artwork's pixels IN DESIGN SPACE, so its share of the box is its
- * pixel width over the design width; `xalign`/`yalign` are percentages of the stage with the origin
- * at the bottom left, centred by a `-50%/+50%` translate; `zoom` multiplies both scale axes. Same
- * rules the Story Motion stage and the camera viewfinder draw with - see
+ * shape; a sprite is drawn at its artwork's pixels IN DESIGN SPACE, so its share of the box is the
+ * artwork's pixel width over the design width - the artwork's, not the picture's: the picture drawn
+ * here is a composite scaled down to a preview's size. `xalign`/`yalign` are percentages of the stage
+ * with the origin at the bottom left, centred by a `-50%/+50%` translate; `zoom` multiplies both
+ * scale axes. Same rules the Story Motion stage and the camera viewfinder draw with - see
  * `nlr-displayable-css-mapping` for where each is verified against the engine.
  *
  * A drag writes nothing until it is released. The pose is rendered from a local draft while the
@@ -43,8 +47,8 @@ export function CharacterEntrancePreview(props: {
     const { t } = useTranslation();
     const boxRef = useRef<HTMLDivElement | null>(null);
     const [draft, setDraft] = useState<StoryTransformProps | null>(null);
-    const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
     const shown = draft ?? props.value;
+    const stageWidth = Math.max(1, props.stageSize.width);
 
     // Her own picture, composited the way the editor's other previews get one - a preset character's
     // default pose, a layered character's default tag on every axis. A runtime-drawn character has no
@@ -65,19 +69,21 @@ export function CharacterEntrancePreview(props: {
         bottom: `${yalign * 100}%`,
         transform: `translate(-50%, 50%) rotate(${rotation}deg) scale(${zoom * scaleX}, ${zoom * scaleY})`,
         // The artwork's own pixels, as a share of the design width - which is what the stage draws
-        // when nothing asks for `autoFit`. Until the picture has loaded there is no share to take,
-        // so the placeholder gets a portrait-shaped half of the stage rather than a guess at pixels.
-        ...(naturalSize
+        // when nothing asks for `autoFit`. The size is the artwork's rather than the loaded picture's:
+        // the picture is scaled down to SPRITE_COMPOSITE_PX, so its pixels say nothing about hers.
+        // With no picture there is no share to take, so the placeholder gets a portrait-shaped third
+        // of the stage rather than a guess at pixels.
+        ...(sprite.size
             ? {
-                width: `${(naturalSize.width / Math.max(1, props.stageSize.width)) * 100}%`,
-                aspectRatio: `${naturalSize.width} / ${naturalSize.height}`,
+                width: `${(sprite.size.width / stageWidth) * 100}%`,
+                aspectRatio: `${sprite.size.width} / ${sprite.size.height}`,
             }
             : { width: "33%", aspectRatio: "2 / 3" }),
         opacity: typeof nlr.opacity === "number" ? nlr.opacity : 1,
         filter: typeof nlr.filter === "string" ? nlr.filter : undefined,
         mixBlendMode: nlr.mixBlendMode as CSSProperties["mixBlendMode"],
         clipPath: typeof nlr.clipPath === "string" ? nlr.clipPath : undefined,
-    }), [naturalSize, nlr, props.stageSize.width, rotation, scaleX, scaleY, xalign, yalign, zoom]);
+    }), [nlr, rotation, scaleX, scaleY, sprite.size, stageWidth, xalign, yalign, zoom]);
 
     const withProps = useCallback((patch: StoryTransformProps): StoryTransformProps => ({
         ...(props.value ?? {}),
@@ -163,10 +169,6 @@ export function CharacterEntrancePreview(props: {
                         alt=""
                         className="h-full w-full object-contain"
                         draggable={false}
-                        onLoad={event => setNaturalSize({
-                            width: event.currentTarget.naturalWidth || 1,
-                            height: event.currentTarget.naturalHeight || 1,
-                        })}
                     />
                 ) : (
                     <SampleSubject />

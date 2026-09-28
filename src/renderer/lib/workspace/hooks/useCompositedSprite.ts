@@ -4,7 +4,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { CharacterTagSelection } from "@/lib/workspace/services/character/types";
-import { SpriteCompositor, spriteCompositeKey } from "@/lib/workspace/services/character/spriteCompositor";
+import { SpriteCompositor, spriteCompositeKey, type SpriteComposite } from "@/lib/workspace/services/character/spriteCompositor";
 import { Services } from "@/lib/workspace/services/services";
 
 /**
@@ -44,6 +44,10 @@ export type SpriteSelection = { poseId?: string | null; tags?: CharacterTagSelec
  * instead. `maxSize` is the longest edge in CSS pixels — pass the size you are about to draw at, so a
  * 24px badge does not hold a 2000px bitmap.
  *
+ * `size` is the artwork's own size in pixels, which the picture behind `url` is not whenever `maxSize`
+ * scaled it down. A caller that draws the sprite at the size the stage does has to size it from
+ * `size`: reading the loaded picture's `naturalWidth` gives back `maxSize`, not the artwork.
+ *
  * The URL is owned by the shared compositor and deliberately not revoked here: several rows showing
  * the same differential share one, and the cache drops them when the character or its assets change.
  */
@@ -51,10 +55,10 @@ export function useCompositedSprite(
     character: Character | null | undefined,
     selection: SpriteSelection,
     maxSize?: number,
-): { url: string | null; loading: boolean } {
+): { url: string | null; size: { width: number; height: number } | null; loading: boolean } {
     const { context, isInitialized } = useWorkspace();
     const assetsService = context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null;
-    const [url, setUrl] = useState<string | null>(null);
+    const [composite, setComposite] = useState<SpriteComposite | null>(null);
     const [loading, setLoading] = useState(false);
     /** Bumped when the stack or any asset in it changes, which is what re-renders every consumer. */
     const [generation, setGeneration] = useState(0);
@@ -98,7 +102,7 @@ export function useCompositedSprite(
 
     useEffect(() => {
         if (!key || !assetsService || layers.every(assetId => !assetId)) {
-            setUrl(null);
+            setComposite(null);
             return;
         }
         let cancelled = false;
@@ -107,20 +111,25 @@ export function useCompositedSprite(
             .composite(key, layers, maxSize)
             .then(next => {
                 if (!cancelled) {
-                    setUrl(next);
+                    setComposite(next);
                     setLoading(false);
                 }
             })
             .catch(() => {
                 if (!cancelled) {
-                    setUrl(null);
+                    setComposite(null);
                     setLoading(false);
                 }
             });
         return () => { cancelled = true; };
     }, [key, layers.join(","), maxSize, assetsService, generation]);
 
-    return { url, loading };
+    // One object per composite, so a caller can depend on `size` without re-running every render.
+    const size = useMemo(
+        () => (composite ? { width: composite.width, height: composite.height } : null),
+        [composite],
+    );
+    return { url: composite?.url ?? null, size, loading };
 }
 
 /** The compositor a non-hook caller (the editor's occlusion pass) should use. */
