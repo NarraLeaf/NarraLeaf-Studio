@@ -1,4 +1,6 @@
 import { useCallback, useMemo } from "react";
+import { ownerLabelKey } from "@shared/types/ui-editor/ownerLabels";
+import { translate } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -194,7 +196,11 @@ export function usePropertyBindingState(
             componentId: componentId ?? undefined,
             elementId,
             focusFieldId: snapshot.binding.source.fieldId,
-            title: `Blueprint · ${data.element.name ?? data.element.type}`,
+            // The same name the control's other ways into its logic give the tab.
+            title: translate("properties.blueprintEntry.title", {
+                logic: translate(ownerLabelKey(componentId ? "componentWidgetMain" : "widgetMain")),
+                name: data.element.name ?? data.element.type,
+            }),
         });
     }, [
         componentId,

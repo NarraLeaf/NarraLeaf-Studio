@@ -84,6 +84,7 @@ export const test = {
     },
     console: {
         channel: "Test",
+        channelDescription: "Test runs and their verdicts",
         started: "{title} started",
         finished: "{title} {status} in {duration}",
         finding: "{severity} {message}",

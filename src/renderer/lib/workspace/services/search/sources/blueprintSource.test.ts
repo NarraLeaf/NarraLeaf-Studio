@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { blueprintSource, extractBlueprintEntries } from "./blueprintSource";
 import { dedupSearchEntries } from "../searchSource";
-import type { SearchIndexEntry } from "../searchIndexModel";
+import { indexEntries, querySearchIndex, type SearchIndexEntry } from "../searchIndexModel";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { createTranslator } from "@shared/i18n";
+import { i18nStore } from "@/lib/i18n";
+import { Services, type WorkspaceContext } from "../../services";
 
 function blueprintDoc(): BlueprintDocument {
     return {
@@ -215,6 +218,117 @@ describe("extractBlueprintEntries", () => {
         const firstNode = entries.findIndex(e => e.group === "blueprintNode");
         const lastNonNode = entries.map(e => e.group !== "blueprintNode").lastIndexOf(true);
         expect(firstNode).toBeGreaterThan(lastNonNode);
+    });
+});
+
+/**
+ * Node rows in the author's language. The blueprint editor draws a node under the translation of
+ * its catalogue name; search used to list the catalogue's English, so the row and the node it
+ * opens named the same thing differently.
+ */
+describe("node rows in the interface language", () => {
+    const TRANSLATED: Record<string, string> = { "flow.branch": "分支", "image.setAsset": "设置图片资产" };
+    const CATALOGUED: Record<string, string> = { "flow.branch": "Branch", "image.setAsset": "Set Image Asset" };
+    const translated = dedupSearchEntries(
+        extractBlueprintEntries(blueprintDoc(), {
+            resolveNodeLabel: type => TRANSLATED[type],
+            resolveNodeAlias: type => CATALOGUED[type],
+            resolveOwnerLabel: ownerKey => (ownerKey === "surfaceMain:surf-1" ? "Main Menu › Portrait" : undefined),
+            labels,
+        }),
+        blueprintSource.dedupKey!,
+    );
+    const nodeTitles = (query: string) =>
+        querySearchIndex(indexEntries(translated), query)
+            .find(group => group.group === "blueprintNode")
+            ?.hits.map(hit => hit.entry.text) ?? [];
+
+    it("titles a node row with the label the editor draws", () => {
+        const titles = translated.filter(e => e.group === "blueprintNode").map(e => e.text);
+        expect(titles).toContain("分支");
+        expect(titles).toContain("设置图片资产");
+        expect(titles).not.toContain("Branch");
+    });
+
+    it("finds a node by that label", () => {
+        expect(nodeTitles("分支")).toEqual(["分支"]);
+    });
+
+    it("still finds it by its catalogue name, which is searchable but not shown", () => {
+        expect(nodeTitles("Branch")).toEqual(["分支"]);
+        expect(translated.find(e => e.text === "分支")?.aux).toBe("Branch");
+        // A node's own literals stay first; the catalogue name follows them.
+        expect(translated.find(e => e.detail?.startsWith("forest at dusk"))?.aux).toBe("second pass Set Image Asset");
+    });
+
+    it("does not repeat a name that is the label itself", () => {
+        const english = extractBlueprintEntries(blueprintDoc(), {
+            resolveNodeLabel: type => CATALOGUED[type],
+            resolveNodeAlias: type => CATALOGUED[type],
+            labels,
+        });
+        expect(english.find(e => e.group === "blueprintNode" && e.text === "Branch")?.aux).toBeUndefined();
+    });
+});
+
+describe("blueprintSource in a workspace", () => {
+    /** One global blueprint holding a single Play Sound node, and the services the source reads. */
+    function workspace(): WorkspaceContext {
+        const document = {
+            schemaVersion: 1,
+            ownerRecords: { globalMain: { blueprintId: "bp-global" } },
+            blueprints: {
+                "bp-global": {
+                    id: "bp-global",
+                    name: "全局",
+                    owner: {},
+                    graphs: {
+                        events: { "ev-1": { name: "界面音效", graph: { nodes: { n1: { id: "n1", type: "blueprint.sound.play" } } } } },
+                        functions: {},
+                    },
+                },
+            },
+        };
+        const services: Partial<Record<Services, unknown>> = {
+            [Services.LocalBlueprint]: {
+                getBlueprintDocument: () => document,
+                listPersistentVariables: () => [],
+                listSavedVariables: () => [],
+            },
+            [Services.BlueprintNodeCatalog]: {
+                resolveCatalogEntry: (type: string) => ({ type, displayName: type === "blueprint.sound.play" ? "Play Sound" : type }),
+            },
+            [Services.UIDocument]: { getDocument: () => ({ surfaces: [], components: [], elements: {} }) },
+            [Services.UIGraph]: { onGraphsChanged: () => () => undefined },
+            [Services.VariableRegistry]: { onRegistryChanged: () => () => undefined },
+        };
+        return { services: { get: (id: Services) => services[id] } } as unknown as WorkspaceContext;
+    }
+
+    afterEach(() => {
+        i18nStore.setLocale("en");
+    });
+
+    it("names a node the way the blueprint editor's own map translates it", async () => {
+        i18nStore.setLocale("zh");
+        const entries = await blueprintSource.extract(workspace(), undefined);
+        const node = entries.find(e => e.group === "blueprintNode");
+        expect(node?.text).toBe(createTranslator("zh").t("blueprint.node.playSound"));
+        expect(node?.text).not.toBe("Play Sound");
+        expect(node?.aux).toBe("Play Sound");
+    });
+
+    // A slice is built in one language; without this it kept that language until a blueprint was
+    // next edited.
+    it("rebuilds when the interface language changes, and stops listening when it is unwatched", () => {
+        const invalidate = vi.fn();
+        const stop = blueprintSource.watch(workspace(), { invalidate, invalidateAll: vi.fn() });
+        i18nStore.setLocale("zh");
+        expect(invalidate).toHaveBeenCalled();
+        stop();
+        invalidate.mockClear();
+        i18nStore.setLocale("ja");
+        expect(invalidate).not.toHaveBeenCalled();
     });
 });
 

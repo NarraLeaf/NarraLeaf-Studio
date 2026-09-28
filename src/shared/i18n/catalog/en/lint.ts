@@ -536,6 +536,10 @@ export const lint = {
         category: "Lint",
     },
     console: {
+        // The console tab a sweep writes to, and what hovering it says. The same word as the
+        // palette category above: it is one feature, and the tab sits among tabs named that way.
+        channel: "Lint",
+        channelDescription: "Project checks and the problems they find",
         started: "Check started",
         finished: "{errors} errors, {warnings} warnings in {duration}",
         // Site first, then what is wrong, then the rule that says so - a compiler's line, and the
