@@ -6,6 +6,10 @@
 
 # NarraLeaf-Studio
 
+[![NarraLeaf Studio video](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/studio-video.jpg)](https://www.youtube.com/watch?v=pLx5T0AdRHA)
+
+<p align="center"><a href="https://www.youtube.com/watch?v=pLx5T0AdRHA">Watch on YouTube (2:48)</a></p>
+
 ![NarraLeaf Studio preview](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/studio-preview-wide.png)
 
 ![NarraLeaf Studio screenshots](https://raw.githubusercontent.com/NarraLeaf/.github/refs/heads/master/doc/screenshots-grid.png)
