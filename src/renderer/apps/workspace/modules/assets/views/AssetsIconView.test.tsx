@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React, { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installVirtualLayoutStub } from "@/lib/utils/virtualLayoutTestStub";
+import { makeAssetSetAxis, resolveAssetSetContents, validateAssetSet, type AssetSet } from "@shared/types/assetSet";
 import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetSource, type Asset, type AssetGroup } from "@/lib/workspace/services/assets/types";
 import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
@@ -59,9 +60,11 @@ function clip(index: number): Asset {
     };
 }
 
-function Harness({ onRender, library = [], assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
+function Harness({ onRender, library = [], sets = [], assetTransfers = {}, unreadableCategories = new Set<AssetCategory>() }: {
     onRender?: () => void;
     library?: Asset[];
+    /** Sets of clips, filed at the top of the Media section. */
+    sets?: ResolvedAssetSet[];
     assetTransfers?: Readonly<Record<string, number>>;
     unreadableCategories?: ReadonlySet<AssetCategory>;
 }) {
@@ -73,6 +76,8 @@ function Harness({ onRender, library = [], assetTransfers = {}, unreadableCatego
     groups[AssetCategory.Image] = [OUTER, INNER];
     const assets = createEmptyAssetCategoryRecord<Asset>();
     assets[AssetCategory.Media] = library;
+    const assetSets = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
+    assetSets[AssetCategory.Media] = sets;
 
     const contextValue = {
         assets,
@@ -94,12 +99,16 @@ function Harness({ onRender, library = [], assetTransfers = {}, unreadableCatego
         handleAssetOpen: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
-        assetSets: createEmptyAssetCategoryRecord<ResolvedAssetSet>(),
-        rootAssetSets: createEmptyAssetCategoryRecord<ResolvedAssetSet>(),
-        memberAssetIds: new Set<string>(),
+        assetSets,
+        rootAssetSets: assetSets,
+        memberAssetIds: new Set(sets.flatMap(entry => entry.contents.cells.flatMap(cell => cell.assetIds))),
         expandedAssetSets: new Set<string>(),
         setExpandedAssetSets: () => undefined,
-        assetSetNaming: { locales: new Map(), editions: new Map(), words: { language: "Language", edition: "Variant", deletedEdition: "Deleted variant" } },
+        assetSetNaming: {
+            locales: new Map([["en", "English"], ["ja", "日本語"]]),
+            editions: new Map([["main", "main"], ["demo", "Demo"]]),
+            words: { language: "Language", edition: "Variant", deletedEdition: "Deleted variant" },
+        },
         handleAssetSetSelect: () => undefined,
         showAssetSetContextMenu: () => undefined,
         showAssetSetValueContextMenu: () => undefined,
@@ -174,6 +183,60 @@ describe("AssetsIconView while a file is arriving", () => {
         render(<Harness library={[clip(0)]} />);
 
         expect(document.querySelectorAll("[data-asset-transfer]")).toHaveLength(0);
+    });
+});
+
+/** A set of clips resolved against a library the way the panel resolves one. */
+function clipSet(set: Omit<AssetSet, "type">, library: readonly Asset[]): ResolvedAssetSet {
+    const typed: AssetSet = { ...set, type: AssetType.Audio };
+    const candidates = library.map(entry => ({ id: entry.id, type: entry.type, tags: entry.tags }));
+    const contents = resolveAssetSetContents(typed, candidates, [typed]);
+    const problems = validateAssetSet(typed, [typed]);
+    return {
+        set: typed,
+        category: AssetCategory.Media,
+        contents,
+        problems,
+        incomplete: problems.length > 0 || contents.missing.length > 0 || contents.ambiguous.length > 0,
+    };
+}
+
+describe("AssetsIconView inside a set", () => {
+    // A clip whose Japanese take is the English one, by way of the fallback; and a clip whose
+    // fallback has no file, so `main` has nothing to answer it.
+    const library = [
+        { ...clip(0), id: "line-en", name: "line_en", tags: ["set:s-line", "locale:en"] },
+        { ...clip(1), id: "chime-demo", name: "chime_demo", tags: ["set:s-chime", "release:demo"] },
+    ];
+    const sets = [
+        clipSet({ id: "s-line", name: "Line", filter: ["set:s-line"], axis: makeAssetSetAxis("locale", ["en", "ja"], "en") }, library),
+        clipSet({ id: "s-chime", name: "Chime", filter: ["set:s-chime"], axis: makeAssetSetAxis("release", ["main", "demo"], "main") }, library),
+    ];
+
+    function walkInto(setId: string): void {
+        const tile = document.querySelector(`[data-asset-set-id="${setId}"]`);
+        expect(tile).not.toBeNull();
+        fireEvent.click(tile as HTMLElement);
+    }
+
+    it("draws a value the fallback answers as the fallback's file, marked, and not as a hole", () => {
+        render(<Harness library={library} sets={sets} />);
+        walkInto("s-line");
+
+        const inherited = document.querySelectorAll("[data-asset-set-inherited]");
+        expect(inherited).toHaveLength(1);
+        expect(inherited[0].textContent).toContain("line_en");
+        expect(inherited[0].textContent).toContain("fallback");
+        expect(inherited[0].textContent).toContain("Language: 日本語");
+        expect(document.body.textContent).not.toContain("No file");
+    });
+
+    it("still draws a value nothing answers as a hole", () => {
+        render(<Harness library={library} sets={sets} />);
+        walkInto("s-chime");
+
+        expect(document.querySelectorAll("[data-asset-set-inherited]")).toHaveLength(0);
+        expect(document.body.textContent).toContain("No file");
     });
 });
 
