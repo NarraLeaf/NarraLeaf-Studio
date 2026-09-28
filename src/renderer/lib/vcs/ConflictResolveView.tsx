@@ -4,7 +4,7 @@ import type { DocumentMergeDecision } from "@shared/documents/diff";
 import type { VcsMergeSideChoice } from "@shared/types/vcs";
 import { useTranslation } from "@/lib/i18n";
 import { EmptyState } from "@/lib/components/elements";
-import { ConflictDetail } from "./ConflictDetail";
+import { ConflictDetail, type MergeSidesDescriber } from "./ConflictDetail";
 import { ConflictIndexPane } from "./ConflictIndexPane";
 import { IndexDivider } from "./IndexDivider";
 import type { FrozenControlProps } from "@/apps/workspace/components/ui/freezeGuard";
@@ -55,6 +55,8 @@ export interface ConflictResolveViewProps {
     onChooseMerged(path: string): void;
     onChooseChange(path: string, decision: DocumentMergeDecision, side: VcsMergeSideChoice): void;
     onChooseAll(side: VcsMergeSideChoice): void;
+    /** How the SELECTED file's format reads its own rows, where it has a reading. */
+    readonly describeSides?: MergeSidesDescriber;
 }
 
 /** How wide the conflict index starts. Wider than a comparison's: every row carries its decision. */
@@ -74,6 +76,7 @@ export function ConflictResolveView({
     onChooseMerged,
     onChooseChange,
     onChooseAll,
+    describeSides,
 }: ConflictResolveViewProps) {
     const { t, tn } = useTranslation();
     const [indexWidth, setIndexWidth] = useState(RESOLVE_INDEX_WIDTH);
@@ -131,6 +134,7 @@ export function ConflictResolveView({
                                 choices={changeChoices[selectedPath] ?? {}}
                                 disabled={running}
                                 onChooseChange={(decision, side) => onChooseChange(selectedPath, decision, side)}
+                                describeSides={describeSides}
                             />
                         )
                         : <EmptyState size="sm" description={t("documentDiff.resolve.selectPrompt")} />}

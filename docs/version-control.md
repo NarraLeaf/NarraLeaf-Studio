@@ -928,6 +928,42 @@ amend 失败只记日志、不抛：到那一步工作树已经被同步改写�
 （`renderer/lib/vcs/identifierDisplay.ts`）把**本机登录的那个账号**的 id 画成它的名字，其余任何
 生成的 id 一律不画——版本轨顶部与启动器的 Team 项目页都走它。
 
+### 4.40 ❗ 两个人改同一个故事，合并面板曾经读的是存储而不是故事（已修）
+
+实测（`syncStoryConflicts.integration.test.ts` 的同一个夹具在修之前的构建上跑）：两份副本各改同一行
+对白、各自保存，一边上传、另一边按「从服务器获取」，合并面板拿到的是：
+
+| 看见什么 | 为什么 |
+|---|---|
+| **两个**冲突文件：故事与「故事列表」，后者写「该文件的两个版本内容完全一致」却仍要按一次 | 每次保存都给 `editor/story/index.json` 里该故事的条目盖 `updatedAt`；后端逐行合并，同一行两边都改就是冲突。`story-index` 的 `merge3` 其实把它合得一个问题都没有 |
+| 故事那一行叫「故事」而不是它的标题 | 名字从**工作树**的 `index.json` 读，而它此刻带着 diff3 标记，解析不了 |
+| 故事里多一行「meta 改动」 | 每次编辑都盖 `meta.updatedAt`，`meta` 当成普通字段合并 |
+| 那一行台词的决策没有主语，两个框写 `text.value` / `action dialogue` / `characterId …` / `text.textId …` / 「另有 1 项」 | 决策针对的是这一行的 `payload`，通用描述按存储字段逐个展开 |
+
+**⚠ 改的是两行不同的台词也一样**：后端照样在两个文件上报冲突（盖的那两个时间戳），只是冲突里没有
+任何一处需要人决定。
+
+修法，四处各归其位：
+
+1. **时钟读数自己合**（`mergeHelpers.mergeMeta`）：`createdAt` / `updatedAt` 不出决策行，取较晚的
+   `updatedAt`、较早的 `createdAt`；`meta` 里别的键照常出行。故事文档的 `meta` 与场景的 `meta` 都走它；
+   `story-index` 的条目 `updatedAt` 与库自己的 `meta` 也改成同一条规则——它们是故事文档那两个值的
+   副本，合出来的副本必须还是副本。
+2. **同步时把「格式自己就能合完」的文档当场合掉**（`merge.settleSelfMergingConflicts`，
+   `VcsManager.sync` 调）：对每个冲突文档跑一次 `readMergeDocument`，没被拦、`conflicts === 0` 的，
+   用 `resolveDocumentChanges`（不带任何选择）把合并结果写回工作树、普通 `branch_merge_resolve`
+   接受、再删掉旁边那三份附属文件——附属文件就是「这条路径还在冲突」的判据（`findConflictedPaths`），
+   提交时后端本来也会删。**全部合掉就当场提交这次合并**（离线、作者身份、`VCS_DEFAULT_MERGE_MESSAGE`），
+   和后端自己合干净时在同步里提交是同一件事；同步于是答 `conflicts: []`，渲染层按干净同步处理。
+   实测（`selfMergingConflicts.integration.test.ts`）：**放弃合并照样把被合掉的文件逐字节恢复**——
+   abort 按暂存合并与起点修订的差反推，不靠附属文件，缺了的附属文件它也不在乎。
+3. **合并面板的名字**：故事列表被合掉之后工作树里就是合法的库；它真有问题（两人把同一个故事改成
+   两个名字）时，名字改从旁边的 `~mine` 读（`nameSources.ts`），编辑器此刻读的也是那一份。
+4. **一行台词按编辑器的读法画**：决策带上这一行自己的字作主语（与比较界面同一条规则，
+   `storyDiff.blockSubject`）；两个框走 `storyRowProjection`——说话人 + 句子
+   （`lib/vcs/storyMergeSides.ts`，由面板里的 `useStoryMergeSides` 读 `~mine` 取得这一行的种类与场景、
+   用 `narralangLookups` 解析名字）。不是行的决策（场景名、章节表、`disabled`）仍走通用描述。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

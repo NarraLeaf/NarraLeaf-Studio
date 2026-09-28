@@ -230,3 +230,88 @@ export function stripFields(record: unknown, skip: ReadonlySet<string>): Record<
 export function countConflicts(decisions: readonly DocumentMergeDecision[]): number {
     return decisions.reduce((count, entry) => count + (entry.outcome === "conflict" ? 1 : 0), 0);
 }
+
+/**
+ * The two clock readings a record keeps about itself.
+ *
+ * Written by the service that owns the format whenever it saves, never by the author - which is the
+ * whole reason they are handled apart from every other field. See {@link mergeMeta}.
+ */
+export const RECORD_STAMP_KEYS: ReadonlySet<string> = new Set(["createdAt", "updatedAt"]);
+
+/**
+ * One clock reading out of several: the latest or the earliest, as an ISO string.
+ *
+ * Compared as times rather than as strings, so a reading written with another precision or zone
+ * still orders correctly; a reading that does not parse loses to one that does, and a tie keeps the
+ * first - the caller lists mine first. Undefined only when no side holds a reading at all.
+ */
+export function pickStamp(values: readonly unknown[], which: "earliest" | "latest"): string | undefined {
+    let chosen: string | undefined;
+    let chosenAt = Number.NaN;
+    for (const value of values) {
+        if (typeof value !== "string" || value.length === 0) {
+            continue;
+        }
+        const at = Date.parse(value);
+        if (chosen === undefined) {
+            chosen = value;
+            chosenAt = at;
+            continue;
+        }
+        if (Number.isNaN(at)) {
+            continue;
+        }
+        if (Number.isNaN(chosenAt) || (which === "latest" ? at > chosenAt : at < chosenAt)) {
+            chosen = value;
+            chosenAt = at;
+        }
+    }
+    return chosen;
+}
+
+/**
+ * A record's `meta`, merged the way its clock readings deserve: without anyone being asked.
+ *
+ * `createdAt` and `updatedAt` are stamped by the service every time it writes, so two people who each
+ * saved hold two different readings whether or not they changed the same thing. Merged as ordinary
+ * fields they are a conflict on every divergent save, over a field nobody typed. So they settle
+ * themselves - the later `updatedAt`, because the merged record holds work saved up to then, and the
+ * earlier `createdAt` - and produce no row. Any other key in `meta` is a field like any other and
+ * gets a decision addressed at `[...at, "meta", key]`, worded by `label`.
+ *
+ * `base` is `undefined` when there is no base document (add/add), for `mergeKeyed`'s reason, and the
+ * base document's own `meta` - possibly absent - otherwise. A `meta` neither side holds stays absent.
+ */
+export function mergeMeta(
+    at: readonly string[],
+    base: unknown,
+    mine: unknown,
+    theirs: unknown,
+    hasBase: boolean,
+    label: (key: string) => DocumentChangeLabel,
+): {merged: Record<string, unknown> | undefined; decisions: DocumentMergeDecision[]} {
+    const fields = mergeKeyed(
+        hasBase ? stripFields(base, RECORD_STAMP_KEYS) : undefined,
+        stripFields(mine, RECORD_STAMP_KEYS),
+        stripFields(theirs, RECORD_STAMP_KEYS),
+    );
+    const decisions = byKey(fields.rows).map(row => decision([...at, "meta", row.key], row, {label: label(row.key)}));
+
+    const merged: Record<string, unknown> = {...fields.merged};
+    const createdAt = pickStamp([stampOf(mine, "createdAt"), stampOf(theirs, "createdAt")], "earliest");
+    const updatedAt = pickStamp([stampOf(mine, "updatedAt"), stampOf(theirs, "updatedAt")], "latest");
+    if (createdAt !== undefined) merged.createdAt = createdAt;
+    if (updatedAt !== undefined) merged.updatedAt = updatedAt;
+
+    const held = isRecord(mine) || isRecord(theirs) || Object.keys(merged).length > 0;
+    return {merged: held ? merged : undefined, decisions};
+}
+
+function stampOf(record: unknown, key: string): unknown {
+    return isRecord(record) ? record[key] : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}

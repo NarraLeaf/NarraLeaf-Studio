@@ -6,6 +6,10 @@ import type { VcsMergeDocumentBlocker } from "@shared/types/vcs";
 import { ConflictFooter, ConflictResolveView, type WriteGuard } from "./ConflictResolveView";
 import { buildConflictRows, type MergeChoiceState, type MergeDocumentEntry } from "./mergeDecisionView";
 import { NO_DOCUMENT_NAMES } from "./documentName";
+import { describeStoryMergeSides } from "./storyMergeSides";
+import type { StoryDocument } from "@shared/types/story";
+import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story/document";
+import type { StoryRowLookups } from "@/lib/story/storyRowProjection";
 
 /**
  * What the merge panel promises, on screen.
@@ -230,5 +234,79 @@ describe("a file that cannot be merged change by change", () => {
 
         expect(rowsOf(container)[0].querySelectorAll("[role='group'] button")).toHaveLength(2);
         expect(details(container)[0].textContent).toContain("documentDiff.resolve.change.loading");
+    });
+});
+
+/**
+ * A story file's line, read as the line. Measured on a sync of two people rewriting one spoken line:
+ * the row was called only "line changed", and each box listed `text.value`, `action dialogue`,
+ * `characterId …`, `text.textId …` and "one more field" - the line was one entry among five.
+ */
+describe("a story file's rows", () => {
+    const STORY_PATH = "editor/story/stories/story-1/storydoc.json";
+    const payload = (text: string) => ({
+        action: "dialogue",
+        characterId: "c-narra",
+        text: { textId: "t-spoken", value: text, role: "dialogue" },
+    });
+    const line: DocumentMergeDecision = {
+        path: ["scenes", "s-1", "blocks", "b-spoken", "payload"],
+        outcome: "conflict",
+        label: { key: "documentDiff.story.blockChanged" },
+        subject: "Is anyone there? Hello?",
+        mine: { present: true, value: payload("Is anyone there? Hello?") },
+        theirs: { present: true, value: payload("Who's there?") },
+    };
+    const story = {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        id: "story-1",
+        name: "The Lighthouse",
+        chapters: [],
+        scenes: {
+            "s-1": {
+                id: "s-1",
+                name: "The corridor",
+                runtimeName: "corridor",
+                rootBlockIds: ["b-spoken"],
+                blocks: {
+                    "b-spoken": {
+                        id: "b-spoken", kind: "nodeAction", parentId: null, childrenIds: [], payload: payload("Is anyone there?"),
+                    },
+                },
+            },
+        },
+    } as unknown as StoryDocument;
+    const lookups: StoryRowLookups = { character: id => (id === "c-narra" ? { name: "Narra" } : null) };
+
+    it("names the decision by the line and draws both sides as speaker and words", () => {
+        const state: MergeChoiceState = {
+            decisions: {}, perChange: {}, changeChoices: {}, documents: { [STORY_PATH]: ready(STORY_PATH, [line]) },
+        };
+        const { container } = render(
+            <ConflictResolveView
+                rows={buildConflictRows([STORY_PATH], state, NO_DOCUMENT_NAMES)}
+                conflictCount={1}
+                omitted={0}
+                selectedPath={STORY_PATH}
+                onSelect={() => undefined}
+                documents={state.documents}
+                changeChoices={state.changeChoices}
+                running={false}
+                guard={THAWED}
+                onChooseWhole={() => undefined}
+                onChooseMerged={() => undefined}
+                onChooseChange={() => undefined}
+                onChooseAll={() => undefined}
+                describeSides={decision => describeStoryMergeSides(decision, story, lookups)}
+            />,
+        );
+
+        const detail = details(container)[0].textContent ?? "";
+        expect(detail).toContain("Is anyone there? Hello?");
+        expect(detail).toContain("Who's there?");
+        expect(detail).toContain("Narra");
+        for (const storageKey of ["text.value", "characterId", "textId", "action", "c-narra", "documentDiff.resolve.change.moreFields"]) {
+            expect(detail).not.toContain(storageKey);
+        }
     });
 });
