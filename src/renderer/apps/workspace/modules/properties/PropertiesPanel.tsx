@@ -124,6 +124,8 @@ import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentPa
 import { AssetSetInspector } from "./AssetSetInspector";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
+import { readAssetTag } from "@shared/types/assetSetLabels";
+import { useAssetSetNaming } from "../assets/state/useAssetSetNaming";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -1351,6 +1353,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         [assetsService]
     );
 
+    // A member of an asset set carries the set's bookkeeping among its tags; the tag list prints it in
+    // the project's words, or not at all. See `readAssetTag`.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
+
     // Build asset editor context - only recreate when necessary values change
     const assetContext = useMemo<AssetEditorContext<any> | null>(() => {
         if (!activeAsset) return null;
@@ -1358,8 +1365,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             asset: activeAsset,
             metadata: assetMetadata,
             onUpdate: handleAssetUpdate,
+            readTag,
         };
-    }, [activeAsset, assetMetadata, handleAssetUpdate]);
+    }, [activeAsset, assetMetadata, handleAssetUpdate, readTag]);
 
     // Build character editor context
     const characterContext = useMemo<CharacterEditorContext | null>(() => {

@@ -21,6 +21,7 @@ import { useUnreadableAssetCategories } from "./state/useUnreadableAssetCategori
 import { useAssetData } from "./state/useAssetData";
 import { useAssetSets, type ResolvedAssetSet } from "./state/useAssetSets";
 import { useAssetSetNaming } from "./state/useAssetSetNaming";
+import { readAssetTag } from "@shared/types/assetSetLabels";
 import { useMultiSelection } from "./state/useMultiSelection";
 import { useAssetSearch } from "./state/useAssetSearch";
 import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
@@ -363,8 +364,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         usageUnknownAssetIds,
     } = useAssetLibrarySnapshot(context, viewMode === "overview" || filtersNeedLibrarySnapshot(activeFilters));
 
+    // What the library calls a set's values. Read before the filters: the Tags group offers the tags a
+    // set writes on its files in these words, and not the set's own bookkeeping at all.
+    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
+    const readTag = useCallback((tag: string) => readAssetTag(tag, assetSetNaming), [assetSetNaming]);
+
     const { filterConfigs, handleFilterOpen, filteredAssets, filteredGroups, matchedGroupIds } =
-        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds });
+        useAssetFilters({ assets, groups, activeFilters, query: activeQuery, bytesByAssetId, referencedAssetIds, usageUnknownAssetIds, readTag });
 
     /**
      * A search or a filter is narrowing the library. The views read this to stop hiding hits: the
@@ -441,7 +447,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         memberAssetIds,
         findSet,
     } = useAssetSets({ context, isInitialized, assets });
-    const assetSetNaming = useAssetSetNaming({ context, isInitialized });
     const {
         menuState: setMenuState,
         showMenu: showSetMenu,

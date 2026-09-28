@@ -97,7 +97,7 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {}, unrea
         memberAssetIds: new Set<string>(),
         expandedAssetSets: new Set<string>(),
         setExpandedAssetSets: () => undefined,
-        assetSetNaming: { locales: new Map(), editions: new Map(), words: { language: "Language", edition: "Variant" } },
+        assetSetNaming: { locales: new Map(), editions: new Map(), words: { language: "Language", edition: "Variant", deletedEdition: "Deleted variant" } },
         handleAssetSetSelect: () => undefined,
         showAssetSetContextMenu: () => undefined,
         showAssetSetValueContextMenu: () => undefined,

@@ -294,6 +294,7 @@ export const assets = {
             locale: "语言",
             release: "变体",
         },
+        deletedVariant: "已删除的变体",
         variantCount: {
             one: "{count} 个变体",
             other: "{count} 个变体",

@@ -52,8 +52,8 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "Unfinished asset set",
             description: "A set that does not resolve to exactly one file for every variant it declares",
-            // The variant is named as the tags it is made of, because writing those tags on a file
-            // is the fix. The file that would resolve is not named: it does not exist yet.
+            // The variant is a language's code or an edition's name, never the tag it is stored as:
+            // an edition's id is a uuid. The file that would resolve is not named: it does not exist yet.
             message: "{set} has no file for {variant}",
             messageAmbiguous: "{set} has {count} files for {variant}",
             messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",

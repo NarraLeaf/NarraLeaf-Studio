@@ -427,6 +427,8 @@ export const assets = {
             locale: "Language",
             release: "Variant",
         },
+        /** A variant a set still names after it was deleted from the project. Its id is never shown. */
+        deletedVariant: "Deleted variant",
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
             one: "{count} variant",
