@@ -27,4 +27,9 @@ export const console = {
         storyDescription: "Story scene preview diagnostics and warnings",
         storageDescription: "Project file writes: failed saves, retries, and recoveries",
     },
+    // What a line says it came from, where no tab's name says it already: a blueprint's Log node,
+    // as opposed to the blueprint runtime's own lines on the same tab.
+    sources: {
+        blueprintLog: "Blueprint Log",
+    },
 } as const;

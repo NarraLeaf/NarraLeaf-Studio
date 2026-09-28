@@ -28,4 +28,7 @@ export const console = {
         storyDescription: "ストーリーシーンのプレビューの診断と警告",
         storageDescription: "プロジェクトファイルの書き込み：保存の失敗、再試行、復旧",
     },
+    sources: {
+        blueprintLog: "ブループリントのログ",
+    },
 } satisfies LocaleNamespace<"console">;

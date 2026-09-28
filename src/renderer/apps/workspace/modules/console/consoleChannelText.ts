@@ -1,5 +1,11 @@
 import type { TranslationKey } from "@shared/i18n";
-import type { ConsoleChannelDefinition, ConsoleChannelId } from "@/lib/workspace/services/core/ConsoleService";
+import {
+    BLUEPRINT_CONSOLE_SOURCE,
+    BLUEPRINT_LOG_CONSOLE_SOURCE,
+    DEV_MODE_CONSOLE_SOURCE,
+    type ConsoleChannelDefinition,
+    type ConsoleChannelId,
+} from "@/lib/workspace/services/core/ConsoleService";
 import { BUILD_CONSOLE_SOURCE } from "@/lib/workspace/services/core/BuildService";
 import { LINT_CONSOLE_CHANNEL, LINT_CONSOLE_SOURCE } from "@/lib/workspace/services/core/LintService";
 import { TEST_CONSOLE_CHANNEL, TEST_CONSOLE_SOURCE } from "@/lib/testing/TestRunService";
@@ -39,12 +45,16 @@ const CHANNEL_DESCRIPTION_KEYS: Partial<Record<ConsoleChannelId, TranslationKey>
  *
  * A source is stored as the producer's own fixed English word - the command-line runs print the same
  * entries to a terminal - so it is named in the interface language where the line is drawn, with the
- * word that part's own tab uses. A source Studio does not know, a plugin's, is printed as given.
+ * word that part's own tab uses where there is one. A source Studio does not know, a plugin's or one
+ * Dev Mode passes through, is printed as given.
  */
 const SOURCE_LABEL_KEYS: ReadonlyMap<string, TranslationKey> = new Map<string, TranslationKey>([
     [BUILD_CONSOLE_SOURCE, "console.channels.build"],
     [LINT_CONSOLE_SOURCE, "lint.console.channel"],
     [TEST_CONSOLE_SOURCE, "test.console.channel"],
+    [BLUEPRINT_CONSOLE_SOURCE, "console.channels.blueprint"],
+    [BLUEPRINT_LOG_CONSOLE_SOURCE, "console.sources.blueprintLog"],
+    [DEV_MODE_CONSOLE_SOURCE, "devMode.title"],
 ]);
 
 export function consoleChannelLabel(t: Translate, channel: ConsoleChannelDefinition): string {

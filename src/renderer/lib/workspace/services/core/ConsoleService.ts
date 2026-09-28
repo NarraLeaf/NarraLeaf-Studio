@@ -108,6 +108,17 @@ const TRUNCATED_ENTRY_SUFFIX = "... [truncated]";
 const MUTED_SEGMENT_COLOR = "rgb(var(--nl-fg-muted))";
 
 /**
+ * The `source` this service stamps on the lines it writes itself. Fixed words rather than
+ * translations, like every producer's: the panel names them in the interface language when it
+ * draws a line (see the console module's `consoleSourceLabel`).
+ */
+export const BLUEPRINT_CONSOLE_SOURCE = "Blueprint";
+/** A line a blueprint wrote through its Log node, as opposed to the runtime's own blueprint lines. */
+export const BLUEPRINT_LOG_CONSOLE_SOURCE = "Blueprint Log";
+/** What Dev Mode reports about itself, and a Dev Mode line that names no source of its own. */
+export const DEV_MODE_CONSOLE_SOURCE = "Dev Mode";
+
+/**
  * Always-present channels seeded at startup. Additional channels (e.g. the story preview's "Story"
  * tab) are contributed at runtime through {@link ConsoleService.registerChannel} and appear as tabs
  * for as long as at least one producer keeps them registered.
@@ -301,7 +312,7 @@ export class ConsoleService extends Service<ConsoleService> {
         this.devModeStatusUnsubscribe = devMode.onStatusChanged(status => {
             this.append("build", {
                 level: devModeStatusLevel(status),
-                source: "Dev Mode",
+                source: DEV_MODE_CONSOLE_SOURCE,
                 segments: [
                     { text: "status changed: ", color: MUTED_SEGMENT_COLOR },
                     { text: status, bold: true },
@@ -313,7 +324,7 @@ export class ConsoleService extends Service<ConsoleService> {
         const consoleLogToken = getInterface().devMode.onConsoleLog(payload => {
             this.append("build", {
                 level: payload.level,
-                source: payload.source ?? "Dev Mode",
+                source: payload.source ?? DEV_MODE_CONSOLE_SOURCE,
                 message: payload.message,
                 timestamp: payload.timestamp,
             });
@@ -439,7 +450,7 @@ export class ConsoleService extends Service<ConsoleService> {
 
         return this.append("blueprint", {
             level,
-            source: event.type === "devtools.log" ? "Blueprint Log" : "Blueprint",
+            source: event.type === "devtools.log" ? BLUEPRINT_LOG_CONSOLE_SOURCE : BLUEPRINT_CONSOLE_SOURCE,
             message: formatBlueprintDebugEvent(event),
         });
     }

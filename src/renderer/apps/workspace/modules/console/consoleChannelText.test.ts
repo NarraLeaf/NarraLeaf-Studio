@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createTranslator, SUPPORTED_LOCALES, type TranslationKey } from "@shared/i18n";
-import { BUILTIN_CONSOLE_CHANNELS, type ConsoleChannelDefinition } from "@/lib/workspace/services/core/ConsoleService";
+import {
+    BLUEPRINT_CONSOLE_SOURCE,
+    BLUEPRINT_LOG_CONSOLE_SOURCE,
+    BUILTIN_CONSOLE_CHANNELS,
+    DEV_MODE_CONSOLE_SOURCE,
+    type ConsoleChannelDefinition,
+} from "@/lib/workspace/services/core/ConsoleService";
 import { BUILD_CONSOLE_SOURCE } from "@/lib/workspace/services/core/BuildService";
 import { LINT_CONSOLE_CHANNEL, LINT_CONSOLE_SOURCE } from "@/lib/workspace/services/core/LintService";
 import { TEST_CONSOLE_CHANNEL, TEST_CONSOLE_SOURCE } from "@/lib/testing/TestRunService";
@@ -48,10 +54,25 @@ describe("console channel tabs", () => {
 });
 
 describe("the part a console line says it came from", () => {
+    /** Every source Studio's own producers stamp on a line. */
+    const STUDIO_SOURCES = [
+        BUILD_CONSOLE_SOURCE,
+        LINT_CONSOLE_SOURCE,
+        TEST_CONSOLE_SOURCE,
+        BLUEPRINT_CONSOLE_SOURCE,
+        BLUEPRINT_LOG_CONSOLE_SOURCE,
+        DEV_MODE_CONSOLE_SOURCE,
+    ];
+
+    it.each(STUDIO_SOURCES)("names %s in the interface language", source => {
+        expect(consoleSourceLabel(zh, source)).not.toMatch(/[A-Za-z]/);
+    });
+
     it("is named with the word that part's tab uses", () => {
         expect(consoleSourceLabel(zh, BUILD_CONSOLE_SOURCE)).toBe(zh("console.channels.build"));
         expect(consoleSourceLabel(zh, LINT_CONSOLE_SOURCE)).toBe(zh("lint.console.channel"));
         expect(consoleSourceLabel(zh, TEST_CONSOLE_SOURCE)).toBe(zh("test.console.channel"));
+        expect(consoleSourceLabel(zh, BLUEPRINT_CONSOLE_SOURCE)).toBe(zh("console.channels.blueprint"));
     });
 
     it("is printed as given when Studio does not know it", () => {

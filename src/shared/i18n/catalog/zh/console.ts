@@ -28,4 +28,7 @@ export const console = {
         storyDescription: "故事场景预览诊断与警告",
         storageDescription: "项目文件写入：保存失败、重试与恢复",
     },
+    sources: {
+        blueprintLog: "蓝图日志",
+    },
 } satisfies LocaleNamespace<"console">;
