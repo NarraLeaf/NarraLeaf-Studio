@@ -896,6 +896,38 @@ authLoginWithToken: exchanging external token:
 的人**硬拒**读不了（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION`，"UI document schema is newer
 than this Studio version"）；③ 不提交则人人背着同一项幽灵改动，每次合并都撞。**发布前不要动它。**
 
+### 4.39 ❗ 同步自己提交的合并记在**账号 id** 名下（已修）
+
+现象：「从服务器获取」遇到分叉、而 Lore 把每个文件都自动合上时，版本轨顶部那块写的是
+`合并 / {时间} · 3f2a9c1e-…`；Team 服务器的项目页（启动器）列出的那一版也是这个 id。
+
+**一个全局参数，两份差事。** 干净的合并是在 `revisionSync` **那一次调用里**提交的
+（`merge_start` → `auto_commit_merge`），而提交的 `created-by` / `committed-by` 取自执行上下文的
+`user_id`——v0.8.5 的 `lore-revision/src/repository.rs` 里，它就是这次调用的 `globals.identity`，
+连接也拿同一个值去找会话。§4.35 说过，登录着的项目上网时这个值**必须**是账号 id（会话按它查），
+所以合并被记成了账号 id。同一次调用里没有办法把这两件事拆开。
+
+实测（`syncMergeAuthor.integration.test.ts`，裸 loreserver + 一个替身登录）：修之前同步产生的合并
+作者是 `3f2a9c1e-…`，紧接着的一次普通提交作者是 `Ada Blackwood <ada@example.com>`。
+
+**修法：同步之后、离线 amend 那一版合并。** `revisionSync` 的事件流里只会有一个提交事件——就是
+这次自动合并——`syncFromRemote` 把它（两个 parent 才算）交给 `VcsManager.sync`；若作者身份
+（`resolveIdentity`，普通提交用的那个）与上网用的身份不同，就用离线 globals、作者身份调
+`revisionAmend`，然后 flush（`attributeAutomaticMerge`，`repository.ts`）。三条实测过的细节：
+
+- amend 只改 `committed-by`（`created-by` 仍是账号 id，**没有任何读者**：Studio 与 Team 的历史读
+  都取 `committed-by`）；parent、树、时间戳都不动；
+- **v0.8.5 的 amend 一定会写 message**，空串也照写——所以把那一版自己的 message 原样递回去；
+- 那一版换了哈希，这只在它**还没离开本机**时安全，而同步只取不送。amend 之后合并仍连着两条线，
+  一次就推得上去，重新克隆的机器从服务器读到的 `committed-by` 就是作者的名字。
+
+amend 失败只记日志、不抛：到那一步工作树已经被同步改写，把同步报成失败会让渲染层跳过它欠的那次
+重读，下一次保存就把同步前的文档写回合并上面。
+
+**修之前已经记下的那些版本不改写**（历史不回写）。显示侧守同一条规矩：`revisionAuthorLabel`
+（`renderer/lib/vcs/identifierDisplay.ts`）把**本机登录的那个账号**的 id 画成它的名字，其余任何
+生成的 id 一律不画——版本轨顶部与启动器的 Team 项目页都走它。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

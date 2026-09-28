@@ -26,6 +26,10 @@ const lore = vi.hoisted(() => {
         /** How many more online calls answer that the backend holds no session. */
         missing: { count: 0 },
         remote: { value: "lore://team.example.lan:41337/harbour" as string | null },
+        /** The merge the next sync reports having committed by itself, if any. */
+        merged: { value: undefined as string | undefined, refuse: false },
+        /** Every request to put a name on such a merge, with the globals it came with. */
+        attributed: [] as Array<{ merge: string; identity: string; offline: boolean }>,
         backend: {
             openStore: async () => ({ handleId: 1 }),
             closeStore: async () => undefined,
@@ -47,7 +51,17 @@ const lore = vi.hoisted(() => {
             },
             syncFromRemote: async (globals: { identity: string }) => {
                 lore.online.push({ verb: "sync", identity: globals.identity });
-                return { filesChanged: 0, revisionsReceived: 0, conflicts: [] };
+                return {
+                    filesChanged: 0,
+                    revisionsReceived: 0,
+                    conflicts: [],
+                    ...(lore.merged.value === undefined ? {} : { automaticMerge: lore.merged.value }),
+                };
+            },
+            attributeAutomaticMerge: async (globals: { identity: string; offline?: boolean }, merge: string) => {
+                lore.attributed.push({ merge, identity: globals.identity, offline: globals.offline === true });
+                if (lore.merged.refuse) throw new Error("revisionAmend: Failed to serialize revision state");
+                return `${merge}-renamed`;
             },
             readSyncState: async (globals: { identity: string }) => {
                 lore.online.push({ verb: "state", identity: globals.identity });
@@ -147,6 +161,9 @@ beforeEach(() => {
     lore.signOuts.length = 0;
     lore.missing.count = 0;
     lore.remote.value = `${ORIGIN}/harbour`;
+    lore.merged.value = undefined;
+    lore.merged.refuse = false;
+    lore.attributed.length = 0;
     trusted = true;
     asker.mockReset().mockResolvedValue(true);
     manager = new VcsManager(upgradedApp(), undefined, undefined, asker);
@@ -294,6 +311,48 @@ describe("the question itself", () => {
         await expect(manager.useServerSession(PROJECT_A)).rejects.toMatchObject({ code: "vcs/project-distrusted" });
         expect(asker).not.toHaveBeenCalled();
         expect(lore.online).toEqual([]);
+    });
+});
+
+/**
+ * The merge a sync commits by itself is recorded under the identity the sync connected with, and
+ * for a project that uses a sign-in that is the account id - so the version rail's top block, its
+ * history and the Team page all read `u-ada`-shaped identifiers where a name belongs. The sync has
+ * to go out as the account; the merge has to be put down as the person, the same person every other
+ * commit on the project names. `syncMergeAuthor.integration.test.ts` holds this against a server.
+ */
+describe("the merge a sync made on its own", () => {
+    it("is put down as the name the project's commits record, offline, while the sync went out as the account", async () => {
+        lore.merged.value = "m1";
+        await manager.sync(PROJECT_A);
+
+        expect(lore.online).toEqual([{ verb: "sync", identity: "u-ada" }]);
+        expect(lore.attributed).toEqual([{ merge: "m1", identity: ADA.account.identity, offline: true }]);
+    });
+
+    it("is left alone where the sync already went out as the author", async () => {
+        asker.mockResolvedValueOnce(false);
+        lore.merged.value = "m1";
+        await manager.sync(PROJECT_A);
+
+        expect(lore.online).toEqual([{ verb: "sync", identity: AUTHOR }]);
+        expect(lore.attributed).toEqual([]);
+    });
+
+    it("means nothing is rewritten after a sync that made no merge", async () => {
+        await manager.sync(PROJECT_A);
+        expect(lore.attributed).toEqual([]);
+    });
+
+    it("does not turn a sync that has written the tree into a failed one, and stays in the main process", async () => {
+        lore.merged.value = "m1";
+        lore.merged.refuse = true;
+
+        const answer = await manager.sync(PROJECT_A);
+
+        expect(lore.attributed).toHaveLength(1);
+        expect(answer).toEqual({ filesChanged: 0, revisionsReceived: 0, conflicts: [] });
+        expect("automaticMerge" in answer).toBe(false);
     });
 });
 

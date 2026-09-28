@@ -506,6 +506,7 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                                     remoteOrigin={session.remoteOrigin}
                                     project={openedProject}
                                     server={serverDisplayName(session)}
+                                    account={session.account}
                                     localPath={localCopyOf(openedProject, repositories)?.path ?? null}
                                     canDetail={canDetail}
                                     canHistory={canHistory}

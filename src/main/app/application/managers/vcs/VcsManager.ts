@@ -2828,9 +2828,7 @@ export class VcsManager extends Manager {
 
             const { session, backend } = await this.sessionFor(projectPath);
             // The account id rather than the author's name, because the fetch below is what the
-            // backend looks a signed-in session up for. The revision an automatic merge records
-            // therefore carries the account id while a session is in force; the author's own
-            // commits do not, because those are offline and go through `resolveIdentity`.
+            // backend looks a signed-in session up for.
             const signedIn = this.projectServerSession(session.root, session.remoteOrigin);
             const globals = { ...session.globals, identity: this.onlineIdentity(signedIn) };
 
@@ -2843,11 +2841,27 @@ export class VcsManager extends Manager {
                 throw new VcsUncommittedChangesError();
             }
 
-            const result = await this.withServerSession(
+            const { automaticMerge, ...result } = await this.withServerSession(
                 signedIn,
                 () => backend.syncFromRemote({ ...globals, offline: false }),
                 session.remoteOrigin,
             );
+
+            // A merge that settled every file is committed inside the call above, under the
+            // identity that call connected with - the account id while a sign-in is in force. It
+            // is given the name every other commit on this project records before anything can
+            // send it (§4.39). A failure here is logged rather than thrown: the tree is already
+            // written, and a sync reported as failed skips the re-read the renderer owes it, so
+            // the next save would put the pre-sync documents back over the merge.
+            if (automaticMerge !== undefined) {
+                const author = this.resolveIdentity(undefined, signedIn);
+                if (author !== globals.identity) {
+                    await backend.attributeAutomaticMerge({ ...session.globals, identity: author }, automaticMerge)
+                        .catch((error: unknown) => {
+                            this.app.logger.warn("[Vcs] Could not record the merge a sync made under the author's name", error);
+                        });
+                }
+            }
             this.app.logger.info(
                 "[Vcs] Synced", session.root,
                 `${result.filesChanged} file(s), ${result.revisionsReceived} revision(s)`,

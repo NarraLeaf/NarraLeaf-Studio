@@ -19,6 +19,7 @@ import {
     repositoryStatus,
     syncRevision,
     type LoreGlobals,
+    type LoreHex,
 } from "./lore";
 
 /**
@@ -258,11 +259,15 @@ export async function pushToRemote(onlineGlobals: LoreGlobals): Promise<VcsPushR
  * out of the event stream and nothing can ask for them again - `repositoryStatus` reports
  * an empty file list for the whole of a conflicted merge (§4.24). After this call the
  * paths are recovered from disk instead, by `readMergeState` in `merge.ts`.
+ *
+ * `automaticMerge` names the merge the sync committed by itself, and it is also only ever
+ * here: it is recorded as the account the call connected with, which the caller puts right
+ * before anything else happens (`attributeAutomaticMerge` in `repository.ts`).
  */
 export async function syncFromRemote(
     onlineGlobals: LoreGlobals,
     options: { onProgress?: (received: number, total: number) => void } = {},
-): Promise<VcsSyncResult> {
+): Promise<SyncOutcome> {
     const result = await syncRevision(onlineGlobals, {
         onProgress: options.onProgress
             ? (progress) => options.onProgress?.(progress.bytesUpdate, progress.bytesUpdateTotal)
@@ -277,6 +282,9 @@ export async function syncFromRemote(
     // still consulted: a count with no paths must not read as a clean sync.
     const conflicts = result.conflicts;
     const conflicted = (result.progress?.fileConflict ?? 0) > 0 || conflicts.length > 0;
+    // Two parents or it is not the merge: attributing anything else would rewrite a revision the
+    // sync did not make.
+    const merge = result.automaticMerge?.parents.length === 2 ? result.automaticMerge.revision : undefined;
 
     return {
         filesChanged: result.files.length,
@@ -287,7 +295,17 @@ export async function syncFromRemote(
             ? ["*"]
             : conflicts,
         alreadyCurrent: result.files.length === 0 && result.revisions.length === 0,
+        ...(merge === undefined ? {} : { automaticMerge: merge }),
     };
+}
+
+/**
+ * What a sync did, as the manager sees it: the answer the author is given, plus the merge the
+ * sync committed on its own when it made one. That second part is the manager's to act on and
+ * never leaves the main process.
+ */
+export interface SyncOutcome extends VcsSyncResult {
+    automaticMerge?: LoreHex;
 }
 
 /** A destination that cannot safely receive a clone, with the reason. */
