@@ -115,7 +115,7 @@ function ChannelRow(props: {
             <div className="flex items-center gap-2">
                 <FieldLabel
                     as="span"
-                    className={cn(CHANNEL_LABEL_CLASS, props.muted && "text-secondary")}
+                    className={cn(CHANNEL_LABEL_CLASS, props.muted && "text-fg-subtle")}
                 >
                     {props.label}
                 </FieldLabel>
@@ -950,7 +950,7 @@ export function TransformChannelEditor(props: {
             })}
             {inheritedChannels.length > 0 ? (
                 <div className="flex flex-col gap-1.5 pt-1">
-                    <FieldLabel as="span" className="text-secondary">{props.inheritedLabel}</FieldLabel>
+                    <FieldLabel as="span" className="text-fg-subtle">{props.inheritedLabel}</FieldLabel>
                     {inheritedChannels.map(channel => {
                         const body = channelBody(channel, inheritedRef, next => {
                             props.onChange(takeOverInherited(ref, props.inherited, next));

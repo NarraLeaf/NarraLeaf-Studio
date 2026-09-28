@@ -2123,7 +2123,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const detachAction = isDetachedHost ? null : (
         <button
             type="button"
-            className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+            className="flex h-6 w-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
             onClick={detachToOwnWindow}
             data-tip={t("blueprint.header.detach")}
             aria-label={t("blueprint.header.detach")}

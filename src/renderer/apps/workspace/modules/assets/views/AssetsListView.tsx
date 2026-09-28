@@ -443,7 +443,7 @@ function CategoryRows({ category, rows, scrollElement }: {
                                 // set's members stay filed in whatever folder they were imported
                                 // into and are listed there too, so the tint is what says these rows
                                 // are one thing being shown twice.
-                                row.band && "bg-fill-subtle/50",
+                                row.band && "bg-fill-subtle",
                                 row.band?.first && bandOpen && "border-t border-edge-subtle",
                                 row.band?.last && bandOpen && "border-b border-edge-subtle",
                                 dragOverGroupId && row.groupPath.includes(dragOverGroupId) && "bg-primary/20",
