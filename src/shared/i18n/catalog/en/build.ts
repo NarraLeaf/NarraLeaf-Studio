@@ -531,6 +531,25 @@ export const build = {
         one: "{count} script could not be compiled.",
         other: "{count} scripts could not be compiled.",
     },
+    /**
+     * A package build refused over an asset set; Dev Mode prints the same sentence and keeps running.
+     * Written in the main process. `{location}` is the name of the scene a story row names the set
+     * in, or one of the three `in*` words. `{value}` is `language` or `variant`, carrying the project's
+     * name for the value - never the id it is stored as.
+     */
+    assetSet: {
+        inCharacters: "a character",
+        inInterface: "the interface",
+        inBlueprint: "a blueprint",
+        language: "the language {name}",
+        variant: "the variant {name}",
+        unfilled: "Asset set {set}, used in {location}, has no file for {value}.",
+        noLanguage: "Asset set {set}, used in {location}, has no file for the project's language.",
+        ambiguous: "Asset set {set}, used in {location}, has more than one file for {value}.",
+        nested: "Asset set {set}, used in {location}, has a set under one of its values. A build does not resolve nested sets.",
+        noValues: "Asset set {set}, used in {location}, declares no variants.",
+        variantUnset: "Asset set {set}, used in {location}, varies by variant, and {variant} does not say which art it uses. Choose it under Project ▸ App ▸ Build variants.",
+    },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",
     contentCoverageSummary: {

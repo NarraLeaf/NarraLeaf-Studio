@@ -39,6 +39,7 @@ import {
 } from "./bundleAssembler";
 import type { DevModeBundleLoadContext } from "./types";
 import { BuildRefusal } from "@shared/build/buildRefusal";
+import { createTranslator, type LocaleCode } from "@shared/i18n";
 
 const STORY_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -1140,5 +1141,180 @@ describe("bundleAssembler script blueprints", () => {
         });
 
         expect(bundle.ui.scripts?.[scriptLayerKey("bp-script", "layer-script")]?.url).toBe("scripts/scripts_boot.js");
+    });
+});
+
+describe("bundleAssembler asset set refusals", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    /** An author edition. Its id is a uuid, which is exactly what no sentence may print. */
+    const DLC_ID = "d1c0e7a1-0000-4000-8000-00000000d1c0";
+    const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+    /**
+     * A project whose one scene, "The corridor", sets its background to an asset set that varies by
+     * edition. `files` are that set's members, each tagged with the edition it answers.
+     */
+    async function createSetProject(files: Record<string, string>): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-asset-set-refusal-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({
+                name: "Test",
+                identifier: "test.project",
+                metadata: {},
+                app: { localization: { sourceLocale: "en", locales: [{ code: "en", displayName: "English" }] } },
+            } as never),
+        );
+        await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uidoc.json"),
+            JSON.stringify({ schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, surfaces: [] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uigraphs.json"),
+            JSON.stringify({
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {} },
+            }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "app-tags.json"),
+            JSON.stringify({ schemaVersion: 1, tags: [{ id: DLC_ID, name: "DLC", overrides: {} }] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "asset-sets.json"),
+            JSON.stringify({
+                version: 1,
+                sets: [{
+                    id: "set-cover",
+                    name: "Cover",
+                    type: "image",
+                    filter: ["set:set-cover"],
+                    axis: { kind: "release", key: "release", residency: "build", values: ["main", DLC_ID], fallback: "main" },
+                }],
+            }),
+            "utf-8",
+        );
+        await mkdir(path.join(projectPath, "assets"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "assets", "assets.metadata.image.json"),
+            JSON.stringify(Object.fromEntries(Object.entries(files).map(([id, edition]) => [
+                id,
+                { id, type: "image", name: id, tags: ["set:set-cover", `release:${edition}`] },
+            ]))),
+            "utf-8",
+        );
+        const storyDir = path.join(projectPath, "editor", "story", "stories", STORY_ID);
+        await mkdir(storyDir, { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "story", "index.json"),
+            JSON.stringify({ schemaVersion: 1, stories: [{ id: STORY_ID, name: "Story" }] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(storyDir, "storydoc.json"),
+            JSON.stringify({
+                schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+                id: STORY_ID,
+                name: "Story",
+                chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
+                scenes: {
+                    "scene-1": {
+                        id: "scene-1",
+                        name: "The corridor",
+                        runtimeName: "The corridor",
+                        rootBlockIds: ["cover"],
+                        blocks: {
+                            cover: {
+                                id: "cover",
+                                kind: "action",
+                                parentId: null,
+                                childrenIds: [],
+                                payload: { action: "setBackground", assetId: "set-cover" },
+                            },
+                        },
+                    },
+                },
+            }),
+            "utf-8",
+        );
+        return projectPath;
+    }
+
+    /** The message an assembly was refused with; a test that expected a refusal fails without one. */
+    async function refusalOf(assembling: Promise<unknown>): Promise<string> {
+        try {
+            await assembling;
+        } catch (error) {
+            expect(error).toBeInstanceOf(BuildRefusal);
+            return error instanceof Error ? error.message : String(error);
+        }
+        throw new Error("the assembly was expected to be refused");
+    }
+
+    it("refuses a package in the author's language, with the catalogue's sentence", async () => {
+        // No edition says which of the set's files it takes, so `main` cannot be built.
+        const projectPath = await createSetProject({ "cover-main": "main", "cover-dlc": DLC_ID });
+        const refusal = (locale: LocaleCode) => refusalOf(assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale,
+        }));
+
+        const where = { set: "Cover", location: "The corridor", variant: "main" };
+        for (const locale of ["zh", "en", "ja"] as const) {
+            expect(await refusal(locale)).toBe(createTranslator(locale).t("build.assetSet.variantUnset", where));
+        }
+        expect(await refusal("zh")).toBe(
+            "资产集「Cover」（用于 The corridor）按变体变化，main 没有指定所用的美术。请在 项目 ▸ 应用 ▸ 变体 中选择",
+        );
+    });
+
+    it("names a variant by its name, never by the id it is stored as", async () => {
+        // The DLC takes its own art, and neither it nor the fallback has a file.
+        const projectPath = await createSetProject({});
+        const message = await refusalOf(assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            packaging: true,
+            locale: "en",
+            appTag: { id: DLC_ID, name: "DLC" },
+            assetAxes: { release: DLC_ID },
+        }));
+
+        expect(message).toBe("Asset set Cover, used in The corridor, has no file for the variant DLC.");
+        expect(message).not.toMatch(UUID);
+    });
+
+    it("keeps Dev Mode running and says the same sentence there", async () => {
+        const projectPath = await createSetProject({ "cover-main": "main", "cover-dlc": DLC_ID });
+        const notices: string[] = [];
+
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath,
+            bundleId: "b",
+            revision: 1,
+            locale: "zh",
+            onNotice: message => notices.push(message),
+        });
+
+        expect(bundle.storyLibrary?.documents[STORY_ID]).toBeDefined();
+        expect(notices).toContain(createTranslator("zh").t("build.assetSet.variantUnset", {
+            set: "Cover",
+            location: "The corridor",
+            variant: "main",
+        }));
     });
 });
