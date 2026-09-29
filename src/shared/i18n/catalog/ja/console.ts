@@ -31,4 +31,8 @@ export const console = {
     sources: {
         blueprintLog: "ブループリントのログ",
     },
+    devModeStatus: {
+        idle: "停止しました",
+        error: "エラーで停止しました",
+    },
 } satisfies LocaleNamespace<"console">;

@@ -31,4 +31,8 @@ export const console = {
     sources: {
         blueprintLog: "蓝图日志",
     },
+    devModeStatus: {
+        idle: "已停止",
+        error: "因错误停止",
+    },
 } satisfies LocaleNamespace<"console">;

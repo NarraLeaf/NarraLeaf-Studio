@@ -1,4 +1,7 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { TranslationKey } from "@shared/i18n";
+import type { DevModeStatus } from "@shared/types/devMode";
+import { translate } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Service } from "../Service";
 import { Services, type WorkspaceContext } from "../services";
@@ -238,6 +241,23 @@ function normalizeBlueprintLevel(level: string): ConsoleLogLevel {
     return "info";
 }
 
+/**
+ * What a Dev Mode line on the Build tab calls the state the session has just entered.
+ *
+ * The line is already prefixed with where it came from, so it names the state and nothing else, in
+ * the words the status bar's run cell uses for the same states. Written in the interface language of
+ * the moment it was logged, like the rest of that tab's history.
+ */
+const DEV_MODE_STATUS_KEYS: Record<DevModeStatus, TranslationKey> = {
+    idle: "console.devModeStatus.idle",
+    starting: "workspace.shell.statusBar.phase.starting",
+    compiling: "workspace.shell.statusBar.phase.compiling",
+    running: "workspace.shell.statusBar.phase.running",
+    reloading: "workspace.shell.statusBar.phase.reloading",
+    error: "console.devModeStatus.error",
+    stopping: "workspace.shell.statusBar.phase.stopping",
+};
+
 function devModeStatusLevel(status: string): ConsoleLogLevel {
     if (status === "error") {
         return "error";
@@ -313,10 +333,7 @@ export class ConsoleService extends Service<ConsoleService> {
             this.append("build", {
                 level: devModeStatusLevel(status),
                 source: DEV_MODE_CONSOLE_SOURCE,
-                segments: [
-                    { text: "status changed: ", color: MUTED_SEGMENT_COLOR },
-                    { text: status, bold: true },
-                ],
+                segments: [{ text: translate(DEV_MODE_STATUS_KEYS[status]), bold: true }],
             });
         });
 

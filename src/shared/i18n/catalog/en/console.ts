@@ -32,4 +32,11 @@ export const console = {
     sources: {
         blueprintLog: "Blueprint Log",
     },
+    // A Dev Mode line on the Build tab says which state the session is in now. The steady and
+    // in-between states read the way the status bar's run cell reads them; these are the two it
+    // has no word for.
+    devModeStatus: {
+        idle: "Stopped",
+        error: "Stopped on an error",
+    },
 } as const;
