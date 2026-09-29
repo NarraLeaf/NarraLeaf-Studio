@@ -1,4 +1,4 @@
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import { readAssetTag } from "@shared/types/assetSetLabels";
 import { Services, type WorkspaceContext } from "../../services";
 import { AssetsService } from "../../core/AssetsService";
@@ -156,7 +156,8 @@ export const assetSource: SearchSource = {
     },
     // Asset imports, renames, tag edits ("updated"), deletions, and group moves all funnel through
     // the library's three events; a set's own name and membership rule come from its service; and
-    // the words a set's tags are printed in come from the project's languages and editions.
+    // the words a set's tags are printed in come from the project's languages and editions - and
+    // from the interface language, which "Language:", "Variant:" and "Deleted variant" are written in.
     watch: (ctx, signal) => {
         const events = ctx.services.get<AssetsService>(Services.Assets).getEvents();
         const rebuild = () => signal.invalidate();
@@ -167,6 +168,7 @@ export const assetSource: SearchSource = {
             ctx.services.get<AssetSetService>(Services.AssetSets).onSetsChanged(rebuild),
             ctx.services.get<LocalizationService>(Services.Localization).onConfigChanged(rebuild),
             ctx.services.get<AppTagService>(Services.AppTags).onTagsChanged(rebuild),
+            i18nStore.subscribe(rebuild),
         ];
         return () => unsubs.forEach(unsub => unsub());
     },
