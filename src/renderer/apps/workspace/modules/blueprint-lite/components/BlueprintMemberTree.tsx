@@ -964,7 +964,7 @@ export function BlueprintMemberTree({
                             {...freeze.writes()}
                         >
                             <Plus className="h-3 w-3" />
-                            New
+                            {t("common.new")}
                         </button>
                     }
                 >
