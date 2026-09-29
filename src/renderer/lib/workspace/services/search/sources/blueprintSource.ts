@@ -21,14 +21,34 @@ const MAX_NODE_LITERALS = 6;
 /** Depth the walker descends into nested param objects/arrays. */
 const MAX_NODE_LITERAL_DEPTH = 2;
 
-const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A uuid anywhere in a string: on its own, or inside a reference such as `fn:<uuid>:<name>`. */
+const CONTAINS_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+/** A function reference as a call node stores it: `fn:<the blueprint's id>:<the function's name>`. */
+const FUNCTION_REFERENCE = /^fn:[^:]+:(.+)$/;
+/** Studio's own built-in ids - `narraleaf-studio:main-surface` - which name nothing the author wrote. */
+const BUILT_IN_ID = /^narraleaf-studio:/;
+
+/**
+ * The part of a param string an author would recognise, or null when there is none.
+ *
+ * A function reference keeps the function's own name and drops the blueprint id in front of it;
+ * anything else that carries an id, or is one of Studio's built-in ids, has nothing to show.
+ */
+function readableLiteral(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > MAX_NODE_LITERAL_LENGTH) {
+        return null;
+    }
+    const text = FUNCTION_REFERENCE.exec(trimmed)?.[1] ?? trimmed;
+    return CONTAINS_UUID.test(text) || BUILT_IN_ID.test(text) ? null : text;
+}
 
 /**
  * The authored strings inside a node's params, in declaration order - a comment's text, a variable
  * name, a literal line of dialogue.
  *
- * Deliberately narrow: numbers and booleans carry no identity, and ids (UUID-shaped strings) are
- * the thing the author never types. What is left is what one `Set Image Asset` node has that the
+ * Deliberately narrow: numbers and booleans carry no identity, and ids - a uuid, a reference built
+ * around one, Studio's own built-in ids - are the thing the author never types. What is left is what one `Set Image Asset` node has that the
  * seven beside it do not, which is the entire point of collecting them.
  */
 function collectNodeLiterals(params: Record<string, unknown> | undefined): string[] {
@@ -38,9 +58,9 @@ function collectNodeLiterals(params: Record<string, unknown> | undefined): strin
             return;
         }
         if (typeof value === "string") {
-            const trimmed = value.trim();
-            if (trimmed && trimmed.length <= MAX_NODE_LITERAL_LENGTH && !UUID_SHAPED.test(trimmed)) {
-                out.push(trimmed);
+            const literal = readableLiteral(value);
+            if (literal) {
+                out.push(literal);
             }
             return;
         }

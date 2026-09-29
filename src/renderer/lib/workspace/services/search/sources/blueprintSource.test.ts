@@ -204,6 +204,41 @@ describe("extractBlueprintEntries", () => {
         expect(distinct?.aux).not.toContain("true");
     });
 
+    it("shows a called function by its name and a built-in surface not at all, never their ids", () => {
+        const doc = {
+            schemaVersion: 1,
+            ownerRecords: { "surfaceMain:surf-1": { blueprintId: "bp-1" } },
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Title Button",
+                    owner: {} as never,
+                    graphs: {
+                        events: {
+                            "ev-1": {
+                                name: "On Click",
+                                graph: {
+                                    nodes: {
+                                        c1: { id: "c1", type: "fn.call", params: { fn: "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueConfirmHead" } },
+                                        c2: { id: "c2", type: "fn.call", params: { fn: "fn:885e69e4-c4dd-497d-bc30-d6a4895eaf1b:cueHoverHead" } },
+                                        q1: { id: "q1", type: "app.quit", params: { surface: "narraleaf-studio:main-surface" } },
+                                    },
+                                },
+                            } as never,
+                        },
+                        functions: {},
+                    },
+                },
+            },
+        } as unknown as BlueprintDocument;
+        const rows = dedupSearchEntries(extractBlueprintEntries(doc, { resolveNodeLabel, labels }), blueprintSource.dedupKey!)
+            .filter(e => e.group === "blueprintNode");
+        const shown = rows.map(e => `${e.detail ?? ""} ${e.aux ?? ""}`).join(" | ");
+        expect(shown).toContain("cueConfirmHead");
+        expect(shown).toContain("cueHoverHead");
+        expect(shown).not.toMatch(/885e69e4|fn:|narraleaf-studio:/);
+    });
+
     it("names an unnamed graph rather than showing its id", () => {
         expect(entries.find(e => e.text === "custom.unknown")?.detail)
             .toBe("Main Menu › Portrait › Unnamed function");
