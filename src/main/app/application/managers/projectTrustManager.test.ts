@@ -26,6 +26,14 @@ vi.mock("@shared/utils/persistentState", () => ({
     },
 }));
 
+// Every path below is spelled the Windows way, and what these tests pin is how the ledger keys
+// those spellings. The identity rules follow the host, so name Windows' rules here or the suite
+// asks a POSIX runner whether `D:\games\Mine\` and `d:/games/mine` are one folder.
+vi.mock("@shared/utils/recentProject", async importOriginal => {
+    const actual = await importOriginal<typeof import("@shared/utils/recentProject")>();
+    return { ...actual, normalizeProjectPath: (projectPath: string) => actual.projectPathIdentity(projectPath, true) };
+});
+
 const T1 = "2026-09-01T00:00:00.000Z";
 const T2 = "2026-09-02T00:00:00.000Z";
 

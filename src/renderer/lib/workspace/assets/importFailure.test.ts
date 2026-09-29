@@ -122,7 +122,9 @@ describe("the wording of a failed import", () => {
     it("names the file by its name, never its path", () => {
         i18nStore.setLocale("zh");
         const message = describeImportFailure(
-            "C:\\Users\\me\\Documents\\translations\\ja.csv",
+            // The renderer's path module reads `\` as a separator on Windows only; a `/` path is
+            // split the same way on every host the suite runs on.
+            "C:/Users/me/Documents/translations/ja.csv",
             describeExchangeProblem({ code: "noIdColumn" }, t),
             t,
         );
