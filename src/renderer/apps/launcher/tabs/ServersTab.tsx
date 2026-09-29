@@ -35,6 +35,7 @@ import { localCopyOf } from "./localCopy";
 import { JoinByPasscode } from "./ServerLiveSessions";
 import { ServerPeople } from "./ServerPeople";
 import { ServerProjectDetailView } from "./ServerProjectDetail";
+import { revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -543,6 +544,7 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                                 problem={problem}
                                 reading={reading}
                                 repositories={repositories}
+                                account={session.account}
                                 onSelect={setOpened}
                             />
                         </div>
@@ -615,12 +617,14 @@ function ProjectList({
     problem,
     reading,
     repositories,
+    account,
     onSelect,
 }: {
     projects: VcsServerProject[] | null;
     problem: TranslationKey | null;
     reading: boolean;
     repositories: readonly VcsLocalRepository[];
+    account: VcsServerSession["account"];
     onSelect: (projectId: string) => void;
 }) {
     const { t } = useTranslation();
@@ -642,6 +646,7 @@ function ProjectList({
                     key={project.id}
                     project={project}
                     local={localCopyOf(project, repositories)}
+                    account={account}
                     onSelect={onSelect}
                 />
             ))}
@@ -679,14 +684,16 @@ function ProjectList({
 function ProjectRow({
     project,
     local,
+    account,
     onSelect,
 }: {
     project: VcsServerProject;
     local: VcsLocalRepository | null;
+    account: VcsServerSession["account"];
     onSelect: (projectId: string) => void;
 }) {
     const { t, formatDate } = useTranslation();
-    const version = lastVersionLine(project, t, formatDate);
+    const version = lastVersionLine(project, account, t, formatDate);
     // Said on the row rather than only on the page behind it, because it is what decides
     // whether the row leads anywhere: a project with nothing in it has nothing to fetch.
     const empty = isEmptyOnServer(project);
@@ -792,13 +799,17 @@ function ProjectAction({
  */
 function lastVersionLine(
     project: VcsServerProject,
+    account: VcsServerSession["account"],
     t: ReturnType<typeof useTranslation>["t"],
     formatDate: ReturnType<typeof useTranslation>["formatDate"],
 ): string | null {
     const at = project.history?.lastAt;
     if (typeof at !== "number" || !Number.isFinite(at) || at <= 0) return null;
     const date = formatDate(at, { year: "numeric", month: "short", day: "numeric" });
-    const by = project.history?.lastBy?.trim();
+    // The rule the project's own page draws its author by: a version a sync merged before the
+    // author's name was put on such merges records an account id, which is this installation's own
+    // name when it is this account and nobody's otherwise.
+    const by = revisionAuthorLabel(project.history?.lastBy, account);
     return by
         ? t("launcher.servers.lastVersionBy", { date, name: by })
         : t("launcher.servers.lastVersion", { date });
