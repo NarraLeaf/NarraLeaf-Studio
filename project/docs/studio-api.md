@@ -360,7 +360,6 @@ app.privileged.fs.requestWrite(path, encoding);
 app.privileged.fs.requestWriteRaw(path);
 app.privileged.fs.ensureRegularFile(path, data, encoding);
 app.privileged.fs.writeFileNoFollow(path, data, encoding);
-app.privileged.fs.recoverCorruptedJsonFile(path, replacement, encoding);
 app.privileged.fs.createDir(path);
 app.privileged.fs.deleteFile(path);
 app.privileged.fs.deleteDir(path);
