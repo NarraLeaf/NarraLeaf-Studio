@@ -70,6 +70,7 @@ export const test = {
     },
     console: {
         channel: "テスト",
+        channelDescription: "テストの実行と判定",
         started: "{title} を開始",
         finished: "{title} {status}（{duration}）",
         finding: "{severity} {message}",

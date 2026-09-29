@@ -122,14 +122,16 @@ export function LiveSessionPresence() {
                     {/* Somebody is waiting to be let in. A dot rather than a count: what it has to
                         carry is "there is something here for you", and the panel behind it is one
                         press away with the names and the two answers. Drawn on the glyph rather
-                        than beside it so the control keeps its width whatever happens. */}
+                        than beside it so the control keeps its width whatever happens, and ringed
+                        in the title bar's own surface so it reads as cut out of the glyph under
+                        it - the same ring the faces beside it wear. */}
                     {waiting && (
                         <span
                             data-live-requests="waiting"
                             aria-hidden
                             className={cn(
                                 "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full",
-                                "bg-primary ring-2 ring-bg",
+                                "bg-primary ring-2 ring-surface-sunken",
                             )}
                         />
                     )}

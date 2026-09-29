@@ -492,6 +492,8 @@ export const lint = {
         category: "検査",
     },
     console: {
+        channel: "検査",
+        channelDescription: "プロジェクトの検査と見つかった問題",
         started: "検査を開始",
         finished: "エラー {errors} 件、警告 {warnings} 件（{duration}）",
         // 場所、次に何がおかしいか、最後にそう言っているルール。コンパイラの 1 行と同じ並びで、

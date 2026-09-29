@@ -64,6 +64,7 @@ export const test = {
     },
     console: {
         channel: "测试",
+        channelDescription: "测试运行及其判定",
         started: "{title} 开始",
         finished: "{title} {status}，用时 {duration}",
         finding: "{severity} {message}",

@@ -488,6 +488,8 @@ export const lint = {
         category: "检查",
     },
     console: {
+        channel: "检查",
+        channelDescription: "项目检查及其发现的问题",
         started: "开始检查",
         finished: "{errors} 个错误，{warnings} 个警告，用时 {duration}",
         // 先位置、再哪里不对、最后是哪条规则说的——编译器那种一行，也是读的人扫视的顺序。

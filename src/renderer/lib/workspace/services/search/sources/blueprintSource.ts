@@ -1,7 +1,8 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
-import { translate } from "@/lib/i18n";
+import { i18nStore, translate } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
+import { resolveBlueprintNodeTitle } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
 import { Services, type WorkspaceContext } from "../../services";
 import { LocalBlueprintService } from "../../ui-editor/LocalBlueprintService";
 import { UIGraphService } from "../../ui-editor/UIGraphService";
@@ -63,8 +64,19 @@ export interface BlueprintEntryLabels {
 }
 
 export interface BlueprintExtractionOptions {
-    /** Catalog display name for a node type (`Set Image Asset`), falling back to the raw type. */
+    /**
+     * A node type's title as the blueprint editor draws it on the node - `Set Image Asset`, in the
+     * interface language - falling back to the raw type.
+     */
     resolveNodeLabel: (nodeType: string) => string | undefined;
+    /**
+     * The name a node type is catalogued under, when its label is a translation of it.
+     *
+     * Kept searchable without being shown (it goes to `aux`), because the blueprint editor's own
+     * add-node menu answers to both: an author who knows a node by its English name, from the
+     * documentation or from a template, finds it here under that name too.
+     */
+    resolveNodeAlias?: (nodeType: string) => string | undefined;
     /**
      * Human name for an owner slot key - the surface or element the blueprint hangs on. Without it a
      * node hit says only which blueprint it is in, and blueprints are named after their element
@@ -115,7 +127,7 @@ export function extractBlueprintEntries(
     document: BlueprintDocument,
     options: BlueprintExtractionOptions,
 ): SearchIndexEntry[] {
-    const { resolveNodeLabel, resolveOwnerLabel, registryVariables = [], labels } = options;
+    const { resolveNodeLabel, resolveNodeAlias, resolveOwnerLabel, registryVariables = [], labels } = options;
     const entries: SearchIndexEntry[] = [];
 
     // blueprintId → ownerKey. A slot names one blueprint, so this is one entry per slot.
@@ -210,12 +222,14 @@ export function extractBlueprintEntries(
                 }
                 const literals = collectNodeLiterals(node.params);
                 const [distinguishing, ...rest] = literals;
+                const alias = resolveNodeAlias?.(node.type);
+                const hidden = alias && alias !== label ? [...rest, alias] : rest;
                 nodeEntries.push({
                     id: `bpnode:${blueprint.id}:${graphId}:${node.id}`,
                     group: "blueprintNode",
                     text: label,
                     detail: distinguishing ? `${distinguishing} · ${where}` : where,
-                    aux: rest.length > 0 ? rest.join(" ") : undefined,
+                    aux: hidden.length > 0 ? hidden.join(" ") : undefined,
                     target: {
                         kind: "blueprint",
                         blueprintId: blueprint.id,
@@ -302,14 +316,30 @@ export const blueprintSource: SearchSource = {
     extract: ctx => {
         const blueprintService = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const catalog = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
-        return extractBlueprintEntries(blueprintService.getBlueprintDocument(), {
-            resolveNodeLabel: type => {
+        // One catalog lookup per node type rather than per node: a project repeats a few dozen types
+        // across hundreds of nodes, and every lookup builds a catalog entry, pins included.
+        const catalogNames = new Map<string, string | undefined>();
+        const catalogName = (type: string): string | undefined => {
+            if (!catalogNames.has(type)) {
+                let name: string | undefined;
                 try {
-                    return catalog.resolveCatalogEntry(type).displayName;
+                    name = catalog.resolveCatalogEntry(type).displayName;
                 } catch {
-                    return undefined;
+                    name = undefined;
                 }
+                catalogNames.set(type, name);
+            }
+            return catalogNames.get(type);
+        };
+        return extractBlueprintEntries(blueprintService.getBlueprintDocument(), {
+            // Translated by the map the node cards are drawn with, so a row names a node the way the
+            // canvas does. It is read at extraction time, which is why `watch` rebuilds the slice when
+            // the interface language changes.
+            resolveNodeLabel: type => {
+                const name = catalogName(type);
+                return name === undefined ? undefined : resolveBlueprintNodeTitle(name, translate);
             },
+            resolveNodeAlias: catalogName,
             resolveOwnerLabel: ownerKey => resolveBlueprintOwnerLabel(ctx, ownerKey),
             registryVariables: [...blueprintService.listPersistentVariables(), ...blueprintService.listSavedVariables()],
             labels: {
@@ -323,6 +353,9 @@ export const blueprintSource: SearchSource = {
     // own file, and a registry edit does NOT bump the graph revision. Watching only the graph left a
     // variable renamed in the variables panel showing its old name in search until something
     // unrelated happened to touch a blueprint.
+    //
+    // The interface language is the third input: node titles, unnamed-graph names and owner names
+    // are translated into the entries, so a slice built in one language is stale in the next.
     watch: (ctx, signal) => {
         const graphs = ctx.services
             .get<UIGraphService>(Services.UIGraph)
@@ -330,9 +363,11 @@ export const blueprintSource: SearchSource = {
         const registry = ctx.services
             .get<VariableRegistryService>(Services.VariableRegistry)
             .onRegistryChanged(() => signal.invalidate());
+        const locale = i18nStore.subscribe(() => signal.invalidate());
         return () => {
             graphs();
             registry();
+            locale();
         };
     },
     dedupKey: entry => (entry.group === "blueprintNode" ? nodeRowKey(entry) : null),

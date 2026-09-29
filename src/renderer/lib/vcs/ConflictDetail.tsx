@@ -156,7 +156,7 @@ function MergeChangeRow({
     const other = side === "mine" ? "theirs" : "mine";
 
     return (
-        <div className="group/change border-t border-edge/60 py-1 first:border-t-0">
+        <div className="group/change border-t border-edge-subtle py-1 first:border-t-0">
             <div className="flex items-baseline gap-1.5 overflow-hidden">
                 <span
                     className={cn(
@@ -210,7 +210,7 @@ function MergeChangeRow({
                     ))}
                 </div>
             ) : (
-                <div className="mt-0.5 min-w-0 rounded-md border border-edge/60 px-1.5 py-1">
+                <div className="mt-0.5 min-w-0 rounded-md border border-edge-subtle px-1.5 py-1">
                     <MergeValue view={values[side]} />
                 </div>
             )}
