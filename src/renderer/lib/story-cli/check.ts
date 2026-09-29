@@ -243,7 +243,7 @@ function findingKey(entry: LintReportEntry): string {
                     : location.kind === "character"
                         ? [location.characterId]
                         : [];
-    return [entry.ruleId, entry.messageKey, location.kind, ...site].join(" ");
+    return [entry.ruleId, entry.messageKey, location.kind, ...site].join("\u0000");
 }
 
 function toDiagnostic(entry: LintReportEntry): StoryFileDiagnostic {
