@@ -188,6 +188,23 @@ describe("ProjectTrustManager", () => {
         expect(manager.isTrusted("D:/games/imported/inner")).toBe(false);
     });
 
+    it("records a yes given for a folder inside an arrival on the arrival's row", () => {
+        // The question is put for the folder the author opened, which has no row of its own inside
+        // a package or a clone; the answer has to land somewhere, or it is asked again every time.
+        manager.recordArrival("D:/imports/theirs", "package", T1);
+        expect(manager.recordArrival("D:/imports/theirs/mine", "opened", T1)).toBe(false);
+
+        expect(manager.grantTrust("D:/imports/theirs/mine", T2)).toBe(true);
+        expect(manager.isTrusted("D:/imports/theirs/mine")).toBe(true);
+        expect(manager.getRecord("D:/imports/theirs/mine")).toMatchObject({ trustedAt: T2, vouchedBy: "author" });
+        expect(manager.isTrusted("D:/imports/theirs")).toBe(true);
+    });
+
+    it("refuses a grant for a folder nothing governs", () => {
+        expect(manager.grantTrust("D:/never/met", T2)).toBe(false);
+        expect(manager.isTrusted("D:/never/met")).toBe(false);
+    });
+
     it("adds no row for a folder opened inside a governed tree", () => {
         manager.recordArrival("D:/games/mine", "created", T1);
         expect(manager.recordArrival("D:/games/mine/sub", "opened", T2)).toBe(false);

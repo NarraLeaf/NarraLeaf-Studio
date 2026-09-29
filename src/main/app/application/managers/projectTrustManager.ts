@@ -230,19 +230,25 @@ export class ProjectTrustManager {
     }
 
     /**
-     * The author vouches for this project, from Settings.
+     * The author vouches for this project, from Settings or from the question put when it opened.
      *
-     * Only for a project with a row of its own: the Settings page offers rows, and a grant for a
-     * path nobody recorded would be a vouch for something Studio has not met.
+     * Written on the row that governs the project: its own, or the arrival it sits inside. A folder
+     * opened inside a package or a clone has no row of its own and is that arrival - the question
+     * named the arrival's origin - so a yes to it is a yes to the tree, exactly as trusting the tree
+     * from Settings trusts the folder. Writing it nowhere left the author's answer unrecorded and
+     * the question coming back on every open.
+     *
+     * A path nothing governs is refused: a grant for it would be a vouch for something Studio has
+     * not met.
      */
     public grantTrust(projectPath: string, now: string): boolean {
         const key = normalizeProjectPath(projectPath);
         const table = this.table();
-        const existing = key ? table[key] : undefined;
+        const existing = key ? this.governing(table, key) : undefined;
         if (!existing) {
             return false;
         }
-        table[key] = { ...existing, trustedAt: now, vouchedBy: "author" };
+        table[existing.path] = { ...existing, trustedAt: now, vouchedBy: "author" };
         this.write(table);
         return true;
     }
