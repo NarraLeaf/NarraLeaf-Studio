@@ -878,7 +878,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      */
     private async createStarterScriptFile(owner: BlueprintOwnerRef, name: string): Promise<string> {
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const scriptRef = this.unusedScriptRef(name, this.widgetTypeOfOwner(owner));
+        const scriptRef = await this.unusedScriptRef(fs, name, this.widgetTypeOfOwner(owner));
         const absolute = this.getContext().project.resolve(scriptRef.split("/"));
         // Thrown to the caller that asked for the script layer, which says it was not added. The file
         // is the author's from here on, so it is named by the path they will find it at.
@@ -941,17 +941,30 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     /**
-     * A path under `scripts/` that no layer already points at.
+     * A path under `scripts/` that no layer points at and no file already holds.
      *
      * Named after the slot rather than after an id: the author opens this file in their own editor,
      * and a filename is as much interface as a title bar is. Two slots with one name count up
      * rather than colliding.
+     *
+     * The disk is asked as well as the document, because the starter write replaces whatever regular
+     * file is at the path it is given, and a file nothing runs is still the author's - a helper the
+     * other scripts import, or one left behind when its layer was removed.
      */
-    private unusedScriptRef(name: string, widgetType?: string): string {
+    private async unusedScriptRef(fs: FileSystemService, name: string, widgetType?: string): Promise<string> {
         const taken = new Set(
             Object.values(this.getBlueprintDocument().blueprints ?? {})
                 .flatMap(bp => listScriptLayers(bp.graphs).map(entry => entry.script.scriptRef)),
         );
+        const project = this.getContext().project;
+        // A check that fails says nothing either way; the write that follows reports its own failure.
+        const isFree = async (candidate: string): Promise<boolean> => {
+            if (taken.has(candidate)) {
+                return false;
+            }
+            const onDisk = await fs.isFileExists(project.resolve(candidate.split("/")));
+            return !(onDisk.ok && onDisk.data);
+        };
         // A name written in a script the filename cannot carry - most of them - slugs to nothing.
         // The widget type is the next most specific thing that is always ASCII, and beats numbering
         // every such file `script-2.ts`.
@@ -959,7 +972,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
         const slug = slugify(name) || slugify(widgetType?.split(".").pop() ?? "") || "script";
         let candidate = `${SCRIPTS_DIR}/${slug}.ts`;
-        for (let index = 2; taken.has(candidate); index += 1) {
+        for (let index = 2; !(await isFree(candidate)); index += 1) {
             candidate = `${SCRIPTS_DIR}/${slug}-${index}.ts`;
         }
         return candidate;
