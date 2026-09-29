@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+    VcsServerAccount,
     VcsServerProject,
     VcsServerProjectDetail,
     VcsServerProjectHistoryPage,
@@ -113,6 +114,7 @@ function open(options: {
     canDetail?: boolean;
     canHistory?: boolean;
     onBack?: () => void;
+    account?: VcsServerAccount | null;
 }) {
     // An absence over the session is an `offline` problem, which is what the panel reads
     // as "unreachable" - the same sentence the REST `unreachable` produced.
@@ -128,6 +130,7 @@ function open(options: {
             remoteOrigin={ORIGIN}
             project={options.entry ?? project()}
             server={SERVER}
+            account={options.account ?? null}
             localPath={null}
             canDetail={options.canDetail ?? true}
             canHistory={options.canHistory ?? true}
@@ -285,6 +288,41 @@ describe("a project the server has read", () => {
         await waitFor(() => expect(panel()).toContain("launcher.servers.detail.lastVersion"));
         expect(panel()).toContain("2026-08-20");
         expect(panel()).toContain("Ada Lovelace");
+    });
+
+    /**
+     * A merge a sync committed by itself used to be recorded as the account id it connected with,
+     * and the server reports whatever a revision records. Those revisions are history now, so the
+     * rule is kept where they are drawn: this installation's own account reads as its name, and any
+     * other id is not drawn - the version reads as one that names nobody.
+     */
+    it("draws a version recorded under an account id as the name, or not at all, never as the id", async () => {
+        const mine = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        const theirs = "8d1c7b2a-0f9e-4d3c-b2a1-908f7e6d5c4b";
+        open({
+            entry: project({ history: { lastAt: Date.UTC(2026, 8, 27), lastBy: theirs } }),
+            detail: detail({ readable: true }),
+            page: {
+                revisions: [
+                    { id: "a1b2c3d4e5", at: Date.UTC(2026, 8, 27), by: mine, message: "Merged" },
+                    { id: "f6a7b8c9d0", at: Date.UTC(2026, 8, 26), by: theirs, message: "Chapter two" },
+                ],
+                more: false,
+            },
+            account: {
+                userId: mine,
+                displayName: "Ada Lovelace",
+                username: "ada",
+                email: "ada@example.com",
+                identity: "Ada Lovelace <ada@example.com>",
+                expiresAt: 0,
+            },
+        });
+
+        await waitFor(() => expect(document.querySelectorAll("[data-project-revision]")).toHaveLength(2));
+        expect(panel()).toContain("Ada Lovelace <ada@example.com>");
+        expect(panel()).toContain("Chapter two");
+        expect(panel()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
     });
 });
 

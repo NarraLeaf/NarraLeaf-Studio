@@ -246,6 +246,12 @@ export interface MergeValueView {
     readonly hidden: number;
 }
 
+/** Both sides of one decision, as the two boxes of its row draw them. */
+export interface MergeSidesView {
+    readonly mine: MergeValueView;
+    readonly theirs: MergeValueView;
+}
+
 /**
  * How far into a value the field names go before what is left becomes one line of JSON.
  *
@@ -278,7 +284,7 @@ export const MERGE_VALUE_MAX_DEPTH = 3;
 export function describeMergeSides(
     mine: DocumentMergeSide,
     theirs: DocumentMergeSide,
-): { readonly mine: MergeValueView; readonly theirs: MergeValueView } {
+): MergeSidesView {
     const ABSENT: MergeValueView = { absent: true, lines: [], hidden: 0 };
     if (!mine.present && !theirs.present) {
         return { mine: ABSENT, theirs: ABSENT };

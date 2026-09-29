@@ -17,6 +17,7 @@ import { VCS_INITIAL_MESSAGE } from "@shared/vcs/systemRevisionMessage";
 import { readRepositoryId } from "./localRepositories";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
 import {
+    amendRevision,
     commit,
     createRepository,
     flushRepository,
@@ -28,6 +29,7 @@ import {
     setRevisionMetadata,
     stage,
     type LoreGlobals,
+    type LoreHex,
     type LoreStatusFilePayload,
     type StageResult,
 } from "./lore";
@@ -561,6 +563,44 @@ export async function readRevisionDetails(
     // undefined survives the IPC structured clone as a present key, so `"author" in
     // entry` would answer yes for a revision that never had one.
     return details;
+}
+
+/**
+ * Record the merge a sync committed by itself as `globals.identity` - the author a normal commit
+ * on this project records - rather than as the account the sync connected with.
+ *
+ * **Why a merge needs this at all.** A sync that meets diverged history and merges every file
+ * commits that merge inside the same backend call that fetched, and the backend writes the call's
+ * `identity` into it as `created-by` and `committed-by`. While a sign-in is in force that identity
+ * has to be the account id, because it is what the backend looks the stored session up by - one
+ * global, two jobs, and nothing separates them inside one call. So the merge was recorded as
+ * `3f2a9c1e-…`, and `committed-by` is what the version rail, its history and a Team server's own
+ * listing of the project all draw (docs/version-control.md §4.39).
+ *
+ * **The fix is an amend, offline, before the merge can be sent.** It rewrites `committed-by` - the
+ * key every reader here takes as the author - and keeps the parents, the tree, the timestamp and
+ * the message (handed back, because the backend would otherwise blank it). `created-by` keeps the
+ * account id; nothing reads it. The merge gets a new hash, which is safe only because it has not
+ * left the machine: a sync fetches, it never sends.
+ *
+ * `globals` are offline and carry the author's identity. Answers the revision the merge now is, or
+ * null when there was nothing to rewrite: the tip is no longer that merge (an amend rewrites the
+ * tip, never a revision further back), or it already names this identity.
+ */
+export async function attributeAutomaticMerge(globals: LoreGlobals, merge: LoreHex): Promise<LoreHex | null> {
+    const { revision } = await repositoryStatus(globals, { scan: false, revisionOnly: true });
+    if (revision?.revision !== merge) {
+        return null;
+    }
+    const details = await readRevisionDetails(globals, merge);
+    if (details.author === globals.identity) {
+        return null;
+    }
+    const amended = await amendRevision(globals, details.message ?? "");
+    // For the reason a commit flushes: the branch tip that now points at the amended merge is
+    // written lazily, and an exit before it lands would bring the account-id merge back.
+    await flushRepository(globals);
+    return amended.revision;
 }
 
 /**

@@ -42,7 +42,7 @@ import {
     numberRepeatedNames,
     renderDocumentName,
 } from "@/lib/vcs/documentName";
-import { readableStoragePath } from "@/lib/vcs/identifierDisplay";
+import { readableStoragePath, revisionAuthorLabel } from "@/lib/vcs/identifierDisplay";
 import { useDocumentNames } from "@/lib/vcs/nameSources";
 import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import type { TranslationKey } from "@shared/i18n";
@@ -458,7 +458,7 @@ function FocusedVersion({ surface }: { surface: VersionSurface }) {
     const { state, focused } = surface;
     const onRevision = state.kind === "revision";
     const time = focused?.timestamp !== undefined ? formatRevisionTime(focused.timestamp, locale) : null;
-    const author = focused?.author?.trim() || null;
+    const author = revisionAuthorLabel(focused?.author, surface.serverSession?.account);
     // Studio's own sentences read back in the author's language; the author's own words untouched.
     // `original` is the stored English, and it goes in the title beside the message - what a
     // collaborator's client shows has to stay reachable from here.

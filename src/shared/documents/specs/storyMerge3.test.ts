@@ -265,6 +265,100 @@ describe("story merge3: what merges", () => {
     });
 });
 
+describe("story merge3: what nobody typed", () => {
+    const NOW = "2026-09-27T08:00:00.000Z";
+    const LATER = "2026-09-27T08:30:00.000Z";
+    const EVEN_LATER = "2026-09-27T09:00:00.000Z";
+
+    /** A spoken line, the kind two people rewriting one line of a scene are both editing. */
+    function line(id: string, text: string): StoryBlock {
+        return block(id, text, {
+            payload: {action: "dialogue", characterId: "c-alice", text: {textId: `t-${id}`, value: text, role: "dialogue"}},
+        } as Partial<StoryBlock>);
+    }
+
+    function stamped(document: StoryDocument, updatedAt: string): StoryDocument {
+        return {...document, meta: {createdAt: NOW, updatedAt}};
+    }
+
+    it("settles the story's own clock readings without a row, keeping the later one", () => {
+        // Every edit stamps `meta.updatedAt`, so two people who each rewrote one line always disagree
+        // about it. It used to be a row of its own - "meta changed" - above the line they both wrote.
+        const base = stamped(story([scene("s1", "Prologue", [line("b1", "hello")])]), NOW);
+        const mine = stamped(story([scene("s1", "Prologue", [line("b1", "hello there")])]), EVEN_LATER);
+        const theirs = stamped(story([scene("s1", "Prologue", [line("b1", "hi")])]), LATER);
+
+        const merged = merge3(base, mine, theirs);
+
+        expect(merged.decisions.map(one => one.path[0])).not.toContain("meta");
+        expect(outcomes(merged.decisions)).toEqual([["scenes/s1/blocks/b1/payload", "conflict"]]);
+        expect(merged.conflicts).toBe(1);
+        expect(merged.document.meta).toEqual({createdAt: NOW, updatedAt: EVEN_LATER});
+        expectWritable(merged.document);
+    });
+
+    it("keeps the later reading whichever side made it, and merges with nothing to ask when that was all", () => {
+        const base = stamped(story([scene("s1", "Prologue", [line("b1", "hello"), line("b2", "bye")])]), NOW);
+        const mine = stamped(story([scene("s1", "Prologue", [line("b1", "hello there"), line("b2", "bye")])]), LATER);
+        const theirs = stamped(story([scene("s1", "Prologue", [line("b1", "hello"), line("b2", "farewell")])]), EVEN_LATER);
+
+        const merged = merge3(base, mine, theirs);
+
+        expect(merged.conflicts).toBe(0);
+        expect(merged.document.meta?.updatedAt).toBe(EVEN_LATER);
+    });
+
+    it("settles a scene's clock readings the same way", () => {
+        const at = (updatedAt: string, fields: Partial<StoryScene>) =>
+            story([scene("s1", "Prologue", [line("b1", "hello")], {meta: {updatedAt}, ...fields})]);
+        const base = at(NOW, {});
+        const mine = at(LATER, {description: "A dark corridor"});
+        const theirs = at(EVEN_LATER, {defaultBackgroundAssetId: "bg-corridor"});
+
+        const merged = merge3(base, mine, theirs);
+
+        expect(merged.decisions.some(one => one.path.includes("meta"))).toBe(false);
+        expect(merged.conflicts).toBe(0);
+        expect(merged.document.scenes.s1.meta).toEqual({updatedAt: EVEN_LATER});
+        expect(merged.document.scenes.s1.description).toBe("A dark corridor");
+        expect(merged.document.scenes.s1.defaultBackgroundAssetId).toBe("bg-corridor");
+    });
+
+    it("still asks about anything else a meta holds", () => {
+        const base = {...story([scene("s1", "Prologue", [line("b1", "hello")])]), meta: {origin: "draft"}};
+        const mine = {...base, meta: {origin: "mine", updatedAt: LATER}};
+        const theirs = {...base, meta: {origin: "theirs", updatedAt: EVEN_LATER}};
+
+        const merged = merge3(base, mine, theirs);
+
+        expect(outcomes(merged.decisions)).toEqual([["meta/origin", "conflict"]]);
+        expect(merged.document.meta).toEqual({origin: "draft", updatedAt: EVEN_LATER});
+    });
+
+    it("names the line a decision is about by the line's own words", () => {
+        // "Line changed", alone, in a scene of forty lines names none of them.
+        const base = story([scene("s1", "Prologue", [line("b1", "hello")])]);
+        const mine = story([scene("s1", "Prologue", [line("b1", "hello there")])]);
+        const theirs = story([scene("s1", "Prologue", [line("b1", "hi")])]);
+
+        const [row] = merge3(base, mine, theirs).decisions;
+
+        expect(row.path).toEqual(["scenes", "s1", "blocks", "b1", "payload"]);
+        expect(row.subject).toBe("hello there");
+    });
+
+    it("names a whole row one side added or removed by its words too", () => {
+        const base = story([scene("s1", "Prologue", [line("b1", "hello")])]);
+        const mine = story([scene("s1", "Prologue", [line("b1", "hello"), line("b2", "a new line")])]);
+        const theirs = story([scene("s1", "Prologue", [line("b1", "hello, changed")])]);
+
+        const merged = merge3(base, mine, theirs);
+
+        const added = merged.decisions.find(one => one.path.join("/") === "scenes/s1/blocks/b2");
+        expect(added?.subject).toBe("a new line");
+    });
+});
+
 describe("story merge3: the refusal", () => {
     const base = story([scene("s1", "Prologue", [block("b1", "a"), block("b2", "b"), block("b3", "c")])]);
 

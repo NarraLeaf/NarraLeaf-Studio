@@ -896,6 +896,74 @@ authLoginWithToken: exchanging external token:
 的人**硬拒**读不了（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION`，"UI document schema is newer
 than this Studio version"）；③ 不提交则人人背着同一项幽灵改动，每次合并都撞。**发布前不要动它。**
 
+### 4.39 ❗ 同步自己提交的合并记在**账号 id** 名下（已修）
+
+现象：「从服务器获取」遇到分叉、而 Lore 把每个文件都自动合上时，版本轨顶部那块写的是
+`合并 / {时间} · 3f2a9c1e-…`；Team 服务器的项目页（启动器）列出的那一版也是这个 id。
+
+**一个全局参数，两份差事。** 干净的合并是在 `revisionSync` **那一次调用里**提交的
+（`merge_start` → `auto_commit_merge`），而提交的 `created-by` / `committed-by` 取自执行上下文的
+`user_id`——v0.8.5 的 `lore-revision/src/repository.rs` 里，它就是这次调用的 `globals.identity`，
+连接也拿同一个值去找会话。§4.35 说过，登录着的项目上网时这个值**必须**是账号 id（会话按它查），
+所以合并被记成了账号 id。同一次调用里没有办法把这两件事拆开。
+
+实测（`syncMergeAuthor.integration.test.ts`，裸 loreserver + 一个替身登录）：修之前同步产生的合并
+作者是 `3f2a9c1e-…`，紧接着的一次普通提交作者是 `Ada Blackwood <ada@example.com>`。
+
+**修法：同步之后、离线 amend 那一版合并。** `revisionSync` 的事件流里只会有一个提交事件——就是
+这次自动合并——`syncFromRemote` 把它（两个 parent 才算）交给 `VcsManager.sync`；若作者身份
+（`resolveIdentity`，普通提交用的那个）与上网用的身份不同，就用离线 globals、作者身份调
+`revisionAmend`，然后 flush（`attributeAutomaticMerge`，`repository.ts`）。三条实测过的细节：
+
+- amend 只改 `committed-by`（`created-by` 仍是账号 id，**没有任何读者**：Studio 与 Team 的历史读
+  都取 `committed-by`）；parent、树、时间戳都不动；
+- **v0.8.5 的 amend 一定会写 message**，空串也照写——所以把那一版自己的 message 原样递回去；
+- 那一版换了哈希，这只在它**还没离开本机**时安全，而同步只取不送。amend 之后合并仍连着两条线，
+  一次就推得上去，重新克隆的机器从服务器读到的 `committed-by` 就是作者的名字。
+
+amend 失败只记日志、不抛：到那一步工作树已经被同步改写，把同步报成失败会让渲染层跳过它欠的那次
+重读，下一次保存就把同步前的文档写回合并上面。
+
+**修之前已经记下的那些版本不改写**（历史不回写）。显示侧守同一条规矩：`revisionAuthorLabel`
+（`renderer/lib/vcs/identifierDisplay.ts`）把**本机登录的那个账号**的 id 画成它的名字，其余任何
+生成的 id 一律不画——版本轨顶部与启动器的 Team 项目页都走它。
+
+### 4.40 ❗ 两个人改同一个故事，合并面板曾经读的是存储而不是故事（已修）
+
+实测（`syncStoryConflicts.integration.test.ts` 的同一个夹具在修之前的构建上跑）：两份副本各改同一行
+对白、各自保存，一边上传、另一边按「从服务器获取」，合并面板拿到的是：
+
+| 看见什么 | 为什么 |
+|---|---|
+| **两个**冲突文件：故事与「故事列表」，后者写「该文件的两个版本内容完全一致」却仍要按一次 | 每次保存都给 `editor/story/index.json` 里该故事的条目盖 `updatedAt`；后端逐行合并，同一行两边都改就是冲突。`story-index` 的 `merge3` 其实把它合得一个问题都没有 |
+| 故事那一行叫「故事」而不是它的标题 | 名字从**工作树**的 `index.json` 读，而它此刻带着 diff3 标记，解析不了 |
+| 故事里多一行「meta 改动」 | 每次编辑都盖 `meta.updatedAt`，`meta` 当成普通字段合并 |
+| 那一行台词的决策没有主语，两个框写 `text.value` / `action dialogue` / `characterId …` / `text.textId …` / 「另有 1 项」 | 决策针对的是这一行的 `payload`，通用描述按存储字段逐个展开 |
+
+**⚠ 改的是两行不同的台词也一样**：后端照样在两个文件上报冲突（盖的那两个时间戳），只是冲突里没有
+任何一处需要人决定。
+
+修法，四处各归其位：
+
+1. **时钟读数自己合**（`mergeHelpers.mergeMeta`）：`createdAt` / `updatedAt` 不出决策行，取较晚的
+   `updatedAt`、较早的 `createdAt`；`meta` 里别的键照常出行。故事文档的 `meta` 与场景的 `meta` 都走它；
+   `story-index` 的条目 `updatedAt` 与库自己的 `meta` 也改成同一条规则——它们是故事文档那两个值的
+   副本，合出来的副本必须还是副本。
+2. **同步时把「格式自己就能合完」的文档当场合掉**（`merge.settleSelfMergingConflicts`，
+   `VcsManager.sync` 调）：对每个冲突文档跑一次 `readMergeDocument`，没被拦、`conflicts === 0` 的，
+   用 `resolveDocumentChanges`（不带任何选择）把合并结果写回工作树、普通 `branch_merge_resolve`
+   接受、再删掉旁边那三份附属文件——附属文件就是「这条路径还在冲突」的判据（`findConflictedPaths`），
+   提交时后端本来也会删。**全部合掉就当场提交这次合并**（离线、作者身份、`VCS_DEFAULT_MERGE_MESSAGE`），
+   和后端自己合干净时在同步里提交是同一件事；同步于是答 `conflicts: []`，渲染层按干净同步处理。
+   实测（`selfMergingConflicts.integration.test.ts`）：**放弃合并照样把被合掉的文件逐字节恢复**——
+   abort 按暂存合并与起点修订的差反推，不靠附属文件，缺了的附属文件它也不在乎。
+3. **合并面板的名字**：故事列表被合掉之后工作树里就是合法的库；它真有问题（两人把同一个故事改成
+   两个名字）时，名字改从旁边的 `~mine` 读（`nameSources.ts`），编辑器此刻读的也是那一份。
+4. **一行台词按编辑器的读法画**：决策带上这一行自己的字作主语（与比较界面同一条规则，
+   `storyDiff.blockSubject`）；两个框走 `storyRowProjection`——说话人 + 句子
+   （`lib/vcs/storyMergeSides.ts`，由面板里的 `useStoryMergeSides` 读 `~mine` 取得这一行的种类与场景、
+   用 `narralangLookups` 解析名字）。不是行的决策（场景名、章节表、`disabled`）仍走通用描述。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

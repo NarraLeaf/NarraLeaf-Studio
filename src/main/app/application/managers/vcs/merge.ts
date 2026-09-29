@@ -20,6 +20,7 @@ import {
     repositoryStatus,
     type LoreGlobals,
 } from "./lore";
+import { readMergeDocument, resolveDocumentChanges } from "./mergeDocument";
 import { collectWorkingSet } from "./workingSet";
 
 /**
@@ -219,6 +220,68 @@ export async function resolveConflicts(
     const result = await branchMergeResolve(globals, absolute);
     await flushRepository(globals);
     return { files: result.files, state: await readMergeState(globals, root) };
+}
+
+/**
+ * Settle every conflicted document whose own format merges it with nothing left to ask.
+ *
+ * **The backend merges line by line, so two clock readings on one line are a conflict to it.** Every
+ * save stamps the story library's entry for that story and the story's own `meta.updatedAt`, so two
+ * people who each edited one story always leave both files conflicted - the library over a field
+ * nobody typed. The format's `merge3` knows better: it settles readings like those itself and asks
+ * only about what somebody wrote. A document whose merge asks nothing is not a conflict an author can
+ * do anything about, and leaving it on the list is what drew the story library in the merge panel as
+ * a file whose two versions were the same and which still waited for a press.
+ *
+ * So each such document is settled here, the way the backend settles a file it merged cleanly: the
+ * composed document is written into the working tree ({@link resolveDocumentChanges} with no choices -
+ * every decision in it is already automatic), accepted with the plain resolve verb (§4.25), and the
+ * merge's own three copies beside it are removed. Those copies are what names a path as still in
+ * conflict ({@link findConflictedPaths}), and the commit that closes the merge deletes them anyway.
+ * Abandoning the merge still puts the file back: an abort reverses the staged merge against the
+ * revision it started from, and ignores copies that are already gone (§4.27).
+ *
+ * Answers the paths it settled. A document that is blocked, refused, has a question in it, or fails
+ * to compose is left exactly as the backend left it, for the author. Flushed before returning, for
+ * {@link resolveConflicts}' reason. Does NOT commit.
+ */
+export async function settleSelfMergingConflicts(
+    globals: LoreGlobals,
+    root: string,
+    relativePaths: readonly string[],
+    sets: DocumentSetLookup = documentSetAt,
+): Promise<string[]> {
+    const settled = new Set<string>();
+    for (const relative of relativePaths) {
+        if (settled.has(relative)) continue;
+        const document = await readMergeDocument(root, relative, sets);
+        if (document.blocked !== undefined || document.conflicts > 0) continue;
+        for (const path of await resolveDocumentChanges(root, relative, {}, sets)) {
+            settled.add(path);
+        }
+    }
+    if (settled.size === 0) {
+        return [];
+    }
+    const paths = [...settled];
+    await branchMergeResolve(globals, paths.map((relative) => repositoryPath(root, relative)));
+    for (const relative of paths) {
+        removeMergeSides(root, relative);
+    }
+    await flushRepository(globals);
+    return paths;
+}
+
+/** Delete the merge's three copies beside one path. A copy that is already gone is not an error. */
+function removeMergeSides(root: string, relativePath: string): void {
+    const absolute = repositoryPath(root, relativePath);
+    for (const suffix of Object.values(SIDECAR_SUFFIXES)) {
+        try {
+            fs.rmSync(`${absolute}${suffix}`, { force: true });
+        } catch {
+            // Left for the commit, which removes it too; the settle above already happened.
+        }
+    }
 }
 
 /**

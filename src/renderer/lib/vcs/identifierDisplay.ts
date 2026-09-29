@@ -41,6 +41,30 @@ export function containsGeneratedIdentifier(text: string): boolean {
 }
 
 /**
+ * Who a version is by, as a surface may draw it, or null where it is drawn as by nobody.
+ *
+ * A revision records the identity that wrote it, verbatim. One writer recorded an account id: a merge
+ * a sync committed by itself, before the author's name was put on such merges
+ * (docs/version-control.md §4.39). Those revisions keep their bytes - history is not rewritten - so
+ * the rule is kept where they are drawn: the account this installation is signed in as is drawn as
+ * its name, and any other generated identifier is not drawn at all, which is how a version that
+ * names nobody is drawn anyway.
+ */
+export function revisionAuthorLabel(
+    author: string | undefined,
+    account?: { readonly userId: string; readonly identity: string } | null,
+): string | null {
+    const trimmed = author?.trim() ?? "";
+    if (trimmed === "") {
+        return null;
+    }
+    if (account && trimmed === account.userId) {
+        return account.identity.trim() || null;
+    }
+    return containsGeneratedIdentifier(trimmed) ? null : trimmed;
+}
+
+/**
  * Text with every generated identifier in it drawn as {@link ELIDED_IDENTIFIER}.
  *
  * For values printed verbatim - a field of a record in a merge, the two sides of a changed value -
