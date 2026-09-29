@@ -77,6 +77,19 @@ describe("extractAssetEntries", () => {
     it("skips unnamed assets", () => {
         expect(extractAssetEntries([{ id: "a3", type: "image", name: "" }])).toHaveLength(0);
     });
+
+    it("prints a set member's tags the way the reader says, and leaves out the ones it does not print", () => {
+        // A member of an asset set carries the set's id among its tags; the reader the slice is built
+        // with prints none of that (see `readAssetTag`).
+        const readTag = (tag: string) => (tag.startsWith("set:") ? null : tag === "locale:ja" ? "Language: 日本語" : tag);
+        const [entry] = extractAssetEntries([{
+            id: "a4",
+            type: "image",
+            name: "title_ja",
+            tags: ["title", "set:a55e7001-0000-4000-8000-000000000001", "locale:ja"],
+        }], readTag);
+        expect(entry?.detail).toBe("title, Language: 日本語");
+    });
 });
 
 describe("extractAssetSetEntries", () => {
@@ -98,5 +111,16 @@ describe("extractAssetSetEntries", () => {
 
     it("skips unnamed sets", () => {
         expect(extractAssetSetEntries([{ id: "s3", type: "image", name: "" }])).toHaveLength(0);
+    });
+
+    it("has no detail for a set whose only tag is its own id", () => {
+        const readTag = (tag: string) => (tag.startsWith("set:") ? null : tag);
+        const [entry] = extractAssetSetEntries([{
+            id: "a55e7001-0000-4000-8000-000000000001",
+            type: "image",
+            name: "Title card",
+            filter: ["set:a55e7001-0000-4000-8000-000000000001"],
+        }], readTag);
+        expect(entry?.detail).toBeUndefined();
     });
 });

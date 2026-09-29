@@ -1,5 +1,5 @@
 import { resolveAssetSetForBuild } from "./assetSetMaterialization";
-import type { AssetSetRecordProblem } from "./characterAssetSets";
+import type { AssetSetRecordProblem, AssetSetRecordSlice } from "./characterAssetSets";
 import { forEachUiAssetIdSlot, uiAssetSlotAcceptsSets, type UiAssetIdSlot } from "./uiAssetSlots";
 import type { AssetSet, AssetSetCandidate, AssetVariantCarrier, AssetVariantMap } from "../types/assetSet";
 import type { UIDocument, UIElement, UISurface } from "../types/ui-editor/document";
@@ -49,8 +49,8 @@ export type UiAssetSetResult = {
     collapsedBuildAxis: boolean;
 };
 
-/** The slice name the interface reports faults under, as an author reads it in a build console. */
-const UI_SLICE = "the interface";
+/** The part of the project interface faults report under. The build words it in the author's language. */
+const UI_SLICE: AssetSetRecordSlice = "interface";
 
 /**
  * Fill in the interface's answers, in place.

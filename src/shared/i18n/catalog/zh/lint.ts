@@ -44,7 +44,7 @@ export const lint = {
         assetsGroupIncomplete: {
             title: "未完成的资产集",
             description: "声明的变体中存在未恰好对应一个文件的变体",
-            // 变体按组成它的标签写出来，因为把这些标签写到文件上就是解决办法。
+            // 变体写成语言代码或变体名称，不写存储用的标签：变体的 id 是 uuid。
             // 不写会解析到的文件名：那个文件还不存在。
             message: "{set} 的 {variant} 没有对应文件",
             messageAmbiguous: "{set} 的 {variant} 对应了 {count} 个文件",

@@ -612,7 +612,11 @@ function AssetSetItem({ row }: { row: Extract<TreeListRow, { kind: "set" }> }) {
  * A value exactly one file answers is that file's ordinary row, marks and menu included: the only
  * thing being inside a set changes is that the file cannot be dragged out of one - a member is named
  * by its tags, and dropping it in a folder would move a row the set would go on drawing where it
- * was. Anything else is the hole the value is.
+ * was.
+ *
+ * A value with no file of its own that the fallback answers is drawn as the fallback's file, marked
+ * as the fallback's: that file is what the game shows for it, and the set's count already counts it
+ * as answered. Anything else is the hole the value is.
  */
 function AssetSetValueItem({ row }: { row: Extract<TreeListRow, { kind: "setValue" }> }) {
     const { assets, assetSetNaming, showAssetSetValueContextMenu } = useAssetsPanelContext();
@@ -638,22 +642,67 @@ function AssetSetValueItem({ row }: { row: Extract<TreeListRow, { kind: "setValu
             />
         );
     }
+    const onContextMenu = (event: React.MouseEvent) => showAssetSetValueContextMenu(event, entry, row.cell.value);
+    const inherited = row.cell.inherited && row.cell.assetId
+        ? assets[entry.category].find(candidate => candidate.id === row.cell.assetId)
+        : undefined;
+    if (inherited) {
+        return (
+            <AssetSetInheritedRow
+                asset={inherited}
+                cell={row.cell}
+                level={row.level}
+                coordinate={coordinate}
+                onContextMenu={onContextMenu}
+            />
+        );
+    }
     return (
         <AssetSetMemberRow
             cell={row.cell}
             level={row.level}
             coordinate={coordinate}
-            onContextMenu={event => showAssetSetValueContextMenu(event, entry, row.cell.value)}
+            onContextMenu={onContextMenu}
         />
     );
 }
 
 /**
- * One value of a set the library has no single file for.
+ * One value of a set that the fallback answers: the fallback's file, marked as the fallback's.
+ *
+ * Not that file's own row. The file has its own row already, at the fallback value, and a second row
+ * that marked, opened or dragged the same file would be one file drawn as two. The value's menu is
+ * the one a hole has, because what can be done here is give the value a file of its own.
+ */
+function AssetSetInheritedRow({ asset, cell, level, coordinate, onContextMenu }: {
+    asset: Asset;
+    cell: AssetSetCell;
+    level: number;
+    coordinate: string;
+    onContextMenu: (event: React.MouseEvent) => void;
+}) {
+    const { t } = useTranslation();
+    const Icon = ASSET_TYPE_ICONS[asset.type];
+    return (
+        <TreeRow
+            level={level}
+            icon={<Icon className="w-4 h-4 shrink-0 text-fg-subtle" />}
+            label={asset.name}
+            labelClassName="italic text-fg-muted"
+            meta={<span className="text-fg-subtle">{t("assets.sets.inspector.variantInherited")}</span>}
+            trailing={coordinate}
+            dataAttributes={{ "data-asset-set-member": cell.label, "data-asset-set-inherited": "" }}
+            onContextMenu={onContextMenu}
+        />
+    );
+}
+
+/**
+ * One value of a set that nothing answers: no file of its own, and no fallback file to take, or more
+ * than one file claiming it.
  *
  * Drawn rather than skipped: the value is the reason the row exists, and dropping it would leave a
- * set that is missing something looking complete. A value a file does answer is drawn as that file's
- * own row instead.
+ * set that is missing something looking complete.
  */
 function AssetSetMemberRow({ cell, level, coordinate, onContextMenu }: {
     cell: AssetSetCell;

@@ -85,7 +85,13 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
     );
 
     const isDisabled = field.disabled || isSaving;
-    const hasTags = localTags.length > 0;
+    // The chips are the stored tags as the field says to print them; a tag it does not print gets no
+    // chip but stays in the list, so it survives an add and is never what a remove takes out.
+    const chips = localTags.flatMap(tag => {
+        const label = field.formatTag ? field.formatTag(data, tag) : tag;
+        return label === null ? [] : [{ tag, label }];
+    });
+    const hasTags = chips.length > 0;
 
     return (
         <div className={field.className}>
@@ -94,18 +100,18 @@ function TagsFieldInner<TData>({ field, data, onSaving }: TagsFieldProps<TData>)
                 {/* No tags: no chip row. The "Add tag…" field below is the whole affordance. */}
                 {hasTags && (
                     <div className="flex flex-wrap gap-1">
-                        {localTags.map((tag) => (
+                        {chips.map(({ tag, label }) => (
                             <span
                                 key={tag}
                                 className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
                             >
-                                {tag}
+                                {label}
                                 <button
                                     onClick={() => handleRemoveTag(tag)}
                                     disabled={isDisabled}
                                     className="hover:text-primary cursor-default disabled:opacity-50"
                                     data-tip={t("properties.tags.remove")}
-                                    aria-label={t("properties.tags.removeAria", { tag })}
+                                    aria-label={t("properties.tags.removeAria", { tag: label })}
                                 >
                                     <X className="w-3 h-3" />
                                 </button>

@@ -387,6 +387,7 @@ export const assets = {
             locale: "言語",
             release: "バリアント",
         },
+        deletedVariant: "削除されたバリアント",
         variantCount: {
             one: "バリアント {count} 件",
             other: "バリアント {count} 件",

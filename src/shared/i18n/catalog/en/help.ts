@@ -308,7 +308,7 @@ export const help = {
             title: "Asset sets",
             body:
                 "An asset set is one library entry standing for several files that differ by language or by "
-                + "build variant. A story row names the set instead of a file, and the game uses the file "
+                + "build variant. A field can name the set instead of a file, and the game uses the file "
                 + "that matches.\n"
                 + "\n"
                 + "A set stays in the folder it was created in, and its files are listed inside it rather "
@@ -320,8 +320,9 @@ export const help = {
                 + "- Choosing a file for a value in the Variants list adds that file to the set.\n"
                 + "- Dissolve Set removes the set and leaves its files in the folder it stood in. "
                 + "Delete removes the set and the files in it. Both first list the places that reference the set.\n"
-                + "- Where a field accepts a set, the picker lists them under Asset sets. Character "
-                + "appearances and interface widgets accept a file.",
+                + "- Story rows, character appearances and dialog avatars, images, backgrounds and videos in "
+                + "the interface, and image and sound fields in blueprints accept a set, and their pickers "
+                + "list sets under Asset sets. Font fields accept a file.",
         },
         assetSetAxes: {
             title: "What a set varies by",

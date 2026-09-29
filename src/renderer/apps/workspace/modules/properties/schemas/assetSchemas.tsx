@@ -39,6 +39,12 @@ export interface AssetEditorContext<T extends AssetType = AssetType> {
      * that rides with the asset rather than an observation about it.
      */
     onUpdate: (field: "name" | "tags" | "description" | "modelEntry", value: any) => Promise<void>;
+    /**
+     * A stored tag as the tag list prints it, or null for one it does not print - the set
+     * bookkeeping a member of an asset set carries (see `readAssetTag`). Absent: tags print as
+     * stored.
+     */
+    readTag?: (tag: string) => string | null;
 }
 
 /**
@@ -89,6 +95,7 @@ function createCommonAssetFields<T extends AssetType>(t: TranslateFn): FieldDefi
                 const newTags = ctx.asset.tags.filter((t) => t !== tag);
                 await ctx.onUpdate("tags", newTags);
             },
+            formatTag: (ctx, tag) => (ctx.readTag ? ctx.readTag(tag) : tag),
             order: 200,
         },
         {

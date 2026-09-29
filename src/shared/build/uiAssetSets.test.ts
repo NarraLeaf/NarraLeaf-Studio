@@ -176,7 +176,7 @@ describe("attachUiAssetSetVariants", () => {
             const result = run({ document: document({ elements: { el1: fill } }) });
 
             expect(result.problems).toEqual([
-                { kind: "axisUnset", setId: EDITION_SET_ID, setName: "Cover", axisKey: "release", slice: "the interface" },
+                { kind: "axisUnset", setId: EDITION_SET_ID, setName: "Cover", axisKey: "release", slice: "interface" },
             ]);
             expect(fill.assetVariants).toBeUndefined();
         });

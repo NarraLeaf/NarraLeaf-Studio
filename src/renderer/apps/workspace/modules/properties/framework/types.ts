@@ -322,6 +322,14 @@ export interface TagsFieldDefinition<TData = any> extends BaseFieldDefinition<TD
     getValue: (data: TData) => string[];
     addTag: (data: TData, tag: string) => void | Promise<void>;
     removeTag: (data: TData, tag: string) => void | Promise<void>;
+    /**
+     * What a stored tag's chip says, or null for a tag that gets no chip. Absent: every tag is its
+     * own chip, as written.
+     *
+     * Only the display changes. The list still holds every stored tag, so adding one keeps the tags
+     * that are not drawn, and removing a chip removes exactly the tag it stands for.
+     */
+    formatTag?: (data: TData, tag: string) => string | null;
 }
 
 /**
