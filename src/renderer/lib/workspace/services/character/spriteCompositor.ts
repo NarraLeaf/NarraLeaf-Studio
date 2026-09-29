@@ -21,6 +21,33 @@ export type SpriteRenderer = (
 ) => Promise<Blob | null>;
 
 /**
+ * One composited picture, and the size of the artwork it is a picture of.
+ *
+ * The two differ whenever the picture was asked for smaller than the stack: a badge wants 24px of a
+ * 1600px sprite. Anything that places the sprite at the size the stage draws it has to take the
+ * second - the picture's own pixels are only what it was scaled to.
+ */
+export type SpriteComposite = {
+    /** Object URL of the drawn picture, at most `maxSize` on its longest edge. */
+    url: string;
+    /** The stack's own width in artwork pixels, before any scaling. */
+    width: number;
+    /** The stack's own height in artwork pixels, before any scaling. */
+    height: number;
+};
+
+/**
+ * The canvas a stack is drawn on, in artwork pixels. Every layer is centred on it at its own size,
+ * so it is as wide as the widest layer and as tall as the tallest.
+ */
+export function stackExtent(bitmaps: readonly { width: number; height: number }[]): { width: number; height: number } {
+    return {
+        width: Math.max(...bitmaps.map(bitmap => bitmap.width)),
+        height: Math.max(...bitmaps.map(bitmap => bitmap.height)),
+    };
+}
+
+/**
  * The identity of a composite: same character, same resolved selection, same picture. Selection keys
  * are sorted because a tag map's insertion order is an accident of which row wrote it, and two rows
  * that pose a character identically must hit one cache entry.
@@ -44,8 +71,7 @@ export const drawStack: SpriteRenderer = async (bitmaps, maxSize) => {
     if (bitmaps.length === 0) {
         return null;
     }
-    const width = Math.max(...bitmaps.map(bitmap => bitmap.width));
-    const height = Math.max(...bitmaps.map(bitmap => bitmap.height));
+    const { width, height } = stackExtent(bitmaps);
     // A 24px badge has no business decoding a 2000px stack twice over, so the whole composite is
     // scaled once at the end rather than each layer being resized on the way in.
     const scale = maxSize ? Math.min(1, maxSize / Math.max(width, height)) : 1;
@@ -63,11 +89,9 @@ export const drawStack: SpriteRenderer = async (bitmaps, maxSize) => {
     return canvas.convertToBlob({ type: "image/png" });
 };
 
-type Entry = { url: string; size: number };
-
 export class SpriteCompositor {
-    private cache = new Map<string, Entry>();
-    private inFlight = new Map<string, Promise<string | null>>();
+    private cache = new Map<string, SpriteComposite>();
+    private inFlight = new Map<string, Promise<SpriteComposite | null>>();
 
     constructor(
         private decode: SpriteDecoder,
@@ -76,18 +100,18 @@ export class SpriteCompositor {
     ) {}
 
     /**
-     * An object URL for the composited stack, or null when nothing draws. Repeated calls for the same
-     * key and size share one URL — callers must not revoke it; {@link invalidate} and {@link dispose}
-     * own its lifetime.
+     * The composited stack, or null when nothing draws. Repeated calls for the same key and size
+     * share one composite and one URL — callers must not revoke it; {@link invalidate} and
+     * {@link dispose} own its lifetime.
      */
-    public composite(key: string, layers: CompositeLayers, maxSize?: number): Promise<string | null> {
+    public composite(key: string, layers: CompositeLayers, maxSize?: number): Promise<SpriteComposite | null> {
         const cacheKey = `${key}@${maxSize ?? 0}`;
         const hit = this.cache.get(cacheKey);
         if (hit) {
             // Refresh recency: re-inserting moves it to the end of the Map's iteration order.
             this.cache.delete(cacheKey);
             this.cache.set(cacheKey, hit);
-            return Promise.resolve(hit.url);
+            return Promise.resolve(hit);
         }
         const pending = this.inFlight.get(cacheKey);
         if (pending) {
@@ -95,12 +119,12 @@ export class SpriteCompositor {
         }
 
         const work = this.build(layers, maxSize)
-            .then(url => {
-                if (url) {
-                    this.cache.set(cacheKey, { url, size: 1 });
+            .then(composite => {
+                if (composite) {
+                    this.cache.set(cacheKey, composite);
                     this.evict();
                 }
-                return url;
+                return composite;
             })
             .finally(() => {
                 this.inFlight.delete(cacheKey);
@@ -109,7 +133,7 @@ export class SpriteCompositor {
         return work;
     }
 
-    private async build(layers: CompositeLayers, maxSize?: number): Promise<string | null> {
+    private async build(layers: CompositeLayers, maxSize?: number): Promise<SpriteComposite | null> {
         const ids = layers.filter((assetId): assetId is string => Boolean(assetId));
         if (ids.length === 0) {
             return null;
@@ -119,7 +143,9 @@ export class SpriteCompositor {
             return null;
         }
         const blob = await this.render(bitmaps, maxSize);
-        return blob ? URL.createObjectURL(blob) : null;
+        // The extent comes from the bitmaps, not from the blob: the blob is already scaled to
+        // `maxSize`, and only the decode knows how big the artwork itself is.
+        return blob ? { url: URL.createObjectURL(blob), ...stackExtent(bitmaps) } : null;
     }
 
     /**
@@ -137,10 +163,7 @@ export class SpriteCompositor {
         }
         // Sample in *canvas* space, not per layer: a small accessory centred on a tall body covers a
         // few cells, and stretching each layer to fill the grid would say it covers all of them.
-        const canvas = {
-            width: Math.max(...present.map(bitmap => bitmap.width)),
-            height: Math.max(...present.map(bitmap => bitmap.height)),
-        };
+        const canvas = stackExtent(present);
         const drawn = bitmaps.map(bitmap => (bitmap ? sampleAlpha(bitmap, canvas, grid) : null));
         const covered = new Array(grid * grid).fill(false);
         const result = new Array(layers.length).fill(false);
